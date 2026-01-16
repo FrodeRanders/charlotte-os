@@ -1,0 +1,26 @@
+[package]
+name = "catten-aarch64-generic"
+version = "0.3.5"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "catten-aarch64-generic"
+path = "src/main.rs"
+test = false
+bench = false
+
+[features]
+limine = []
+acpi = ["uacpi-raw"]
+default = ["limine", "acpi"]
+
+[dependencies]
+hashbrown = ">=0.16.0"
+limine = ">=0.5.0"
+spin = { version = ">=0.10.0", features = ["ticket_mutex", "lock_api"] }
+talc = { version = ">=4.4.3" }
+uacpi-raw = { git = "https://codeberg.org/CharlotteOS/uacpi-raw.git", branch = "main", optional = true }
+
+
+
