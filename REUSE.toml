@@ -1,0 +1,7 @@
+version = 1
+
+[[annotations]]
+path = ["./"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2025 Mohit D. Patel and Contributors <charlotte-os@outlook.com>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
