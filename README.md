@@ -1,18 +1,10 @@
-# CharlotteOS – Catten
-
-`Catten` is the kernel of CharlotteOS, designed as a robust, general-purpose monolithic kernel with a strong emphasis on clarity, safety, and architectural flexibility. While developed as part of CharlotteOS, the kernel is structured so that it may also serve as a foundation for other systems.
-
-Catten draws inspiration from exokernels, Fuchsia, and capability-based microkernel designs while remaining monolithic for performance and simplicity. Its low-level system call interface is intentionally minimal, enabling a wide range of higher-level runtimes and user environments to be layered on top.
-
-Catten also provides a typed, capability-secured system namespace with URI-like paths, inspired by concepts from Plan 9 and Fuchsia but extended for stronger typing, clean access semantics, and the ability to access another host’s namespace without mounting. Namespace operations are governed by granular capabilities and a persistent mandatory access control policy.
-
-The kernel is still early in development. Core subsystems are under active construction, and contributions are welcome. Join our discussions on Discord, Matrix, or via the issue tracker if you’re interested in participating.
+# The Charlotte Operating System (CharlotteOS)
 
 ---
 
 ## Programming Languages
 
-- Catten is written primarily in Rust, with architecture-specific assembly where required.
+- CharlotteOS is written primarily in Rust, with architecture-specific assembly where required.
 - x86-64 assembly uses Intel syntax as implemented by `rustc`/`llvm-mc`.
 - Minimal C is permitted for vetted components where a high-quality Rust alternative does not exist.
 
@@ -45,13 +37,6 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 - GICv3 or later
 - Secure Monitor Call interface with PSCI
 - SystemReady Compliant firmware - Full or DT band
-
-#### RISC-V64 (Secondary ISA)
-
-- RVA23 or later  
-- V extension not required  
-- Supervisor Binary Interface
-- BRS-I or BRS-B compliant firmware
 
 ---
 
@@ -107,7 +92,7 @@ PC and Server:
 - Minimum: 4 GiB  
 - Supported device classes:
   - NVMe (PCIe)  
-  - USB Mass Storage (MSC)
+  - USB Mass Storage Device Class (MSC)
 
 ### Display
 
@@ -121,12 +106,15 @@ PC and Server:
   - i8042 PS/2  
   - USB HID  
   - I²C HID (documented ACPI/FDT only)
-- Pointers:
-  - USB HID
+- Pointing Devices:
+  - i8042 PS/2  
+  - USB HID  
+  - I²C HID (documented ACPI/FDT only)
 
 ### Serial Console
 
-- NS16550-compatible UART  
+- NS16550 compatible UART
+- Arm PL011 compatible UART  
 - USB CDC-ACM (virtual serial)
 
 ### Networking
