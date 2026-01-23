@@ -1,0 +1,8 @@
+[package]
+name = "catten-platform-common"
+version = "0.0.0"
+
+[lib]
+name = "catten_platform_common"
+path = "src/lib.rs"
+crate-type = ["rlib"]

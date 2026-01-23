@@ -47,7 +47,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
-name = "catten-aarch64-generic"
+name = "catten"
 version = "0.3.5"
 dependencies = [
  "hashbrown",
@@ -58,15 +58,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "catten-x86_64-generic"
-version = "0.3.5"
-dependencies = [
- "hashbrown",
- "limine",
- "spin",
- "talc",
- "uacpi-raw",
-]
+name = "catten-drivers"
+version = "0.0.0"
+
+[[package]]
+name = "catten-platform-aarch64"
+version = "0.0.0"
+
+[[package]]
+name = "catten-platform-common"
+version = "0.0.0"
+
+[[package]]
+name = "catten-platform-interface"
+version = "0.0.0"
+
+[[package]]
+name = "catten-platform-riscv64"
+version = "0.0.0"
+
+[[package]]
+name = "catten-platform-x86_64"
+version = "0.0.0"
 
 [[package]]
 name = "cc"

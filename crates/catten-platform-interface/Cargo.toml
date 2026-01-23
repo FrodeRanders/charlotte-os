@@ -1,0 +1,9 @@
+[package]
+name = "catten-platform-interface"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "catten_platform_interface"
+path = "src/lib.rs"
+crate-type = ["rlib"]
