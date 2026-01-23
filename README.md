@@ -147,4 +147,4 @@ Find us on:
 - **Reddit** <https://www.reddit.com/r/charlotteos>
 - **E-Mail** <charlotte-os@outlook.com>
 
-[^1]: These requirements are estimates that may change during the course of development.
+[^1]: These requirements are estimates that may change in the course of development.
