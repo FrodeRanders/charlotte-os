@@ -1,3 +1,4 @@
 //! # The Catten Kernel Platform Interface
-
-pub trait Platform {}
+#![no_std]
+pub mod firmware;
+pub mod isa;

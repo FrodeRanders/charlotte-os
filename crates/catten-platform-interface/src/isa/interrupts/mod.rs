@@ -1,0 +1,18 @@
+use crate::cpu::isa::cpu::LpId;
+pub trait InterruptManagerIfce {
+    type Error;
+    type IsrDesc;
+    type LocalIntCtlr: LocalIntCtlrIfce;
+    /// Register an interrupt handler using an ISA specific descriptor for where to install it and
+    /// with what attributes
+    fn register_interrupt_handler(isrd: &Self::IsrDesc) -> Result<(), Self::Error>;
+}
+
+/// # Local Interrupt Controller Interface
+pub trait LocalIntCtlrIfce {
+    type Error;
+    /// Send an inter-processor interrupt to the specified logical processor
+    fn send_unicast_ipi(target_lp: LpId) -> Result<(), Self::Error>;
+    /// Signal End of Interrupt
+    fn signal_eoi();
+}

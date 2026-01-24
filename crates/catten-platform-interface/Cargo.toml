@@ -7,3 +7,5 @@ edition = "2024"
 name = "catten_platform_interface"
 path = "src/lib.rs"
 crate-type = ["rlib"]
+test = false
+bench = false

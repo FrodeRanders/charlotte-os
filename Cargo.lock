@@ -58,10 +58,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "catten-drivers"
-version = "0.0.0"
-
-[[package]]
 name = "catten-platform-aarch64"
 version = "0.0.0"
 
