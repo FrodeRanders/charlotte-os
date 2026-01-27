@@ -1,5 +1,6 @@
 pub mod address;
 pub mod paging;
+pub mod tlb;
 
 use core::arch::asm;
 
@@ -20,7 +21,9 @@ impl MemoryInterface for MemoryInterfaceImpl {
     const PAGE_SIZE: usize = 4096;
 }
 
-pub enum Error {}
+pub enum Error {
+    InvalAddrTlnRes,
+}
 
 pub struct AddressSpace {
     /// user space translation table base register
@@ -105,9 +108,9 @@ impl AddressSpaceInterface for AddressSpace {
         }
         if par_el1.0 & 1 == 1 {
             // Check F bit
-            Err(Error {})
+            Err(Error::InvalAddrTlnRes)
         } else {
-            Ok(PAddr(
+            Ok(PAddr::from(
                 if is_d128_set(par_el1) {
                     par_el1.1
                 } else {
