@@ -6,21 +6,21 @@ fn main() {
     match arch.as_str() {
         "x86_64" => {
             // Tell cargo to pass the linker script to the linker...
-            println!("cargo:rustc-link-arg=-T./crates/catten-platform-x86_64/linker/x86_64.ld");
+            println!("cargo:rustc-link-arg=-T./crates/catten/linker/x86_64.ld");
             // ...and to re-run if it changes.
-            println!("cargo:rerun-if-changed=./crates/catten-platform-x86_64/linker/x86_64.ld");
+            println!("cargo:rerun-if-changed=./crates/catten/linker/x86_64.ld");
         }
         "aarch64" => {
             // Tell cargo to pass the linker script to the linker...
-            println!("cargo:rustc-link-arg=-T./crates/catten-platform-aarch64/linker/aarch64.ld");
+            println!("cargo:rustc-link-arg=-T./crates/catten/linker/aarch64.ld");
             // ...and to re-run if it changes.
-            println!("cargo:rerun-if-changed=./crates/catten-platform-aarch64/linker/aarch64.ld");
+            println!("cargo:rerun-if-changed=./crates/catten/linker/aarch64.ld");
         }
         "riscv64" => {
             // Tell cargo to pass the linker script to the linker...
-            println!("cargo:rustc-link-arg=-T./crates/catten-platform-riscv64/linker/riscv64.ld");
+            println!("cargo:rustc-link-arg=-T./crates/catten/linker/riscv64.ld");
             // ...and to re-run if it changes.
-            println!("cargo:rerun-if-changed=./crates/catten-platform-riscv64/linker/riscv64.ld");
+            println!("cargo:rerun-if-changed=./crates/catten/linker/riscv64.ld");
         }
         _ => panic!("Invalid ISA"),
     }
