@@ -43,7 +43,7 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::cpu::isa::cpu::ops::*;
+use crate::cpu::isa::lp::ops::*;
 
 pub static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 

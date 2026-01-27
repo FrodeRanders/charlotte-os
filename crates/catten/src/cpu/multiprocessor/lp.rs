@@ -5,8 +5,8 @@ use alloc::sync::Arc;
 
 use spin::mutex::Mutex;
 
-use crate::cpu::isa::cpu::ops::set_lp_local_base;
-use crate::cpu::isa::cpu::{CoreId, LpId};
+use crate::cpu::isa::lp::ops::set_lp_local_base;
+use crate::cpu::isa::lp::{CoreId, LpId};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::memory::{AddressSpaceId, VAddr};

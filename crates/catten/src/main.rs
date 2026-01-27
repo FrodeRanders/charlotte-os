@@ -43,8 +43,8 @@ pub mod self_test;
 use limine::mp::Cpu;
 use spin::{Barrier, Lazy};
 
-use crate::cpu::isa::cpu::ops::get_lp_id;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
+use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::system_info::CpuInfo;
 #[cfg(target_arch = "x86_64")]
 use crate::cpu::isa::timers::tsc::{IS_TSC_INVARIANT, TSC_CYCLE_PERIOD, TSC_FREQUENCY_HZ};

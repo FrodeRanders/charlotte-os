@@ -3,8 +3,8 @@ use alloc::vec::Vec;
 use spin::Lazy;
 
 use crate::common::collections::id_table::IdTable;
-use crate::cpu::isa::cpu::LpId;
-use crate::cpu::isa::cpu::thread_context::ThreadContext;
+use crate::cpu::isa::lp::LpId;
+use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::event::Completion;
 use crate::memory::{AddressSpaceId, VAddr};
 

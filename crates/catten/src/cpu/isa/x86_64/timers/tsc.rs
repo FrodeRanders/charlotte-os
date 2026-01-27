@@ -47,7 +47,7 @@ fn get_tsc_freq_common() -> u64 {
 
     const N_SAMPLES: u64 = 8;
     let mut samples = [0u64; N_SAMPLES as usize];
-    crate::cpu::isa::cpu::ops::mask_interrupts!();
+    crate::cpu::isa::lp::ops::mask_interrupts!();
     for sample in samples.iter_mut() {
         i8254::set_interrupt_on_terminal_count((PIT_FREQUENCY_HZ / 25) as u16); // Set PIT to 40 ms
         while read_channel_2_output() {} // Wait for counting to start
@@ -56,7 +56,7 @@ fn get_tsc_freq_common() -> u64 {
         let end_tsc = rdtsc();
         *sample = end_tsc - start_tsc;
     }
-    crate::cpu::isa::cpu::ops::unmask_interrupts!();
+    crate::cpu::isa::lp::ops::unmask_interrupts!();
     let mean_tsc_cycles = (samples.iter().sum::<u64>() / N_SAMPLES) * 25;
     // Round to the nearest MHz since CPU clocks are near universally multiples of that
     nearest_multiple_of(mean_tsc_cycles, 1_000_000)

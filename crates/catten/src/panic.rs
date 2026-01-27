@@ -2,7 +2,7 @@
 
 use core::panic::PanicInfo;
 
-use crate::cpu::isa::cpu::ops::halt;
+use crate::cpu::isa::lp::ops::halt;
 use crate::logln;
 
 #[panic_handler]

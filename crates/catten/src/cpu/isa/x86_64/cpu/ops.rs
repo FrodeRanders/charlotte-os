@@ -82,7 +82,7 @@ pub fn get_lp_id() -> LpId {
             out("ecx") id,
         );
     }
-    id as crate::cpu::isa::cpu::LpId
+    id as crate::cpu::isa::lp::LpId
 }
 
 use crate::memory::VAddr;

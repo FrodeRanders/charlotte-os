@@ -6,8 +6,8 @@ use core::sync::atomic::Ordering;
 use spin::Mutex;
 
 use super::lp_schedulers::LocalScheduler;
-use crate::cpu::isa::cpu::LpId;
-use crate::cpu::isa::cpu::ops::get_lp_id;
+use crate::cpu::isa::lp::LpId;
+use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::event::Event;
 use crate::memory::AddressSpaceId;

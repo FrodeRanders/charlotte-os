@@ -6,7 +6,7 @@
 //! scheduling of threads on different logical processors.
 use alloc::vec::Vec;
 
-use crate::cpu::isa::cpu::LpId;
+use crate::cpu::isa::lp::LpId;
 
 pub struct CpuTopology {
     pub sockets: Vec<Socket>,

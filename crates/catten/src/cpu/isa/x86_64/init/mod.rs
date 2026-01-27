@@ -3,7 +3,7 @@ mod bsp;
 pub mod gdt;
 
 use crate::cpu::isa::interface::init::InitInterface;
-use crate::cpu::isa::cpu::ops::get_lp_id;
+use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::logln;
 

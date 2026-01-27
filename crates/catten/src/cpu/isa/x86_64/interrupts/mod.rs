@@ -7,7 +7,7 @@ pub mod x2apic;
 use idt::*;
 use spin::{Lazy, Mutex};
 
-use crate::cpu::isa::cpu::LpId;
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::interface::interrupts::InterruptManagerIfce;
 use crate::memory::IdTable;
 

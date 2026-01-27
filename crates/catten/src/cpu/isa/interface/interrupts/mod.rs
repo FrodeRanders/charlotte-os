@@ -1,4 +1,4 @@
-use crate::cpu::isa::cpu::LpId;
+use crate::cpu::isa::lp::LpId;
 pub trait InterruptManagerIfce {
     type Error;
     type IsrDesc;

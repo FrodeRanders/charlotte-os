@@ -5,7 +5,7 @@ use spin::lazy::Lazy;
 
 use super::{INTERRUPT_STACK_SIZE, gdt};
 use crate::cpu::isa::interrupts::idt::{Idt, asm_load_idt};
-use crate::cpu::isa::cpu::ops::get_lp_id;
+use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::multiprocessor::get_lp_count;
 use crate::logln;
 
@@ -97,7 +97,7 @@ pub static INIT_MUTEX: Lazy<spin::Mutex<()>> = Lazy::new(|| {
 });
 
 pub fn init_ap() {
-    let lp_id = crate::cpu::isa::cpu::ops::get_lp_id();
+    let lp_id = crate::cpu::isa::lp::ops::get_lp_id();
     /* I'm not entirely sure why this function needs to be serialized with this mutex,
     however it triple faults without it when there are 16 or more LPs.
     Only remove it when you are certain the underlying issue has been resolved. */

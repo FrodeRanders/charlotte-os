@@ -16,7 +16,7 @@ use spin::rwlock::RwLock;
 use spin::{Lazy, Mutex};
 
 use crate::common::collections::boxed_slice::make_boxed_slice;
-use crate::cpu::isa::cpu::LpId;
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::tlb;
 use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;

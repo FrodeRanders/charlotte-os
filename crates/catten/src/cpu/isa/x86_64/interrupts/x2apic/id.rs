@@ -1,6 +1,6 @@
 use alloc::collections::btree_map::BTreeMap;
 
-use crate::cpu::isa::cpu::LpId;
+use crate::cpu::isa::lp::LpId;
 
 pub(super) static mut X2APIC_ID_TABLE: BTreeMap<LpId, LapicId> = BTreeMap::new();
 

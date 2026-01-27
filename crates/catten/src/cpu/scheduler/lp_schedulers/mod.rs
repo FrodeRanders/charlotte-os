@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use hashbrown::HashMap;
 
-use crate::cpu::isa::cpu::ops::halt;
+use crate::cpu::isa::lp::ops::halt;
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::strategy::LsStratIfce;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId};
