@@ -1,11 +1,10 @@
 //! # Initialization Module
-
-use crate::cpu::isa::cpu;
 use crate::cpu::isa::init::IsaInitializer;
 use crate::cpu::isa::interface::init::InitInterface;
+use crate::cpu::isa::lp;
 use crate::logln;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::allocators::global_allocator::init_primary_allocator;
+use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 
 pub fn bsp_init() {
     logln!("Performing ISA specific initialization...");
@@ -34,7 +33,7 @@ pub fn bsp_init() {
 }
 
 pub fn ap_init() {
-    let lp_id = cpu::ops::get_lp_id();
+    let lp_id = lp::ops::get_lp_id();
     logln!("Initializing LP {}...", lp_id);
     logln!("LP {}: Performing ISA specific initialization...", lp_id);
     match IsaInitializer::init_ap() {
