@@ -13,7 +13,7 @@ use crate::cpu::isa::init::gdt::KERNEL_CODE_SELECTOR;
 use crate::cpu::isa::interrupts::idt::Idt;
 
 pub fn register_fixed_isr_gates(idt: &mut Idt) {
-    exceptions::load_exceptions(idt);
+    exceptions::set_gates(idt);
     idt.set_gate(
         SPURIOUS_INTERRUPT_VECTOR,
         spurious::isr_spurious,

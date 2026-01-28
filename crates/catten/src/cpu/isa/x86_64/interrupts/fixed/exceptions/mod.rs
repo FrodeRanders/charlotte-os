@@ -2,7 +2,7 @@ use crate::cpu::isa::init::gdt;
 use crate::cpu::isa::interrupts::idt::Idt;
 use crate::logln;
 
-pub fn load_exceptions(idt: &mut Idt) {
+pub fn set_gates(idt: &mut Idt) {
     idt.set_gate(0, isr_divide_by_zero, gdt::KERNEL_CODE_SELECTOR, true, true);
     idt.set_gate(1, isr_debug, gdt::KERNEL_CODE_SELECTOR, true, false);
     idt.set_gate(2, isr_non_maskable_interrupt, gdt::KERNEL_CODE_SELECTOR, true, false);

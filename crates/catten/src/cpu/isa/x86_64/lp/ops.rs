@@ -6,7 +6,7 @@ macro_rules! halt {
     () => {
         loop {
             unsafe {
-                core::arch::asm!("hlt", options(nomem, nostack, preserves_flags));
+                core::arch::asm!("hlt", options(noreturn, nomem, nostack, preserves_flags));
             }
         }
     };
