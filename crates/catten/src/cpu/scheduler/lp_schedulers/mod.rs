@@ -4,9 +4,11 @@ pub mod strategy;
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
+use core::ops::IndexMut;
 
 use hashbrown::HashMap;
 
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::halt;
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::strategy::LsStratIfce;
@@ -16,6 +18,7 @@ use crate::memory::AddressSpaceId;
 type RunQueue = BTreeMap<AddressSpaceId, Vec<ThreadId>>;
 
 pub struct LocalScheduler {
+    pub lp_id: LpId,
     run_queue: RunQueue,
     strategy: Box<dyn LsStratIfce>,
     asid_mapping: HashMap<AddressSpaceId, HwAsid>,
@@ -30,8 +33,9 @@ pub enum Status {
 }
 
 impl LocalScheduler {
-    pub fn new(strategy: Box<dyn LsStratIfce>) -> LocalScheduler {
+    pub fn new(lp_id: LpId, strategy: Box<dyn LsStratIfce>) -> LocalScheduler {
         LocalScheduler {
+            lp_id,
             run_queue: RunQueue::new(),
             strategy,
             asid_mapping: HashMap::new(),
@@ -65,7 +69,21 @@ impl LocalScheduler {
     }
 
     pub fn remove_threads(&mut self, tids: Vec<ThreadId>) {
-        todo!()
+        for tid in &tids {
+            /* TODO: If currently running this thread then send a context switch IPI */
+            let thread_ptr_opt = unsafe { MASTER_THREAD_TABLE.try_get_element_arc(tid.clone()) };
+            if let Some(thread_ptr) = thread_ptr_opt {
+                let asid = thread_ptr.read().asid;
+                let as_run_queue_opt = self.run_queue.get_mut(&asid);
+                if let Some(as_rq) = as_run_queue_opt {
+                    for (idx, tid) in as_rq.clone().iter().enumerate() {
+                        if tids.contains(tid) {
+                            as_rq.remove(idx);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn remove_as(&mut self, asid: AddressSpaceId) {
@@ -83,7 +101,9 @@ impl LocalScheduler {
         self.asid_mapping.get(&asid).cloned()
     }
 
-    pub fn workload_score(&self) -> u64 {
+    pub fn thread_count(&self) -> u64 {
         self.run_queue.len() as u64
     }
 }
+
+unsafe impl Send for LocalScheduler {}

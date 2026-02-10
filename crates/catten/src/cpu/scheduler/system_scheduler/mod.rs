@@ -1,9 +1,8 @@
-use alloc::collections::btree_map::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::sync::atomic::Ordering;
 
 use spin::Mutex;
+use spin::rwlock::RwLock;
 
 use super::lp_schedulers::LocalScheduler;
 use crate::cpu::isa::lp::LpId;
@@ -12,7 +11,7 @@ use crate::cpu::scheduler::threads::ThreadId;
 use crate::event::Event;
 use crate::memory::AddressSpaceId;
 
-pub static SYSTEM_SCHEDULER: SystemScheduler = SystemScheduler::new();
+pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
 pub enum Error {
     InvalidThread,
@@ -20,22 +19,24 @@ pub enum Error {
 
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
-    lp_schedulers: BTreeMap<LpId, Arc<Mutex<LocalScheduler>>>,
+    lp_schedulers: Vec<Arc<Mutex<LocalScheduler>>>,
 }
 
 impl SystemScheduler {
     pub const fn new() -> Self {
         Self {
-            lp_schedulers: BTreeMap::new(),
+            lp_schedulers: Vec::new(),
         }
     }
 
     pub fn get_local_scheduler(&self) -> Arc<Mutex<LocalScheduler>> {
-        self.lp_schedulers[&get_lp_id()].clone()
+        self.lp_schedulers[get_lp_id() as usize].clone()
     }
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
-        todo!()
+        let least_loaded_lp = self.get_least_loaded_lp();
+        least_loaded_lp.lock().add_thread(tid);
+        Ok(least_loaded_lp.lock().lp_id)
     }
 
     /// Yield the current LP's execution to the scheduler
@@ -64,6 +65,8 @@ impl SystemScheduler {
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {
         todo!()
     }
-}
 
-unsafe impl Sync for SystemScheduler {}
+    fn get_least_loaded_lp(&self) -> Arc<Mutex<LocalScheduler>> {
+        self.lp_schedulers.iter().min_by_key(|sched| sched.lock().thread_count()).unwrap().clone()
+    }
+}

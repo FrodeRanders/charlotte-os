@@ -2,12 +2,10 @@
 #![no_main]
 #![feature(abi_custom)]
 #![feature(allocator_api)]
-#![feature(atomic_try_update)]
 #![feature(exclusive_wrapper)]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
 #![feature(likely_unlikely)]
-#![feature(ptr_as_ref_unchecked)]
 #![feature(slice_ptr_get)]
 #![feature(step_trait)]
 #![allow(static_mut_refs)]
@@ -99,7 +97,7 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     logln!("LP{}: Bootstrapping complete. Yielding the processor to the scheduler.", (get_lp_id()));
-    unsafe { SYSTEM_SCHEDULER.yield_lp() }
+    unsafe { SYSTEM_SCHEDULER.read().yield_lp() }
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -114,5 +112,5 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
     init::ap_init();
     INIT_BARRIER.wait();
     logln!("LP{}: Bootstrapping complete. Yielding the processor to the scheduler.", (get_lp_id()));
-    unsafe { SYSTEM_SCHEDULER.yield_lp() }
+    unsafe { SYSTEM_SCHEDULER.read().yield_lp() }
 }
