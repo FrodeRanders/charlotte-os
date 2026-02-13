@@ -30,6 +30,7 @@ pub enum Status {
     QueueFull,
     ThreadNotFound,
     AsNotFound,
+    RunQueueEmpty,
 }
 
 impl LocalScheduler {
@@ -42,14 +43,12 @@ impl LocalScheduler {
         }
     }
 
-    pub fn next(&mut self) -> ThreadId {
+    pub extern "C" fn next(&mut self, out: &mut ThreadId) -> Status {
         if let Some(tid) = self.strategy.next_thread(&mut self.run_queue) {
-            tid
+            *out = tid;
+            Status::Success
         } else {
-            // The calling LP is halted and will continue execution when it recieves an interrupt
-            // Threads are expected to be added to its local scheduler by the global scheduler
-            // before sending it a unicast IPI with the `Wakeup` command.
-            halt!()
+            Status::RunQueueEmpty
         }
     }
 

@@ -46,7 +46,7 @@ impl SystemScheduler {
     }
 
     /// Block the specified thread at least until the given event notifies its observers
-    pub fn block_tid(&self, tid: ThreadId, event: &dyn Event) -> Result<(), Error> {
+    pub fn block_thread(&self, tid: ThreadId, event: &dyn Event) -> Result<(), Error> {
         /* Crate a completion object registered with event and push it to the back of the blocker
         queue for the specified thread. If the tid doesn't point to any thread structure then
         return Error::InvalidThread. If the thread is not already blocked then send a broadcast
@@ -55,15 +55,19 @@ impl SystemScheduler {
     }
 
     pub fn terminate_threads(&self, tids: Vec<ThreadId>) {
-        todo!()
+        self.abort_threads(tids);
     }
 
     pub fn abort_threads(&self, tids: Vec<ThreadId>) {
-        todo!()
+        for lp_sched in &self.lp_schedulers {
+            (*lp_sched).lock().remove_threads(tids.clone());
+        }
     }
 
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {
-        todo!()
+        for lp_sched in &self.lp_schedulers {
+            (*lp_sched).lock().remove_as(asid);
+        }
     }
 
     fn get_least_loaded_lp(&self) -> Arc<Mutex<LocalScheduler>> {
