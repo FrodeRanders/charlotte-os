@@ -55,19 +55,24 @@ impl SystemScheduler {
     }
 
     pub fn terminate_threads(&self, tids: Vec<ThreadId>) {
-        self.abort_threads(tids);
+        todo!(
+            "Send a terminate upcall to each specified thread. This should be considered the \
+             highest priority for an upcall."
+        )
     }
 
     pub fn abort_threads(&self, tids: Vec<ThreadId>) {
         for lp_sched in &self.lp_schedulers {
             (*lp_sched).lock().remove_threads(tids.clone());
         }
+        todo!("Remove these threads from the thread table.")
     }
 
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {
         for lp_sched in &self.lp_schedulers {
             (*lp_sched).lock().remove_as(asid);
         }
+        todo!("Remove these threads from the thread table.")
     }
 
     fn get_least_loaded_lp(&self) -> Arc<Mutex<LocalScheduler>> {
