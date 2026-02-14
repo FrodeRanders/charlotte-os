@@ -9,8 +9,8 @@
 
 use crate::cpu::isa::io::{IReg8Ifce, IoReg8, OReg8Ifce};
 
-static PIT_CH0_DATA_REG: IoReg8 = IoReg8::IoPort(0x40);
-static PIT_CH1_DATA_REG: IoReg8 = IoReg8::IoPort(0x41);
+//static PIT_CH0_DATA_REG: IoReg8 = IoReg8::IoPort(0x40);
+//static PIT_CH1_DATA_REG: IoReg8 = IoReg8::IoPort(0x41);
 static PIT_CH2_DATA_REG: IoReg8 = IoReg8::IoPort(0x42);
 static PIT_MODE_COMMAND_REG: IoReg8 = IoReg8::IoPort(0x43);
 static PIT_CH2_GATE_AND_OUTPUT_REG: IoReg8 = IoReg8::IoPort(0x61);
