@@ -4,12 +4,11 @@ mod id;
 use core::arch::asm;
 
 use super::super::constants::interrupt_vectors::*;
-use crate::cpu::isa::constants::msrs::APIC_EOI_REGISTER;
-use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::LpTimerIfce;
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::timers::apic_timer::ApicTimer;
-use crate::cpu::isa::x86_64::constants::msrs::{self, INTERRUPT_COMMAND_REGISTER};
+use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
 
 pub enum Error {
@@ -52,7 +51,7 @@ impl X2Apic {
             | (1 << ASE_BIT_SHIFT) // APIC Software Enable
             | (1 << FCC_BIT_SHIFT); // Focused CPU Core Checking Enable
         unsafe {
-            msrs::write(msrs::APIC_SPURIOUS_INTERRUPT_VECTOR, sivr_val);
+            msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR, sivr_val);
         }
         X2Apic {
             timer: ApicTimer::new(timer_int_vec),
@@ -109,7 +108,7 @@ impl X2Apic {
             } << TIMER_MODE_SHIFT)
                 & !(1u64 << MASK_BIT_SHIFT); // Unmask the timer interrupt
         unsafe {
-            msrs::write(msrs::APIC_TIMER_LVTR, timer_lvt_entry);
+            msrs::write(msrs::x2apic::TIMER_LVTR, timer_lvt_entry);
         }
     }
 }
@@ -137,7 +136,7 @@ impl LocalIntCtlrIfce for X2Apic {
             unsafe {
                 asm!{
                     "wrmsr",
-                    in("ecx") INTERRUPT_COMMAND_REGISTER,
+                    in("ecx") msrs::x2apic::INTERRUPT_COMMAND_REGISTER,
                     in("eax") icr_low,
                     in("edx") dest,
                     options(nomem, nostack, preserves_flags),
@@ -152,7 +151,7 @@ impl LocalIntCtlrIfce for X2Apic {
 
     fn signal_eoi() {
         unsafe {
-            msrs::write(APIC_EOI_REGISTER, 0);
+            msrs::write(msrs::x2apic::EOI_REGISTER, 0);
         }
     }
 }

@@ -1,7 +1,5 @@
-/* Add the following line in any x86-64 assembly source to use the macros defined here.
-   
-   .include catten/src/cpu/isa/x86_64/asm_macros/context_switch.asm
- */
+/* Use the Rust include! macro to include this file to add the ability to use the macros
+defined here. */
 
 .macro ctx_save_m
     // Save the general purpose registers to the interrupt stack
