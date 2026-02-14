@@ -44,7 +44,7 @@ pub fn get_lic_id() -> u32 {
     unsafe {
         core::arch::asm!(
             "rdmsr",
-            inlateout("ecx") msrs::LAPIC_ID => _,
+            inlateout("ecx") msrs::x2apic::ID_REG => _,
             lateout("eax") apic_id,
             lateout("edx") _,
             options(nostack, preserves_flags)

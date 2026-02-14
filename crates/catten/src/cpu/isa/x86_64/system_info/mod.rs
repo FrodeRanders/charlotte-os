@@ -88,17 +88,13 @@ impl CpuInfoIfce for CpuInfo {
     }
 
     fn get_paddr_sig_bits() -> u8 {
-        unsafe {
-            let cpuid_result = __cpuid_count(0x80000008, 0);
-            cpuid_result.eax as u8
-        }
+        let cpuid_result = __cpuid_count(0x80000008, 0);
+        cpuid_result.eax as u8
     }
 
     fn get_vaddr_sig_bits() -> u8 {
-        unsafe {
-            let cpuid_result = __cpuid_count(0x80000008, 0);
-            ((cpuid_result.eax >> 8) & 0xff) as u8
-        }
+        let cpuid_result = __cpuid_count(0x80000008, 0);
+        ((cpuid_result.eax >> 8) & 0xff) as u8
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {
@@ -109,22 +105,22 @@ impl CpuInfoIfce for CpuInfo {
             )
         }
         match extension {
-            IsaExtension::La57 => unsafe {
+            IsaExtension::La57 => {
                 let cpuid_result = __cpuid_count(0x0000_0007, 0);
                 (cpuid_result.ecx & 1 << 16) != 0
-            },
-            IsaExtension::Invlpgb => unsafe {
+            }
+            IsaExtension::Invlpgb => {
                 let cpuid_result = __cpuid_count(0x8000_0008, 0);
                 (cpuid_result.ebx & 1 << 5) != 0
-            },
-            IsaExtension::InvariantTsc => unsafe {
+            }
+            IsaExtension::InvariantTsc => {
                 let feat_ext = __cpuid_count(0x80000007, 0);
                 (feat_ext.edx & (1 << 8)) != 0
-            },
-            IsaExtension::Rdpid => unsafe {
+            }
+            IsaExtension::Rdpid => {
                 let cpuid_result = __cpuid_count(0x0000_0007, 0);
                 (cpuid_result.ecx & 1 << 22) != 0
-            },
+            }
         }
     }
 }

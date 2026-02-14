@@ -32,12 +32,12 @@ pub struct ApicTimer {
 impl ApicTimer {
     pub fn set_timer_initial_count(count: u32) {
         unsafe {
-            msrs::write(msrs::APIC_TIMER_INITIAL_COUNT, count as u64);
+            msrs::write(msrs::x2apic::TIMER_INITIAL_COUNT, count as u64);
         }
     }
 
     pub fn read_timer_current_count() -> u32 {
-        unsafe { msrs::read(msrs::APIC_TIMER_CURRENT_COUNT) as u32 }
+        unsafe { msrs::read(msrs::x2apic::TIMER_CURRENT_COUNT) as u32 }
     }
 
     fn determine_timer_resolution(&mut self) {
@@ -70,8 +70,10 @@ impl ApicTimer {
             reset_value: 0,
         };
         t.determine_timer_resolution();
-        t.set_divisor(ApicTimerDivisors::DivBy1);
-        t.set_isr_dispatch_number(interrupt_vector);
+        unsafe {
+            t.set_divisor(ApicTimerDivisors::DivBy1).unwrap_unchecked();
+            t.set_isr_dispatch_number(interrupt_vector).unwrap_unchecked();
+        }
         t
     }
 }
@@ -89,7 +91,7 @@ impl LpTimerIfce for ApicTimer {
 
     fn set_divisor(&mut self, divisor: Self::Divisor) -> Result<(), LpTimerError> {
         unsafe {
-            msrs::write(msrs::APIC_TIMER_DIVIDE_CONFIGURATION, divisor as u64);
+            msrs::write(msrs::x2apic::TIMER_DIVIDE_CONFIGURATION, divisor as u64);
         }
         Ok(())
     }
@@ -138,20 +140,20 @@ impl LpTimerIfce for ApicTimer {
 
     fn get_interrupt_mask(&mut self) -> Result<bool, LpTimerError> {
         const MASK_BIT_SHIFT: u64 = 16;
-        let apic_timer_lvt_entry = unsafe { msrs::read(msrs::APIC_TIMER_LVTR) };
+        let apic_timer_lvt_entry = unsafe { msrs::read(msrs::x2apic::TIMER_LVTR) };
         let is_masked = (apic_timer_lvt_entry >> MASK_BIT_SHIFT) & 0b1 == 1;
         Ok(is_masked)
     }
 
     fn set_interrupt_mask(&mut self, mask: bool) -> Result<(), LpTimerError> {
         const MASK_BIT_SHIFT: u64 = 16;
-        let mut apic_timer_lvt_entry = unsafe { msrs::read(msrs::APIC_TIMER_LVTR) };
+        let mut apic_timer_lvt_entry = unsafe { msrs::read(msrs::x2apic::TIMER_LVTR) };
         if mask {
             apic_timer_lvt_entry |= 1u64 << MASK_BIT_SHIFT;
         } else {
             apic_timer_lvt_entry &= !(1u64 << MASK_BIT_SHIFT);
         }
-        unsafe { msrs::write(msrs::APIC_TIMER_LVTR, apic_timer_lvt_entry) };
+        unsafe { msrs::write(msrs::x2apic::TIMER_LVTR, apic_timer_lvt_entry) };
         Ok(())
     }
 
@@ -164,10 +166,10 @@ impl LpTimerIfce for ApicTimer {
     }
 
     fn set_isr_dispatch_number(&mut self, num: Self::IntDispatchNum) -> Result<(), LpTimerError> {
-        let mut apic_timer_lvt_entry = unsafe { msrs::read(msrs::APIC_TIMER_LVTR) };
+        let mut apic_timer_lvt_entry = unsafe { msrs::read(msrs::x2apic::TIMER_LVTR) };
         apic_timer_lvt_entry &= !0xffu64;
         apic_timer_lvt_entry |= num as u64;
-        unsafe { msrs::write(msrs::APIC_TIMER_LVTR, apic_timer_lvt_entry) };
+        unsafe { msrs::write(msrs::x2apic::TIMER_LVTR, apic_timer_lvt_entry) };
         Ok(())
     }
 }
