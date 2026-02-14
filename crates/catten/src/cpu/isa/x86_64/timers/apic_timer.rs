@@ -1,13 +1,25 @@
+use alloc::sync::Arc;
+use alloc::vec;
 use alloc::vec::Vec;
+
+use spin::lazy::Lazy;
+use spin::mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 use crate::common::time::duration::ExtDuration;
+use crate::cpu::isa::constants::interrupt_vectors::CONTEXT_SWITCH_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
 use crate::cpu::isa::interrupts::x2apic::X2Apic;
+use crate::cpu::isa::lp::ops::get_lp_id;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
+use crate::cpu::multiprocessor::get_lp_count;
+
+static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
+    vec![Arc::new(Mutex::new(ApicTimer::new(CONTEXT_SWITCH_VECTOR))); get_lp_count() as usize]
+});
 
 pub type LpTimer = ApicTimer;
 
@@ -24,6 +36,7 @@ pub enum ApicTimerDivisors {
     DivBy1 = 0b1011,
 }
 
+#[derive(Clone, Debug)]
 pub struct ApicTimer {
     resolution:  ExtDuration,
     reset_value: <Self as LpTimerIfce>::TickCount,
@@ -84,6 +97,10 @@ impl LpTimerIfce for ApicTimer {
     type TickCount = u32;
 
     const NAME: &'static str = "x86-64 x2APIC Timer";
+
+    fn get_local() -> Arc<Mutex<Self>> {
+        unsafe { APIC_TIMERS.get_unchecked(get_lp_id() as usize).clone() }
+    }
 
     fn get_resolution(&self) -> Result<ExtDuration, LpTimerError> {
         Ok(self.resolution)

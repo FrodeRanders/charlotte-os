@@ -1,3 +1,7 @@
+use alloc::sync::Arc;
+
+use spin::mutex::Mutex;
+
 pub use crate::common::time::duration::ExtDuration;
 
 pub enum LpTimerError {
@@ -19,6 +23,7 @@ pub trait LpTimerIfce {
     type TickCount;
     type IntDispatchNum;
 
+    fn get_local() -> Arc<Mutex<Self>>;
     fn get_resolution(&self) -> Result<ExtDuration, LpTimerError>;
     fn set_divisor(&mut self, divisor: Self::Divisor) -> Result<(), LpTimerError>;
     fn set_duration(&mut self, duration: ExtDuration) -> Result<(), LpTimerError>;
