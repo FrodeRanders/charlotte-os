@@ -46,8 +46,9 @@
 	pop r9
 	pop r8
 	pop rcx
-	pop rdi
+	pop rdx
 	pop rsi
+	pop rdi
 	pop rax
 .endm
 

@@ -70,7 +70,7 @@ impl PhysicalFrameAllocator {
             unsafe {
                 curr_byte_ptr = self.bitmap_ptr.offset(byte_idx as isize);
                 if curr_byte_ptr.read() != 0xff {
-                    for bit_idx in 0..7 {
+                    for bit_idx in 0..=7 {
                         if curr_byte_ptr.read() & (1 << bit_idx) == 0u8 {
                             //set the bit corresponding to the allocated frame
                             curr_byte_ptr
