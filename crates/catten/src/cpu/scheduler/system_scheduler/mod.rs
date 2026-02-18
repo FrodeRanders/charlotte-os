@@ -6,7 +6,7 @@ use spin::rwlock::RwLock;
 
 use super::lp_schedulers::LocalScheduler;
 use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::get_lp_id;
+use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::event::Event;
 use crate::memory::AddressSpaceId;
@@ -42,7 +42,7 @@ impl SystemScheduler {
     /// Yield the current LP's execution to the scheduler
     /// This differs from blocking in that the processor state on entry is discarded
     pub unsafe fn yield_lp(&self) -> ! {
-        todo!()
+        yield_lp!()
     }
 
     /// Block the specified thread at least until the given event notifies its observers

@@ -4,12 +4,10 @@ pub mod strategy;
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::vec::Vec;
-use core::ops::IndexMut;
 
 use hashbrown::HashMap;
 
 use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::halt;
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::strategy::LsStratIfce;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId};
@@ -17,6 +15,7 @@ use crate::memory::AddressSpaceId;
 
 type RunQueue = BTreeMap<AddressSpaceId, Vec<ThreadId>>;
 
+#[derive(Debug)]
 pub struct LocalScheduler {
     pub lp_id: LpId,
     run_queue: RunQueue,
@@ -24,6 +23,7 @@ pub struct LocalScheduler {
     asid_mapping: HashMap<AddressSpaceId, HwAsid>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum Status {
     Success = 0,

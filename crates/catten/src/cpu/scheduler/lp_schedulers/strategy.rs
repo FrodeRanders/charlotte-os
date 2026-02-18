@@ -1,13 +1,16 @@
+use alloc::fmt::Debug;
+
 use super::*;
 use crate::memory::AddressSpaceId;
 
 /// Local Scheduling Strategy Interface
-pub unsafe trait LsStratIfce {
+pub unsafe trait LsStratIfce: Debug {
     fn next_thread(&mut self, run_queue: &mut RunQueue) -> Option<ThreadId>;
     fn next_as(&mut self, run_queue: &mut RunQueue) -> Option<AddressSpaceId>;
     fn get_curr_as(&self) -> AddressSpaceId;
 }
 /// Simple Round Robin Local Scheduling Strategy
+#[derive(Debug)]
 pub struct RoundRobin {
     /// Current Address Space ID
     curr_asid: AddressSpaceId,

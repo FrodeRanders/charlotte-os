@@ -134,3 +134,19 @@ pub extern "C" fn set_thread_context_ptr(ctx_ptr: VAddr) {
         )
     };
 }
+
+#[rustfmt::skip]
+#[macro_export]
+macro_rules! yield_lp {
+    () => {
+        unsafe {
+            core::arch::asm!(
+                "int {0}",
+                const crate::cpu::isa::constants::interrupt_vectors::ENTER_INIT_THREAD_VECTOR,
+                options(noreturn)
+            )
+        }
+    };
+}
+#[rustfmt::skip]
+pub use yield_lp;
