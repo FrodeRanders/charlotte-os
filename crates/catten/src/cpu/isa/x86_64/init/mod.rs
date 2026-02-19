@@ -16,20 +16,20 @@ impl InitInterface for IsaInitializer {
 
     fn init_bsp() -> Result<(), Self::Error> {
         let lp_id = get_lp_id();
-        logln!("LP{}: Starting x86-64 bootstrap processor initialization", lp_id);
+        logln!("LP {lp_id}: Starting x86-64 bootstrap processor initialization");
         // Initialize TSS, GDT, and IDT
         bsp::init_bsp();
-        logln!("LP{}: x86-64 bootstrap processor initialization complete", lp_id);
+        logln!("LP {lp_id}: x86-64 bootstrap processor initialization complete");
         // return success
         Ok(())
     }
 
     fn init_ap() -> Result<(), Self::Error> {
         let lp_id = get_lp_id();
-        logln!("LP{}: Starting x86-64 application processor initialization", lp_id);
+        logln!("LP {lp_id}: Starting x86-64 application processor initialization");
         // Initialize TSS, GDT, and IDT
         ap::init_ap();
-        logln!("LP{}: x86-64 logical processor initialization complete", lp_id);
+        logln!("LP {lp_id}: x86-64 logical processor initialization complete");
         Ok(())
     }
 

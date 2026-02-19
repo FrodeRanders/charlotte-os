@@ -1,47 +1,66 @@
 //! # Initialization Module
+use alloc::boxed::Box;
+
 use crate::cpu::isa::init::IsaInitializer;
 use crate::cpu::isa::interface::init::InitInterface;
 use crate::cpu::isa::lp;
+use crate::cpu::isa::lp::ops::get_lp_id;
+use crate::cpu::scheduler::lp_schedulers::LocalScheduler;
+use crate::cpu::scheduler::lp_schedulers::strategy::RoundRobin;
+use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, SystemScheduler};
 use crate::logln;
-use crate::memory::allocators::global_allocator::init_primary_allocator;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
+use crate::memory::allocators::global_allocator::init_primary_allocator;
 
 pub fn bsp_init() {
-    logln!("Performing ISA specific initialization...");
+    logln!("LP 0: Performing ISA specific initialization...");
     match IsaInitializer::init_bsp() {
-        Ok(_) => logln!("ISA specific initialization complete."),
+        Ok(_) => logln!("LP 0: ISA specific initialization complete."),
         Err(e) => {
             // initialization failure is irrecoverable
-            panic!("ISA specific initialization failed: {:?}", e);
+            panic!("LP 0: ISA specific initialization failed: {e:?}");
         }
     }
-    logln!("Performing ISA independent initialization...");
-    logln!("Initializing physical memory...");
+    logln!("LP 0: Performing ISA independent initialization...");
+    logln!("LP 0: Initializing physical memory...");
     match PHYSICAL_FRAME_ALLOCATOR.try_lock() {
         Some(pfa) => {
-            logln!("PhysicalFrameAllocator: {:?}", pfa);
+            logln!("LP 0: PhysicalFrameAllocator: {pfa:?}");
         }
         None => {
-            panic!("Failed to acquire lock on PhysicalFrameAllocator.");
+            panic!("LP 0: Failed to acquire lock on PhysicalFrameAllocator.");
         }
     }
-    logln!("Initializing kernel allocator...");
+    logln!("LP 0: Initializing kernel allocator...");
     init_primary_allocator();
-    logln!("Intialized kernel allocator.");
-    logln!("ISA independent initialization complete.");
-    logln!("BSP initialization complete.");
+    logln!("LP 0: Intialized kernel allocator.");
+    logln!("LP 0: Initializing local scheduler...");
+    let local_sched = LocalScheduler::new(get_lp_id(), Box::from(RoundRobin::new()));
+    unsafe {
+        SYSTEM_SCHEDULER.write().set_local_scheduler(local_sched);
+    }
+    logln!("LP 0: Local scheduler initialized.");
+    logln!("LP 0: ISA independent initialization complete.");
+    logln!("LP 0: BSP initialization complete.");
 }
 
 pub fn ap_init() {
     let lp_id = lp::ops::get_lp_id();
-    logln!("Initializing LP {}...", lp_id);
-    logln!("LP {}: Performing ISA specific initialization...", lp_id);
+    logln!("Initializing LP {lp_id}...");
+    logln!("LP {lp_id}: Performing ISA specific initialization...");
     match IsaInitializer::init_ap() {
-        Ok(_) => logln!("LP {}: ISA specific initialization complete.", lp_id),
+        Ok(_) => logln!("LP {lp_id}: ISA specific initialization complete."),
         Err(e) => {
             // initialization failure is irrecoverable
-            panic!("LP {}: ISA specific initialization failed: {:?}", lp_id, e);
+            panic!("LP {lp_id}: ISA specific initialization failed: {e:?}");
         }
     }
-    logln!("LP{}: ISA independent initialization complete.", lp_id);
+    logln!("LP {lp_id}: Performing ISA independent initialization.");
+    logln!("LP {lp_id}: Initializing local scheduler...");
+    let local_sched = LocalScheduler::new(get_lp_id(), Box::from(RoundRobin::new()));
+    unsafe {
+        SYSTEM_SCHEDULER.write().set_local_scheduler(local_sched);
+    }
+    logln!("LP {lp_id}: Local scheduler initialized.");
+    logln!("LP {lp_id}: ISA independent initialization complete.");
 }

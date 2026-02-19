@@ -29,6 +29,14 @@ impl SystemScheduler {
         }
     }
 
+    pub unsafe fn set_local_scheduler(&mut self, local_sched: LocalScheduler) {
+        //! Safety: This function should only be called once per LP at boot during the BSP and AP
+        //! init processes and it must be called in the same order that LP IDs were assigned
+        //! otherwise the wrong LP will use the wrong local scheduler.
+        let ls_sync_ptr = Arc::new(Mutex::new(local_sched));
+        self.lp_schedulers.push(ls_sync_ptr);
+    }
+
     pub fn get_local_scheduler(&self) -> Arc<Mutex<LocalScheduler>> {
         self.lp_schedulers[get_lp_id() as usize].clone()
     }
@@ -39,9 +47,9 @@ impl SystemScheduler {
         Ok(least_loaded_lp.lock().lp_id)
     }
 
-    /// Yield the current LP's execution to the scheduler
-    /// This differs from blocking in that the processor state on entry is discarded
     pub unsafe fn yield_lp(&self) -> ! {
+        //! Yield the current LP's execution to the scheduler
+        //! This differs from blocking in that the processor state on entry is discarded
         yield_lp!()
     }
 

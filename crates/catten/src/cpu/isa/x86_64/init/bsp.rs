@@ -24,5 +24,5 @@ pub fn init_bsp() {
         reload_segment_regs();
     }
     BSP_IDT.load();
-    logln!("BSP: x86-64 logical processor initialization complete");
+    logln!("LP 0: x86-64 ISA initialization complete");
 }

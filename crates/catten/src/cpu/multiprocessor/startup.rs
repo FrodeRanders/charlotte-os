@@ -32,7 +32,7 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
         }
         let lps = res.cpus();
         for lp in lps {
-            logln!("Writing entry point address for LP{}", (lp.id));
+            logln!("Writing entry point address for LP {}", (lp.id));
             lp.goto_address.write(ap_main);
         }
         Ok(())
@@ -51,7 +51,7 @@ pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     store_lp_id(lp_id);
     logln!(
-        "Logical Processor with local interrupt controller ID = {} has been designated LP{}.",
+        "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",
         (get_lic_id()),
         (get_lp_id())
     );

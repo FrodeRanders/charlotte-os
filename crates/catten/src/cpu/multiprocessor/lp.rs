@@ -27,7 +27,7 @@ impl LogicalProcessor {
             exec_queue_ptr,
         })
         .expect(&format!(
-            "Failed to allocate an LP struct for LP{}. Main memory is insufficient for core \
+            "Failed to allocate an LP struct for LP {}. Main memory is insufficient for core \
              kernel functionality.",
             id
         ));
