@@ -1,108 +1,19 @@
-//! # Logical Processor Local Schedulers
-pub mod strategy;
+pub mod round_robin;
+use alloc::fmt::Debug;
 
-use alloc::boxed::Box;
-use alloc::collections::btree_map::BTreeMap;
-use alloc::vec::Vec;
-
-use hashbrown::HashMap;
-
-use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::lp_schedulers::strategy::LsStratIfce;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId};
+use crate::cpu::scheduler::threads::ThreadId;
 use crate::memory::AddressSpaceId;
 
-type RunQueue = BTreeMap<AddressSpaceId, Vec<ThreadId>>;
+pub trait LpScheduler: Debug {
+    type ThreadHandle: Debug + PartialOrd + Ord;
+    type Error: Debug;
 
-#[derive(Debug)]
-pub struct LocalScheduler {
-    pub lp_id: LpId,
-    run_queue: RunQueue,
-    strategy: Box<dyn LsStratIfce>,
-    asid_mapping: HashMap<AddressSpaceId, HwAsid>,
+    fn next(&mut self) -> Result<ThreadId, Self::Error>;
+    fn add_thread(&mut self, tid: ThreadId) -> Result<(), Self::Error>;
+    fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Self::Error>;
+    fn remove_as(&mut self, asid: AddressSpaceId) -> Result<(), Self::Error>;
+    fn is_idle(&self) -> bool;
+    fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid>;
+    fn thread_count(&self) -> u64;
 }
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum Status {
-    Success = 0,
-    QueueFull,
-    ThreadNotFound,
-    AsNotFound,
-    RunQueueEmpty,
-}
-
-impl LocalScheduler {
-    pub fn new(lp_id: LpId, strategy: Box<dyn LsStratIfce>) -> LocalScheduler {
-        LocalScheduler {
-            lp_id,
-            run_queue: RunQueue::new(),
-            strategy,
-            asid_mapping: HashMap::new(),
-        }
-    }
-
-    pub extern "C" fn next(&mut self, out: &mut ThreadId) -> Status {
-        if let Some(tid) = self.strategy.next_thread(&mut self.run_queue) {
-            *out = tid;
-            Status::Success
-        } else {
-            Status::RunQueueEmpty
-        }
-    }
-
-    pub fn add_thread(&mut self, tid: ThreadId) -> Status {
-        if let Some(thread_ptr) = unsafe { MASTER_THREAD_TABLE.try_get_element_arc(tid) } {
-            let asid = thread_ptr.read().asid;
-            if let Some(as_threads) = self.run_queue.get_mut(&asid) {
-                as_threads.push(tid);
-                Status::Success
-            } else {
-                self.run_queue.insert(asid, alloc::vec![tid]);
-                Status::Success
-            }
-        } else {
-            Status::ThreadNotFound
-        }
-    }
-
-    pub fn remove_threads(&mut self, tids: Vec<ThreadId>) {
-        for tid in &tids {
-            /* TODO: If currently running this thread then send a context switch IPI */
-            let thread_ptr_opt = unsafe { MASTER_THREAD_TABLE.try_get_element_arc(tid.clone()) };
-            if let Some(thread_ptr) = thread_ptr_opt {
-                let asid = thread_ptr.read().asid;
-                let as_run_queue_opt = self.run_queue.get_mut(&asid);
-                if let Some(as_rq) = as_run_queue_opt {
-                    for (idx, tid) in as_rq.clone().iter().enumerate() {
-                        if tids.contains(tid) {
-                            as_rq.remove(idx);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn remove_as(&mut self, asid: AddressSpaceId) {
-        if self.strategy.get_curr_as() == asid {
-            self.strategy.next_as(&mut self.run_queue);
-        }
-        self.run_queue.remove(&asid);
-    }
-
-    pub fn is_idle(&self) -> bool {
-        self.run_queue.is_empty()
-    }
-
-    pub fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {
-        self.asid_mapping.get(&asid).cloned()
-    }
-
-    pub fn thread_count(&self) -> u64 {
-        self.run_queue.len() as u64
-    }
-}
-
-unsafe impl Send for LocalScheduler {}
