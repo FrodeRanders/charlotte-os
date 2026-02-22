@@ -8,7 +8,8 @@ use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::event::Completion;
 use crate::memory::{AddressSpaceId, VAddr};
 
-pub static mut MASTER_THREAD_TABLE: Lazy<ThreadTable> = Lazy::new(ThreadTable::new);
+pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
+    Lazy::new(RwLock::new(ThreadTable::new));
 pub type ThreadTable = IdTable<ThreadId, Thread>;
 pub type ThreadId = usize;
 

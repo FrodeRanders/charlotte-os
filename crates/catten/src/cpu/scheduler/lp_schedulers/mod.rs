@@ -6,7 +6,6 @@ use crate::cpu::scheduler::threads::ThreadId;
 use crate::memory::AddressSpaceId;
 
 pub trait LpScheduler: Debug {
-    type ThreadHandle: Debug + PartialOrd + Ord;
     type Error: Debug;
 
     fn next(&mut self) -> Result<ThreadId, Self::Error>;
