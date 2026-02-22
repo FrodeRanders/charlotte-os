@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use spin::rwlock::RwLock;
 
-use super::lp_schedulers::LocalScheduler;
+use super::lp_schedulers::LpScheduler;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::scheduler::threads::ThreadId;
@@ -19,7 +19,7 @@ pub enum Error {
 
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
-    lp_schedulers: Vec<Arc<Mutex<LocalScheduler>>>,
+    lp_schedulers: Vec<Arc<Mutex<dyn LpScheduler>>>,
 }
 
 impl SystemScheduler {
@@ -29,15 +29,15 @@ impl SystemScheduler {
         }
     }
 
-    pub unsafe fn set_local_scheduler(&mut self, local_sched: LocalScheduler) {
+    pub unsafe fn set_lp_scheduler(&mut self, lp_sched: &dyn LpScheduler) {
         //! Safety: This function should only be called once per LP at boot during the BSP and AP
         //! init processes and it must be called in the same order that LP IDs were assigned
         //! otherwise the wrong LP will use the wrong local scheduler.
-        let ls_sync_ptr = Arc::new(Mutex::new(local_sched));
+        let ls_sync_ptr = Arc::new(Mutex::new(*lp_sched));
         self.lp_schedulers.push(ls_sync_ptr);
     }
 
-    pub fn get_local_scheduler(&self) -> Arc<Mutex<LocalScheduler>> {
+    pub fn get_lp_scheduler(&self) -> Arc<Mutex<LpScheduler>> {
         self.lp_schedulers[get_lp_id() as usize].clone()
     }
 
@@ -62,28 +62,15 @@ impl SystemScheduler {
         todo!()
     }
 
-    pub fn terminate_threads(&self, tids: Vec<ThreadId>) {
-        todo!(
-            "Send a terminate upcall to each specified thread. This should be considered the \
-             highest priority for an upcall."
-        )
-    }
-
-    pub fn abort_threads(&self, tids: Vec<ThreadId>) {
-        for lp_sched in &self.lp_schedulers {
-            (*lp_sched).lock().remove_threads(tids.clone());
-        }
-        todo!("Remove these threads from the thread table.")
+    pub fn abort_thread(&self, tid: ThreadId) {
+        todo!()
     }
 
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {
-        for lp_sched in &self.lp_schedulers {
-            (*lp_sched).lock().remove_as(asid);
-        }
-        todo!("Remove these threads from the thread table.")
+        todo!()
     }
 
-    fn get_least_loaded_lp(&self) -> Arc<Mutex<LocalScheduler>> {
+    fn get_least_loaded_lp(&self) -> Arc<Mutex<LpScheduler>> {
         self.lp_schedulers.iter().min_by_key(|sched| sched.lock().thread_count()).unwrap().clone()
     }
 }

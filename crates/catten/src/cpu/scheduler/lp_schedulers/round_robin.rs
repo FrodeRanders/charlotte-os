@@ -4,8 +4,8 @@ use hashbrown::HashMap;
 
 use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::lp_schedulers::LpScheduler;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState};
+use crate::cpu::scheduler::lp_schedulers::{Error, LpSchedulerIfce};
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
 use crate::memory::AddressSpaceId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,12 +34,6 @@ impl Ord for ThreadHandle {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    EmptyRunQueue,
-    ThreadAlreadyAssignedToLp,
-}
-
 #[derive(Debug, Default)]
 pub struct RoundRobin {
     run_queue: VecDeque<ThreadHandle>,
@@ -47,10 +41,8 @@ pub struct RoundRobin {
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
 }
 
-impl LpScheduler for RoundRobin {
-    type Error = Error;
-
-    fn next(&mut self) -> Result<ThreadId, Self::Error> {
+impl LpSchedulerIfce for RoundRobin {
+    fn next(&mut self) -> Result<ThreadId, Error> {
         if self.run_queue.is_empty() {
             Err(Error::EmptyRunQueue)
         } else {
@@ -70,19 +62,52 @@ impl LpScheduler for RoundRobin {
         }
     }
 
-    fn add_thread(&mut self, tid: ThreadId) -> Result<(), Self::Error> {
+    fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
         let thread_arc = MASTER_THREAD_TABLE.read().try_get_element_arc(tid).unwrap();
         match thread_arc.read().state {
             ThreadState::Running(_) | ThreadState::Ready(_) => {
                 Err(Error::ThreadAlreadyAssignedToLp)
             }
             _ => {
-                thread_arc.write().state = ThreadState::Ready(get_lp_id());
                 let new_handle = ThreadHandle(tid);
                 self.run_queue
                     .insert(self.run_queue.partition_point(|e| *e < new_handle), new_handle);
                 Ok(())
             }
         }
+    }
+
+    fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
+        let handle = ThreadHandle(tid);
+
+        if self.current_handle == Some(handle) {
+            self.current_handle = None;
+            Ok(())
+        } else {
+            match self.run_queue.binary_search(&handle) {
+                Ok(idx) => {
+                    self.run_queue.remove(idx);
+                    Ok(())
+                }
+                Err(_) => Err(Error::ThreadNotAssignedToThisLp),
+            }
+        }
+    }
+
+    fn is_idle(&self) -> bool {
+        self.current_handle == None && self.run_queue.is_empty()
+    }
+
+    fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {
+        self.hwasid_map.get(&asid).cloned()
+    }
+
+    fn thread_count(&self) -> ThreadCount {
+        self.run_queue.len()
+            + if self.current_handle.is_some() {
+                1
+            } else {
+                0
+            }
     }
 }

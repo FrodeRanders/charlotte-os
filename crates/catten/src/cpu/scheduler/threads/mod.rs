@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 
 use spin::Lazy;
+use spin::rwlock::RwLock;
 
 use crate::common::collections::id_table::IdTable;
 use crate::cpu::isa::lp::LpId;
@@ -9,9 +10,11 @@ use crate::event::Completion;
 use crate::memory::{AddressSpaceId, VAddr};
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
-    Lazy::new(RwLock::new(ThreadTable::new));
+    Lazy::new(|| RwLock::new(ThreadTable::new()));
 pub type ThreadTable = IdTable<ThreadId, Thread>;
 pub type ThreadId = usize;
+
+pub type ThreadCount = usize;
 
 pub enum ThreadState {
     Running(LpId),
