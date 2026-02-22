@@ -1,11 +1,13 @@
 pub mod round_robin;
 use alloc::fmt::Debug;
 
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::threads::{ThreadCount, ThreadId};
 use crate::memory::AddressSpaceId;
 
-pub trait LpSchedulerIfce: Debug {
+pub trait LpScheduler: Debug + Send {
+    fn get_lp_id(&self) -> LpId;
     fn next(&mut self) -> Result<ThreadId, Error>;
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;

@@ -1,4 +1,4 @@
-use alloc::sync::Arc;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use spin::Mutex;
@@ -19,7 +19,7 @@ pub enum Error {
 
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
-    lp_schedulers: Vec<Arc<Mutex<dyn LpScheduler>>>,
+    lp_schedulers: Vec<Mutex<Box<dyn LpScheduler>>>,
 }
 
 impl SystemScheduler {
@@ -29,22 +29,22 @@ impl SystemScheduler {
         }
     }
 
-    pub unsafe fn set_lp_scheduler(&mut self, lp_sched: &dyn LpScheduler) {
+    pub unsafe fn set_lp_scheduler(&mut self, lp_sched: Box<dyn LpScheduler>) {
         //! Safety: This function should only be called once per LP at boot during the BSP and AP
         //! init processes and it must be called in the same order that LP IDs were assigned
         //! otherwise the wrong LP will use the wrong local scheduler.
-        let ls_sync_ptr = Arc::new(Mutex::new(*lp_sched));
+        let ls_sync_ptr = Mutex::new(lp_sched);
         self.lp_schedulers.push(ls_sync_ptr);
     }
 
-    pub fn get_lp_scheduler(&self) -> Arc<Mutex<LpScheduler>> {
-        self.lp_schedulers[get_lp_id() as usize].clone()
+    pub fn get_lp_scheduler(&self) -> &Mutex<Box<dyn LpScheduler>> {
+        &self.lp_schedulers[get_lp_id() as usize]
     }
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
         least_loaded_lp.lock().add_thread(tid);
-        Ok(least_loaded_lp.lock().lp_id)
+        Ok(least_loaded_lp.lock().get_lp_id())
     }
 
     pub unsafe fn yield_lp(&self) -> ! {
@@ -70,7 +70,7 @@ impl SystemScheduler {
         todo!()
     }
 
-    fn get_least_loaded_lp(&self) -> Arc<Mutex<LpScheduler>> {
-        self.lp_schedulers.iter().min_by_key(|sched| sched.lock().thread_count()).unwrap().clone()
+    fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
+        self.lp_schedulers.iter().min_by_key(|sched| sched.lock().thread_count()).unwrap()
     }
 }

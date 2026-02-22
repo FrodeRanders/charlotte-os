@@ -2,9 +2,10 @@ use alloc::collections::vec_deque::VecDeque;
 
 use hashbrown::HashMap;
 
+use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::lp_schedulers::{Error, LpSchedulerIfce};
+use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
 use crate::memory::AddressSpaceId;
 
@@ -36,12 +37,17 @@ impl Ord for ThreadHandle {
 
 #[derive(Debug, Default)]
 pub struct RoundRobin {
+    lp_id: LpId,
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
 }
 
-impl LpSchedulerIfce for RoundRobin {
+impl LpScheduler for RoundRobin {
+    fn get_lp_id(&self) -> crate::cpu::isa::lp::LpId {
+        self.lp_id
+    }
+
     fn next(&mut self) -> Result<ThreadId, Error> {
         if self.run_queue.is_empty() {
             Err(Error::EmptyRunQueue)
