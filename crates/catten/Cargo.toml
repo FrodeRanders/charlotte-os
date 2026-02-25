@@ -16,6 +16,7 @@ acpi = ["uacpi-raw"]
 default = ["limine", "acpi"]
 
 [dependencies]
+concurrent-queue = { version = "2.5.0", default-features = false }
 hashbrown = ">=0.16.0"
 limine = ">=0.5.0"
 spin = { version = ">=0.10.0", features = ["ticket_mutex", "lock_api"] }

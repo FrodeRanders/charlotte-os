@@ -28,6 +28,7 @@ extern crate alloc;
 pub mod cabi;
 pub mod common;
 pub mod cpu;
+pub mod deferred_work;
 pub mod drivers;
 pub mod environment;
 pub mod event;

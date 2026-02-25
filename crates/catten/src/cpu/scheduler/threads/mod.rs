@@ -35,7 +35,7 @@ impl Thread {
     pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: VAddr) -> Self {
         Thread {
             is_user,
-            context: ThreadContext::new(asid, entry_point).expect(""),
+            context: ThreadContext::new(asid, entry_point).unwrap(),
             asid,
             state: ThreadState::NeedsLpAssignment,
         }
