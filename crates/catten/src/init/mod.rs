@@ -4,10 +4,8 @@ use alloc::boxed::Box;
 use crate::cpu::isa::init::IsaInitializer;
 use crate::cpu::isa::interface::init::InitInterface;
 use crate::cpu::isa::lp;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::scheduler::lp_schedulers::LocalScheduler;
-use crate::cpu::scheduler::lp_schedulers::strategy::RoundRobin;
-use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, SystemScheduler};
+use crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin;
+use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::allocators::global_allocator::init_primary_allocator;
@@ -35,9 +33,9 @@ pub fn bsp_init() {
     init_primary_allocator();
     logln!("LP 0: Intialized kernel allocator.");
     logln!("LP 0: Initializing local scheduler...");
-    let local_sched = LocalScheduler::new(get_lp_id(), Box::from(RoundRobin::new()));
+    let local_sched = Box::new(RoundRobin::default());
     unsafe {
-        SYSTEM_SCHEDULER.write().set_local_scheduler(local_sched);
+        SYSTEM_SCHEDULER.write().set_lp_scheduler(local_sched);
     }
     logln!("LP 0: Local scheduler initialized.");
     logln!("LP 0: ISA independent initialization complete.");
@@ -57,9 +55,9 @@ pub fn ap_init() {
     }
     logln!("LP {lp_id}: Performing ISA independent initialization.");
     logln!("LP {lp_id}: Initializing local scheduler...");
-    let local_sched = LocalScheduler::new(get_lp_id(), Box::from(RoundRobin::new()));
+    let local_sched = Box::new(RoundRobin::default());
     unsafe {
-        SYSTEM_SCHEDULER.write().set_local_scheduler(local_sched);
+        SYSTEM_SCHEDULER.write().set_lp_scheduler(local_sched);
     }
     logln!("LP {lp_id}: Local scheduler initialized.");
     logln!("LP {lp_id}: ISA independent initialization complete.");

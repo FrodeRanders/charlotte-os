@@ -19,7 +19,7 @@ pub use halt;
 macro_rules! mask_interrupts {
     () => {
         unsafe {
-            asm!("cli", options(nomem, nostack));
+            core::arch::asm!("cli", options(nomem, nostack));
         }
     };
 }
@@ -31,7 +31,7 @@ pub use mask_interrupts;
 macro_rules! unmask_interrupts {
     () => {
         unsafe {
-            asm!("sti", options(nomem, nostack));
+            core::arch::asm!("sti", options(nomem, nostack));
         }
     };
 }
