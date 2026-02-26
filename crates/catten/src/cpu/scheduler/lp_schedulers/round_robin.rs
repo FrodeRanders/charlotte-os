@@ -2,9 +2,12 @@ use alloc::collections::vec_deque::VecDeque;
 
 use hashbrown::HashMap;
 
+use crate::common::time::duration::ExtDuration;
+use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
+use crate::cpu::isa::timers::LpTimer;
 use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
 use crate::memory::AddressSpaceId;
@@ -41,6 +44,7 @@ pub struct RoundRobin {
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
+    timer: LpTimer,
 }
 
 impl LpScheduler for RoundRobin {

@@ -54,8 +54,8 @@ impl ApicTimer {
     }
 
     fn determine_timer_resolution(&mut self) {
-        const SAMPLE_TICKS: u32 = 10_000_000;
-        const NUM_SAMPLES: usize = 100;
+        const SAMPLE_TICKS: u32 = 10_000;
+        const NUM_SAMPLES: usize = 10;
 
         let mut samples = Vec::<u128>::new();
         let _ = self.set_interrupt_mask(true);
@@ -83,11 +83,16 @@ impl ApicTimer {
             reset_value: 0,
         };
         t.determine_timer_resolution();
-        unsafe {
-            t.set_divisor(ApicTimerDivisors::DivBy1).unwrap_unchecked();
-            t.set_isr_dispatch_number(interrupt_vector).unwrap_unchecked();
-        }
+        t.set_divisor(ApicTimerDivisors::DivBy1).expect("Setting the x2APIC timer divisor failed");
+        t.set_isr_dispatch_number(interrupt_vector)
+            .expect("Setting the interrupt vector number for the x2APIC timer failed");
         t
+    }
+}
+
+impl Default for ApicTimer {
+    fn default() -> Self {
+        ApicTimer::new(CONTEXT_SWITCH_VECTOR)
     }
 }
 

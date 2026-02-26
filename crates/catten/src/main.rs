@@ -28,7 +28,7 @@ extern crate alloc;
 pub mod cabi;
 pub mod common;
 pub mod cpu;
-pub mod deferred_work;
+pub mod deferred;
 pub mod drivers;
 pub mod environment;
 pub mod event;
@@ -38,6 +38,8 @@ pub mod log;
 pub mod memory;
 pub mod panic;
 pub mod self_test;
+
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use limine::mp::Cpu;
 use spin::{Barrier, Lazy};
@@ -50,6 +52,8 @@ use crate::cpu::isa::timers::tsc::{IS_TSC_INVARIANT, TSC_CYCLE_PERIOD, TSC_FREQU
 use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::multiprocessor::startup::{assign_id, start_secondary_lps};
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
+use crate::memory::{KERNEL_ASID, VAddr};
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 3, 5);
 static INIT_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
@@ -72,6 +76,14 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("BSP assigned ID 0.");
     init::bsp_init();
     logln!("System initialized.");
+    for i in 0..get_lp_count() {
+        MASTER_THREAD_TABLE.write().add_element(Thread::new(
+            false,
+            KERNEL_ASID,
+            VAddr::from(test_fn as usize),
+        ));
+        SYSTEM_SCHEDULER.write().submit_ready_thread(i as ThreadId);
+    }
     logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
@@ -120,4 +132,13 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
         (get_lp_id())
     );
     unsafe { SYSTEM_SCHEDULER.read().yield_lp() }
+}
+
+pub static mut THREAD_LOG_VAL: AtomicU8 = AtomicU8::new(0);
+
+pub extern "C" fn test_fn() -> ! {
+    let log_val = unsafe { THREAD_LOG_VAL.fetch_add(1, Ordering::AcqRel) };
+    loop {
+        logln!("{log_val}");
+    }
 }

@@ -34,6 +34,7 @@ pub fn bsp_init() {
     logln!("LP 0: Intialized kernel allocator.");
     logln!("LP 0: Initializing local scheduler...");
     let local_sched = Box::new(RoundRobin::default());
+    logln!("LP 0: Local scheduler created, passing it to the system scheduler.");
     unsafe {
         SYSTEM_SCHEDULER.write().set_lp_scheduler(local_sched);
     }

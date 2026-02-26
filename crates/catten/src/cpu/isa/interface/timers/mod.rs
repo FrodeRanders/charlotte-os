@@ -4,6 +4,7 @@ use spin::mutex::Mutex;
 
 pub use crate::common::time::duration::ExtDuration;
 
+#[derive(Debug)]
 pub enum LpTimerError {
     TimerNotPresent,
     DivisorNotSupported,
