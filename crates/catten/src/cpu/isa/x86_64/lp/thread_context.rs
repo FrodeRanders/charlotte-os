@@ -10,8 +10,9 @@ use crate::cpu::isa::init::gdt::{
 };
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
+use crate::logln;
 use crate::memory::allocators::stack_allocator::allocate_stack;
-use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_ASID, VAddr};
+use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, KERNEL_ASID, VAddr};
 
 /// # Interrupt stack frame structure for x86_64 architecture
 /// Note: must be 16 byte aligned as per `AMD APM 8.9.3`
@@ -78,13 +79,22 @@ impl From<crate::memory::allocators::stack_allocator::Error> for Error {
 
 impl ThreadContext {
     pub fn new(asid: AddressSpaceId, entry_point: VAddr) -> Result<Self, Error> {
+        logln!("Creating thread context.");
+        let flags: u64;
+        unsafe {
+            core::arch::asm! {
+                "pushfq",
+                "pop rax",
+                out("rax") flags
+            }
+        }
         let mut tctx = ThreadContext {
             rsp_cpl0: 0,
-            cr3: ADDRESS_SPACE_TABLE
-                .try_get_element_arc(asid)
-                .ok_or(Error::AddressSpaceNotFound)?
-                .read()
-                .get_cr3(),
+            cr3: if asid == KERNEL_ASID {
+                KERNEL_AS.lock().get_cr3()
+            } else {
+                ADDRESS_SPACE_TABLE.get(asid).as_ref().ok_or(Error::AddressSpaceNotFound)?.get_cr3()
+            },
             kernel_stack_buf: allocate_stack(INIT_KERNEL_STACK_PAGES)?,
             user_stack_buf: if asid != KERNEL_ASID {
                 Some(allocate_stack(INIT_KERNEL_STACK_PAGES)?)
@@ -98,14 +108,15 @@ impl ThreadContext {
             if asid != KERNEL_ASID {
                 tctx.user_stack_buf.unwrap() + INIT_KERNEL_STACK_PAGES * PAGE_SIZE
             } else {
-                tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE
+                tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE - 1usize
             },
-            0x202, // IF=1
+            flags,
         );
         tctx.rsp_cpl0 = <VAddr as Into<u64>>::into(InterruptStackFrame::push_to_stack(
             tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE,
             isf,
         ));
+        logln!("Thread Context created.");
         Ok(tctx)
     }
 }

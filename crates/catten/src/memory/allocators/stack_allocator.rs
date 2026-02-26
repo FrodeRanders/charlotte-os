@@ -18,6 +18,7 @@ use spin::{Lazy, RwLock};
 use super::memory;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::cpu::isa::memory::{MemoryInterface, MemoryInterfaceImpl};
+use crate::logln;
 use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::{AddressSpaceInterface, KERNEL_AS};
@@ -51,14 +52,17 @@ impl From<memory::Error> for Error {
 pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
     const NUM_GUARD_PAGES: usize = 2;
     // find a suitable range in the kernel stack arena
-    let stack_buf_base = KERNEL_AS.lock().find_free_region(
+    let stack_region_base = KERNEL_AS.lock().find_free_region(
         n_pages + NUM_GUARD_PAGES,
         (*LA_MAP.get_region(crate::memory::linear::address_map::RegionType::KernelStackArena))
             .clone()
             .into(),
     )?;
-    memory::try_allocate_and_map_range(stack_buf_base + PAGE_SIZE, n_pages)?;
-    Ok(stack_buf_base + PAGE_SIZE * (n_pages + 1))
+    let stack_buf_base = stack_region_base + PAGE_SIZE * NUM_GUARD_PAGES / 2;
+    logln!("Mapping a thread stack at {stack_buf_base:?}.");
+    memory::try_allocate_and_map_range(stack_buf_base, n_pages)?;
+    logln!("Thread stack mapped.");
+    Ok(stack_buf_base + PAGE_SIZE * (NUM_GUARD_PAGES / 2))
 }
 
 /// Deallocate a kernel stack previously allocated by `allocate_stack`.

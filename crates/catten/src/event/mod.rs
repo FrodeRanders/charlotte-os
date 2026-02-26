@@ -7,7 +7,7 @@ pub trait Event {
 pub trait Observer {
     fn notify(&mut self);
 }
-
+#[derive(Debug)]
 pub struct Completion {
     completed: bool,
     callback:  Option<fn()>,

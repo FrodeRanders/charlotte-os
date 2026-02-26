@@ -1,59 +1,50 @@
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use hashbrown::HashMap;
-use spin::{Mutex, RwLock};
+use crate::logln;
 
-pub struct IdTable<I, T>
-where
-    I: TryFrom<usize> + Copy + core::cmp::Eq + core::hash::Hash,
-{
-    map: HashMap<I, Arc<RwLock<T>>>,
-    available_ids: Mutex<Vec<I>>,
+#[derive(Debug)]
+pub struct IdTable<T> {
+    list: Vec<Option<T>>,
+    available_ids: Vec<usize>,
 }
 
-impl<I, T> IdTable<I, T>
-where
-    I: TryFrom<usize> + Copy + core::cmp::Eq + core::hash::Hash,
-    <I as TryFrom<usize>>::Error: Debug,
-{
+impl<T> IdTable<T> {
     pub fn new() -> Self {
         IdTable {
-            map: HashMap::new(),
-            available_ids: Mutex::new(Vec::new()),
+            list: Vec::new(),
+            available_ids: Vec::new(),
         }
     }
 
-    pub fn add_element(&mut self, element: T) -> I {
-        let element_id = {
-            if let Some(id) = self.available_ids.lock().pop() {
-                id
-            } else {
-                self.map.len().try_into().unwrap()
-            }
-        };
-        self.map.insert(element_id, Arc::new(RwLock::new(element)));
-        element_id
-    }
-
-    pub fn try_get_element_arc(&self, element_id: I) -> Option<Arc<RwLock<T>>> {
-        if let Some(lock_ptr) = self.map.get(&element_id) {
-            Some(lock_ptr.clone())
+    pub fn add_element(&mut self, element: T) -> usize {
+        logln!("Adding element to ID Table.");
+        if let Some(id) = self.available_ids.pop() {
+            logln!("ID Table: Available ID found: {id}.");
+            self.list[id] = Some(element);
+            logln!("ID Table: Added element to list.");
+            id
         } else {
-            None
+            logln!("ID Table: No available IDs. Extending list to push element.");
+            let id = self.list.len();
+            self.list.push(Some(element));
+            logln!("ID Table: Added element to list.");
+            id
         }
     }
 
-    pub fn remove_element(&mut self, element_id: I) {
-        self.map.remove(&element_id);
-        self.available_ids.lock().push(element_id);
+    pub fn get(&self, element_id: usize) -> &Option<T> {
+        &self.list[element_id]
+    }
+
+    pub fn get_mut(&mut self, element_id: usize) -> &mut Option<T> {
+        &mut self.list[element_id]
+    }
+
+    pub fn remove_element(&mut self, element_id: usize) {
+        self.list[element_id] = None;
+        self.available_ids.push(element_id);
     }
 }
 
-unsafe impl<I, T> Send for IdTable<I, T>
-where
-    I: TryFrom<usize> + Copy + core::cmp::Eq + core::hash::Hash,
-    T: Send,
-{
-}
+unsafe impl<T> Send for IdTable<T> where T: Send {}

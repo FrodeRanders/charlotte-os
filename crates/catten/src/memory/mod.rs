@@ -26,8 +26,8 @@ pub const KERNEL_ASID: AddressSpaceId = 0;
 pub static KERNEL_AS: Lazy<Mutex<AddressSpace>> =
     Lazy::new(|| Mutex::new(AddressSpace::get_current()));
 /// Holds all userspace address spaces, indexed by their kernel assigned AddressSpaceId.
-type AddressSpaceTable = IdTable<AddressSpaceId, AddressSpace>;
-pub static ADDRESS_SPACE_TABLE: Lazy<AddressSpaceTable> = Lazy::new(|| AddressSpaceTable::new());
+type AddressSpaceTable = IdTable<AddressSpace>;
+pub static ADDRESS_SPACE_TABLE: Lazy<AddressSpaceTable> = Lazy::new(AddressSpaceTable::new);
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the
 /// kernel virtual memory map at which point this address should be updated to reflect the new

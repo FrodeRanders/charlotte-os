@@ -76,14 +76,6 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("BSP assigned ID 0.");
     init::bsp_init();
     logln!("System initialized.");
-    for i in 0..get_lp_count() {
-        MASTER_THREAD_TABLE.write().add_element(Thread::new(
-            false,
-            KERNEL_ASID,
-            VAddr::from(test_fn as usize),
-        ));
-        SYSTEM_SCHEDULER.write().submit_ready_thread(i as ThreadId);
-    }
     logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
@@ -109,6 +101,19 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("CPU Model: {}", (CpuInfo::get_model()));
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
+    for _ in 0..get_lp_count() {
+        logln!("Creating new thread.");
+        let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
+        logln!("Created thread.");
+        let id = MASTER_THREAD_TABLE.write().add_element(thread);
+        logln!("Added thread to master thread table with id = {id}.");
+        SYSTEM_SCHEDULER
+            .write()
+            .submit_ready_thread(id as ThreadId)
+            .expect("Error submitting ready thread to system scheduler");
+        logln!("Submitted thread with ID = {id} to the system scheduler.");
+    }
+    logln!("Submitted all initial kernel threads.");
     logln!(
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
         (get_lp_id())

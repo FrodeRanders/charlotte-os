@@ -11,11 +11,12 @@ use crate::memory::{AddressSpaceId, VAddr};
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
     Lazy::new(|| RwLock::new(ThreadTable::new()));
-pub type ThreadTable = IdTable<ThreadId, Thread>;
+pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
 
 pub type ThreadCount = usize;
 
+#[derive(Debug)]
 pub enum ThreadState {
     Running(LpId),
     Ready(LpId),
@@ -24,6 +25,7 @@ pub enum ThreadState {
     Terminated, //Used while the thread is being cleaned up
 }
 
+#[derive(Debug)]
 pub struct Thread {
     pub is_user: bool,
     pub context: ThreadContext,
@@ -35,7 +37,7 @@ impl Thread {
     pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: VAddr) -> Self {
         Thread {
             is_user,
-            context: ThreadContext::new(asid, entry_point).unwrap(),
+            context: ThreadContext::new(asid, entry_point).expect("Error creating thread context"),
             asid,
             state: ThreadState::NeedsLpAssignment,
         }

@@ -13,6 +13,7 @@ use crate::memory::AddressSpaceId;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
+#[derive(Debug)]
 pub enum Error {
     InvalidThread,
 }
@@ -43,7 +44,7 @@ impl SystemScheduler {
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
-        least_loaded_lp.lock().add_thread(tid);
+        least_loaded_lp.lock().add_thread(tid).expect("Error adding thread to least loaded LP");
         Ok(least_loaded_lp.lock().get_lp_id())
     }
 
