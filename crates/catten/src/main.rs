@@ -101,6 +101,7 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("CPU Model: {}", (CpuInfo::get_model()));
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
+    mask_interrupts!();
     for _ in 0..get_lp_count() {
         logln!("Creating new thread.");
         let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
@@ -108,11 +109,12 @@ pub extern "C" fn bsp_main() -> ! {
         let id = MASTER_THREAD_TABLE.write().add_element(thread);
         logln!("Added thread to master thread table with id = {id}.");
         SYSTEM_SCHEDULER
-            .write()
+            .read()
             .submit_ready_thread(id as ThreadId)
             .expect("Error submitting ready thread to system scheduler");
         logln!("Submitted thread with ID = {id} to the system scheduler.");
     }
+    unmask_interrupts!();
     logln!("Submitted all initial kernel threads.");
     logln!(
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",

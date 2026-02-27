@@ -9,6 +9,7 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::event::Event;
+use crate::logln;
 use crate::memory::AddressSpaceId;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
@@ -43,9 +44,16 @@ impl SystemScheduler {
     }
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
+        logln!("Getting least loaded lp.");
         let least_loaded_lp = self.get_least_loaded_lp();
-        least_loaded_lp.lock().add_thread(tid).expect("Error adding thread to least loaded LP");
-        Ok(least_loaded_lp.lock().get_lp_id())
+        logln!("Locking least loaded lp.");
+        let mut lp_lock = least_loaded_lp.lock();
+        logln!("Adding thread to least loaded lp.");
+        lp_lock.add_thread(tid).expect("Error adding thread to least loaded LP");
+        logln!("Thread added to least loaded lp. Getting LP ID.");
+        let lp_id = lp_lock.get_lp_id();
+        logln!("LP ID obtained. Returning with ID value.");
+        Ok(lp_id)
     }
 
     pub unsafe fn yield_lp(&self) -> ! {

@@ -1,6 +1,7 @@
 use crate::cpu::isa::init::gdt;
 use crate::cpu::isa::interrupts::idt::Idt;
 use crate::logln;
+use crate::memory::VAddr;
 
 pub fn set_gates(idt: &mut Idt) {
     idt.set_gate(0, isr_divide_by_zero, gdt::KERNEL_CODE_SELECTOR, true, true);
@@ -130,9 +131,11 @@ extern "C" fn ih_stack_segment_fault() {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_general_protection_fault(_error_code: u64) {
-    logln!("General protection fault occurred!");
-    panic!("General protection fault");
+extern "C" fn ih_general_protection_fault(error_code: u64, fault_addr: VAddr, rax_val: u64) {
+    panic!(
+        "General protection fault occurred at virtual address=0x{fault_addr:x?} with error \
+         code=0x{error_code:x}, and RAX=0x{rax_val:x}."
+    );
 }
 
 #[unsafe(no_mangle)]

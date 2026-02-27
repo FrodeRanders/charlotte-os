@@ -54,7 +54,12 @@
 
 .macro EX_PROLOGUE_WITH_ERROR_CODE
 	EX_PROLOGUE_NO_ERROR_CODE
-	mov rdi, [rsp + 64 * 9] // load the error code
+	mov rdi, [rsp + 8 * 9] // load the error code
+.endm
+
+.macro EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
+	EX_PROLOGUE_WITH_ERROR_CODE
+	mov rsi, [rsp + 8 * 10]
 .endm
 
 .macro EX_EPILOGUE_WITH_ERROR_CODE
@@ -79,7 +84,8 @@ isr_double_fault:
 
 .global isr_general_protection_fault
 isr_general_protection_fault:
-	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
+	mov rdx, [rsp]
 	call ih_general_protection_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq

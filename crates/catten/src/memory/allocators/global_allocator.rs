@@ -9,7 +9,7 @@ use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::memory::allocators::memory::try_allocate_and_map_range;
 use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
-use crate::memory::linear::address_map::RegionType::KernelStackArena;
+use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
 #[global_allocator]
@@ -17,7 +17,7 @@ pub static PRIMARY_ALLOCATOR: Talck<Mutex<()>, ExtendOnOom> =
     Talck::new(Talc::new(ExtendOnOom::new()));
 
 pub fn init_primary_allocator() {
-    let base = LA_MAP.get_region(KernelStackArena).base;
+    let base = LA_MAP.get_region(KernelAllocatorArena).base;
     try_allocate_and_map_range(base, INITIAL_HEAP_SIZE / PAGE_SIZE)
         .expect("Failed to allocate and map initial kernel heap memory");
     unsafe {
@@ -49,7 +49,7 @@ impl OomHandler for ExtendOnOom {
         let current_size = acme - base;
         let new_acme = core::cmp::min(
             acme + current_size,
-            LA_MAP.get_region(KernelStackArena).base + LA_MAP.get_region(KernelStackArena).length,
+            LA_MAP.get_region(KernelAllocatorArena).base + LA_MAP.get_region(KernelAllocatorArena).length,
         );
         let new_span = Span::new(base.into_mut(), new_acme.into_mut());
         if let Ok(_) = try_allocate_and_map_range(acme, current_size as usize / PAGE_SIZE) {
