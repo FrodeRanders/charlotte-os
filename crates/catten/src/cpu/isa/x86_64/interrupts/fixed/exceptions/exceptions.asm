@@ -99,7 +99,7 @@ isr_page_fault:
 
 .global isr_segment_not_present
 isr_segment_not_present:
-	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
 	call ih_segment_not_present
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq

@@ -17,9 +17,9 @@ isr_context_switch:
     push r13
     push r14
     push r15
-    mov fs:[0], rsp  # Save current stack pointer to the current thread's context
+    mov fs:[rip + TC_RSP_CPL0_OFFSET], rsp  # Save current stack pointer to the current thread's context
     call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
-    mov rsp, fs:[0]  # Load the next thread's stack pointer from its context
+    mov rsp, fs:[rip + TC_RSP_CPL0_OFFSET]  # Load the next thread's stack pointer from its context
     pop r15
     pop r14
     pop r13
@@ -40,7 +40,7 @@ isr_context_switch:
 .global enter_init_thread_ctx
 enter_init_thread_ctx:
     call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
-    mov rsp, fs:[0]  # Load the next thread's stack pointer from its context
+    mov rsp, fs:[rip + TC_RSP_CPL0_OFFSET] # Load the next thread's stack pointer from its context
     pop r15
     pop r14
     pop r13
@@ -56,4 +56,4 @@ enter_init_thread_ctx:
     pop rcx
     pop rbx
     pop rax
-    ret
+    iretq

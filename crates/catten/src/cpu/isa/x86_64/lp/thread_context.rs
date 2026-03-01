@@ -19,7 +19,6 @@ use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, KERNEL_ASID,
 #[repr(C, align(16))]
 struct InterruptStackFrame {
     gprs: [u64; 15],
-    padding: u64,
     rip: u64,
     cs: u64,
     rflags: u64,
@@ -31,7 +30,6 @@ impl InterruptStackFrame {
     fn new(is_user: bool, entry_point: VAddr, return_rsp: VAddr, flags: u64) -> Self {
         InterruptStackFrame {
             gprs: [0u64; 15],
-            padding: 0,
             rip: <VAddr as Into<u64>>::into(entry_point),
             cs: if is_user {
                 USER_CODE_SELECTOR

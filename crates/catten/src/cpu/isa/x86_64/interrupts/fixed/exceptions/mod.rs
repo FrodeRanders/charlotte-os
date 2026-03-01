@@ -119,9 +119,11 @@ extern "C" fn ih_invalid_tss() {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_segment_not_present() {
-    logln!("Segment not present exception occurred!");
-    panic!("Segment not present");
+extern "C" fn ih_segment_not_present(error_code: u64, address: VAddr) {
+    panic!(
+        "Segment not present exception occurred at address 0x{address:?} with segment selector \
+         index {error_code}"
+    );
 }
 
 #[unsafe(no_mangle)]
