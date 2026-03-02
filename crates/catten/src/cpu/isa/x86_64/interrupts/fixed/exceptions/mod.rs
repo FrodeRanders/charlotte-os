@@ -141,14 +141,8 @@ extern "C" fn ih_general_protection_fault(error_code: u64, fault_addr: VAddr, ra
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_page_fault(error_code: u64) {
-    logln!("Page fault occurred with error code {:X}!", error_code);
-    let pf_addr: u64;
-    unsafe {
-        core::arch::asm!("mov {0}, cr2", out(reg) pf_addr);
-    }
-    logln!("Page fault address: {:x}", pf_addr);
-    panic!("Page fault");
+extern "C" fn ih_page_fault(error_code: u64, cr2: VAddr) {
+    panic!("Page fault at {cr2:?} with error code {error_code}");
 }
 
 #[unsafe(no_mangle)]

@@ -1,5 +1,16 @@
 //! # Low-level operations for x86_64 Logical Processors
 
+pub fn init_lp_state() {
+    unsafe {
+        core::arch::asm! {
+            "mov rax, cr4",
+            "or rax, 1<<16",
+            "mov cr4, rax",
+            out("rax") _
+        }
+    }
+}
+
 #[rustfmt::skip]
 #[macro_export]
 macro_rules! halt {

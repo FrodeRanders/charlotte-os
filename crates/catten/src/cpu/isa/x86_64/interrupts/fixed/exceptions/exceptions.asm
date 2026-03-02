@@ -1,6 +1,6 @@
 .code64
 
-.text
+.section .text
 //Handlers
 .extern ih_divide_by_zero
 .extern ih_double_fault
@@ -93,6 +93,7 @@ isr_general_protection_fault:
 .global isr_page_fault
 isr_page_fault:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	mov rsi, cr2
 	call ih_page_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq

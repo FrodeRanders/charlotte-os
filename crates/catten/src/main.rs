@@ -142,7 +142,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
 }
 
 pub static mut THREAD_LOG_VAL: AtomicU8 = AtomicU8::new(0);
-
+#[unsafe(no_mangle)]
 pub extern "C" fn test_fn() -> ! {
     let log_val = unsafe { THREAD_LOG_VAL.fetch_add(1, Ordering::AcqRel) };
     loop {
