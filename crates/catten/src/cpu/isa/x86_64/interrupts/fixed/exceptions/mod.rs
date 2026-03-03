@@ -141,8 +141,11 @@ extern "C" fn ih_general_protection_fault(error_code: u64, fault_addr: VAddr, ra
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_page_fault(error_code: u64, cr2: VAddr) {
-    panic!("Page fault at {cr2:?} with error code {error_code}");
+extern "C" fn ih_page_fault(error_code: u64, fault_addr: VAddr, cr2: VAddr) {
+    panic!(
+        "Page fault at RIP={fault_addr:?} and faulting address={cr2:?} with error code \
+         {error_code}"
+    );
 }
 
 #[unsafe(no_mangle)]

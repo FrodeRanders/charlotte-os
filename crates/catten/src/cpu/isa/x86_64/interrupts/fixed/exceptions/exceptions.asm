@@ -92,8 +92,8 @@ isr_general_protection_fault:
 
 .global isr_page_fault
 isr_page_fault:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	mov rsi, cr2
+	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
+	mov rdx, cr2
 	call ih_page_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
