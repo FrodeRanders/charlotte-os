@@ -28,8 +28,8 @@ create-image arch="x86_64" profile="debug": (build-catten arch profile) init-sub
 vm_memory := "4G"
 vm_num_lps := "4"
 
-qemu-run-x86_64 profile="debug" gdb="false": (create-image "x86_64" profile)
-    qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial stdio \
+qemu-run-x86_64 profile="debug" serial= "" gdb="false": (create-image "x86_64" profile)
+    qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
     -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw {{if gdb == "true" {"-s -S"} else {""}}}
 
 qemu-run-aarch64 profile="debug": (create-image "aarch64" profile)

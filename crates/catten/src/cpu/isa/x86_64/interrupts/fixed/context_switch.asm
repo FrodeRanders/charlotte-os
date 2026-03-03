@@ -1,5 +1,20 @@
 .section .text
 
+.macro LOAD_AS_SP_FROM_CTX
+    mov rbx, [rip + TC_CR3_OFFSET]
+    add rbx, rax
+    mov rbx, [rbx]
+    mov cr3, rbx // Load the next thread's address space register value from its context
+    mov rbx, [rip + TC_RSP_CPL0_OFFSET]
+    add rbx, rax
+    mov rsp, [rbx] # Load the next thread's stack pointer from its context
+    wrfsbase rax
+.endm
+
+.macro STORE_AS_SP_TO_CTX
+    // TODO
+.endm
+
 .global isr_context_switch
 isr_context_switch:
     push rax
@@ -17,9 +32,9 @@ isr_context_switch:
     push r13
     push r14
     push r15
-    mov fs:[rip + TC_RSP_CPL0_OFFSET], rsp  # Save current stack pointer to the current thread's context
+    STORE_AS_SP_TO_CTX
     call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
-    mov rsp, fs:[rip + TC_RSP_CPL0_OFFSET]  # Load the next thread's stack pointer from its context
+    LOAD_AS_SP_FROM_CTX
     pop r15
     pop r14
     pop r13
@@ -39,8 +54,8 @@ isr_context_switch:
 
 .global enter_init_thread_ctx
 enter_init_thread_ctx:
-    call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
-    mov rsp, fs:[rip + TC_RSP_CPL0_OFFSET] # Load the next thread's stack pointer from its context
+    call set_next_thread  # Call the local scheduler to get the next thread and return the context base in rax
+    LOAD_AS_SP_FROM_CTX
     pop r15
     pop r14
     pop r13
