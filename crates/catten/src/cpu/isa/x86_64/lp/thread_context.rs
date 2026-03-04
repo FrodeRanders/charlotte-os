@@ -12,7 +12,7 @@ use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::logln;
 use crate::memory::allocators::stack_allocator::allocate_stack;
-use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, KERNEL_ASID, VAddr};
+use crate::memory::{AddressSpaceId, VAddr, ADDRESS_SPACE_TABLE, KERNEL_AS, KERNEL_ASID};
 
 /// # Interrupt stack frame structure for x86_64 architecture
 /// Note: must be 16 byte aligned as per `AMD APM 8.9.3`
@@ -100,20 +100,21 @@ impl ThreadContext {
                 None
             },
         };
+        let kernel_stack_top = tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
+        let user_stack_top =
+            tctx.user_stack_buf.map(|buf| buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE);
         let isf = InterruptStackFrame::new(
             asid != KERNEL_ASID,
             entry_point,
             if asid != KERNEL_ASID {
-                tctx.user_stack_buf.unwrap() + INIT_KERNEL_STACK_PAGES * PAGE_SIZE
+                user_stack_top.unwrap()
             } else {
-                tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE - 1usize
+                kernel_stack_top
             },
             flags,
         );
-        tctx.rsp_cpl0 = <VAddr as Into<u64>>::into(InterruptStackFrame::push_to_stack(
-            tctx.kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE,
-            isf,
-        ));
+        tctx.rsp_cpl0 =
+            <VAddr as Into<u64>>::into(InterruptStackFrame::push_to_stack(kernel_stack_top, isf));
         logln!("Thread Context created.");
         Ok(tctx)
     }

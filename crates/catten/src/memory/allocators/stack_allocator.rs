@@ -19,8 +19,8 @@ use super::memory;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::cpu::isa::memory::{MemoryInterface, MemoryInterfaceImpl};
 use crate::logln;
-use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
+use crate::memory::linear::VAddr;
 use crate::memory::{AddressSpaceInterface, KERNEL_AS};
 
 static KERNEL_GUARD_PAGE_SET: Lazy<RwLock<BTreeSet<VAddr>>> =
@@ -58,11 +58,11 @@ pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
             .clone()
             .into(),
     )?;
-    let stack_buf_base = stack_region_base + PAGE_SIZE * NUM_GUARD_PAGES / 2;
+    let stack_buf_base = stack_region_base + PAGE_SIZE * (NUM_GUARD_PAGES / 2);
     logln!("Mapping a thread stack at {stack_buf_base:?}.");
     memory::try_allocate_and_map_range(stack_buf_base, n_pages)?;
     logln!("Thread stack mapped.");
-    Ok(stack_buf_base + PAGE_SIZE * (NUM_GUARD_PAGES / 2))
+    Ok(stack_buf_base)
 }
 
 /// Deallocate a kernel stack previously allocated by `allocate_stack`.
