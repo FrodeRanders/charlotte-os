@@ -22,21 +22,21 @@ defined here. */
     mov rax, LP_LOCAL_THREAD_OFFSET
     add rax, THREAD_TC_OFFSET
     // save the stack pointer for CPL0 into the thread context for later restoration
-    mov gs:[rip + rax + TC_RSP_CPL0_OFFSET], rsp
+    mov gs:[rax + TC_RSP_CPL0_OFFSET], rsp
     // Save the current page table hierarchy base into the thread context
     mov rdx, cr3
-    mov gs:[rip + rax + TC_CR3_OFFSET], rdx
+    mov gs:[rax + TC_CR3_OFFSET], rdx
 .endm
 
 .macro ctx_load_m
     mov rax, LP_LOCAL_THREAD_OFFSET
     add rax, THREAD_TC_OFFSET
     // Load the correct page table hierarchy into the page table base control register, CR3
-    mov rdx, gs:[rip + rax + TC_CR3_OFFSET]
+    mov rdx, gs:[rax + TC_CR3_OFFSET]
     mov cr3, rdx
     // Load the stack pointer for CPL0 from the thread context to restore kernel stack 
     // with the register state and interrupt return frame
-    mov rsp, gs:[rip + rax + TC_RSP_CPL0_OFFSET]
+    mov rsp, gs:[rax + TC_RSP_CPL0_OFFSET]
     // write rsp for CPL=0 as it will be at the time of iretq to the TSS
     mov rdi, [rsp + 19 * 8] // 15 general purpose registers + 4 quadwords of iretq frame
     call write_rsp0

@@ -2,7 +2,7 @@ init-submodules:
     git submodule update --init --recursive
 
 build-catten arch="x86_64" profile="debug":
-    cargo build --package catten --target {{arch}}-unknown-none{{if arch == "riscv64" { "-elf" } else { "" } }} {{ if profile == "release" { "--release" } else { "" } }}
+    cargo build --package catten --target {{ if arch == "x86_64" { "x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }}
 
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"
@@ -20,7 +20,7 @@ create-image arch="x86_64" profile="debug": (build-catten arch profile) init-sub
     sudo mount ${lodev}p1 {{temp_mnt_dir}}
     sudo mkdir -p {{temp_mnt_dir}}/EFI/BOOT
     sudo cp ./Limine/BOOTX64.EFI {{temp_mnt_dir}}/EFI/BOOT/BOOTX64.EFI
-    sudo cp ./target/{{arch}}-unknown-none/{{profile}}/catten ./limine.conf {{temp_mnt_dir}}
+    sudo cp ./target/{{ if arch == "x86_64" { "x86_64-unknown-none-catten" } else if arch == "aarch64" { "aarch64-unknown-none-catten" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten" } else { arch + "-unknown-none" } }}/{{profile}}/catten ./limine.conf {{temp_mnt_dir}}
     sudo umount {{temp_mnt_dir}}
     sudo losetup -d $lodev
     rm -r {{temp_mnt_dir}}

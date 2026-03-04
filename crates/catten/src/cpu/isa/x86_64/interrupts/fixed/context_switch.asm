@@ -1,11 +1,11 @@
 .section .text
 
 .macro LOAD_AS_SP_FROM_CTX
-    mov rbx, [rip + TC_CR3_OFFSET]
+    mov rbx, TC_CR3_OFFSET
     add rbx, rax
     mov rbx, [rbx]
     mov cr3, rbx // Load the next thread's address space register value from its context
-    mov rbx, [rip + TC_RSP_CPL0_OFFSET]
+    mov rbx, TC_RSP_CPL0_OFFSET
     add rbx, rax
     mov rsp, [rbx] # Load the next thread's stack pointer from its context
     wrfsbase rax
