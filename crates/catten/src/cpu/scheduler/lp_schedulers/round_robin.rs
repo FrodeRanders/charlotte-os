@@ -43,6 +43,12 @@ pub struct RoundRobin {
     timer: LpTimer,
 }
 
+impl RoundRobin {
+    pub fn new(lp_id: LpId) -> Self {
+        Self { lp_id, ..Default::default() }
+    }
+}
+
 impl LpScheduler for RoundRobin {
     fn get_lp_id(&self) -> crate::cpu::isa::lp::LpId {
         self.lp_id

@@ -4,6 +4,7 @@ use alloc::boxed::Box;
 use crate::cpu::isa::init::IsaInitializer;
 use crate::cpu::isa::interface::init::InitInterface;
 use crate::cpu::isa::lp;
+use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::logln;
@@ -35,13 +36,16 @@ pub fn bsp_init() {
     // Record the BSP's APIC ID now that the heap allocator is ready (BTreeMap requires the heap).
     #[cfg(target_arch = "x86_64")]
     crate::cpu::isa::interrupts::x2apic::X2Apic::record_id();
-    logln!("LP 0: Initializing local scheduler...");
-    let local_sched = Box::new(RoundRobin::default());
-    logln!("LP 0: Local scheduler created, passing it to the system scheduler.");
-    unsafe {
-        SYSTEM_SCHEDULER.write().set_lp_scheduler(local_sched);
+    // Pre-create all LP schedulers in LP ID order (0..lp_count) while single-threaded.
+    // This ensures lp_schedulers[i] is always LP i's scheduler, regardless of AP init order.
+    logln!("LP 0: Initializing schedulers for all LPs...");
+    {
+        let mut ss = SYSTEM_SCHEDULER.write();
+        for lp_id in 0..get_lp_count() {
+            unsafe { ss.set_lp_scheduler(Box::new(RoundRobin::new(lp_id))); }
+        }
     }
-    logln!("LP 0: Local scheduler initialized.");
+    logln!("LP 0: All LP schedulers initialized.");
     logln!("LP 0: ISA independent initialization complete.");
     logln!("LP 0: BSP initialization complete.");
 }
@@ -58,11 +62,5 @@ pub fn ap_init() {
         }
     }
     logln!("LP {lp_id}: Performing ISA independent initialization.");
-    logln!("LP {lp_id}: Initializing local scheduler...");
-    let local_sched = Box::new(RoundRobin::default());
-    unsafe {
-        SYSTEM_SCHEDULER.write().set_lp_scheduler(local_sched);
-    }
-    logln!("LP {lp_id}: Local scheduler initialized.");
     logln!("LP {lp_id}: ISA independent initialization complete.");
 }
