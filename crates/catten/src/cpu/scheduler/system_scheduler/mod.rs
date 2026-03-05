@@ -5,6 +5,8 @@ use spin::Mutex;
 use spin::rwlock::RwLock;
 
 use super::lp_schedulers::LpScheduler;
+use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
+use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::scheduler::threads::ThreadId;
@@ -48,11 +50,17 @@ impl SystemScheduler {
         let least_loaded_lp = self.get_least_loaded_lp();
         logln!("Locking least loaded lp.");
         let mut lp_lock = least_loaded_lp.lock();
+        let was_idle = lp_lock.is_idle();
         logln!("Adding thread to least loaded lp.");
         lp_lock.add_thread(tid).expect("Error adding thread to least loaded LP");
         logln!("Thread added to least loaded lp. Getting LP ID.");
         let lp_id = lp_lock.get_lp_id();
         logln!("LP ID obtained. Returning with ID value.");
+        drop(lp_lock);
+        if was_idle {
+            logln!("LP{lp_id} was idle, sending wakeup IPI.");
+            LocalIntCtlr::send_unicast_ipi(lp_id).ok();
+        }
         Ok(lp_id)
     }
 

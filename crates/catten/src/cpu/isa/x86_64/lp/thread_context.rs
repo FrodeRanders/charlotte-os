@@ -12,7 +12,7 @@ use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::logln;
 use crate::memory::allocators::stack_allocator::allocate_stack;
-use crate::memory::{AddressSpaceId, VAddr, ADDRESS_SPACE_TABLE, KERNEL_AS, KERNEL_ASID};
+use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, KERNEL_ASID, VAddr};
 
 /// # Interrupt stack frame structure for x86_64 architecture
 /// Note: must be 16 byte aligned as per `AMD APM 8.9.3`
@@ -78,14 +78,7 @@ impl From<crate::memory::allocators::stack_allocator::Error> for Error {
 impl ThreadContext {
     pub fn new(asid: AddressSpaceId, entry_point: VAddr) -> Result<Self, Error> {
         logln!("Creating thread context.");
-        let flags: u64;
-        unsafe {
-            core::arch::asm! {
-                "pushfq",
-                "pop rax",
-                out("rax") flags
-            }
-        }
+        let flags: u64 = 0x202;
         let mut tctx = ThreadContext {
             rsp_cpl0: 0,
             cr3: if asid == KERNEL_ASID {

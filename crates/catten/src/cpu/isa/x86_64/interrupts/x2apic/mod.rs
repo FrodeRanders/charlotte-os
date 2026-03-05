@@ -59,13 +59,11 @@ impl X2Apic {
     }
 
     pub fn record_id() {
-        unsafe {
-            id::X2APIC_ID_TABLE.insert(get_lp_id(), id::LapicId::get_local());
-        }
+        id::X2APIC_ID_TABLE.lock().insert(get_lp_id(), id::LapicId::get_local());
     }
 
     fn translate_lp_id(lp_id: LpId) -> Option<id::LapicId> {
-        unsafe { id::X2APIC_ID_TABLE.get(&lp_id).cloned() }
+        id::X2APIC_ID_TABLE.lock().get(&lp_id).cloned()
     }
 
     fn make_icr_low(

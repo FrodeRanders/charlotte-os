@@ -13,17 +13,37 @@ pub fn init_lp_state() {
 
 #[rustfmt::skip]
 #[macro_export]
-macro_rules! halt {
+macro_rules! await_interrupt {
     () => {
         loop {
             unsafe {
-                core::arch::asm!("hlt", options(noreturn, nomem, nostack, preserves_flags));
+                core::arch::asm!(
+                    "sti",
+                    "hlt", 
+                    options(nomem, nostack, preserves_flags)
+                );
             }
         }
     };
 }
 #[rustfmt::skip]
-pub use halt;
+pub use await_interrupt;
+
+/// Enable interrupts and halt until the next interrupt fires, then return.
+/// Unlike `await_interrupt!()`, this returns after being woken — suitable for use in a retry loop.
+/// Uses `sti; hlt` as a single sequence so the one-instruction STI shadow covers the HLT,
+/// preventing a race where an IPI arrives between STI and HLT.
+#[rustfmt::skip]
+#[macro_export]
+macro_rules! wait_for_interrupt {
+    () => {
+        unsafe {
+            core::arch::asm!("sti; hlt", options(nomem, nostack, preserves_flags));
+        }
+    };
+}
+#[rustfmt::skip]
+pub use wait_for_interrupt;
 
 #[rustfmt::skip]
 #[macro_export]

@@ -143,7 +143,11 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn test_fn() -> ! {
+    let mut i = 0usize;
     loop {
-        logln!("LP{}: Testing", (get_lp_id()));
+        if i % 1000 == 0 {
+            logln!("LP{}: Iteration {i} in initial thread context.", (get_lp_id()));
+        }
+        i = i.wrapping_add(1);
     }
 }

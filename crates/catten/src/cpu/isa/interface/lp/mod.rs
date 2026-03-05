@@ -4,7 +4,7 @@
  * The following macros are used for logical processor operations in assembly and
  * must be defined in each architecture module.
  *
- * halt!() halts the current logical processor.
+ * await_interrupt!() halts the current logical processor.
  * mask_interrupts!() disables interrupts on the current logical processor.
  * unmask_interrupts!() enables interrupts on the current logical processor.
  * curr_lic_id!() evaluates to the ID of the current local interrupt controller.

@@ -9,6 +9,7 @@ use crate::cpu::isa::constants::interrupt_vectors::{
     CONTEXT_SWITCH_VECTOR,
     ENTER_INIT_THREAD_VECTOR,
     SPURIOUS_INTERRUPT_VECTOR,
+    UNICAST_IPI_VECTOR,
 };
 use crate::cpu::isa::init::gdt::KERNEL_CODE_SELECTOR;
 use crate::cpu::isa::interrupts::idt::Idt;
@@ -32,6 +33,13 @@ pub fn register_fixed_isr_gates(idt: &mut Idt) {
     idt.set_gate(
         ENTER_INIT_THREAD_VECTOR,
         context_switch::enter_init_thread_ctx,
+        KERNEL_CODE_SELECTOR,
+        false,
+        true,
+    );
+    idt.set_gate(
+        UNICAST_IPI_VECTOR,
+        ipis::isr_interprocessor_interrupt,
         KERNEL_CODE_SELECTOR,
         false,
         true,

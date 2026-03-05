@@ -1,9 +1,12 @@
 use alloc::collections::btree_map::BTreeMap;
 
+use spin::Mutex;
+
 use crate::cpu::isa::constants::msrs;
 use crate::cpu::isa::lp::LpId;
 
-pub(super) static mut X2APIC_ID_TABLE: BTreeMap<LpId, LapicId> = BTreeMap::new();
+pub(super) static X2APIC_ID_TABLE: Mutex<BTreeMap<LpId, LapicId>> =
+    Mutex::new(BTreeMap::new());
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
@@ -17,18 +20,20 @@ impl LapicId {
         let physical: PhysicalLapicId;
         let logical: u32;
         unsafe {
-            core::arch::asm! {
-                "mov ecx, {x2apic_id_reg:e}", // x2APIC ID Register
+            core::arch::asm!(
                 "rdmsr",
-                "mov [{physical:e}], eax",
-                "mov ecx, {x2apic_logical_dest_reg:e}", // x2APIC Logical Destination Register
+                in("ecx") msrs::x2apic::ID_REG,
+                lateout("eax") physical,
+                lateout("edx") _,
+                options(nomem, nostack, preserves_flags),
+            );
+            core::arch::asm!(
                 "rdmsr",
-                "mov [{logical:e}], eax",
-                x2apic_id_reg = in(reg) msrs::x2apic::ID_REG,
-                x2apic_logical_dest_reg = in(reg) msrs::x2apic::LOGICAL_DEST_REG,
-                physical = out(reg) physical,
-                logical = out(reg) logical,
-            }
+                in("ecx") msrs::x2apic::LOGICAL_DEST_REG,
+                lateout("eax") logical,
+                lateout("edx") _,
+                options(nomem, nostack, preserves_flags),
+            );
         }
         LapicId {
             physical,
