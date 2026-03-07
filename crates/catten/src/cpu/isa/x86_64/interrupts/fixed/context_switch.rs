@@ -6,7 +6,7 @@ use crate::logln;
 
 unsafe extern "custom" {
     pub unsafe fn isr_context_switch();
-    pub unsafe fn enter_init_thread_ctx();
+    pub unsafe fn isr_yield();
 }
 core::arch::global_asm!(include_str!("context_switch.asm"));
 

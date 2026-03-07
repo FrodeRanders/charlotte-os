@@ -52,8 +52,8 @@ isr_context_switch:
     pop rax
     iretq
 
-.global enter_init_thread_ctx
-enter_init_thread_ctx:
+.global isr_yield
+isr_yield:
     call set_next_thread  # Call the local scheduler to get the next thread and return the context base in rax
     LOAD_AS_SP_FROM_CTX
     pop r15
