@@ -7,7 +7,7 @@ use spin::rwlock::RwLock;
 use super::lp_schedulers::LpScheduler;
 use crate::cpu::isa::constants::interrupt_vectors::YIELD_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interrupts::{InterruptManager, LocalIntCtlr};
+use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::scheduler::threads::ThreadId;
