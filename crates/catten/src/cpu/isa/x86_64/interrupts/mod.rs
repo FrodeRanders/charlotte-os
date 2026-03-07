@@ -28,6 +28,7 @@ pub enum Error {}
 
 impl InterruptManagerIfce for InterruptManager {
     type Error = Error;
+    type IntDispatchNum = u8;
     type IsrDesc = IsrDesc;
     type LocalIntCtlr = x2apic::X2Apic;
 

@@ -9,11 +9,11 @@
     mov rbx, [TC_RSP_CPL0_OFFSET]
     add rbx, rax
     mov rsp, [rbx] # Load the next thread's stack pointer from its context
-    wrfsbase rax
+    wrgsbase rax
 .endm
 
 .macro STORE_AS_SP_TO_CTX
-    rdfsbase rax
+    rdgsbase rax
     mov rbx, [TC_RSP_CPL0_OFFSET]
     add rbx, rax
     mov [rbx], rsp // save the stack pointer to the thread context

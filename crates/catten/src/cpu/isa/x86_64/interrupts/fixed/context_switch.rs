@@ -1,4 +1,4 @@
-use crate::cpu::isa::lp::ops::{get_lp_id, wait_for_interrupt};
+use crate::cpu::isa::lp::ops::{await_interrupt, get_lp_id};
 use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
@@ -32,10 +32,8 @@ pub extern "C" fn set_next_thread() -> *mut ThreadContext {
                     "LP{} Local Scheduler: No threads in the run queue. Halting LP.",
                     (get_lp_id())
                 );
-                // Enable interrupts and halt until woken by an IPI, then loop to retry.
-                // wait_for_interrupt!() uses `sti; hlt` without noreturn, so execution
-                // resumes here after the IPI handler returns.
-                wait_for_interrupt!();
+                // Place the LP into a halted state until a yield IPI breaks it out.
+                await_interrupt!();
             }
         }
     }

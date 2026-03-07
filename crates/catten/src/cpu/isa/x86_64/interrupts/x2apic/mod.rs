@@ -4,8 +4,9 @@ mod id;
 use core::arch::asm;
 
 use super::super::constants::interrupt_vectors::*;
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
+use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
 use crate::cpu::isa::interface::timers::LpTimerIfce;
+use crate::cpu::isa::interrupts::InterruptManager;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
@@ -117,13 +118,16 @@ impl LocalIntCtlrIfce for X2Apic {
     /// # Send a unicast IPI to the target logical processor
     ///
     /// Ref: Intel SDM Vol.3 12.12.10.1
-    fn send_unicast_ipi(target_lp: LpId) -> Result<(), Error> {
+    fn send_unicast_ipi(
+        target_lp: LpId,
+        target_vector: <InterruptManager as InterruptManagerIfce>::IntDispatchNum,
+    ) -> Result<(), Error> {
         if let Some(apic_id) = Self::translate_lp_id(target_lp) {
             // Get the physical APIC ID for the target LP
             let dest = apic_id.physical;
             // Construct the ICR low dword
             let icr_low = Self::make_icr_low(
-                UNICAST_IPI_VECTOR,
+                target_vector,
                 IcrDeliveryMode::Fixed,
                 false,
                 true,

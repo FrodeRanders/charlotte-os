@@ -15,6 +15,7 @@ pub fn init_lp_state() {
 #[macro_export]
 macro_rules! await_interrupt {
     () => {
+        crate::cpu::isa::lp::ops::save_thread_state!();
         loop {
             unsafe {
                 core::arch::asm!(
@@ -28,22 +29,6 @@ macro_rules! await_interrupt {
 }
 #[rustfmt::skip]
 pub use await_interrupt;
-
-/// Enable interrupts and halt until the next interrupt fires, then return.
-/// Unlike `await_interrupt!()`, this returns after being woken — suitable for use in a retry loop.
-/// Uses `sti; hlt` as a single sequence so the one-instruction STI shadow covers the HLT,
-/// preventing a race where an IPI arrives between STI and HLT.
-#[rustfmt::skip]
-#[macro_export]
-macro_rules! wait_for_interrupt {
-    () => {
-        unsafe {
-            core::arch::asm!("sti; hlt", options(nomem, nostack, preserves_flags));
-        }
-    };
-}
-#[rustfmt::skip]
-pub use wait_for_interrupt;
 
 #[rustfmt::skip]
 #[macro_export]
@@ -181,3 +166,40 @@ macro_rules! yield_lp {
 }
 #[rustfmt::skip]
 pub use yield_lp;
+
+#[rustfmt::skip]
+#[macro_export]
+macro_rules! save_thread_state {
+    () => {
+        unsafe {
+            core::arch::asm!(
+                "push rax",
+                "push rbx",
+                "push rcx",
+                "push rdx",
+                "push rsi",
+                "push rdi",
+                "push rbp",
+                "push r8",
+                "push r9",
+                "push r10",
+                "push r11",
+                "push r12",
+                "push r13",
+                "push r14",
+                "push r15",
+                "rdgsbase rax",
+                "mov rbx, [TC_RSP_CPL0_OFFSET]",
+                "add rbx, rax",
+                "mov [rbx], rsp",
+                "mov rbx, [TC_CR3_OFFSET]",
+                "add rbx, rax",
+                "mov rax, cr3",
+                "mov [rbx], rax",
+                options(nostack, preserves_flags)
+            );
+        }
+    };
+}
+#[rustfmt::skip]
+pub use save_thread_state;
