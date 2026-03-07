@@ -1,18 +1,26 @@
 .section .text
 
+/* Load the address space (CR3) and stack pointer (RSP) from the current thread context */
 .macro LOAD_AS_SP_FROM_CTX
-    mov rbx, TC_CR3_OFFSET
+    mov rbx, qword ptr [TC_CR3_OFFSET]
     add rbx, rax
     mov rbx, [rbx]
     mov cr3, rbx // Load the next thread's address space register value from its context
-    mov rbx, TC_RSP_CPL0_OFFSET
+    mov rbx, [TC_RSP_CPL0_OFFSET]
     add rbx, rax
     mov rsp, [rbx] # Load the next thread's stack pointer from its context
     wrfsbase rax
 .endm
 
 .macro STORE_AS_SP_TO_CTX
-    // TODO
+    rdfsbase rax
+    mov rbx, [TC_RSP_CPL0_OFFSET]
+    add rbx, rax
+    mov [rbx], rsp // save the stack pointer to the thread context
+    mov rbx, [TC_CR3_OFFSET]
+    add rbx, rax
+    mov rcx, cr3
+    mov [rbx], rcx // save the stack pointer to the thread context
 .endm
 
 .global isr_context_switch
