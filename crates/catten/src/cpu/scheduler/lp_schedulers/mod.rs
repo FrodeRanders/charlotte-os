@@ -8,6 +8,7 @@ use crate::memory::AddressSpaceId;
 
 pub trait LpScheduler: Debug + Send {
     fn get_lp_id(&self) -> LpId;
+    fn get_tid(&self) -> Option<ThreadId>;
     fn next(&mut self) -> Result<ThreadId, Error>;
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;

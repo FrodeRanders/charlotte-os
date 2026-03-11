@@ -53,6 +53,7 @@ use crate::memory::{KERNEL_ASID, VAddr};
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 3, 5);
 static INIT_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
+static YIELD_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
 /// This is the bootstrap processor's entry point into the kernel. The `bsp_main` function is
 /// called by the bootloader after setting up the environment. It is made C ABI compatible so
 /// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.
@@ -101,7 +102,8 @@ pub extern "C" fn bsp_main() -> ! {
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
         (get_lp_id())
     );
-    unsafe { SYSTEM_SCHEDULER.read().yield_lp() }
+    YIELD_BARRIER.wait();
+    yield_lp!();
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -119,16 +121,17 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
         (get_lp_id())
     );
-    unsafe { SYSTEM_SCHEDULER.read().yield_lp() }
+    YIELD_BARRIER.wait();
+    yield_lp!();
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn test_fn() -> ! {
-    let mut i = 0usize;
     loop {
-        if i % 1000 == 0 {
-            logln!("LP{}: Iteration {i} in initial thread context.", (get_lp_id()));
-        }
-        i = i.wrapping_add(1);
+        logln!(
+            "LP{}::T{}: Logging from initial thread context.",
+            (get_lp_id()),
+            (SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap())
+        );
     }
 }

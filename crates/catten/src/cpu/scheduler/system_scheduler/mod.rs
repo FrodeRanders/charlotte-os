@@ -58,17 +58,11 @@ impl SystemScheduler {
         let lp_id = lp_lock.get_lp_id();
         logln!("LP ID obtained. Returning with ID value.");
         drop(lp_lock);
-        if was_idle {
+        if was_idle && lp_id != get_lp_id() {
             logln!("LP{lp_id} was idle, sending wakeup IPI.");
             LocalIntCtlr::send_unicast_ipi(lp_id, YIELD_VECTOR).ok();
         }
         Ok(lp_id)
-    }
-
-    pub unsafe fn yield_lp(&self) -> ! {
-        //! Yield the current LP's execution to the scheduler
-        //! This differs from blocking in that the processor state on entry is discarded
-        yield_lp!()
     }
 
     /// Block the specified thread at least until the given event notifies its observers
