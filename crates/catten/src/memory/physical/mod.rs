@@ -41,6 +41,7 @@ impl From<PAddrError> for Error {
 pub struct PhysicalFrameAllocator {
     bitmap_ptr: *mut u8,
     bitmap_len: usize,
+    next_free_hint: usize,
 }
 
 unsafe impl Send for PhysicalFrameAllocator {}
@@ -65,24 +66,37 @@ impl PhysicalFrameAllocator {
     }
 
     pub fn allocate_frame(&mut self) -> Result<PAddr, Error> {
-        let mut curr_byte_ptr: *mut u8;
-        for byte_idx in 0..self.bitmap_len {
-            unsafe {
-                curr_byte_ptr = self.bitmap_ptr.offset(byte_idx as isize);
-                if curr_byte_ptr.read() != 0xff {
-                    for bit_idx in 0..=7 {
-                        if curr_byte_ptr.read() & (1 << bit_idx) == 0u8 {
-                            //set the bit corresponding to the allocated frame
-                            curr_byte_ptr
-                                .write_volatile(curr_byte_ptr.read_volatile() | (1 << bit_idx));
-                            let raw_addr = (byte_idx * BITS_PER_BYTE + bit_idx) * PAGE_FRAME_SIZE;
-                            return Ok(PAddr::try_from(raw_addr)?);
-                        }
-                    }
-                }
+        // Scan from the hint forward, then wrap around if needed
+        if let Some(result) = self.scan_for_free_frame(self.next_free_hint, self.bitmap_len) {
+            return result;
+        }
+        if self.next_free_hint > 0 {
+            if let Some(result) = self.scan_for_free_frame(0, self.next_free_hint) {
+                return result;
             }
         }
         Err(Error::OutOfFrames)
+    }
+
+    fn scan_for_free_frame(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) -> Option<Result<PAddr, Error>> {
+        for byte_idx in start..end {
+            unsafe {
+                let curr_byte_ptr = self.bitmap_ptr.add(byte_idx);
+                let byte_val = curr_byte_ptr.read_volatile();
+                if byte_val != 0xff {
+                    let bit_idx = (!byte_val).trailing_zeros() as usize;
+                    curr_byte_ptr.write_volatile(byte_val | (1 << bit_idx));
+                    self.next_free_hint = byte_idx;
+                    let raw_addr = (byte_idx * BITS_PER_BYTE + bit_idx) * PAGE_FRAME_SIZE;
+                    return Some(PAddr::try_from(raw_addr).map_err(Error::from));
+                }
+            }
+        }
+        None
     }
 
     #[inline]
@@ -150,6 +164,7 @@ impl PhysicalFrameAllocator {
                 } else {
                     // clear the bit corresponding to the frame being deallocated
                     *self.bitmap_ptr.offset(byte_idx as isize) &= !(1 << bit_idx);
+                    self.next_free_hint = self.next_free_hint.min(byte_idx);
                     return Ok(());
                 }
             }
@@ -172,6 +187,7 @@ impl From<&MemoryMapResponse> for PhysicalFrameAllocator {
         let pfa = PhysicalFrameAllocator {
             bitmap_ptr: unsafe { bitmap_addr.into_hhdm_mut::<u8>() },
             bitmap_len: bitmap_size,
+            next_free_hint: 0,
         };
         // Initially mark all frames as unavailable.
         logln!("Clearing PhysicalFrameAllocator bitmap...");
