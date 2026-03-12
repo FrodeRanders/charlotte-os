@@ -78,11 +78,7 @@ impl PhysicalFrameAllocator {
         Err(Error::OutOfFrames)
     }
 
-    fn scan_for_free_frame(
-        &mut self,
-        start: usize,
-        end: usize,
-    ) -> Option<Result<PAddr, Error>> {
+    fn scan_for_free_frame(&mut self, start: usize, end: usize) -> Option<Result<PAddr, Error>> {
         for byte_idx in start..end {
             unsafe {
                 let curr_byte_ptr = self.bitmap_ptr.add(byte_idx);
