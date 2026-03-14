@@ -17,7 +17,7 @@ use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::cpu::multiprocessor::get_lp_count;
 
-static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
+pub static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
     vec![Arc::new(Mutex::new(ApicTimer::new(CONTEXT_SWITCH_VECTOR))); get_lp_count() as usize]
 });
 
@@ -86,6 +86,7 @@ impl ApicTimer {
         t.set_divisor(ApicTimerDivisors::DivBy1).expect("Setting the x2APIC timer divisor failed");
         t.set_isr_dispatch_number(interrupt_vector)
             .expect("Setting the interrupt vector number for the x2APIC timer failed");
+        t.set_interrupt_mask(false).expect("Error unmasking timer interrupt in the x2APIC.");
         t
     }
 }

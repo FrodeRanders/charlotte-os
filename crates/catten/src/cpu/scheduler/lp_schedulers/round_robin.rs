@@ -2,6 +2,8 @@ use alloc::collections::vec_deque::VecDeque;
 
 use hashbrown::HashMap;
 
+use crate::common::time::duration::ExtDuration;
+use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
@@ -40,11 +42,16 @@ pub struct RoundRobin {
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
-    timer: LpTimer,
 }
 
 impl RoundRobin {
     pub fn new(lp_id: LpId) -> Self {
+        let lp_timer = LpTimer::get_local();
+        let mut lpt_guard = lp_timer.lock();
+        lpt_guard
+            .set_duration(ExtDuration::from_millis(10))
+            .expect("Error setting x2APIC timer duration.");
+        lpt_guard.start().expect("Error starting x2APIC timer.");
         Self {
             lp_id,
             ..Default::default()

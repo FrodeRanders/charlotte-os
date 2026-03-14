@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use alloc::vec::Vec;
+use alloc::collections::btree_map::BTreeMap;
 
 use spin::Mutex;
 use spin::rwlock::RwLock;
@@ -24,13 +24,13 @@ pub enum Error {
 
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
-    lp_schedulers: Vec<Mutex<Box<dyn LpScheduler>>>,
+    lp_schedulers: BTreeMap<LpId, Mutex<Box<dyn LpScheduler>>>,
 }
 
 impl SystemScheduler {
     pub const fn new() -> Self {
         Self {
-            lp_schedulers: Vec::new(),
+            lp_schedulers: BTreeMap::new(),
         }
     }
 
@@ -39,11 +39,11 @@ impl SystemScheduler {
         //! init processes and it must be called in the same order that LP IDs were assigned
         //! otherwise the wrong LP will use the wrong local scheduler.
         let ls_sync_ptr = Mutex::new(lp_sched);
-        self.lp_schedulers.push(ls_sync_ptr);
+        self.lp_schedulers.insert(get_lp_id(), ls_sync_ptr);
     }
 
     pub fn get_lp_scheduler(&self) -> &Mutex<Box<dyn LpScheduler>> {
-        &self.lp_schedulers[get_lp_id() as usize]
+        &self.lp_schedulers[&get_lp_id()]
     }
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
@@ -83,6 +83,6 @@ impl SystemScheduler {
     }
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
-        self.lp_schedulers.iter().min_by_key(|sched| sched.lock().thread_count()).unwrap()
+        self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1
     }
 }

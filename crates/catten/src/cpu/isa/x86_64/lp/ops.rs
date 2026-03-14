@@ -6,6 +6,9 @@ pub fn init_lp_state() {
             "mov rax, cr4",
             "or rax, 1<<16",
             "mov cr4, rax",
+            "mov rax, 0",
+            "wrfsbase rax",
+            "wrgsbase rax",
             out("rax") _
         }
     }
