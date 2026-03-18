@@ -7,6 +7,7 @@
 #![feature(likely_unlikely)]
 #![feature(slice_ptr_get)]
 #![feature(step_trait)]
+#![feature(unsafe_cell_access)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
 
