@@ -1,7 +1,15 @@
+use core::arch::asm;
+use core::mem::transmute;
+use core::sync::atomic::{AtomicPtr, Ordering};
+
+use crate::common::time::duration::ExtDuration;
+use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::lp::ops::{await_interrupt, get_lp_id};
 use crate::cpu::isa::lp::thread_context::ThreadContext;
+use crate::cpu::isa::timers::LpTimer;
+use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, THREAD_CTX_OFFSET, Thread, ThreadTable};
 use crate::logln;
 
 unsafe extern "custom" {
@@ -18,14 +26,11 @@ pub extern "C" fn set_next_thread() -> *mut ThreadContext {
         match result {
             Ok(tid) => {
                 let lp_id = get_lp_id();
-                logln!("LP{lp_id} Local Scheduler: Setting thread {tid} as the next to run.");
-                let mut tt_guard = MASTER_THREAD_TABLE.write();
-                let ctx_ptr = &raw mut tt_guard.get_mut(tid).as_mut().unwrap().context;
-                logln!(
-                    "LP {lp_id} Local Scheduler: Locked the thread table and obtained the context \
-                     pointer={ctx_ptr:?} for thread {tid}"
-                );
-                return ctx_ptr;
+                logln!("LP {lp_id} Local Scheduler: Setting thread {tid} as the next to run.");
+                let tt_guard = MASTER_THREAD_TABLE.read();
+                if let Some(thread) = tt_guard.get(tid) {
+                    return unsafe { thread.lock().get_ctx_ptr() };
+                }
             }
             Err(_) => {
                 logln!(
@@ -37,4 +42,14 @@ pub extern "C" fn set_next_thread() -> *mut ThreadContext {
             }
         }
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn reset_lp_timer(micros: u64) {
+    let lp_timer = LpTimer::get_local();
+    let mut lpt_guard = lp_timer.lock();
+    lpt_guard
+        .set_duration(ExtDuration::from_micros(micros as u128))
+        .expect("Error setting x2APIC timer duration.");
+    lpt_guard.reset().expect("Error resetting the LP timer.");
 }

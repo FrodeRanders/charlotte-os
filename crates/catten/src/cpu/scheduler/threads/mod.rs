@@ -1,7 +1,10 @@
+use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::mem::offset_of;
+use core::sync::atomic::AtomicPtr;
 
-use spin::Lazy;
 use spin::rwlock::RwLock;
+use spin::{Lazy, Mutex};
 
 use crate::common::collections::id_table::IdTable;
 use crate::cpu::isa::lp::LpId;
@@ -11,7 +14,7 @@ use crate::memory::{AddressSpaceId, VAddr};
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
     Lazy::new(|| RwLock::new(ThreadTable::new()));
-pub type ThreadTable = IdTable<Thread>;
+pub type ThreadTable = IdTable<Mutex<Box<Thread>>>;
 pub type ThreadId = usize;
 
 pub type ThreadCount = usize;
@@ -33,6 +36,8 @@ pub struct Thread {
     pub state: ThreadState,
 }
 
+pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
+
 impl Thread {
     pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: VAddr) -> Self {
         Thread {
@@ -41,5 +46,9 @@ impl Thread {
             asid,
             state: ThreadState::NeedsLpAssignment,
         }
+    }
+
+    pub unsafe fn get_ctx_ptr(&self) -> *mut ThreadContext {
+        (&raw const self.context) as *mut ThreadContext
     }
 }

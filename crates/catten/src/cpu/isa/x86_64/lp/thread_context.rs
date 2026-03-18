@@ -58,8 +58,8 @@ impl InterruptStackFrame {
 
 #[derive(Debug, Clone, Default)]
 pub struct ThreadContext {
-    cr3: u64,
-    rsp_cpl0: u64,
+    pub cr3: u64,
+    pub rsp_cpl0: u64,
     kernel_stack_buf: VAddr,
     user_stack_buf: Option<VAddr>,
 }

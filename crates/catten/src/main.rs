@@ -38,8 +38,10 @@ pub mod memory;
 pub mod panic;
 pub mod self_test;
 
+use alloc::boxed::Box;
+
 use limine::mp::Cpu;
-use spin::{Barrier, Lazy};
+use spin::{Barrier, Lazy, Mutex};
 
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::lp::ops::get_lp_id;
@@ -88,7 +90,7 @@ pub extern "C" fn bsp_main() -> ! {
         logln!("Creating new thread.");
         let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
         logln!("Created thread.");
-        let id = MASTER_THREAD_TABLE.write().add_element(thread);
+        let id = MASTER_THREAD_TABLE.write().add_element(Mutex::new(Box::new(thread)));
         logln!("Added thread to master thread table with id = {id}.");
         SYSTEM_SCHEDULER
             .read()
@@ -127,11 +129,13 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn test_fn() -> ! {
+    let lp_id = get_lp_id();
+    mask_interrupts!();
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();
+    unmask_interrupts!();
     loop {
-        logln!(
-            "LP{}::T{}: Logging from initial thread context.",
-            (get_lp_id()),
-            (SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap())
-        );
+        mask_interrupts!();
+        logln!("LP{lp_id}::T{tid}: Logging from initial thread context.");
+        unmask_interrupts!();
     }
 }

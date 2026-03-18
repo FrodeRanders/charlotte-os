@@ -40,7 +40,14 @@ isr_context_switch:
     push r13
     push r14
     push r15
+# skip storing the current state if there is no pointer to a thread state in GSBASE
+    rdgsbase rax
+    cmp rax, 0
+    je skip_state_store
     STORE_AS_SP_TO_CTX
+skip_state_store:
+    mov rdi, 10000
+    call reset_lp_timer
     call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
     LOAD_AS_SP_FROM_CTX
     pop r15
@@ -62,6 +69,8 @@ isr_context_switch:
 
 .global isr_yield
 isr_yield:
+    mov rdi, 10000 # reset the timer to 10,000us or 10ms
+    call reset_lp_timer
     call set_next_thread  # Call the local scheduler to get the next thread and return the context base in rax
     LOAD_AS_SP_FROM_CTX
     pop r15

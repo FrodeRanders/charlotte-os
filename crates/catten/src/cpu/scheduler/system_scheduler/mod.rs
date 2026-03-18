@@ -50,16 +50,15 @@ impl SystemScheduler {
         logln!("Getting least loaded lp.");
         let least_loaded_lp = self.get_least_loaded_lp();
         logln!("Locking least loaded lp.");
-        let mut lp_lock = least_loaded_lp.lock();
-        let was_idle = lp_lock.is_idle();
+        let was_idle = least_loaded_lp.lock().is_idle();
         logln!("Adding thread to least loaded lp.");
-        lp_lock.add_thread(tid).expect("Error adding thread to least loaded LP");
+        least_loaded_lp.lock().add_thread(tid).expect("Error adding thread to least loaded LP");
         logln!("Thread added to least loaded lp. Getting LP ID.");
-        let lp_id = lp_lock.get_lp_id();
+        let lp_id = least_loaded_lp.lock().get_lp_id();
         logln!("LP ID obtained. Returning with ID value.");
-        drop(lp_lock);
+        drop(least_loaded_lp.lock());
         if was_idle && lp_id != get_lp_id() {
-            logln!("LP{lp_id} was idle, sending wakeup IPI.");
+            logln!("LP {lp_id} was idle, sending wakeup IPI.");
             LocalIntCtlr::send_unicast_ipi(lp_id, YIELD_VECTOR).ok();
         }
         Ok(lp_id)
