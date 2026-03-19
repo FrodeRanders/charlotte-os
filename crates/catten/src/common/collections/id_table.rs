@@ -4,6 +4,11 @@ use core::fmt::Debug;
 use crate::logln;
 
 #[derive(Debug)]
+pub enum Error {
+    IdNotActive,
+}
+
+#[derive(Debug)]
 pub struct IdTable<T> {
     list: Vec<Option<T>>,
     available_ids: Vec<usize>,
@@ -33,18 +38,24 @@ impl<T> IdTable<T> {
         }
     }
 
-    pub fn get(&self, element_id: usize) -> &Option<T> {
-        &self.list[element_id]
+    pub fn get(&self, element_id: usize) -> Result<&T, Error> {
+        self.list.get(element_id).ok_or(Error::IdNotActive)?.as_ref().ok_or(Error::IdNotActive)
     }
 
-    pub fn get_mut(&mut self, element_id: usize) -> &mut Option<T> {
-        &mut self.list[element_id]
+    pub fn get_mut(&mut self, element_id: usize) -> Result<&mut T, Error> {
+        self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.as_mut().ok_or(Error::IdNotActive)
     }
 
-    pub fn remove_element(&mut self, element_id: usize) {
-        self.list[element_id] = None;
+    pub fn remove_element(&mut self, element_id: usize) -> Result<(), Error> {
+        let element = self.list.get_mut(element_id).ok_or(Error::IdNotActive)?;
+        if element.is_none() {
+            return Err(Error::IdNotActive);
+        }
+        *element = None;
         self.available_ids.push(element_id);
+        Ok(())
     }
 }
 
 unsafe impl<T> Send for IdTable<T> where T: Send {}
+unsafe impl<T> Sync for IdTable<T> where T: Sync {}

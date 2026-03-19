@@ -2,6 +2,7 @@ use core::mem::offset_of;
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
 
+use crate::common::collections::id_table;
 use crate::cpu::isa::init::gdt::{
     KERNEL_CODE_SELECTOR,
     KERNEL_DATA_SELECTOR,
@@ -67,11 +68,18 @@ pub struct ThreadContext {
 pub enum Error {
     AddressSpaceNotFound,
     StackAllocError(crate::memory::allocators::stack_allocator::Error),
+    IdTableError(id_table::Error),
 }
 
 impl From<crate::memory::allocators::stack_allocator::Error> for Error {
     fn from(err: crate::memory::allocators::stack_allocator::Error) -> Self {
         Error::StackAllocError(err)
+    }
+}
+
+impl From<id_table::Error> for Error {
+    fn from(err: id_table::Error) -> Self {
+        Error::IdTableError(err)
     }
 }
 
@@ -84,7 +92,7 @@ impl ThreadContext {
             cr3: if asid == KERNEL_ASID {
                 KERNEL_AS.lock().get_cr3()
             } else {
-                ADDRESS_SPACE_TABLE.get(asid).as_ref().ok_or(Error::AddressSpaceNotFound)?.get_cr3()
+                ADDRESS_SPACE_TABLE.get(asid)?.get_cr3()
             },
             kernel_stack_buf: allocate_stack(INIT_KERNEL_STACK_PAGES)?,
             user_stack_buf: if asid != KERNEL_ASID {

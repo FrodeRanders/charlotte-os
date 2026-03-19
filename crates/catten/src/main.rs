@@ -91,7 +91,7 @@ pub extern "C" fn bsp_main() -> ! {
         logln!("Creating new thread.");
         let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
         logln!("Created thread.");
-        let id = MASTER_THREAD_TABLE.write().add_element(Mutex::new(Box::new(thread)));
+        let id = MASTER_THREAD_TABLE.write().add_element(thread);
         logln!("Added thread to master thread table with id = {id}.");
         SYSTEM_SCHEDULER
             .read()

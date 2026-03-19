@@ -28,9 +28,9 @@ pub extern "C" fn set_next_thread() -> *mut ThreadContext {
                 let lp_id = get_lp_id();
                 logln!("LP {lp_id} Local Scheduler: Setting thread {tid} as the next to run.");
                 let tt_guard = MASTER_THREAD_TABLE.read();
-                if let Some(thread) = tt_guard.get(tid) {
-                    return unsafe { thread.lock().get_ctx_ptr() };
-                }
+                let thread = tt_guard.get(tid).expect("Error getting thread from thread table.");
+                let ctx_ptr = &raw const thread.context;
+                return ctx_ptr as *mut ThreadContext;
             }
             Err(_) => {
                 logln!(

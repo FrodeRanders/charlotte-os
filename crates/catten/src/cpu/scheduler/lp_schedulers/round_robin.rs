@@ -14,12 +14,10 @@ struct ThreadHandle(ThreadId);
 impl PartialOrd for ThreadHandle {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         mask_interrupts!();
-        let self_as = unsafe {
-            MASTER_THREAD_TABLE.read().get(self.0).as_ref().unwrap_unchecked().lock().asid
-        };
-        let other_as = unsafe {
-            MASTER_THREAD_TABLE.read().get(other.0).as_ref().unwrap_unchecked().lock().asid
-        };
+        let self_as =
+            unsafe { MASTER_THREAD_TABLE.read().get(self.0).as_ref().unwrap_unchecked().asid };
+        let other_as =
+            unsafe { MASTER_THREAD_TABLE.read().get(other.0).as_ref().unwrap_unchecked().asid };
         unmask_interrupts!();
         // Sort first by AddressSpaceId then by ThreadId
         if self_as != other_as {
@@ -76,7 +74,7 @@ impl LpScheduler for RoundRobin {
             let next_tid = unsafe { self.current_handle.unwrap_unchecked() }.0;
             // Update the thread's state value in the master thread table
             mask_interrupts!(); // acquiring a spinlock is not interrupt safe so we mask interrupts at the CPU level until the lock is released
-            MASTER_THREAD_TABLE.write().get_mut(next_tid).as_mut().unwrap().lock().state =
+            MASTER_THREAD_TABLE.write().get_mut(next_tid).as_mut().unwrap().state =
                 ThreadState::Running(get_lp_id());
             unmask_interrupts!();
             Ok(next_tid)
@@ -84,7 +82,7 @@ impl LpScheduler for RoundRobin {
     }
 
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
-        match MASTER_THREAD_TABLE.read().get(tid).as_ref().unwrap().lock().state {
+        match MASTER_THREAD_TABLE.read().get(tid).as_ref().unwrap().state {
             ThreadState::Running(_) | ThreadState::Ready(_) => {
                 Err(Error::ThreadAlreadyAssignedToLp)
             }

@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 use core::mem::offset_of;
 use core::sync::atomic::AtomicPtr;
 
@@ -14,7 +15,7 @@ use crate::memory::{AddressSpaceId, VAddr};
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
     Lazy::new(|| RwLock::new(ThreadTable::new()));
-pub type ThreadTable = IdTable<Mutex<Box<Thread>>>;
+pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
 
 pub type ThreadCount = usize;
@@ -46,9 +47,5 @@ impl Thread {
             asid,
             state: ThreadState::NeedsLpAssignment,
         }
-    }
-
-    pub unsafe fn get_ctx_ptr(&self) -> *mut ThreadContext {
-        (&raw const self.context) as *mut ThreadContext
     }
 }
