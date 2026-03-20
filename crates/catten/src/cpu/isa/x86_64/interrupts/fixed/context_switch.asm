@@ -2,26 +2,31 @@
 
 /* Load the address space (CR3) and stack pointer (RSP) from the current thread context */
 .macro LOAD_AS_SP_FROM_CTX
-    mov rbx, qword ptr [TC_CR3_OFFSET]
+    mov rbx, [TC_CR3_OFFSET]
     add rbx, rax
-    mov rbx, qword ptr [rbx]
+    mov rbx, [rbx]
     mov cr3, rbx // Load the next thread's address space register value from its context
-    mov rbx, qword ptr [TC_RSP_CPL0_OFFSET]
+    mov rbx, [TC_RSP_CPL0_OFFSET]
     add rbx, rax
-    mov rsp, qword ptr [rbx] # Load the next thread's stack pointer from its context
+    mov rsp, [rbx] # Load the next thread's stack pointer from its context
     wrgsbase rax
 .endm
 
 .macro STORE_AS_SP_TO_CTX
     rdgsbase rax
-    mov rbx, qword ptr [TC_RSP_CPL0_OFFSET]
+    mov rbx, [TC_RSP_CPL0_OFFSET]
     add rbx, rax
-    mov qword ptr [rbx], rsp // save the stack pointer to the thread context
-    mov rbx, qword ptr [TC_CR3_OFFSET]
+    mov [rbx], rsp // save the stack pointer to the thread context
+    mov rbx, [TC_CR3_OFFSET]
     add rbx, rax
     mov rcx, cr3
-    mov qword ptr [rbx], rcx // save the stack pointer to the thread context
+    mov [rbx], rcx // save the stack pointer to the thread context
 .endm
+
+.extern signal_eoi
+.extern reset_lp_timer
+.extern set_next_thread
+
 
 .global isr_context_switch
 isr_context_switch:
@@ -46,7 +51,8 @@ isr_context_switch:
     je skip_state_store
     STORE_AS_SP_TO_CTX
 skip_state_store:
-    mov rdi, 10000
+    call signal_eoi
+    mov rdi, 10000 # reset the timer to 10,000us or 10ms
     call reset_lp_timer
     call set_next_thread  # Call the local scheduler to get the next thread and set FSBASE to its context base
     LOAD_AS_SP_FROM_CTX
@@ -69,6 +75,7 @@ skip_state_store:
 
 .global isr_yield
 isr_yield:
+    call signal_eoi
     mov rdi, 10000 # reset the timer to 10,000us or 10ms
     call reset_lp_timer
     call set_next_thread  # Call the local scheduler to get the next thread and return the context base in rax

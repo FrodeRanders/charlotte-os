@@ -25,14 +25,14 @@ impl<'a, T> PerLp<T> {
         }
     }
 
-    pub unsafe fn try_get(&'a self) -> Result<RwLockReadGuard<'a, T>, Error> {
+    pub fn try_get(&'a self) -> Result<RwLockReadGuard<'a, T>, Error> {
         match self.data[get_lp_id() as usize].try_read() {
             Some(guard) => Ok(guard),
             None => Err(Error::TargetBusy),
         }
     }
 
-    pub unsafe fn try_get_mut(&'a self) -> Result<RwLockWriteGuard<'a, T>, Error> {
+    pub fn try_get_mut(&'a self) -> Result<RwLockWriteGuard<'a, T>, Error> {
         match self.data[get_lp_id() as usize].try_write() {
             Some(guard) => Ok(guard),
             None => Err(Error::TargetBusy),

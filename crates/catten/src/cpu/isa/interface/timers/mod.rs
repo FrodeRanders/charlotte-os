@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use core::ffi::c_int;
 
 use spin::mutex::Mutex;
 
@@ -24,7 +25,6 @@ pub trait LpTimerIfce {
     type TickCount;
     type IntDispatchNum;
 
-    fn get_local() -> Arc<Mutex<Self>>;
     fn get_resolution(&self) -> Result<ExtDuration, LpTimerError>;
     fn set_divisor(&mut self, divisor: Self::Divisor) -> Result<(), LpTimerError>;
     fn set_duration(&mut self, duration: ExtDuration) -> Result<(), LpTimerError>;
@@ -34,6 +34,6 @@ pub trait LpTimerIfce {
     fn reset(&mut self) -> Result<(), LpTimerError>;
     fn get_interrupt_mask(&mut self) -> Result<bool, LpTimerError>;
     fn set_interrupt_mask(&mut self, mask: bool) -> Result<(), LpTimerError>;
-    extern "C" fn signal_eoi(&mut self) -> i32;
+    extern "C" fn signal_eoi(&mut self) -> c_int;
     fn set_isr_dispatch_number(&mut self, num: Self::IntDispatchNum) -> Result<(), LpTimerError>;
 }

@@ -87,7 +87,7 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     print_timer_info();
     mask_interrupts!();
-    for _ in 0..(get_lp_count() + 1) {
+    for _ in 0..(get_lp_count() * 2) {
         logln!("Creating new thread.");
         let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
         logln!("Created thread.");

@@ -1,15 +1,13 @@
-use core::arch::asm;
-use core::mem::transmute;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::ffi::c_int;
 
 use crate::common::time::duration::ExtDuration;
 use crate::cpu::isa::interface::timers::LpTimerIfce;
+use crate::cpu::isa::interrupts::x2apic::LAPICS;
 use crate::cpu::isa::lp::ops::{await_interrupt, get_lp_id};
 use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::cpu::isa::timers::LpTimer;
-use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, THREAD_CTX_OFFSET, Thread, ThreadTable};
+use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
 use crate::logln;
 
 unsafe extern "custom" {
@@ -45,11 +43,15 @@ pub extern "C" fn set_next_thread() -> *mut ThreadContext {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn reset_lp_timer(micros: u64) {
-    let lp_timer = LpTimer::get_local();
-    let mut lpt_guard = lp_timer.lock();
-    lpt_guard
-        .set_duration(ExtDuration::from_micros(micros as u128))
-        .expect("Error setting x2APIC timer duration.");
-    lpt_guard.reset().expect("Error resetting the LP timer.");
+pub extern "C" fn reset_lp_timer(micros: u64) -> core::ffi::c_int {
+    if let Ok(mut lapic) = LAPICS.try_get_mut() {
+        let lp_timer = &mut lapic.timer;
+        lp_timer
+            .set_duration(ExtDuration::from_micros(micros as u128))
+            .expect("Error setting x2APIC timer duration.");
+        lp_timer.reset().expect("Error resetting the LP timer.");
+        0
+    } else {
+        -1
+    }
 }

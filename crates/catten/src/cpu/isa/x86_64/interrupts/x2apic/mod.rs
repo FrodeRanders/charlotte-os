@@ -3,7 +3,10 @@ mod id;
 
 use core::arch::asm;
 
+use spin::Lazy;
+
 use super::super::constants::interrupt_vectors::*;
+use crate::common::sync::PerLp;
 use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
 use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::interrupts::InterruptManager;
@@ -12,7 +15,8 @@ use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
 
-pub static LAPICS: PerLp<'static, X2Apic> = 
+pub static LAPICS: Lazy<PerLp<X2Apic>> =
+    Lazy::new(|| PerLp::new(&|| X2Apic::new(CONTEXT_SWITCH_VECTOR)));
 
 pub enum Error {
     InvalidLpId,
@@ -56,6 +60,7 @@ impl X2Apic {
         unsafe {
             msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR, sivr_val);
         }
+        Self::set_timer_lvt_entry(timer_int_vec, true);
         X2Apic {
             timer: ApicTimer::new(timer_int_vec),
         }

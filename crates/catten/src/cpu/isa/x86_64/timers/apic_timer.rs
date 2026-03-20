@@ -1,6 +1,7 @@
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::ffi::c_int;
 
 use spin::lazy::Lazy;
 use spin::mutex::Mutex;
@@ -11,7 +12,6 @@ use crate::cpu::isa::constants::interrupt_vectors::CONTEXT_SWITCH_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
 use crate::cpu::isa::interrupts::x2apic::X2Apic;
-use crate::cpu::isa::lp::ops::get_lp_id;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
@@ -104,10 +104,6 @@ impl LpTimerIfce for ApicTimer {
 
     const NAME: &'static str = "x86-64 x2APIC Timer";
 
-    fn get_local() -> Arc<Mutex<Self>> {
-        unsafe { APIC_TIMERS.get_unchecked(get_lp_id() as usize).clone() }
-    }
-
     fn get_resolution(&self) -> Result<ExtDuration, LpTimerError> {
         Ok(self.resolution)
     }
@@ -180,7 +176,8 @@ impl LpTimerIfce for ApicTimer {
         Ok(())
     }
 
-    extern "C" fn signal_eoi(&mut self) -> i32 {
+    #[unsafe(no_mangle)]
+    extern "C" fn signal_eoi(&mut self) -> c_int {
         // We use level triggered interrupts for the APIC timer to ensure that we don't miss any
         // timer interrupts due to e.g. SMIs. Thus we must signal an EOI to the local APIC otherwise
         // the timer interrupt will immediately trigger again repeatedly.
