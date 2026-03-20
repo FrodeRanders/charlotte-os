@@ -103,6 +103,12 @@ pub fn get_lp_id() -> LpId {
     id as crate::cpu::isa::lp::LpId
 }
 
+use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
+use crate::cpu::isa::interface::timers::LpTimerIfce;
+use crate::cpu::isa::interrupts::x2apic::{LAPICS, X2Apic};
+use crate::cpu::isa::lp::thread_context::{TC_CR3_OFFSET, TC_RSP_CPL0_OFFSET};
+use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
 use crate::memory::VAddr;
 
 #[inline]
@@ -153,18 +159,68 @@ pub extern "C" fn set_thread_context_ptr(ctx_ptr: VAddr) {
     };
 }
 
-#[rustfmt::skip]
-#[macro_export]
-macro_rules! yield_lp {
-    () => {
+#[repr(u8)]
+pub enum YieldStatus {
+    Success = 0,
+    InvalidTidFromSched = 1,
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn yield_lp() -> YieldStatus {
+    if let Ok(next_tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().next() {
+        let mut gs_base: usize;
         unsafe {
             core::arch::asm!(
-                "int {0}",
-                const crate::cpu::isa::constants::interrupt_vectors::YIELD_VECTOR,
-                options(noreturn)
+                "lea {temp}, gs:[0]",
+                temp = out(reg) gs_base,
             )
         }
-    };
+        if VAddr::from(gs_base) != unsafe { VAddr::from_raw_unchecked(0) } {
+            unsafe {
+                core::arch::asm!(
+                    "push rbx",
+                    "push rbp",
+                    "push r12",
+                    "push r13",
+                    "push r14",
+                    "push r15",
+                    "mov rbx, cr3",
+                    "mov gs:[{cr3_offset}], rbx",
+                    "mov gs:[{rsp_offset}], rsp",
+                    cr3_offset = const TC_CR3_OFFSET,
+                    rsp_offset = const TC_RSP_CPL0_OFFSET,
+                );
+            }
+        }
+        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(next_tid) {
+            let ctx_ptr = &raw mut thread.context;
+            unsafe {
+                core::arch::asm!(
+                    "wrgsbase {context}",
+                    "mov {clobber}, gs:[{cr3_offset}]",
+                    "mov cr3, {clobber}",
+                    "mov rsp, gs:[{rsp_offset}]",
+                    "pop r15",
+                    "pop r14",
+                    "pop r13",
+                    "pop r12",
+                    "pop rbp",
+                    "pop rbx",
+                    context = in(reg) ctx_ptr,
+                    clobber = out(reg) _,
+                    cr3_offset = const TC_CR3_OFFSET,
+                    rsp_offset = const TC_RSP_CPL0_OFFSET,
+                );
+            }
+            X2Apic::signal_eoi();
+            if let Ok(mut lapic) = LAPICS.try_get_mut() {
+                lapic.timer.reset().expect("Failed to reset LAPIC timer")
+            }
+            YieldStatus::Success
+        } else {
+            YieldStatus::InvalidTidFromSched
+        }
+    } else {
+        await_interrupt!()
+    }
 }
-#[rustfmt::skip]
-pub use yield_lp;

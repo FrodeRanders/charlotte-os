@@ -8,7 +8,7 @@ use spin::mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 use crate::common::time::duration::ExtDuration;
-use crate::cpu::isa::constants::interrupt_vectors::CONTEXT_SWITCH_VECTOR;
+use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
 use crate::cpu::isa::interrupts::x2apic::X2Apic;
@@ -18,7 +18,7 @@ use crate::cpu::isa::x86_64::constants::msrs;
 use crate::cpu::multiprocessor::get_lp_count;
 
 pub static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
-    vec![Arc::new(Mutex::new(ApicTimer::new(CONTEXT_SWITCH_VECTOR))); get_lp_count() as usize]
+    vec![Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))); get_lp_count() as usize]
 });
 
 pub type LpTimer = ApicTimer;
@@ -93,7 +93,7 @@ impl ApicTimer {
 
 impl Default for ApicTimer {
     fn default() -> Self {
-        ApicTimer::new(CONTEXT_SWITCH_VECTOR)
+        ApicTimer::new(LAPIC_TIMER_VECTOR)
     }
 }
 

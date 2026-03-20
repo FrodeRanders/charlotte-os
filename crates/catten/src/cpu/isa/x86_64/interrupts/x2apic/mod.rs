@@ -16,7 +16,7 @@ use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
 
 pub static LAPICS: Lazy<PerLp<X2Apic>> =
-    Lazy::new(|| PerLp::new(&|| X2Apic::new(CONTEXT_SWITCH_VECTOR)));
+    Lazy::new(|| PerLp::new(&|| X2Apic::new(LAPIC_TIMER_VECTOR)));
 
 pub enum Error {
     InvalidLpId,
@@ -60,7 +60,7 @@ impl X2Apic {
         unsafe {
             msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR, sivr_val);
         }
-        Self::set_timer_lvt_entry(timer_int_vec, true);
+        Self::set_timer_lvt_entry(timer_int_vec, false);
         X2Apic {
             timer: ApicTimer::new(timer_int_vec),
         }

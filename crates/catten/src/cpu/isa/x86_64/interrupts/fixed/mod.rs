@@ -6,10 +6,9 @@ pub mod ipis;
 pub mod spurious;
 
 use crate::cpu::isa::constants::interrupt_vectors::{
-    CONTEXT_SWITCH_VECTOR,
+    LAPIC_TIMER_VECTOR,
     SPURIOUS_INTERRUPT_VECTOR,
     UNICAST_IPI_VECTOR,
-    YIELD_VECTOR,
 };
 use crate::cpu::isa::init::gdt::KERNEL_CODE_SELECTOR;
 use crate::cpu::isa::interrupts::idt::Idt;
@@ -24,13 +23,12 @@ pub fn register_fixed_isr_gates(idt: &mut Idt) {
         true,
     );
     idt.set_gate(
-        CONTEXT_SWITCH_VECTOR,
-        context_switch::isr_context_switch,
+        LAPIC_TIMER_VECTOR,
+        context_switch::isr_lapic_timer,
         KERNEL_CODE_SELECTOR,
         false,
         true,
     );
-    idt.set_gate(YIELD_VECTOR, context_switch::isr_yield, KERNEL_CODE_SELECTOR, false, true);
     idt.set_gate(
         UNICAST_IPI_VECTOR,
         ipis::isr_interprocessor_interrupt,

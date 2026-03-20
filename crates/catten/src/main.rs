@@ -45,7 +45,7 @@ use limine::mp::Cpu;
 use spin::{Barrier, Lazy, Mutex};
 
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
-use crate::cpu::isa::lp::ops::get_lp_id;
+use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::isa::system_info::CpuInfo;
 use crate::cpu::isa::timers::print_timer_info;
 use crate::cpu::multiprocessor::get_lp_count;
@@ -106,7 +106,8 @@ pub extern "C" fn bsp_main() -> ! {
         (get_lp_id())
     );
     YIELD_BARRIER.wait();
-    yield_lp!();
+    yield_lp();
+    await_interrupt!();
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -125,7 +126,8 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
         (get_lp_id())
     );
     YIELD_BARRIER.wait();
-    yield_lp!();
+    yield_lp();
+    await_interrupt!();
 }
 
 #[unsafe(no_mangle)]

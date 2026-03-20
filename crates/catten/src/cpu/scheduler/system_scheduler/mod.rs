@@ -5,7 +5,7 @@ use spin::Mutex;
 use spin::rwlock::RwLock;
 
 use super::lp_schedulers::LpScheduler;
-use crate::cpu::isa::constants::interrupt_vectors::{CONTEXT_SWITCH_VECTOR, YIELD_VECTOR};
+use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
@@ -59,7 +59,7 @@ impl SystemScheduler {
         drop(least_loaded_lp.lock());
         if was_idle && lp_id != get_lp_id() {
             logln!("LP {lp_id} was idle, sending wakeup IPI.");
-            LocalIntCtlr::send_unicast_ipi(lp_id, CONTEXT_SWITCH_VECTOR).ok();
+            LocalIntCtlr::send_unicast_ipi(lp_id, LAPIC_TIMER_VECTOR).ok();
         }
         Ok(lp_id)
     }
