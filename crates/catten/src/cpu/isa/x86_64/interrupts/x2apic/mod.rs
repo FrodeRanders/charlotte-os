@@ -12,6 +12,8 @@ use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
 
+pub static LAPICS: PerLp<'static, X2Apic> = 
+
 pub enum Error {
     InvalidLpId,
 }
@@ -44,7 +46,7 @@ impl X2Apic {
     /// Ref: AMD APM 16.4.7
     fn new(timer_int_vec: <ApicTimer as LpTimerIfce>::IntDispatchNum) -> Self {
         // Set the Spurious Interrupt Vector Register (SIVR) to enable the APIC with Focused CPU
-        // Core Checking and set the spurious interrupt vector to 32
+        // Core Checking and set the spurious interrupt vector
         const FCC_BIT_SHIFT: u64 = 9;
         const ASE_BIT_SHIFT: u64 = 8;
         const VEC_MASK: u64 = 0xff;
