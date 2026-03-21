@@ -71,7 +71,7 @@ pub fn get_lic_id() -> u32 {
     apic_id
 }
 
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 
 use super::LpId;
 use crate::cpu::isa::constants::*;
@@ -103,12 +103,9 @@ pub fn get_lp_id() -> LpId {
     id as crate::cpu::isa::lp::LpId
 }
 
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interface::timers::LpTimerIfce;
-use crate::cpu::isa::interrupts::x2apic::{LAPICS, X2Apic};
-use crate::cpu::isa::lp::thread_context::{TC_CR3_OFFSET, TC_RSP_CPL0_OFFSET};
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
+use crate::logln;
 use crate::memory::VAddr;
 
 #[inline]
@@ -159,68 +156,108 @@ pub extern "C" fn set_thread_context_ptr(ctx_ptr: VAddr) {
     };
 }
 
-#[repr(u8)]
-pub enum YieldStatus {
-    Success = 0,
-    InvalidTidFromSched = 1,
+#[unsafe(no_mangle)]
+pub extern "C" fn yield_lp() {
+    let sched = SYSTEM_SCHEDULER.read();
+    let mut lsched = sched.get_lp_scheduler().lock();
+    let curr_tid = lsched.get_tid();
+    let next_tid =
+        lsched.next().expect("Error getting next thread from local scheduler during yield.");
+    drop(lsched);
+    if Some(next_tid) != curr_tid {
+        let mut tt_guard = MASTER_THREAD_TABLE.write();
+        let curr_thread = tt_guard
+            .get_mut(curr_tid.expect("Current thread ID not found during yield."))
+            .expect("Current thread not found during yield.");
+        let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
+        let next_thread = tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
+        let next_rsp0_ptr = &next_thread.context.rsp_cpl0;
+        logln!(
+            "Yielding from thread {:?} to thread {:?} on LP {:?}",
+            curr_tid,
+            next_tid,
+            (get_lp_id())
+        );
+        switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
+    } else {
+        logln!(
+            "No thread switch needed during yield on LP {:?} since the next thread is the same as \
+             the current thread.",
+            (get_lp_id())
+        );
+    }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn yield_lp() -> YieldStatus {
-    if let Ok(next_tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().next() {
-        let mut gs_base: usize;
-        unsafe {
-            core::arch::asm!(
-                "lea {temp}, gs:[0]",
-                temp = out(reg) gs_base,
-            )
-        }
-        if VAddr::from(gs_base) != unsafe { VAddr::from_raw_unchecked(0) } {
-            unsafe {
-                core::arch::asm!(
-                    "push rbx",
-                    "push rbp",
-                    "push r12",
-                    "push r13",
-                    "push r14",
-                    "push r15",
-                    "mov rbx, cr3",
-                    "mov gs:[{cr3_offset}], rbx",
-                    "mov gs:[{rsp_offset}], rsp",
-                    cr3_offset = const TC_CR3_OFFSET,
-                    rsp_offset = const TC_RSP_CPL0_OFFSET,
-                );
-            }
-        }
-        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(next_tid) {
-            let ctx_ptr = &raw mut thread.context;
-            unsafe {
-                core::arch::asm!(
-                    "wrgsbase {context}",
-                    "mov {clobber}, gs:[{cr3_offset}]",
-                    "mov cr3, {clobber}",
-                    "mov rsp, gs:[{rsp_offset}]",
-                    "pop r15",
-                    "pop r14",
-                    "pop r13",
-                    "pop r12",
-                    "pop rbp",
-                    "pop rbx",
-                    context = in(reg) ctx_ptr,
-                    clobber = out(reg) _,
-                    cr3_offset = const TC_CR3_OFFSET,
-                    rsp_offset = const TC_RSP_CPL0_OFFSET,
-                );
-            }
-            X2Apic::signal_eoi();
-            if let Ok(mut lapic) = LAPICS.try_get_mut() {
-                lapic.timer.reset().expect("Failed to reset LAPIC timer")
-            }
-            YieldStatus::Success
-        } else {
-            YieldStatus::InvalidTidFromSched
-        }
-    } else {
-        await_interrupt!()
-    }
+#[unsafe(naked)]
+pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64) {
+    naked_asm!(
+        // save caller-saved registers
+        "push rbx",
+        "push rbp",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
+        "pushfq",
+        "mov rax, cr3",
+        "push rax",
+        // compute the stack pointer offset in the thread context and save it to the current thread context
+        "mov [rdi], rsp",
+        // load the stack pointer from the next thread context
+        "mov rsp, [rsi]",
+        // restore caller-saved registers
+        "pop rax",
+        "mov cr3, rax",
+        "popfq",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop rbp",
+        "pop rbx",
+        // return to the next thread
+        "ret",
+    );
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(naked)]
+pub extern "C" fn enter_init_thread_ctx(rsp0_ptr: *const u64) {
+    naked_asm!(
+                // load the stack pointer from the next thread context
+        "mov rsp, [rsi]",
+        // restore caller-saved registers
+        "pop rax",
+        "mov cr3, rax",
+        "popfq",
+        "xor r15, r15",
+        "xor r14, r14",
+        "xor r13, r13",
+        "xor r12, r12",
+        "xor r11, r11",
+        "xor r10, r10",
+        "xor r9, r9",
+        "xor r8, r8",
+        "xor rbp, rbp",
+        "xor rdx, rdx",
+        "xor rcx, rcx",
+        "xor rbx, rbx",
+        "xor rax, rax",     
+        // return to the thread's kernel entry point (which will then `iretq` to the user entry point for user threads)
+        "ret",
+    );
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(naked)]
+pub unsafe extern "C" fn user_trampoline() {
+    // Safety: This function should only be entered by returning from `yield_lp` after having
+    // switched to a new user thread. The caller is responsible for ensuring that the stack is
+    // properly set up with a `UserEntryFrames` struct, and that the CPU is in the correct state for
+    // executing this trampoline (e.g., interrupts disabled, correct segment selectors, etc.).
+    naked_asm!(
+        // `iretq` to the user entry point
+        "iretq",
+    );
 }

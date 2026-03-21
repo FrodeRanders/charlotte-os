@@ -1,11 +1,8 @@
-use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::cell::UnsafeCell;
 use core::mem::offset_of;
-use core::sync::atomic::AtomicPtr;
 
+use spin::Lazy;
 use spin::rwlock::RwLock;
-use spin::{Lazy, Mutex};
 
 use crate::common::collections::id_table::IdTable;
 use crate::cpu::isa::lp::LpId;
@@ -43,7 +40,12 @@ impl Thread {
     pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: VAddr) -> Self {
         Thread {
             is_user,
-            context: ThreadContext::new(asid, entry_point).expect("Error creating thread context"),
+            context: if is_user {
+                ThreadContext::new_us(asid, entry_point)
+                    .expect("Error creating user thread context")
+            } else {
+                ThreadContext::new_ks(entry_point).expect("Error creating kernel thread context")
+            },
             asid,
             state: ThreadState::NeedsLpAssignment,
         }
