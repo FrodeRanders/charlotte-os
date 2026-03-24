@@ -37,7 +37,7 @@ pub struct Thread {
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
 
 impl Thread {
-    pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: VAddr) -> Self {
+    pub fn new(is_user: bool, asid: AddressSpaceId, entry_point: *const fn()) -> Self {
         Thread {
             is_user,
             context: if is_user {

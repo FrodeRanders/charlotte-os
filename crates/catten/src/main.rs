@@ -42,8 +42,9 @@ pub mod self_test;
 use alloc::boxed::Box;
 
 use limine::mp::Cpu;
-use spin::{Barrier, Lazy, Mutex};
+use spin::{Barrier, Lazy};
 
+use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::isa::system_info::CpuInfo;
@@ -89,7 +90,7 @@ pub extern "C" fn bsp_main() -> ! {
     mask_interrupts!();
     for _ in 0..(get_lp_count() * 2) {
         logln!("Creating new thread.");
-        let thread = Thread::new(false, KERNEL_ASID, VAddr::from(test_fn as *const () as usize));
+        let thread = Thread::new(false, KERNEL_ASID, test_fn as *const fn());
         logln!("Created thread.");
         let id = MASTER_THREAD_TABLE.write().add_element(thread);
         logln!("Added thread to master thread table with id = {id}.");
@@ -107,7 +108,10 @@ pub extern "C" fn bsp_main() -> ! {
     );
     YIELD_BARRIER.wait();
     yield_lp();
-    await_interrupt!();
+    loop {
+        panic!("BSP: Reached end of BSP main function. This should never happen.");
+        await_interrupt!();
+    }
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -127,11 +131,14 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
     );
     YIELD_BARRIER.wait();
     yield_lp();
-    await_interrupt!();
+    loop {
+        panic!("AP {}: Reached end of AP main function. This should never happen.", (get_lp_id()));
+        await_interrupt!();
+    }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn test_fn() -> ! {
+pub extern "C" fn test_fn() {
     let lp_id = get_lp_id();
     mask_interrupts!();
     let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();

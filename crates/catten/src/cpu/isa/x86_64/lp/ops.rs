@@ -164,27 +164,40 @@ pub extern "C" fn yield_lp() {
     let next_tid =
         lsched.next().expect("Error getting next thread from local scheduler during yield.");
     drop(lsched);
-    if Some(next_tid) != curr_tid {
+    if curr_tid.is_some() {
+        if next_tid != curr_tid.unwrap() {
+            let mut tt_guard = MASTER_THREAD_TABLE.write();
+            let curr_thread = tt_guard
+                .get_mut(curr_tid.expect("Current thread ID not found during yield."))
+                .expect("Current thread not found during yield.");
+            let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
+            let next_thread =
+                tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
+            let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
+            logln!(
+                "Yielding from thread {:?} to thread {:?} on LP {:?}",
+                curr_tid,
+                next_tid,
+                (get_lp_id())
+            );
+            switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
+        } else {
+            logln!(
+                "No thread switch needed during yield on LP {:?} because the next thread is the \
+                 same as the current thread.",
+                (get_lp_id())
+            );
+        }
+    } else {
         let mut tt_guard = MASTER_THREAD_TABLE.write();
-        let curr_thread = tt_guard
-            .get_mut(curr_tid.expect("Current thread ID not found during yield."))
-            .expect("Current thread not found during yield.");
-        let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
         let next_thread = tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
-        let next_rsp0_ptr = &next_thread.context.rsp_cpl0;
+        let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
         logln!(
-            "Yielding from thread {:?} to thread {:?} on LP {:?}",
-            curr_tid,
+            "Yielding from non-thread context to thread {:?} on LP {:?}",
             next_tid,
             (get_lp_id())
         );
-        switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
-    } else {
-        logln!(
-            "No thread switch needed during yield on LP {:?} since the next thread is the same as \
-             the current thread.",
-            (get_lp_id())
-        );
+        switch_ctx(core::ptr::null_mut(), next_rsp0_ptr);
     }
 }
 
@@ -192,6 +205,9 @@ pub extern "C" fn yield_lp() {
 #[unsafe(naked)]
 pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64) {
     naked_asm!(
+        // if `curr_rsp0_ptr` is null, then we are yielding from a non-thread context (e.g., the initial kernel thread context after boot) and thus we don't need to save the current context
+        "cmp rdi, 0",
+        "je skip_save",
         // save caller-saved registers
         "push rbx",
         "push rbp",
@@ -204,6 +220,7 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         "push rax",
         // compute the stack pointer offset in the thread context and save it to the current thread context
         "mov [rdi], rsp",
+        "skip_save:",
         // load the stack pointer from the next thread context
         "mov rsp, [rsi]",
         // restore caller-saved registers
@@ -251,7 +268,7 @@ pub extern "C" fn enter_init_thread_ctx(rsp0_ptr: *const u64) {
 
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
-pub unsafe extern "C" fn user_trampoline() {
+pub unsafe extern "C" fn user_trampoline() -> ! {
     // Safety: This function should only be entered by returning from `yield_lp` after having
     // switched to a new user thread. The caller is responsible for ensuring that the stack is
     // properly set up with a `UserEntryFrames` struct, and that the CPU is in the correct state for
