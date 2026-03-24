@@ -2,8 +2,10 @@ use spin::Lazy;
 
 use super::INTERRUPT_STACK_SIZE;
 use super::gdt::*;
+use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interrupts::fixed::register_fixed_isr_gates;
 use crate::cpu::isa::interrupts::idt::Idt;
+use crate::cpu::isa::interrupts::x2apic::{LAPICS, X2Apic};
 use crate::cpu::isa::lp::ops::init_lp_state;
 use crate::logln;
 

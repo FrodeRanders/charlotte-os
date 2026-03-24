@@ -9,17 +9,19 @@ use crate::common::collections::boxed_slice::make_boxed_slice;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::multiprocessor::get_lp_count;
 
+#[derive(Debug)]
 pub enum Error {
     TargetBusy,
     InvalidIndex,
 }
 
+#[derive(Debug)]
 pub struct PerLp<T> {
     data: Box<[RwLock<T>]>,
 }
 
 impl<'a, T> PerLp<T> {
-    pub fn new(initializer: &dyn Fn() -> T) -> Self {
+    pub fn new<F: Fn() -> T>(initializer: F) -> Self {
         PerLp {
             data: make_boxed_slice(get_lp_count() as usize, || RwLock::new(initializer())),
         }

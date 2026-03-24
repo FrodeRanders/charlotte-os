@@ -39,13 +39,12 @@ pub mod memory;
 pub mod panic;
 pub mod self_test;
 
-use alloc::boxed::Box;
-
 use limine::mp::Cpu;
 use spin::{Barrier, Lazy};
 
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
+use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
+use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
 use crate::cpu::isa::system_info::CpuInfo;
 use crate::cpu::isa::timers::print_timer_info;
@@ -53,7 +52,7 @@ use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::multiprocessor::startup::{assign_id, start_secondary_lps};
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
-use crate::memory::{KERNEL_ASID, VAddr};
+use crate::memory::KERNEL_ASID;
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 3, 5);
 static INIT_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
@@ -107,6 +106,7 @@ pub extern "C" fn bsp_main() -> ! {
         (get_lp_id())
     );
     YIELD_BARRIER.wait();
+    LocalIntCtlr::init_lp();
     yield_lp();
     loop {
         panic!("BSP: Reached end of BSP main function. This should never happen.");
@@ -125,14 +125,18 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
     }
     init::ap_init();
     INIT_BARRIER.wait();
-    logln!(
-        "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
-        (get_lp_id())
-    );
+    let lp_id = get_lp_id();
+    logln!("LP {lp_id}: Bootstrapping complete.");
     YIELD_BARRIER.wait();
+    logln!("LP {lp_id}: Starting local interrupt controller initialization.");
+    LocalIntCtlr::init_lp();
+    logln!(
+        "LP {lp_id}: Initialized local interrupt controller. Yielding the processor to the \
+         scheduler."
+    );
     yield_lp();
     loop {
-        panic!("AP {}: Reached end of AP main function. This should never happen.", (get_lp_id()));
+        panic!("LP {lp_id}: Reached end of AP main function. This should never happen.");
         await_interrupt!();
     }
 }

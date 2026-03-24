@@ -2,6 +2,7 @@
 mod id;
 
 use core::arch::asm;
+use core::mem::MaybeUninit;
 
 use spin::Lazy;
 
@@ -15,8 +16,8 @@ use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
 
-pub static LAPICS: Lazy<PerLp<X2Apic>> =
-    Lazy::new(|| PerLp::new(&|| X2Apic::new(LAPIC_TIMER_VECTOR)));
+pub static LAPICS: Lazy<PerLp<MaybeUninit<X2Apic>>> =
+    Lazy::new(|| PerLp::new(|| MaybeUninit::uninit()));
 
 pub enum Error {
     InvalidLpId,
@@ -121,6 +122,15 @@ impl X2Apic {
 
 impl LocalIntCtlrIfce for X2Apic {
     type Error = Error;
+
+    fn init_lp() {
+        let lapic = X2Apic::new(LAPIC_TIMER_VECTOR);
+        LAPICS
+            .try_get_mut()
+            .expect("Failed to obtain LAPIC structure during LP init.")
+            .write(lapic);
+        Self::record_id();
+    }
 
     /// # Send a unicast IPI to the target logical processor
     ///
