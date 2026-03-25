@@ -25,8 +25,8 @@ create-image arch="x86_64" profile="debug": (build-catten arch profile) init-sub
     sudo losetup -d $lodev
     rm -r {{temp_mnt_dir}}
 
-vm_memory := "1G"
-vm_num_lps := "1"
+vm_memory := "512M"
+vm_num_lps := "2"
 
 qemu-run-x86_64 profile="debug" serial= "" gdb="false": (create-image "x86_64" profile)
     qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \

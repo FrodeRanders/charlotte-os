@@ -19,7 +19,7 @@ pub extern "C" fn reset_lp_timer() {
         let mut lapic = LAPICS.try_get_mut().unwrap();
         let timer = &mut lapic.assume_init_mut().timer;
         timer
-            .set_duration(ExtDuration::from_millis(10))
+            .set_duration(ExtDuration::from_millis(333))
             .expect("Failed to set LAPIC timer duration.");
         timer.reset().expect("Failed to reset LAPIC timer.");
     }
