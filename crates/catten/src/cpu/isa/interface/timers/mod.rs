@@ -34,6 +34,5 @@ pub trait LpTimerIfce {
     fn reset(&mut self) -> Result<(), LpTimerError>;
     fn get_interrupt_mask(&mut self) -> Result<bool, LpTimerError>;
     fn set_interrupt_mask(&mut self, mask: bool) -> Result<(), LpTimerError>;
-    extern "C" fn signal_eoi(&mut self) -> c_int;
     fn set_isr_dispatch_number(&mut self, num: Self::IntDispatchNum) -> Result<(), LpTimerError>;
 }

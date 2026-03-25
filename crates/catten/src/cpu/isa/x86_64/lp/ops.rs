@@ -158,6 +158,7 @@ pub extern "C" fn set_thread_context_ptr(ctx_ptr: VAddr) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn yield_lp() {
+    mask_interrupts!();
     let sched = SYSTEM_SCHEDULER.read();
     let mut lsched = sched.get_lp_scheduler().lock();
     let curr_tid = lsched.get_tid();
@@ -180,7 +181,7 @@ pub extern "C" fn yield_lp() {
             };
             logln!(
                 "Yielding from thread {:?} to thread {:?} on LP {:?}",
-                curr_tid,
+                (curr_tid.unwrap()),
                 next_tid,
                 (get_lp_id())
             );

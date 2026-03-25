@@ -32,6 +32,8 @@
 .global isr_lapic_timer
 isr_lapic_timer:
     m_push_caller_saved
+    call signal_eoi
+    call reset_lp_timer
     call yield_lp
     m_pop_caller_saved
     iretq

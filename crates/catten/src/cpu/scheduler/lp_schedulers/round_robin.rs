@@ -36,6 +36,7 @@ impl Ord for ThreadHandle {
 #[derive(Debug, Default)]
 pub struct RoundRobin {
     lp_id: LpId,
+    is_idle: bool,
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
@@ -72,11 +73,11 @@ impl LpScheduler for RoundRobin {
             }
             self.current_handle = Some(unsafe { self.run_queue.pop_front().unwrap_unchecked() });
             let next_tid = unsafe { self.current_handle.unwrap_unchecked() }.0;
-            // Update the thread's state value in the master thread table
-            mask_interrupts!(); // acquiring a spinlock is not interrupt safe so we mask interrupts at the CPU level until the lock is released
+            // Update the thread's state value in the master thread table.
+            // Note: callers (yield_lp) must ensure interrupts are masked before calling next()
+            // to prevent re-entrant deadlocks from pending IPIs.
             MASTER_THREAD_TABLE.write().get_mut(next_tid).as_mut().unwrap().state =
                 ThreadState::Running(get_lp_id());
-            unmask_interrupts!();
             Ok(next_tid)
         }
     }
@@ -113,7 +114,7 @@ impl LpScheduler for RoundRobin {
     }
 
     fn is_idle(&self) -> bool {
-        self.current_handle == None && self.run_queue.is_empty()
+        self.is_idle
     }
 
     fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {

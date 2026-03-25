@@ -176,15 +176,6 @@ impl LpTimerIfce for ApicTimer {
         Ok(())
     }
 
-    #[unsafe(no_mangle)]
-    extern "C" fn signal_eoi(&mut self) -> c_int {
-        // We use level triggered interrupts for the APIC timer to ensure that we don't miss any
-        // timer interrupts due to e.g. SMIs. Thus we must signal an EOI to the local APIC otherwise
-        // the timer interrupt will immediately trigger again repeatedly.
-        X2Apic::signal_eoi();
-        0
-    }
-
     fn set_isr_dispatch_number(&mut self, num: Self::IntDispatchNum) -> Result<(), LpTimerError> {
         let mut apic_timer_lvt_entry = unsafe { msrs::read(msrs::x2apic::TIMER_LVTR) };
         apic_timer_lvt_entry &= !0xffu64;
