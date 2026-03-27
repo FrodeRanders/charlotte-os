@@ -1,6 +1,4 @@
 use alloc::boxed::Box;
-use core::cell::UnsafeCell;
-use core::marker::PhantomData;
 
 use spin::rwlock::RwLock;
 use spin::{RwLockReadGuard, RwLockWriteGuard};
