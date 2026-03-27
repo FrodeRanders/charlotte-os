@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use spin::Mutex;
 use talc::*;
 
-use crate::lib::size::mebibytes;
+use crate::klib::size::mebibytes;
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::memory::allocators::memory::try_allocate_and_map_range;

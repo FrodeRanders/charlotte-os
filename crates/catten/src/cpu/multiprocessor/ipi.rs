@@ -15,13 +15,11 @@ use spin::barrier::Barrier;
 use spin::rwlock::RwLock;
 use spin::{Lazy, Mutex};
 
-use crate::lib::collections::boxed_slice::make_boxed_slice;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::tlb;
 use crate::cpu::multiprocessor::get_lp_count;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::ThreadId;
 use crate::get_lp_id;
+use crate::klib::collections::boxed_slice::make_boxed_slice;
 use crate::memory::linear::VAddr;
 use crate::memory::{AddressSpaceId, KERNEL_ASID};
 
@@ -99,7 +97,6 @@ impl IpiRpcMailbox {
     }
 }
 
-unsafe impl Send for IpiRpcMailbox {}
 unsafe impl Sync for IpiRpcMailbox {}
 
 #[derive(Clone, Debug)]

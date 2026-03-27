@@ -2,11 +2,11 @@ use core::mem::{offset_of, transmute};
 
 const INIT_KERNEL_STACK_PAGES: usize = 2;
 
-use crate::lib::collections::id_table;
 use crate::cpu::isa::init::gdt::{USER_CODE_SELECTOR, USER_DATA_SELECTOR};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::lp::ops::user_trampoline;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
+use crate::klib::collections::id_table;
 use crate::memory::allocators::stack_allocator::allocate_stack;
 use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, VAddr};
 

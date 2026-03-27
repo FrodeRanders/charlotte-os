@@ -9,7 +9,7 @@ use spin::lazy::Lazy;
 #[cfg(target_arch = "x86_64")]
 use spin::mutex::Mutex;
 
-use crate::lib::io::Read;
+use crate::klib::io::Read;
 use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
 #[cfg(target_arch = "x86_64")]
 use crate::cpu::isa::io;

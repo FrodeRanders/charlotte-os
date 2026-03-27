@@ -1,3 +1,4 @@
+#![allow(nonstandard_style)]
 //! # uACPI Kernel Interface
 //!
 //! This module provides kernel hooks for the uACPI library, enabling it to make use of this

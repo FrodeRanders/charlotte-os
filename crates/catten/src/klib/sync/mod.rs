@@ -3,9 +3,9 @@ use alloc::boxed::Box;
 use spin::rwlock::RwLock;
 use spin::{RwLockReadGuard, RwLockWriteGuard};
 
-use crate::lib::collections::boxed_slice::make_boxed_slice;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::multiprocessor::get_lp_count;
+use crate::klib::collections::boxed_slice::make_boxed_slice;
 
 #[derive(Debug)]
 pub enum Error {

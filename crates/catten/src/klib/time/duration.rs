@@ -1,4 +1,4 @@
-use crate::lib::constants::{MICROS_PER_SEC, MILLIS_PER_SEC, NANOS_PER_SEC, PICOS_PER_SEC};
+use crate::klib::constants::{MICROS_PER_SEC, MILLIS_PER_SEC, NANOS_PER_SEC, PICOS_PER_SEC};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExtDuration {

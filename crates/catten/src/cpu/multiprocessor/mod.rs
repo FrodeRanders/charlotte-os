@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicU16, Ordering};
 
 use spin::Lazy;
 
-use crate::lib::sync::PerLp;
+use crate::klib::sync::PerLp;
 pub mod cpu_topology;
 pub mod ipi;
 pub mod startup;

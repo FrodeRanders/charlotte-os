@@ -1,9 +1,4 @@
-use alloc::sync::Arc;
-use core::ffi::c_int;
-
-use spin::mutex::Mutex;
-
-pub use crate::lib::time::duration::ExtDuration;
+pub use crate::klib::time::duration::ExtDuration;
 
 #[derive(Debug)]
 pub enum LpTimerError {

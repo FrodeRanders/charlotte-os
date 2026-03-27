@@ -12,8 +12,6 @@ pub struct CpuTopology {
     pub sockets: Vec<Socket>,
 }
 
-impl CpuTopology {}
-
 pub struct Socket {
     pub clusters: Vec<Cluster>,
 }

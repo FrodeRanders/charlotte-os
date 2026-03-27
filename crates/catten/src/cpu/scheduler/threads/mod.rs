@@ -7,8 +7,8 @@ use spin::rwlock::RwLock;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::event::Completion;
-use crate::lib::collections::id_table::IdTable;
-use crate::memory::{AddressSpaceId, VAddr};
+use crate::klib::collections::id_table::IdTable;
+use crate::memory::AddressSpaceId;
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
     Lazy::new(|| RwLock::new(ThreadTable::new()));

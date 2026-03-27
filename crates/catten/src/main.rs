@@ -4,10 +4,8 @@
 #![feature(allocator_api)]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
-#![feature(likely_unlikely)]
 #![feature(slice_ptr_get)]
 #![feature(step_trait)]
-#![feature(unsafe_cell_access)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
 
@@ -26,7 +24,6 @@
 extern crate alloc;
 
 pub mod cabi;
-pub mod lib;
 pub mod cpu;
 pub mod deferred;
 pub mod drivers;
@@ -34,6 +31,7 @@ pub mod environment;
 pub mod event;
 pub mod framebuffer;
 pub mod init;
+pub mod klib;
 pub mod log;
 pub mod memory;
 pub mod panic;
@@ -110,7 +108,6 @@ pub extern "C" fn bsp_main() -> ! {
     yield_lp();
     loop {
         panic!("BSP: Reached end of BSP main function. This should never happen.");
-        await_interrupt!();
     }
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
@@ -137,7 +134,6 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
     yield_lp();
     loop {
         panic!("LP {lp_id}: Reached end of AP main function. This should never happen.");
-        await_interrupt!();
     }
 }
 

@@ -7,7 +7,7 @@ use core::mem::MaybeUninit;
 use spin::Lazy;
 
 use super::super::constants::interrupt_vectors::*;
-use crate::lib::sync::PerLp;
+use crate::klib::sync::PerLp;
 use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
 use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::interrupts::InterruptManager;

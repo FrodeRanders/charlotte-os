@@ -3,8 +3,8 @@ use core::arch::x86_64::__cpuid_count;
 
 use spin::Lazy;
 
-use crate::lib::integer::nearest_multiple_of;
-use crate::lib::time::duration::ExtDuration;
+use crate::klib::integer::nearest_multiple_of;
+use crate::klib::time::duration::ExtDuration;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::system_info::{CpuInfo, IsaExtension};
 use crate::cpu::isa::timers::i8254;

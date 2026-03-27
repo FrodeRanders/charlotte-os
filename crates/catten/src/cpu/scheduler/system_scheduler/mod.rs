@@ -11,9 +11,7 @@ use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::scheduler::threads::ThreadId;
-use crate::event::Event;
 use crate::logln;
-use crate::memory::AddressSpaceId;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
@@ -64,22 +62,22 @@ impl SystemScheduler {
         Ok(lp_id)
     }
 
-    /// Block the specified thread at least until the given event notifies its observers
-    pub fn block_thread(&self, tid: ThreadId, event: &dyn Event) -> Result<(), Error> {
-        /* Crate a completion object registered with event and push it to the back of the blocker
-        queue for the specified thread. If the tid doesn't point to any thread structure then
-        return Error::InvalidThread. If the thread is not already blocked then send a broadcast
-        over the kernel IPI-RPC protocol with the EvictThread command. */
-        todo!()
-    }
+    // /// Block the specified thread at least until the given event notifies its observers
+    // pub fn block_thread(&self, tid: ThreadId, event: &dyn Event) -> Result<(), Error> {
+    //     /* Crate a completion object registered with event and push it to the back of the blocker
+    //     queue for the specified thread. If the tid doesn't point to any thread structure then
+    //     return Error::InvalidThread. If the thread is not already blocked then send a broadcast
+    //     over the kernel IPI-RPC protocol with the EvictThread command. */
+    //     todo!()
+    // }
 
-    pub fn abort_thread(&self, tid: ThreadId) {
-        todo!()
-    }
+    // pub fn abort_thread(&self, tid: ThreadId) {
+    //     todo!()
+    // }
 
-    pub fn abort_as_threads(&self, asid: AddressSpaceId) {
-        todo!()
-    }
+    // pub fn abort_as_threads(&self, asid: AddressSpaceId) {
+    //     todo!()
+    // }
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1

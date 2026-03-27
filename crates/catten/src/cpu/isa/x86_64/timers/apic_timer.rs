@@ -7,7 +7,6 @@ use spin::lazy::Lazy;
 use spin::mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
-use crate::lib::time::duration::ExtDuration;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
@@ -16,6 +15,7 @@ use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::cpu::multiprocessor::get_lp_count;
+use crate::klib::time::duration::ExtDuration;
 
 pub static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
     vec![Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))); get_lp_count() as usize]
