@@ -4,10 +4,10 @@ use core::mem::offset_of;
 use spin::Lazy;
 use spin::rwlock::RwLock;
 
-use crate::common::collections::id_table::IdTable;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::thread_context::ThreadContext;
 use crate::event::Completion;
+use crate::lib::collections::id_table::IdTable;
 use crate::memory::{AddressSpaceId, VAddr};
 
 pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =

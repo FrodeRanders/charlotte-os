@@ -8,7 +8,7 @@ pub use linear::VAddr;
 pub use physical::{MemoryInterface, PAddr, PhysicalFrameAllocator};
 pub use spin::{Lazy, Mutex, RwLock};
 
-pub use crate::common::collections::id_table::IdTable;
+pub use crate::lib::collections::id_table::IdTable;
 pub use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 pub use crate::cpu::isa::memory::paging::AddressSpace;
 use crate::environment::boot_protocol::limine::{HHDM_REQUEST, MEMORY_MAP_REQUEST};

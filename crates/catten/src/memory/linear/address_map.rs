@@ -3,7 +3,7 @@
 use spin::Lazy;
 
 use super::VAddr;
-use crate::common::size::*;
+use crate::lib::size::*;
 use crate::cpu::isa::memory::address::VADDR_SIG_BITS;
 
 /// The rest of the kernel only sees the correct linear address map for the system it is running on

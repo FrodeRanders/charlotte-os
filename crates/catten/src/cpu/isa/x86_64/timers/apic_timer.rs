@@ -7,7 +7,7 @@ use spin::lazy::Lazy;
 use spin::mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
-use crate::common::time::duration::ExtDuration;
+use crate::lib::time::duration::ExtDuration;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};

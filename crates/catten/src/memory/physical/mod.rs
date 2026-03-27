@@ -5,8 +5,8 @@
 
 pub use limine::response::MemoryMapResponse;
 
-use crate::common::constants::BITS_PER_BYTE;
-use crate::common::size::kibibytes;
+use crate::lib::constants::BITS_PER_BYTE;
+use crate::lib::size::kibibytes;
 pub use crate::cpu::isa::interface::memory::MemoryInterface;
 use crate::cpu::isa::interface::memory::address::Address;
 pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
