@@ -132,30 +132,6 @@ pub extern "C" fn set_lp_local_base(base: VAddr) {
     }
 }
 
-#[inline]
-pub extern "C" fn get_thread_context_ptr() -> VAddr {
-    let ret: u64;
-    unsafe {
-        core::arch::asm!(
-            "rdfsbase {}",
-            out(reg) ret,
-            options(nomem, nostack, preserves_flags)
-        );
-    }
-    VAddr::from(ret)
-}
-
-#[inline]
-pub extern "C" fn set_thread_context_ptr(ctx_ptr: VAddr) {
-    unsafe {
-        core::arch::asm!(
-            "wrfsbase {}",
-            in(reg) <VAddr as Into<u64>>::into(ctx_ptr),
-            options(nomem, nostack, preserves_flags)
-        )
-    };
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn yield_lp() {
     mask_interrupts!();
