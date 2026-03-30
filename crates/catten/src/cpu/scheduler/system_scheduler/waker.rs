@@ -1,0 +1,22 @@
+use super::SYSTEM_SCHEDULER;
+use crate::cpu::scheduler::threads::ThreadId;
+use crate::logln;
+
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub(super) struct Waker(ThreadId);
+
+impl Waker {
+    pub fn new(tid: ThreadId) -> Self {
+        Self(tid)
+    }
+}
+
+impl crate::klib::observer::Observer for Waker {
+    fn notify(&self) {
+        logln!("Waking thread with ID {}.", (self.0));
+        SYSTEM_SCHEDULER
+            .write()
+            .submit_ready_thread(self.0)
+            .expect("Error submitting ready thread to system scheduler");
+    }
+}

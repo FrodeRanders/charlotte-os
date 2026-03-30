@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use core::mem::offset_of;
 
 use spin::Lazy;
@@ -6,7 +5,6 @@ use spin::rwlock::RwLock;
 
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::thread_context::ThreadContext;
-use crate::event::Completion;
 use crate::klib::collections::id_table::IdTable;
 use crate::memory::AddressSpaceId;
 
@@ -22,7 +20,7 @@ pub enum ThreadState {
     Running(LpId),
     Ready(LpId),
     NeedsLpAssignment,
-    Blocked(Vec<Completion>),
+    Blocked,
     Terminated, //Used while the thread is being cleaned up
 }
 

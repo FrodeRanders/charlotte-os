@@ -1,8 +1,11 @@
+mod waker;
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::btree_set::BTreeSet;
 
-use spin::Mutex;
+use hashbrown::HashSet;
 use spin::rwlock::RwLock;
+use spin::{Lazy, Mutex};
 
 use super::lp_schedulers::LpScheduler;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
@@ -10,7 +13,7 @@ use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::scheduler::threads::ThreadId;
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId};
 use crate::logln;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
@@ -23,12 +26,14 @@ pub enum Error {
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
     lp_schedulers: BTreeMap<LpId, Mutex<Box<dyn LpScheduler>>>,
+    wakers: BTreeSet<waker::Waker>,
 }
 
 impl SystemScheduler {
     pub const fn new() -> Self {
         Self {
             lp_schedulers: BTreeMap::new(),
+            wakers: BTreeSet::new(),
         }
     }
 
@@ -54,7 +59,6 @@ impl SystemScheduler {
         logln!("Thread added to least loaded lp. Getting LP ID.");
         let lp_id = least_loaded_lp.lock().get_lp_id();
         logln!("LP ID obtained. Returning with ID value.");
-        drop(least_loaded_lp.lock());
         if was_idle && lp_id != get_lp_id() {
             logln!("LP {lp_id} was idle, sending wakeup IPI.");
             LocalIntCtlr::send_unicast_ipi(lp_id, LAPIC_TIMER_VECTOR).ok();
@@ -62,14 +66,22 @@ impl SystemScheduler {
         Ok(lp_id)
     }
 
-    // /// Block the specified thread at least until the given event notifies its observers
-    // pub fn block_thread(&self, tid: ThreadId, event: &dyn Event) -> Result<(), Error> {
-    //     /* Crate a completion object registered with event and push it to the back of the blocker
-    //     queue for the specified thread. If the tid doesn't point to any thread structure then
-    //     return Error::InvalidThread. If the thread is not already blocked then send a broadcast
-    //     over the kernel IPI-RPC protocol with the EvictThread command. */
-    //     todo!()
-    // }
+    /// Block the specified thread at least until the given event notifies its observers
+    pub fn block_thread<'a>(
+        &mut self,
+        tid: ThreadId,
+        event: &'a mut dyn crate::klib::observer::Observable<'a>,
+    ) -> Result<(), Error> {
+        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
+            thread.state = crate::cpu::scheduler::threads::ThreadState::Blocked;
+            let waker = waker::Waker::new(tid);
+            event.register_observer(&waker);
+            self.wakers.insert(waker);
+            Ok(())
+        } else {
+            Err(Error::InvalidThread)
+        }
+    }
 
     // pub fn abort_thread(&self, tid: ThreadId) {
     //     todo!()

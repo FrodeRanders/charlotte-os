@@ -74,8 +74,8 @@ pub extern "C" fn uacpi_kernel_unmap(mapped_addr: *mut c_void, len: uacpi_size) 
 #[allow(unused)]
 #[unsafe(no_mangle)]
 pub extern "C" fn uacpi_kernel_log(ll: uacpi_log_level, cstr: *const uacpi_char) {
-    let string = unsafe { CString::from_raw(cstr as *mut c_char) };
-    let rust_str = string.to_str().unwrap_or("Invalid UTF-8 string passed by UACPI.");
+    let c_string = unsafe { CString::from_raw(cstr as *mut c_char) };
+    let str = c_string.to_str().unwrap_or("Invalid UTF-8 string passed by UACPI to logger.");
     let prefix = match ll {
         uacpi_log_level_UACPI_LOG_LEVEL_DEBUG => "[DEBUG]",
         uacpi_log_level_UACPI_LOG_LEVEL_INFO => "[INFO]",
@@ -84,5 +84,5 @@ pub extern "C" fn uacpi_kernel_log(ll: uacpi_log_level, cstr: *const uacpi_char)
         uacpi_log_level_UACPI_LOG_TRACE => "[TRACE]",
         _ => "[NONE]",
     };
-    log!("{} UACPI: {}", prefix, rust_str);
+    log!("{prefix} UACPI: {str}");
 }

@@ -28,7 +28,6 @@ pub mod cpu;
 pub mod deferred;
 pub mod drivers;
 pub mod environment;
-pub mod event;
 pub mod framebuffer;
 pub mod init;
 pub mod klib;
