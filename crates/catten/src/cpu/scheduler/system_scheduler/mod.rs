@@ -3,9 +3,8 @@ use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::btree_set::BTreeSet;
 
-use hashbrown::HashSet;
+use spin::Mutex;
 use spin::rwlock::RwLock;
-use spin::{Lazy, Mutex};
 
 use super::lp_schedulers::LpScheduler;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
