@@ -10,13 +10,13 @@
 //! # Catten
 //!
 //! Catten is an operating system kernel developed as a component of CharlotteOS, an
-//! experimental modern operating system.This kernel is responsible for initializing the hardware,
-//! providing commonizing abstractions for all hardware resources, and managing the execution of
+//! experimental modern operating system.It is responsible for initializing the hardware,
+//! providing common abstractions for all hardware resources, and managing the execution of
 //! user-space applications and the environment in which they run. It is a crucial part of the
 //! operating system, as it provides the foundation on which the rest of the system is built and it
 //! touches every hardware and software component of the system on which it is used. While it is
 //! developed as a component of CharlotteOS, it is designed to be modular and flexible, and thus
-//! useful in other operating systems, embedded firmware, and other types of software distributions
+//! useful in other operating systems, embedded firmware, and other types of software systems
 //! as well.
 
 extern crate alloc;
