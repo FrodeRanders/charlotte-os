@@ -1,10 +1,8 @@
 #![no_std]
 #![no_main]
 #![feature(abi_custom)]
-#![feature(allocator_api)]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
-#![feature(slice_ptr_get)]
 #![feature(step_trait)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
@@ -35,7 +33,7 @@ pub mod memory;
 pub mod panic;
 pub mod self_test;
 
-use limine::mp::Cpu;
+use limine::mp::MpInfo;
 use spin::{Barrier, Lazy};
 
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
@@ -114,7 +112,7 @@ pub extern "C" fn bsp_main() -> ! {
 /// Limine Boot Protocol MP feature. Other boot protocols may require alternate implementations of
 /// `ap_main`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
+pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     unsafe {
         assign_id();
     }
@@ -137,13 +135,5 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &Cpu) -> ! {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn test_fn() {
-    let lp_id = get_lp_id();
-    mask_interrupts!();
-    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();
-    unmask_interrupts!();
-    loop {
-        mask_interrupts!();
-        logln!("LP{lp_id}::T{tid}: Logging from initial thread context.");
-        unmask_interrupts!();
-    }
+    loop {}
 }

@@ -17,8 +17,8 @@ default = ["limine", "acpi"]
 
 [dependencies]
 concurrent-queue = { version = "2.5.0", default-features = false }
-hashbrown = ">=0.16.0"
+hashbrown = { version = ">=0.16.0", features = ["nightly"] }
 limine = ">=0.6.3"
-spin = { version = ">=0.10.0", features = ["ticket_mutex", "lock_api"] }
-talc = { version = ">=5.0.3" }
+spin = { version = ">=0.10.0", features = ["lock_api"] }
+talc = { version = ">=5.0.3", features = ["nightly"] }
 uacpi-raw = { git = "https://codeberg.org/CharlotteOS/uacpi-raw.git", branch = "main", optional = true }

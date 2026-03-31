@@ -3,15 +3,16 @@
 //! This module is responsible for managing physical memory. It provides an interface for allocating
 //! and freeing physical memory frames.
 
-pub use limine::response::MemoryMapResponse;
+use limine::memmap::MEMMAP_USABLE;
+pub use limine::request::MemmapResponse;
 
-use crate::klib::constants::BITS_PER_BYTE;
-use crate::klib::size::kibibytes;
 pub use crate::cpu::isa::interface::memory::MemoryInterface;
 use crate::cpu::isa::interface::memory::address::Address;
 pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
 pub use crate::cpu::isa::memory::MemoryInterfaceImpl;
 pub use crate::cpu::isa::memory::address::paddr::{PAddr, PAddrError};
+use crate::klib::constants::BITS_PER_BYTE;
+use crate::klib::size::kibibytes;
 use crate::logln;
 
 /// Page frames are 4 KiB in size on all supported architectures.
@@ -172,8 +173,8 @@ impl PhysicalFrameAllocator {
 
 // There should be a From implementation for each type of memory map we support.
 
-impl From<&MemoryMapResponse> for PhysicalFrameAllocator {
-    fn from(response: &MemoryMapResponse) -> Self {
+impl From<&MemmapResponse> for PhysicalFrameAllocator {
+    fn from(response: &MemmapResponse) -> Self {
         logln!("Computing PhysicalFrameAllocator bitmap size...");
         let bitmap_size = compute_bitmap_size(response);
         logln!("PhysicalFrameAllocator bitmap size: {:?} bytes", bitmap_size);
@@ -206,7 +207,7 @@ impl From<&MemoryMapResponse> for PhysicalFrameAllocator {
     }
 }
 
-fn compute_bitmap_size(mmap: &MemoryMapResponse) -> usize {
+fn compute_bitmap_size(mmap: &MemmapResponse) -> usize {
     let mut highest_address: PAddr = unsafe { PAddr::from_unchecked(0usize) };
     // Find the highest address in the memory map.
     for entry in mmap.entries().iter() {
@@ -234,7 +235,7 @@ fn compute_bitmap_size(mmap: &MemoryMapResponse) -> usize {
 
 // Helper functions
 
-fn find_mmap_best_fit(mmap: &MemoryMapResponse, size: usize) -> Result<PAddr, Error> {
+fn find_mmap_best_fit(mmap: &MemmapResponse, size: usize) -> Result<PAddr, Error> {
     let mut best_fit = PAddr::try_from(0usize)?;
     let mut best_fit_size = 0;
     for entry in mmap.entries().iter() {
@@ -264,9 +265,9 @@ fn addr_to_bitmap_index(addr: PAddr) -> Result<(usize, usize), Error> {
     Ok((byte_index, bit_offset))
 }
 
-fn init_bitmap_from_mmap(bitmap_ptr: *mut u8, mmap: &MemoryMapResponse) {
+fn init_bitmap_from_mmap(bitmap_ptr: *mut u8, mmap: &MemmapResponse) {
     for entry in mmap.entries().iter() {
-        if entry.entry_type == limine::memory_map::EntryType::USABLE {
+        if entry.type_ == MEMMAP_USABLE {
             let start = entry.base;
             let end = entry.base + entry.length;
             for i in (start..end).step_by(PAGE_FRAME_SIZE) {

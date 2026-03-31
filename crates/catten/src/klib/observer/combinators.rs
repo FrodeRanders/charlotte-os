@@ -1,22 +1,25 @@
+use alloc::sync::Weak;
 use alloc::vec::Vec;
 use core::sync::atomic::AtomicBool;
 
 use super::{Observable, Observer};
 
-pub struct Any<'a> {
-    observers: spin::Mutex<Vec<&'a dyn Observer>>,
+pub struct Any {
+    observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
 }
 
-impl<'a> Observable<'a> for Any<'a> {
-    fn register_observer(&'a self, observer: &'a dyn Observer) {
+impl Observable for Any {
+    fn register_observer(&mut self, observer: Weak<dyn Observer>) {
         self.observers.lock().push(observer);
     }
 }
 
-impl Observer for Any<'_> {
+impl Observer for Any {
     fn notify(&self) {
         for observer in self.observers.lock().iter() {
-            observer.notify();
+            if let Some(observer) = observer.upgrade() {
+                observer.notify();
+            }
         }
     }
 }

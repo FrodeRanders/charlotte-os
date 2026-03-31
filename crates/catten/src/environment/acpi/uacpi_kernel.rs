@@ -21,7 +21,7 @@ use crate::memory::{AddressSpaceInterface, KERNEL_AS, PAddr, VAddr};
 #[allow(unused)]
 #[unsafe(no_mangle)]
 pub extern "C" fn uacpi_kernel_get_rsdp(out_rsdp_address: *mut uacpi_phys_addr) -> uacpi_status {
-    let rsdp = RSDP_REQUEST.get_response().expect("Limine failed to provide an RSDP").address();
+    let rsdp = RSDP_REQUEST.response().expect("Limine failed to provide an RSDP").address;
     unsafe {
         out_rsdp_address.write(rsdp as u64);
     }

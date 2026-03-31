@@ -8,10 +8,10 @@ pub use linear::VAddr;
 pub use physical::{MemoryInterface, PAddr, PhysicalFrameAllocator};
 pub use spin::{Lazy, Mutex, RwLock};
 
-pub use crate::klib::collections::id_table::IdTable;
 pub use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 pub use crate::cpu::isa::memory::paging::AddressSpace;
 use crate::environment::boot_protocol::limine::{HHDM_REQUEST, MEMORY_MAP_REQUEST};
+pub use crate::klib::collections::id_table::IdTable;
 
 pub type AddressSpaceId = usize;
 
@@ -35,14 +35,14 @@ pub static ADDRESS_SPACE_TABLE: Lazy<AddressSpaceTable> = Lazy::new(AddressSpace
 pub static HHDM_BASE: Lazy<VAddr> = Lazy::new(|| {
     VAddr::from(
         HHDM_REQUEST
-            .get_response()
+            .response()
             .expect("Limine failed to provide a higher half direct mapping region.")
-            .offset() as usize,
+            .offset as usize,
     )
 });
 /// The physical frame allocator instance used by the kernel.
 pub static PHYSICAL_FRAME_ALLOCATOR: Lazy<Mutex<PhysicalFrameAllocator>> = Lazy::new(|| {
     Mutex::new(PhysicalFrameAllocator::from(
-        MEMORY_MAP_REQUEST.get_response().expect("Limine failed to provide a memory map."),
+        MEMORY_MAP_REQUEST.response().expect("Limine failed to provide a memory map."),
     ))
 });

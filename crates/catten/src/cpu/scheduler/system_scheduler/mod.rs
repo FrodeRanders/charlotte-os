@@ -2,6 +2,7 @@ mod waker;
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::btree_set::BTreeSet;
+use alloc::sync::{Arc, Weak};
 
 use spin::Mutex;
 use spin::rwlock::RwLock;
@@ -25,7 +26,7 @@ pub enum Error {
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
     lp_schedulers: BTreeMap<LpId, Mutex<Box<dyn LpScheduler>>>,
-    wakers: BTreeSet<waker::Waker>,
+    wakers: BTreeSet<Arc<waker::Waker>>,
 }
 
 impl SystemScheduler {
@@ -69,12 +70,14 @@ impl SystemScheduler {
     pub fn block_thread<'a>(
         &mut self,
         tid: ThreadId,
-        event: &'a mut dyn crate::klib::observer::Observable<'a>,
+        event: &'a mut dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
         if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
             thread.state = crate::cpu::scheduler::threads::ThreadState::Blocked;
-            let waker = waker::Waker::new(tid);
-            event.register_observer(&waker);
+            let waker = Arc::new(waker::Waker::new(tid));
+            event.register_observer(
+                Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>
+            );
             self.wakers.insert(waker);
             Ok(())
         } else {

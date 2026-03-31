@@ -1,20 +1,23 @@
 use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 
 use spin::Mutex;
+use talc::base::Talc;
+use talc::base::binning::Binning;
+use talc::source::Source;
 use talc::*;
 
-use crate::klib::size::mebibytes;
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
+use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
+use crate::klib::size::mebibytes;
+use crate::memory::VAddr;
 use crate::memory::allocators::memory::try_allocate_and_map_range;
-use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
 #[global_allocator]
-pub static PRIMARY_ALLOCATOR: Talck<Mutex<()>, ExtendOnOom> =
-    Talck::new(Talc::new(ExtendOnOom::new()));
+pub static PRIMARY_ALLOCATOR: TalcLock<Mutex<()>, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
 pub fn init_primary_allocator() {
     let base = LA_MAP.get_region(KernelAllocatorArena).base;
@@ -22,44 +25,41 @@ pub fn init_primary_allocator() {
         .expect("Failed to allocate and map initial kernel heap memory");
     unsafe {
         let mut pa_lock = PRIMARY_ALLOCATOR.lock();
-        let span = Span::new(base.into_mut(), (base + INITIAL_HEAP_SIZE).into_mut());
-        let returned_span =
-            pa_lock.claim(span).expect("Talc failed to claim the initial kernel heap");
-        pa_lock.oom_handler.heap_span.write(returned_span);
+        let returned_ptr = pa_lock
+            .claim(base.into_mut(), INITIAL_HEAP_SIZE)
+            .expect("Talc failed to claim the initial kernel heap");
+        pa_lock.source.heap_ptr.lock().write(returned_ptr);
     }
 }
 
+#[derive(Debug)]
 pub struct ExtendOnOom {
-    heap_span: MaybeUninit<Span>,
+    heap_ptr: Mutex<MaybeUninit<NonNull<u8>>>,
 }
+
+unsafe impl Sync for ExtendOnOom {}
+unsafe impl Send for ExtendOnOom {}
 
 impl ExtendOnOom {
     const fn new() -> Self {
         ExtendOnOom {
-            heap_span: MaybeUninit::uninit(),
+            heap_ptr: Mutex::new(MaybeUninit::uninit()),
         }
     }
 }
 
-impl OomHandler for ExtendOnOom {
-    fn handle_oom(talc: &mut Talc<Self>, _layout: core::alloc::Layout) -> Result<(), ()> {
-        let raw_span =
-            unsafe { talc.oom_handler.heap_span.assume_init_ref() }.get_base_acme().unwrap();
-        let (base, acme) = (VAddr::from_ptr(raw_span.0), VAddr::from_ptr(raw_span.1));
-        let current_size = acme - base;
-        let new_acme = core::cmp::min(
-            acme + current_size,
-            LA_MAP.get_region(KernelAllocatorArena).base + LA_MAP.get_region(KernelAllocatorArena).length,
-        );
-        let new_span = Span::new(base.into_mut(), new_acme.into_mut());
-        if let Ok(_) = try_allocate_and_map_range(acme, current_size as usize / PAGE_SIZE) {
-            unsafe {
-                *(talc.oom_handler.heap_span.assume_init_mut()) = new_span;
-            }
-            unsafe { talc.extend(Span::new(base.into_mut(), acme.into_mut()), new_span) };
-            Ok(())
-        } else {
-            Err(())
+unsafe impl Source for ExtendOnOom {
+    fn acquire<B: Binning>(
+        talc: &mut Talc<Self, B>,
+        layout: core::alloc::Layout,
+    ) -> Result<(), ()> {
+        let curr_end = unsafe { talc.source.heap_ptr.lock().assume_init() };
+        let new_region_start =
+            VAddr::from(curr_end.as_ptr() as usize).next_aligned_to(layout.align());
+        let new_region_end = new_region_start + layout.size();
+        unsafe {
+            talc.extend(curr_end, new_region_end.into_mut());
         }
+        Ok(())
     }
 }

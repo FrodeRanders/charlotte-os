@@ -6,13 +6,13 @@ use crate::framebuffer::chars::{FONT, FONT_HEIGHT, FONT_WIDTH};
 extern crate limine;
 use limine::framebuffer::Framebuffer;
 use spin::lazy::Lazy;
-use spin::mutex::TicketMutex;
+use spin::mutex::Mutex;
 
 use super::console::{CONSOLE_HEIGHT, CONSOLE_WIDTH};
 
 /// Global access to the framebuffer
-pub static FRAMEBUFFER: Lazy<TicketMutex<FrameBufferInfo>> =
-    Lazy::new(|| TicketMutex::new(init_framebuffer().unwrap()));
+pub static FRAMEBUFFER: Lazy<Mutex<FrameBufferInfo>> =
+    Lazy::new(|| Mutex::new(init_framebuffer().unwrap()));
 
 /// A struct representing the framebuffer information,
 /// including its memory address, dimensions, pixel format, etc.
@@ -41,11 +41,11 @@ impl FrameBufferInfo {
     /// * `framebuffer` - A reference to a limine `Framebuffer` struct.
     pub fn new(framebuffer: &Framebuffer) -> Self {
         let mut framebuffer = Self {
-            address: AtomicPtr::new(framebuffer.addr() as *mut u32),
-            width: framebuffer.width() as usize,
-            height: framebuffer.height() as usize,
-            pitch: framebuffer.pitch() as usize,
-            bpp: framebuffer.bpp() as usize,
+            address: AtomicPtr::new(framebuffer.address() as *mut u32),
+            width: framebuffer.width as usize,
+            height: framebuffer.height as usize,
+            pitch: framebuffer.pitch as usize,
+            bpp: framebuffer.bpp as usize,
             scale: 1,
         };
 
@@ -69,8 +69,16 @@ impl FrameBufferInfo {
 
         let dx = isize::abs(x1 - x0);
         let dy = -isize::abs(y1 - y0);
-        let sx = if x0 < x1 { 1 } else { -1 };
-        let sy = if y0 < y1 { 1 } else { -1 };
+        let sx = if x0 < x1 {
+            1
+        } else {
+            -1
+        };
+        let sy = if y0 < y1 {
+            1
+        } else {
+            -1
+        };
         let mut err = dx + dy; // error value e_xy
 
         loop {
@@ -277,12 +285,12 @@ impl FrameBufferInfo {
 
 /// Initializes the framebuffer and returns a `FrameBufferInfo` instance if successful.
 pub fn init_framebuffer() -> Option<FrameBufferInfo> {
-    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
-        if framebuffer_response.framebuffers().count() < 1 {
+    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.response() {
+        if framebuffer_response.framebuffers().iter().count() < 1 {
             panic!("No framebuffer returned from bootloader!");
         }
 
-        let framebuffer = &framebuffer_response.framebuffers().next().unwrap();
+        let framebuffer = &framebuffer_response.framebuffers().iter().next().unwrap();
         Some(FrameBufferInfo::new(framebuffer))
     } else {
         panic!("No framebuffer returned from bootlaoder!");

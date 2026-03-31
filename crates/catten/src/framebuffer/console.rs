@@ -1,6 +1,6 @@
 use core::fmt;
 
-use spin::mutex::TicketMutex;
+use spin::mutex::Mutex;
 
 use crate::framebuffer::chars::{FONT_HEIGHT, FONT_WIDTH};
 use crate::framebuffer::colors::Color;
@@ -9,7 +9,7 @@ use crate::framebuffer::framebuffer::FRAMEBUFFER;
 pub const CONSOLE_WIDTH: usize = 80;
 pub const CONSOLE_HEIGHT: usize = 50;
 
-pub static CONSOLE: TicketMutex<Console> = TicketMutex::new(Console::new());
+pub static CONSOLE: Mutex<Console> = Mutex::new(Console::new());
 
 /// Represents a single character on the framebuffer console
 #[derive(Copy, Clone)]
@@ -178,8 +178,7 @@ impl Console {
     }
 }
 
-static INNER_STYLE_SETTINGS: TicketMutex<InnerPrintStyle> =
-    TicketMutex::new(InnerPrintStyle::new());
+static INNER_STYLE_SETTINGS: Mutex<InnerPrintStyle> = Mutex::new(InnerPrintStyle::new());
 
 /// Inner style settings for print macros
 struct InnerPrintStyle {

@@ -1,11 +1,12 @@
+use limine::mp::MP_FLAG_X2APIC;
 use spin::{Lazy, RwLock};
 
-use crate::environment::boot_protocol::limine::MP;
+use crate::environment::boot_protocol::limine::MP_REQUEST;
 use crate::{ap_main, logln};
 
 pub(super) static LP_COUNT: Lazy<RwLock<u32>> = Lazy::new(|| {
     RwLock::new({
-        if let Some(mp_res) = MP.get_response() {
+        if let Some(mp_res) = MP_REQUEST.response() {
             mp_res.cpus().len() as u32
         } else {
             panic!("Limine was not able to start the secondary logical processors!")
@@ -20,11 +21,11 @@ pub enum MpError {
 
 pub fn start_secondary_lps() -> Result<(), MpError> {
     logln!("Starting Secondary LPs...");
-    if let Some(res) = MP.get_response() {
+    if let Some(res) = MP_REQUEST.response() {
         logln!("Obtained multiprocessor response from Limine");
         #[cfg(target_arch = "x86_64")]
         {
-            if res.flags().contains(limine::mp::ResponseFlags::X2APIC) {
+            if res.flags & MP_FLAG_X2APIC as u32 != 0 {
                 logln!("Limine has set all LAPICs to x2APIC mode.")
             } else {
                 panic!("Processor not supported: x2APIC mode is not available.");
@@ -32,8 +33,8 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
         }
         let lps = res.cpus();
         for lp in lps {
-            logln!("Writing entry point address for LP {}", (lp.id));
-            lp.goto_address.write(ap_main);
+            logln!("Writing entry point address for LP {}", (lp.processor_id));
+            lp.bootstrap(ap_main, 0);
         }
         Ok(())
     } else {

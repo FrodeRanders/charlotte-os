@@ -1,11 +1,13 @@
 //! Observer pattern implementation for event handling and notifications.
 
+use alloc::sync::Weak;
+
 pub mod combinators;
 
-pub trait Observable<'a> {
-    fn register_observer(&'a self, observer: &'a dyn Observer);
+pub trait Observable {
+    fn register_observer(&mut self, observer: Weak<dyn Observer>);
 }
 
-pub trait Observer {
+pub trait Observer: Send + Sync {
     fn notify(&self);
 }
