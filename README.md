@@ -6,7 +6,7 @@
 
 - CharlotteOS is written primarily in Rust, with architecture-specific assembly where required.
 - x86-64 assembly uses Intel syntax as implemented by `rustc`/`llvm-mc`.
-- Minimal C is permitted for vetted components where a high-quality Rust alternative does not exist.
+- C is permitted for vetted components where a high-quality Rust alternative does not exist.
 
 ---
 
@@ -14,35 +14,42 @@
 
 - Rust, C, and assembly are the only allowed implementation languages.
 - Any C dependency must be approved and justified.
-- Non-Rust/C/ASM dependencies are not permitted.
-- Prefer high-quality Rust crates unless native C is unavoidable due to specification or interoperability constraints.
+- Prefer high-quality Rust crates where possible and use C libraries only when comparable or better Rust
+alternatives do not exist
 
 ---
 
 ## Platform & Firmware Requirements
 
-CharlotteOS aims to support platforms that offer **standardized, documented, and interoperable hardware interfaces**. The focus is on systems where the OS can rely on well-defined firmware and discoverability mechanisms, without requiring vendor-specific hacks or opaque initialization sequences.
+CharlotteOS aims to support platforms that offer **standardized, documented, and interoperable hardware and firmware interfaces**. The focus is on systems where the operating system can rely on well-defined firmware and discoverability mechanisms, without requiring vendor-specific hacks or opaque initialization sequences.
 
-### Supported Architectures
+### Supported Architectures and Their Requirements
 
 #### x86-64 (Primary ISA)
 
-- Invariant Timestamp Counter  
-- Local APIC with x2APIC mode  
-- Full UEFI and ACPI firmware environment
+- Invariant Timestamp Counter
+- Local APIC with x2APIC mode
+- Full standards conforming UEFI and ACPI firmware environment
 
 #### Aarch64 (Secondary ISA)
 
 - ARMv8.2A or later
 - GICv3 or later
-- Secure Monitor Call interface with PSCI
-- SystemReady Compliant firmware - Full or DT band
+- Secure Monitor Call (SMC) interface with PSCI
+- SystemReady compliant firmware - Full or DT band
+
+#### RISC-V (Tertiary ISA)
+
+- RVA22 or later
+- Advanced Interrupt Architecture (AIA)
+- Supervisor Binary Interface (SBI)
+- Boot and Runtime Services (BRS) specification compliant firmware
 
 ---
 
 ## Firmware Model
 
-Catten supports both ACPI and Devicetree, with equal weight. The format is not the determining factor—**documentation and correctness are.**
+Catten supports both ACPI and Devicetree equally. The format is not the determining factor—**device documentation and correctness are.**
 
 ### UEFI
 
@@ -58,14 +65,15 @@ Catten supports both ACPI and Devicetree, with equal weight. The format is not t
 
 - Fully supported for SoC-style platforms.
 - FDT must conform to DTSpec and accurately describe hardware resources.
-- All `compatible` strings must map to publicly documented hardware blocks or IP cores.
+- All `compatible` strings must map to publicly documented hardware blocks or IP cores or that
+hardware likely will not work.
 
 ### Documentation Requirement
 
 Whether via ACPI or DT:
 
-- Devices must be identifiable.  
-- Devices must be documented.  
+- Devices must be identifiable.
+- Devices must be documented.
 - “Unknown peripheral at address 0xXXXX” is not acceptable without vendor documentation.
 
 This ensures that Catten can operate without relying on undocumented Linux driver behavior, hard-coded quirks, or vendor-specific hacks.
@@ -78,21 +86,22 @@ This ensures that Catten can operate without relying on undocumented Linux drive
 
 Embedded:
 
-- Recommended: ≥ 1 GiB  
+- Recommended: ≥ 512 MiB
 - Minimum: 128 MiB
 
 PC and Server:
 
 - Recommended: ≥ 8 GiB
-- Minimum: 4 GiB
+- Minimum: 2 GiB
 
 ### Storage[^1]
 
-- Recommended: ≥ 64 GiB  
-- Minimum: 4 GiB  
+- Recommended: ≥ 64 GiB
+- Minimum: 4 GiB
 - Supported device classes:
-  - NVMe (PCIe)  
+  - NVMe (PCIe)
   - USB Mass Storage Device Class (MSC)
+  - AHCI (SATA)
 
 ### Display
 
@@ -103,18 +112,18 @@ PC and Server:
 ### Input Devices
 
 - Keyboards:
-  - i8042 PS/2  
-  - USB HID  
+  - i8042 PS/2
+  - USB HID
   - I²C HID (documented ACPI/FDT only)
 - Pointing Devices:
-  - i8042 PS/2  
-  - USB HID  
+  - i8042 PS/2
+  - USB HID
   - I²C HID (documented ACPI/FDT only)
 
 ### Serial Console
 
 - NS16550 compatible UART
-- Arm PL011 compatible UART  
+- Arm PL011 compatible UART
 - USB CDC-ACM (virtual serial)
 
 ### Networking
@@ -134,7 +143,7 @@ Community contributions for new hardware support will only be accepted when they
 
 ## Licensing
 
-The Charlotte Operating System is licensed under the GNU Affero General Public License version 3.0 (or any later version). By contributing, you agree that your work may be distributed under the AGPL version 3.0 or later. Your work will also be included in possible commercial licensing arrangements should the project maintainers and community agree to offer those in the future as a source of funding and ecosystem growth. If you object to the latter use then please state that fact in the relevant commit messages and pull requests or send an email with the subject "Commercial Licensing Opt-Out" with all relevant commit hashes and proof that you are their current copyright holder to <charlotte-os@outlook.com>.
+The Charlotte Operating System is licensed under the GNU Affero General Public License version 3.0 (or any later version). By contributing, you agree that your work may be distributed under the AGPL version 3.0 or later.
 
 ---
 
