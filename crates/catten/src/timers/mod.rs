@@ -1,4 +1,4 @@
-//! # Kernel Timers
+//! # Kernel Timer System
 
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Weak;
