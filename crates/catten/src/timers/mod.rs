@@ -12,7 +12,7 @@ use crate::klib::observer::{Observable, Observer};
 use crate::klib::sync::PerLp;
 use crate::klib::time::duration::ExtDuration;
 
-pub static TIMER_QUEUES: Lazy<PerLp<TimerQueue>> = Lazy::new(|| PerLp::new(TimerQueue::new));
+pub static TIMER_QUEUES: Lazy<PerLp<TimerQueue>> = Lazy::new(|| PerLp::new(TimerQueue::default));
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
@@ -66,17 +66,12 @@ impl Observable for TimerEvent {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct TimerQueue {
     events: VecDeque<TimerEvent>,
 }
 
 impl TimerQueue {
-    pub fn new() -> Self {
-        Self {
-            events: VecDeque::new(),
-        }
-    }
-
     pub fn add_event(&mut self, event: TimerEvent) {
         let mut insertion_idx: Option<usize> = None;
         for (i, event_node) in self.events.iter().enumerate() {
@@ -129,7 +124,7 @@ impl TimerQueue {
         }
     }
 
-    pub fn get_next_deadline(&self) -> Option<Timestamp> {
+    fn get_next_deadline(&self) -> Option<Timestamp> {
         self.events.front().map(|event| event.deadline)
     }
 }
