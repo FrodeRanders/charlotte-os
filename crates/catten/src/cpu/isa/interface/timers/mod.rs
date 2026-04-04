@@ -1,13 +1,18 @@
+use alloc::sync::Arc;
+
+use spin::Mutex;
+
 pub use crate::klib::time::duration::ExtDuration;
 
 #[derive(Debug)]
 pub enum LpTimerError {
-    TimerNotPresent,
+    DeadlinePassed,
     DivisorNotSupported,
-    DurationOutOfRange,
     DurationNotSet,
-    TimerNotStarted,
+    DurationOutOfRange,
     TimerAlreadyStarted,
+    TimerNotPresent,
+    TimerNotStarted,
     TimerStartsAutomatically,
 }
 
@@ -19,10 +24,17 @@ pub trait LpTimerIfce {
     type Divisor;
     type TickCount;
     type IntDispatchNum;
+    type Timestamp;
 
-    fn get_resolution(&self) -> Result<ExtDuration, LpTimerError>;
+    fn get() -> Arc<Mutex<Self>>;
+    // Timestamp functions
+    fn now() -> Self::Timestamp;
+    fn get_ts_cycle_period() -> ExtDuration;
+    // Timer Interrupt Source functions
+    fn get_int_resolution(&self) -> Result<ExtDuration, LpTimerError>;
     fn set_divisor(&mut self, divisor: Self::Divisor) -> Result<(), LpTimerError>;
     fn set_duration(&mut self, duration: ExtDuration) -> Result<(), LpTimerError>;
+    fn set_deadline(&mut self, deadline: Self::Timestamp) -> Result<(), LpTimerError>;
     fn get_duration(&self) -> Result<ExtDuration, LpTimerError>;
     fn start(&mut self) -> Result<(), LpTimerError>;
     fn stop(&mut self) -> Result<(), LpTimerError>;

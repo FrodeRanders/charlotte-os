@@ -38,6 +38,7 @@ pub enum IsaExtension {
     InvariantTsc,
     /* TSC_AUX MSR and RDPID instruction */
     Rdpid,
+    TscDeadline,
 }
 
 pub struct CpuInfo;
@@ -120,6 +121,10 @@ impl CpuInfoIfce for CpuInfo {
             IsaExtension::Rdpid => {
                 let cpuid_result = __cpuid_count(0x0000_0007, 0);
                 (cpuid_result.ecx & 1 << 22) != 0
+            }
+            IsaExtension::TscDeadline => {
+                let cpuid_result = __cpuid_count(0x0000_0007, 0);
+                (cpuid_result.ecx & 1 << 24) != 0
             }
         }
     }

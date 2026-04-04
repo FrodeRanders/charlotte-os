@@ -1,16 +1,14 @@
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::ffi::c_int;
 
 use spin::lazy::Lazy;
 use spin::mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
-use crate::cpu::isa::interrupts::x2apic::X2Apic;
+use crate::cpu::isa::lp::ops::get_lp_id;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
@@ -101,10 +99,23 @@ impl LpTimerIfce for ApicTimer {
     type Divisor = ApicTimerDivisors;
     type IntDispatchNum = u8;
     type TickCount = u32;
+    type Timestamp = u64;
 
     const NAME: &'static str = "x86-64 x2APIC Timer";
 
-    fn get_resolution(&self) -> Result<ExtDuration, LpTimerError> {
+    fn get() -> Arc<Mutex<Self>> {
+        APIC_TIMERS[get_lp_id() as usize].clone()
+    }
+
+    fn now() -> Self::Timestamp {
+        rdtsc()
+    }
+
+    fn get_ts_cycle_period() -> ExtDuration {
+        *TSC_CYCLE_PERIOD
+    }
+
+    fn get_int_resolution(&self) -> Result<ExtDuration, LpTimerError> {
         Ok(self.resolution)
     }
 
@@ -125,6 +136,17 @@ impl LpTimerIfce for ApicTimer {
         .try_into()
         .map_err(|_| LpTimerError::DurationOutOfRange)?;
         Ok(())
+    }
+
+    fn set_deadline(&mut self, deadline: Self::Timestamp) -> Result<(), LpTimerError> {
+        let current_time = Self::now();
+        if deadline < current_time {
+            return Err(LpTimerError::DeadlinePassed);
+        }
+        let duration_until_deadline = ExtDuration::from_picos(
+            (deadline - current_time) as u128 * TSC_CYCLE_PERIOD.as_picos(),
+        );
+        self.set_duration(duration_until_deadline)
     }
 
     fn get_duration(&self) -> Result<ExtDuration, LpTimerError> {

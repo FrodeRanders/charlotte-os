@@ -3,6 +3,8 @@
 #![feature(abi_custom)]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
+#![feature(likely_unlikely)]
+#![feature(linked_list_cursors)]
 #![feature(step_trait)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
@@ -32,6 +34,7 @@ pub mod log;
 pub mod memory;
 pub mod panic;
 pub mod self_test;
+pub mod timers;
 
 use limine::mp::MpInfo;
 use spin::{Barrier, Lazy};

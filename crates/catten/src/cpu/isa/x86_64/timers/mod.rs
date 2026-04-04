@@ -4,6 +4,8 @@ pub mod tsc;
 
 pub use apic_timer::LpTimer;
 
+use crate::cpu::isa::interface::system_info::CpuInfoIfce;
+use crate::cpu::isa::system_info::CpuInfo;
 use crate::cpu::isa::timers::tsc::{IS_TSC_INVARIANT, TSC_CYCLE_PERIOD, TSC_FREQUENCY_HZ};
 use crate::logln;
 
@@ -18,4 +20,9 @@ pub fn print_timer_info() {
         "The x86-64 Timestamp Counter period is {:?} picoseconds.",
         ((*TSC_CYCLE_PERIOD).as_picos())
     );
+    if CpuInfo::is_extension_supported(<CpuInfo as CpuInfoIfce>::IsaExtension::TscDeadline) {
+        logln!("The x86-64 CPU supports TSC Deadline mode.");
+    } else {
+        logln!("The x86-64 CPU does NOT support TSC Deadline mode.");
+    }
 }
