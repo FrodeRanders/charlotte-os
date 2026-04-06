@@ -4,7 +4,6 @@
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
 #![feature(likely_unlikely)]
-#![feature(linked_list_cursors)]
 #![feature(step_trait)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
@@ -24,8 +23,8 @@
 extern crate alloc;
 
 pub mod cpu;
-pub mod deferred;
 pub mod drivers;
+pub mod dwm;
 pub mod environment;
 pub mod framebuffer;
 pub mod init;
