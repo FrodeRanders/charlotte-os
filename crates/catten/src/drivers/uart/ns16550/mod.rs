@@ -1,28 +1,18 @@
 //! # National Semiconductor 16550 Compatible UART Driver
-mod legacy_ports;
+#[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
+pub mod legacy_ports;
 
 use core::fmt::{self, Write};
 use core::result::Result;
 
-#[cfg(target_arch = "x86_64")]
-use spin::lazy::Lazy;
-#[cfg(target_arch = "x86_64")]
-use spin::mutex::Mutex;
-
-use crate::klib::io::Read;
 use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
-#[cfg(target_arch = "x86_64")]
-use crate::cpu::isa::io;
 use crate::cpu::isa::io::IoReg8;
 use crate::drivers::uart::Uart;
-
-#[cfg(target_arch = "x86_64")]
-pub static LOG_PORT: Lazy<Mutex<Uart16550>> =
-    Lazy::new(|| Mutex::new(Uart16550::try_new(io::IoReg8::IoPort(legacy_ports::COM1)).unwrap()));
+use crate::klib::io::Read;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct Uart16550 {
+pub struct Ns16550 {
     base: IoReg8,
 }
 #[derive(Debug, Clone, Copy)]
@@ -30,7 +20,7 @@ pub enum Error {
     FailedSelfTest,
 }
 
-impl Uart16550 {
+impl Ns16550 {
     fn is_transmit_empty(&self) -> i32 {
         (unsafe { (self.base + 5).read() } & 0x20).into()
     }
@@ -45,11 +35,11 @@ impl Uart16550 {
     }
 }
 
-impl Uart for Uart16550 {
+impl Uart for Ns16550 {
     type Error = Error;
 
     fn try_new(base: IoReg8) -> Result<Self, Error> {
-        let port = Uart16550 {
+        let port = Ns16550 {
             base: base,
         };
         unsafe {
@@ -73,7 +63,7 @@ impl Uart for Uart16550 {
     }
 }
 
-impl Write for Uart16550 {
+impl Write for Ns16550 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
             self.write_char(c)?
@@ -101,7 +91,7 @@ impl Write for Uart16550 {
     }
 }
 
-impl Read for Uart16550 {
+impl Read for Ns16550 {
     fn read(&mut self, buf: &mut [u8]) -> usize {
         for i in 0..buf.len() {
             buf[i] = self.read_char() as u8;
@@ -110,4 +100,4 @@ impl Read for Uart16550 {
     }
 }
 
-unsafe impl Send for Uart16550 {}
+unsafe impl Send for Ns16550 {}
