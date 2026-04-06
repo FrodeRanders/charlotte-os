@@ -33,7 +33,7 @@
 isr_lapic_timer:
     m_push_caller_saved
     call signal_eoi
-    call reset_lp_timer
-    call yield_lp
+    call process_events
+    call cond_yield_lp
     m_pop_caller_saved
     iretq

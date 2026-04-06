@@ -1,9 +1,9 @@
 //! ISRs with fixed vector numbers across all logical processors
 
-pub mod context_switch;
 pub mod exceptions;
 pub mod ipis;
 pub mod spurious;
+pub mod timer;
 
 use crate::cpu::isa::constants::interrupt_vectors::{
     LAPIC_TIMER_VECTOR,
@@ -22,13 +22,7 @@ pub fn register_fixed_isr_gates(idt: &mut Idt) {
         false,
         true,
     );
-    idt.set_gate(
-        LAPIC_TIMER_VECTOR,
-        context_switch::isr_lapic_timer,
-        KERNEL_CODE_SELECTOR,
-        false,
-        true,
-    );
+    idt.set_gate(LAPIC_TIMER_VECTOR, timer::isr_lapic_timer, KERNEL_CODE_SELECTOR, false, true);
     idt.set_gate(
         UNICAST_IPI_VECTOR,
         ipis::isr_interprocessor_interrupt,

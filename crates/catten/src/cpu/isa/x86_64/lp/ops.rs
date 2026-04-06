@@ -133,7 +133,7 @@ pub extern "C" fn set_lp_local_base(base: VAddr) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn yield_lp() {
+pub extern "C" fn cond_yield_lp() {
     mask_interrupts!();
     let sched = SYSTEM_SCHEDULER.read();
     let mut lsched = sched.get_lp_scheduler().lock();
@@ -183,6 +183,7 @@ pub extern "C" fn yield_lp() {
         );
         switch_ctx(core::ptr::null_mut(), next_rsp0_ptr);
     }
+    unmask_interrupts!()
 }
 
 #[unsafe(no_mangle)]
