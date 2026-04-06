@@ -1,12 +1,13 @@
 init-submodules:
     git submodule update --init --recursive
 
-build-catten arch="x86_64" profile="debug":
-    cargo build --package catten --target {{ if arch == "x86_64" { "x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }}
+build-catten arch="x86_64" profile="debug" features="":
+    cargo build --package catten --target {{ if arch == "x86_64" { "x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
+    "" {"--features " + features} else {""} }}
 
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"
-create-image arch="x86_64" profile="debug": (build-catten arch profile) init-submodules
+create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features) init-submodules
     #!/usr/bin/env bash
     if [ ! -d {{image_dir}} ]; then mkdir {{image_dir}}; fi
     touch {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd
@@ -28,13 +29,15 @@ create-image arch="x86_64" profile="debug": (build-catten arch profile) init-sub
 vm_memory := "512M"
 vm_num_lps := "2"
 
-qemu-run-x86_64 profile="debug" serial= "" gdb="false": (create-image "x86_64" profile)
+qemu-run-x86_64 profile="debug" serial="" features="legacy_com_ports" gdb="false": (create-image "x86_64" profile features)
     qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
-    -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw {{if gdb == "true" {"-s -S"} else {""}}}
+    -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw \
+    {{ if gdb == "true" {"-s -S"} else {""} }}
 
-qemu-run-aarch64 profile="debug": (create-image "aarch64" profile)
+qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
     qemu-system-aarch64 -M virt -cpu cortex-a76 -smp {{vm_num_lps}} -m {{vm_memory}} -device ramfb -device qemu-xhci -device usb-kbd -m {{vm_memory}} -bios /usr/share/edk2/aarch64/QEMU_EFI.fd -boot d \
-    -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.hdd,format=raw
+    -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.hdd,format=raw \
+    {{ if gdb == "true" {"-s -S"} else {""} }}
 
 clean:
     cargo clean

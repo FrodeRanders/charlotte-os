@@ -11,14 +11,15 @@ test = false
 bench = false
 
 [features]
-limine = []
-acpi = ["uacpi-raw"]
+limine = ["dep:limine"]
+acpi = ["dep:uacpi-raw"]
 default = ["limine", "acpi"]
+legacy_com_ports = []
 
 [dependencies]
+limine = { version = ">=0.6.3", optional = true }
 concurrent-queue = { version = "2.5.0", default-features = false }
 hashbrown = { version = ">=0.16.0", features = ["nightly"] }
-limine = ">=0.6.3"
 spin = { version = ">=0.10.0", features = ["lock_api"] }
 talc = { version = ">=5.0.3", features = ["nightly"] }
 uacpi-raw = { git = "https://codeberg.org/CharlotteOS/uacpi-raw.git", branch = "main", optional = true }
