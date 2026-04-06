@@ -1,4 +1,6 @@
 use alloc::collections::vec_deque::VecDeque;
+use alloc::sync::Arc;
+use core::sync::atomic::AtomicBool;
 
 use hashbrown::HashMap;
 
@@ -7,7 +9,10 @@ use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
+use crate::klib::observer::{Observable, Observer};
+use crate::klib::time::duration::ExtDuration;
 use crate::memory::AddressSpaceId;
+use crate::timers::{TIMER_QUEUES, TimerEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ThreadHandle(ThreadId);
@@ -33,20 +38,29 @@ impl Ord for ThreadHandle {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RoundRobin {
     lp_id: LpId,
+    quantum: ExtDuration,
     is_idle: bool,
+    ctx_switch_pending: AtomicBool,
+    timer_event_observer: Arc<super::TimerEventObserver>,
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
 }
 
 impl RoundRobin {
-    pub fn new(lp_id: LpId) -> Self {
+    pub fn new(lp_id: LpId, quantum: ExtDuration) -> Self {
         Self {
             lp_id,
-            ..Default::default()
+            quantum,
+            is_idle: false,
+            ctx_switch_pending: AtomicBool::new(false),
+            timer_event_observer: Arc::new(super::TimerEventObserver {}),
+            run_queue: VecDeque::new(),
+            current_handle: None,
+            hwasid_map: HashMap::new(),
         }
     }
 }
@@ -62,6 +76,29 @@ impl LpScheduler for RoundRobin {
         } else {
             None
         }
+    }
+
+    fn is_ctx_switch_pending(&self) -> bool {
+        self.ctx_switch_pending.load(core::sync::atomic::Ordering::Acquire)
+    }
+
+    fn set_ctx_switch_pending(&self) {
+        unsafe {
+            let raw_self = core::mem::transmute::<&RoundRobin, *mut RoundRobin>(self);
+            (*raw_self).ctx_switch_pending.store(true, core::sync::atomic::Ordering::Release);
+        }
+    }
+
+    fn clear_ctx_switch_pending(&self) {
+        unsafe {
+            let raw_self = core::mem::transmute::<&RoundRobin, *mut RoundRobin>(self);
+            (*raw_self).ctx_switch_pending.store(false, core::sync::atomic::Ordering::Release);
+        }
+        let mut timer_event = TimerEvent::from(self.quantum);
+        timer_event.register_observer(
+            Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
+        );
+        TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {

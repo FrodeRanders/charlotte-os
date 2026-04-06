@@ -7,6 +7,7 @@ use crate::cpu::isa::lp;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+use crate::klib::time::duration::ExtDuration;
 use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::allocators::global_allocator::init_primary_allocator;
@@ -42,7 +43,7 @@ pub fn bsp_init() {
     unsafe {
         let mut ssg = SYSTEM_SCHEDULER.write();
         logln!("LP 0: Locked system scheduler.");
-        let sched = Box::new(RoundRobin::new(get_lp_id()));
+        let sched = Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10)));
         logln!("LP 0: Created new scheduler on the heap.");
         ssg.set_lp_scheduler(sched);
     }
@@ -64,7 +65,9 @@ pub fn ap_init() {
     }
     logln!("LP {lp_id}: Performing ISA independent initialization.");
     unsafe {
-        SYSTEM_SCHEDULER.write().set_lp_scheduler(Box::new(RoundRobin::new(get_lp_id())));
+        SYSTEM_SCHEDULER
+            .write()
+            .set_lp_scheduler(Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10))));
     }
     logln!("LP {lp_id}: ISA independent initialization complete.");
 }

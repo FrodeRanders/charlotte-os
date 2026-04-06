@@ -137,53 +137,55 @@ pub extern "C" fn cond_yield_lp() {
     mask_interrupts!();
     let sched = SYSTEM_SCHEDULER.read();
     let mut lsched = sched.get_lp_scheduler().lock();
-    let curr_tid = lsched.get_tid();
-    let next_tid =
-        lsched.next().expect("Error getting next thread from local scheduler during yield.");
-    drop(lsched);
-    drop(sched);
-    if curr_tid.is_some() {
-        if next_tid != curr_tid.unwrap() {
-            let (curr_rsp0_ptr, next_rsp0_ptr) = {
+    if lsched.is_ctx_switch_pending() {
+        let curr_tid = lsched.get_tid();
+        let next_tid =
+            lsched.next().expect("Error getting next thread from local scheduler during yield.");
+        if curr_tid.is_some() {
+            if next_tid != curr_tid.unwrap() {
+                let (curr_rsp0_ptr, next_rsp0_ptr) = {
+                    let mut tt_guard = MASTER_THREAD_TABLE.write();
+                    let curr_thread = tt_guard
+                        .get_mut(curr_tid.expect("Current thread ID not found during yield."))
+                        .expect("Current thread not found during yield.");
+                    let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
+                    let next_thread =
+                        tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
+                    let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
+                    (curr_rsp0_ptr, next_rsp0_ptr)
+                };
+                logln!(
+                    "Yielding from thread {:?} to thread {:?} on LP {:?}",
+                    (curr_tid.unwrap()),
+                    next_tid,
+                    (get_lp_id())
+                );
+                lsched.clear_ctx_switch_pending();
+                switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
+            } else {
+                logln!(
+                    "No thread switch needed during yield on LP {:?} because the next thread is \
+                     the same as the current thread.",
+                    (get_lp_id())
+                );
+            }
+        } else {
+            let next_rsp0_ptr = {
                 let mut tt_guard = MASTER_THREAD_TABLE.write();
-                let curr_thread = tt_guard
-                    .get_mut(curr_tid.expect("Current thread ID not found during yield."))
-                    .expect("Current thread not found during yield.");
-                let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
                 let next_thread =
                     tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
-                let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
-                (curr_rsp0_ptr, next_rsp0_ptr)
+                &raw mut next_thread.context.rsp_cpl0
             };
             logln!(
-                "Yielding from thread {:?} to thread {:?} on LP {:?}",
-                (curr_tid.unwrap()),
+                "Yielding from non-thread context to thread {:?} on LP {:?}",
                 next_tid,
                 (get_lp_id())
             );
-            switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
-        } else {
-            logln!(
-                "No thread switch needed during yield on LP {:?} because the next thread is the \
-                 same as the current thread.",
-                (get_lp_id())
-            );
+            lsched.clear_ctx_switch_pending();
+            switch_ctx(core::ptr::null_mut(), next_rsp0_ptr);
         }
-    } else {
-        let next_rsp0_ptr = {
-            let mut tt_guard = MASTER_THREAD_TABLE.write();
-            let next_thread =
-                tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
-            &raw mut next_thread.context.rsp_cpl0
-        };
-        logln!(
-            "Yielding from non-thread context to thread {:?} on LP {:?}",
-            next_tid,
-            (get_lp_id())
-        );
-        switch_ctx(core::ptr::null_mut(), next_rsp0_ptr);
     }
-    unmask_interrupts!()
+    unmask_interrupts!();
 }
 
 #[unsafe(no_mangle)]

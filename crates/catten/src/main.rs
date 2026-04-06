@@ -41,7 +41,7 @@ use spin::{Barrier, Lazy};
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
-use crate::cpu::isa::lp::ops::{get_lp_id, yield_lp};
+use crate::cpu::isa::lp::ops::{cond_yield_lp, get_lp_id};
 use crate::cpu::isa::system_info::CpuInfo;
 use crate::cpu::isa::timers::print_timer_info;
 use crate::cpu::multiprocessor::get_lp_count;
@@ -103,7 +103,8 @@ pub extern "C" fn bsp_main() -> ! {
     );
     YIELD_BARRIER.wait();
     LocalIntCtlr::init_lp();
-    yield_lp();
+    SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
+    cond_yield_lp();
     loop {
         panic!("BSP: Reached end of BSP main function. This should never happen.");
     }
@@ -129,7 +130,8 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
         "LP {lp_id}: Initialized local interrupt controller. Yielding the processor to the \
          scheduler."
     );
-    yield_lp();
+    SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
+    cond_yield_lp();
     loop {
         panic!("LP {lp_id}: Reached end of AP main function. This should never happen.");
     }

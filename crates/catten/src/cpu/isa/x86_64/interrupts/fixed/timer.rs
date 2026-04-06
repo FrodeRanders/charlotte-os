@@ -1,7 +1,5 @@
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interface::timers::LpTimerIfce;
-use crate::cpu::isa::interrupts::x2apic::{LAPICS, X2Apic};
-use crate::klib::time::duration::ExtDuration;
+use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::timers::TIMER_QUEUES;
 
 unsafe extern "custom" {
