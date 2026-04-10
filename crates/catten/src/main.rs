@@ -50,7 +50,7 @@ use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
 use crate::memory::KERNEL_ASID;
 
-const KERNEL_VERSION: (u64, u64, u64) = (0, 3, 5);
+const KERNEL_VERSION: (u64, u64, u64) = (0, 5, 0);
 static INIT_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
 static YIELD_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
 /// This is the bootstrap processor's entry point into the kernel. The `bsp_main` function is
