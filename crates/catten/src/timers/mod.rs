@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use spin::Lazy;
 
-use crate::cpu::isa::interface::timers::LpTimerIfce;
+use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
 use crate::cpu::isa::timers::LpTimer;
 use crate::klib::observer::{Observable, Observer};
 use crate::klib::sync::PerLp;
@@ -110,17 +110,18 @@ impl TimerQueue {
             if event.get_deadline() <= LpTimer::now() {
                 event.signal();
                 self.events.pop_front();
+            } else if let Some(deadline) = self.get_next_deadline() {
+                let timer = LpTimer::get();
+                let mut timerlk = timer.lock();
+                if timerlk.set_deadline(deadline) == Err(LpTimerError::DeadlinePassed) {
+                    continue;
+                }
+                timerlk.start().expect("Failed to start timer for next event");
+                return;
             } else {
-                break;
+                let _ = LpTimer::get().lock().stop();
+                return;
             }
-        }
-        if let Some(deadline) = self.get_next_deadline() {
-            let timer = LpTimer::get();
-            let mut timerlk = timer.lock();
-            timerlk.set_deadline(deadline).expect("Failed to set timer deadline for next event");
-            timerlk.start().expect("Failed to start timer for next event");
-        } else {
-            let _ = LpTimer::get().lock().stop();
         }
     }
 

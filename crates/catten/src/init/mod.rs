@@ -8,9 +8,9 @@ use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::klib::time::duration::ExtDuration;
-use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::allocators::global_allocator::init_primary_allocator;
+use crate::{log, logln};
 
 pub fn bsp_init() {
     logln!("LP 0: Performing ISA specific initialization...");
@@ -40,14 +40,13 @@ pub fn bsp_init() {
     // Pre-create all LP schedulers in LP ID order (0..lp_count) while single-threaded.
     // This ensures lp_schedulers[i] is always LP i's scheduler, regardless of AP init order.
     logln!("LP 0: Initializing LP local scheduler.");
+    logln!("LP 0: Constructing LP scheduler.");
+    let sched = Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10)));
+    logln!("LP 0: Created new LP scheduler on the heap. Submitting it to the system scheduler.");
     unsafe {
-        let mut ssg = SYSTEM_SCHEDULER.write();
-        logln!("LP 0: Locked system scheduler.");
-        let sched = Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10)));
-        logln!("LP 0: Created new scheduler on the heap.");
-        ssg.set_lp_scheduler(sched);
+        SYSTEM_SCHEDULER.write().set_lp_scheduler(sched);
     }
-    logln!("LP 0: LP local scheduler initialized.");
+    logln!("LP 0: Submitted LP scheduler to the system scheduler.");
     logln!("LP 0: ISA independent initialization complete.");
     logln!("LP 0: BSP initialization complete.");
 }

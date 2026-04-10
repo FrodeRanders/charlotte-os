@@ -105,9 +105,7 @@ pub extern "C" fn bsp_main() -> ! {
     LocalIntCtlr::init_lp();
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
-    loop {
-        panic!("BSP: Reached end of BSP main function. This should never happen.");
-    }
+    await_interrupt!();
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -132,12 +130,14 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     );
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
-    loop {
-        panic!("LP {lp_id}: Reached end of AP main function. This should never happen.");
-    }
+    await_interrupt!();
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn test_fn() {
-    loop {}
+    let thread_id = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();
+    let lp_id = get_lp_id();
+    loop {
+        //logln!("Hello from thread {thread_id} on LP {lp_id}!");
+    }
 }

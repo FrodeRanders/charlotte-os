@@ -158,8 +158,6 @@ impl LpTimerIfce for ApicTimer {
     fn start(&mut self) -> Result<(), LpTimerError> {
         if self.reset_value == 0 {
             return Err(LpTimerError::DurationNotSet);
-        } else if Self::read_timer_current_count() != 0 {
-            return Err(LpTimerError::TimerAlreadyStarted);
         } else {
             self.reset()
         }

@@ -1,5 +1,6 @@
 pub mod round_robin;
 use alloc::fmt::Debug;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::paging::HwAsid;
@@ -23,6 +24,8 @@ pub trait LpScheduler: Debug + Send {
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
     fn is_idle(&self) -> bool;
+    fn start(&mut self);
+    fn stop(&mut self);
     fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid>;
     fn thread_count(&self) -> ThreadCount;
 }
@@ -35,10 +38,10 @@ pub enum Error {
 }
 
 #[derive(Debug)]
-struct TimerEventObserver;
+struct TimerEventObserver(AtomicBool);
 
 impl Observer for TimerEventObserver {
     fn notify(&self) {
-        SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
+        self.0.store(true, Ordering::Release);
     }
 }

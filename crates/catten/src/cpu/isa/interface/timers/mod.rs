@@ -4,7 +4,7 @@ use spin::Mutex;
 
 pub use crate::klib::time::duration::ExtDuration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LpTimerError {
     DeadlinePassed,
     DivisorNotSupported,

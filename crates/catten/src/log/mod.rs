@@ -25,6 +25,7 @@ pub static LOG_PORT: spin::Lazy<spin::Mutex<Ns16550>> =
 #[macro_export]
 macro_rules! log {
     ($text:expr $(, $arg:tt)*) => ({
+        crate::cpu::isa::lp::ops::mask_interrupts!();
         #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))] {
             use core::fmt::Write;
             use crate::log::LOG_PORT;
@@ -32,11 +33,13 @@ macro_rules! log {
         }
         use crate::print;
         print!($text $(, $arg)*);
+        crate::cpu::isa::lp::ops::unmask_interrupts!();
     })
 }
 #[macro_export]
 macro_rules! logln {
     ($text:expr $(, $arg:tt)*) => ({
+        crate::cpu::isa::lp::ops::mask_interrupts!();
         #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))] {
             use core::fmt::Write;
             use crate::log::LOG_PORT;
@@ -44,5 +47,6 @@ macro_rules! logln {
         }
         use crate::println;
         println!($text $(, $arg)*);
+        crate::cpu::isa::lp::ops::mask_interrupts!();
     })
 }
