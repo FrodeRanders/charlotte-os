@@ -14,7 +14,7 @@ pub struct IdTable<T> {
     available_ids: Vec<usize>,
 }
 
-impl<T> IdTable<T> {
+impl<'a, T> IdTable<T> {
     pub fn new() -> Self {
         IdTable {
             list: Vec::new(),
@@ -54,6 +54,14 @@ impl<T> IdTable<T> {
         *element = None;
         self.available_ids.push(element_id);
         Ok(())
+    }
+
+    pub fn iter(&'a self) -> core::slice::Iter<'a, Option<T>> {
+        self.list.iter()
+    }
+
+    pub fn iter_mut(&'a mut self) -> core::slice::IterMut<'a, Option<T>> {
+        self.list.iter_mut()
     }
 }
 

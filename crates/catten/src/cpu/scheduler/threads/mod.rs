@@ -25,7 +25,6 @@ pub enum ThreadState {
     Ready(LpId),
     NeedsLpAssignment,
     Blocked(Arc<Waker>),
-    Terminated, //Used while the thread is being cleaned up
 }
 
 #[derive(Debug)]

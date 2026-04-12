@@ -1,6 +1,8 @@
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
+use alloc::format;
 use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
 
 use spin::Mutex;
 use spin::rwlock::RwLock;
@@ -13,6 +15,7 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
 use crate::logln;
+use crate::memory::AddressSpaceId;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
@@ -82,9 +85,6 @@ impl SystemScheduler {
                 ThreadState::Blocked(_) => {
                     return Err(Error::AlreadyBlocked);
                 }
-                ThreadState::Terminated => {
-                    return Err(Error::ThreadTerminated);
-                }
             }
             let waker = Arc::new(waker::Waker::new(tid));
             event.register_observer(
@@ -97,13 +97,40 @@ impl SystemScheduler {
         }
     }
 
-    // pub fn abort_thread(&self, tid: ThreadId) {
-    //     todo!()
-    // }
+    pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
+        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
+            match thread.state {
+                ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => {
+                    self.lp_schedulers[&lp_id]
+                        .lock()
+                        .remove_thread(tid)
+                        .expect("Error removing thread from LP scheduler while aborting");
+                }
+                _ => {}
+            }
+            MASTER_THREAD_TABLE
+                .write()
+                .remove_element(tid)
+                .expect(&format!("Failed to delete thread {tid}"));
+            Ok(tid)
+        } else {
+            Err(Error::InvalidThread)
+        }
+    }
 
-    // pub fn abort_as_threads(&self, asid: AddressSpaceId) {
-    //     todo!()
-    // }
+    pub fn abort_as_threads(&self, asid: AddressSpaceId) {
+        let mut threads_to_abort = Vec::new();
+        for (id, thread) in MASTER_THREAD_TABLE.read().iter().enumerate() {
+            if let Some(thread) = thread {
+                if thread.asid == asid {
+                    threads_to_abort.push(id);
+                }
+            }
+        }
+        for tid in threads_to_abort {
+            self.abort_thread(tid).expect("Error aborting thread by ASID");
+        }
+    }
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1

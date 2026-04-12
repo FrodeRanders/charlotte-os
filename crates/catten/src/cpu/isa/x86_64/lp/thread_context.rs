@@ -7,7 +7,7 @@ use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::lp::ops::user_trampoline;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::klib::collections::id_table;
-use crate::memory::allocators::stack_allocator::allocate_stack;
+use crate::memory::allocators::stack_allocator::{allocate_stack, deallocate_stack};
 use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, VAddr};
 
 /// # Interrupt stack frame structure for x86_64 architecture
@@ -85,12 +85,6 @@ impl KernelEntryFrame {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct ThreadContext {
-    pub rsp_cpl0: u64,
-    _kernel_stack_buf: VAddr,
-    _user_stack_buf: Option<VAddr>,
-}
 #[derive(Debug)]
 pub enum Error {
     AddressSpaceNotFound,
@@ -107,6 +101,24 @@ impl From<crate::memory::allocators::stack_allocator::Error> for Error {
 impl From<id_table::Error> for Error {
     fn from(err: id_table::Error) -> Self {
         Error::IdTableError(err)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ThreadContext {
+    pub rsp_cpl0: u64,
+    _kernel_stack_buf: VAddr,
+    _user_stack_buf: Option<VAddr>,
+}
+
+impl Drop for ThreadContext {
+    fn drop(&mut self) {
+        if let Some(user_stack_buf) = self._user_stack_buf {
+            deallocate_stack(user_stack_buf)
+                .expect("Failed to deallocate user stack for thread context.");
+        }
+        deallocate_stack(self._kernel_stack_buf)
+            .expect("Failed to deallocate kernel stack for thread context.");
     }
 }
 
