@@ -21,6 +21,7 @@ impl MemoryInterface for MemoryInterfaceImpl {
     const PAGE_SIZE: usize = 4096;
 }
 
+#[derive(Debug)]
 pub enum Error {
     InvalAddrTlnRes,
 }

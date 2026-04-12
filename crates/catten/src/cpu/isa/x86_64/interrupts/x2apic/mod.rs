@@ -7,7 +7,6 @@ use core::mem::MaybeUninit;
 use spin::Lazy;
 
 use super::super::constants::interrupt_vectors::*;
-use crate::klib::sync::PerLp;
 use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
 use crate::cpu::isa::interface::timers::LpTimerIfce;
 use crate::cpu::isa::interrupts::InterruptManager;
@@ -15,10 +14,12 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::get_lp_id;
+use crate::klib::sync::PerLp;
 
 pub static LAPICS: Lazy<PerLp<MaybeUninit<X2Apic>>> =
     Lazy::new(|| PerLp::new(|| MaybeUninit::uninit()));
 
+#[derive(Debug)]
 pub enum Error {
     InvalidLpId,
 }

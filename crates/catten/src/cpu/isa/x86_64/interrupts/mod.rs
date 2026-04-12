@@ -24,6 +24,7 @@ pub struct IsrDesc {
 
 pub struct InterruptManager;
 
+#[derive(Debug)]
 pub enum Error {}
 
 impl InterruptManagerIfce for InterruptManager {
