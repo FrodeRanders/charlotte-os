@@ -1,7 +1,5 @@
-mod waker;
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
-use alloc::collections::btree_set::BTreeSet;
 use alloc::sync::{Arc, Weak};
 
 use spin::Mutex;
@@ -13,7 +11,7 @@ use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId};
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
 use crate::logln;
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
@@ -21,19 +19,19 @@ pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemSchedul
 #[derive(Debug)]
 pub enum Error {
     InvalidThread,
+    AlreadyBlocked,
+    ThreadTerminated,
 }
 
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
     lp_schedulers: BTreeMap<LpId, Mutex<Box<dyn LpScheduler>>>,
-    wakers: BTreeSet<Arc<waker::Waker>>,
 }
 
 impl SystemScheduler {
     pub const fn new() -> Self {
         Self {
             lp_schedulers: BTreeMap::new(),
-            wakers: BTreeSet::new(),
         }
     }
 
@@ -73,12 +71,26 @@ impl SystemScheduler {
         event: &'a mut dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
         if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
-            thread.state = crate::cpu::scheduler::threads::ThreadState::Blocked;
+            match thread.state {
+                ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => {
+                    self.lp_schedulers[&lp_id]
+                        .lock()
+                        .remove_thread(tid)
+                        .expect("Error removing thread from LP scheduler while blocking");
+                }
+                ThreadState::NeedsLpAssignment => {}
+                ThreadState::Blocked(_) => {
+                    return Err(Error::AlreadyBlocked);
+                }
+                ThreadState::Terminated => {
+                    return Err(Error::ThreadTerminated);
+                }
+            }
             let waker = Arc::new(waker::Waker::new(tid));
             event.register_observer(
                 Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>
             );
-            self.wakers.insert(waker);
+            thread.state = ThreadState::Blocked(waker);
             Ok(())
         } else {
             Err(Error::InvalidThread)

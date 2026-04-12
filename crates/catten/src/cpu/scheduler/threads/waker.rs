@@ -1,9 +1,9 @@
-use super::SYSTEM_SCHEDULER;
+use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::logln;
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub(super) struct Waker(ThreadId);
+pub struct Waker(ThreadId);
 
 impl Waker {
     pub fn new(tid: ThreadId) -> Self {
