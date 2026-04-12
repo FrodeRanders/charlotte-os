@@ -2,107 +2,61 @@
 //!
 //! The Catten IPI protocol is designed to work using remote procedure calls (RPCs).
 //! This allows for a flexible and extensible way to send IPIs between processors.
-//! The protocol supports unicast (single target), multicast (multiple targets), and broadcast (all
-//! logical processors) IPIs. The implementation is kept as architecture indepent as possible.
+//! The protocol uses unicast IPIs exculusively to avoid having to overcomplicate the
+//! implementation which is also kept as architecture indepent as possible.
 
-use alloc::boxed::Box;
 use alloc::collections::vec_deque::VecDeque;
+use alloc::format;
 use alloc::vec::Vec;
-use core::sync::atomic::AtomicPtr;
-use core::sync::atomic::Ordering::*;
 
-use spin::barrier::Barrier;
-use spin::rwlock::RwLock;
-use spin::{Lazy, Mutex};
+use concurrent_queue::ConcurrentQueue;
+use spin::Mutex;
 
+use crate::cpu::isa::constants::interrupt_vectors::UNICAST_IPI_VECTOR;
+use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
+use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
+use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::memory::tlb;
 use crate::cpu::multiprocessor::get_lp_count;
-use crate::get_lp_id;
-use crate::klib::collections::boxed_slice::make_boxed_slice;
+use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::memory::linear::VAddr;
 use crate::memory::{AddressSpaceId, KERNEL_ASID};
 
-pub struct IpiRpcReq {
-    pub sender_lp_id: LpId,
-    pub recipient_lp_ids: Vec<LpId>,
-    pub request_id: u64,
-    pub rpc: IpiRpc,
-    pub hash: u64,
-    pub completion_barrier: Option<Barrier>,
+pub static IPI_CMD_QUEUES: spin::Lazy<IpiCmdQueues> = spin::Lazy::new(IpiCmdQueues::new);
+
+#[inline(always)]
+pub fn send_ipi(target_lp: LpId) {
+    LocalIntCtlr::send_unicast_ipi(target_lp, UNICAST_IPI_VECTOR)
+        .expect(&format!("Failed to send an IPI from LP {} to LP {target_lp}", get_lp_id()));
 }
 
-pub enum Error {
-    MailboxBusy,
+#[derive(Debug)]
+pub struct IpiCmdQueues {
+    queues: Vec<ConcurrentQueue<IpiRpc>>,
 }
 
-pub static IPI_RPC_MAILBOXES: Lazy<IpiRpcMailbox> = Lazy::new(IpiRpcMailbox::new);
-
-pub struct IpiRpcMailbox {
-    unicast: Box<[AtomicPtr<IpiRpcReq>]>,
-    multicast: RwLock<Box<[AtomicPtr<IpiRpcReq>]>>,
-    broadcast: AtomicPtr<IpiRpcReq>,
-}
-
-impl IpiRpcMailbox {
+impl IpiCmdQueues {
     pub fn new() -> Self {
         Self {
-            unicast: make_boxed_slice(get_lp_count() as usize, || {
-                AtomicPtr::<IpiRpcReq>::new(core::ptr::null_mut())
-            }),
-            multicast: RwLock::new(make_boxed_slice(get_lp_count() as usize, || {
-                AtomicPtr::<IpiRpcReq>::new(core::ptr::null_mut())
-            })),
-            broadcast: AtomicPtr::<IpiRpcReq>::new(core::ptr::null_mut()),
+            queues: (0..get_lp_count()).map(|_| ConcurrentQueue::unbounded()).collect::<Vec<_>>(),
         }
     }
 
-    pub fn try_write_unicast(&self, dest: LpId, req: *mut IpiRpcReq) -> Result<(), Error> {
-        let result = self.unicast[dest as usize].compare_exchange(
-            core::ptr::null_mut(),
-            req,
-            AcqRel,
-            Acquire,
-        );
-        if result.is_ok() {
-            Ok(())
-        } else {
-            Err(Error::MailboxBusy)
-        }
+    pub fn push_to(&self, target_lp: usize, ipi: IpiRpc) {
+        self.queues[target_lp].push(ipi).expect("Failed to push IPI command to target LP");
     }
 
-    pub fn try_write_multicast(&self, dest: Vec<LpId>, req: *mut IpiRpcReq) -> Result<(), Error> {
-        todo!()
-    }
-
-    pub fn try_write_broadcast(&self, req: *mut IpiRpcReq) -> Result<(), Error> {
-        let result = self.broadcast.compare_exchange(core::ptr::null_mut(), req, AcqRel, Acquire);
-        if result.is_ok() {
-            Ok(())
-        } else {
-            Err(Error::MailboxBusy)
-        }
-    }
-
-    pub fn read_own_unicast(&self) -> *mut IpiRpcReq {
-        self.unicast[get_lp_id() as usize].load(Acquire)
-    }
-
-    pub fn read_own_multicast(&self) -> *mut IpiRpcReq {
-        self.multicast.read()[get_lp_id() as usize].load(Acquire)
-    }
-
-    pub fn read_broadcast(&self) -> *mut IpiRpcReq {
-        self.broadcast.load(Acquire)
+    pub fn pop_local(&self, lp_id: usize) -> Option<IpiRpc> {
+        self.queues[lp_id].pop().ok()
     }
 }
 
-unsafe impl Sync for IpiRpcMailbox {}
-
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum IpiRpc {
     VMemInval(AddressSpaceId, VAddr, usize),
     AsidInval(AddressSpaceId),
+    Wakeup,
 }
 
 #[unsafe(no_mangle)]
@@ -117,6 +71,9 @@ pub extern "C" fn ih_interprocessor_interrupt(ipi_queue: &'static mut Mutex<VecD
                 }
             }
             IpiRpc::AsidInval(asid) => tlb::inval_asid(asid),
+            IpiRpc::Wakeup => {
+                SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
+            }
         }
     }
 }
