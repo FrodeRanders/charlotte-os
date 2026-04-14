@@ -1,5 +1,5 @@
-use core::mem::MaybeUninit;
 use core::ptr::NonNull;
+use core::sync::atomic::{AtomicPtr, Ordering};
 
 use talc::base::Talc;
 use talc::base::binning::Binning;
@@ -8,7 +8,7 @@ use talc::*;
 
 use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::cpu::multiprocessor::spin::IsrSafeLock;
 use crate::klib::size::mebibytes;
 use crate::memory::VAddr;
 use crate::memory::allocators::memory::try_allocate_and_map_range;
@@ -17,7 +17,8 @@ use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
 #[global_allocator]
-pub static PRIMARY_ALLOCATOR: TalcLock<Mutex<()>, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
+pub static PRIMARY_ALLOCATOR: TalcLock<IsrSafeLock, ExtendOnOom> =
+    TalcLock::new(ExtendOnOom::new());
 
 pub fn init_primary_allocator() {
     let base = LA_MAP.get_region(KernelAllocatorArena).base;
@@ -28,13 +29,13 @@ pub fn init_primary_allocator() {
         let returned_ptr = pa_lock
             .claim(base.into_mut(), INITIAL_HEAP_SIZE)
             .expect("Talc failed to claim the initial kernel heap");
-        pa_lock.source.heap_ptr.lock().write(returned_ptr);
+        pa_lock.source.heap_ptr.store(returned_ptr.as_ptr(), Ordering::Release);
     }
 }
 
 #[derive(Debug)]
 pub struct ExtendOnOom {
-    heap_ptr: Mutex<MaybeUninit<NonNull<u8>>>,
+    heap_ptr: AtomicPtr<u8>,
 }
 
 unsafe impl Sync for ExtendOnOom {}
@@ -43,7 +44,7 @@ unsafe impl Send for ExtendOnOom {}
 impl ExtendOnOom {
     const fn new() -> Self {
         ExtendOnOom {
-            heap_ptr: Mutex::new(MaybeUninit::uninit()),
+            heap_ptr: AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 }
@@ -53,12 +54,14 @@ unsafe impl Source for ExtendOnOom {
         talc: &mut Talc<Self, B>,
         layout: core::alloc::Layout,
     ) -> Result<(), ()> {
-        let curr_end = unsafe { talc.source.heap_ptr.lock().assume_init() };
-        let new_region_start =
-            VAddr::from(curr_end.as_ptr() as usize).next_aligned_to(layout.align());
+        let curr_end = talc.source.heap_ptr.load(Ordering::Acquire);
+        let new_region_start = VAddr::from(curr_end as usize).next_aligned_to(layout.align());
         let new_region_end = new_region_start + layout.size();
         unsafe {
-            talc.extend(curr_end, new_region_end.into_mut());
+            talc.extend(
+                NonNull::new(curr_end).expect("Passed null pointer to the constructor of NonNull"),
+                new_region_end.into_mut(),
+            );
         }
         Ok(())
     }

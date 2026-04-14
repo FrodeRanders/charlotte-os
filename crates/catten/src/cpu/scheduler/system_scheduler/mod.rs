@@ -4,7 +4,7 @@ use alloc::format;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use spin::Mutex;
 use spin::rwlock::RwLock;
 
 use super::lp_schedulers::LpScheduler;

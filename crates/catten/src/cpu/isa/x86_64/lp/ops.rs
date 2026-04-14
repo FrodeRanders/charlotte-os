@@ -32,6 +32,20 @@ macro_rules! await_interrupt {
 #[rustfmt::skip]
 pub use await_interrupt;
 
+#[inline(always)]
+pub fn get_int_state() -> bool {
+    let rflags: u64;
+    unsafe {
+        core::arch::asm!(
+            "pushfq",
+            "pop {}",
+            out(reg) rflags,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    rflags & (1 << rflags::IF_SHIFT) != 0
+}
+
 #[rustfmt::skip]
 #[macro_export]
 macro_rules! mask_interrupts {
@@ -179,9 +193,8 @@ pub extern "C" fn cond_yield_lp() {
             } else {
                 let next_rsp0_ptr = {
                     let mut tt_guard = MASTER_THREAD_TABLE.write();
-                    let next_thread = tt_guard
-                        .get_mut(next_tid)
-                        .expect("Next thread not found during yield.");
+                    let next_thread =
+                        tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
                     &raw mut next_thread.context.rsp_cpl0
                 };
                 logln!(

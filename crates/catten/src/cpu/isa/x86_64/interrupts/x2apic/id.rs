@@ -1,6 +1,6 @@
 use alloc::collections::btree_map::BTreeMap;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use spin::Mutex;
 
 use crate::cpu::isa::constants::msrs;
 use crate::cpu::isa::lp::LpId;

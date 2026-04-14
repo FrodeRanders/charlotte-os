@@ -6,7 +6,7 @@ use core::arch::asm;
 use core::iter::Iterator;
 use core::ptr::NonNull;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use spin::Mutex;
 
 use super::MemoryInterfaceImpl;
 use super::address::vaddr::VAddr;

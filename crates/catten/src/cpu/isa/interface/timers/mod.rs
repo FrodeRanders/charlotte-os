@@ -1,7 +1,6 @@
 use alloc::sync::Arc;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-
+use spin::Mutex;
 pub use crate::klib::time::duration::ExtDuration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
