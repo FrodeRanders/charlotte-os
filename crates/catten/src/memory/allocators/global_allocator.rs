@@ -1,7 +1,6 @@
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 
-use spin::Mutex;
 use talc::base::Talc;
 use talc::base::binning::Binning;
 use talc::source::Source;
@@ -9,6 +8,7 @@ use talc::*;
 
 use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::klib::size::mebibytes;
 use crate::memory::VAddr;
 use crate::memory::allocators::memory::try_allocate_and_map_range;

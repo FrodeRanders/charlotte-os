@@ -59,6 +59,7 @@ dependencies = [
  "concurrent-queue",
  "hashbrown",
  "limine",
+ "lock_api",
  "spin",
  "talc",
  "uacpi-raw",

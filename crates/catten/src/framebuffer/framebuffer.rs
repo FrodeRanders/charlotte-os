@@ -6,9 +6,9 @@ use crate::framebuffer::chars::{FONT, FONT_HEIGHT, FONT_WIDTH};
 extern crate limine;
 use limine::framebuffer::Framebuffer;
 use spin::lazy::Lazy;
-use spin::mutex::Mutex;
 
 use super::console::{CONSOLE_HEIGHT, CONSOLE_WIDTH};
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 /// Global access to the framebuffer
 pub static FRAMEBUFFER: Lazy<Mutex<FrameBufferInfo>> =

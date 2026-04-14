@@ -3,7 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use spin::lazy::Lazy;
-use spin::mutex::Mutex;
+use crate::cpu::multiprocessor::spin::mutex::Mutex::Mutex;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;

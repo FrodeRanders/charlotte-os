@@ -1,7 +1,6 @@
 use core::fmt;
 
-use spin::mutex::Mutex;
-
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::framebuffer::chars::{FONT_HEIGHT, FONT_WIDTH};
 use crate::framebuffer::colors::Color;
 use crate::framebuffer::framebuffer::FRAMEBUFFER;

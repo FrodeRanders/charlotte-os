@@ -1,8 +1,8 @@
 //! # Multi-Processor Management
-
+pub mod spin;
 use core::sync::atomic::{AtomicU16, Ordering};
 
-use spin::Lazy;
+use ::spin::Lazy;
 
 use crate::klib::sync::PerLp;
 pub mod cpu_topology;
