@@ -1,19 +1,19 @@
 use alloc::sync::Weak;
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use concurrent_queue::ConcurrentQueue;
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, get_thread_id};
+use crate::cpu::scheduler::threads::ThreadId;
 use crate::klib::observer::{Observable, Observer};
 
 pub struct MutexGuard<'a, T> {
-    mutex: &'a Mutex<T>,
+    mutex: &'a mut Mutex<T>,
 }
 
 impl<'a, T> MutexGuard<'a, T> {
-    fn new(mutex: &'a Mutex<T>) -> Self {
+    fn new(mutex: &'a mut Mutex<T>) -> Self {
         Self {
             mutex,
         }
@@ -44,39 +44,62 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 
 impl<'a, T> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
-        self.mutex.state.store(false, Ordering::Release);
+        unsafe {
+            self.mutex.unlock();
+        }
     }
 }
 
 pub struct Mutex<T> {
-    state: AtomicBool,
     data: UnsafeCell<T>,
-    waiters: ConcurrentQueue<Weak<dyn Observer>>,
+    waiters: ConcurrentQueue<(ThreadId, Weak<dyn Observer>)>,
+    holder: Option<ThreadId>,
 }
 
 impl<T> Observable for Mutex<T> {
     fn register_observer(&mut self, observer: Weak<dyn crate::klib::observer::Observer>) {
-        self.waiters.push(observer).expect("Failed to register observer with busy Mutex");
+        self.waiters
+            .push((
+                get_thread_id().expect("Attempted to unwrap thread ID from non-thread context"),
+                observer,
+            ))
+            .expect("Failed to register observer with busy Mutex");
     }
 }
 
 impl<T> Mutex<T> {
     pub const fn new(data: T) -> Self {
         Self {
-            state: AtomicBool::new(false),
             data: UnsafeCell::new(data),
             waiters: ConcurrentQueue::unbounded(),
+            holder: None,
         }
     }
 
-    pub fn lock(&self) -> MutexGuard<'_, T> {
-        while self
-            .state
-            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    pub fn lock<'m>(&'m mut self) -> MutexGuard<'m, T> {
+        let tid = SYSTEM_SCHEDULER
+            .read()
+            .get_lp_scheduler()
+            .lock()
+            .get_tid()
+            .expect("Attempted unwrap thread ID from non-thread context");
+        while !self.waiters.is_empty() || self.holder == Some(tid) {
+            SYSTEM_SCHEDULER
+                .write()
+                .block_thread(tid, self as &mut dyn Observable)
+                .expect("Failed to block thread on attempt to lock Mutex");
         }
         MutexGuard::new(self)
+    }
+
+    unsafe fn unlock(&mut self) {
+        while let Ok(waiter) = self.waiters.pop() {
+            if let Some(observer) = waiter.1.upgrade() {
+                self.holder = Some(waiter.0);
+                observer.notify();
+                return;
+            }
+        }
+        self.holder = None;
     }
 }

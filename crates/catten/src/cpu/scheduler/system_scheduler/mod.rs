@@ -136,3 +136,7 @@ impl SystemScheduler {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1
     }
 }
+
+pub fn get_thread_id() -> Option<ThreadId> {
+    SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid()
+}
