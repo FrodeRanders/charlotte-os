@@ -3,7 +3,6 @@
 #![feature(abi_custom)]
 #![feature(extend_one)]
 #![feature(iter_advance_by)]
-#![feature(likely_unlikely)]
 #![feature(step_trait)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
