@@ -34,6 +34,8 @@ pub mod panic;
 pub mod self_test;
 pub mod timers;
 
+use core::hint::unreachable_unchecked;
+
 use limine::mp::MpInfo;
 use spin::{Barrier, Lazy};
 
@@ -104,7 +106,7 @@ pub extern "C" fn bsp_main() -> ! {
     LocalIntCtlr::init_lp();
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
-    await_interrupt!();
+    unsafe { unreachable_unchecked() }
 }
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
@@ -129,7 +131,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     );
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
-    await_interrupt!();
+    unsafe { unreachable_unchecked() }
 }
 
 #[unsafe(no_mangle)]
