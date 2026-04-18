@@ -1,3 +1,17 @@
 [workspace]
 members = ["crates/*"]
 resolver = "3"
+
+[profile.dev]
+debug = "full"
+debug-assertions = true
+panic = "abort"
+lto = true
+opt-level = 3
+
+[profile.release]
+debug = "none"
+debug-assertions = false
+panic = "abort"
+lto = true
+opt-level = 3
