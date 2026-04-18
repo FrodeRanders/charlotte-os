@@ -23,13 +23,15 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
     logln!("Starting Secondary LPs...");
     if let Some(res) = MP_REQUEST.response() {
         logln!("Obtained multiprocessor response from Limine");
-        #[cfg(target_arch = "x86_64")]
-        {
-            if res.flags & MP_FLAG_X2APIC as u32 != 0 {
-                logln!("Limine has set all LAPICs to x2APIC mode.")
-            } else {
-                panic!("Processor not supported: x2APIC mode is not available.");
-            }
+        cfg_select! {
+            target_arch = "x86_64" => {
+                if res.flags & MP_FLAG_X2APIC as u32 != 0 {
+                    logln!("Limine has set all LAPICs to x2APIC mode.")
+                } else {
+                    panic!("Processor not supported: x2APIC mode is not available.");
+                }
+            },
+            _ => {/* Non-x86_64 ISAs require no special secondary processor startup handling */}
         }
         let lps = res.cpus();
         for lp in lps {

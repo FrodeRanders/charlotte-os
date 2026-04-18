@@ -22,10 +22,11 @@
 //!   As such we do not provide a separate module for SMM calls.
 
 // Advanced Configuration and Power Interface (ACPI)
+#[cfg(any(target_arch = "x86_64", feature = "acpi"))]
 mod acpi;
 pub mod boot_protocol;
 // Device Tree
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]
 mod devicetree;
 // ARM Secure Monitor Call (SMC) Interface
 #[cfg(target_arch = "aarch64")]

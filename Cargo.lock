@@ -57,6 +57,7 @@ name = "catten"
 version = "0.5.0"
 dependencies = [
  "concurrent-queue",
+ "flat_device_tree",
  "hashbrown",
  "limine",
  "lock_api",
@@ -143,6 +144,12 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
+name = "flat_device_tree"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d29ba76ecf314f211601c5641d6fc4393d8f56a3b7764b3c8544639aad965a9"
 
 [[package]]
 name = "foldhash"
