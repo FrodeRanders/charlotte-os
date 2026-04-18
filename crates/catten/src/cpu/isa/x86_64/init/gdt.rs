@@ -1,6 +1,5 @@
 use core::arch::asm;
 use core::mem::size_of;
-use core::ptr;
 
 use crate::get_lp_id;
 
@@ -71,7 +70,7 @@ impl Gdt {
         //User Mode Data Segment
         gdt.set_segment_desc(4, 0, 0xfffff, 0xf2, 0x0);
         //Task State Segment
-        gdt.set_tss_desc(ptr::addr_of!(*tss) as u64, size_of::<Tss>() as u32);
+        gdt.set_tss_desc(&raw const *tss as u64, size_of::<Tss>() as u32);
 
         gdt
     }
