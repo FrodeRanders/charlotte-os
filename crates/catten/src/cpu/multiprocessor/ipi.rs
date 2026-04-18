@@ -10,7 +10,7 @@ use alloc::format;
 use alloc::vec::Vec;
 
 use concurrent_queue::ConcurrentQueue;
-use spin::Mutex;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 use crate::cpu::isa::constants::interrupt_vectors::UNICAST_IPI_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;

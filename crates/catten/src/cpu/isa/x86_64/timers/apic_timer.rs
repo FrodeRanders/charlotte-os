@@ -12,7 +12,7 @@ use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::timers::tsc::rdtsc;
 use crate::cpu::isa::x86_64::constants::msrs;
 use crate::cpu::multiprocessor::get_lp_count;
-use spin::Mutex;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::klib::time::duration::ExtDuration;
 
 pub static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {

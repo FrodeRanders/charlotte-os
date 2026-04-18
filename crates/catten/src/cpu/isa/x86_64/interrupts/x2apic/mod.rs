@@ -13,8 +13,8 @@ use crate::cpu::isa::interrupts::InterruptManager;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::timers::apic_timer::ApicTimer;
 use crate::cpu::isa::x86_64::constants::msrs;
+use crate::cpu::multiprocessor::spin::per_lp::PerLp;
 use crate::get_lp_id;
-use crate::klib::sync::PerLp;
 
 pub static LAPICS: Lazy<PerLp<MaybeUninit<X2Apic>>> =
     Lazy::new(|| PerLp::new(|| MaybeUninit::uninit()));

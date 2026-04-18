@@ -4,10 +4,10 @@ use alloc::sync::Arc;
 use core::mem::offset_of;
 
 use spin::Lazy;
-use spin::rwlock::RwLock;
 
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::thread_context::ThreadContext;
+use crate::cpu::multiprocessor::spin::rwlock::RwLock;
 use crate::cpu::scheduler::threads::waker::Waker;
 use crate::klib::collections::id_table::IdTable;
 use crate::memory::AddressSpaceId;

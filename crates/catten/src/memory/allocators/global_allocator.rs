@@ -8,7 +8,7 @@ use talc::*;
 
 use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
-use crate::cpu::multiprocessor::spin::IsrSafeLock;
+use crate::cpu::multiprocessor::spin::mutex::MutexCore;
 use crate::klib::size::mebibytes;
 use crate::memory::VAddr;
 use crate::memory::allocators::memory::try_allocate_and_map_range;
@@ -17,8 +17,7 @@ use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
 #[global_allocator]
-pub static PRIMARY_ALLOCATOR: TalcLock<IsrSafeLock, ExtendOnOom> =
-    TalcLock::new(ExtendOnOom::new());
+pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
 pub fn init_primary_allocator() {
     let base = LA_MAP.get_region(KernelAllocatorArena).base;

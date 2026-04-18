@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicU16, Ordering};
 
 use ::spin::Lazy;
 
-use crate::klib::sync::PerLp;
+use crate::cpu::multiprocessor::spin::per_lp::PerLp;
 
 /// The current interrupt depth for each LP. This is used primarily to avoid self deadlocks.
 static INT_DEPTH: Lazy<PerLp<AtomicU16>> = Lazy::new(|| PerLp::new(|| AtomicU16::new(0)));

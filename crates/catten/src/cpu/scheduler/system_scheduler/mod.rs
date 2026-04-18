@@ -4,15 +4,14 @@ use alloc::format;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 
-use spin::Mutex;
-use spin::rwlock::RwLock;
-
 use super::lp_schedulers::LpScheduler;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::cpu::multiprocessor::spin::rwlock::RwLock;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
 use crate::logln;
 use crate::memory::AddressSpaceId;

@@ -8,7 +8,7 @@ use limine::framebuffer::Framebuffer;
 use spin::lazy::Lazy;
 
 use super::console::{CONSOLE_HEIGHT, CONSOLE_WIDTH};
-use spin::Mutex;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 /// Global access to the framebuffer
 pub static FRAMEBUFFER: Lazy<Mutex<FrameBufferInfo>> =
