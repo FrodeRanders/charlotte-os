@@ -2,7 +2,7 @@ use limine::mp::MP_FLAG_X2APIC;
 use spin::{Lazy, RwLock};
 
 use crate::environment::boot_protocol::limine::MP_REQUEST;
-use crate::{ap_main, logln};
+use crate::{ap_main, early_logln, logln};
 
 pub(super) static LP_COUNT: Lazy<RwLock<u32>> = Lazy::new(|| {
     RwLock::new({
@@ -53,9 +53,17 @@ pub static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     store_lp_id(lp_id);
-    logln!(
-        "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",
-        (get_lic_id()),
-        (get_lp_id())
-    );
+    if lp_id == 0 {
+        early_logln!(
+            "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",
+            (get_lic_id()),
+            (get_lp_id())
+        );
+    } else {
+        logln!(
+            "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",
+            (get_lic_id()),
+            (get_lp_id())
+        );
+    }
 }

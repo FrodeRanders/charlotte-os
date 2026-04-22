@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use spin::Lazy;
 
-use crate::cpu::isa::lp::ops::{get_int_state, get_lp_id};
+use crate::cpu::isa::lp::ops::{get_int_state, get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::multiprocessor::get_lp_count;
 
 pub static INT_STATE: Lazy<IntState> = Lazy::new(|| IntState::new());
@@ -27,6 +27,8 @@ impl IntState {
 
     pub fn save_int(&self) {
         let lp_idx = get_lp_id() as usize;
+        let int_state = get_int_state();
+        mask_interrupts!();
         // Spin until we can acquire the lock
         while self.raw_locks[lp_idx]
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -43,11 +45,11 @@ impl IntState {
         unsafe {
             let sc_mut = sc_ptr as *mut usize;
             *sc_mut += 1;
-            // save the interrupt enable bit if necessary.
+            // save and clear the interrupt enable bit if necessary.
             if self.save_counts[lp_idx] == 1 {
                 let sib_ptr = &raw const self.saved_int_bits[lp_idx];
                 let sib_mut = sib_ptr as *mut bool;
-                *sib_mut = get_int_state();
+                *sib_mut = int_state;
             }
         }
         // Release the raw lock
@@ -56,6 +58,7 @@ impl IntState {
 
     pub fn restore_int(&self) {
         let lp_idx = get_lp_id() as usize;
+        mask_interrupts!();
         // Spin until we can acquire the lock
         while self.raw_locks[lp_idx]
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -65,6 +68,7 @@ impl IntState {
         }
         // Decrement the save count using raw pointers and unsafe
         let sc_ptr = &raw const self.save_counts[lp_idx];
+        let mut restore_saved_int = false;
         unsafe {
             let sc_mut = sc_ptr as *mut usize;
             *sc_mut -= 1;
@@ -72,12 +76,13 @@ impl IntState {
             if self.save_counts[lp_idx] == 0 {
                 let sib_ptr = &raw const self.saved_int_bits[lp_idx];
                 let sib_mut = sib_ptr as *mut bool;
-                if *sib_mut {
-                    crate::cpu::isa::lp::ops::unmask_interrupts!();
-                }
+                restore_saved_int = *sib_mut;
             }
         }
         // Release the raw lock
         self.raw_locks[lp_idx].store(false, Ordering::Release);
+        if restore_saved_int {
+            unmask_interrupts!();
+        }
     }
 }

@@ -85,7 +85,7 @@ isr_double_fault:
 .global isr_general_protection_fault
 isr_general_protection_fault:
 	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
-	mov rdx, [rsp]
+	mov rdx, [rsp + 8 * 8]
 	call ih_general_protection_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq

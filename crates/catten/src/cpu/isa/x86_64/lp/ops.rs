@@ -148,7 +148,17 @@ pub extern "C" fn set_lp_local_base(base: VAddr) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn cond_yield_lp() {
+    let interrupts_were_enabled = get_int_state();
     mask_interrupts!();
+    #[derive(Clone, Copy)]
+    enum YieldTrace {
+        None,
+        NoSwitch { lp_id: LpId },
+        FromThread { current: usize, next: usize, lp_id: LpId },
+        FromNonThread { next: usize, lp_id: LpId },
+    }
+
+    let mut trace = YieldTrace::None;
     // Collect switch parameters and release all locks before calling switch_ctx.
     // switch_ctx may permanently abandon the current stack (initial non-thread switch),
     // so any guards held across it would never be dropped, leaving locks permanently locked.
@@ -174,20 +184,15 @@ pub extern "C" fn cond_yield_lp() {
                         let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
                         (curr_rsp0_ptr, next_rsp0_ptr)
                     };
-                    logln!(
-                        "Yielding from thread {:?} to thread {:?} on LP {:?}",
-                        (curr_tid.unwrap()),
-                        next_tid,
-                        (get_lp_id())
-                    );
+                    trace = YieldTrace::FromThread {
+                        current: curr_tid.unwrap(),
+                        next: next_tid,
+                        lp_id: get_lp_id(),
+                    };
                     lsched.clear_ctx_switch_pending();
                     Some((curr_rsp0_ptr, next_rsp0_ptr))
                 } else {
-                    logln!(
-                        "No thread switch needed during yield on LP {:?} because the next thread \
-                         is the same as the current thread.",
-                        (get_lp_id())
-                    );
+                    trace = YieldTrace::NoSwitch { lp_id: get_lp_id() };
                     None
                 }
             } else {
@@ -197,11 +202,10 @@ pub extern "C" fn cond_yield_lp() {
                         tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
                     &raw mut next_thread.context.rsp_cpl0
                 };
-                logln!(
-                    "Yielding from non-thread context to thread {:?} on LP {:?}",
-                    next_tid,
-                    (get_lp_id())
-                );
+                trace = YieldTrace::FromNonThread {
+                    next: next_tid,
+                    lp_id: get_lp_id(),
+                };
                 lsched.clear_ctx_switch_pending();
                 Some((core::ptr::null_mut(), next_rsp0_ptr))
             }
@@ -210,10 +214,35 @@ pub extern "C" fn cond_yield_lp() {
         }
         // lsched and sched guards dropped here before switch_ctx
     };
+    match trace {
+        YieldTrace::None => {}
+        YieldTrace::NoSwitch { lp_id } => logln!(
+            "No thread switch needed during yield on LP {:?} because the next thread is the same \
+             as the current thread.",
+            lp_id
+        ),
+        YieldTrace::FromThread {
+            current,
+            next,
+            lp_id,
+        } => logln!(
+            "Yielding from thread {:?} to thread {:?} on LP {:?}",
+            current,
+            next,
+            lp_id
+        ),
+        YieldTrace::FromNonThread { next, lp_id } => logln!(
+            "Yielding from non-thread context to thread {:?} on LP {:?}",
+            next,
+            lp_id
+        ),
+    }
     if let Some((curr_rsp0_ptr, next_rsp0_ptr)) = switch_params {
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
     }
-    unmask_interrupts!();
+    if interrupts_were_enabled {
+        unmask_interrupts!();
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -241,13 +270,15 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         // restore caller-saved registers
         "pop rax",
         "mov cr3, rax",
-        "popfq",
+        "pop rax",
         "pop r15",
         "pop r14",
         "pop r13",
         "pop r12",
         "pop rbp",
         "pop rbx",
+        "push rax",
+        "popfq",
         // return to the next thread
         "ret",
     );
@@ -291,5 +322,20 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
     naked_asm!(
         // `iretq` to the user entry point
         "iretq",
+    );
+}
+
+#[unsafe(no_mangle)]
+#[unsafe(naked)]
+pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
+    naked_asm!(
+        "sti",
+        "sub rsp, 8",
+        "call r12",
+        "add rsp, 8",
+        "cli",
+        "2:",
+        "hlt",
+        "jmp 2b",
     );
 }

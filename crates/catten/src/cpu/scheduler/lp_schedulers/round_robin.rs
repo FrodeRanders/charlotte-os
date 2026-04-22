@@ -5,7 +5,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use hashbrown::HashMap;
 
 use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::{get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
@@ -18,12 +17,9 @@ use crate::timers::{TIMER_QUEUES, TimerEvent};
 struct ThreadHandle(ThreadId);
 impl PartialOrd for ThreadHandle {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        mask_interrupts!();
-        let self_as =
-            unsafe { MASTER_THREAD_TABLE.read().get(self.0).as_ref().unwrap_unchecked().asid };
-        let other_as =
-            unsafe { MASTER_THREAD_TABLE.read().get(other.0).as_ref().unwrap_unchecked().asid };
-        unmask_interrupts!();
+        let tt_guard = MASTER_THREAD_TABLE.read();
+        let self_as = unsafe { tt_guard.get(self.0).as_ref().unwrap_unchecked().asid };
+        let other_as = unsafe { tt_guard.get(other.0).as_ref().unwrap_unchecked().asid };
         // Sort first by AddressSpaceId then by ThreadId
         if self_as != other_as {
             self_as.partial_cmp(&other_as)
@@ -101,31 +97,39 @@ impl LpScheduler for RoundRobin {
         if self.run_queue.is_empty() {
             Err(Error::EmptyRunQueue)
         } else {
+            let previous_handle = self.current_handle;
             if let Some(handle) = self.current_handle {
                 self.run_queue.push_back(handle);
             }
             self.current_handle = Some(unsafe { self.run_queue.pop_front().unwrap_unchecked() });
             let next_tid = unsafe { self.current_handle.unwrap_unchecked() }.0;
-            // Update the thread's state value in the master thread table.
-            // Note: callers (yield_lp) must ensure interrupts are masked before calling next()
-            // to prevent re-entrant deadlocks from pending IPIs.
-            MASTER_THREAD_TABLE.write().get_mut(next_tid).as_mut().unwrap().state =
-                ThreadState::Running(get_lp_id());
+            let mut tt_guard = MASTER_THREAD_TABLE.write();
+            if let Some(previous_handle) = previous_handle {
+                tt_guard.get_mut(previous_handle.0).as_mut().unwrap().state =
+                    ThreadState::Ready(self.lp_id);
+            }
+            tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
             Ok(next_tid)
         }
     }
 
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
-        match MASTER_THREAD_TABLE.read().get(tid).as_ref().unwrap().state {
-            ThreadState::Running(_) | ThreadState::Ready(_) => {
-                Err(Error::ThreadAlreadyAssignedToLp)
-            }
-            _ => {
-                let new_handle = ThreadHandle(tid);
-                self.run_queue
-                    .insert(self.run_queue.partition_point(|e| *e < new_handle), new_handle);
-                Ok(())
-            }
+        let thread_already_assigned = {
+            let tt_guard = MASTER_THREAD_TABLE.read();
+            matches!(
+                tt_guard.get(tid).as_ref().unwrap().state,
+                ThreadState::Running(_) | ThreadState::Ready(_)
+            )
+        };
+
+        if thread_already_assigned {
+            Err(Error::ThreadAlreadyAssignedToLp)
+        } else {
+            let new_handle = ThreadHandle(tid);
+            self.run_queue.push_back(new_handle);
+            MASTER_THREAD_TABLE.write().get_mut(tid).as_mut().unwrap().state =
+                ThreadState::Ready(self.lp_id);
+            Ok(())
         }
     }
 
@@ -136,12 +140,12 @@ impl LpScheduler for RoundRobin {
             self.current_handle = None;
             Ok(())
         } else {
-            match self.run_queue.binary_search(&handle) {
-                Ok(idx) => {
+            match self.run_queue.iter().position(|queued| *queued == handle) {
+                Some(idx) => {
                     self.run_queue.remove(idx);
                     Ok(())
                 }
-                Err(_) => Err(Error::ThreadNotAssignedToThisLp),
+                None => Err(Error::ThreadNotAssignedToThisLp),
             }
         }
     }

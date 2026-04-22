@@ -59,18 +59,18 @@ static YIELD_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() a
 /// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.
 #[unsafe(no_mangle)]
 pub extern "C" fn bsp_main() -> ! {
-    logln!(
+    early_logln!(
         "Catten Kernel Version {}.{}.{}",
         (KERNEL_VERSION.0),
         (KERNEL_VERSION.1),
         (KERNEL_VERSION.2)
     );
-    logln!("========================================================================");
-    logln!("Initializing the system using the bootstrap processor...");
+    early_logln!("========================================================================");
+    early_logln!("Initializing the system using the bootstrap processor...");
     unsafe {
         assign_id();
     }
-    logln!("BSP assigned ID 0.");
+    early_logln!("BSP assigned ID 0.");
     init::bsp_init();
     logln!("System initialized.");
     logln!("Starting secondary LPs...");
@@ -84,7 +84,7 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     print_timer_info();
     mask_interrupts!();
-    for _ in 0..(get_lp_count() * 2) {
+    for _ in 0..(get_lp_count() * 3) {
         logln!("Creating new thread.");
         let thread = Thread::new(false, KERNEL_ASID, test_fn as *const fn());
         logln!("Created thread.");
@@ -139,6 +139,6 @@ pub extern "C" fn test_fn() {
     let thread_id = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().unwrap();
     let lp_id = get_lp_id();
     loop {
-        //logln!("Hello from thread {thread_id} on LP {lp_id}!");
+        logln!("Logging from thread {thread_id} on LP {lp_id}!");
     }
 }

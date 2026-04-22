@@ -5,7 +5,7 @@ pub mod gdt;
 use crate::cpu::isa::interface::init::InitInterface;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
-use crate::logln;
+use crate::{early_logln, logln};
 
 const INTERRUPT_STACK_SIZE: usize = PAGE_SIZE * 4;
 
@@ -16,10 +16,10 @@ impl InitInterface for IsaInitializer {
 
     fn init_bsp() -> Result<(), Self::Error> {
         let lp_id = get_lp_id();
-        logln!("LP {lp_id}: Starting x86-64 bootstrap processor initialization");
+        early_logln!("LP {lp_id}: Starting x86-64 bootstrap processor initialization");
         // Initialize TSS, GDT, and IDT
         bsp::init_bsp();
-        logln!("LP {lp_id}: x86-64 bootstrap processor initialization complete");
+        early_logln!("LP {lp_id}: x86-64 bootstrap processor initialization complete");
         // return success
         Ok(())
     }

@@ -11,9 +11,9 @@ use crate::cpu::isa::interface::memory::address::Address;
 pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
 pub use crate::cpu::isa::memory::MemoryInterfaceImpl;
 pub use crate::cpu::isa::memory::address::paddr::{PAddr, PAddrError};
+use crate::early_logln;
 use crate::klib::constants::BITS_PER_BYTE;
 use crate::klib::size::kibibytes;
-use crate::logln;
 
 /// Page frames are 4 KiB in size on all supported architectures.
 const PAGE_FRAME_SIZE: usize = kibibytes(4);
@@ -175,25 +175,25 @@ impl PhysicalFrameAllocator {
 
 impl From<&MemmapResponse> for PhysicalFrameAllocator {
     fn from(response: &MemmapResponse) -> Self {
-        logln!("Computing PhysicalFrameAllocator bitmap size...");
+        early_logln!("Computing PhysicalFrameAllocator bitmap size...");
         let bitmap_size = compute_bitmap_size(response);
-        logln!("PhysicalFrameAllocator bitmap size: {:?} bytes", bitmap_size);
-        logln!("Finding best fit memory location for the PhysicalFrameAllocator bitmap...");
+        early_logln!("PhysicalFrameAllocator bitmap size: {:?} bytes", bitmap_size);
+        early_logln!("Finding best fit memory location for the PhysicalFrameAllocator bitmap...");
         let bitmap_addr: PAddr = find_mmap_best_fit(response, bitmap_size).unwrap();
-        logln!("PhysicalFrameAllocator bitmap addr (physical): {:?}", bitmap_addr);
+        early_logln!("PhysicalFrameAllocator bitmap addr (physical): {:?}", bitmap_addr);
         let pfa = PhysicalFrameAllocator {
             bitmap_ptr: unsafe { bitmap_addr.into_hhdm_mut::<u8>() },
             bitmap_len: bitmap_size,
             next_free_hint: 0,
         };
         // Initially mark all frames as unavailable.
-        logln!("Clearing PhysicalFrameAllocator bitmap...");
+        early_logln!("Clearing PhysicalFrameAllocator bitmap...");
         for i in 0..bitmap_size {
             unsafe {
                 *(pfa.bitmap_ptr.offset(i as isize)) = 0xffu8;
             }
         }
-        logln!("Initializing PhysicalFrameAllocator bitmap...");
+        early_logln!("Initializing PhysicalFrameAllocator bitmap...");
         init_bitmap_from_mmap(pfa.bitmap_ptr, response);
         //address zero is not accessible
         unsafe {
@@ -201,7 +201,7 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
         }
         // Mark the bitmap region as unusable.
         mark_pfa_bitmap_unusable(pfa.bitmap_ptr, bitmap_addr, bitmap_size);
-        logln!("PhysicalFrameAllocator bitmap initialized.");
+        early_logln!("PhysicalFrameAllocator bitmap initialized.");
 
         pfa
     }

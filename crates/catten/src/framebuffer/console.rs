@@ -156,10 +156,11 @@ impl Console {
     /// Flush the console to the framebuffer
     fn flush(&self) {
         let scale: usize = 1;
+        let framebuffer = FRAMEBUFFER.lock();
         for y in 0..CONSOLE_HEIGHT {
             for x in 0..CONSOLE_WIDTH {
                 // Draw the character to the framebuffer
-                FRAMEBUFFER.lock().draw_char(
+                framebuffer.draw_char(
                     /* Add a 1 pixel margin between characters */
                     x * FONT_WIDTH * scale + 1,
                     /* Add a 1 pixel margin between lines */

@@ -10,28 +10,28 @@ use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::klib::time::duration::ExtDuration;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::allocators::global_allocator::init_primary_allocator;
-use crate::{log, logln};
+use crate::{early_logln, logln};
 
 pub fn bsp_init() {
-    logln!("LP 0: Performing ISA specific initialization...");
+    early_logln!("LP 0: Performing ISA specific initialization...");
     match IsaInitializer::init_bsp() {
-        Ok(_) => logln!("LP 0: ISA specific initialization complete."),
+        Ok(_) => early_logln!("LP 0: ISA specific initialization complete."),
         Err(e) => {
             // initialization failure is irrecoverable
             panic!("LP 0: ISA specific initialization failed: {e:?}");
         }
     }
-    logln!("LP 0: Performing ISA independent initialization...");
-    logln!("LP 0: Initializing physical memory...");
+    early_logln!("LP 0: Performing ISA independent initialization...");
+    early_logln!("LP 0: Initializing physical memory...");
     match PHYSICAL_FRAME_ALLOCATOR.try_lock() {
         Some(pfa) => {
-            logln!("LP 0: PhysicalFrameAllocator: {pfa:?}");
+            early_logln!("LP 0: PhysicalFrameAllocator: {pfa:?}");
         }
         None => {
             panic!("LP 0: Failed to acquire lock on PhysicalFrameAllocator.");
         }
     }
-    logln!("LP 0: Initializing kernel allocator...");
+    early_logln!("LP 0: Initializing kernel allocator...");
     init_primary_allocator();
     logln!("LP 0: Intialized kernel allocator.");
     // Record the BSP's APIC ID now that the heap allocator is ready (BTreeMap requires the heap).

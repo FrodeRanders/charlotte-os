@@ -3,8 +3,8 @@
 use spin::Lazy;
 
 use super::VAddr;
-use crate::klib::size::*;
 use crate::cpu::isa::memory::address::VADDR_SIG_BITS;
+use crate::klib::size::*;
 
 /// The rest of the kernel only sees the correct linear address map for the system it is running on
 pub static LA_MAP: Lazy<&'static LinearAddressMap> = Lazy::new(|| match *VADDR_SIG_BITS {
@@ -59,8 +59,8 @@ static LA_MAP_48BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
         length: tebibytes(256),
     },
     kernel_stack_arena: LinearMemoryRegion {
-        base: VAddr::from(0xffff800000000000usize),
-        length: tebibytes(2),
+        base: VAddr::from(0xffff810000000000usize),
+        length: tebibytes(1),
     },
     kernel_mmio: LinearMemoryRegion {
         base: VAddr::from(0xffff820000000000usize),

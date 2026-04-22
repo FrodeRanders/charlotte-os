@@ -38,6 +38,7 @@ unsafe impl RawRwLock for RwLockCore {
     const INIT: Self = Self::new();
 
     fn lock_shared(&self) {
+        INT_STATE.save_int();
         loop {
             let state = self.state.load(Ordering::Acquire);
             if state >= 0 {
@@ -54,22 +55,25 @@ unsafe impl RawRwLock for RwLockCore {
                 core::hint::spin_loop();
             }
         }
-        INT_STATE.save_int();
     }
 
     fn try_lock_shared(&self) -> bool {
+        INT_STATE.save_int();
         let state = self.state.load(Ordering::Acquire);
         if state >= 0 {
             // Try to acquire the lock for reading by incrementing the reader count.
-            let ret = self
+            if self
                 .state
                 .compare_exchange(state, state + 1, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok();
-            if ret {
-                INT_STATE.save_int();
+                .is_ok()
+            {
+                true
+            } else {
+                INT_STATE.restore_int();
+                false
             }
-            ret
         } else {
+            INT_STATE.restore_int();
             false // The lock is held by a writer, so we cannot acquire it for reading.
         }
     }
@@ -81,21 +85,24 @@ unsafe impl RawRwLock for RwLockCore {
     }
 
     fn try_lock_exclusive(&self) -> bool {
+        INT_STATE.save_int();
         let state = self.state.load(Ordering::Acquire);
         if state == 0 {
             // Try to acquire the lock for writing by setting it to -1.
-            let ret =
-                self.state.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok();
-            if ret {
-                INT_STATE.save_int();
+            if self.state.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                true
+            } else {
+                INT_STATE.restore_int();
+                false
             }
-            ret
         } else {
+            INT_STATE.restore_int();
             false // The lock is held by readers or a writer, so we cannot acquire it for writing.
         }
     }
 
     fn lock_exclusive(&self) {
+        INT_STATE.save_int();
         loop {
             let state = self.state.load(Ordering::Acquire);
             if state == 0 {
@@ -108,7 +115,6 @@ unsafe impl RawRwLock for RwLockCore {
                 core::hint::spin_loop();
             }
         }
-        INT_STATE.save_int();
     }
 
     unsafe fn unlock_exclusive(&self) {

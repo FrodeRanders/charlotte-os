@@ -27,7 +27,7 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
     rm -r {{temp_mnt_dir}}
 
 vm_memory := "512M"
-vm_num_lps := "2"
+vm_num_lps := "8"
 
 qemu-run-x86_64 profile="debug" serial="" features="legacy_com_ports" gdb="false": (create-image "x86_64" profile features)
     qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \

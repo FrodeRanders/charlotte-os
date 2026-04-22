@@ -4,7 +4,7 @@ const INIT_KERNEL_STACK_PAGES: usize = 2;
 
 use crate::cpu::isa::init::gdt::{USER_CODE_SELECTOR, USER_DATA_SELECTOR};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::lp::ops::user_trampoline;
+use crate::cpu::isa::lp::ops::{kernel_thread_trampoline, user_trampoline};
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::klib::collections::id_table;
 use crate::memory::allocators::stack_allocator::{allocate_stack, deallocate_stack};
@@ -33,7 +33,7 @@ impl UserEntryFrames {
                 .get(asp)
                 .expect("Address space not found when creating thread context.")
                 .get_cr3(),
-            rflags_cpl0: flags,
+            rflags_cpl0: 0x2,
             rip0: unsafe {
                 transmute::<*const unsafe extern "C" fn() -> !, u64>(
                     user_trampoline as *const unsafe extern "C" fn() -> !,
@@ -66,12 +66,14 @@ struct KernelEntryFrame {
 }
 
 impl KernelEntryFrame {
-    fn new(cr3: u64, rflags: u64, rip: u64) -> Self {
+    fn new(cr3: u64, entry_point: u64) -> Self {
+        let mut callee_saved_regs = [0; 6];
+        callee_saved_regs[3] = entry_point;
         KernelEntryFrame {
             cr3,
-            rflags,
-            callee_saved_regs: [0; 6],
-            rip,
+            rflags: 0x2,
+            callee_saved_regs,
+            rip: kernel_thread_trampoline as *const () as u64,
         }
     }
 
@@ -141,11 +143,10 @@ impl ThreadContext {
     }
 
     pub fn new_ks(entry_point: *const fn()) -> Result<Self, Error> {
-        let flags: u64 = 0x202;
         let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)
             .expect("Failed to allocate kernel stack for thread context.");
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
-        let ksf = KernelEntryFrame::new(KERNEL_AS.lock().get_cr3(), flags, entry_point as u64);
+        let ksf = KernelEntryFrame::new(KERNEL_AS.lock().get_cr3(), entry_point as u64);
         ksf.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             rsp_cpl0: <VAddr as Into<u64>>::into(kernel_stack_top),
