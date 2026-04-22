@@ -70,7 +70,7 @@ impl SystemScheduler {
     pub fn block_thread<'a>(
         &mut self,
         tid: ThreadId,
-        event: &'a mut dyn crate::klib::observer::Observable,
+        event: &'a dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
         if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
             match thread.state {

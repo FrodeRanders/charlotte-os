@@ -1,105 +1,78 @@
 use alloc::sync::Weak;
-use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use concurrent_queue::ConcurrentQueue;
+use lock_api::{GuardNoSend, RawMutex};
 
 use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, get_thread_id};
-use crate::cpu::scheduler::threads::ThreadId;
 use crate::klib::observer::{Observable, Observer};
 
-pub struct MutexGuard<'a, T> {
-    mutex: &'a mut Mutex<T>,
+#[derive(Debug)]
+struct MutexCore {
+    raw_lock: AtomicBool,
+    waitlist: ConcurrentQueue<Weak<dyn Observer>>,
 }
 
-impl<'a, T> MutexGuard<'a, T> {
-    fn new(mutex: &'a mut Mutex<T>) -> Self {
-        Self {
-            mutex,
-        }
-    }
-
-    pub fn get(&self) -> &T {
-        unsafe { &*self.mutex.data.get() }
-    }
-
-    pub fn get_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.mutex.data.get() }
+impl Default for MutexCore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.get()
-    }
-}
-
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.get_mut()
-    }
-}
-
-impl<'a, T> Drop for MutexGuard<'a, T> {
-    fn drop(&mut self) {
-        unsafe {
-            self.mutex.unlock();
+impl MutexCore {
+    pub fn new() -> Self {
+        MutexCore {
+            raw_lock: AtomicBool::new(false),
+            waitlist: ConcurrentQueue::unbounded(),
         }
     }
 }
 
-pub struct Mutex<T> {
-    data: UnsafeCell<T>,
-    waiters: ConcurrentQueue<(ThreadId, Weak<dyn Observer>)>,
-    holder: Option<ThreadId>,
-}
-
-impl<T> Observable for Mutex<T> {
-    fn register_observer(&mut self, observer: Weak<dyn crate::klib::observer::Observer>) {
-        self.waiters
-            .push((
-                get_thread_id().expect("Attempted to unwrap thread ID from non-thread context"),
-                observer,
-            ))
-            .expect("Failed to register observer with busy Mutex");
+impl Observable for MutexCore {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        self.waitlist.push(observer);
     }
 }
 
-impl<T> Mutex<T> {
-    pub const fn new(data: T) -> Self {
-        Self {
-            data: UnsafeCell::new(data),
-            waiters: ConcurrentQueue::unbounded(),
-            holder: None,
-        }
-    }
+unsafe impl RawMutex for MutexCore {
+    type GuardMarker = GuardNoSend;
 
-    pub fn lock<'m>(&'m mut self) -> MutexGuard<'m, T> {
-        let tid = SYSTEM_SCHEDULER
-            .read()
-            .get_lp_scheduler()
-            .lock()
-            .get_tid()
-            .expect("Attempted unwrap thread ID from non-thread context");
-        while !self.waiters.is_empty() || self.holder == Some(tid) {
-            SYSTEM_SCHEDULER
-                .write()
-                .block_thread(tid, self as &mut dyn Observable)
-                .expect("Failed to block thread on attempt to lock Mutex");
-        }
-        MutexGuard::new(self)
-    }
+    const INIT: Self = MutexCore {
+        raw_lock: AtomicBool::new(false),
+        waitlist: ConcurrentQueue::unbounded(),
+    };
 
-    unsafe fn unlock(&mut self) {
-        while let Ok(waiter) = self.waiters.pop() {
-            if let Some(observer) = waiter.1.upgrade() {
-                self.holder = Some(waiter.0);
-                observer.notify();
-                return;
+    fn lock(&self) {
+        loop {
+            if let Some(tid) = get_thread_id() {
+                SYSTEM_SCHEDULER.write().block_thread(tid, self);
+            } else {
+                panic!("Attempted to acquire a blocking mutex from outside thread context.");
+            }
+            if self
+                .raw_lock
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                self.waitlist.pop();
+                break;
             }
         }
-        self.holder = None;
+    }
+
+    fn is_locked(&self) -> bool {
+        self.raw_lock.load(Ordering::Acquire)
+    }
+
+    fn try_lock(&self) -> bool {
+        self.waitlist.is_empty()
+            && self
+                .raw_lock
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+    }
+
+    unsafe fn unlock(&self) {
+        self.raw_lock.store(false, Ordering::Release);
     }
 }
