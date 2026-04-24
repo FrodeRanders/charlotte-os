@@ -30,7 +30,7 @@ impl MutexCore {
 
 impl Observable for MutexCore {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
-        self.waitlist.push(observer);
+        self.waitlist.push(observer).expect("Failed to register observer");
     }
 }
 
@@ -44,18 +44,18 @@ unsafe impl RawMutex for MutexCore {
 
     fn lock(&self) {
         loop {
-            if let Some(tid) = get_thread_id() {
-                SYSTEM_SCHEDULER.write().block_thread(tid, self);
-            } else {
-                panic!("Attempted to acquire a blocking mutex from outside thread context.");
-            }
             if self
                 .raw_lock
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
-                self.waitlist.pop();
-                break;
+                break; // acquired — return
+            }
+            // Failed to acquire — block this thread until unlock() wakes us
+            if let Some(tid) = get_thread_id() {
+                SYSTEM_SCHEDULER.write().block_thread(tid, self).expect("Failed to block thread");
+            } else {
+                panic!("Attempted to acquire a blocking mutex from outside thread context.");
             }
         }
     }
@@ -74,5 +74,12 @@ unsafe impl RawMutex for MutexCore {
 
     unsafe fn unlock(&self) {
         self.raw_lock.store(false, Ordering::Release);
+        // Wake the next waiter *after* releasing the lock
+        while let Ok(observer) = self.waitlist.pop() {
+            if let Some(observer) = observer.upgrade() {
+                observer.notify();
+                break;
+            }
+        }
     }
 }

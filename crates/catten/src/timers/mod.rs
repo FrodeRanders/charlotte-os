@@ -2,8 +2,8 @@
 
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Weak;
-use alloc::vec::Vec;
 
+use concurrent_queue::ConcurrentQueue;
 use spin::Lazy;
 
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
@@ -21,7 +21,7 @@ pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 #[derive(Debug)]
 pub struct TimerEvent {
     deadline:  Timestamp,
-    observers: Vec<Weak<dyn Observer>>,
+    observers: ConcurrentQueue<Weak<dyn Observer>>,
 }
 
 impl TimerEvent {
@@ -31,7 +31,7 @@ impl TimerEvent {
     }
 
     fn signal(&self) {
-        for observer in self.observers.iter() {
+        for observer in self.observers.try_iter() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();
             }
@@ -43,7 +43,7 @@ impl From<Timestamp> for TimerEvent {
     fn from(deadline: Timestamp) -> Self {
         Self {
             deadline,
-            observers: Vec::new(),
+            observers: ConcurrentQueue::unbounded(),
         }
     }
 }
@@ -54,15 +54,15 @@ impl From<ExtDuration> for TimerEvent {
             + (duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos()) as Timestamp;
         Self {
             deadline,
-            observers: Vec::new(),
+            observers: ConcurrentQueue::unbounded(),
         }
     }
 }
 
 impl Observable for TimerEvent {
     #[inline]
-    fn register_observer(&mut self, observer: Weak<dyn Observer>) {
-        self.observers.push(observer);
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        self.observers.push(observer).expect("Failed to register observer");
     }
 }
 

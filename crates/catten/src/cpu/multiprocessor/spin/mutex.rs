@@ -33,7 +33,7 @@ impl Default for MutexCore {
 }
 
 unsafe impl RawMutex for MutexCore {
-    type GuardMarker = lock_api::GuardNoSend;
+    type GuardMarker = lock_api::GuardSend;
 
     const INIT: Self = Self::new();
 

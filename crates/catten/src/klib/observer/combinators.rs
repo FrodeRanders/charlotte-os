@@ -9,7 +9,7 @@ pub struct Any {
 }
 
 impl Observable for Any {
-    fn register_observer(&mut self, observer: Weak<dyn Observer>) {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
         self.observers.lock().push(observer);
     }
 }

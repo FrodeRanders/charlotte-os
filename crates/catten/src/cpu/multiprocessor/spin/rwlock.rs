@@ -33,7 +33,7 @@ impl Default for RwLockCore {
 }
 
 unsafe impl RawRwLock for RwLockCore {
-    type GuardMarker = lock_api::GuardNoSend;
+    type GuardMarker = lock_api::GuardSend;
 
     const INIT: Self = Self::new();
 
