@@ -2,6 +2,7 @@
 #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
 pub mod legacy_ports;
 
+use alloc::vec::Vec;
 use core::fmt::{self, Write};
 use core::result::Result;
 
@@ -9,6 +10,10 @@ use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
 use crate::cpu::isa::io::IoReg8;
 use crate::drivers::uart::Uart;
 use crate::klib::io::Read;
+
+pub struct Ns16550Driver {
+    ports: Vec<Ns16550>,
+}
 
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]

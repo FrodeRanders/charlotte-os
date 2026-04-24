@@ -22,8 +22,9 @@
 extern crate alloc;
 
 pub mod cpu;
+pub mod deferred_work_manager;
+pub mod device_manager;
 pub mod drivers;
-pub mod dwm;
 pub mod environment;
 pub mod framebuffer;
 pub mod init;
