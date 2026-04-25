@@ -27,11 +27,13 @@ pub fn get_pcie_ecam_bases() -> Vec<(u16, PAddr)> {
 }
 
 fn parse_mcfg(mcfg_ptr: *const uacpi_table) -> Vec<(u16, PAddr)> {
-    let mut ecams = Vec::new()
+    let mut ecams = Vec::new();
     unsafe {
         let mcfg_vaddr = VAddr::from((*mcfg_ptr).__bindgen_anon_1.virt_addr);
-        todo!("Parse the MCFG table to get the base physical address for each ECAM and write them to the
-        vector keyed by their segment group number.");
+        todo!(
+            "Parse the MCFG table to get the base physical address for each ECAM and write them \
+             to the vector keyed by their segment group number."
+        );
     }
     ecams
 }
