@@ -1,12 +1,11 @@
 use alloc::collections::btree_map::BTreeMap;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-
 use crate::cpu::isa::constants::msrs;
 use crate::cpu::isa::lp::LpId;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use crate::klib::bitwise::{mask_from_len, mask_shift_read};
 
-pub(super) static X2APIC_ID_TABLE: Mutex<BTreeMap<LpId, LapicId>> =
-    Mutex::new(BTreeMap::new());
+pub(super) static X2APIC_ID_TABLE: Mutex<BTreeMap<LpId, LapicId>> = Mutex::new(BTreeMap::new());
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed)]
@@ -37,7 +36,10 @@ impl LapicId {
         }
         LapicId {
             physical,
-            logical: unsafe { core::mem::transmute(logical) },
+            logical: LogicalLapicId {
+                cluster_id: mask_shift_read(logical, mask_from_len(16), 16) as u16,
+                apic_bitmask: mask_shift_read(logical, mask_from_len(16), 0) as u16,
+            },
         }
     }
 }

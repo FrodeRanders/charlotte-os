@@ -36,3 +36,10 @@ where
     dest.bitor_assign((val << shift) & mask);
     Ok(*dest)
 }
+
+pub fn mask_from_len<T>(len: u8) -> T
+where
+    T: core::ops::Shl<u8, Output = T> + core::ops::Sub<Output = T> + From<u8>,
+{
+    (T::from(1) << len) - T::from(1)
+}
