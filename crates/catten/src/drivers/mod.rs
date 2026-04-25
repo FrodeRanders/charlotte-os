@@ -5,7 +5,7 @@ use crate::device_manager::DeviceId;
 
 pub mod busses;
 pub mod display;
-pub mod input;
+pub mod input_ctlr;
 pub mod uart;
 
 pub trait Driver {
