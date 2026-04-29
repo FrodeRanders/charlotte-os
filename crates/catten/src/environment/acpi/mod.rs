@@ -1,39 +1,61 @@
-use alloc::alloc::{alloc_zeroed, dealloc};
 use alloc::vec::Vec;
-use core::alloc::Layout;
 
-use uacpi_raw::*;
+use crate::environment::boot_protocol::limine::RSDP_REQUEST;
+use crate::memory::PAddr;
 
-use crate::memory::{PAddr, VAddr};
+pub mod aml;
+pub mod static_data;
 
-pub mod uacpi_kernel;
+pub enum Error {
+    AcpiUnavailable,
+}
 
-pub fn get_pcie_ecam_bases() -> Vec<(u16, PAddr)> {
-    unsafe {
-        // We allocate this using the low level interface because we're interfacing with C and
-        // this is easier than boxing, unboxing, and reboxing.
-        let uacpi_table_layout =
-            Layout::from_size_align_unchecked(size_of::<uacpi_table>(), align_of::<uacpi_table>());
-        let mcfg_ptr = alloc_zeroed(Layout::from_size_align_unchecked(
-            size_of::<uacpi_table>(),
-            align_of::<uacpi_table>(),
-        )) as *mut uacpi_table;
+#[derive(Debug)]
+pub enum AcpiTable {
+    RSDT,
+    XSDT,
+    FADT,
+    MADT,
+    SRAT,
+    MCFG,
+    DSDT,
+    SSDT,
+}
 
-        uacpi_table_find_by_signature(b"MCFG\0".as_ptr() as *const i8, mcfg_ptr);
-        let ret = parse_mcfg(mcfg_ptr);
-        dealloc(mcfg_ptr as *mut u8, uacpi_table_layout);
-        ret
+pub struct Xsdp {
+    signature: [u8; 8],
+    checksum: u8,
+    oem_id: [char; 6],
+    revision: u8,
+    rsdt_address: u32, // deprecated since version 2.0
+
+    length: u32,
+    xsdt_address: u64,
+    extended_checksum: u8,
+    reserved: [u8; 3],
+}
+
+pub struct Xsdt {}
+
+pub fn get_xsdp() -> Option<*const Xsdp> {
+    if let Some(res) = RSDP_REQUEST.response() {
+        Some(res.address as *const Xsdp)
+    } else {
+        None
     }
 }
 
-fn parse_mcfg(mcfg_ptr: *const uacpi_table) -> Vec<(u16, PAddr)> {
-    let mut ecams = Vec::new();
-    unsafe {
-        let mcfg_vaddr = VAddr::from((*mcfg_ptr).__bindgen_anon_1.virt_addr);
+pub fn is_acpi_available() -> bool {
+    get_xsdp().is_some()
+}
+
+pub fn find_table(table: AcpiTable) -> Result<Vec<PAddr>, Error> {
+    if let Some(xsdp_ptr) = get_xsdp() {
         todo!(
-            "Parse the MCFG table to get the base physical address for each ECAM and write them \
-             to the vector keyed by their segment group number."
-        );
+            "Parse the XSDP and use it to find the XSDT and then use the pointers in the XSDT to \
+             find all instances of the specified table type."
+        )
+    } else {
+        Err(Error::AcpiUnavailable)
     }
-    ecams
 }

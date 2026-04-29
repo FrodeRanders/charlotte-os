@@ -8,6 +8,7 @@ const MAX_SEGMENT_GROUPS: usize = 1 << 16; // 65536 segment groups
 const MAX_DEVICES_PER_BUS: usize = 32;
 const MAX_FUNCTIONS_PER_DEVICE: usize = 8;
 
+#[derive(Debug)]
 pub struct PciePath {
     segment_group: u16,
     bus: u8,
@@ -15,13 +16,41 @@ pub struct PciePath {
     function: u8,
 }
 
+#[derive(Debug)]
 pub struct PcieTopology {
-    segment_groups: Vec<PcieSegmentGroup>,
+    segments: Vec<PcieSegment>,
 }
 
-pub struct PcieSegmentGroup {
+impl PcieTopology {
+    pub fn new(segments: Vec<PcieSegment>) -> Self {
+        PcieTopology {
+            segments,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PcieSegment {
+    pcie_segment_num: u16,
     ecam_base: PAddr,
-    root_bus:  PcieBus,
+    start_bus_num: u8,
+    end_bus_num: u8,
+}
+
+impl PcieSegment {
+    pub fn new(
+        pcie_segment_num: u16,
+        ecam_base: PAddr,
+        start_bus_num: u8,
+        end_bus_num: u8,
+    ) -> Self {
+        PcieSegment {
+            pcie_segment_num,
+            ecam_base,
+            start_bus_num,
+            end_bus_num,
+        }
+    }
 }
 
 pub enum PcieBusTarget {

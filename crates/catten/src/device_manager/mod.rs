@@ -1,6 +1,12 @@
+use spin::Lazy;
+
+use crate::environment::acpi::static_data::mcfg::get_pcie_segments;
+
 pub mod fixed_io;
 pub mod pcie;
 //pub mod usb;
+
+pub static DEVICE_TOPOLOGY: Lazy<DeviceTopology> = Lazy::new(DeviceTopology::new);
 
 pub type DeviceId = u32;
 
@@ -29,8 +35,17 @@ pub enum DeviceLocation {
     //Usb(usb::UsbPath),
 }
 
+#[derive(Debug)]
 pub struct DeviceTopology {
-    fixed: fixed_io::IoMap,
-    pcie:  pcie::PcieTopology,
-    //usb: usb::UsbTopology,
+    //fixed: Option<fixed_io::IoMap>,
+    pcie: pcie::PcieTopology,
+    //usb: Option<usb::UsbTopology>,
+}
+
+impl DeviceTopology {
+    pub fn new() -> Self {
+        DeviceTopology {
+            pcie: pcie::PcieTopology::new(get_pcie_segments()),
+        }
+    }
 }

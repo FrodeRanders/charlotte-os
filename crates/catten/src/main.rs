@@ -50,6 +50,7 @@ use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::multiprocessor::startup::{assign_id, start_secondary_lps};
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
+use crate::device_manager::DEVICE_TOPOLOGY;
 use crate::memory::KERNEL_ASID;
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 5, 0);
@@ -84,6 +85,8 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     print_timer_info();
+    logln!("Device Topology: {:?}", (*DEVICE_TOPOLOGY));
+    await_interrupt!();
     mask_interrupts!();
     for _ in 0..(get_lp_count() * 3) {
         logln!("Creating new thread.");
@@ -130,6 +133,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
         "LP {lp_id}: Initialized local interrupt controller. Yielding the processor to the \
          scheduler."
     );
+    await_interrupt!();
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
     unsafe { unreachable_unchecked() }
