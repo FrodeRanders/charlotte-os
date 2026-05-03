@@ -23,7 +23,7 @@
 
 use alloc::vec::Vec;
 
-use crate::device_manager::pcie::PcieSegment;
+use crate::drivers::busses::pcie::PcieSegment;
 
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
@@ -41,8 +41,9 @@ mod uefi_rt;
 pub fn get_pcie_segments() -> Vec<PcieSegment> {
     cfg_select! {
         all(feature = "acpi", feature = "devicetree") => {
-            panic!("The Catten Kernel does not support compiling in both the acpi and devicetree features as standards do not allows systems to expose both at the same time. Please recompile your kernel for
-            the one you actually intend to use.")
+            panic!("The Catten Kernel does not support compiling in both the acpi and devicetree
+            features as standards do not allows systems to expose both at the same time. Please 
+            recompile your kernel with only the one you actually intend to use.")
         },
         feature = "acpi" => acpi::static_data::mcfg::get_pcie_segments(),
         feature = "devicetree" => todo!("Develop a way to get the information for each PCIe segment from a Device Tree."),

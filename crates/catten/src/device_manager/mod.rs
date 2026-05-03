@@ -1,10 +1,9 @@
 use spin::Lazy;
 
-use crate::environment::acpi::static_data::mcfg::get_pcie_segments;
+use crate::drivers::busses::pcie;
+use crate::environment::get_pcie_segments;
 
 pub mod fixed_io;
-pub mod pcie;
-//pub mod usb;
 
 pub static DEVICE_TOPOLOGY: Lazy<DeviceTopology> = Lazy::new(DeviceTopology::new);
 

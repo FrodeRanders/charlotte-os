@@ -1,29 +1,19 @@
-use alloc::alloc::{alloc_zeroed, dealloc};
 use alloc::vec::Vec;
-use core::alloc::Layout;
 
 use uacpi_raw::*;
 
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::device_manager::pcie::PcieSegment;
+use crate::drivers::busses::pcie::PcieSegment;
+use crate::environment::acpi;
 use crate::memory::{PAddr, VAddr};
 
 pub fn get_pcie_segments() -> Vec<PcieSegment> {
-    unsafe {
-        // We allocate this using the low level interface because we're interfacing with C and
-        // this is easier than boxing, unboxing, and reboxing.
-        let uacpi_table_layout =
-            Layout::from_size_align_unchecked(size_of::<uacpi_table>(), align_of::<uacpi_table>());
-        let mcfg_ptr = alloc_zeroed(Layout::from_size_align_unchecked(
-            size_of::<uacpi_table>(),
-            align_of::<uacpi_table>(),
-        )) as *mut uacpi_table;
-
-        uacpi_table_find_by_signature(b"MCFG\0".as_ptr() as *const i8, mcfg_ptr);
-        let ret = parse_mcfg(mcfg_ptr);
-        dealloc(mcfg_ptr as *mut u8, uacpi_table_layout);
-        ret
+    let mcfg_addrs =
+        acpi::find_table_type(acpi::AcpiTableType::MCFG).expect("Failed to find MCFG table");
+    if mcfg_addrs.len() != 1 {
+        panic!("[ACPI] {} MCFG tables found, expected exactly one.", mcfg_addrs.len());
     }
+    parse_mcfg(mcfg_addrs[0].into())
 }
 
 const MCFG_HEADER_SIZE: usize = 43;

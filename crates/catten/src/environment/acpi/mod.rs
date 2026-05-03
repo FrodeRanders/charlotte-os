@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use hashbrown::HashMap;
+use spin::Lazy;
 
 use crate::environment::boot_protocol::limine::RSDP_REQUEST;
 use crate::memory::PAddr;
@@ -10,13 +11,34 @@ use crate::memory::physical::PhysicalAddress;
 pub mod aml;
 pub mod static_data;
 
+static TABLE_MAP: Lazy<HashMap<AcpiTableType, Vec<PAddr>>> = Lazy::new(|| {
+    if let Some(xsdp_ptr) = get_xsdp() {
+        let xsdp: &Xsdp = unsafe { xsdp_ptr.as_ref() };
+        if !xsdp.validate() {
+            panic!("Invalid ACPI Extended System Description Pointer (XSDP)");
+        }
+        let xsdt_addr: PAddr;
+        // try the xsdt_address first
+        if xsdp.xsdt_address == 0 {
+            panic!("ACPI Extended System Description Table (XSDT) required but not found");
+        } else {
+            xsdt_addr = PAddr::from(xsdp.xsdt_address);
+        }
+        parse_xsdt(xsdt_addr)
+    } else {
+        panic!("ACPI not available");
+    }
+});
+
+#[derive(Debug)]
 pub enum Error {
     AcpiUnavailable,
     InvalidXsdp,
     XsdtNotFound,
+    TableNotFound,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AcpiTableType {
     RSDT,
     XSDT,
@@ -26,6 +48,22 @@ pub enum AcpiTableType {
     MCFG,
     DSDT,
     SSDT,
+}
+
+impl AcpiTableType {
+    fn from_signature(signature: [char; 4]) -> Option<Self> {
+        match signature {
+            ['R', 'S', 'D', 'T'] => Some(Self::RSDT),
+            ['X', 'S', 'D', 'T'] => Some(Self::XSDT),
+            ['F', 'A', 'C', 'P'] => Some(Self::FADT),
+            ['A', 'P', 'I', 'C'] => Some(Self::MADT),
+            ['S', 'R', 'A', 'T'] => Some(Self::SRAT),
+            ['M', 'C', 'F', 'G'] => Some(Self::MCFG),
+            ['D', 'S', 'D', 'T'] => Some(Self::DSDT),
+            ['S', 'S', 'D', 'T'] => Some(Self::SSDT),
+            _ => None,
+        }
+    }
 }
 
 #[repr(C)]
@@ -82,7 +120,7 @@ pub fn is_acpi_available() -> bool {
     get_xsdp().is_some()
 }
 
-pub fn find_table(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
+pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
     if let Some(xsdp_ptr) = get_xsdp() {
         let xsdp: &Xsdp = unsafe { xsdp_ptr.as_ref() };
         if !xsdp.validate() {
@@ -96,10 +134,11 @@ pub fn find_table(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
             xsdt_addr = PAddr::from(xsdp.xsdt_address);
         }
         let tables = parse_xsdt(xsdt_addr);
-        todo!(
-            "Find all instances of the requested table type in the table HashMap and return their \
-             addresses"
-        );
+        if let Some(table_addrs) = tables.get(&table) {
+            Ok(table_addrs.clone())
+        } else {
+            Err(Error::TableNotFound)
+        }
     } else {
         Err(Error::AcpiUnavailable)
     }
@@ -108,6 +147,8 @@ pub fn find_table(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
 fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let mut tables = HashMap::new();
 
+    let xsdt_header: &SdtHeader =
+        unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
     // Note: HHDM pointers are extremely unsafe as they live entirely outside of Rust's memory model
     // Try to keep their use read-only and never use the HHDM to access data that can be accessed
     // through proper memory mappings. ACPI tables and Device Tree Nodes are an acceptable use case
@@ -115,11 +156,25 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let xsdt_data_ptr = unsafe {
         NonNull::new_unchecked((xsdt_addr + size_of::<SdtHeader>()).into_hhdm_mut::<u64>())
     };
+    let data_length = xsdt_header.length as usize - size_of::<SdtHeader>();
+    let num_entries = data_length / size_of::<u64>();
+    let mut table_addrs = Vec::<PAddr>::with_capacity(num_entries);
+    for i in 0..num_entries {
+        let entry_addr = unsafe { xsdt_data_ptr.add(i).read() };
+        table_addrs.push(PAddr::from(entry_addr));
+    }
 
-    todo!(
-        "Parse the XSDT and populate the tables HashMap with the addresses of all available ACPI \
-         tables"
-    );
+    for table_addr in &table_addrs {
+        let signature = get_table_signature(*table_addr);
+        if let Some(table_type) = AcpiTableType::from_signature(signature) {
+            tables.entry(table_type).or_insert_with(Vec::new).push(*table_addr);
+        }
+    }
 
     tables
+}
+
+fn get_table_signature(table_addr: PAddr) -> [char; 4] {
+    let header: &SdtHeader = unsafe { (table_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
+    header.signature
 }
