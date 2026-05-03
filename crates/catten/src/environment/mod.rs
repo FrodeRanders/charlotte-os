@@ -21,9 +21,13 @@
 //!   interface to SMM interrupt calls is not standardized and thus must be accessed through ACPI.
 //!   As such we do not provide a separate module for SMM calls.
 
+use alloc::vec::Vec;
+
+use crate::device_manager::pcie::PcieSegment;
+
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
-pub mod acpi;
+mod acpi;
 pub mod boot_protocol;
 // Device Tree
 #[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]
@@ -33,3 +37,15 @@ mod devicetree;
 mod arm_smc;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
 mod uefi_rt;
+
+pub fn get_pcie_segments() -> Vec<PcieSegment> {
+    cfg_select! {
+        all(feature = "acpi", feature = "devicetree") => {
+            panic!("The Catten Kernel does not support compiling in both the acpi and devicetree features as standards do not allows systems to expose both at the same time. Please recompile your kernel for
+            the one you actually intend to use.")
+        },
+        feature = "acpi" => acpi::static_data::mcfg::get_pcie_segments(),
+        feature = "devicetree" => todo!("Develop a way to get the information for each PCIe segment from a Device Tree."),
+        _ => panic!("The Catten Kernel can not function without either the acpi or devicetree features enabled at compile time.")
+    }
+}
