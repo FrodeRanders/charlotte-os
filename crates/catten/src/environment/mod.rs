@@ -27,7 +27,7 @@ use crate::drivers::busses::pcie::PcieSegment;
 
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
-mod acpi;
+pub mod acpi;
 pub mod boot_protocol;
 // Device Tree
 #[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]

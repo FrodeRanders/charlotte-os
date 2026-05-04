@@ -85,6 +85,11 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     print_timer_info();
+    cfg_select! {
+        feature = "acpi" => {
+            environment::acpi::print_table_map();
+        }
+    }
     logln!("Device Topology: {:?}", (*DEVICE_TOPOLOGY));
     mask_interrupts!();
     for _ in 0..(get_lp_count() * 3) {

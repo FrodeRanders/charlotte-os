@@ -1,12 +1,16 @@
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use hashbrown::HashMap;
 use spin::Lazy;
 
+use crate::cpu::isa::interface::memory::address::Address;
 use crate::environment::boot_protocol::limine::RSDP_REQUEST;
 use crate::memory::PAddr;
 use crate::memory::physical::PhysicalAddress;
+use crate::println;
 
 pub mod aml;
 pub mod static_data;
@@ -17,18 +21,24 @@ static TABLE_MAP: Lazy<HashMap<AcpiTableType, Vec<PAddr>>> = Lazy::new(|| {
         if !xsdp.validate() {
             panic!("Invalid ACPI Extended System Description Pointer (XSDP)");
         }
-        let xsdt_addr: PAddr;
-        // try the xsdt_address first
-        if xsdp.xsdt_address == 0 {
+        let xsdt_addr = PAddr::from(xsdp.xsdt_address);
+        if xsdt_addr.is_null() {
             panic!("ACPI Extended System Description Table (XSDT) required but not found");
-        } else {
-            xsdt_addr = PAddr::from(xsdp.xsdt_address);
         }
         parse_xsdt(xsdt_addr)
     } else {
         panic!("ACPI not available");
     }
 });
+
+pub fn print_table_map() {
+    let mut output = String::new();
+    output.push_str("ACPI Table Map:\n");
+    for (table_type, addrs) in TABLE_MAP.iter() {
+        output.push_str(&format!("{:?}: {:?}\n", table_type, addrs));
+    }
+    println!("{output}");
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -51,27 +61,27 @@ pub enum AcpiTableType {
 }
 
 impl AcpiTableType {
-    fn from_signature(signature: [char; 4]) -> Option<Self> {
+    fn from_signature(signature: [u8; 4]) -> Option<Self> {
         match signature {
-            ['R', 'S', 'D', 'T'] => Some(Self::RSDT),
-            ['X', 'S', 'D', 'T'] => Some(Self::XSDT),
-            ['F', 'A', 'C', 'P'] => Some(Self::FADT),
-            ['A', 'P', 'I', 'C'] => Some(Self::MADT),
-            ['S', 'R', 'A', 'T'] => Some(Self::SRAT),
-            ['M', 'C', 'F', 'G'] => Some(Self::MCFG),
-            ['D', 'S', 'D', 'T'] => Some(Self::DSDT),
-            ['S', 'S', 'D', 'T'] => Some(Self::SSDT),
+            [b'R', b'S', b'D', b'T'] => Some(Self::RSDT),
+            [b'X', b'S', b'D', b'T'] => Some(Self::XSDT),
+            [b'F', b'A', b'C', b'P'] => Some(Self::FADT),
+            [b'A', b'P', b'I', b'C'] => Some(Self::MADT),
+            [b'S', b'R', b'A', b'T'] => Some(Self::SRAT),
+            [b'M', b'C', b'F', b'G'] => Some(Self::MCFG),
+            [b'D', b'S', b'D', b'T'] => Some(Self::DSDT),
+            [b'S', b'S', b'D', b'T'] => Some(Self::SSDT),
             _ => None,
         }
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct Xsdp {
     signature: [u8; 8],
     checksum: u8,
-    oem_id: [char; 6],
+    oem_id: [u8; 6],
     revision: u8,
     rsdt_address: u32, // deprecated since version 2.0
 
@@ -87,22 +97,22 @@ impl Xsdp {
         unsafe {
             let ptr = &raw const *self as *const u8;
             for i in 0..self.length as usize {
-                sum += *ptr.add(i);
+                sum = sum.wrapping_add(*ptr.add(i));
             }
         }
         sum == 0
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct SdtHeader {
-    signature: [char; 4],
+    signature: [u8; 4],
     length: u32,
     revision: u8,
     checksum: u8,
-    oem_id: [char; 6],
-    oem_table_id: [char; 8],
+    oem_id: [u8; 6],
+    oem_table_id: [u8; 8],
     oem_revision: u32,
     creator_id: u32,
     creator_revision: u32,
@@ -127,7 +137,6 @@ pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
             return Err(Error::InvalidXsdp);
         }
         let xsdt_addr: PAddr;
-        // try the xsdt_address first
         if xsdp.xsdt_address == 0 {
             panic!("ACPI Extended System Description Table (XSDT) required but not found");
         } else {
@@ -146,7 +155,11 @@ pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
 
 fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let mut tables = HashMap::new();
-
+    println!(
+        "[ACPI] Parsing XSDT at address {:?} with header size {}",
+        xsdt_addr,
+        size_of::<SdtHeader>()
+    );
     let xsdt_header: &SdtHeader =
         unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
     // Note: HHDM pointers are extremely unsafe as they live entirely outside of Rust's memory model
@@ -160,21 +173,31 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let num_entries = data_length / size_of::<u64>();
     let mut table_addrs = Vec::<PAddr>::with_capacity(num_entries);
     for i in 0..num_entries {
-        let entry_addr = unsafe { xsdt_data_ptr.add(i).read() };
+        let entry_addr = unsafe { xsdt_data_ptr.as_ptr().add(i).read_unaligned() };
         table_addrs.push(PAddr::from(entry_addr));
     }
 
     for table_addr in &table_addrs {
-        let signature = get_table_signature(*table_addr);
-        if let Some(table_type) = AcpiTableType::from_signature(signature) {
-            tables.entry(table_type).or_insert_with(Vec::new).push(*table_addr);
+        if let Some(signature) = get_table_signature(*table_addr) {
+            if let Some(table_type) = AcpiTableType::from_signature(signature) {
+                tables.entry(table_type).or_insert_with(Vec::new).push(*table_addr);
+            } else {
+                println!(
+                    "[ACPI] Warning: Unrecognized ACPI table with signature {:?} at address {:?}",
+                    signature, table_addr
+                );
+            }
         }
     }
 
     tables
 }
 
-fn get_table_signature(table_addr: PAddr) -> [char; 4] {
-    let header: &SdtHeader = unsafe { (table_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
-    header.signature
+fn get_table_signature(table_addr: PAddr) -> Option<[u8; 4]> {
+    if table_addr.is_null() {
+        return None;
+    } else {
+        let header = unsafe { (table_addr.into_hhdm_ptr::<SdtHeader>()).read() };
+        Some(header.signature)
+    }
 }

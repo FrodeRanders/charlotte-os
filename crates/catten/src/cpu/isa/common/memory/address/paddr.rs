@@ -39,7 +39,7 @@ impl Address for PAddr {
     }
 
     fn next_aligned_to(&self, alignment: usize) -> Self {
-        unsafe { PAddr::from_unchecked((self.raw + alignment - 1) & !(alignment - 1)) }
+        unsafe { PAddr::from_unchecked(self.raw + (alignment - (self.raw % alignment))) }
     }
 
     fn prev_aligned_to(&self, alignment: usize) -> Self {
@@ -61,23 +61,23 @@ impl Address for PAddr {
 
 impl PhysicalAddress for PAddr {
     unsafe fn into_hhdm_ptr<T>(self) -> *const T {
-        unsafe { (*HHDM_BASE).into_ptr::<T>().byte_offset(self.raw as isize) }
+        (*HHDM_BASE).into_ptr::<T>().wrapping_byte_add(self.raw)
     }
 
     unsafe fn into_hhdm_mut<T>(self) -> *mut T {
-        unsafe { (*HHDM_BASE).into_mut::<T>().byte_offset(self.raw as isize) }
+        (*HHDM_BASE).into_mut::<T>().wrapping_byte_add(self.raw)
     }
 }
 
 impl<T> Into<*const T> for PAddr {
     fn into(self) -> *const T {
-        unsafe { (*HHDM_BASE).into_ptr::<T>().byte_offset(self.raw as isize) }
+        (*HHDM_BASE).into_ptr::<T>().wrapping_byte_add(self.raw)
     }
 }
 
 impl<T> Into<*mut T> for PAddr {
     fn into(self) -> *mut T {
-        unsafe { (*HHDM_BASE).into_mut::<T>().byte_offset(self.raw as isize) }
+        (*HHDM_BASE).into_mut::<T>().wrapping_byte_add(self.raw)
     }
 }
 
