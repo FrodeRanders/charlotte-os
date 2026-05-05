@@ -251,22 +251,26 @@ impl fmt::Write for Console {
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
-        use core::fmt::Write;
-        use crate::framebuffer::console::CONSOLE;
-        let mut con = CONSOLE.lock();
-        con.write_fmt(format_args!($($arg)*)).unwrap();
-        con.clear_inner_styling();
+        {
+            use core::fmt::Write;
+            use crate::framebuffer::console::CONSOLE;
+            let mut con = CONSOLE.lock();
+            con.write_fmt(format_args!($($arg)*)).unwrap();
+            con.clear_inner_styling();
+        }
     }
 }
 
 #[macro_export]
 macro_rules! println {
     ($($arg:tt)*) => {
-        use core::fmt::Write;
-        use crate::framebuffer::console::CONSOLE;
-        let mut con = CONSOLE.lock();
-        con.write_fmt(format_args!($($arg)*)).unwrap();
-        con.write_char('\n', None, None);
-        con.clear_inner_styling();
+        {
+            use core::fmt::Write;
+            use crate::framebuffer::console::CONSOLE;
+            let mut con = CONSOLE.lock();
+            con.write_fmt(format_args!($($arg)*)).unwrap();
+            con.write_char('\n', None, None);
+            con.clear_inner_styling();
+        }
     }
 }

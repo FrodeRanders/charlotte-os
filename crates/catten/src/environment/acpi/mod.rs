@@ -56,6 +56,9 @@ pub enum AcpiTableType {
     MADT,
     SRAT,
     MCFG,
+    HPET,
+    WAET,
+    BGRT,
     DSDT,
     SSDT,
 }
@@ -69,6 +72,9 @@ impl AcpiTableType {
             [b'A', b'P', b'I', b'C'] => Some(Self::MADT),
             [b'S', b'R', b'A', b'T'] => Some(Self::SRAT),
             [b'M', b'C', b'F', b'G'] => Some(Self::MCFG),
+            [b'H', b'P', b'E', b'T'] => Some(Self::HPET),
+            [b'W', b'A', b'E', b'T'] => Some(Self::WAET),
+            [b'B', b'G', b'R', b'T'] => Some(Self::BGRT),
             [b'D', b'S', b'D', b'T'] => Some(Self::DSDT),
             [b'S', b'S', b'D', b'T'] => Some(Self::SSDT),
             _ => None,
@@ -131,25 +137,10 @@ pub fn is_acpi_available() -> bool {
 }
 
 pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
-    if let Some(xsdp_ptr) = get_xsdp() {
-        let xsdp: &Xsdp = unsafe { xsdp_ptr.as_ref() };
-        if !xsdp.validate() {
-            return Err(Error::InvalidXsdp);
-        }
-        let xsdt_addr: PAddr;
-        if xsdp.xsdt_address == 0 {
-            panic!("ACPI Extended System Description Table (XSDT) required but not found");
-        } else {
-            xsdt_addr = PAddr::from(xsdp.xsdt_address);
-        }
-        let tables = parse_xsdt(xsdt_addr);
-        if let Some(table_addrs) = tables.get(&table) {
-            Ok(table_addrs.clone())
-        } else {
-            Err(Error::TableNotFound)
-        }
+    if let Some(table_addrs) = TABLE_MAP.get(&table) {
+        Ok(table_addrs.clone())
     } else {
-        Err(Error::AcpiUnavailable)
+        Err(Error::TableNotFound)
     }
 }
 
@@ -162,6 +153,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     );
     let xsdt_header: &SdtHeader =
         unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
+    println!("[ACPI] XSDT header located.");
     // Note: HHDM pointers are extremely unsafe as they live entirely outside of Rust's memory model
     // Try to keep their use read-only and never use the HHDM to access data that can be accessed
     // through proper memory mappings. ACPI tables and Device Tree Nodes are an acceptable use case
@@ -171,6 +163,10 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     };
     let data_length = xsdt_header.length as usize - size_of::<SdtHeader>();
     let num_entries = data_length / size_of::<u64>();
+    println!(
+        "[ACPI] XSDT data physical address: {:?}, number of entries: {}",
+        xsdt_data_ptr, num_entries
+    );
     let mut table_addrs = Vec::<PAddr>::with_capacity(num_entries);
     for i in 0..num_entries {
         let entry_addr = unsafe { xsdt_data_ptr.as_ptr().add(i).read_unaligned() };
@@ -189,7 +185,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
             }
         }
     }
-
+    println!("[ACPI] Finished parsing XSDT. Found {} tables.", tables.len());
     tables
 }
 
