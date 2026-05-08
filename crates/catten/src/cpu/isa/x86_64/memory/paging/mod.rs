@@ -1,16 +1,13 @@
 pub mod pte;
 pub mod pth_walker;
-
-use alloc::collections::btree_map::BTreeMap;
 use core::arch::asm;
 use core::iter::Iterator;
 use core::ptr::NonNull;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-
 use super::MemoryInterfaceImpl;
 use super::address::vaddr::VAddr;
 use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
+use crate::klib::size::{gibibytes, kibibytes, mebibytes};
 use crate::logln;
 use crate::memory::{AddressSpaceId, PAddr};
 
@@ -68,6 +65,10 @@ impl AddressSpace {
 }
 
 impl AddressSpaceInterface for AddressSpace {
+    const HUGE_PAGE_SIZE: Option<usize> = Some(gibibytes(1));
+    const LARGE_PAGE_SIZE: Option<usize> = Some(mebibytes(2));
+    const PAGE_SIZE: usize = kibibytes(4);
+
     fn get_current() -> Self {
         let cr3: u64;
         unsafe {

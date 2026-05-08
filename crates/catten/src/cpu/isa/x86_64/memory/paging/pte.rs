@@ -11,7 +11,7 @@ const USER_ACCESSIBLE_BIT_INDEX: u64 = 2;
 const PAT_INDEX_0: u64 = 3;
 const PAT_INDEX_1: u64 = 4;
 const PAT_INDEX_2_STANDARD: u64 = 7; // only for PTEs pointing to a 4 KiB page
-//const PAT_INDEX_2_LARGE_HUGE: u64 = 12; // only for PTEs pointing to a 2 MiB or 1 GiB page
+const PAT_INDEX_2_LARGE_HUGE: u64 = 12; // only for PTEs pointing to a 2 MiB or 1 GiB page
 const ACCESSED_BIT_INDEX: u64 = 5;
 const DIRTY_BIT_INDEX: u64 = 6;
 const PAGE_SIZE_BIT_INDEX: u64 = 7; // only for PTEs pointing to a 2 MiB or 1 GiB page
@@ -41,6 +41,25 @@ impl PageTableEntry {
             .set_pat_index_bits(pat_index)
             .set_global(global)
             .set_frame(frame_addr);
+        pte
+    }
+
+    pub fn new_large_huge(
+        present: bool,
+        writable: bool,
+        user_accessible: bool,
+        pat_index: u8,
+        global: bool,
+        frame_addr: PAddr,
+    ) -> Self {
+        let mut pte = Self(0);
+        pte.set_present(present)
+            .set_writable(writable)
+            .set_user_accessible(user_accessible)
+            .set_pat_index_bits_large_huge(pat_index)
+            .set_global(global)
+            .set_frame(frame_addr)
+            .set_page_size(true);
         pte
     }
 
@@ -95,6 +114,13 @@ impl PageTableEntry {
         self.0 |= ((pat_index & 1) << PAT_INDEX_0) as u64;
         self.0 |= ((pat_index & 1 << 1) << PAT_INDEX_1 - 1) as u64;
         self.0 |= ((pat_index & 1 << 2) << PAT_INDEX_2_STANDARD - 2) as u64;
+        self
+    }
+
+    pub fn set_pat_index_bits_large_huge(&mut self, pat_index: u8) -> &mut Self {
+        self.0 |= ((pat_index & 1) << PAT_INDEX_0) as u64;
+        self.0 |= ((pat_index & 1 << 1) << PAT_INDEX_1 - 1) as u64;
+        self.0 |= ((pat_index & 1 << 2) << PAT_INDEX_2_LARGE_HUGE - 2) as u64;
         self
     }
 

@@ -229,4 +229,172 @@ impl<'vas> PthWalker<'vas> {
             Err(other) => Err(other),
         }
     }
+
+    fn map_large_page(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+    ) -> Result<(), <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
+        match self.walk() {
+            Ok(_) => {
+                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
+            }
+            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
+                if self.pml4_ptr.is_null() {
+                    // Obtain the PML4 table pointer; all address spaces must have a top level page
+                    // table as they are all required to map the kernel and
+                    // higher half memory.
+                    if self.address_space.cr3 & CR3_ADDRESS_MASK == 0 {
+                        let new_pml4 = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                        self.address_space.cr3 =
+                            <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK;
+                        self.address_space.load().expect("Error reloading the CR3 register");
+                    }
+                    self.pml4_ptr =
+                        PAddr::try_from((self.address_space.cr3 & CR3_ADDRESS_MASK) as usize)
+                            .unwrap()
+                            .into();
+                    unsafe {
+                        core::ptr::write_bytes(self.pml4_ptr, 0, PAGE_SIZE);
+                    }
+                }
+                if self.pdpt_ptr.is_null() {
+                    // Allocate a new page table for the PDPT
+                    let new_pdpt = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                    unsafe {
+                        (*self.pml4_ptr)[self.vaddr.pml4_index()]
+                            .set_frame(new_pdpt)
+                            .set_present(true)
+                            .set_writable(writable)
+                            .set_user_accessible(user_accessible)
+                            .set_execute_disabled(no_execute);
+                    }
+                    self.pdpt_ptr = new_pdpt.into();
+                    unsafe {
+                        core::ptr::write_bytes(self.pdpt_ptr, 0, PAGE_SIZE);
+                    }
+                }
+                if self.pd_ptr.is_null() {
+                    unsafe {
+                        // Allocate a new page table for the PD
+                        let new_pd = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                        unsafe {
+                            (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
+                                .set_frame(new_pd)
+                                .set_present(true)
+                                .set_writable(writable)
+                                .set_user_accessible(user_accessible)
+                                .set_execute_disabled(no_execute);
+                        }
+                        self.pd_ptr = new_pd.into();
+                        unsafe {
+                            core::ptr::write_bytes(self.pd_ptr, 0, PAGE_SIZE);
+                        }
+                    }
+                }
+                unsafe {
+                    // Map the large page frame directly in the Page Directory (PML2) with the PS
+                    // bit set
+                    (*self.pd_ptr)[self.vaddr.pd_index()]
+                        .set_frame(frame)
+                        .set_present(true)
+                        .set_writable(writable)
+                        .set_user_accessible(user_accessible)
+                        .set_execute_disabled(no_execute)
+                        .set_page_size(true);
+                }
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    fn unmap_large_page(
+        &mut self,
+    ) -> Result<PAddr, <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
+        match self.walk() {
+            Ok(_) => Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::MappedWithLargerPageSize),
+            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
+                if self.pd_ptr.is_null() {
+                    return Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped);
+                }
+                unsafe {
+                    let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
+                    if !pde.is_present() || !pde.get_page_size() {
+                        return Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped);
+                    }
+                    let paddr = pde.try_get_frame().unwrap();
+                    pde.set_present(false);
+                    //super::tlb::invalidate_page(self.address_space, self.vaddr);
+                    Ok(paddr)
+                }
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    fn map_huge_page(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+    ) -> Result<(), <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
+        match self.walk() {
+            Ok(_) => {
+                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
+            }
+            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
+                if self.pml4_ptr.is_null() {
+                    // Obtain the PML4 table pointer; all address spaces must have a top level page
+                    // table as they are all required to map the kernel and
+                    // higher half memory.
+                    if self.address_space.cr3 & CR3_ADDRESS_MASK == 0 {
+                        let new_pml4 = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                        self.address_space.cr3 =
+                            <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK;
+                        self.address_space.load().expect("Error reloading the CR3 register");
+                    }
+                    self.pml4_ptr =
+                        PAddr::try_from((self.address_space.cr3 & CR3_ADDRESS_MASK) as usize)
+                            .unwrap()
+                            .into();
+                    unsafe {
+                        core::ptr::write_bytes(self.pml4_ptr, 0, PAGE_SIZE);
+                    }
+                }
+                if self.pdpt_ptr.is_null() {
+                    // Allocate a new page table for the PDPT
+                    let new_pdpt = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                    unsafe {
+                        (*self.pml4_ptr)[self.vaddr.pml4_index()]
+                            .set_frame(new_pdpt)
+                            .set_present(true)
+                            .set_writable(writable)
+                            .set_user_accessible(user_accessible)
+                            .set_execute_disabled(no_execute);
+                    }
+                    self.pdpt_ptr = new_pdpt.into();
+                    unsafe {
+                        core::ptr::write_bytes(self.pdpt_ptr, 0, PAGE_SIZE);
+                    }
+                }
+                unsafe {
+                    // Map the large page frame directly in the Page Directory (PML2) with the PS
+                    // bit set
+                    (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
+                        .set_frame(frame)
+                        .set_present(true)
+                        .set_writable(writable)
+                        .set_user_accessible(user_accessible)
+                        .set_execute_disabled(no_execute)
+                        .set_page_size(true);
+                }
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
+    }
 }

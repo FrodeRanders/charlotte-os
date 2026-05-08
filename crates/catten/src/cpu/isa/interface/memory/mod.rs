@@ -15,6 +15,10 @@ pub trait MemoryInterface {
 }
 
 pub trait AddressSpaceInterface {
+    const PAGE_SIZE: usize;
+    const LARGE_PAGE_SIZE: Option<usize>;
+    const HUGE_PAGE_SIZE: Option<usize>;
+
     fn get_current() -> Self;
     fn load(&self) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;
     fn find_free_region(
@@ -27,6 +31,22 @@ pub trait AddressSpaceInterface {
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;
     fn unmap_page(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn map_large_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn unmap_large_page(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn map_huge_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn unmap_huge_page(
         &mut self,
         vaddr: VAddr,
     ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
