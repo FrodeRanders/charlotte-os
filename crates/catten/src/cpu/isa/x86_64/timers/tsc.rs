@@ -3,15 +3,15 @@ use core::arch::x86_64::__cpuid_count;
 
 use spin::Lazy;
 
-use crate::klib::integer::nearest_multiple_of;
-use crate::klib::time::duration::ExtDuration;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::system_info::{CpuInfo, IsaExtension};
 use crate::cpu::isa::timers::i8254;
+use crate::klib::integer::nearest_multiple_of;
+use crate::klib::time::duration::ExtDuration;
 
 pub static IS_TSC_INVARIANT: Lazy<bool> =
     Lazy::new(|| CpuInfo::is_extension_supported(IsaExtension::InvariantTsc));
-pub static TSC_FREQUENCY_HZ: Lazy<u64> = Lazy::new(get_tsc_freq);
+pub static TSC_FREQUENCY_HZ: Lazy<u64> = Lazy::new(get_tsc_freq_common);
 pub static TSC_CYCLE_PERIOD: Lazy<ExtDuration> = Lazy::new(|| {
     let ps = 1_000_000_000_000 / *TSC_FREQUENCY_HZ;
     ExtDuration::from_picos(ps as u128)
@@ -32,14 +32,14 @@ pub fn rdtsc() -> u64 {
     ((tsc_high as u64) << 32) | tsc_low as u64
 }
 
-fn get_tsc_freq() -> u64 {
-    //! # Get the timestamp counter frequency in Hz.
-    // Determining the TSC frequency differs by vendor
-    match CpuInfo::get_vendor().as_str() {
-        "GenuineIntel" => get_tsc_freq_intel(),
-        _ => get_tsc_freq_common(),
-    }
-}
+// fn get_tsc_freq() -> u64 {
+//     //! # Get the timestamp counter frequency in Hz.
+//     // Determining the TSC frequency differs by vendor
+//     match CpuInfo::get_vendor().as_str() {
+//         "GenuineIntel" => get_tsc_freq_intel(),
+//         _ => get_tsc_freq_common(),
+//     }
+// }
 
 fn get_tsc_freq_common() -> u64 {
     //! # Measure the TSC frequency using the legacy i8254 PIT
@@ -62,13 +62,13 @@ fn get_tsc_freq_common() -> u64 {
     nearest_multiple_of(mean_tsc_cycles, 1_000_000)
 }
 
-fn get_tsc_freq_intel() -> u64 {
-    //! # Use the CPUID instruction to determine the frequency of the TSC
-    //! On Intel processors CPUID leaf 0x15 can be used to determine the frequency of the TSC.
-    let cpuid_15 = unsafe { __cpuid_count(0x15, 0) };
-    if cpuid_15.ecx != 0 && cpuid_15.eax != 0 && cpuid_15.ebx != 0 {
-        cpuid_15.ecx as u64 * (cpuid_15.eax as u64 / cpuid_15.ebx as u64)
-    } else {
-        get_tsc_freq_common()
-    }
-}
+// fn get_tsc_freq_intel() -> u64 {
+//     //! # Use the CPUID instruction to determine the frequency of the TSC
+//     //! On Intel processors CPUID leaf 0x15 can be used to determine the frequency of the TSC.
+//     let cpuid_15 = unsafe { __cpuid_count(0x15, 0) };
+//     if cpuid_15.ecx != 0 && cpuid_15.eax != 0 && cpuid_15.ebx != 0 {
+//         cpuid_15.ecx as u64 * (cpuid_15.eax as u64 / cpuid_15.ebx as u64)
+//     } else {
+//         get_tsc_freq_common()
+//     }
+// }

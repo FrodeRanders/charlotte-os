@@ -50,17 +50,60 @@ pub enum Error {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AcpiTableType {
-    RSDT,
-    XSDT,
-    FADT,
-    MADT,
-    SRAT,
-    MCFG,
-    HPET,
-    WAET,
-    BGRT,
-    DSDT,
-    SSDT,
+    RSDT, /* Root System Description Table, contains 32-bit physical addresses of other ACPI
+           * tables => Unused by Catten since we require ACPI 2.0 or higher */
+    XSDT, /* Extended System Description Table, contains 64-bit physical addresses of other ACPI tables => Used by Catten to find the physical addresses of other ACPI tables */
+    FADT, /* Fixed ACPI Description Table, contains fixed hardware configuration information
+           * and pointers to other tables like the DSDT => Used by Catten to find the physical
+           * address of the DSDT and determine if the system supports 64-bit PM timer access
+           * and other features */
+    MADT, /* Multiple APIC Description Table, contains information about the system's APICs and
+           * interrupt controllers => Used by Catten to configure the APIC and enable
+           * interrupts on secondary CPUs in an SMP system */
+    SRAT, /* System Resource Affinity Table, contains information about the system's NUMA nodes
+           * and their proximity to CPUs and memory => Unused by Catten since we don't
+           * currently have any NUMA-aware features planned */
+    MCFG, /* Memory-Mapped Configuration Space Base Address Description Table, contains
+           * information about the system's PCI Express configuration space => Used by Catten
+           * to find the physical address of the PCI Express configuration space and access it
+           * to configure PCI Express devices */
+    HPET, /* High Precision Event Timer Table, contains information about the system's HPET
+           * timer => Used by Catten to find the physical address of the HPET timer and access
+           * it to configure the HPET timer and use it for high-resolution timing and
+           * scheduling */
+    WAET, /* Windows ACPI Emulated Devices Table, used by Windows to detect if it's running in
+           * a virtual machine => Unused by Catten */
+    BGRT, /* Boot Graphics Resource Table, used to pass a boot logo from the firmware to the OS
+           * => Unused by Catten */
+    IVRS, /* I/O Virtualization Reporting Structure, used by AMD's SVM => Used by Catten to
+           * determine if AMD SVM is supported */
+    UEFI, /* UEFI ACPI table, used by UEFI drivers to avoid name collisions with ACPI tables =>
+           * Unused by Catten */
+    TPM2, /* Trusted Platform Module 2.0 Table, used for TPM 2.0 support => Unused by Catten */
+    MSDM, /* Microsoft Data Management Table, used for Windows Product Activation => Unused by
+           * Catten */
+    BOOT, /* Microsoft Boot Table, used for Windows boot configuration => Unused by Catten */
+    SLIC, /* Software Licensing Description Table, used for Windows activation => Unused by
+           * Catten */
+    VFCT, /* Video Firmware Configuration Table, used for early VBIOS access particularly with
+           * AMD GPUs => Unused so far, may be used in the future */
+    CRAT, /* Coherent Resource Affinity Table, is used in systems with heterogeneous computing,
+           * such as AMD APUs, to describe the topology, affinity, and coherence of memory and
+           * processing units to the operating system => Not presently used, may be used in the
+           * future */
+    CDIT, /* Coherent Device Information Table, used to provide information about coherent devices to the operating system => Not presently used, may be used in the future */
+    FPDT, /* Firmware Performance Data Table, used to provide performance data about the
+           * firmware => Unused by Catten */
+    WSMT, /* Windows SMM Security Mitigations Table, used to indicate support for various SMM
+           * security mitigations => Unused by Catten, may be used in the future if possible */
+    DSDT, /* Differentiated System Description Table, contains AML bytecode that describes the
+           * system's devices and their configuration => Used via uACPI to build and
+           * use the ACPI Namespace and execute AML methods to configure devices and
+           * perform other ACPI operations */
+    SSDT, /* Secondary System Description Table, contains AML bytecode that describes
+           * additional devices and configuration that doesn't fit in the DSDT =>
+           * Used via uACPI to build and use the ACPI Namespace and execute AML
+           * methods to configure devices and perform other ACPI operations */
 }
 
 impl AcpiTableType {
@@ -75,6 +118,17 @@ impl AcpiTableType {
             [b'H', b'P', b'E', b'T'] => Some(Self::HPET),
             [b'W', b'A', b'E', b'T'] => Some(Self::WAET),
             [b'B', b'G', b'R', b'T'] => Some(Self::BGRT),
+            [b'I', b'V', b'R', b'S'] => Some(Self::IVRS),
+            [b'U', b'E', b'F', b'I'] => Some(Self::UEFI),
+            [b'T', b'P', b'M', b'2'] => Some(Self::TPM2),
+            [b'M', b'S', b'D', b'M'] => Some(Self::MSDM),
+            [b'B', b'O', b'O', b'T'] => Some(Self::BOOT),
+            [b'S', b'L', b'I', b'C'] => Some(Self::SLIC),
+            [b'V', b'F', b'C', b'T'] => Some(Self::VFCT),
+            [b'C', b'R', b'A', b'T'] => Some(Self::CRAT),
+            [b'C', b'D', b'I', b'T'] => Some(Self::CDIT),
+            [b'F', b'P', b'D', b'T'] => Some(Self::FPDT),
+            [b'W', b'S', b'M', b'T'] => Some(Self::WSMT),
             [b'D', b'S', b'D', b'T'] => Some(Self::DSDT),
             [b'S', b'S', b'D', b'T'] => Some(Self::SSDT),
             _ => None,
@@ -146,11 +200,7 @@ pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
 
 fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let mut tables = HashMap::new();
-    println!(
-        "[ACPI] Parsing XSDT at address {:?} with header size {}",
-        xsdt_addr,
-        size_of::<SdtHeader>()
-    );
+    println!("[ACPI] Parsing XSDT at address {:?}", xsdt_addr);
     let xsdt_header: &SdtHeader =
         unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
     println!("[ACPI] XSDT header located.");
@@ -180,7 +230,8 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
             } else {
                 println!(
                     "[ACPI] Warning: Unrecognized ACPI table with signature {:?} at address {:?}",
-                    signature, table_addr
+                    unsafe { String::from_utf8_unchecked(signature.to_vec()) },
+                    table_addr
                 );
             }
         }
