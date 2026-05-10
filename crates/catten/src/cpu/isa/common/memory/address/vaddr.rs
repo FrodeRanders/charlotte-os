@@ -1,5 +1,5 @@
 use core::iter::Step;
-use core::ops::{Add, Sub};
+use core::ops::{Add, AddAssign, Sub};
 
 use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
 use crate::cpu::isa::memory::address::VADDR_SIG_BITS;
@@ -197,6 +197,15 @@ impl Sub<usize> for VAddr {
 
     fn sub(self, other: usize) -> Self::Output {
         VAddr::from(self.raw - other)
+    }
+}
+
+impl<T> AddAssign<T> for VAddr
+where
+    VAddr: Add<T, Output = VAddr>,
+{
+    fn add_assign(&mut self, rhs: T) {
+        *self = *self + rhs;
     }
 }
 

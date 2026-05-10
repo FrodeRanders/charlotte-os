@@ -16,8 +16,8 @@ pub trait MemoryInterface {
 
 pub trait AddressSpaceInterface {
     const PAGE_SIZE: usize;
-    const LARGE_PAGE_SIZE: Option<usize>;
-    const HUGE_PAGE_SIZE: Option<usize>;
+    const LARGE_PAGE_SIZE: usize;
+    const HUGE_PAGE_SIZE: usize;
 
     fn get_current() -> Self;
     fn load(&self) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;

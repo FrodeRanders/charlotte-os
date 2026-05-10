@@ -13,6 +13,8 @@ pub enum Error {
     AlreadyMapped,
     NullVAddrNotAllowed,
     VAddrNotPageAligned,
+    VAddrNotLargePageAligned,
+    VAddrNotHugePageAligned,
     NoRequestedVAddrRegionAvailable,
     PMemError(PMemError),
     VMemError(VMemError),

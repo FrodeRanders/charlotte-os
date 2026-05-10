@@ -6,6 +6,7 @@ use core::ptr::NonNull;
 
 use super::MemoryInterfaceImpl;
 use super::address::vaddr::VAddr;
+use crate::cpu::isa::interface::memory::address::Address;
 use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
 use crate::klib::size::{gibibytes, kibibytes, mebibytes};
 use crate::logln;
@@ -65,8 +66,8 @@ impl AddressSpace {
 }
 
 impl AddressSpaceInterface for AddressSpace {
-    const HUGE_PAGE_SIZE: Option<usize> = Some(gibibytes(1));
-    const LARGE_PAGE_SIZE: Option<usize> = Some(mebibytes(2));
+    const HUGE_PAGE_SIZE: usize = gibibytes(1);
+    const LARGE_PAGE_SIZE: usize = mebibytes(2);
     const PAGE_SIZE: usize = kibibytes(4);
 
     fn get_current() -> Self {
@@ -149,6 +150,62 @@ impl AddressSpaceInterface for AddressSpace {
         }
         let mut walker = pth_walker::PthWalker::new(self, vaddr);
         walker.unmap_page()
+    }
+
+    fn map_large_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, mapping.vaddr);
+        walker.map_large_page(
+            mapping.paddr,
+            mapping.page_type.is_writable(),
+            mapping.page_type.is_user_accessible(),
+            mapping.page_type.is_no_execute(),
+        )?;
+        Ok(())
+    }
+
+    fn unmap_large_page(
+        &mut self,
+        vaddr: <MemoryInterfaceImpl as MemoryInterface>::VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if <VAddr as Into<usize>>::into(vaddr) == 0 {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NullVAddrNotAllowed);
+        }
+        if !vaddr.is_aligned_to(Self::LARGE_PAGE_SIZE) {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotLargePageAligned);
+        }
+        let mut walker = pth_walker::PthWalker::new(self, vaddr);
+        walker.unmap_large_page()
+    }
+
+    fn map_huge_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, mapping.vaddr);
+        walker.map_huge_page(
+            mapping.paddr,
+            mapping.page_type.is_writable(),
+            mapping.page_type.is_user_accessible(),
+            mapping.page_type.is_no_execute(),
+        )?;
+        Ok(())
+    }
+
+    fn unmap_huge_page(
+        &mut self,
+        vaddr: <MemoryInterfaceImpl as MemoryInterface>::VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if <VAddr as Into<usize>>::into(vaddr) == 0 {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NullVAddrNotAllowed);
+        }
+        if !vaddr.is_aligned_to(Self::HUGE_PAGE_SIZE) {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotHugePageAligned);
+        }
+        let mut walker = pth_walker::PthWalker::new(self, vaddr);
+        walker.unmap_huge_page()
     }
 
     fn is_mapped(

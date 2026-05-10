@@ -1,4 +1,4 @@
-use core::ops::{Add, Sub};
+use core::ops::{Add, AddAssign, Sub};
 
 use crate::cpu::isa::interface::memory::address::{Address, PhysicalAddress, VirtualAddress};
 use crate::cpu::isa::memory::address::PADDR_MASK;
@@ -120,6 +120,15 @@ impl Add<isize> for PAddr {
 
     fn add(self, rhs: isize) -> Self::Output {
         PAddr::try_from(self.raw.wrapping_add(rhs as usize)).unwrap()
+    }
+}
+
+impl<T> AddAssign<T> for PAddr
+where
+    PAddr: Add<T, Output = PAddr>,
+{
+    fn add_assign(&mut self, rhs: T) {
+        *self = *self + rhs;
     }
 }
 

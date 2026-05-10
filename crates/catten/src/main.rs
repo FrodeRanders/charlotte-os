@@ -90,6 +90,7 @@ pub extern "C" fn bsp_main() -> ! {
             environment::acpi::print_table_map();
         }
     }
+    await_interrupt!();
     //logln!("Device Topology: {:?}", (*DEVICE_TOPOLOGY));
     mask_interrupts!();
     for _ in 0..(get_lp_count() * 3) {

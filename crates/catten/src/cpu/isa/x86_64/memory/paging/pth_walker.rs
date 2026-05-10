@@ -230,7 +230,7 @@ impl<'vas> PthWalker<'vas> {
         }
     }
 
-    fn map_large_page(
+    pub fn map_large_page(
         &mut self,
         frame: PAddr,
         writable: bool,
@@ -311,22 +311,28 @@ impl<'vas> PthWalker<'vas> {
         }
     }
 
-    fn unmap_large_page(
+    pub fn unmap_large_page(
         &mut self,
     ) -> Result<PAddr, <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
         match self.walk() {
-            Ok(_) => Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::MappedWithLargerPageSize),
+            Ok(_) => {
+                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
+            }
             Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
                 if self.pd_ptr.is_null() {
-                    return Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped);
+                    return Err(
+                        <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
+                    );
                 }
                 unsafe {
                     let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
-                    if !pde.is_present() || !pde.get_page_size() {
-                        return Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped);
+                    if !(*pde).is_present() || !(*pde).get_page_size() {
+                        return Err(
+                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
+                        );
                     }
-                    let paddr = pde.try_get_frame().unwrap();
-                    pde.set_present(false);
+                    let paddr = (*pde).try_get_frame().unwrap();
+                    (*pde).set_present(false);
                     //super::tlb::invalidate_page(self.address_space, self.vaddr);
                     Ok(paddr)
                 }
@@ -335,7 +341,7 @@ impl<'vas> PthWalker<'vas> {
         }
     }
 
-    fn map_huge_page(
+    pub fn map_huge_page(
         &mut self,
         frame: PAddr,
         writable: bool,
@@ -393,6 +399,36 @@ impl<'vas> PthWalker<'vas> {
                         .set_page_size(true);
                 }
                 Ok(())
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    pub fn unmap_huge_page(
+        &mut self,
+    ) -> Result<PAddr, <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
+        match self.walk() {
+            Ok(_) => {
+                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
+            }
+            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
+                if self.pdpt_ptr.is_null() {
+                    return Err(
+                        <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
+                    );
+                }
+                unsafe {
+                    let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+                    if !(*pdpte).is_present() || !(*pdpte).get_page_size() {
+                        return Err(
+                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
+                        );
+                    }
+                    let paddr = (*pdpte).try_get_frame().unwrap();
+                    (*pdpte).set_present(false);
+                    //super::tlb::invalidate_page(self.address_space, self.vaddr);
+                    Ok(paddr)
+                }
             }
             Err(other) => Err(other),
         }
