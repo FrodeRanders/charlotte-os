@@ -10,7 +10,6 @@ use alloc::format;
 use alloc::vec::Vec;
 
 use concurrent_queue::ConcurrentQueue;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 use crate::cpu::isa::constants::interrupt_vectors::UNICAST_IPI_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
@@ -19,6 +18,7 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::isa::memory::tlb;
 use crate::cpu::multiprocessor::get_lp_count;
+use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::memory::linear::VAddr;
 use crate::memory::{AddressSpaceId, KERNEL_ASID};
