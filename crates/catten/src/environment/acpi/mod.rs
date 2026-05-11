@@ -178,6 +178,19 @@ pub struct SdtHeader {
     creator_revision: u32,
 }
 
+impl SdtHeader {
+    pub fn validate(&self) -> bool {
+        let mut sum = 0u8;
+        unsafe {
+            let ptr = &raw const *self as *const u8;
+            for i in 0..self.length as usize {
+                sum = sum.wrapping_add(*ptr.add(i));
+            }
+        }
+        sum == 0
+    }
+}
+
 pub fn get_xsdp() -> Option<NonNull<Xsdp>> {
     if let Some(res) = RSDP_REQUEST.response() {
         NonNull::new(res.address as *mut Xsdp)
@@ -204,6 +217,12 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let xsdt_header: &SdtHeader =
         unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
     println!("[ACPI] XSDT header located.");
+    if !xsdt_header.validate() {
+        panic!(
+            "[ACPI] XSDT checksum validation failed. This machine's firmware is invalid or has \
+             been corrupted."
+        );
+    }
     // Note: HHDM pointers are extremely unsafe as they live entirely outside of Rust's memory model
     // Try to keep their use read-only and never use the HHDM to access data that can be accessed
     // through proper memory mappings. ACPI tables and Device Tree Nodes are an acceptable use case

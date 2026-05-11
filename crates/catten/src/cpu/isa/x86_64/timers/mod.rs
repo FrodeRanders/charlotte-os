@@ -1,5 +1,4 @@
 pub mod apic_timer;
-pub mod i8254;
 pub mod tsc;
 
 pub use apic_timer::LpTimer;
@@ -15,7 +14,7 @@ pub fn print_timer_info() {
     } else {
         logln!("The x86-64 Timestamp Counter is NOT invariant.");
     }
-    logln!("The x86-64 Timestamp Counter frequency is {:?} MHz.", (*TSC_FREQUENCY_HZ / 1_000_000));
+    logln!("The x86-64 Timestamp Counter frequency is {:?} Hz.", (*TSC_FREQUENCY_HZ));
     logln!(
         "The x86-64 Timestamp Counter period is {:?} picoseconds.",
         ((*TSC_CYCLE_PERIOD).as_picos())

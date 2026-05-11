@@ -1,13 +1,10 @@
-init-submodules:
-    git submodule update --init --recursive
-
 build-catten arch="x86_64" profile="debug" features="":
     cargo build --package catten --target {{ if arch == "x86_64" { "x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }}
 
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"
-create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features) init-submodules
+create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features)
     #!/usr/bin/env bash
     if [ ! -d {{image_dir}} ]; then mkdir {{image_dir}}; fi
     touch {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd
@@ -20,7 +17,7 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
     if [ ! -d {{temp_mnt_dir}} ]; then mkdir {{temp_mnt_dir}}; fi
     sudo mount ${lodev}p1 {{temp_mnt_dir}}
     sudo mkdir -p {{temp_mnt_dir}}/EFI/BOOT
-    sudo cp ./Limine/BOOTX64.EFI {{temp_mnt_dir}}/EFI/BOOT/BOOTX64.EFI
+    sudo cp ./limine-binary/BOOTX64.EFI {{temp_mnt_dir}}/EFI/BOOT/BOOTX64.EFI
     sudo cp ./target/{{ if arch == "x86_64" { "x86_64-unknown-none-catten" } else if arch == "aarch64" { "aarch64-unknown-none-catten" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten" } else { arch + "-unknown-none" } }}/{{profile}}/catten ./limine.conf {{temp_mnt_dir}}
     sudo umount {{temp_mnt_dir}}
     sudo losetup -d $lodev
