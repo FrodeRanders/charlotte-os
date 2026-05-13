@@ -35,6 +35,9 @@ mod devicetree;
 // ARM Secure Monitor Call (SMC) Interface
 #[cfg(target_arch = "aarch64")]
 mod arm_smc;
+// RISC-V Supervisor Binary Interface (RISC-V SBI)
+#[cfg(target_arch = "riscv64")]
+mod riscv_sbi;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
 mod uefi_rt;
 
