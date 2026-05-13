@@ -90,16 +90,9 @@ impl CpuInfoIfce for Riscv64CpuInfo {
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {
-        let misa = call_sbi!(
-            SbiExtensionId::Base as i32,
-            SbiBaseFunctionId::GetSbiSpecVersion as i32,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
+        todo!(
+            "Get this information per LP from the RHCT ACPI table or the DT CPU nodes, whichever \
+             is present in the system."
         )
-        (misa & (extension as u64)) != 0
     }
 }
