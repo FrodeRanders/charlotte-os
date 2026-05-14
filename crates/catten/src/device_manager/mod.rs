@@ -30,8 +30,8 @@ pub struct DeviceNode {
 
 pub enum DeviceLocation {
     FixedIo(fixed_io::IoRange),
-    Pcie(pcie::PciePath),
-    //Usb(usb::UsbPath),
+    Pcie(pcie::PcieAddress),
+    //Usb(usb::UsbAddress),
 }
 
 #[derive(Debug)]

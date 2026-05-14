@@ -14,7 +14,7 @@ const MAX_DEVICES_PER_BUS: usize = 32;
 const MAX_FUNCTIONS_PER_DEVICE: usize = 8;
 
 #[derive(Debug)]
-pub struct PciePath {
+pub struct PcieAddress {
     segment_group: PcieSegmentNum,
     bus: PcieBusNum,
     device: PcieDeviceNum,
