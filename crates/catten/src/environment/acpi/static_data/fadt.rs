@@ -1,28 +1,6 @@
 use super::super::SdtHeader;
-
-#[repr(u8)]
-pub enum GasAddressSpace {
-    SystemMemory = 0,
-    SystemIO = 1,
-    PCIConfigurationSpace = 2,
-    EmbeddedController = 3,
-    SMBus = 4,
-    Cmos = 5,
-    PCIBarTarget = 6,
-    Ipmi = 7,
-    Gpio = 8,
-    GenericSerialBus = 9,
-    PlatformCommunicationsChannel = 10,
-}
-
-#[repr(C, packed)]
-pub struct GenericAddressStructure {
-    address_space: GasAddressSpace,
-    bit_width: u8,
-    bit_offset: u8,
-    access_size: u8, // 8 * pow(2, AccessSize) bytes
-    address: u64,
-}
+use super::*;
+use crate::memory::PAddr;
 
 #[repr(C, packed)]
 pub struct Fadt {
@@ -83,4 +61,14 @@ pub struct Fadt {
     x_gpe1_blk: GenericAddressStructure,
 }
 
-impl Fadt {}
+impl Fadt {
+    pub fn get_dsdt_paddr(&self) -> PAddr {
+        if self.x_dsdt != 0 {
+            PAddr::from(self.x_dsdt)
+        } else if self.dsdt != 0 {
+            PAddr::from(self.dsdt as u64)
+        } else {
+            panic!("[ACPI] The FADT does not contain a non-null physical address for the DSDT.");
+        }
+    }
+}
