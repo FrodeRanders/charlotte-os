@@ -46,6 +46,7 @@ pub enum Error {
     InvalidXsdp,
     XsdtNotFound,
     TableNotFound,
+    InvalidTableSignature,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,9 +58,10 @@ pub enum AcpiTableType {
            * and pointers to other tables like the DSDT => Used by Catten to find the physical
            * address of the DSDT and determine if the system supports 64-bit PM timer access
            * and other features */
-    MADT, /* Multiple APIC Description Table, contains information about the system's APICs and
-           * interrupt controllers => Used by Catten to configure the APIC and enable
-           * interrupts on secondary CPUs in an SMP system */
+    MADT, /* Multiple APIC Description Table, contains information about the system's
+           * interrupt controllers => Used by Catten to configure platform level interrupt
+           * controllers since processor local ones are usually more easily found by other
+           * means */
     SRAT, /* System Resource Affinity Table, contains information about the system's NUMA nodes
            * and their proximity to CPUs and memory => Unused by Catten since we don't
            * currently have any NUMA-aware features planned */
@@ -96,6 +98,11 @@ pub enum AcpiTableType {
            * firmware => Unused by Catten */
     WSMT, /* Windows SMM Security Mitigations Table, used to indicate support for various SMM
            * security mitigations => Unused by Catten, may be used in the future if possible */
+    RHCT, /* RISC-V Hart Capabilities Table, used to describe the capabilities of RISC-V harts
+           * => Used to query hart ISA functionality on RISC-V systems */
+    GTDT, /* Generic Timer Description Table, contains information about the system's generic
+           * timers on ARM systems => Used by Catten to find the physical address of the
+           * generic timer */
     DSDT, /* Differentiated System Description Table, contains AML bytecode that describes the
            * system's devices and their configuration => Used to build and
            * use the ACPI Namespace and execute AML methods to configure devices and
@@ -106,32 +113,34 @@ pub enum AcpiTableType {
            * methods to configure devices and perform other ACPI operations */
 }
 
-impl AcpiTableType {
-    fn from_signature(signature: [u8; 4]) -> Option<Self> {
+impl TryFrom<[u8; 4]> for AcpiTableType {
+    type Error = Error;
+
+    fn try_from(signature: [u8; 4]) -> Result<Self, Self::Error> {
         match signature {
-            [b'R', b'S', b'D', b'T'] => Some(Self::RSDT),
-            [b'X', b'S', b'D', b'T'] => Some(Self::XSDT),
-            [b'F', b'A', b'C', b'P'] => Some(Self::FADT),
-            [b'A', b'P', b'I', b'C'] => Some(Self::MADT),
-            [b'S', b'R', b'A', b'T'] => Some(Self::SRAT),
-            [b'M', b'C', b'F', b'G'] => Some(Self::MCFG),
-            [b'H', b'P', b'E', b'T'] => Some(Self::HPET),
-            [b'W', b'A', b'E', b'T'] => Some(Self::WAET),
-            [b'B', b'G', b'R', b'T'] => Some(Self::BGRT),
-            [b'I', b'V', b'R', b'S'] => Some(Self::IVRS),
-            [b'U', b'E', b'F', b'I'] => Some(Self::UEFI),
-            [b'T', b'P', b'M', b'2'] => Some(Self::TPM2),
-            [b'M', b'S', b'D', b'M'] => Some(Self::MSDM),
-            [b'B', b'O', b'O', b'T'] => Some(Self::BOOT),
-            [b'S', b'L', b'I', b'C'] => Some(Self::SLIC),
-            [b'V', b'F', b'C', b'T'] => Some(Self::VFCT),
-            [b'C', b'R', b'A', b'T'] => Some(Self::CRAT),
-            [b'C', b'D', b'I', b'T'] => Some(Self::CDIT),
-            [b'F', b'P', b'D', b'T'] => Some(Self::FPDT),
-            [b'W', b'S', b'M', b'T'] => Some(Self::WSMT),
-            [b'D', b'S', b'D', b'T'] => Some(Self::DSDT),
-            [b'S', b'S', b'D', b'T'] => Some(Self::SSDT),
-            _ => None,
+            [b'R', b'S', b'D', b'T'] => Ok(Self::RSDT),
+            [b'X', b'S', b'D', b'T'] => Ok(Self::XSDT),
+            [b'F', b'A', b'C', b'P'] => Ok(Self::FADT),
+            [b'A', b'P', b'I', b'C'] => Ok(Self::MADT),
+            [b'S', b'R', b'A', b'T'] => Ok(Self::SRAT),
+            [b'M', b'C', b'F', b'G'] => Ok(Self::MCFG),
+            [b'H', b'P', b'E', b'T'] => Ok(Self::HPET),
+            [b'W', b'A', b'E', b'T'] => Ok(Self::WAET),
+            [b'B', b'G', b'R', b'T'] => Ok(Self::BGRT),
+            [b'I', b'V', b'R', b'S'] => Ok(Self::IVRS),
+            [b'U', b'E', b'F', b'I'] => Ok(Self::UEFI),
+            [b'T', b'P', b'M', b'2'] => Ok(Self::TPM2),
+            [b'M', b'S', b'D', b'M'] => Ok(Self::MSDM),
+            [b'B', b'O', b'O', b'T'] => Ok(Self::BOOT),
+            [b'S', b'L', b'I', b'C'] => Ok(Self::SLIC),
+            [b'V', b'F', b'C', b'T'] => Ok(Self::VFCT),
+            [b'C', b'R', b'A', b'T'] => Ok(Self::CRAT),
+            [b'C', b'D', b'I', b'T'] => Ok(Self::CDIT),
+            [b'F', b'P', b'D', b'T'] => Ok(Self::FPDT),
+            [b'W', b'S', b'M', b'T'] => Ok(Self::WSMT),
+            [b'D', b'S', b'D', b'T'] => Ok(Self::DSDT),
+            [b'S', b'S', b'D', b'T'] => Ok(Self::SSDT),
+            _ => Err(Error::InvalidTableSignature),
         }
     }
 }
@@ -244,7 +253,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
 
     for table_addr in &table_addrs {
         if let Some(signature) = get_table_signature(*table_addr) {
-            if let Some(table_type) = AcpiTableType::from_signature(signature) {
+            if let Ok(table_type) = AcpiTableType::try_from(signature) {
                 tables.entry(table_type).or_insert_with(Vec::new).push(*table_addr);
             } else {
                 println!(
