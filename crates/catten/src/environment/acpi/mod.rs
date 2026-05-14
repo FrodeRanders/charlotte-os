@@ -97,12 +97,12 @@ pub enum AcpiTableType {
     WSMT, /* Windows SMM Security Mitigations Table, used to indicate support for various SMM
            * security mitigations => Unused by Catten, may be used in the future if possible */
     DSDT, /* Differentiated System Description Table, contains AML bytecode that describes the
-           * system's devices and their configuration => Used via uACPI to build and
+           * system's devices and their configuration => Used to build and
            * use the ACPI Namespace and execute AML methods to configure devices and
            * perform other ACPI operations */
     SSDT, /* Secondary System Description Table, contains AML bytecode that describes
            * additional devices and configuration that doesn't fit in the DSDT =>
-           * Used via uACPI to build and use the ACPI Namespace and execute AML
+           * Used to build and use the ACPI Namespace and execute AML
            * methods to configure devices and perform other ACPI operations */
 }
 
