@@ -8,9 +8,9 @@ use spin::Lazy;
 
 use crate::cpu::isa::interface::memory::address::Address;
 use crate::environment::boot_protocol::limine::RSDP_REQUEST;
+use crate::logln;
 use crate::memory::PAddr;
 use crate::memory::physical::PhysicalAddress;
-use crate::println;
 
 pub mod aml;
 pub mod static_data;
@@ -37,7 +37,7 @@ pub fn print_table_map() {
     for (table_type, addrs) in TABLE_MAP.iter() {
         output.push_str(&format!("{:?}: {:?}\n", table_type, addrs));
     }
-    println!("{output}");
+    logln!("{output}");
 }
 
 #[derive(Debug)]
@@ -222,10 +222,10 @@ pub fn find_table_type(table: AcpiTableType) -> Result<Vec<PAddr>, Error> {
 
 fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let mut tables = HashMap::new();
-    println!("[ACPI] Parsing XSDT at address {:?}", xsdt_addr);
+    logln!("[ACPI] Parsing XSDT at address {:?}", xsdt_addr);
     let xsdt_header: &SdtHeader =
         unsafe { (xsdt_addr.into_hhdm_ptr::<SdtHeader>()).as_ref().unwrap() };
-    println!("[ACPI] XSDT header located.");
+    logln!("[ACPI] XSDT header located.");
     if !xsdt_header.validate() {
         panic!(
             "[ACPI] XSDT checksum validation failed. This machine's firmware is invalid or has \
@@ -241,9 +241,10 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     };
     let data_length = xsdt_header.length as usize - size_of::<SdtHeader>();
     let num_entries = data_length / size_of::<u64>();
-    println!(
+    logln!(
         "[ACPI] XSDT data physical address: {:?}, number of entries: {}",
-        xsdt_data_ptr, num_entries
+        xsdt_data_ptr,
+        num_entries
     );
     let mut table_addrs = Vec::<PAddr>::with_capacity(num_entries);
     for i in 0..num_entries {
@@ -256,7 +257,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
             if let Ok(table_type) = AcpiTableType::try_from(signature) {
                 tables.entry(table_type).or_insert_with(Vec::new).push(*table_addr);
             } else {
-                println!(
+                logln!(
                     "[ACPI] Warning: Unrecognized ACPI table with signature {:?} at address {:?}",
                     unsafe { String::from_utf8_unchecked(signature.to_vec()) },
                     table_addr
@@ -264,7 +265,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
             }
         }
     }
-    println!("[ACPI] Finished parsing XSDT. Found {} tables.", tables.len());
+    logln!("[ACPI] Finished parsing XSDT. Found {} tables.", tables.len());
     tables
 }
 
