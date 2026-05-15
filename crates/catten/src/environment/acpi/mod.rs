@@ -103,6 +103,9 @@ pub enum AcpiTableType {
     GTDT, /* Generic Timer Description Table, contains information about the system's generic
            * timers on ARM systems => Used by Catten to find the physical address of the
            * generic timer */
+    SPCR, /* Serial Port Console Redirection Table, used to describe a serial port that can be
+           * used for console redirection => Unused by Catten, may be used in the
+           * future for early boot logging */
     DSDT, /* Differentiated System Description Table, contains AML bytecode that describes the
            * system's devices and their configuration => Used to build and
            * use the ACPI Namespace and execute AML methods to configure devices and
@@ -138,6 +141,9 @@ impl TryFrom<[u8; 4]> for AcpiTableType {
             [b'C', b'D', b'I', b'T'] => Ok(Self::CDIT),
             [b'F', b'P', b'D', b'T'] => Ok(Self::FPDT),
             [b'W', b'S', b'M', b'T'] => Ok(Self::WSMT),
+            [b'R', b'H', b'C', b'T'] => Ok(Self::RHCT),
+            [b'G', b'T', b'D', b'T'] => Ok(Self::GTDT),
+            [b'S', b'P', b'C', b'R'] => Ok(Self::SPCR),
             [b'D', b'S', b'D', b'T'] => Ok(Self::DSDT),
             [b'S', b'S', b'D', b'T'] => Ok(Self::SSDT),
             _ => Err(Error::InvalidTableSignature),
@@ -259,13 +265,13 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
             } else {
                 logln!(
                     "[ACPI] Warning: Unrecognized ACPI table with signature {:?} at address {:?}",
-                    unsafe { String::from_utf8_unchecked(signature.to_vec()) },
+                    (unsafe { String::from_utf8_unchecked(signature.to_vec()) }),
                     table_addr
                 );
             }
         }
     }
-    logln!("[ACPI] Finished parsing XSDT. Found {} tables.", tables.len());
+    logln!("[ACPI] Finished parsing XSDT. Found {} tables.", (tables.len()));
     tables
 }
 
