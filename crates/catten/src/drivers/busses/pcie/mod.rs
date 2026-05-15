@@ -60,16 +60,15 @@ impl PcieSegment {
     }
 
     fn enumerate_buses(
-        ecam_base: PAddr,
-        start_bus_num: PcieBusNum,
-        end_bus_num: PcieBusNum,
+        _ecam_base: PAddr,
+        _start_bus_num: PcieBusNum,
+        _end_bus_num: PcieBusNum,
     ) -> Vec<PcieBus> {
-        todo!(
-            "Enumerate all busses in the segment by starting at the start_bus_num and recursively
-        following PCIe bridges until the end_bus_num is reached. Do not probe devices or functions
-        as that will be handled by PcieBus::enumerate_devices() and PcieDevice::probe()
-             respectively."
-        )
+        // TODO: Enumerate all busses in the segment by starting at the start_bus_num and
+        // recursively following PCIe bridges until the end_bus_num is reached. Do not probe
+        // devices or functions as that will be handled by PcieBus::enumerate_devices() and
+        // PcieDevice::probe() respectively.
+        Vec::new()
     }
 }
 

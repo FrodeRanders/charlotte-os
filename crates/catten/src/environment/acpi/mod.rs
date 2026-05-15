@@ -174,7 +174,7 @@ impl Xsdp {
 }
 
 #[repr(C, packed)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct SdtHeader {
     signature: [u8; 4],
     length: u32,

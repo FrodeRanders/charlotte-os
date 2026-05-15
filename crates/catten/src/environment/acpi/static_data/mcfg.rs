@@ -8,29 +8,42 @@ use crate::memory::PAddr;
 use crate::memory::physical::PhysicalAddress;
 use crate::println;
 
-const MCFG_HEADER_SIZE: usize = core::mem::size_of::<SdtHeader>();
+const MCFG_HEADER_RESERVED_SIZE: usize = 8;
+const MCFG_HEADER_SIZE: usize = core::mem::size_of::<SdtHeader>() + MCFG_HEADER_RESERVED_SIZE;
 const MCFG_ENTRY_SIZE: usize = core::mem::size_of::<McfgEntry>();
 
 pub fn parse_mcfg() -> Vec<PcieSegment> {
-    println!("Parsing MCFG table...");
+    println!("[ACPI] Parsing MCFG table...");
     TABLE_MAP
         .get(&AcpiTableType::MCFG)
-        .map(|table| {
-            println!("MCFG tables found at the following addresses: {:?}", (table));
-            let table_ptr = unsafe { table[0].into_hhdm_ptr::<SdtHeader>() };
-            let entry_count = (unsafe {
-                read_unaligned(table_ptr.add(offset_of!(SdtHeader, length)) as *const u32)
-            } as usize
-                - MCFG_HEADER_SIZE)
-                / MCFG_ENTRY_SIZE;
-            println!("MCFG entry count: {}", (entry_count));
-            let mut segments = Vec::with_capacity(entry_count);
-            for i in 0..entry_count {
-                let entry_ptr = unsafe { table_ptr.add(MCFG_HEADER_SIZE + i * MCFG_ENTRY_SIZE) }
-                    as *const McfgEntry;
-                segments.push(parse_mcfg_entry(entry_ptr));
+        .map(|tables| {
+            println!("[ACPI] MCFG table found at the following address: {:?}", (tables[0]));
+            let table_ptr = unsafe { tables[0].into_hhdm_ptr::<SdtHeader>() };
+            let mcfg_header_ref = unsafe { &*table_ptr };
+            println!("[ACPI] MCFG table header: {:?}", mcfg_header_ref);
+            if mcfg_header_ref.validate() {
+                println!(
+                    "[ACPI] Validated MCFG table header checksum. Proceeding with MCFG parsing."
+                );
+                let table_len = mcfg_header_ref.length as usize;
+                println!("[ACPI] MCFG table length: {} bytes", (table_len));
+                let entry_count = (table_len - MCFG_HEADER_SIZE) / MCFG_ENTRY_SIZE;
+                println!("[ACPI] MCFG entry count: {}", (entry_count));
+                let mut segments = Vec::with_capacity(entry_count);
+                for i in 0..entry_count {
+                    let entry_ptr =
+                        unsafe { (table_ptr).byte_add(MCFG_HEADER_SIZE + i * MCFG_ENTRY_SIZE) }
+                            as *const McfgEntry;
+                    segments.push(parse_mcfg_entry(entry_ptr));
+                }
+                segments
+            } else {
+                println!(
+                    "[ACPI] Invalid MCFG table header checksum. Skipping MCFG parsing and \
+                     assuming no PCIe segments exist."
+                );
+                Vec::new()
             }
-            segments
         })
         .unwrap_or_default()
 }
@@ -46,13 +59,14 @@ struct McfgEntry {
 }
 
 fn parse_mcfg_entry(entry: *const McfgEntry) -> PcieSegment {
-    println!("Parsing MCFG entry at address {:p}", entry);
-    unsafe {
-        PcieSegment::new(
-            read_unaligned(entry).pcie_segment_num,
-            read_unaligned(entry).ecam_base,
-            read_unaligned(entry).start_bus_num,
-            read_unaligned(entry).end_bus_num,
-        )
-    }
+    println!("[ACPI] Parsing MCFG entry at address {:p}", entry);
+    let entry_data = unsafe { read_unaligned(entry) };
+    println!("[ACPI] MCFG entry data: {:?}", entry_data);
+
+    PcieSegment::new(
+        entry_data.pcie_segment_num,
+        entry_data.ecam_base,
+        entry_data.start_bus_num,
+        entry_data.end_bus_num,
+    )
 }

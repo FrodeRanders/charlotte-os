@@ -236,6 +236,10 @@ impl fmt::Write for Console {
                 } else if character == 'f' || character == 'F' {
                     styling.setting_text_color = true;
                     styling.setting_background_color = false;
+                } else {
+                    // Not a recognized color escape — emit the literal '[' and this character
+                    self.write_char('[', styling.text_color, styling.background_color);
+                    self.write_char(character, styling.text_color, styling.background_color);
                 }
                 reading_color_type = false;
                 continue;
