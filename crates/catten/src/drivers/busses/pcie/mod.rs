@@ -1,3 +1,5 @@
+mod ecam;
+
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
