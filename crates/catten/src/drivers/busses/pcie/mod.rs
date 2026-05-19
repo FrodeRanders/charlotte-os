@@ -16,7 +16,7 @@ const MAX_DEVICES_PER_BUS: usize = 32;
 const MAX_FUNCTIONS_PER_DEVICE: usize = 8;
 
 #[derive(Debug)]
-pub struct PcieAddress {
+pub struct PcieLocation {
     segment_group: PcieSegmentNum,
     bus: PcieBusNum,
     device: PcieDeviceNum,
@@ -62,15 +62,67 @@ impl PcieSegment {
     }
 
     fn enumerate_buses(
-        _ecam_base: PAddr,
-        _start_bus_num: PcieBusNum,
-        _end_bus_num: PcieBusNum,
+        ecam_base: PAddr,
+        start_bus_num: PcieBusNum,
+        end_bus_num: PcieBusNum,
     ) -> Vec<PcieBus> {
-        // TODO: Enumerate all busses in the segment by starting at the start_bus_num and
-        // recursively following PCIe bridges until the end_bus_num is reached. Do not probe
-        // devices or functions as that will be handled by PcieBus::enumerate_devices() and
-        // PcieDevice::probe() respectively.
-        Vec::new()
+        let mut buses = Vec::new();
+        /* TODO: Recursively enumerate all buses in the segment. */
+        buses
+    }
+
+    pub unsafe fn cfg_read8(&self, bus: u8, device: u8, function: u8, offset: u16) -> u8 {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u8;
+        unsafe { core::ptr::read_volatile(ptr) }
+    }
+
+    pub unsafe fn cfg_read16(&self, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u16;
+        unsafe { core::ptr::read_volatile(ptr) }
+    }
+
+    pub unsafe fn cfg_read32(&self, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u32;
+        unsafe { core::ptr::read_volatile(ptr) }
+    }
+
+    pub unsafe fn cfg_write8(&self, bus: u8, device: u8, function: u8, offset: u16, value: u8) {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u8;
+        unsafe { core::ptr::write_volatile(ptr, value) }
+    }
+
+    pub unsafe fn cfg_write16(&self, bus: u8, device: u8, function: u8, offset: u16, value: u16) {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u16;
+        unsafe { core::ptr::write_volatile(ptr, value) }
+    }
+
+    pub unsafe fn cfg_write32(&self, bus: u8, device: u8, function: u8, offset: u16, value: u32) {
+        let offset = ((bus as usize) << 20)
+            | ((device as usize) << 15)
+            | ((function as usize) << 12)
+            | (offset as usize);
+        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u32;
+        unsafe { core::ptr::write_volatile(ptr, value) }
     }
 }
 

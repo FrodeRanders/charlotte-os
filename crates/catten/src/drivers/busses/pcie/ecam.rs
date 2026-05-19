@@ -1,7 +1,12 @@
 //! # PCI Express Enhanced Configuration Access Mechanism (ECAM)
 
+use core::mem::ManuallyDrop;
+
+use crate::memory::PAddr;
+use crate::memory::physical::PhysicalAddress;
+
 #[repr(C, packed)]
-pub struct PcieCfgCommonHeader {
+pub struct CfgCommonHeader {
     vendor_id: u16,
     device_id: u16,
     command: u16,
@@ -16,10 +21,24 @@ pub struct PcieCfgCommonHeader {
     bist: u8,
 }
 
+impl CfgCommonHeader {
+    /* Source: https://wiki.osdev.org/PCI#Configuration_Space */
+    const HEADER_SINGLE_FUNC_MASK: u8 = 0b1 << 7;
+    const HEADER_TYPE_MASK: u8 = 0b1;
+
+    pub fn is_bridge(&self) -> bool {
+        self.header_type & Self::HEADER_TYPE_MASK == 0b1
+    }
+
+    pub fn is_multi_function(&self) -> bool {
+        self.header_type & Self::HEADER_SINGLE_FUNC_MASK == 0
+    }
+}
+
 #[repr(C, packed)]
-pub struct PcieCfgBridgeHeader {
-    common: PcieCfgCommonHeader,
-    bar: [u32; 2],
+pub struct CfgBridgeHeader {
+    common: CfgCommonHeader,
+    bars: [u32; 2],
     primary_bus_num: u8,
     secondary_bus_num: u8,
     subordinate_bus_num: u8,
@@ -43,9 +62,9 @@ pub struct PcieCfgBridgeHeader {
 }
 
 #[repr(C, packed)]
-pub struct PcieCfgEndpointHeader {
-    common: PcieCfgCommonHeader,
-    bar: [u32; 6],
+pub struct CfgEndpointHeader {
+    common: CfgCommonHeader,
+    bars: [u32; 6],
     _cardbus_cis_ptr: u32,
     subsystem_vendor_id: u16,
     subsystem_id: u16,
@@ -56,4 +75,29 @@ pub struct PcieCfgEndpointHeader {
     interrupt_pin: u8,
     _min_grant: u8,
     _max_latency: u8,
+}
+
+pub union CfgHeader {
+    common: ManuallyDrop<CfgCommonHeader>, /* For determining header type before safely
+                                            * accessing bridge/endpoint-specific fields */
+    bridge: ManuallyDrop<CfgBridgeHeader>,
+    endpoint: ManuallyDrop<CfgEndpointHeader>,
+}
+
+const PCIE_CFG_SPACE_SIZE: usize = 4096;
+
+#[repr(C, packed)]
+pub struct CfgSpace {
+    header: CfgHeader,
+    capability_space: [u8; PCIE_CFG_SPACE_SIZE - core::mem::size_of::<CfgHeader>()],
+}
+
+pub fn get_cfg_hhdm_ptr(ecam_base: PAddr, bus: u8, device: u8, function: u8) -> *const CfgSpace {
+    let offset = ((bus as usize) << 20) | ((device as usize) << 15) | ((function as usize) << 12);
+    unsafe { (ecam_base + offset).into_hhdm_ptr() }
+}
+
+pub fn get_cfg_hhdm_mut(ecam_base: PAddr, bus: u8, device: u8, function: u8) -> *mut CfgSpace {
+    let offset = ((bus as usize) << 20) | ((device as usize) << 15) | ((function as usize) << 12);
+    unsafe { (ecam_base + offset).into_hhdm_mut() }
 }
