@@ -1,5 +1,5 @@
 build-catten arch="x86_64" profile="debug" features="":
-    cargo build --package catten --target {{ if arch == "x86_64" { "x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
+    cargo build --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }}
 
 image_dir := "./os-images"
@@ -39,3 +39,7 @@ qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
 clean:
     cargo clean
     rm -rf {{image_dir}}
+
+distclean: clean
+    rm Cargo.lock
+    rm log*.txt
