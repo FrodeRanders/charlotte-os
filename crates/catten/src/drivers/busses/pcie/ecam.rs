@@ -6,6 +6,8 @@ use crate::memory::PAddr;
 use crate::memory::physical::PhysicalAddress;
 
 #[repr(C, packed)]
+/// The Common portion of the PCIe configuration space header; shared by both endpoint and
+/// bridge devices
 pub struct CfgCommonHeader {
     vendor_id: u16,
     device_id: u16,
@@ -36,6 +38,8 @@ impl CfgCommonHeader {
 }
 
 #[repr(C, packed)]
+/// The configuration space header for PCIe bridge devices, which extends the common header with
+/// bridge-specific fields
 pub struct CfgBridgeHeader {
     common: CfgCommonHeader,
     bars: [u32; 2],
@@ -62,6 +66,8 @@ pub struct CfgBridgeHeader {
 }
 
 #[repr(C, packed)]
+/// The configuration space header for PCIe endpoint devices, which extends the common header with
+/// endpoint-specific fields
 pub struct CfgEndpointHeader {
     common: CfgCommonHeader,
     bars: [u32; 6],
@@ -77,6 +83,7 @@ pub struct CfgEndpointHeader {
     _max_latency: u8,
 }
 
+/// The configuration space header for a PCIe device, which can be either a bridge or an endpoint
 pub union CfgHeader {
     common: ManuallyDrop<CfgCommonHeader>, /* For determining header type before safely
                                             * accessing bridge/endpoint-specific fields */
@@ -87,16 +94,31 @@ pub union CfgHeader {
 const PCIE_CFG_SPACE_SIZE: usize = 4096;
 
 #[repr(C, packed)]
+/// An overlay struct representing the entire 4KB configuration space of a PCIe device in an ECAM
 pub struct CfgSpace {
     header: CfgHeader,
     capability_space: [u8; PCIE_CFG_SPACE_SIZE - core::mem::size_of::<CfgHeader>()],
 }
 
+/// Converts a given ECAM base address and PCIe device location (bus/device/function) into a const
+/// pointer to the device's configuration space in the HHDM to be used for reading configuration
+/// registers via volatile reads
 pub fn get_cfg_hhdm_ptr(ecam_base: PAddr, bus: u8, device: u8, function: u8) -> *const CfgSpace {
     let offset = ((bus as usize) << 20) | ((device as usize) << 15) | ((function as usize) << 12);
     unsafe { (ecam_base + offset).into_hhdm_ptr() }
 }
 
+/// Converts a given ECAM base address and PCIe device location (bus/device/function) into a mutable
+/// pointer to the device's configuration space in the HHDM to be used for writing configuration
+/// registers via volatile writes
+///
+/// Note: The caller must ensure that the targeted device is not
+/// currently being accessed by any other thread to avoid data races additionally PCIe writes are
+/// not posted and thus the written location should be read back to ensure the write has completed
+/// before any subsequent accesses to the same device are made as per the PCIe base specification.
+///
+/// Ideally a higher-level safe API should be implemented atop this function for accessing PCIe
+/// configuration space that abstracts away these details and ensures safe access to PCIe devices.
 pub fn get_cfg_hhdm_mut(ecam_base: PAddr, bus: u8, device: u8, function: u8) -> *mut CfgSpace {
     let offset = ((bus as usize) << 20) | ((device as usize) << 15) | ((function as usize) << 12);
     unsafe { (ecam_base + offset).into_hhdm_mut() }
