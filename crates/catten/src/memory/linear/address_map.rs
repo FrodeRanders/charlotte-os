@@ -1,20 +1,20 @@
 //! # Linear Address Map
 
-use spin::Lazy;
+use spin::LazyLock;
 
 use super::VAddr;
 use crate::cpu::isa::memory::address::VADDR_SIG_BITS;
 use crate::klib::size::*;
 
 /// The rest of the kernel only sees the correct linear address map for the system it is running on
-pub static LA_MAP: Lazy<&'static LinearAddressMap> = Lazy::new(|| match *VADDR_SIG_BITS {
+pub static LA_MAP: LazyLock<&'static LinearAddressMap> = LazyLock::new(|| match *VADDR_SIG_BITS {
     39 => &LA_MAP_39BIT,
     48 => &LA_MAP_48BIT,
     57 => &LA_MAP_57BIT,
     _ => panic!("Unsupported virtual address size"),
 });
 
-static LA_MAP_39BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
+static LA_MAP_39BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
     null_page: LinearMemoryRegion {
         base: VAddr::from(0x0000_0000_0000_0000usize),
         length: kibibytes(4),
@@ -45,7 +45,7 @@ static LA_MAP_39BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
     },
 });
 
-static LA_MAP_48BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
+static LA_MAP_48BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
     null_page: LinearMemoryRegion {
         base: VAddr::from(0x0000_0000_0000_0000usize),
         length: kibibytes(4),
@@ -76,7 +76,7 @@ static LA_MAP_48BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
     },
 });
 
-static LA_MAP_57BIT: Lazy<LinearAddressMap> = Lazy::new(|| LinearAddressMap {
+static LA_MAP_57BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddressMap {
     null_page: LinearMemoryRegion {
         base: VAddr::from(0x0000_0000_0000_0000usize),
         length: kibibytes(4),

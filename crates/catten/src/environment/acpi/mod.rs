@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use hashbrown::HashMap;
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::isa::interface::memory::address::Address;
 use crate::environment::boot_protocol::limine::RSDP_REQUEST;
@@ -15,7 +15,7 @@ use crate::memory::physical::PhysicalAddress;
 pub mod aml;
 pub mod static_data;
 
-static TABLE_MAP: Lazy<HashMap<AcpiTableType, Vec<PAddr>>> = Lazy::new(|| {
+static TABLE_MAP: LazyLock<HashMap<AcpiTableType, Vec<PAddr>>> = LazyLock::new(|| {
     if let Some(xsdp_ptr) = get_xsdp() {
         let xsdp: &Xsdp = unsafe { xsdp_ptr.as_ref() };
         if !xsdp.validate() {

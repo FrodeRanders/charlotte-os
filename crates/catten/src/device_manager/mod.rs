@@ -1,11 +1,11 @@
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::drivers::busses::pcie;
 use crate::environment::get_pcie_segments;
 
 pub mod fixed_io;
 
-pub static DEVICE_TOPOLOGY: Lazy<DeviceTopology> = Lazy::new(DeviceTopology::new);
+pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopology::new);
 
 pub type DeviceId = u32;
 

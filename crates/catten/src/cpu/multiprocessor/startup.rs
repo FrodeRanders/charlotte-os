@@ -1,10 +1,10 @@
 use limine::mp::MP_FLAG_X2APIC;
-use spin::{Lazy, RwLock};
+use spin::{LazyLock, RwLock};
 
 use crate::environment::boot_protocol::limine::MP_REQUEST;
 use crate::{ap_main, early_logln, logln};
 
-pub(super) static LP_COUNT: Lazy<RwLock<u32>> = Lazy::new(|| {
+pub(super) static LP_COUNT: LazyLock<RwLock<u32>> = LazyLock::new(|| {
     RwLock::new({
         if let Some(mp_res) = MP_REQUEST.response() {
             mp_res.cpus().len() as u32

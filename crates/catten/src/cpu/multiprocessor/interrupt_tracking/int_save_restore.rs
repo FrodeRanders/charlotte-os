@@ -2,12 +2,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::isa::lp::ops::{get_int_state, get_lp_id, mask_interrupts, unmask_interrupts};
 use crate::cpu::multiprocessor::get_lp_count;
 
-pub static INT_STATE: Lazy<IntState> = Lazy::new(|| IntState::new());
+pub static INT_STATE: LazyLock<IntState> = LazyLock::new(|| IntState::new());
 
 pub struct IntState {
     raw_locks: Vec<AtomicBool>,

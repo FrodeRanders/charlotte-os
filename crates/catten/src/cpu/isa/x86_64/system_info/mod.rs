@@ -3,11 +3,11 @@ use alloc::vec::Vec;
 use core::arch::x86_64::__cpuid_count;
 use core::mem::transmute;
 
-use spin::lazy::Lazy;
+use spin::lazylock::LazyLock;
 
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 
-pub static IS_CPUID_SUPPORTED: Lazy<bool> = Lazy::new(is_cpuid_supported);
+pub static IS_CPUID_SUPPORTED: LazyLock<bool> = LazyLock::new(is_cpuid_supported);
 
 #[inline]
 fn is_cpuid_supported() -> bool {

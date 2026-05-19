@@ -5,14 +5,14 @@ use crate::framebuffer::chars::{FONT, FONT_HEIGHT, FONT_WIDTH};
 // External crate for bootloader-specific functions and types.
 extern crate limine;
 use limine::framebuffer::Framebuffer;
-use spin::lazy::Lazy;
+use spin::lazylock::LazyLock;
 
 use super::console::{CONSOLE_HEIGHT, CONSOLE_WIDTH};
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 /// Global access to the framebuffer
-pub static FRAMEBUFFER: Lazy<Mutex<FrameBufferInfo>> =
-    Lazy::new(|| Mutex::new(init_framebuffer().unwrap()));
+pub static FRAMEBUFFER: LazyLock<Mutex<FrameBufferInfo>> =
+    LazyLock::new(|| Mutex::new(init_framebuffer().unwrap()));
 
 /// A struct representing the framebuffer information,
 /// including its memory address, dimensions, pixel format, etc.

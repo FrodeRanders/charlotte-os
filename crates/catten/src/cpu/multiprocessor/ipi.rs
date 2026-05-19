@@ -23,7 +23,7 @@ use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::memory::linear::VAddr;
 use crate::memory::{AddressSpaceId, KERNEL_ASID};
 
-pub static IPI_CMD_QUEUES: spin::Lazy<IpiCmdQueues> = spin::Lazy::new(IpiCmdQueues::new);
+pub static IPI_CMD_QUEUES: spin::LazyLock<IpiCmdQueues> = spin::LazyLock::new(IpiCmdQueues::new);
 
 #[inline(always)]
 pub fn send_ipi(target_lp: LpId) {

@@ -2,7 +2,7 @@ use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use spin::lazy::Lazy;
+use spin::lazylock::LazyLock;
 
 use super::tsc::TSC_CYCLE_PERIOD;
 use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
@@ -15,7 +15,7 @@ use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::klib::time::duration::ExtDuration;
 
-pub static APIC_TIMERS: Lazy<Vec<Arc<Mutex<ApicTimer>>>> = Lazy::new(|| {
+pub static APIC_TIMERS: LazyLock<Vec<Arc<Mutex<ApicTimer>>>> = LazyLock::new(|| {
     vec![Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))); get_lp_count() as usize]
 });
 

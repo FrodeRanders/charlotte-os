@@ -1,16 +1,16 @@
 use core::arch::asm;
 
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::system_info::{CpuInfo, IsaExtension};
 use crate::environment::boot_protocol::limine::{TSC_FREQUENCY_REQUEST, TscFrequencyResponse};
 use crate::klib::time::duration::ExtDuration;
 
-pub static IS_TSC_INVARIANT: Lazy<bool> =
-    Lazy::new(|| CpuInfo::is_extension_supported(IsaExtension::InvariantTsc));
-pub static TSC_FREQUENCY_HZ: Lazy<u64> = Lazy::new(get_tsc_freq);
-pub static TSC_CYCLE_PERIOD: Lazy<ExtDuration> = Lazy::new(|| {
+pub static IS_TSC_INVARIANT: LazyLock<bool> =
+    LazyLock::new(|| CpuInfo::is_extension_supported(IsaExtension::InvariantTsc));
+pub static TSC_FREQUENCY_HZ: LazyLock<u64> = LazyLock::new(get_tsc_freq);
+pub static TSC_CYCLE_PERIOD: LazyLock<ExtDuration> = LazyLock::new(|| {
     let ps = 1_000_000_000_000 / *TSC_FREQUENCY_HZ;
     ExtDuration::from_picos(ps as u128)
 });

@@ -4,7 +4,7 @@ mod id;
 use core::arch::asm;
 use core::mem::MaybeUninit;
 
-use spin::Lazy;
+use spin::LazyLock;
 
 use super::super::constants::interrupt_vectors::*;
 use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
@@ -16,8 +16,8 @@ use crate::cpu::isa::x86_64::constants::msrs;
 use crate::cpu::multiprocessor::spin::per_lp::PerLp;
 use crate::get_lp_id;
 
-pub static LAPICS: Lazy<PerLp<MaybeUninit<X2Apic>>> =
-    Lazy::new(|| PerLp::new(|| MaybeUninit::uninit()));
+pub static LAPICS: LazyLock<PerLp<MaybeUninit<X2Apic>>> =
+    LazyLock::new(|| PerLp::new(|| MaybeUninit::uninit()));
 
 #[derive(Debug)]
 pub enum Error {

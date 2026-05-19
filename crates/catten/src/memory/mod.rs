@@ -6,7 +6,7 @@ pub mod physical;
 
 pub use linear::VAddr;
 pub use physical::{MemoryInterface, PAddr, PhysicalFrameAllocator};
-pub use spin::{Lazy, Mutex, RwLock};
+pub use spin::{LazyLock, Mutex, RwLock};
 
 pub use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 pub use crate::cpu::isa::memory::paging::AddressSpace;
@@ -23,16 +23,16 @@ pub type AddressSpaceId = usize;
 pub const KERNEL_ASID: AddressSpaceId = 0;
 /// The kernel address space. It is initialized to the current address space when this static is
 /// first accessed. Which should happen during the BSP init process.
-pub static KERNEL_AS: Lazy<Mutex<AddressSpace>> =
-    Lazy::new(|| Mutex::new(AddressSpace::get_current()));
+pub static KERNEL_AS: LazyLock<Mutex<AddressSpace>> =
+    LazyLock::new(|| Mutex::new(AddressSpace::get_current()));
 /// Holds all userspace address spaces, indexed by their kernel assigned AddressSpaceId.
 type AddressSpaceTable = IdTable<AddressSpace>;
-pub static ADDRESS_SPACE_TABLE: Lazy<AddressSpaceTable> = Lazy::new(AddressSpaceTable::new);
+pub static ADDRESS_SPACE_TABLE: LazyLock<AddressSpaceTable> = LazyLock::new(AddressSpaceTable::new);
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the
 /// kernel virtual memory map at which point this address should be updated to reflect the new
 /// location.
-pub static HHDM_BASE: Lazy<VAddr> = Lazy::new(|| {
+pub static HHDM_BASE: LazyLock<VAddr> = LazyLock::new(|| {
     VAddr::from(
         HHDM_REQUEST
             .response()
@@ -41,7 +41,7 @@ pub static HHDM_BASE: Lazy<VAddr> = Lazy::new(|| {
     )
 });
 /// The physical frame allocator instance used by the kernel.
-pub static PHYSICAL_FRAME_ALLOCATOR: Lazy<Mutex<PhysicalFrameAllocator>> = Lazy::new(|| {
+pub static PHYSICAL_FRAME_ALLOCATOR: LazyLock<Mutex<PhysicalFrameAllocator>> = LazyLock::new(|| {
     Mutex::new(PhysicalFrameAllocator::from(
         MEMORY_MAP_REQUEST.response().expect("Limine failed to provide a memory map."),
     ))

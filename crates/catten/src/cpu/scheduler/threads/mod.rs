@@ -3,7 +3,7 @@ pub mod waker;
 use alloc::sync::Arc;
 use core::mem::offset_of;
 
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::thread_context::ThreadContext;
@@ -12,8 +12,8 @@ use crate::cpu::scheduler::threads::waker::Waker;
 use crate::klib::collections::id_table::IdTable;
 use crate::memory::AddressSpaceId;
 
-pub static MASTER_THREAD_TABLE: Lazy<RwLock<ThreadTable>> =
-    Lazy::new(|| RwLock::new(ThreadTable::new()));
+pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
+    LazyLock::new(|| RwLock::new(ThreadTable::new()));
 pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
 

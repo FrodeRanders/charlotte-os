@@ -13,7 +13,7 @@
 use alloc::collections::BTreeSet;
 use core::ops::Bound::{Excluded, Unbounded};
 
-use spin::{Lazy, RwLock};
+use spin::{LazyLock, RwLock};
 
 use super::memory;
 use crate::cpu::isa::memory::paging::PAGE_SIZE;
@@ -23,8 +23,8 @@ use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::{AddressSpaceInterface, KERNEL_AS};
 
-static KERNEL_GUARD_PAGE_SET: Lazy<RwLock<BTreeSet<VAddr>>> =
-    Lazy::new(|| RwLock::new(BTreeSet::new()));
+static KERNEL_GUARD_PAGE_SET: LazyLock<RwLock<BTreeSet<VAddr>>> =
+    LazyLock::new(|| RwLock::new(BTreeSet::new()));
 #[derive(Debug)]
 pub enum Error {
     IsaMemoryIfce(<MemoryInterfaceImpl as MemoryInterface>::Error),

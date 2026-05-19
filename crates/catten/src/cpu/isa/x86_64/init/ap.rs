@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use spin::lazy::Lazy;
+use spin::lazylock::LazyLock;
 
 use super::{INTERRUPT_STACK_SIZE, gdt};
 use crate::cpu::isa::interrupts::idt::{Idt, asm_load_idt};
@@ -10,7 +10,7 @@ use crate::cpu::isa::lp::ops::{get_lp_id, init_lp_state};
 use crate::cpu::multiprocessor::get_lp_count;
 use crate::logln;
 
-static AP_INTERRUPT_STACKS: Lazy<Vec<[u8; INTERRUPT_STACK_SIZE]>> = Lazy::new(|| {
+static AP_INTERRUPT_STACKS: LazyLock<Vec<[u8; INTERRUPT_STACK_SIZE]>> = LazyLock::new(|| {
     logln!("LP {}: Computing the number of AP interrupt stacks to allocate.", (get_lp_id()));
     let num_aps = get_lp_count() - 1; // Exclude BSP
     logln!("LP {}: Allocating {} AP interrupt stacks.", (get_lp_id()), num_aps);
@@ -22,7 +22,7 @@ static AP_INTERRUPT_STACKS: Lazy<Vec<[u8; INTERRUPT_STACK_SIZE]>> = Lazy::new(||
     ret
 });
 
-static AP_DF_STACKS: Lazy<Vec<[u8; INTERRUPT_STACK_SIZE]>> = Lazy::new(|| {
+static AP_DF_STACKS: LazyLock<Vec<[u8; INTERRUPT_STACK_SIZE]>> = LazyLock::new(|| {
     logln!("LP {}: Computing the number of AP double fault stacks to allocate.", (get_lp_id()));
     let num_aps = get_lp_count() - 1; // Exclude BSP
     logln!("LP {}: Allocating {} AP df stacks.", (get_lp_id()), num_aps);
@@ -34,7 +34,7 @@ static AP_DF_STACKS: Lazy<Vec<[u8; INTERRUPT_STACK_SIZE]>> = Lazy::new(|| {
     ret
 });
 
-pub static AP_TSS: Lazy<Vec<super::gdt::Tss>> = Lazy::new(|| {
+pub static AP_TSS: LazyLock<Vec<super::gdt::Tss>> = LazyLock::new(|| {
     logln!("LP {}: Creating the TSS vector.", (get_lp_id()));
     let mut tsses = Vec::new();
     logln!("LP {}: Allocating {} TSS entries.", (get_lp_id()), (get_lp_count() - 1));
@@ -49,7 +49,7 @@ pub static AP_TSS: Lazy<Vec<super::gdt::Tss>> = Lazy::new(|| {
     tsses
 });
 
-static AP_GDTS: Lazy<Vec<super::gdt::Gdt>> = Lazy::new(|| {
+static AP_GDTS: LazyLock<Vec<super::gdt::Gdt>> = LazyLock::new(|| {
     logln!("LP {}: Creating the GDT vector.", (get_lp_id()));
     let mut gdts = Vec::new();
     logln!("LP {}: Allocating {} GDT entries.", (get_lp_id()), (get_lp_count() - 1));
@@ -61,7 +61,7 @@ static AP_GDTS: Lazy<Vec<super::gdt::Gdt>> = Lazy::new(|| {
     gdts
 });
 
-pub static AP_IDTS: Lazy<Vec<crate::cpu::isa::interrupts::idt::Idt>> = Lazy::new(|| {
+pub static AP_IDTS: LazyLock<Vec<crate::cpu::isa::interrupts::idt::Idt>> = LazyLock::new(|| {
     logln!("LP {}: Creating the IDT vector.", (get_lp_id()));
     let mut idts = Vec::new();
     logln!("LP {}: Allocating {} IDT entries.", (get_lp_id()), (get_lp_count() - 1));
@@ -77,7 +77,7 @@ pub static AP_IDTS: Lazy<Vec<crate::cpu::isa::interrupts::idt::Idt>> = Lazy::new
     idts
 });
 
-pub static AP_IDTRS: Lazy<Vec<crate::cpu::isa::interrupts::idt::Idtr>> = Lazy::new(|| {
+pub static AP_IDTRS: LazyLock<Vec<crate::cpu::isa::interrupts::idt::Idtr>> = LazyLock::new(|| {
     logln!("LP {}: Creating the IDTR vector.", (get_lp_id()));
     let mut idtrs = Vec::new();
     logln!("LP {}: Allocating {} IDTR entries.", (get_lp_id()), (get_lp_count() - 1));

@@ -4,7 +4,7 @@ use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Weak;
 
 use concurrent_queue::ConcurrentQueue;
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
 use crate::cpu::isa::timers::LpTimer;
@@ -12,7 +12,8 @@ use crate::cpu::multiprocessor::spin::per_lp::PerLp;
 use crate::klib::observer::{Observable, Observer};
 use crate::klib::time::duration::ExtDuration;
 
-pub static TIMER_QUEUES: Lazy<PerLp<TimerQueue>> = Lazy::new(|| PerLp::new(TimerQueue::default));
+pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
+    LazyLock::new(|| PerLp::new(TimerQueue::default));
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 

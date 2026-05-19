@@ -7,7 +7,7 @@
 //! port with the legacy_com_ports feature enabled.
 
 #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
-use spin::lazy::Lazy;
+use spin::lazylock::LazyLock;
 #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
 use spin::mutex::Mutex;
 
@@ -19,8 +19,8 @@ use crate::drivers::uart::Uart;
 use crate::drivers::uart::ns16550::{Ns16550, legacy_ports};
 
 #[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
-pub static LOG_PORT: spin::Lazy<spin::Mutex<Ns16550>> =
-    Lazy::new(|| Mutex::new(Ns16550::try_new(io::IoReg8::IoPort(legacy_ports::COM1)).unwrap()));
+pub static LOG_PORT: LazyLock<Mutex<Ns16550>> =
+    LazyLock::new(|| Mutex::new(Ns16550::try_new(io::IoReg8::IoPort(legacy_ports::COM1)).unwrap()));
 
 #[inline(always)]
 pub fn early_save_interrupts() -> bool {

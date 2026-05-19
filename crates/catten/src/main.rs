@@ -38,7 +38,7 @@ pub mod timers;
 use core::hint::unreachable_unchecked;
 
 use limine::mp::MpInfo;
-use spin::{Barrier, Lazy};
+use spin::{Barrier, LazyLock};
 
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
@@ -54,8 +54,8 @@ use crate::device_manager::DEVICE_TOPOLOGY;
 use crate::memory::KERNEL_ASID;
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 7, 1);
-static INIT_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
-static YIELD_BARRIER: Lazy<Barrier> = Lazy::new(|| Barrier::new(get_lp_count() as usize));
+static INIT_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
+static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
 /// This is the bootstrap processor's entry point into the kernel. The `bsp_main` function is
 /// called by the bootloader after setting up the environment. It is made C ABI compatible so
 /// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.

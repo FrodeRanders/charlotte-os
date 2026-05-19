@@ -13,13 +13,13 @@
 //! thread should be used instead.
 
 use concurrent_queue::ConcurrentQueue;
-use spin::Lazy;
+use spin::LazyLock;
 
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread};
 use crate::memory::KERNEL_ASID;
 
-pub static DWM: Lazy<DeferredWorkManager> = Lazy::new(DeferredWorkManager::new);
+pub static DWM: LazyLock<DeferredWorkManager> = LazyLock::new(DeferredWorkManager::new);
 
 #[derive(Debug, Clone)]
 pub enum DeferredTask {}
