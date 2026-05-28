@@ -1,9 +1,10 @@
 mod ecam;
 
-use alloc::boxed::Box;
+use alloc::collections::vec_deque::VecDeque;
 use alloc::vec::Vec;
 
 use crate::device_manager::DeviceId;
+use crate::drivers::busses::pcie::ecam::get_cfg_hhdm_ptr;
 use crate::memory::PAddr;
 
 type PcieSegmentNum = u16;
@@ -42,7 +43,8 @@ pub struct PcieSegment {
     ecam_base: PAddr,
     start_bus_num: PcieBusNum,
     end_bus_num: PcieBusNum,
-    buses: Vec<PcieBus>,
+    topology: PcieBus, /* Root bus of this segment's topology; the rest of the topology can be
+                        * traversed from here */
 }
 
 impl PcieSegment {
@@ -57,95 +59,66 @@ impl PcieSegment {
             ecam_base,
             start_bus_num,
             end_bus_num,
-            buses: Self::enumerate_buses(ecam_base, start_bus_num, end_bus_num),
+            topology: PcieBus::new(pcie_segment_num, start_bus_num),
         }
     }
-
-    fn enumerate_buses(
-        ecam_base: PAddr,
-        start_bus_num: PcieBusNum,
-        end_bus_num: PcieBusNum,
-    ) -> Vec<PcieBus> {
-        let mut buses = Vec::new();
-        /* TODO: Recursively enumerate all buses in the segment. */
-        buses
-    }
-
-    pub unsafe fn cfg_read8(&self, bus: u8, device: u8, function: u8, offset: u16) -> u8 {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u8;
-        unsafe { core::ptr::read_volatile(ptr) }
-    }
-
-    pub unsafe fn cfg_read16(&self, bus: u8, device: u8, function: u8, offset: u16) -> u16 {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u16;
-        unsafe { core::ptr::read_volatile(ptr) }
-    }
-
-    pub unsafe fn cfg_read32(&self, bus: u8, device: u8, function: u8, offset: u16) -> u32 {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *const u32;
-        unsafe { core::ptr::read_volatile(ptr) }
-    }
-
-    pub unsafe fn cfg_write8(&self, bus: u8, device: u8, function: u8, offset: u16, value: u8) {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u8;
-        unsafe { core::ptr::write_volatile(ptr, value) }
-    }
-
-    pub unsafe fn cfg_write16(&self, bus: u8, device: u8, function: u8, offset: u16, value: u16) {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u16;
-        unsafe { core::ptr::write_volatile(ptr, value) }
-    }
-
-    pub unsafe fn cfg_write32(&self, bus: u8, device: u8, function: u8, offset: u16, value: u32) {
-        let offset = ((bus as usize) << 20)
-            | ((device as usize) << 15)
-            | ((function as usize) << 12)
-            | (offset as usize);
-        let ptr = (<PAddr as Into<usize>>::into(self.ecam_base) + offset) as *mut u32;
-        unsafe { core::ptr::write_volatile(ptr, value) }
-    }
 }
 
-#[derive(Debug)]
-pub enum PcieBusTarget {
-    Bridge(PcieBusNum),
-    Device(PcieDevice),
-}
 #[derive(Debug)]
 pub struct PcieBus {
-    config_space_base: PAddr,
-    devices: Vec<PcieBusTarget>,
+    number:  PcieBusNum,
+    targets: [PcieBusTarget; MAX_DEVICES_PER_BUS],
 }
 
-#[derive(Debug)]
-pub struct PcieDevice {
-    functions: Vec<PcieFunction>,
+impl PcieBus {
+    fn new(segment_num: PcieSegmentNum, bus_num: PcieBusNum) -> Self {
+        let mut targets = [PcieBusTarget::None; MAX_DEVICES_PER_BUS];
+        for i in 0..MAX_DEVICES_PER_BUS {
+            targets[i] = PcieBusTarget::new(segment_num, bus_num, i as u8);
+        }
+
+        PcieBus {
+            number: bus_num,
+            targets,
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+pub enum PcieBusTarget {
+    Bridge(PcieBusNum),
+    Endpoint(PcieEndpoint),
+    None,
+}
+
+impl PcieBusTarget {
+    fn new(segment_num: PcieSegmentNum, bus_num: PcieBusNum, device_num: PcieDeviceNum) -> Self {
+        let cfg_ptr = ecam::get_cfg_hhdm_ptr(segment.ecam_base, bus_num, device_num, 0);
+        let vendor_id = unsafe { core::ptr::read_volatile(&(*cfg_ptr).header.common.vendor_id) };
+        if vendor_id == ecam::PCIE_VENDOR_ID_NOT_PRESENT {
+            PcieBusTarget::None
+        } else {
+            if unsafe { (*cfg_ptr).device_is_bridge() } {
+                let secondary_bus_num = unsafe { (*cfg_ptr).header.bridge.get_secondary_bus_num() };
+                PcieBusTarget::Bridge(secondary_bus_num)
+            } else {
+                PcieBusTarget::Endpoint(PcieEndpoint::new(segment, bus_num, device_num))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PcieEndpoint {
+    number: PcieDeviceNum,
+    functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE],
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct PcieFunction {
     id: DeviceId, /* Kernel-assigned unique identifier for this function, used for device
                    * management and driver binding */
+    number: PcieFunctionNum,
     vendor_id: u16,
     device_id: u16,
     class_code: u32,
