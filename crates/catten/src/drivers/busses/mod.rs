@@ -1,2 +1,2 @@
-pub mod pcie;
+pub mod pci;
 pub mod usb;

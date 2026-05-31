@@ -76,6 +76,62 @@ impl<'vas> PthWalker<'vas> {
         Ok(())
     }
 
+    pub fn walk_large_page(
+        &mut self,
+    ) -> Result<(), <super::MemoryInterfaceImpl as MemoryInterface>::Error> {
+        self.pml4_ptr =
+            PAddr::try_from((self.address_space.cr3 & CR3_ADDRESS_MASK) as usize).unwrap().into();
+        self.pdpt_ptr = unsafe {
+            let pml4e = &mut (*self.pml4_ptr)[self.vaddr.pml4_index()];
+            if !pml4e.is_present() {
+                return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
+            }
+            pml4e.try_get_frame().unwrap().into()
+        };
+        self.pd_ptr = unsafe {
+            let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+            if !pdpte.is_present() {
+                return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
+            }
+            pdpte.try_get_frame().unwrap().into()
+        };
+        self.pt_ptr = core::ptr::null_mut();
+        self.page_frame_ptr = unsafe {
+            let pde = &mut (*self.pd_ptr)[self.vaddr.pd_index()];
+            if !pde.is_present() || !pde.get_page_size() {
+                return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
+            }
+            pde.try_get_frame().unwrap().into()
+        };
+
+        Ok(())
+    }
+
+    pub fn walk_huge_page(
+        &mut self,
+    ) -> Result<(), <super::MemoryInterfaceImpl as MemoryInterface>::Error> {
+        self.pml4_ptr =
+            PAddr::try_from((self.address_space.cr3 & CR3_ADDRESS_MASK) as usize).unwrap().into();
+        self.pdpt_ptr = unsafe {
+            let pml4e = &mut (*self.pml4_ptr)[self.vaddr.pml4_index()];
+            if !pml4e.is_present() {
+                return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
+            }
+            pml4e.try_get_frame().unwrap().into()
+        };
+        self.pd_ptr = core::ptr::null_mut();
+        self.pt_ptr = core::ptr::null_mut();
+        self.page_frame_ptr = unsafe {
+            let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+            if !pdpte.is_present() || !pdpte.get_page_size() {
+                return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
+            }
+            pdpte.try_get_frame().unwrap().into()
+        };
+
+        Ok(())
+    }
+
     pub fn map_page(
         &mut self,
         frame: PAddr,

@@ -1,8 +1,7 @@
 use alloc::vec::Vec;
-use core::mem::offset_of;
 use core::ptr::read_unaligned;
 
-use crate::drivers::busses::pcie::PcieSegment;
+use crate::drivers::busses::pci::pcie::PcieSegmentGroup;
 use crate::environment::acpi::{AcpiTableType, SdtHeader, TABLE_MAP};
 use crate::logln;
 use crate::memory::PAddr;
@@ -12,7 +11,7 @@ const MCFG_HEADER_RESERVED_SIZE: usize = 8;
 const MCFG_HEADER_SIZE: usize = core::mem::size_of::<SdtHeader>() + MCFG_HEADER_RESERVED_SIZE;
 const MCFG_ENTRY_SIZE: usize = core::mem::size_of::<McfgEntry>();
 
-pub fn parse_mcfg() -> Vec<PcieSegment> {
+pub fn parse_mcfg() -> Vec<PcieSegmentGroup> {
     logln!("[ACPI] Parsing MCFG table...");
     TABLE_MAP
         .get(&AcpiTableType::MCFG)
@@ -58,12 +57,12 @@ struct McfgEntry {
     _reserved: u32,
 }
 
-fn parse_mcfg_entry(entry: *const McfgEntry) -> PcieSegment {
+fn parse_mcfg_entry(entry: *const McfgEntry) -> PcieSegmentGroup {
     logln!("[ACPI] Parsing MCFG entry at address {:p}", entry);
     let entry_data = unsafe { read_unaligned(entry) };
     logln!("[ACPI] MCFG entry data: {:?}", entry_data);
 
-    PcieSegment::new(
+    PcieSegmentGroup::new(
         entry_data.pcie_segment_num,
         entry_data.ecam_base,
         entry_data.start_bus_num,

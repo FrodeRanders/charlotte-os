@@ -99,7 +99,7 @@ impl AddressSpaceInterface for AddressSpace {
         logln!("Finding free region of {} pages in range {:?}...", n_pages, range);
         let mut page_iter = (range.0..range.1).step_by(PAGE_SIZE);
         while let Some(base) = page_iter.next() {
-            logln!("Checking base address: {:?}", base);
+            //logln!("Checking base address: {:?}", base);
             for nth_page in 0..n_pages {
                 let curr_page = base + ((nth_page * PAGE_SIZE) as isize);
                 //logln!("Checking page: {:?}", curr_page);
@@ -109,13 +109,89 @@ impl AddressSpaceInterface for AddressSpace {
                 if self.is_mapped(curr_page)? {
                     match page_iter.advance_by(nth_page) {
                         Ok(_) => {
-                            logln!("Page {:?} is already mapped, skipping to next base address.", curr_page);
+                            //logln!("Page {:?} is already mapped, skipping to next base address.", curr_page);
                             break;
                         }
                         Err(_) => return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable),
                     }
                 }
                 if nth_page == n_pages - 1 {
+                    logln!("Found free region starting at: {:?}", base);
+                    return Ok(base);
+                }
+            }
+        }
+        Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable)
+    }
+
+    fn find_free_region_large_aligned(
+        &mut self,
+        n_large_pages: usize,
+        range: (VAddr, VAddr),
+    ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if range.0.is_aligned_to(Self::LARGE_PAGE_SIZE) == false
+            || range.1.is_aligned_to(Self::LARGE_PAGE_SIZE) == false
+        {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotLargePageAligned);
+        }
+        logln!("Finding free region of {} large pages in range {:?}...", n_large_pages, range);
+        let mut page_iter = (range.0..range.1).step_by(Self::LARGE_PAGE_SIZE);
+        while let Some(base) = page_iter.next() {
+            //logln!("Checking base address: {:?}", base);
+            for nth_page in 0..n_large_pages {
+                let curr_page = base + ((nth_page * Self::LARGE_PAGE_SIZE) as isize);
+                //logln!("Checking large page: {:?}", curr_page);
+                if range.1 - curr_page < (n_large_pages * Self::LARGE_PAGE_SIZE) as isize {
+                    return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable);
+                }
+                if self.is_mapped_large_page(curr_page)? {
+                    match page_iter.advance_by(nth_page) {
+                        Ok(_) => {
+                            //logln!("Large page {:?} is already mapped, skipping to next base address.", curr_page);
+                            break;
+                        }
+                        Err(_) => return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable),
+                    }
+                }
+                if nth_page == n_large_pages - 1 {
+                    logln!("Found free region starting at: {:?}", base);
+                    return Ok(base);
+                }
+            }
+        }
+        Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable)
+    }
+
+    fn find_free_region_huge_aligned(
+        &mut self,
+        n_huge_pages: usize,
+        range: (VAddr, VAddr),
+    ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if range.0.is_aligned_to(Self::HUGE_PAGE_SIZE) == false
+            || range.1.is_aligned_to(Self::HUGE_PAGE_SIZE) == false
+        {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotHugePageAligned);
+        }
+        logln!("Finding free region of {} huge pages in range {:?}...", n_huge_pages, range);
+        let mut page_iter = (range.0..range.1).step_by(Self::HUGE_PAGE_SIZE);
+        while let Some(base) = page_iter.next() {
+            //logln!("Checking base address: {:?}", base);
+            for nth_page in 0..n_huge_pages {
+                let curr_page = base + ((nth_page * Self::HUGE_PAGE_SIZE) as isize);
+                //logln!("Checking huge page: {:?}", curr_page);
+                if range.1 - curr_page < (n_huge_pages * Self::HUGE_PAGE_SIZE) as isize {
+                    return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable);
+                }
+                if self.is_mapped_huge_page(curr_page)? {
+                    match page_iter.advance_by(nth_page) {
+                        Ok(_) => {
+                            //logln!("Huge page {:?} is already mapped, skipping to next base address.", curr_page);
+                            break;
+                        }
+                        Err(_) => return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable),
+                    }
+                }
+                if nth_page == n_huge_pages - 1 {
                     logln!("Found free region starting at: {:?}", base);
                     return Ok(base);
                 }
@@ -214,6 +290,30 @@ impl AddressSpaceInterface for AddressSpace {
     ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error> {
         let mut walker = pth_walker::PthWalker::new(self, vaddr);
         match walker.walk() {
+            Ok(_) => Ok(true),
+            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn is_mapped_large_page(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, vaddr);
+        match walker.walk_large_page() {
+            Ok(_) => Ok(true),
+            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn is_mapped_huge_page(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, vaddr);
+        match walker.walk_huge_page() {
             Ok(_) => Ok(true),
             Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => Ok(false),
             Err(e) => Err(e),

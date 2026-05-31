@@ -1,0 +1,1 @@
+const PCI_LOCAL_CFG_SPACE_SIZE: usize = 256;
