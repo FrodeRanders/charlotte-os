@@ -1,6 +1,6 @@
 use spin::LazyLock;
 
-use crate::drivers::busses::pcie;
+use crate::drivers::busses::pci::pcie::{PcieLocation, PcieTopology};
 use crate::environment::get_pcie_segments;
 
 pub mod fixed_io;
@@ -30,21 +30,21 @@ pub struct DeviceNode {
 
 pub enum DeviceLocation {
     FixedIo(fixed_io::IoRange),
-    Pcie(pcie::PcieLocation),
+    Pcie(PcieLocation),
     //Usb(usb::UsbAddress),
 }
 
 #[derive(Debug)]
 pub struct DeviceTopology {
     //fixed: Option<fixed_io::IoMap>,
-    pcie: pcie::PcieTopology,
+    pub pcie: PcieTopology,
     //usb: Option<usb::UsbTopology>,
 }
 
 impl DeviceTopology {
     pub fn new() -> Self {
         DeviceTopology {
-            pcie: pcie::PcieTopology::new(get_pcie_segments()),
+            pcie: PcieTopology::new(get_pcie_segments()),
         }
     }
 }

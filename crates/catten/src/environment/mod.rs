@@ -7,7 +7,7 @@
 //! interface over the supported boot protocols.
 //!
 //! - The Limine boot protocol is used on all supported systems. Accordingly all supported systems
-//!   are required to provide at least a minimal EFI boot environment that can load a Limine boot
+//!   are required to provide at least a minimal UEFI boot environment that can load a Limine boot
 //!   protocol compatible bootloader such as Limine itself.
 //! - PC like systems including all servers are expected to provide the UEFI and ACPI firmware
 //!   interfaces in a manner that conforms to the specifications and does not require OS specific
@@ -23,7 +23,7 @@
 
 use alloc::vec::Vec;
 
-use crate::drivers::busses::pcie::PcieSegment;
+use crate::drivers::busses::pci::pcie::PcieSegment;
 
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]

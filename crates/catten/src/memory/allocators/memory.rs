@@ -3,7 +3,7 @@ use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::logln;
 use crate::memory::linear::{MemoryMapping, PageType, VAddr};
 use crate::memory::physical::*;
-use crate::memory::{KERNEL_AS, PHYSICAL_FRAME_ALLOCATOR, physical};
+use crate::memory::{AddressSpace, KERNEL_AS, PHYSICAL_FRAME_ALLOCATOR, physical};
 
 #[derive(Debug)]
 pub enum Error {

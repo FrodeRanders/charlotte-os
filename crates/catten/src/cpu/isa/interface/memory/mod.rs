@@ -26,6 +26,16 @@ pub trait AddressSpaceInterface {
         n_pages: usize,
         range: (VAddr, VAddr),
     ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn find_free_region_large_aligned(
+        &mut self,
+        n_large_pages: usize,
+        range: (VAddr, VAddr),
+    ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn find_free_region_huge_aligned(
+        &mut self,
+        n_huge_pages: usize,
+        range: (VAddr, VAddr),
+    ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
     fn map_page(
         &mut self,
         mapping: MemoryMapping,
@@ -51,6 +61,14 @@ pub trait AddressSpaceInterface {
         vaddr: VAddr,
     ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
     fn is_mapped(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn is_mapped_large_page(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn is_mapped_huge_page(
         &mut self,
         vaddr: VAddr,
     ) -> Result<bool, <MemoryInterfaceImpl as MemoryInterface>::Error>;
