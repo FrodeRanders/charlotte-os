@@ -23,7 +23,7 @@
 
 use alloc::vec::Vec;
 
-use crate::drivers::busses::pci::pcie::PcieSegment;
+use crate::drivers::busses::pci::pcie::PcieSegmentGroup;
 
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
@@ -41,7 +41,7 @@ mod riscv_sbi;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
 mod uefi_rt;
 
-pub fn get_pcie_segments() -> Vec<PcieSegment> {
+pub fn get_pcie_segments() -> Vec<PcieSegmentGroup> {
     cfg_select! {
         all(feature = "acpi", feature = "devicetree") => {
             panic!("The Catten Kernel does not support compiling in both the acpi and devicetree
