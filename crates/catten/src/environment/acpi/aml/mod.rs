@@ -1,1 +1,1 @@
-pub mod uacpi_kernel;
+//! # ACPI Machine Language (AML) Interpreter and Namespace Manager
