@@ -16,9 +16,9 @@ use core::ops::Bound::{Excluded, Unbounded};
 use spin::{LazyLock, RwLock};
 
 use super::memory;
-use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::cpu::isa::memory::{MemoryInterface, MemoryInterfaceImpl};
 use crate::logln;
+use crate::memory::allocators::memory::PageSize;
 use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::{AddressSpaceInterface, KERNEL_AS};
@@ -58,9 +58,9 @@ pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
             .clone()
             .into(),
     )?;
-    let stack_buf_base = stack_region_base + PAGE_SIZE * (NUM_GUARD_PAGES / 2);
+    let stack_buf_base = stack_region_base + PageSize::Standard.num_bytes() * (NUM_GUARD_PAGES / 2);
     logln!("Mapping a thread stack at {stack_buf_base:?}.");
-    memory::try_allocate_and_map_range(stack_buf_base, n_pages)?;
+    memory::try_allocate_and_map_range(stack_buf_base, memory::PageSize::Standard, n_pages)?;
     logln!("Thread stack mapped.");
     Ok(stack_buf_base)
 }
@@ -68,12 +68,16 @@ pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
 /// Deallocate a kernel stack previously allocated by `allocate_stack`.
 pub fn deallocate_stack(stack_end: VAddr) -> Result<(), Error> {
     let n_pages = validate_stack(stack_end)?;
-    memory::unmap_and_deallocate_range(stack_end - PAGE_SIZE * (n_pages + 1), n_pages);
+    memory::unmap_and_deallocate_range(
+        stack_end - PageSize::Standard.num_bytes() * (n_pages + 1),
+        PageSize::Standard,
+        n_pages,
+    );
     Ok(())
 }
 
 fn validate_stack(stack_end: VAddr) -> Result<usize, Error> {
-    let stack_buf_base = stack_end - PAGE_SIZE;
+    let stack_buf_base = stack_end - PageSize::Standard.num_bytes();
     let guard_set = KERNEL_GUARD_PAGE_SET.read();
     if guard_set.contains(&stack_buf_base) {
         let next_guard = guard_set
@@ -82,7 +86,7 @@ fn validate_stack(stack_end: VAddr) -> Result<usize, Error> {
             .copied()
             .ok_or(Error::InvalidStack)?;
 
-        Ok((next_guard - stack_buf_base) as usize / PAGE_SIZE)
+        Ok((next_guard - stack_buf_base) as usize / PageSize::Standard.num_bytes())
     } else {
         Err(Error::InvalidStack)
     }

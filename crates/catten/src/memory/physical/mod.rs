@@ -7,7 +7,6 @@ use limine::memmap::MEMMAP_USABLE;
 pub use limine::request::MemmapResponse;
 
 pub use crate::cpu::isa::interface::memory::MemoryInterface;
-use crate::cpu::isa::interface::memory::PageSize;
 use crate::cpu::isa::interface::memory::address::Address;
 pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
 pub use crate::cpu::isa::memory::MemoryInterfaceImpl;
@@ -15,6 +14,7 @@ pub use crate::cpu::isa::memory::address::paddr::{PAddr, PAddrError};
 use crate::early_logln;
 use crate::klib::constants::BITS_PER_BYTE;
 use crate::klib::size::kibibytes;
+use crate::memory::allocators::memory::PageSize;
 
 /// Page frames are 4 KiB in size on all supported architectures.
 const PAGE_FRAME_SIZE: usize = kibibytes(4);
@@ -173,13 +173,13 @@ impl PhysicalFrameAllocator {
 
     pub fn allocate_large_frame(&mut self) -> Result<PAddr, Error> {
         self.allocate_contiguous(
-            PageSize::Large.size_in_bytes() / PAGE_FRAME_SIZE,
-            PageSize::Large.size_in_bytes(),
+            PageSize::Large.num_bytes() / PAGE_FRAME_SIZE,
+            PageSize::Large.num_bytes(),
         )
     }
 
     pub fn deallocate_large_frame(&mut self, frame_addr: PAddr) -> Result<(), Error> {
-        for i in 0..(PageSize::Large.size_in_bytes() / PAGE_FRAME_SIZE) {
+        for i in 0..(PageSize::Large.num_bytes() / PAGE_FRAME_SIZE) {
             self.deallocate_frame(frame_addr + (i * PAGE_FRAME_SIZE) as isize)?;
         }
         Ok(())
@@ -187,13 +187,13 @@ impl PhysicalFrameAllocator {
 
     pub fn allocate_huge_frame(&mut self) -> Result<PAddr, Error> {
         self.allocate_contiguous(
-            PageSize::Huge.size_in_bytes() / PAGE_FRAME_SIZE,
-            PageSize::Huge.size_in_bytes(),
+            PageSize::Huge.num_bytes() / PAGE_FRAME_SIZE,
+            PageSize::Huge.num_bytes(),
         )
     }
 
     pub fn deallocate_huge_frame(&mut self, frame_addr: PAddr) -> Result<(), Error> {
-        for i in 0..(PageSize::Huge.size_in_bytes() / PAGE_FRAME_SIZE) {
+        for i in 0..(PageSize::Huge.num_bytes() / PAGE_FRAME_SIZE) {
             self.deallocate_frame(frame_addr + (i * PAGE_FRAME_SIZE) as isize)?;
         }
         Ok(())

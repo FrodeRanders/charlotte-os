@@ -11,7 +11,7 @@ use crate::cpu::isa::memory::paging::PAGE_SIZE;
 use crate::cpu::multiprocessor::spin::mutex::MutexCore;
 use crate::klib::size::mebibytes;
 use crate::memory::VAddr;
-use crate::memory::allocators::memory::try_allocate_and_map_range;
+use crate::memory::allocators::memory::{PageSize, try_allocate_and_map_range};
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
@@ -21,8 +21,12 @@ pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(E
 
 pub fn init_primary_allocator() {
     let base = LA_MAP.get_region(KernelAllocatorArena).base;
-    try_allocate_and_map_range(base, INITIAL_HEAP_SIZE / PAGE_SIZE)
-        .expect("Failed to allocate and map initial kernel heap memory");
+    try_allocate_and_map_range(
+        base,
+        PageSize::Large,
+        INITIAL_HEAP_SIZE / PageSize::Large.num_bytes(),
+    )
+    .expect("Failed to allocate and map initial kernel heap memory");
     unsafe {
         let mut pa_lock = PRIMARY_ALLOCATOR.lock();
         let returned_ptr = pa_lock
@@ -55,13 +59,17 @@ unsafe impl Source for ExtendOnOom {
     ) -> Result<(), ()> {
         let curr_end = talc.source.heap_ptr.load(Ordering::Acquire);
         let new_region_start = VAddr::from(curr_end as usize).next_aligned_to(layout.align());
-        let new_region_end = new_region_start + layout.size();
+        let new_region_end = new_region_start + PageSize::Large.num_bytes();
+        /* Actually allocate and map the new region */
+        try_allocate_and_map_range(new_region_start, PageSize::Large, 1)
+            .expect("Failed to allocate and map new region for kernel heap");
         unsafe {
             talc.extend(
                 NonNull::new(curr_end).expect("Passed null pointer to the constructor of NonNull"),
                 new_region_end.into_mut(),
             );
         }
+        talc.source.heap_ptr.store(new_region_end.into_mut(), Ordering::Release);
         Ok(())
     }
 }
