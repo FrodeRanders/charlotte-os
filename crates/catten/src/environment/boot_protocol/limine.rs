@@ -8,15 +8,12 @@ use limine::request::{
     HhdmRequest,
     MemmapRequest,
     MpRequest,
-    Request,
-    Response,
     RsdpRequest,
     StackSizeRequest,
 };
 use limine::{BaseRevision, RequestsEndMarker, RequestsStartMarker};
 
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, PageSize};
-use crate::cpu::isa::memory::MemoryInterfaceImpl;
+use crate::memory::allocators::memory::PageSize;
 
 const LIMINE_COMMON_MAGIC: [u64; 2] = [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b];
 const LIMINE_TSC_FREQUENCY_REQUEST_ID: [u64; 2] = [0x10f2ee1d87d195e4, 0xf747a2b78f6ddb31];
@@ -79,7 +76,7 @@ pub static MP_REQUEST: MpRequest = MpRequest::new(
 pub static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 
 pub static STACK_SIZE: StackSizeRequest =
-    StackSizeRequest::new(PageSize::Standard.size_in_bytes() as u64 * 4);
+    StackSizeRequest::new(PageSize::Standard.num_bytes() as u64 * 4);
 
 #[unsafe(no_mangle)]
 #[used]
