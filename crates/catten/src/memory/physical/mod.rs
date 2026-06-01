@@ -7,6 +7,7 @@ use limine::memmap::MEMMAP_USABLE;
 pub use limine::request::MemmapResponse;
 
 pub use crate::cpu::isa::interface::memory::MemoryInterface;
+use crate::cpu::isa::interface::memory::PageSize;
 use crate::cpu::isa::interface::memory::address::Address;
 pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
 pub use crate::cpu::isa::memory::MemoryInterfaceImpl;
@@ -168,6 +169,67 @@ impl PhysicalFrameAllocator {
         } else {
             Err(Error::InvalidPAddr)
         }
+    }
+
+    pub fn allocate_large_frame(&mut self) -> Result<PAddr, Error> {
+        self.allocate_contiguous(
+            PageSize::Large.size_in_bytes() / PAGE_FRAME_SIZE,
+            PageSize::Large.size_in_bytes(),
+        )
+    }
+
+    pub fn deallocate_large_frame(&mut self, frame_addr: PAddr) -> Result<(), Error> {
+        for i in 0..(PageSize::Large.size_in_bytes() / PAGE_FRAME_SIZE) {
+            self.deallocate_frame(frame_addr + (i * PAGE_FRAME_SIZE) as isize)?;
+        }
+        Ok(())
+    }
+
+    pub fn allocate_huge_frame(&mut self) -> Result<PAddr, Error> {
+        self.allocate_contiguous(
+            PageSize::Huge.size_in_bytes() / PAGE_FRAME_SIZE,
+            PageSize::Huge.size_in_bytes(),
+        )
+    }
+
+    pub fn deallocate_huge_frame(&mut self, frame_addr: PAddr) -> Result<(), Error> {
+        for i in 0..(PageSize::Huge.size_in_bytes() / PAGE_FRAME_SIZE) {
+            self.deallocate_frame(frame_addr + (i * PAGE_FRAME_SIZE) as isize)?;
+        }
+        Ok(())
+    }
+
+    pub fn allocate_frames(
+        &mut self,
+        frame_addrs: &mut [PAddr],
+        page_size: PageSize,
+    ) -> Result<(), Error> {
+        let alloc_fn = match page_size {
+            PageSize::Standard => Self::allocate_frame,
+            PageSize::Large => Self::allocate_large_frame,
+            PageSize::Huge => Self::allocate_huge_frame,
+        };
+        for i in 0..frame_addrs.len() {
+            let frame = alloc_fn(self)?;
+            frame_addrs[i] = frame;
+        }
+        Ok(())
+    }
+
+    pub fn deallocate_frames(
+        &mut self,
+        frame_addrs: &[PAddr],
+        page_size: PageSize,
+    ) -> Result<(), Error> {
+        let dealloc_fn = match page_size {
+            PageSize::Standard => Self::deallocate_frame,
+            PageSize::Large => Self::deallocate_large_frame,
+            PageSize::Huge => Self::deallocate_huge_frame,
+        };
+        for frame in frame_addrs {
+            dealloc_fn(self, *frame)?;
+        }
+        Ok(())
     }
 }
 
