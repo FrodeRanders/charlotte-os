@@ -16,6 +16,7 @@ use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
+static ACQUIRE_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 #[global_allocator]
 pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
@@ -33,6 +34,21 @@ pub fn init_primary_allocator() {
             .claim(base.into_mut(), INITIAL_HEAP_SIZE)
             .expect("Talc failed to claim the initial kernel heap");
         pa_lock.source.heap_ptr.store(returned_ptr.as_ptr(), Ordering::Release);
+        let he = returned_ptr.as_ptr();
+        let tag_now = he.wrapping_sub(1).read();
+        let size_now = (he.wrapping_sub(8) as *const usize).read();
+        // also probe a few physical aliases via HHDM and the heap mapping
+        let mid = base.into_mut::<u8>().wrapping_add(0x100000);
+        mid.write(0xAB);
+        let mid_read = mid.read();
+        crate::early_logln!(
+            "[HEAPDBG] claim base={:p} heap_end={:p} tag@-1={:#x} size@-8={:#x} mid_write_read={:#x}",
+            (base.into_mut::<u8>()),
+            he,
+            tag_now,
+            size_now,
+            mid_read
+        );
     }
 }
 
@@ -58,11 +74,28 @@ unsafe impl Source for ExtendOnOom {
         layout: core::alloc::Layout,
     ) -> Result<(), ()> {
         let curr_end = talc.source.heap_ptr.load(Ordering::Acquire);
-        let new_region_start = VAddr::from(curr_end as usize).next_aligned_to(layout.align());
+        let n = ACQUIRE_COUNT.fetch_add(1, Ordering::Relaxed);
+        let tag_at_end = unsafe { curr_end.wrapping_sub(1).read() };
+        let size_at_end = unsafe { (curr_end.wrapping_sub(8) as *const usize).read() };
+        let c = talc.counters();
+        crate::early_logln!(
+            "[HEAPDBG] acquire #{} curr_end={:p} align={:#x} req_size={:#x} tag@-1={:#x} \
+             size@-8={:#x} | claimed={:#x} available={:#x} allocated={:#x}",
+            n,
+            curr_end,
+            (layout.align()),
+            (layout.size()),
+            tag_at_end,
+            size_at_end,
+            (c.claimed_bytes),
+            (c.available_bytes),
+            (c.allocated_bytes)
+        );
+        let new_region_start = VAddr::from(curr_end as usize);
         let new_region_end = new_region_start + PageSize::Large.num_bytes();
         /* Actually allocate and map the new region */
         try_allocate_and_map_range(new_region_start, PageSize::Large, 1)
-            .expect("Failed to allocate and map new region for kernel heap");
+            .expect("Failed to allocate and extend the kernel heap");
         unsafe {
             talc.extend(
                 NonNull::new(curr_end).expect("Passed null pointer to the constructor of NonNull"),

@@ -10,7 +10,7 @@ use crate::cpu::isa::interface::memory::address::Address;
 use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
 use crate::klib::size::{gibibytes, kibibytes, mebibytes};
 use crate::logln;
-use crate::memory::{AddressSpaceId, PAddr};
+use crate::memory::PAddr;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
@@ -291,7 +291,21 @@ impl AddressSpaceInterface for AddressSpace {
         let mut walker = pth_walker::PthWalker::new(self, vaddr);
         match walker.walk() {
             Ok(_) => Ok(true),
-            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => Ok(false),
+            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                match walker.walk_large_page() {
+                    Ok(_) => Ok(true),
+                    Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                        match walker.walk_huge_page() {
+                            Ok(_) => Ok(true),
+                            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                                Ok(false)
+                            }
+                            Err(e) => Err(e),
+                        }
+                    }
+                    Err(e) => Err(e),
+                }
+            }
             Err(e) => Err(e),
         }
     }
@@ -325,8 +339,33 @@ impl AddressSpaceInterface for AddressSpace {
         vaddr: super::address::vaddr::VAddr,
     ) -> Result<super::address::paddr::PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
         let mut walker = pth_walker::PthWalker::new(self, vaddr);
-        walker.walk()?;
-        let paddr = unsafe { (*(walker.pt_ptr))[vaddr.pt_index()].try_get_frame()?.into() };
-        Ok(paddr)
+        match walker.walk() {
+            Ok(_) => {
+                let mut paddr = unsafe { (*(walker.pt_ptr))[vaddr.pt_index()].try_get_frame()? };
+                paddr += vaddr.page_offset();
+                Ok(paddr)
+            }
+            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                match walker.walk_large_page() {
+                    Ok(_) => {
+                        let mut paddr =
+                            unsafe { (*(walker.pd_ptr))[vaddr.pd_index()].try_get_frame()? };
+                        paddr += vaddr.page_offset() + (vaddr.pt_index() * PAGE_SIZE);
+                        Ok(paddr)
+                    }
+                    Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                        walker.walk_huge_page()?;
+                        let mut paddr =
+                            unsafe { (*(walker.pdpt_ptr))[vaddr.pdpt_index()].try_get_frame()? };
+                        paddr += vaddr.page_offset()
+                            + (vaddr.pt_index() * PAGE_SIZE)
+                            + (vaddr.pd_index() * Self::LARGE_PAGE_SIZE);
+                        Ok(paddr)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 }

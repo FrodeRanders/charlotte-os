@@ -53,14 +53,14 @@ impl<'vas> PthWalker<'vas> {
         };
         self.pd_ptr = unsafe {
             let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
-            if !pdpte.is_present() {
+            if !pdpte.is_present() || pdpte.get_page_size() {
                 return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
             }
             pdpte.try_get_frame().unwrap().into()
         };
         self.pt_ptr = unsafe {
             let pde = &mut (*self.pd_ptr)[self.vaddr.pd_index()];
-            if !pde.is_present() {
+            if !pde.is_present() || pde.get_page_size() {
                 return Err(<super::MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped);
             }
             pde.try_get_frame().unwrap().into()
@@ -157,7 +157,7 @@ impl<'vas> PthWalker<'vas> {
                             .unwrap()
                             .into();
                     unsafe {
-                        core::ptr::write_bytes(self.pml4_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pdpt_ptr.is_null() {
@@ -173,12 +173,16 @@ impl<'vas> PthWalker<'vas> {
                     }
                     self.pdpt_ptr = new_pdpt.into();
                     unsafe {
-                        core::ptr::write_bytes(self.pdpt_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pdpt_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pd_ptr.is_null() {
                     // Allocate a new page table for the PD
                     let new_pd = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+                    crate::early_logln!(
+                        "[HEAPDBG] mp new_pd={:#x}",
+                        (<PAddr as Into<usize>>::into(new_pd.clone()))
+                    );
                     unsafe {
                         (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
                             .set_frame(new_pd)
@@ -189,10 +193,16 @@ impl<'vas> PthWalker<'vas> {
                     }
                     self.pd_ptr = new_pd.into();
                     unsafe {
-                        core::ptr::write_bytes(self.pd_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pd_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pt_ptr.is_null() {
+                    let pde = unsafe { &(*self.pd_ptr)[self.vaddr.pd_index()] };
+                    if pde.is_present() {
+                        return Err(
+                            <super::MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped,
+                        );
+                    }
                     // Allocate a new page table for the PT
                     let new_pt = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
                     unsafe {
@@ -205,7 +215,7 @@ impl<'vas> PthWalker<'vas> {
                     }
                     self.pt_ptr = new_pt.into();
                     unsafe {
-                        core::ptr::write_bytes(self.pt_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pt_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 // Map the page frame
@@ -293,7 +303,7 @@ impl<'vas> PthWalker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> Result<(), <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
-        match self.walk() {
+        match self.walk_large_page() {
             Ok(_) => {
                 Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
             }
@@ -313,7 +323,7 @@ impl<'vas> PthWalker<'vas> {
                             .unwrap()
                             .into();
                     unsafe {
-                        core::ptr::write_bytes(self.pml4_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pdpt_ptr.is_null() {
@@ -329,28 +339,31 @@ impl<'vas> PthWalker<'vas> {
                     }
                     self.pdpt_ptr = new_pdpt.into();
                     unsafe {
-                        core::ptr::write_bytes(self.pdpt_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pdpt_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pd_ptr.is_null() {
+                    // Allocate a new page table for the PD
+                    let new_pd = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
                     unsafe {
-                        // Allocate a new page table for the PD
-                        let new_pd = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
-                        unsafe {
-                            (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
-                                .set_frame(new_pd)
-                                .set_present(true)
-                                .set_writable(writable)
-                                .set_user_accessible(user_accessible)
-                                .set_execute_disabled(no_execute);
-                        }
-                        self.pd_ptr = new_pd.into();
-                        unsafe {
-                            core::ptr::write_bytes(self.pd_ptr, 0, PAGE_SIZE);
-                        }
+                        (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
+                            .set_frame(new_pd)
+                            .set_present(true)
+                            .set_writable(writable)
+                            .set_user_accessible(user_accessible)
+                            .set_execute_disabled(no_execute);
+                    }
+                    self.pd_ptr = new_pd.into();
+                    unsafe {
+                        core::ptr::write_bytes(self.pd_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 unsafe {
+                    if (*self.pd_ptr)[self.vaddr.pd_index()].is_present() {
+                        return Err(
+                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped,
+                        );
+                    }
                     // Map the large page frame directly in the Page Directory (PML2) with the PS
                     // bit set
                     (*self.pd_ptr)[self.vaddr.pd_index()]
@@ -370,30 +383,13 @@ impl<'vas> PthWalker<'vas> {
     pub fn unmap_large_page(
         &mut self,
     ) -> Result<PAddr, <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
-        match self.walk() {
-            Ok(_) => {
-                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
-            }
-            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
-                if self.pd_ptr.is_null() {
-                    return Err(
-                        <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
-                    );
-                }
-                unsafe {
-                    let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
-                    if !(*pde).is_present() || !(*pde).get_page_size() {
-                        return Err(
-                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
-                        );
-                    }
-                    let paddr = (*pde).try_get_frame().unwrap();
-                    (*pde).set_present(false);
-                    //super::tlb::invalidate_page(self.address_space, self.vaddr);
-                    Ok(paddr)
-                }
-            }
-            Err(other) => Err(other),
+        self.walk_large_page()?;
+        unsafe {
+            let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
+            let paddr = (*pde).try_get_frame().unwrap();
+            (*pde).set_present(false);
+            //super::tlb::invalidate_page(self.address_space, self.vaddr);
+            Ok(paddr)
         }
     }
 
@@ -404,7 +400,7 @@ impl<'vas> PthWalker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> Result<(), <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
-        match self.walk() {
+        match self.walk_huge_page() {
             Ok(_) => {
                 Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
             }
@@ -424,7 +420,7 @@ impl<'vas> PthWalker<'vas> {
                             .unwrap()
                             .into();
                     unsafe {
-                        core::ptr::write_bytes(self.pml4_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 if self.pdpt_ptr.is_null() {
@@ -440,10 +436,15 @@ impl<'vas> PthWalker<'vas> {
                     }
                     self.pdpt_ptr = new_pdpt.into();
                     unsafe {
-                        core::ptr::write_bytes(self.pdpt_ptr, 0, PAGE_SIZE);
+                        core::ptr::write_bytes(self.pdpt_ptr.cast::<u8>(), 0, PAGE_SIZE);
                     }
                 }
                 unsafe {
+                    if (*self.pdpt_ptr)[self.vaddr.pdpt_index()].is_present() {
+                        return Err(
+                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped,
+                        );
+                    }
                     // Map the large page frame directly in the Page Directory (PML2) with the PS
                     // bit set
                     (*self.pdpt_ptr)[self.vaddr.pdpt_index()]
@@ -463,30 +464,13 @@ impl<'vas> PthWalker<'vas> {
     pub fn unmap_huge_page(
         &mut self,
     ) -> Result<PAddr, <super::MemoryInterfaceImpl as super::MemoryInterface>::Error> {
-        match self.walk() {
-            Ok(_) => {
-                Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::AlreadyMapped)
-            }
-            Err(<super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped) => {
-                if self.pdpt_ptr.is_null() {
-                    return Err(
-                        <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
-                    );
-                }
-                unsafe {
-                    let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
-                    if !(*pdpte).is_present() || !(*pdpte).get_page_size() {
-                        return Err(
-                            <super::MemoryInterfaceImpl as super::MemoryInterface>::Error::Unmapped,
-                        );
-                    }
-                    let paddr = (*pdpte).try_get_frame().unwrap();
-                    (*pdpte).set_present(false);
-                    //super::tlb::invalidate_page(self.address_space, self.vaddr);
-                    Ok(paddr)
-                }
-            }
-            Err(other) => Err(other),
+        self.walk_huge_page()?;
+        unsafe {
+            let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+            let paddr = (*pdpte).try_get_frame().unwrap();
+            (*pdpte).set_present(false);
+            //super::tlb::invalidate_page(self.address_space, self.vaddr);
+            Ok(paddr)
         }
     }
 }
