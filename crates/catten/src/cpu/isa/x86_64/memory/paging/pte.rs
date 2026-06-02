@@ -204,6 +204,6 @@ impl PageTableEntry {
     }
 
     pub fn is_write_combining(&self) -> bool {
-        (self.0 & (0b11 << PAT_INDEX_0) >> PAT_INDEX_0) == 0b01
+        ((self.0 & (0b11 << PAT_INDEX_0)) >> PAT_INDEX_0) == 0b01
     }
 }
