@@ -90,22 +90,29 @@ pub extern "C" fn bsp_main() -> ! {
             environment::acpi::print_table_map();
         }
     }
-    let device_topology = &*DEVICE_TOPOLOGY;
-    logln!("Device Topology: {:?}", device_topology);
-    await_interrupt!();
     mask_interrupts!();
-    for _ in 0..(get_lp_count() * 3) {
-        logln!("Creating new thread.");
-        let thread = Thread::new(false, KERNEL_ASID, test_fn as *const fn());
-        logln!("Created thread.");
-        let id = MASTER_THREAD_TABLE.write().add_element(thread);
-        logln!("Added thread to master thread table with id = {id}.");
-        SYSTEM_SCHEDULER
-            .read()
-            .submit_ready_thread(id as ThreadId)
-            .expect("Error submitting ready thread to system scheduler");
-        logln!("Submitted thread with ID = {id} to the system scheduler.");
-    }
+    // for _ in 0..(get_lp_count() * 3) {
+    //     logln!("Creating new thread.");
+    //     let thread = Thread::new(false, KERNEL_ASID, test_fn as *const fn());
+    //     logln!("Created thread.");
+    //     let id = MASTER_THREAD_TABLE.write().add_element(thread);
+    //     logln!("Added thread to master thread table with id = {id}.");
+    //     SYSTEM_SCHEDULER
+    //         .read()
+    //         .submit_ready_thread(id as ThreadId)
+    //         .expect("Error submitting ready thread to system scheduler");
+    //     logln!("Submitted thread with ID = {id} to the system scheduler.");
+    // }
+    logln!("Creating new thread.");
+    let thread = Thread::new(false, KERNEL_ASID, probe_device_topology as *const fn());
+    logln!("Created thread.");
+    let id = MASTER_THREAD_TABLE.write().add_element(thread);
+    logln!("Added thread to master thread table with id = {id}.");
+    SYSTEM_SCHEDULER
+        .read()
+        .submit_ready_thread(id as ThreadId)
+        .expect("Error submitting ready thread to system scheduler");
+    logln!("Submitted thread with ID = {id} to the system scheduler.");
     unmask_interrupts!();
     logln!("Submitted all initial kernel threads.");
     logln!(
@@ -142,6 +149,14 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
     unsafe { unreachable_unchecked() }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn probe_device_topology() {
+    logln!("LP {}: Probing device topology...", (get_lp_id()));
+    let device_topology = &*DEVICE_TOPOLOGY;
+    logln!("LP {}: Device Topology: {:?}", (get_lp_id()), device_topology);
+    panic!();
 }
 
 #[unsafe(no_mangle)]

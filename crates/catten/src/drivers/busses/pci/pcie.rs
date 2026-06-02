@@ -37,7 +37,6 @@ impl PcieTopology {
 #[derive(Debug)]
 pub struct PcieSegmentGroup {
     pcie_segment_group_num: PcieSegmentGroupNum,
-    ecam_paddr: PAddr,
     ecam_vaddr: VAddr, /* Virtual address where this segment's ECAM is mapped in the kernel's
                         * address space */
     start_bus_num: PcieBusSegmentNum,
@@ -55,10 +54,10 @@ impl PcieSegmentGroup {
     ) -> Self {
         PcieSegmentGroup {
             pcie_segment_group_num,
-            ecam_paddr,
-            ecam_vaddr: VAddr::from(0usize), /* TODO: Map the ECAM to a suitable region in the
-                                              * Kernel
-                                              * MMIO region of the higher half */
+            ecam_vaddr: ecam::map_ecam(ecam_paddr), /* TODO: Map the ECAM to a suitable region in
+                                                     * the
+                                                     * Kernel
+                                                     * MMIO region of the higher half */
             start_bus_num,
             end_bus_num,
             topology: PcieBusSegment::new(pcie_segment_group_num, start_bus_num),
