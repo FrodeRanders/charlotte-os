@@ -4,18 +4,8 @@
 
 ## Programming Languages
 
-- CharlotteOS is written primarily in Rust, with architecture-specific assembly where required.
+- CharlotteOS is written primarily in the latest Edition of Rust, with architecture-specific assembly where required or advantageousf.
 - x86-64 assembly uses Intel syntax as implemented by `rustc`/`llvm-mc`.
-- C is permitted for vetted components where a high-quality Rust alternative does not exist.
-
----
-
-## External Dependencies
-
-- Rust, C, and assembly are the only allowed implementation languages.
-- Any C dependency must be approved and justified.
-- Prefer high-quality Rust crates where possible and use C libraries only when comparable or better Rust
-alternatives do not exist
 
 ---
 
@@ -30,6 +20,7 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 - Invariant Timestamp Counter
 - Local APIC with x2APIC mode
 - Full standards conforming UEFI and ACPI firmware environment
+- Intel or AMD compatible IOMMU
 
 #### Aarch64 (Secondary ISA)
 
@@ -49,23 +40,24 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 
 ## Firmware Model
 
-Catten supports both ACPI and Devicetree equally. The format is not the determining factor—**device documentation and correctness are.**
+The Catten kernel requires at least the EBBR subset of UEFI and either of ACPI or Devicetree. The format is not the determining factor—**device documentation and correctness to the respective specification are.**
 
 ### UEFI
 
 - Required for PC/server-class systems on all architectures.
-- Provides boot services, memory descriptors, and framebuffer/console access.
+- EBBR subset acceptable for embedded systems.
 
 ### ACPI
 
 - Expected on PC/server-class machines across ISAs and all x86-64 systems.
 - ACPI tables must be complete and spec-compliant enough to allow device discovery without vendor-specific workarounds or drivers.
+- ACPI Machine Language (AML) code must be strictly specification conforming.
 
 ### Flattened Devicetree (FDT)
 
 - Fully supported for SoC-style platforms.
-- FDT must conform to DTSpec and accurately describe hardware resources.
-- All `compatible` strings must map to publicly documented hardware blocks or IP cores or that
+- FDT must conform to the Devicetree specificion and accurately describe hardware resources.
+- All `compatible` strings must map to publicly documented hardware blocks or IP cores or the described
 hardware likely will not work.
 
 ### Documentation Requirement
@@ -86,13 +78,13 @@ This ensures that Catten can operate without relying on undocumented Linux drive
 
 Embedded:
 
-- Recommended: ≥ 512 MiB
-- Minimum: 128 MiB
+- Recommended: ≥ 128 MiB
+- Minimum: 24 MiB
 
 PC and Server:
 
-- Recommended: ≥ 8 GiB
-- Minimum: 2 GiB
+- Recommended: ≥ 2 GiB
+- Minimum: 256 MiB
 
 ### Storage[^1]
 
@@ -106,7 +98,7 @@ PC and Server:
 ### Display
 
 - Linear framebuffer exposed via:
-  - UEFI GOP  
+  - UEFI GOP
   - FDT `simplefb` node
 
 ### Input Devices
