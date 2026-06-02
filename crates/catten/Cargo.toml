@@ -13,9 +13,10 @@ bench = false
 [features]
 default = ["acpi"]
 
-acpi = ["dep:uacpi-raw"]
+acpi = []
 devicetree = ["dep:flat_device_tree"]
 legacy_com_ports = []
+yield_trace = []
 
 [dependencies]
 limine = { version = ">=0.6.3" }
@@ -24,5 +25,4 @@ concurrent-queue = { version = "2.5.0", default-features = false }
 hashbrown = { version = ">=0.16.0", features = ["nightly"] }
 spin = { version = ">=0.10.0", features = ["lock_api"] }
 talc = { version = ">=5.0.3", features = ["nightly", "counters"] }
-uacpi-raw = { git = "https://codeberg.org/CharlotteOS/uacpi-raw.git", branch = "main", optional = true }
 flat_device_tree = { version = "3.1.1", optional = true }

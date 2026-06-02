@@ -150,14 +150,24 @@ pub extern "C" fn set_lp_local_base(base: VAddr) {
 pub extern "C" fn cond_yield_lp() {
     let interrupts_were_enabled = get_int_state();
     mask_interrupts!();
+    #[cfg(feature = "yield_trace")]
     #[derive(Clone, Copy)]
     enum YieldTrace {
         None,
-        NoSwitch { lp_id: LpId },
-        FromThread { current: usize, next: usize, lp_id: LpId },
-        FromNonThread { next: usize, lp_id: LpId },
+        NoSwitch {
+            lp_id: LpId,
+        },
+        FromThread {
+            current: usize,
+            next: usize,
+            lp_id: LpId,
+        },
+        FromNonThread {
+            next:  usize,
+            lp_id: LpId,
+        },
     }
-
+    #[cfg(feature = "yield_trace")]
     let mut trace = YieldTrace::None;
     // Collect switch parameters and release all locks before calling switch_ctx.
     // switch_ctx may permanently abandon the current stack (initial non-thread switch),
@@ -167,56 +177,86 @@ pub extern "C" fn cond_yield_lp() {
         let mut lsched = sched.get_lp_scheduler().lock();
         if lsched.is_ctx_switch_pending() {
             let curr_tid = lsched.get_tid();
-            let next_tid = lsched
-                .next()
-                .expect("Error getting next thread from local scheduler during yield.");
-            if curr_tid.is_some() {
-                if next_tid != curr_tid.unwrap() {
-                    let (curr_rsp0_ptr, next_rsp0_ptr) = {
+            if let Ok(next_tid) = lsched.next() {
+                if curr_tid.is_some() {
+                    if next_tid != curr_tid.unwrap() {
+                        let (curr_rsp0_ptr, next_rsp0_ptr) = {
+                            let mut tt_guard = MASTER_THREAD_TABLE.write();
+                            let curr_thread = tt_guard
+                                .get_mut(
+                                    curr_tid.expect("Current thread ID not found during yield."),
+                                )
+                                .expect("Current thread not found during yield.");
+                            let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
+                            let next_thread = tt_guard
+                                .get_mut(next_tid)
+                                .expect("Next thread not found during yield.");
+                            let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
+                            (curr_rsp0_ptr, next_rsp0_ptr)
+                        };
+                        cfg_select! {
+                            feature = "yield_trace" => {
+                                trace = YieldTrace::FromThread {
+                                    current: curr_tid.unwrap(),
+                                    next: next_tid,
+                                    lp_id: get_lp_id(),
+                                };
+                            }
+                            _ => {}
+                        }
+                        lsched.clear_ctx_switch_pending();
+                        Some((curr_rsp0_ptr, next_rsp0_ptr))
+                    } else {
+                        cfg_select! {
+                            feature = "yield_trace" => {
+
+                                trace = YieldTrace::NoSwitch {
+                                    lp_id: get_lp_id(),
+                                };
+                            }
+                            _ => {}
+                        }
+                        None
+                    }
+                } else {
+                    let next_rsp0_ptr = {
                         let mut tt_guard = MASTER_THREAD_TABLE.write();
-                        let curr_thread = tt_guard
-                            .get_mut(curr_tid.expect("Current thread ID not found during yield."))
-                            .expect("Current thread not found during yield.");
-                        let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
                         let next_thread = tt_guard
                             .get_mut(next_tid)
                             .expect("Next thread not found during yield.");
-                        let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
-                        (curr_rsp0_ptr, next_rsp0_ptr)
+                        &raw mut next_thread.context.rsp_cpl0
                     };
-                    trace = YieldTrace::FromThread {
-                        current: curr_tid.unwrap(),
-                        next: next_tid,
-                        lp_id: get_lp_id(),
-                    };
+                    cfg_select! {
+                        feature = "yield_trace" => {
+                            trace = YieldTrace::FromNonThread {
+                                next:  next_tid,
+                                lp_id: get_lp_id(),
+                            };
+                        }
+                        _ => {}
+                    }
                     lsched.clear_ctx_switch_pending();
-                    Some((curr_rsp0_ptr, next_rsp0_ptr))
-                } else {
-                    trace = YieldTrace::NoSwitch { lp_id: get_lp_id() };
-                    None
+                    Some((core::ptr::null_mut(), next_rsp0_ptr))
                 }
             } else {
-                let next_rsp0_ptr = {
-                    let mut tt_guard = MASTER_THREAD_TABLE.write();
-                    let next_thread =
-                        tt_guard.get_mut(next_tid).expect("Next thread not found during yield.");
-                    &raw mut next_thread.context.rsp_cpl0
-                };
-                trace = YieldTrace::FromNonThread {
-                    next: next_tid,
-                    lp_id: get_lp_id(),
-                };
-                lsched.clear_ctx_switch_pending();
-                Some((core::ptr::null_mut(), next_rsp0_ptr))
+                logln!(
+                    "LP {:?}: No runnable threads found during yield, even though a context \
+                     switch was pending. Awaiting interrupt...",
+                    (get_lp_id())
+                );
+                await_interrupt!();
             }
         } else {
             None
         }
         // lsched and sched guards dropped here before switch_ctx
     };
+    #[cfg(feature = "yield_trace")]
     match trace {
         YieldTrace::None => {}
-        YieldTrace::NoSwitch { lp_id } => logln!(
+        YieldTrace::NoSwitch {
+            lp_id,
+        } => logln!(
             "No thread switch needed during yield on LP {:?} because the next thread is the same \
              as the current thread.",
             lp_id
@@ -225,17 +265,11 @@ pub extern "C" fn cond_yield_lp() {
             current,
             next,
             lp_id,
-        } => logln!(
-            "Yielding from thread {:?} to thread {:?} on LP {:?}",
-            current,
+        } => logln!("Yielding from thread {:?} to thread {:?} on LP {:?}", current, next, lp_id),
+        YieldTrace::FromNonThread {
             next,
-            lp_id
-        ),
-        YieldTrace::FromNonThread { next, lp_id } => logln!(
-            "Yielding from non-thread context to thread {:?} on LP {:?}",
-            next,
-            lp_id
-        ),
+            lp_id,
+        } => logln!("Yielding from non-thread context to thread {:?} on LP {:?}", next, lp_id),
     }
     if let Some((curr_rsp0_ptr, next_rsp0_ptr)) = switch_params {
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);

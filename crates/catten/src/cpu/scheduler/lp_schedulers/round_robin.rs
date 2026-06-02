@@ -94,9 +94,7 @@ impl LpScheduler for RoundRobin {
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {
-        if self.run_queue.is_empty() {
-            Err(Error::EmptyRunQueue)
-        } else {
+        if !self.run_queue.is_empty() {
             let previous_handle = self.current_handle;
             if let Some(handle) = self.current_handle {
                 self.run_queue.push_back(handle);
@@ -110,6 +108,12 @@ impl LpScheduler for RoundRobin {
             }
             tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
             Ok(next_tid)
+        } else {
+            if self.current_handle.is_some() {
+                Ok(unsafe { self.current_handle.unwrap_unchecked() }.0)
+            } else {
+                Err(Error::NoRunnableThreads)
+            }
         }
     }
 

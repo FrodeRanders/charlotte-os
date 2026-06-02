@@ -35,7 +35,7 @@ static LA_MAP_39BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddress
         base: VAddr::from(0xffffff0800000000usize),
         length: gibibytes(4),
     },
-    kenrnel_allocator_arena: LinearMemoryRegion {
+    kernel_allocator_arena: LinearMemoryRegion {
         base: VAddr::from(0xffffff1000000000usize),
         length: gibibytes(988),
     },
@@ -66,7 +66,7 @@ static LA_MAP_48BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddress
         base: VAddr::from(0xffff820000000000usize),
         length: tebibytes(2),
     },
-    kenrnel_allocator_arena: LinearMemoryRegion {
+    kernel_allocator_arena: LinearMemoryRegion {
         base: VAddr::from(0xffff840000000000usize),
         length: tebibytes(506),
     },
@@ -97,7 +97,7 @@ static LA_MAP_57BIT: LazyLock<LinearAddressMap> = LazyLock::new(|| LinearAddress
         base: VAddr::from(0xff88000000000000usize),
         length: pebibytes(1),
     },
-    kenrnel_allocator_arena: LinearMemoryRegion {
+    kernel_allocator_arena: LinearMemoryRegion {
         base: VAddr::from(0xff90000000000000usize),
         length: pebibytes(253),
     },
@@ -124,7 +124,7 @@ pub struct LinearAddressMap {
     direct_mapping: LinearMemoryRegion,
     kernel_stack_arena: LinearMemoryRegion,
     kernel_mmio: LinearMemoryRegion,
-    kenrnel_allocator_arena: LinearMemoryRegion,
+    kernel_allocator_arena: LinearMemoryRegion,
     kernel_image: LinearMemoryRegion,
 }
 
@@ -140,7 +140,7 @@ impl LinearAddressMap {
             RegionType::KernelStackArena
         } else if self.kernel_mmio.contains(addr) {
             RegionType::KernelMmio
-        } else if self.kenrnel_allocator_arena.contains(addr) {
+        } else if self.kernel_allocator_arena.contains(addr) {
             RegionType::KernelAllocatorArena
         } else if self.kernel_image.contains(addr) {
             RegionType::KernelImage
@@ -159,7 +159,7 @@ impl LinearAddressMap {
             RegionType::DirectMapping => &self.direct_mapping,
             RegionType::KernelStackArena => &self.kernel_stack_arena,
             RegionType::KernelMmio => &self.kernel_mmio,
-            RegionType::KernelAllocatorArena => &self.kenrnel_allocator_arena,
+            RegionType::KernelAllocatorArena => &self.kernel_allocator_arena,
             RegionType::KernelImage => &self.kernel_image,
         }
     }
@@ -172,12 +172,12 @@ pub struct LinearMemoryRegion {
 
 impl LinearMemoryRegion {
     pub fn contains(&self, addr: VAddr) -> bool {
-        addr >= self.base && addr < (self.base + (self.length as isize))
+        addr >= self.base && addr < (self.base + self.length)
     }
 }
 
 impl Into<(VAddr, VAddr)> for LinearMemoryRegion {
     fn into(self) -> (VAddr, VAddr) {
-        (self.base, self.base + self.length as isize)
+        (self.base, self.base + self.length)
     }
 }

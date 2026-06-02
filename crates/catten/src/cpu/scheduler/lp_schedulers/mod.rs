@@ -32,7 +32,7 @@ pub trait LpScheduler: Debug + Send {
 
 #[derive(Debug)]
 pub enum Error {
-    EmptyRunQueue,
+    NoRunnableThreads,
     ThreadAlreadyAssignedToLp,
     ThreadNotAssignedToThisLp,
 }

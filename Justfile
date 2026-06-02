@@ -41,5 +41,5 @@ clean:
     rm -rf {{image_dir}}
 
 distclean: clean
-    rm Cargo.lock
-    rm log*.txt
+    if [ -f Cargo.lock ]; then rm Cargo.lock; fi
+    if [ -d logs ]; then rm logs/*.txt; fi
