@@ -1,12 +1,12 @@
-const PCIE_CFG_SPACE_SIZE: usize = 4096;
+use crate::drivers::busses::pci::ecam::headers;
 
-use crate::drivers::busses::pci::ecam;
+pub const PCIE_CFG_SPACE_SIZE: usize = 4096;
 
 #[repr(C, packed)]
 /// An overlay struct representing the entire 4KB configuration space of a PCIe device in an ECAM
 pub struct PcieCfgSpace {
-    pub header: ecam::CfgHeader,
-    pub capability_space: [u8; PCIE_CFG_SPACE_SIZE - core::mem::size_of::<ecam::CfgHeader>()],
+    pub header: headers::CfgHeader,
+    pub capability_space: [u8; PCIE_CFG_SPACE_SIZE - core::mem::size_of::<headers::CfgHeader>()],
 }
 
 impl PcieCfgSpace {
