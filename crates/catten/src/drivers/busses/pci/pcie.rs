@@ -145,7 +145,8 @@ pub struct PcieBusSegment {
 
 impl PcieBusSegment {
     fn new(segment_group_num: PcieSegmentGroupNum, bus_num: PcieBusSegmentNum) -> Self {
-        let mut devices: [PcieDevice; MAX_DEVICES_PER_BUS];
+        let mut devices: [PcieDevice; MAX_DEVICES_PER_BUS] =
+            [PcieDevice::Empty; MAX_DEVICES_PER_BUS];
         for i in 0..MAX_DEVICES_PER_BUS {
             devices[i] = PcieDevice::new(segment_group_num, bus_num, i as u8);
         }
@@ -157,6 +158,7 @@ impl PcieBusSegment {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum PcieDevice {
     Empty,
     SingleFunc(PcieSingleFuncDevice),
@@ -169,14 +171,14 @@ impl PcieDevice {
         bus_num: PcieBusSegmentNum,
         device_num: u8,
     ) -> Self {
-        let cfg_space_vaddr_result = DEVICE_TOPOLOGY.lock().get_cfg_space_vaddr(
+        let cfg_space_vaddr_result = DEVICE_TOPOLOGY.pcie.get_cfg_space_vaddr(
             segment_group_num,
             bus_num,
             PcieDeviceNum(device_num),
             PcieFunctionNum(0),
         );
         if let Ok(cfg_space_vaddr) = cfg_space_vaddr_result {
-            let cfg_space = unsafe { &*(cfg_space_vaddr.as_ptr() as *const ecam::PcieCfgSpace) };
+            let cfg_space = unsafe { &*cfg_space_vaddr.into_ptr::<PcieCfgSpace>() };
             if !cfg_space.has_device_present() {
                 PcieDevice::Empty
             } else if cfg_space.device_is_multifunction() {
@@ -198,6 +200,7 @@ impl PcieDevice {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct PcieSingleFuncDevice {
     number: PcieDeviceNum,
     function: PcieFunction,
@@ -228,7 +231,8 @@ impl PcieMultiFuncDevice {
         bus_num: PcieBusSegmentNum,
         device_num: u8,
     ) -> Self {
-        let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE];
+        let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE] =
+            [PcieFunction::Empty; MAX_FUNCTIONS_PER_DEVICE];
         for i in 0..MAX_FUNCTIONS_PER_DEVICE {
             functions[i] = PcieFunction::new(
                 segment_group_num,
@@ -288,12 +292,16 @@ impl PcieFunction {
             if !cfg_space.has_device_present() {
                 PcieFunction::Empty
             } else if cfg_space.device_is_bridge() {
-                if cfg_space.header.common.get_class().class_code == 0x06
-                    && cfg_space.header.common.get_class().subclass == 0x04
+                if cfg_space.header.common.get_class_code().into()
+                    == Class::BRIDGE_DEVICE_CLASS_CODE
                 {
-                    PcieFunction::BridgeToPciLocal(cfg_space.header.bridge_header.secondary_bus_num)
+                    PcieFunction::BridgeToPciLocal(unsafe {
+                        cfg_space.header.bridge.get_secondary_bus_num()
+                    })
                 } else {
-                    PcieFunction::BridgeToPcie(cfg_space.header.bridge_header.secondary_bus_num)
+                    PcieFunction::BridgeToPcie(unsafe {
+                        cfg_space.header.bridge.get_secondary_bus_num()
+                    })
                 }
             } else {
                 PcieFunction::Endpoint(PcieEndpoint::new(
@@ -341,7 +349,7 @@ impl PcieEndpoint {
         let cfg_space = *&cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
         let vendor_id = unsafe { (*cfg_space).header.common.get_vendor_id() };
         let device_id = unsafe { (*cfg_space).header.common.get_device_id() };
-        let class = unsafe { (*cfg_space).header.common.get_class() };
+        let class = unsafe { (*cfg_space).header.common.get_class_code() };
 
         PcieEndpoint {
             number: function_num,

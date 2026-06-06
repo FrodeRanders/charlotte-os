@@ -45,7 +45,7 @@ impl CfgCommonHeader {
         self.device_id
     }
 
-    pub fn get_class(&self) -> Class {
+    pub fn get_class_code(&self) -> Class {
         Class::new(self.class_code, self.subclass, self.prog_if)
     }
 }
@@ -64,17 +64,6 @@ impl Class {
             subclass,
             prog_if,
         }
-    }
-}
-
-impl Debug for Class {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "PCI Express Device Class\n    class_code: {:#x}\n    subclass: {:#x}\n    prog_if: \
-             {:#x}",
-            self.class_code, self.subclass, self.prog_if
-        )
     }
 }
 
