@@ -1,4 +1,3 @@
-pub mod class;
 //! # PCI Express Enhanced Configuration Access Mechanism (ECAM)
 pub mod headers;
 pub mod pci_local;

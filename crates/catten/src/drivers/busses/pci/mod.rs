@@ -1,3 +1,4 @@
+pub mod device_class;
 mod ecam;
 pub mod pcie;
 
