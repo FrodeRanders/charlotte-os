@@ -23,6 +23,7 @@ impl Idt {
         index: u8,
         isr_ptr: unsafe extern "custom" fn(),
         segment_selector: u16,
+        ist_index: Option<u8>,
         is_trap: bool,
         is_present: bool,
     ) {
@@ -31,7 +32,8 @@ impl Idt {
 
         gate.addr0 = u16::try_from(isr_addr & 0xffff).unwrap();
         gate.segment_selector = segment_selector;
-        gate.reserved_ist_index = 0u8; // the IST is not used
+        // the IST is not always used, 0 indiacates that RSP0 will be used instead of the IST
+        gate.reserved_ist_index = ist_index.unwrap_or(0u8) & 0b111;
         gate.flags = if is_trap {
             0b1111u8
         } else {

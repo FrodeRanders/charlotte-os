@@ -1,12 +1,13 @@
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::ops::Deref;
+use core::ptr::NonNull;
 
-use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE, MAX_SEGMENT_GROUPS};
+use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::device_manager::{DEVICE_TOPOLOGY, DeviceId};
-use crate::drivers::busses::pci::ecam;
-use crate::drivers::busses::pci::ecam::headers::Class;
-use crate::drivers::busses::pci::ecam::pcie::PcieCfgSpace;
+use crate::drivers::busses::pci_express::ecam;
+use crate::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
+use crate::logln;
 use crate::memory::{PAddr, VAddr};
 
 pub(super) type PcieSegmentGroupNum = u16;
@@ -71,6 +72,36 @@ pub struct PcieLocation {
     function: PcieFunctionNum,
 }
 
+impl PcieLocation {
+    const BUS_SEGMENT_SHIFT: usize = 20;
+    /* Each bus occupies 1 MiB of ECAM address space */
+    const DEVICE_SHIFT: usize = 15;
+    /* Each device occupies 32 KiB of ECAM address space */
+    const FUNCTION_SHIFT: usize = 12;
+
+    pub fn new(
+        segment_group: PcieSegmentGroupNum,
+        bus_segment: PcieBusSegmentNum,
+        device: PcieDeviceNum,
+        function: PcieFunctionNum,
+    ) -> Self {
+        PcieLocation {
+            segment_group,
+            bus_segment,
+            device,
+            function,
+        }
+    }
+
+    /* Each function occupies 4 KiB of ECAM address space */
+    pub fn get_ecam_offset(&self) -> usize {
+        let bus_offset = (self.bus_segment as usize) << Self::BUS_SEGMENT_SHIFT; /* Each bus occupies 1 MiB of ECAM address space */
+        let device_offset = (self.device.get_inner() as usize) << Self::DEVICE_SHIFT; /* Each device occupies 32 KiB of ECAM address space */
+        let function_offset = (self.function.get_inner() as usize) << Self::FUNCTION_SHIFT; /* Each function occupies 4 KiB of ECAM address space */
+        bus_offset + device_offset + function_offset
+    }
+}
+
 #[derive(Debug)]
 pub struct PcieTopology {
     segments: Vec<PcieSegmentGroup>,
@@ -98,11 +129,13 @@ impl PcieTopology {
         if bus_segment < segment_group.start_bus_num || bus_segment > segment_group.end_bus_num {
             return Err(Error::InvalidLocation);
         }
-        let ecam_vaddr = segment_group.ecam_vaddr;
-        let bus_offset = (bus_segment as usize) << 20; /* Each bus occupies 1 MiB of ECAM address space */
-        let device_offset = (device_num.get_inner() as usize) << 15; /* Each device occupies 32 KiB of ECAM address space */
-        let function_offset = (function_num.get_inner() as usize) << 12; /* Each function occupies 4 KiB of ECAM address space */
-        Ok(ecam_vaddr + bus_offset + device_offset + function_offset)
+        let location = PcieLocation::new(
+            segment_group.pcie_segment_group_num,
+            bus_segment,
+            device_num,
+            function_num,
+        );
+        Ok(segment_group.ecam_vaddr + location.get_ecam_offset())
     }
 }
 
@@ -113,8 +146,9 @@ pub struct PcieSegmentGroup {
                         * address space */
     start_bus_num: PcieBusSegmentNum,
     end_bus_num: PcieBusSegmentNum,
-    topology: PcieBusSegment, /* Root bus of this segment's topology; the rest of the topology
-                               * can be traversed from here */
+    root_bus: Box<PcieBusSegment>, /* Root bus of this segment's topology; the rest of the
+                                    * topology
+                                    * can be traversed from here */
 }
 
 impl PcieSegmentGroup {
@@ -124,15 +158,17 @@ impl PcieSegmentGroup {
         start_bus_num: PcieBusSegmentNum,
         end_bus_num: PcieBusSegmentNum,
     ) -> Self {
+        let ecam_vaddr = ecam::map_ecam(ecam_paddr);
         PcieSegmentGroup {
             pcie_segment_group_num,
-            ecam_vaddr: ecam::map_ecam(ecam_paddr), /* TODO: Map the ECAM to a suitable region in
-                                                     * the
-                                                     * Kernel
-                                                     * MMIO region of the higher half */
+            ecam_vaddr,
             start_bus_num,
             end_bus_num,
-            topology: PcieBusSegment::new(pcie_segment_group_num, start_bus_num),
+            root_bus: Box::new(PcieBusSegment::new(
+                ecam_vaddr,
+                pcie_segment_group_num,
+                start_bus_num,
+            )),
         }
     }
 }
@@ -144,11 +180,26 @@ pub struct PcieBusSegment {
 }
 
 impl PcieBusSegment {
-    fn new(segment_group_num: PcieSegmentGroupNum, bus_num: PcieBusSegmentNum) -> Self {
+    fn new(
+        ecam_vaddr: VAddr,
+        segment_group_num: PcieSegmentGroupNum,
+        bus_num: PcieBusSegmentNum,
+    ) -> Self {
+        logln!(
+            "[drivers::busses::pci] Enumerating PCIe bus segment {} of segment group {}",
+            bus_num,
+            segment_group_num
+        );
         let mut devices: [PcieDevice; MAX_DEVICES_PER_BUS] =
-            [PcieDevice::Empty; MAX_DEVICES_PER_BUS];
+            [const { PcieDevice::Empty }; MAX_DEVICES_PER_BUS];
+        logln!(
+            "[drivers::busses::pci] Initialized device array for bus segment {} of segment group \
+             {}. Starting device enumeration...",
+            bus_num,
+            segment_group_num
+        );
         for i in 0..MAX_DEVICES_PER_BUS {
-            devices[i] = PcieDevice::new(segment_group_num, bus_num, i as u8);
+            devices[i] = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, i as u8);
         }
 
         PcieBusSegment {
@@ -158,7 +209,7 @@ impl PcieBusSegment {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum PcieDevice {
     Empty,
     SingleFunc(PcieSingleFuncDevice),
@@ -167,40 +218,42 @@ pub enum PcieDevice {
 
 impl PcieDevice {
     fn new(
+        ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
     ) -> Self {
-        let cfg_space_vaddr_result = DEVICE_TOPOLOGY.pcie.get_cfg_space_vaddr(
-            segment_group_num,
-            bus_num,
-            PcieDeviceNum(device_num),
-            PcieFunctionNum(0),
-        );
-        if let Ok(cfg_space_vaddr) = cfg_space_vaddr_result {
-            let cfg_space = unsafe { &*cfg_space_vaddr.into_ptr::<PcieCfgSpace>() };
-            if !cfg_space.has_device_present() {
-                PcieDevice::Empty
-            } else if cfg_space.device_is_multifunction() {
-                PcieDevice::MultiFunc(PcieMultiFuncDevice::new(
-                    segment_group_num,
-                    bus_num,
-                    device_num,
-                ))
-            } else {
-                PcieDevice::SingleFunc(PcieSingleFuncDevice::new(
-                    segment_group_num,
-                    bus_num,
-                    device_num,
-                ))
-            }
-        } else {
+        let cfg_space_vaddr = ecam_vaddr
+            + PcieLocation::new(
+                segment_group_num,
+                bus_num,
+                PcieDeviceNum(device_num),
+                PcieFunctionNum(0),
+            )
+            .get_ecam_offset();
+
+        let cfg_space = unsafe { &*cfg_space_vaddr.into_ptr::<PcieCfgSpace>() };
+        if !cfg_space.has_device_present() {
             PcieDevice::Empty
+        } else if cfg_space.device_is_multifunction() {
+            PcieDevice::MultiFunc(PcieMultiFuncDevice::new(
+                ecam_vaddr,
+                segment_group_num,
+                bus_num,
+                device_num,
+            ))
+        } else {
+            PcieDevice::SingleFunc(PcieSingleFuncDevice::new(
+                ecam_vaddr,
+                segment_group_num,
+                bus_num,
+                device_num,
+            ))
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct PcieSingleFuncDevice {
     number: PcieDeviceNum,
     function: PcieFunction,
@@ -208,18 +261,25 @@ pub struct PcieSingleFuncDevice {
 
 impl PcieSingleFuncDevice {
     fn new(
+        ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
     ) -> Self {
         PcieSingleFuncDevice {
             number: PcieDeviceNum(device_num),
-            function: PcieFunction::new(segment_group_num, bus_num, device_num, PcieFunctionNum(0)),
+            function: PcieFunction::new(
+                ecam_vaddr,
+                segment_group_num,
+                bus_num,
+                device_num,
+                PcieFunctionNum(0),
+            ),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct PcieMultiFuncDevice {
     number: PcieDeviceNum,
     functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE],
@@ -227,14 +287,16 @@ pub struct PcieMultiFuncDevice {
 
 impl PcieMultiFuncDevice {
     fn new(
+        ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
     ) -> Self {
         let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE] =
-            [PcieFunction::Empty; MAX_FUNCTIONS_PER_DEVICE];
+            [const { PcieFunction::Empty }; MAX_FUNCTIONS_PER_DEVICE];
         for i in 0..MAX_FUNCTIONS_PER_DEVICE {
             functions[i] = PcieFunction::new(
+                ecam_vaddr,
                 segment_group_num,
                 bus_num,
                 device_num,
@@ -266,53 +328,55 @@ impl core::fmt::Debug for BarIoAddrs {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum PcieFunction {
     Empty,
-    Endpoint(PcieEndpoint),
-    BridgeToPcie(PcieBusSegmentNum),
-    BridgeToPciLocal(PcieBusSegmentNum),
+    Endpoint(Box<PcieEndpoint>), /* If this function is a normal endpoint device, then it has
+                                  * no bus segment behind it and
+                                  * can be represented as an endpoint struct containing its
+                                  * relevant config space info
+                                  * and BAR addresses */
+    Bridge(Box<PcieBusSegment>), /* If this function is a bridge, then it has a bus segment
+                                  * behind it which can be
+                                  * traversed like the root bus segments in the
+                                  * topology */
 }
 
 impl PcieFunction {
     fn new(
+        ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
         function_num: PcieFunctionNum,
     ) -> Self {
-        let cfg_space_vaddr_result = DEVICE_TOPOLOGY.pcie.get_cfg_space_vaddr(
-            segment_group_num,
-            bus_num,
-            PcieDeviceNum(device_num),
-            function_num,
-        );
-        if let Ok(cfg_space_vaddr) = cfg_space_vaddr_result {
-            let cfg_space = unsafe { &*(cfg_space_vaddr.into_ptr::<PcieCfgSpace>()) };
-            if !cfg_space.has_device_present() {
-                PcieFunction::Empty
-            } else if cfg_space.device_is_bridge() {
-                if cfg_space.header.common.get_class_code().into()
-                    == Class::BRIDGE_DEVICE_CLASS_CODE
-                {
-                    PcieFunction::BridgeToPciLocal(unsafe {
-                        cfg_space.header.bridge.get_secondary_bus_num()
-                    })
-                } else {
-                    PcieFunction::BridgeToPcie(unsafe {
-                        cfg_space.header.bridge.get_secondary_bus_num()
-                    })
-                }
-            } else {
-                PcieFunction::Endpoint(PcieEndpoint::new(
-                    segment_group_num,
-                    bus_num,
-                    device_num,
-                    function_num,
-                ))
-            }
-        } else {
+        let cfg_space_vaddr = ecam_vaddr
+            + PcieLocation::new(
+                segment_group_num,
+                bus_num,
+                PcieDeviceNum(device_num),
+                function_num,
+            )
+            .get_ecam_offset();
+        let cfg_space = unsafe { &*(cfg_space_vaddr.into_ptr::<PcieCfgSpace>()) };
+        if !cfg_space.has_device_present() {
             PcieFunction::Empty
+        } else if cfg_space.device_is_bridge() {
+            let secondary_bus_segment_number =
+                unsafe { cfg_space.header.bridge.get_secondary_bus_num() };
+            PcieFunction::Bridge(Box::new(PcieBusSegment::new(
+                ecam_vaddr,
+                segment_group_num,
+                secondary_bus_segment_number,
+            )))
+        } else {
+            PcieFunction::Endpoint(Box::new(PcieEndpoint::new(
+                ecam_vaddr,
+                segment_group_num,
+                bus_num,
+                device_num,
+                function_num,
+            )))
         }
     }
 }
@@ -322,41 +386,45 @@ pub struct PcieEndpoint {
     number: PcieFunctionNum,
     vendor_id: u16,
     device_id: u16,
-    class: Class,
+    class: ecam::headers::DeviceTypeCode,
     /* Raw pointer to this function's configuration space in the kernel's address space;
      * used for reading/writing config space registers inside this PCIe bus driver ONLY
      * other drivers and the rest of the kernel should use safe functions exposed by this bus
      * driver */
-    cfg_ptr: *mut PcieCfgSpace,
+    cfg_ptr: NonNull<PcieCfgSpace>,
 }
 
 impl PcieEndpoint {
     fn new(
+        ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
         function_num: PcieFunctionNum,
     ) -> Self {
-        let cfg_space_vaddr = DEVICE_TOPOLOGY
-            .pcie
-            .get_cfg_space_vaddr(
+        let cfg_space_vaddr = ecam_vaddr
+            + PcieLocation::new(
                 segment_group_num,
                 bus_num,
                 PcieDeviceNum(device_num),
                 function_num,
             )
-            .expect("Invalid PCIe function location");
+            .get_ecam_offset();
         let cfg_space = *&cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
         let vendor_id = unsafe { (*cfg_space).header.common.get_vendor_id() };
         let device_id = unsafe { (*cfg_space).header.common.get_device_id() };
-        let class = unsafe { (*cfg_space).header.common.get_class_code() };
+        let class = unsafe { (*cfg_space).header.common.get_type_code() };
 
         PcieEndpoint {
             number: function_num,
             vendor_id,
             device_id,
             class,
-            cfg_ptr: cfg_space_vaddr.into_mut(),
+            cfg_ptr: NonNull::new(cfg_space_vaddr.into_mut())
+                .expect("Invalid PCIe config space pointer"),
         }
     }
 }
+
+unsafe impl Send for PcieEndpoint {}
+unsafe impl Sync for PcieEndpoint {}

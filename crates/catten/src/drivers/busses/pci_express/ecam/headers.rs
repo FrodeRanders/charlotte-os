@@ -45,25 +45,30 @@ impl CfgCommonHeader {
         self.device_id
     }
 
-    pub fn get_class_code(&self) -> Class {
-        Class::new(self.class_code, self.subclass, self.prog_if)
+    pub fn get_type_code(&self) -> DeviceTypeCode {
+        DeviceTypeCode::new(self.class_code, self.subclass, self.prog_if)
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Class {
+pub struct DeviceTypeCode {
     class_code: u8,
     subclass: u8,
     prog_if: u8,
 }
 
-impl Class {
+impl DeviceTypeCode {
     pub fn new(class_code: u8, subclass: u8, prog_if: u8) -> Self {
-        Class {
+        DeviceTypeCode {
             class_code,
             subclass,
             prog_if,
         }
+    }
+
+    pub fn is_bridge(&self) -> bool {
+        // Source: OSDev Wiki: https://wiki.osdev.org/PCI#Configuration_Space
+        self.class_code == 0x06 && self.subclass == 0x04 && self.prog_if == 0x00
     }
 }
 

@@ -19,14 +19,23 @@ pub fn register_fixed_isr_gates(idt: &mut Idt) {
         SPURIOUS_INTERRUPT_VECTOR,
         spurious::isr_spurious,
         KERNEL_CODE_SELECTOR,
+        None,
         false,
         true,
     );
-    idt.set_gate(LAPIC_TIMER_VECTOR, timer::isr_lapic_timer, KERNEL_CODE_SELECTOR, false, true);
+    idt.set_gate(
+        LAPIC_TIMER_VECTOR,
+        timer::isr_lapic_timer,
+        KERNEL_CODE_SELECTOR,
+        None,
+        false,
+        true,
+    );
     idt.set_gate(
         UNICAST_IPI_VECTOR,
         ipis::isr_interprocessor_interrupt,
         KERNEL_CODE_SELECTOR,
+        None,
         false,
         true,
     );

@@ -1,19 +1,7 @@
 //! # PCI Express Enhanced Configuration Access Mechanism (ECAM)
 pub mod headers;
-pub mod pci_local;
 pub mod pcie;
 
-use super::Error;
-use super::pcie::{
-    PcieBusSegmentNum,
-    PcieDeviceNum,
-    PcieFunctionNum,
-    PcieSegmentGroup,
-    PcieSegmentGroupNum,
-};
-use crate::device_manager::DEVICE_TOPOLOGY;
-use crate::drivers::busses::pci::ecam::pci_local::PcieCfgSpace;
-use crate::drivers::busses::pci::{MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
 use crate::klib::size::mebibytes;
 use crate::logln;
 use crate::memory::allocators::memory::PageSize;
@@ -51,7 +39,7 @@ pub(super) fn map_ecam(base: PAddr) -> VAddr {
             paddr: base + offset,
             page_type: crate::memory::linear::PageType::Mmio,
         };
-        kas.map_large_page(mem_mapping);
+        kas.map_large_page(mem_mapping).expect("Failed to map large page for a PCIe ECAM!");
     }
     logln!(
         "[drivers::bus::pci] Successfully mapped PCIe ECAM at physical address {:?} to virtual \
@@ -60,10 +48,4 @@ pub(super) fn map_ecam(base: PAddr) -> VAddr {
         vbase
     );
     vbase
-}
-
-type DeviceSlice = [PcieCfgSpace; MAX_FUNCTIONS_PER_DEVICE]; /* Each bus segment contains up to 32 devices, and each device contains up to 8 functions, so each bus segment can be represented as a slice of 256 PcieCfgSpace structs (32 devices * 8 functions) */
-
-pub struct Ecam {
-    bus_segment_slices: [DeviceSlice; MAX_DEVICES_PER_BUS],
 }
