@@ -1,6 +1,6 @@
 use core::mem::{offset_of, transmute};
 
-const INIT_KERNEL_STACK_PAGES: usize = 2;
+const INIT_KERNEL_STACK_PAGES: usize = 16;
 
 use crate::cpu::isa::init::gdt::{USER_CODE_SELECTOR, USER_DATA_SELECTOR};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;

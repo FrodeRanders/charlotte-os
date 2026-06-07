@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use core::ptr::read_unaligned;
 
-use crate::drivers::busses::pci::pcie::PcieSegmentGroup;
+use crate::drivers::busses::pci_express::pcie::PcieSegmentGroup;
 use crate::environment::acpi::{AcpiTableType, SdtHeader, TABLE_MAP};
 use crate::logln;
 use crate::memory::PAddr;
