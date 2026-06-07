@@ -27,9 +27,36 @@ vm_memory := "512M"
 vm_num_lps := "8"
 
 qemu-run-x86_64 profile="debug" serial="" features="legacy_com_ports" gdb="false": (create-image "x86_64" profile features)
-    qemu-system-x86_64 -enable-kvm -M q35 -cpu host,+invtsc -smp {{vm_num_lps}} -m {{vm_memory}} -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd -boot d -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
-    -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw \
-    {{ if gdb == "true" {"-s -S"} else {""} }}
+    #!/usr/bin/env bash
+    if [ ! -f {{image_dir}}/scsi-test.hdd ]; then
+        dd if=/dev/zero of={{image_dir}}/scsi-test.hdd bs=4K count=262144
+    fi
+    qemu-system-x86_64 \
+        -enable-kvm \
+        -M q35,kernel-irqchip=split \
+        -cpu host,+invtsc \
+        -smp {{vm_num_lps}} \
+        -m {{vm_memory}} \
+        -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
+        -boot d \
+        -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
+        -chardev file,path=logs/pci_serial.txt,id=pci_ser0 \
+        -device pci-serial,chardev=pci_ser0 \
+        -vga none \
+        -device virtio-vga \
+        -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw,if=none,id=nvme0 \
+        -device nvme,drive=nvme0,serial=catten00 \
+        -drive file={{image_dir}}/scsi-test.hdd,format=raw,if=none,id=scsi_disk0 \
+        -device virtio-scsi-pci,id=scsi0 \
+        -device scsi-hd,drive=scsi_disk0,bus=scsi0.0 \
+        -nic none \
+        -device qemu-xhci,id=xhci \
+        -device usb-kbd,bus=xhci.0 \
+        -device usb-mouse,bus=xhci.0 \
+        -netdev user,id=usbnet0 \
+        -device usb-net,netdev=usbnet0,bus=xhci.0 \
+        -device amd-iommu \
+        {{ if gdb == "true" {"-s -S"} else {""} }}
 
 qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
     qemu-system-aarch64 -M virt -cpu cortex-a76 -smp {{vm_num_lps}} -m {{vm_memory}} -device ramfb -device qemu-xhci -device usb-kbd -m {{vm_memory}} -bios /usr/share/edk2/aarch64/QEMU_EFI.fd -boot d \
