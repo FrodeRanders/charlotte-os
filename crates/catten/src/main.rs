@@ -155,7 +155,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
 pub extern "C" fn probe_device_topology() {
     logln!("LP {}: Probing device topology...", (get_lp_id()));
     let device_topology = &*DEVICE_TOPOLOGY;
-    logln!("LP {}: Device Topology: {:?}", (get_lp_id()), device_topology);
+    logln!("LP {}: Device Topology:\n{}", (get_lp_id()), device_topology);
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     cond_yield_lp();
 }

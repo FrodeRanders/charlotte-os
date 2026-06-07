@@ -428,3 +428,118 @@ impl PcieEndpoint {
 
 unsafe impl Send for PcieEndpoint {}
 unsafe impl Sync for PcieEndpoint {}
+
+/// Number of spaces each level of the topology tree is indented by when rendered for logging.
+const TREE_INDENT_STEP: usize = 2;
+
+impl core::fmt::Display for PcieTopology {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.segments.is_empty() {
+            return write!(f, "  (no PCIe segment groups)");
+        }
+        for segment in &self.segments {
+            segment.fmt_tree(f, TREE_INDENT_STEP)?;
+        }
+        Ok(())
+    }
+}
+
+impl PcieSegmentGroup {
+    fn fmt_tree(&self, f: &mut core::fmt::Formatter<'_>, indent: usize) -> core::fmt::Result {
+        let ecam: u64 = self.ecam_vaddr.into();
+        writeln!(
+            f,
+            "{:indent$}Segment Group {} (ECAM @ {:#018x}, buses {:#04x}-{:#04x})",
+            "",
+            self.pcie_segment_group_num,
+            ecam,
+            self.start_bus_num,
+            self.end_bus_num,
+            indent = indent
+        )?;
+        self.root_bus.fmt_tree(f, indent + TREE_INDENT_STEP)
+    }
+}
+
+impl PcieBusSegment {
+    fn fmt_tree(&self, f: &mut core::fmt::Formatter<'_>, indent: usize) -> core::fmt::Result {
+        writeln!(f, "{:indent$}Bus {:#04x}", "", self.number, indent = indent)?;
+        let child_indent = indent + TREE_INDENT_STEP;
+        // Label the columns directly above the rows they describe (column widths must match the
+        // formatting in `PcieFunction::fmt_tree`). Skipped for buses with no occupied slots.
+        if self.devices.iter().any(|device| !matches!(device, PcieDevice::Empty)) {
+            writeln!(
+                f,
+                "{:indent$}{:<7}  {:<9}  {}",
+                "",
+                "B:D.F",
+                "VID:DID",
+                "Class (cc:sc:pi)",
+                indent = child_indent
+            )?;
+        }
+        for device in &self.devices {
+            match device {
+                PcieDevice::Empty => {}
+                PcieDevice::SingleFunc(dev) => {
+                    dev.function.fmt_tree(f, child_indent, self.number, dev.number.get_inner(), 0)?;
+                }
+                PcieDevice::MultiFunc(dev) => {
+                    for (func_num, function) in dev.functions.iter().enumerate() {
+                        function.fmt_tree(
+                            f,
+                            child_indent,
+                            self.number,
+                            dev.number.get_inner(),
+                            func_num as u8,
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl PcieFunction {
+    /// Renders a single function as one line of the topology tree, prefixed with its
+    /// `bus:device.function` (BDF) address. Bridges additionally recurse into the bus segment
+    /// behind them.
+    fn fmt_tree(
+        &self,
+        f: &mut core::fmt::Formatter<'_>,
+        indent: usize,
+        bus: PcieBusSegmentNum,
+        device: u8,
+        function: u8,
+    ) -> core::fmt::Result {
+        match self {
+            PcieFunction::Empty => Ok(()),
+            PcieFunction::Endpoint(endpoint) => writeln!(
+                f,
+                "{:indent$}{:02x}:{:02x}.{:x}  {:04x}:{:04x}  [{}]",
+                "",
+                bus,
+                device,
+                function,
+                endpoint.vendor_id,
+                endpoint.device_id,
+                endpoint.class,
+                indent = indent
+            ),
+            PcieFunction::Bridge(secondary_bus) => {
+                writeln!(
+                    f,
+                    "{:indent$}{:02x}:{:02x}.{:x}  PCI-to-PCI bridge -> bus {:#04x}",
+                    "",
+                    bus,
+                    device,
+                    function,
+                    secondary_bus.number,
+                    indent = indent
+                )?;
+                secondary_bus.fmt_tree(f, indent + TREE_INDENT_STEP)
+            }
+        }
+    }
+}
