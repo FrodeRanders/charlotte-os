@@ -94,6 +94,7 @@ PC and Server:
   - NVMe (PCIe)
   - USB Mass Storage Device Class (MSC)
   - AHCI (SATA)
+  - SCSI over PCIe serial
 
 ### Display
 
