@@ -48,3 +48,10 @@ impl DeviceTopology {
         }
     }
 }
+
+impl core::fmt::Display for DeviceTopology {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        writeln!(f, "PCIe:")?;
+        write!(f, "{}", self.pcie)
+    }
+}

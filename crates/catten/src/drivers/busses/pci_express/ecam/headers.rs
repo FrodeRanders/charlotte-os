@@ -50,11 +50,29 @@ impl CfgCommonHeader {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DeviceTypeCode {
     class_code: u8,
     subclass: u8,
     prog_if: u8,
+}
+
+impl Debug for DeviceTypeCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DeviceTypeCode")
+            .field("class_code", &format_args!("{:#04x}", self.class_code))
+            .field("subclass", &format_args!("{:#04x}", self.subclass))
+            .field("prog_if", &format_args!("{:#04x}", self.prog_if))
+            .finish()
+    }
+}
+
+impl core::fmt::Display for DeviceTypeCode {
+    /// Renders the type code as the compact `class:subclass:prog_if` hex triplet used by
+    /// tools like `lspci` (e.g. `0c:03:30`).
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:02x}:{:02x}:{:02x}", self.class_code, self.subclass, self.prog_if)
+    }
 }
 
 impl DeviceTypeCode {
