@@ -12,7 +12,7 @@ pub type DeviceId = u32;
 /// Device classes as seen by userspace. This is what real devices are abstracted to.
 /// each corresponds to a device class trait in the `drivers` module with one or
 /// more implementations provided by drivers.
-pub enum DeviceClass {
+pub enum DeviceType {
     PcieHostCtlr,
     UsbHostCtlr,
     Uart,
@@ -22,10 +22,52 @@ pub enum DeviceClass {
     // Add more device types as needed
 }
 
-pub struct DeviceNode {
-    id: DeviceId,
-    class: DeviceClass,
-    location: DeviceLocation,
+/// The software operating interface for a device or more properly, a device function. This is what
+/// devices present to the kernel and what drivers use to interact with the device. Userspace does
+/// not ever interact with this directly but can query it for debugging and informational purposes.
+pub enum DeviceClass {
+    Unknown = 0,
+    Unsupported = 1,
+    // Generic
+    Ns16x50Uart,
+    I2CHostCtlr,
+    SpiHostCtlr,
+    AhciStorageCtlr,
+    SdhciStorageCtlr,
+    ScsiSasStorageCtlr,
+    // PCI Express
+    PcieHostBridge,
+    PciToPciBridgeNormalDecode,
+    PciToPciBridgeSubtractiveDecode,
+    NvmExpressStorageCtlr,
+    // USB
+    XhciUsbHostCtlr,
+    EhciUsbHostCtlr,
+    HidInputCtlr,
+    CdcAcmVirtualSerial,
+    CdcNcmVirtualEthernet,
+    //IPMI
+    IpmiKcs,
+    // x86-64 platform components
+    #[cfg(target_arch = "x86_64")]
+    I8042InputCtlr,
+    #[cfg(target_arch = "x86_64")]
+    IoApic,
+    #[cfg(target_arch = "x86_64")]
+    IoXapic,
+    #[cfg(target_arch = "x86_64")]
+    SmBusCtlr,
+    #[cfg(target_arch = "x86_64")]
+    IntelVtdIommu,
+    #[cfg(target_arch = "x86_64")]
+    AmdViIommu,
+    // Arm platform components
+    #[cfg(target_arch = "aarch64")]
+    ArmPl011Uart,
+    #[cfg(target_arch = "aarch64")]
+    ArmGic,
+    #[cfg(target_arch = "aarch64")]
+    ArmSmmu,
 }
 
 pub enum DeviceLocation {
