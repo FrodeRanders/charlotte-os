@@ -9,6 +9,13 @@ pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopol
 
 pub type DeviceId = u32;
 
+pub struct Device {
+    pub id: DeviceId,
+    pub device_type: DeviceType,
+    pub device_class: DeviceInterface,
+    pub location: DeviceLocation,
+}
+
 /// Device classes as seen by userspace. This is what real devices are abstracted to.
 /// each corresponds to a device class trait in the `drivers` module with one or
 /// more implementations provided by drivers.
@@ -19,13 +26,13 @@ pub enum DeviceType {
     InputCtlr,
     StorageCtlr,
     EthernetNic,
-    // Add more device types as needed
+    Iommu, // Add more device types as needed
 }
 
 /// The software operating interface for a device or more properly, a device function. This is what
 /// devices present to the kernel and what drivers use to interact with the device. Userspace does
 /// not ever interact with this directly but can query it for debugging and informational purposes.
-pub enum DeviceClass {
+pub enum DeviceInterface {
     Unknown = 0,
     Unsupported = 1,
     // Generic
@@ -34,7 +41,7 @@ pub enum DeviceClass {
     SpiHostCtlr,
     AhciStorageCtlr,
     SdhciStorageCtlr,
-    ScsiSasStorageCtlr,
+    SerialAttachedScsi,
     // PCI Express
     PcieHostBridge,
     PciToPciBridgeNormalDecode,
