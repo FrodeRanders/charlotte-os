@@ -12,29 +12,34 @@ pub mod vendor_id {
 
 pub mod device_class {
     pub type PciClassCode = u8;
-
-    pub const UNCLASSIFIED: PciClassCode = 0x00;
-    pub const MASS_STORAGE: PciClassCode = 0x01;
-    pub const NETWORK: PciClassCode = 0x02;
-    pub const DISPLAY: PciClassCode = 0x03;
-    pub const MULTIMEDIA: PciClassCode = 0x04;
-    pub const MEMORY: PciClassCode = 0x05;
-    pub const BRIDGE: PciClassCode = 0x06;
-    pub const SIMPLE_COMMUNICATIONS: PciClassCode = 0x07;
-    pub const BASE_PERIPHERALS: PciClassCode = 0x08;
-    pub const INPUT: PciClassCode = 0x09;
-    pub const DOCKING_STATION: PciClassCode = 0x0a;
-    pub const PROCESSOR: PciClassCode = 0x0b;
-    pub const SERIAL_BUS: PciClassCode = 0x0c;
-    pub const WIRELESS: PciClassCode = 0x0d;
-    pub const INTELLIGENT_IO: PciClassCode = 0x0e;
-    pub const SATELLITE_COMMUNICATIONS: PciClassCode = 0x0f;
-    pub const ENCRYPTION: PciClassCode = 0x10;
-    pub const DATA_ACQUISITION: PciClassCode = 0x11;
-    pub const UNDEFINED: PciClassCode = 0xff; // This is not a valid class code, but is used to represent an undefined class code.
-
     pub type PciSubclassCode = u8;
+    pub type PciProgIf = u8;
+    pub type PciClassFull = (PciClassCode, PciSubclassCode, PciProgIf);
 
-    pub const SATA: PciSubclassCode = 0x06;
-    pub const 
+    /* Display Controllers */
+    pub const VGA_COMPATIBLE: PciClassFull = (0x03, 0x00, 0x00);
+
+    /* Bridges */
+    pub const HOST_BRIDGE: PciClassFull = (0x06, 0x00, 0x00);
+    pub const PCI_TO_PCI_BRIDGE: PciClassFull = (0x06, 0x04, 0x00);
+    pub const PCI_TO_PCI_BRIDE_SUB_DEC: PciClassFull = (0x06, 0x04, 0x01);
+
+    /* NS16x50 UARTs */
+    pub const NS16550: PciClassFull = (0x07, 0x00, 0x02);
+    pub const NS16650: PciClassFull = (0x07, 0x00, 0x03);
+    pub const NS16750: PciClassFull = (0x07, 0x00, 0x04);
+    pub const NS16850: PciClassFull = (0x07, 0x00, 0x05);
+    pub const NS16950: PciClassFull = (0x07, 0x00, 0x06);
+    pub const NS16550_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x02);
+    pub const NS16650_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x03);
+    pub const NS16750_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x04);
+    pub const NS16850_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x05);
+    pub const NS16950_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x06);
+
+    /* Base System Peripherals */
+
+    /* USB Host Controllers */
+    pub const USB_EHCI: PciClassFull = (0x0c, 0x03, 0x20);
+    pub const USB_XHCI: PciClassFull = (0x0c, 0x03, 0x30);
+    pub const USB4_ROUTER: PciClassFull = (0x0c, 0x03, 0x40);
 }
