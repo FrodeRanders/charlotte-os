@@ -38,9 +38,9 @@ enum IcrDeliveryMode {
 #[repr(u32)]
 enum IcrDestShorthand {
     NoShorthand = 0b00,
-    OnlySelf = 0b01,
-    AllIncludingSelf = 0b10,
-    AllExcludingSelf = 0b11,
+    _OnlySelf = 0b01,
+    _AllIncludingSelf = 0b10,
+    _AllExcludingSelf = 0b11,
 }
 
 pub struct X2Apic {
@@ -51,16 +51,12 @@ impl X2Apic {
     /// # Initialize the local APIC in x2APIC mode
     /// Ref: AMD APM 16.4.7
     fn new(timer_int_vec: <ApicTimer as LpTimerIfce>::IntDispatchNum) -> Self {
-        // Set the Spurious Interrupt Vector Register (SIVR) to enable the APIC with Focused CPU
-        // Core Checking and set the spurious interrupt vector
-        const FCC_BIT_SHIFT: u64 = 9;
+        // Set the Spurious Interrupt Vector Register (SIVR)
         const ASE_BIT_SHIFT: u64 = 8;
         const VEC_MASK: u64 = 0xff;
-        let sivr_val = SPURIOUS_INTERRUPT_VECTOR as u64 & VEC_MASK
-            | (1 << ASE_BIT_SHIFT) // APIC Software Enable
-            | (1 << FCC_BIT_SHIFT); // Focused CPU Core Checking Enable
+        let sivr_val = (SPURIOUS_INTERRUPT_VECTOR_NUM as u64 & VEC_MASK) | (1 << ASE_BIT_SHIFT); // APIC Software Enable
         unsafe {
-            msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR, sivr_val);
+            msrs::write(msrs::x2apic::SPURIOUS_INTERRUPT_VECTOR_REG, sivr_val);
         }
         Self::set_timer_lvt_entry(timer_int_vec, false);
         X2Apic {
@@ -133,7 +129,7 @@ impl LocalIntCtlrIfce for X2Apic {
         Self::record_id();
     }
 
-    /// # Send a unicast IPI to the target logical processor
+    /// Send a unicast IPI to the target logical processor
     ///
     /// Ref: Intel SDM Vol.3 12.12.10.1
     fn send_unicast_ipi(
