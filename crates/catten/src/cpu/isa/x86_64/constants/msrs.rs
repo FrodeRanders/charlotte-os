@@ -45,7 +45,7 @@ pub mod x2apic {
     pub const ID_REG: u32 = 0x802;
     pub const EOI_REGISTER: u32 = 0x80b;
     pub const LOGICAL_DEST_REG: u32 = 0x80d;
-    pub const SPURIOUS_INTERRUPT_VECTOR: u32 = 0x80f;
+    pub const SPURIOUS_INTERRUPT_VECTOR_REG: u32 = 0x80f;
     pub const INTERRUPT_COMMAND_REGISTER: u32 = 0x830;
     pub const TIMER_LVTR: u32 = 0x832;
     pub const TIMER_INITIAL_COUNT: u32 = 0x838;
