@@ -21,8 +21,6 @@ pub struct PciIdentifier {
 
 impl Into<DeviceInterface> for PciIdentifier {
     fn into(self) -> DeviceInterface {
-        match (self.vendor_id, self.device_id, self.class_code, self.subclass, self.prog_if) {
-            // AMD
-            ()
+        match (self.vendor_id, self.device_id, self.class_code, self.subclass, self.prog_if) {}
     }
 }
