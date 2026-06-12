@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use spin::LazyLock;
 
 use crate::drivers::busses::pci_express::pcie::{PcieLocation, PcieTopology};
@@ -36,11 +38,20 @@ pub enum DeviceInterface {
     Unknown = 0,
     Unsupported = 1,
     // Generic
-    Ns16x50Uart,
+    Ns16550Uart,
+    Ns16650Uart,
+    Ns16750Uart,
+    Ns16850Uart,
+    Ns16950Uart,
+    Ns16550MultiPortUart,
+    Ns16650MultiPortUart,
+    Ns16750MultiPortUart,
+    Ns16850MultiPortUart,
+    Ns16950MultiPortUart,
     I2CHostCtlr,
     SpiHostCtlr,
     AhciStorageCtlr,
-    SdhciStorageCtlr,
+    SdHostController,
     SerialAttachedScsi,
     // PCI Express
     PcieHostBridge,
@@ -48,6 +59,7 @@ pub enum DeviceInterface {
     PciToPciBridgeSubtractiveDecode,
     NvmExpressStorageCtlr,
     // USB
+    Usb4Router,
     XhciUsbHostCtlr,
     EhciUsbHostCtlr,
     UsbHidClass,
@@ -57,7 +69,6 @@ pub enum DeviceInterface {
     IpmiKcs,
     // Graphics and Display
     AmdGpu,
-    ArmGpu,
     IntelGpu,
     NvidiaGpu,
     UefiGopFramebuffer,
@@ -76,6 +87,8 @@ pub enum DeviceInterface {
     IntelVtdIommu,
     #[cfg(target_arch = "x86_64")]
     AmdViIommu,
+    #[cfg(target_arch = "x86_64")]
+    HighPrecisionEventTimer,
     // Arm platform components
     #[cfg(target_arch = "aarch64")]
     ArmPl011Uart,
@@ -83,6 +96,109 @@ pub enum DeviceInterface {
     ArmGic,
     #[cfg(target_arch = "aarch64")]
     ArmSmmu,
+}
+
+impl Display for DeviceInterface {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let name = match self {
+            DeviceInterface::Unknown => "Unrecognized Device Interface",
+            DeviceInterface::Unsupported => "Unsupported Device Interface",
+            DeviceInterface::Ns16550Uart => "National Semiconductor 16550A compatible UART",
+            DeviceInterface::Ns16650Uart => "National Semiconductor 16650 compatible UART",
+            DeviceInterface::Ns16750Uart => "National Semiconductor 16750 compatible UART",
+            DeviceInterface::Ns16850Uart => "National Semiconductor 16850 compatible UART",
+            DeviceInterface::Ns16950Uart => "National Semiconductor 16950 compatible UART",
+            DeviceInterface::Ns16550MultiPortUart => {
+                "National Semiconductor 16550A compatible Multi-Port UART"
+            }
+            DeviceInterface::Ns16650MultiPortUart => {
+                "National Semiconductor 16650 compatible Multi-Port UART"
+            }
+            DeviceInterface::Ns16750MultiPortUart => {
+                "National Semiconductor 16750 compatible Multi-Port UART"
+            }
+            DeviceInterface::Ns16850MultiPortUart => {
+                "National Semiconductor 16850 compatible Multi-Port UART"
+            }
+            DeviceInterface::Ns16950MultiPortUart => {
+                "National Semiconductor 16950 compatible Multi-Port UART"
+            }
+            DeviceInterface::I2CHostCtlr => "Inter-Integrated Circuit (I2C) Host Controller",
+            DeviceInterface::SpiHostCtlr => "Serial Peripheral Interface (SPI) Host Controller",
+            DeviceInterface::AhciStorageCtlr => "AHCI Storage Controller",
+            DeviceInterface::SdHostController => "SD Host Controller",
+            DeviceInterface::SerialAttachedScsi => "Serial Attached SCSI Controller",
+            DeviceInterface::PcieHostBridge => "PCI Express Host Bridge",
+            DeviceInterface::PciToPciBridgeNormalDecode => {
+                "PCI (Express) to PCI (Express) Bridge (Normal Decode)"
+            }
+            DeviceInterface::PciToPciBridgeSubtractiveDecode => {
+                "PCI (Express) to PCI (Express) Bridge (Subtractive Decode)"
+            }
+            DeviceInterface::NvmExpressStorageCtlr => {
+                "Non-Volatile Memory Express (NVMe) Storage Controller"
+            }
+            DeviceInterface::Usb4Router => "USB4 Router",
+            DeviceInterface::XhciUsbHostCtlr => {
+                "eXtensible Host Controller Interface (xHCI) compatible USB Host Controller"
+            }
+            DeviceInterface::EhciUsbHostCtlr => {
+                "Enhanced Host Controller Interface (EHCI) compatible USB Host Controller"
+            }
+            DeviceInterface::UsbHidClass => "USB Human Interface Device (HID) Class Device",
+            DeviceInterface::CdcAcmVirtualSerial => {
+                "USB Communications Device Class (CDC) Abstract Control Model (ACM) Serial Device"
+            }
+            DeviceInterface::CdcNcmVirtualEthernet => {
+                "USB Communications Device Class (CDC) Network Control Model (NCM) Ethernet Device"
+            }
+            DeviceInterface::IpmiKcs => {
+                "Intelligent Platform Management Interface (IPMI) Keyboard Controller Style (KCS) \
+                 Interface"
+            }
+            DeviceInterface::AmdGpu => {
+                "Advanced Micro Devices (AMD) VGA Compatible Device, Model Unknown"
+            }
+            DeviceInterface::IntelGpu => "Intel Corporation VGA Compatible Device, Model Unknown",
+            DeviceInterface::NvidiaGpu => "Nvidia Corporation VGA Compatible Device, Model Unknown",
+            DeviceInterface::UefiGopFramebuffer => {
+                "UEFI Graphics Output Protocol (GOP) Framebuffer"
+            }
+            DeviceInterface::UsbBulkDisplayClass => "USB Bulk Display Class Device",
+            DeviceInterface::VirtioGpu => "Virtio Virtual Graphics Processing Unit (GPU)",
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::I8042InputCtlr => "i8042 (PS/2) compatible Input Controller",
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::IoApic => {
+                "Input/Output Advanced Programmable Interrupt Controller (I/O APIC)"
+            }
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::IoXapic => {
+                "Extended Input/Output Advanced Programmable Interrupt Controller (IOxAPIC)"
+            }
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::SmBusCtlr => "System Management Bus (SMBus) Controller",
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::IntelVtdIommu => {
+                "Intel Virtualization Technology for Directed I/O (VT-d) Input/Output Memory \
+                 Management Unit (IOMMU)"
+            }
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::AmdViIommu => {
+                "Advanced Micro Devices Virtualization (AMD-V) Input/Output Memory Management Unit \
+                 (IOMMU)"
+            }
+            #[cfg(target_arch = "x86_64")]
+            DeviceInterface::HighPrecisionEventTimer => "High Precision Event Timer",
+            #[cfg(target_arch = "aarch64")]
+            DeviceInterface::ArmPl011Uart => "ARM PL011 UART",
+            #[cfg(target_arch = "aarch64")]
+            DeviceInterface::ArmGic => "ARM Generic Interrupt Controller",
+            #[cfg(target_arch = "aarch64")]
+            DeviceInterface::ArmSmmu => "ARM System Memory Management Unit",
+        };
+        write!(f, "{}", name)
+    }
 }
 
 pub enum DeviceLocation {

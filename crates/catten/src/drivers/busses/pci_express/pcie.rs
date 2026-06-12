@@ -5,6 +5,7 @@ use core::ptr::NonNull;
 
 use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
+use crate::drivers::busses::pci_express::device_class::PciIdentifier;
 use crate::drivers::busses::pci_express::ecam;
 use crate::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
 use crate::logln;
@@ -384,9 +385,7 @@ impl PcieFunction {
 #[derive(Debug, Clone, Copy)]
 pub struct PcieEndpoint {
     number: PcieFunctionNum,
-    vendor_id: u16,
-    device_id: u16,
-    class: ecam::headers::DeviceTypeCode,
+    identifier: PciIdentifier,
     /* Raw pointer to this function's configuration space in the kernel's address space;
      * used for reading/writing config space registers inside this PCIe bus driver ONLY
      * other drivers and the rest of the kernel should use safe functions exposed by this bus
@@ -411,15 +410,11 @@ impl PcieEndpoint {
             )
             .get_ecam_offset();
         let cfg_space = *&cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
-        let vendor_id = unsafe { (*cfg_space).header.common.get_vendor_id() };
-        let device_id = unsafe { (*cfg_space).header.common.get_device_id() };
-        let class = unsafe { (*cfg_space).header.common.get_type_code() };
+        let identifier = unsafe { (*cfg_space).header.common.get_identifier() };
 
         PcieEndpoint {
             number: function_num,
-            vendor_id,
-            device_id,
-            class,
+            identifier,
             cfg_ptr: NonNull::new(cfg_space_vaddr.into_mut())
                 .expect("Invalid PCIe config space pointer"),
         }
@@ -482,7 +477,13 @@ impl PcieBusSegment {
             match device {
                 PcieDevice::Empty => {}
                 PcieDevice::SingleFunc(dev) => {
-                    dev.function.fmt_tree(f, child_indent, self.number, dev.number.get_inner(), 0)?;
+                    dev.function.fmt_tree(
+                        f,
+                        child_indent,
+                        self.number,
+                        dev.number.get_inner(),
+                        0,
+                    )?;
                 }
                 PcieDevice::MultiFunc(dev) => {
                     for (func_num, function) in dev.functions.iter().enumerate() {
@@ -517,14 +518,12 @@ impl PcieFunction {
             PcieFunction::Empty => Ok(()),
             PcieFunction::Endpoint(endpoint) => writeln!(
                 f,
-                "{:indent$}{:02x}:{:02x}.{:x}  {:04x}:{:04x}  [{}]",
+                "{:indent$}{:02x}:{:02x}.{:x}  {}",
                 "",
                 bus,
                 device,
                 function,
-                endpoint.vendor_id,
-                endpoint.device_id,
-                endpoint.class,
+                endpoint.identifier,
                 indent = indent
             ),
             PcieFunction::Bridge(secondary_bus) => {
