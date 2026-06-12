@@ -16,7 +16,7 @@ checksum = "c880a97d28a3681c0267bd29cff89621202715b065127cd445fa0f0fe0aa2880"
 
 [[package]]
 name = "catten"
-version = "0.7.1"
+version = "0.8.1"
 dependencies = [
  "concurrent-queue",
  "flat_device_tree",
