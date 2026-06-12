@@ -50,11 +50,19 @@ pub enum DeviceInterface {
     // USB
     XhciUsbHostCtlr,
     EhciUsbHostCtlr,
-    HidInputCtlr,
+    UsbHidClass,
     CdcAcmVirtualSerial,
     CdcNcmVirtualEthernet,
     //IPMI
     IpmiKcs,
+    // Graphics and Display
+    AmdGpu,
+    ArmGpu,
+    IntelGpu,
+    NvidiaGpu,
+    UefiGopFramebuffer,
+    UsbBulkDisplayClass,
+    VirtioGpu,
     // x86-64 platform components
     #[cfg(target_arch = "x86_64")]
     I8042InputCtlr,

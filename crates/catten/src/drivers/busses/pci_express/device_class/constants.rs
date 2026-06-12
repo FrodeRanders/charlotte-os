@@ -22,7 +22,7 @@ pub mod device_class {
     /* Bridges */
     pub const HOST_BRIDGE: PciClassFull = (0x06, 0x00, 0x00);
     pub const PCI_TO_PCI_BRIDGE: PciClassFull = (0x06, 0x04, 0x00);
-    pub const PCI_TO_PCI_BRIDE_SUB_DEC: PciClassFull = (0x06, 0x04, 0x01);
+    pub const PCI_TO_PCI_BRIDGE_SUB_DEC: PciClassFull = (0x06, 0x04, 0x01);
 
     /* NS16x50 UARTs */
     pub const NS16550: PciClassFull = (0x07, 0x00, 0x02);
@@ -37,9 +37,18 @@ pub mod device_class {
     pub const NS16950_MULTI_PORT: PciClassFull = (0x07, 0x02, 0x06);
 
     /* Base System Peripherals */
+    pub const IOAPIC: PciClassFull = (0x08, 0x00, 0x10);
+    pub const IOXAPIC: PciClassFull = (0x08, 0x00, 0x20);
+    pub const HPET: PciClassFull = (0x08, 0x02, 0x03);
+    pub const SD_HOST_CONTROLLER: PciClassFull = (0x08, 0x05, 0x00);
+    // Primarily used for AMD's I/O Memory Management Unit (IOMMU) technology, but may be used by
+    // other devices that provide similar functionality.
+    pub const IOMMU: PciClassFull = (0x08, 0x06, 0x00);
 
-    /* USB Host Controllers */
+    /* Serial Bus Controllers */
     pub const USB_EHCI: PciClassFull = (0x0c, 0x03, 0x20);
     pub const USB_XHCI: PciClassFull = (0x0c, 0x03, 0x30);
     pub const USB4_ROUTER: PciClassFull = (0x0c, 0x03, 0x40);
+    pub const SMBUS_CONTROLLER: PciClassFull = (0x0c, 0x05, 0x00);
+    pub const IPMI_KCS: PciClassFull = (0x0c, 0x06, 0x01);
 }

@@ -21,6 +21,14 @@ pub struct PciIdentifier {
 
 impl Into<DeviceInterface> for PciIdentifier {
     fn into(self) -> DeviceInterface {
-        match (self.vendor_id, self.device_id, self.class_code, self.subclass, self.prog_if) {}
+        match (self.vendor_id, self.device_id, (self.class_code, self.subclass, self.prog_if)) {
+            (_, _, device_class::HOST_BRIDGE) => DeviceInterface::PcieHostBridge,
+            (_, _, device_class::PCI_TO_PCI_BRIDGE) => DeviceInterface::PciToPciBridgeNormalDecode,
+            (_, _, device_class::PCI_TO_PCI_BRIDGE_SUB_DEC) => {
+                DeviceInterface::PciToPciBridgeSubtractiveDecode
+            }
+            (vendor_id::INTEL, _, device_class::VGA_COMPATIBLE) => DeviceInterface::IntelGpu,
+            (_, _, (_, _, _)) => DeviceInterface::Unknown,
+        }
     }
 }

@@ -5,7 +5,7 @@ use crate::framebuffer::chars::{FONT_HEIGHT, FONT_WIDTH};
 use crate::framebuffer::colors::Color;
 use crate::framebuffer::framebuffer::FRAMEBUFFER;
 
-pub const CONSOLE_WIDTH: usize = 80;
+pub const CONSOLE_WIDTH: usize = 160;
 pub const CONSOLE_HEIGHT: usize = 50;
 
 pub static CONSOLE: Mutex<Console> = Mutex::new(Console::new());
