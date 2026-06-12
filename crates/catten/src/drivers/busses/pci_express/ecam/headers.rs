@@ -1,6 +1,8 @@
 use core::fmt::Debug;
 use core::mem::ManuallyDrop;
 
+use crate::drivers::busses::pci_express::device_class::PciIdentifier;
+
 #[repr(C, packed)]
 /// The Common portion of the PCIe configuration space header; shared by both endpoint and bridge
 /// devices
@@ -37,56 +39,14 @@ impl CfgCommonHeader {
         self.header_type & Self::HEADER_TYPE_SINGLE_FUNC_MASK != 0
     }
 
-    pub fn get_vendor_id(&self) -> u16 {
-        self.vendor_id
-    }
-
-    pub fn get_device_id(&self) -> u16 {
-        self.device_id
-    }
-
-    pub fn get_type_code(&self) -> DeviceTypeCode {
-        DeviceTypeCode::new(self.class_code, self.subclass, self.prog_if)
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct DeviceTypeCode {
-    class_code: u8,
-    subclass: u8,
-    prog_if: u8,
-}
-
-impl Debug for DeviceTypeCode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("DeviceTypeCode")
-            .field("class_code", &format_args!("{:#04x}", self.class_code))
-            .field("subclass", &format_args!("{:#04x}", self.subclass))
-            .field("prog_if", &format_args!("{:#04x}", self.prog_if))
-            .finish()
-    }
-}
-
-impl core::fmt::Display for DeviceTypeCode {
-    /// Renders the type code as the compact `class:subclass:prog_if` hex triplet used by
-    /// tools like `lspci` (e.g. `0c:03:30`).
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{:02x}:{:02x}:{:02x}", self.class_code, self.subclass, self.prog_if)
-    }
-}
-
-impl DeviceTypeCode {
-    pub fn new(class_code: u8, subclass: u8, prog_if: u8) -> Self {
-        DeviceTypeCode {
-            class_code,
-            subclass,
-            prog_if,
+    pub fn get_identifier(&self) -> PciIdentifier {
+        PciIdentifier {
+            vendor_id: self.vendor_id,
+            device_id: self.device_id,
+            class_code: self.class_code,
+            subclass: self.subclass,
+            prog_if: self.prog_if,
         }
-    }
-
-    pub fn is_bridge(&self) -> bool {
-        // Source: OSDev Wiki: https://wiki.osdev.org/PCI#Configuration_Space
-        self.class_code == 0x06 && self.subclass == 0x04 && self.prog_if == 0x00
     }
 }
 

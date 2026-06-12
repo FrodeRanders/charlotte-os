@@ -17,6 +17,8 @@ acpi = []
 devicetree = ["dep:flat_device_tree"]
 legacy_com_ports = []
 yield_trace = []
+virtio_gpu = []
+qemu = ["legacy_com_ports", "virtio_gpu"]
 
 [dependencies]
 limine = { version = ">=0.6.3" }

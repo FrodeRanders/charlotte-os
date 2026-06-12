@@ -7,7 +7,10 @@ pub mod vendor_id {
     pub const INTEL: PciVendorId = 0x8086;
     pub const AMD: PciVendorId = 0x1022;
     pub const ARM: PciVendorId = 0x13b5;
+    pub const NVIDIA: PciVendorId = 0x10de;
     pub const QEMU: PciVendorId = 0x1234;
+    // Red Hat, Inc. (primarily used for virtio devices)
+    pub const REDHAT: PciVendorId = 0x1af4;
 }
 
 pub mod device_class {
@@ -18,6 +21,7 @@ pub mod device_class {
 
     /* Display Controllers */
     pub const VGA_COMPATIBLE: PciClassFull = (0x03, 0x00, 0x00);
+    pub const OTHER_DISPLAY_CONTROLLER: PciClassFull = (0x03, 0x80, 0x00);
 
     /* Bridges */
     pub const HOST_BRIDGE: PciClassFull = (0x06, 0x00, 0x00);

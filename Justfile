@@ -26,7 +26,7 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
 vm_memory := "512M"
 vm_num_lps := "8"
 
-qemu-run-x86_64 profile="debug" serial="" features="legacy_com_ports" gdb="false": (create-image "x86_64" profile features)
+qemu-run-x86_64 profile="debug" serial="" features="qemu" gdb="false": (create-image "x86_64" profile features)
     #!/usr/bin/env bash
     if [ ! -f {{image_dir}}/scsi-test.hdd ]; then
         dd if=/dev/zero of={{image_dir}}/scsi-test.hdd bs=4K count=262144
