@@ -48,6 +48,7 @@ use crate::cpu::isa::system_info::CpuInfo;
 use crate::cpu::isa::timers::print_timer_info;
 use crate::cpu::multiprocessor::get_lp_count;
 use crate::cpu::multiprocessor::startup::{assign_id, start_secondary_lps};
+use crate::cpu::scheduler::spawn_thread;
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
 use crate::device_manager::DEVICE_TOPOLOGY;
@@ -103,16 +104,9 @@ pub extern "C" fn bsp_main() -> ! {
     //         .expect("Error submitting ready thread to system scheduler");
     //     logln!("Submitted thread with ID = {id} to the system scheduler.");
     // }
-    logln!("Creating new thread.");
-    let thread = Thread::new(false, KERNEL_ASID, probe_device_topology as *const fn());
-    logln!("Created thread.");
-    let id = MASTER_THREAD_TABLE.write().add_element(thread);
-    logln!("Added thread to master thread table with id = {id}.");
-    SYSTEM_SCHEDULER
-        .read()
-        .submit_ready_thread(id as ThreadId)
-        .expect("Error submitting ready thread to system scheduler");
-    logln!("Submitted thread with ID = {id} to the system scheduler.");
+    logln!("Spawning initial kernel thread to probe device topology...");
+    let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
+    logln!("Initial thread spawned with ID = {thread_id}.");
     unmask_interrupts!();
     logln!("Submitted all initial kernel threads.");
     logln!(

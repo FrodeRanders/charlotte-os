@@ -125,7 +125,10 @@ impl Drop for ThreadContext {
 }
 
 impl ThreadContext {
-    pub fn new_us(asid: AddressSpaceId, entry_point: *const fn()) -> Result<Self, Error> {
+    pub fn create_user_thread_context(
+        asid: AddressSpaceId,
+        entry_point: extern "C" fn(),
+    ) -> Result<Self, Error> {
         let flags: u64 = 0x202;
         let user_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)
             .expect("Failed to allocate user stack for thread context.");
@@ -142,7 +145,7 @@ impl ThreadContext {
         })
     }
 
-    pub fn new_ks(entry_point: *const fn()) -> Result<Self, Error> {
+    pub fn create_kernel_thread_context(entry_point: extern "C" fn()) -> Result<Self, Error> {
         let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)
             .expect("Failed to allocate kernel stack for thread context.");
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
