@@ -38,7 +38,7 @@ impl DeferredWorkManager {
         self.queue.push(task).unwrap();
     }
 
-    fn do_work() {
+    extern "C" fn do_work() {
         while let Ok(task) = DWM.queue.pop() {
             match task {
                 // Handle each task type here
@@ -47,7 +47,7 @@ impl DeferredWorkManager {
     }
 
     pub fn spawn_worker(&self) {
-        let thread = Thread::new(false, KERNEL_ASID, Self::do_work as *const fn());
+        let thread = Thread::new(KERNEL_ASID, Self::do_work);
         let tid = MASTER_THREAD_TABLE.write().add_element(thread);
         SYSTEM_SCHEDULER
             .write()
