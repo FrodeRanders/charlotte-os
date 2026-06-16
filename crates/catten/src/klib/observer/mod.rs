@@ -2,14 +2,15 @@
 
 use alloc::sync::{Arc, Weak};
 
-pub mod combinators;
-
 pub trait Observable {
     fn register_observer(&self, observer: Weak<dyn Observer>);
 }
 
+/// An `Observer` is an object that can be notified of events by an `Observable`.
+/// Observers must be `Sync` because they may be notified from multiple threads concurrently.
 pub trait Observer: Send + Sync {
-    fn notify(&self);
+    /// Called by an Observable when it wants to notify this Observer of an event.
+    fn notify(self: Arc<Self>);
 }
 
 /// A generic `Observer` that calls a function object when it is notified.
@@ -34,7 +35,7 @@ impl<F: Fn() + Send + Sync> CallOnNotify<F> {
 
 impl<F: Fn() + Send + Sync> Observer for CallOnNotify<F> {
     #[inline(always)]
-    fn notify(&self) {
+    fn notify(self: Arc<Self>) {
         (self.callback)();
     }
 }

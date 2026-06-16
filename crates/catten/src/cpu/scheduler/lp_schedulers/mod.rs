@@ -1,10 +1,10 @@
 pub mod round_robin;
 use alloc::fmt::Debug;
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::{ThreadCount, ThreadId};
 use crate::klib::observer::Observer;
 use crate::memory::AddressSpaceId;
@@ -41,7 +41,7 @@ pub enum Error {
 struct TimerEventObserver(AtomicBool);
 
 impl Observer for TimerEventObserver {
-    fn notify(&self) {
+    fn notify(self: Arc<Self>) {
         self.0.store(true, Ordering::Release);
     }
 }
