@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+
 use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
 use crate::cpu::scheduler::threads::ThreadId;
 use crate::logln;
@@ -12,7 +14,7 @@ impl Waker {
 }
 
 impl crate::klib::observer::Observer for Waker {
-    fn notify(&self) {
+    fn notify(self: Arc<Self>) {
         logln!("Waking thread with ID {}.", (self.0));
         SYSTEM_SCHEDULER
             .write()
