@@ -2,6 +2,10 @@ build-catten arch="x86_64" profile="debug" features="":
     cargo build --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }}
 
+build-catten-docs arch="x86_64" profile="debug" features="":
+    cargo doc --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
+    "" {"--features " + features} else {""} }} --no-deps --open
+
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"
 create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features)
