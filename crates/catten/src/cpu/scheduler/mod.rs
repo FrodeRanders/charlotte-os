@@ -14,6 +14,8 @@ pub mod sync;
 pub mod system_scheduler;
 pub mod threads;
 
+/// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
+/// and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
     let thread = Thread::new(asid, entry_point);
     let tid = MASTER_THREAD_TABLE.write().add_element(thread);
@@ -67,6 +69,7 @@ pub fn sleep(duration: ExtDuration) {
     }
 }
 
+/// Registers an observer to be notified when the specified thread exits.
 pub fn observe_thread_exit(
     thread_id: ThreadId,
     observer: Weak<dyn Observer>,

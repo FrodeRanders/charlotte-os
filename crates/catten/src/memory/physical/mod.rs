@@ -95,7 +95,8 @@ impl PhysicalFrameAllocator {
                     self.next_free_hint = byte_idx;
                     let raw_addr = (byte_idx * BITS_PER_BYTE + bit_idx) * PAGE_FRAME_SIZE;
                     let hb = HEAP_PHYS_BASE.load(core::sync::atomic::Ordering::Relaxed);
-                    if hb != 0 && raw_addr >= hb && raw_addr < hb + crate::klib::size::mebibytes(2) {
+                    if hb != 0 && raw_addr >= hb && raw_addr < hb + crate::klib::size::mebibytes(2)
+                    {
                         crate::early_logln!(
                             "[HEAPDBG] !!! allocate_frame returned {:#x} INSIDE heap [{:#x},+2MiB)",
                             raw_addr,

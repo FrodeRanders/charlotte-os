@@ -39,10 +39,11 @@ pub fn init_primary_allocator() {
         let size_now = (he.wrapping_sub(8) as *const usize).read();
         // also probe a few physical aliases via HHDM and the heap mapping
         let mid = base.into_mut::<u8>().wrapping_add(0x100000);
-        mid.write(0xAB);
+        mid.write(0xab);
         let mid_read = mid.read();
         crate::early_logln!(
-            "[HEAPDBG] claim base={:p} heap_end={:p} tag@-1={:#x} size@-8={:#x} mid_write_read={:#x}",
+            "[HEAPDBG] claim base={:p} heap_end={:p} tag@-1={:#x} size@-8={:#x} \
+             mid_write_read={:#x}",
             (base.into_mut::<u8>()),
             he,
             tag_now,
