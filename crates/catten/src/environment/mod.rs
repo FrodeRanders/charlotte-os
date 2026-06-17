@@ -48,7 +48,7 @@ pub fn get_pcie_segments() -> Vec<PcieSegmentGroup> {
             features as standards do not allows systems to expose both at the same time. Please 
             recompile your kernel with only the one you actually intend to use.")
         },
-        feature = "acpi" => acpi::static_data::mcfg::parse_mcfg(),
+        feature = "acpi" => acpi::sdt::mcfg::parse_mcfg(),
         feature = "devicetree" => todo!("Develop a way to get the information for each PCIe segment from a Device Tree."),
         _ => panic!("The Catten Kernel can not function without either the acpi or devicetree features enabled at compile time.")
     }

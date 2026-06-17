@@ -41,8 +41,9 @@ pub static HHDM_BASE: LazyLock<VAddr> = LazyLock::new(|| {
     )
 });
 /// The physical frame allocator instance used by the kernel.
-pub static PHYSICAL_FRAME_ALLOCATOR: LazyLock<Mutex<PhysicalFrameAllocator>> = LazyLock::new(|| {
-    Mutex::new(PhysicalFrameAllocator::from(
-        MEMORY_MAP_REQUEST.response().expect("Limine failed to provide a memory map."),
-    ))
-});
+pub static PHYSICAL_FRAME_ALLOCATOR: LazyLock<Mutex<PhysicalFrameAllocator>> =
+    LazyLock::new(|| {
+        Mutex::new(PhysicalFrameAllocator::from(
+            MEMORY_MAP_REQUEST.response().expect("Limine failed to provide a memory map."),
+        ))
+    });

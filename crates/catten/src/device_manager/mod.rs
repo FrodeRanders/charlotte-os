@@ -1,3 +1,5 @@
+//! # The Device Manager
+
 use core::fmt::Display;
 
 use spin::LazyLock;
@@ -9,8 +11,14 @@ pub mod fixed_io;
 
 pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopology::new);
 
+/// A kernel assigned device identifier. This is not a hardware identifier and has no meaning
+/// outside of the kernel.
 pub type DeviceId = u32;
 
+/// A device as seen by the kernel device manager. This is the main abstraction for devices in the
+/// kernel and is what drivers and kernel subsystems interact with when dealing
+/// with devices. It also provides information about the device's capabilities and configuration and
+/// where in the bus topology it is located.
 pub struct Device {
     pub id: DeviceId,
     pub device_type: DeviceType,
@@ -98,6 +106,8 @@ pub enum DeviceInterface {
     ArmSmmu,
 }
 
+/// This trait is implemented to provide human readable names for device interfaces generally for
+/// user queries and logging.
 impl Display for DeviceInterface {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let name = match self {
@@ -201,12 +211,18 @@ impl Display for DeviceInterface {
     }
 }
 
+/// A device function's location in the system's bus topology.
+/// Used by drivers to access the device and configure access to it through its parent bus.
 pub enum DeviceLocation {
     FixedIo(fixed_io::IoRange),
     Pcie(PcieLocation),
     //Usb(usb::UsbAddress),
 }
 
+/// This struct represents the entire topology of peripheral devices in the system as seen by the
+/// kernel device manager. It is used to query for devices and their locations in the system and to
+/// provide information about the system's hardware configuration to userspace and kernel
+/// subsystems.
 #[derive(Debug)]
 pub struct DeviceTopology {
     //fixed: Option<fixed_io::IoMap>,

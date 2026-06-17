@@ -1,3 +1,37 @@
+//! Advanced Configuration and Power Interface (ACPI) Subsystem
+//!
+//! The Advanced Configuration and Power Interface (ACPI) is an open industry specification that
+//! defines a flexible and extensible interface for hardware discovery, configuration, power
+//! management, and monitoring. ACPI provides a standardized way for the operating system to
+//! interact with the underlying hardware, allowing it to manage power states, configure devices,
+//! and perform other system-level tasks in a platform-independent manner.
+//!
+//! It provides information in two different forms:
+//!
+//! - System Description Tables (SDTs)
+//! - ACPI Machine Language (AML) bytecode tables
+//!
+//! This module is split into two submodules, `sdt` and `aml`, which contain code for working with
+//! each of these forms of information respectively and their inline documentation contains more
+//! detailed information about how each of them works and how Catten uses them.
+//!
+//! This top level module contains code for finding and parsing the XSDT to find the physical
+//! addresses of other ACPI tables, as well as some common data structures and utilities for working
+//! with the headers that are common to all ACPI tables.
+//!
+//! The main reference needed to understand and work with this module is the [ACPI specification](https://uefi.org/specs/ACPI/6.6/).
+//! In addition to the specification the source code of [uACPI](https://github.com/uACPI/uACPI) a portable C language
+//! ACPI implementation made to be robust enough to handle buggy firmware can be very helpful to
+//! understand how to work with ACPI and handle various edge cases and quirks of real world
+//! firmware.
+//!
+//! It should be noted however that the Catten kernel does not and will not integrate uACPI or any
+//! other third party ACPI implementation. Accordingly this subsystem is to be developed entirely
+//! independently in manually written Rust and in such a way as to be tightly integrated with the
+//! rest of the kernel. Features will be added as they are needed and the implementation will
+//! generally assume that target system firmware appropriately conforms to the latest published ACPI
+//! specification.
+
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -13,7 +47,7 @@ use crate::memory::PAddr;
 use crate::memory::physical::PhysicalAddress;
 
 pub mod aml;
-pub mod static_data;
+pub mod sdt;
 
 static TABLE_MAP: LazyLock<HashMap<AcpiTableType, Vec<PAddr>>> = LazyLock::new(|| {
     if let Some(xsdp_ptr) = get_xsdp() {
@@ -64,15 +98,15 @@ pub enum AcpiTableType {
            * means */
     SRAT, /* System Resource Affinity Table, contains information about the system's NUMA nodes
            * and their proximity to CPUs and memory => Unused by Catten since we don't
-           * currently have any NUMA-aware features planned */
+           * currently have any NUMA-aware features planned. Will be used eventually when NUMA
+           * support lands */
     MCFG, /* Memory-Mapped Configuration Space Base Address Description Table, contains
-           * information about the system's PCI Express configuration space => Used by Catten
-           * to find the physical address of the PCI Express configuration space and access it
-           * to configure PCI Express devices */
+           * information about the system's PCI Express configuration spaces => Used by Catten
+           * to find the physical address of all PCI Express configuration spaces and access
+           * them to configure PCI Express devices */
     HPET, /* High Precision Event Timer Table, contains information about the system's HPET
-           * timer => Used by Catten to find the physical address of the HPET timer and access
-           * it to configure the HPET timer and use it for high-resolution timing and
-           * scheduling */
+           * timer => Currently unused given that all timing on x86_64 is done using the TSC
+           * and APIC timers */
     WAET, /* Windows ACPI Emulated Devices Table, used by Windows to detect if it's running in
            * a virtual machine => Unused by Catten */
     BGRT, /* Boot Graphics Resource Table, used to pass a boot logo from the firmware to the OS
@@ -93,7 +127,8 @@ pub enum AcpiTableType {
            * such as AMD APUs, to describe the topology, affinity, and coherence of memory and
            * processing units to the operating system => Not presently used, may be used in the
            * future */
-    CDIT, /* Coherent Device Information Table, used to provide information about coherent devices to the operating system => Not presently used, may be used in the future */
+    CDIT, /* Coherent Device Information Table, used to provide information about coherent devices to the operating system
+          => Not presently used, may be used in the future */
     FPDT, /* Firmware Performance Data Table, used to provide performance data about the
            * firmware => Unused by Catten */
     WSMT, /* Windows SMM Security Mitigations Table, used to indicate support for various SMM

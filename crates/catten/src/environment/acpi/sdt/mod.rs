@@ -1,3 +1,5 @@
+//! ACPI System Description Tables (SDTs)
+
 pub mod fadt;
 pub mod mcfg;
 
