@@ -1,7 +1,7 @@
-use core::fmt::Debug;
 use core::mem::ManuallyDrop;
 
 use crate::drivers::busses::pci_express::device_class::PciIdentifier;
+use crate::drivers::busses::pci_express::ecam::capabilities::standard::PciCapabilityOffset;
 
 #[repr(C, packed)]
 /// The Common portion of the PCIe configuration space header; shared by both endpoint and bridge
@@ -48,6 +48,13 @@ impl CfgCommonHeader {
             prog_if: self.prog_if,
         }
     }
+
+    /// Determines if the PCI(-X/e) device supports capabilities.
+    pub fn are_capabilities_supported(&self) -> bool {
+        const CAPABILITIES_SUPPORT_STATUS_BIT: u16 = 1 << 4;
+
+        self.status & CAPABILITIES_SUPPORT_STATUS_BIT != 0
+    }
 }
 
 #[repr(C, packed)]
@@ -71,7 +78,7 @@ pub struct CfgBridgeHeader {
     prefetchable_limit_upper32: u32,
     io_base_upper16: u16,
     io_limit_upper16: u16,
-    capabilities_ptr: u8,
+    capabilities_offset: u8,
     unused0: [u8; 7],
     interrupt_line: u8,
     interrupt_pin: u8,
@@ -89,6 +96,14 @@ impl CfgBridgeHeader {
              bridge's configuration space."
         )
     }
+
+    pub fn get_capabilities_offset(&self) -> Option<PciCapabilityOffset> {
+        if self.common.are_capabilities_supported() {
+            Some(self.capabilities_offset)
+        } else {
+            None
+        }
+    }
 }
 
 #[repr(C, packed)]
@@ -101,12 +116,22 @@ pub struct CfgEndpointHeader {
     subsystem_vendor_id: u16,
     subsystem_id: u16,
     expansion_rom_base_addr: u32,
-    capabilities_ptr: u8,
+    capabilities_offset: u8,
     _unused0: [u8; 7],
     interrupt_line: u8,
     interrupt_pin: u8,
     _min_grant: u8,
     _max_latency: u8,
+}
+
+impl CfgEndpointHeader {
+    pub fn get_capabilities_offset(&self) -> Option<PciCapabilityOffset> {
+        if self.common.are_capabilities_supported() {
+            Some(self.capabilities_offset)
+        } else {
+            None
+        }
+    }
 }
 
 /// The configuration space header for a PCIe device, which can be either a bridge or an endpoint

@@ -1,4 +1,6 @@
 //! # PCI Express Enhanced Configuration Access Mechanism (ECAM)
+
+pub mod capabilities;
 pub mod headers;
 pub mod pcie;
 

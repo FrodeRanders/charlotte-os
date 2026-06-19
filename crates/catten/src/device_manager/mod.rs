@@ -4,7 +4,7 @@ use core::fmt::Display;
 
 use spin::LazyLock;
 
-use crate::drivers::busses::pci_express::pcie::{PcieLocation, PcieTopology};
+use crate::drivers::busses::pci_express::topology::{PcieLocation, PcieTopology};
 use crate::environment::get_pcie_segments;
 
 pub mod fixed_io;

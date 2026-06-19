@@ -11,11 +11,11 @@ use crate::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
 use crate::logln;
 use crate::memory::{PAddr, VAddr};
 
-pub(super) type PcieSegmentGroupNum = u16;
-pub(super) type PcieBusSegmentNum = u8;
+pub type PcieSegmentGroupNum = u16;
+pub type PcieBusSegmentNum = u8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct PcieDeviceNum(u8);
+pub struct PcieDeviceNum(u8);
 impl TryFrom<u8> for PcieDeviceNum {
     type Error = ();
 
@@ -40,7 +40,7 @@ impl Deref for PcieDeviceNum {
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(super) struct PcieFunctionNum(u8);
+pub struct PcieFunctionNum(u8);
 impl TryFrom<u8> for PcieFunctionNum {
     type Error = ();
 
@@ -176,7 +176,7 @@ impl PcieSegmentGroup {
 
 #[derive(Debug)]
 pub struct PcieBusSegment {
-    number:  PcieBusSegmentNum,
+    number: PcieBusSegmentNum,
     devices: [PcieDevice; MAX_DEVICES_PER_BUS],
 }
 
