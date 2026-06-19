@@ -23,7 +23,7 @@
 
 use alloc::vec::Vec;
 
-use crate::drivers::busses::pci_express::pcie::PcieSegmentGroup;
+use crate::drivers::busses::pci_express::topology::PcieSegmentGroup;
 
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
