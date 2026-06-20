@@ -6,6 +6,9 @@ pub mod topology;
 pub enum Error {
     InvalidLocation,
     PciCapabilitiesNotSupported,
+    NotPciExpress,
+    PciCapabilityNotFound,
+    ValueOutOfRange,
 }
 
 const MAX_SEGMENT_GROUPS: usize = 1 << 16; // 65536 segment groups

@@ -1,5 +1,6 @@
 use super::*;
 /// PCI local bus capability IDs which are also used with PCI Express.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PciCapabilityId {
     Null = 0x00,
@@ -29,14 +30,14 @@ pub struct PciCapabilityHeader {
 /// An iterator over the PCI capabilities of a device.
 /// It traverses the linked list of capabilities starting from the first capability offset.
 /// Keeps track of seen offsets to avoid infinite loops in case of malformed lists.
-pub struct PciCapabilityIter {
+struct PciCapabilityIter {
     cfg_space: *const PcieCfgSpace,
     current_offset: PciCapabilityOffset,
     seen_offsets: Vec<PciCapabilityOffset>,
 }
 
 impl PciCapabilityIter {
-    pub fn try_new(cfg_space: *const PcieCfgSpace) -> Result<Self, Error> {
+    fn try_new(cfg_space: *const PcieCfgSpace) -> Result<Self, Error> {
         // Bail early if capabilities are not supported
         if core::hint::unlikely(!unsafe { (*cfg_space).header.common.are_capabilities_supported() })
         {
@@ -61,7 +62,7 @@ impl PciCapabilityIter {
         })
     }
 
-    pub fn current(&self) -> *const PciCapabilityHeader {
+    fn current(&self) -> *const PciCapabilityHeader {
         unsafe {
             // Safety: We got the address from the previous capability or the starting
             // offset, both of which are valid within the PCI configuration space.
@@ -86,4 +87,17 @@ impl Iterator for PciCapabilityIter {
             Some(unsafe { &*curr_hdr })
         }
     }
+}
+
+pub fn find_capability(
+    cfg_space: *const PcieCfgSpace,
+    id: PciCapabilityId,
+) -> Result<*const PciCapabilityHeader, Error> {
+    let iter = PciCapabilityIter::try_new(cfg_space)?;
+    for cap in iter {
+        if cap.id == id {
+            return Ok(cap);
+        }
+    }
+    Err(Error::PciCapabilityNotFound)
 }
