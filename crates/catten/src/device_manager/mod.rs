@@ -30,11 +30,11 @@ pub struct Device {
 /// each corresponds to a device class trait in the `drivers` module with one or
 /// more implementations provided by drivers.
 pub enum DeviceType {
-    PcieHostCtlr,
-    UsbHostCtlr,
+    PcieHostController,
+    UsbHostController,
     Uart,
-    InputCtlr,
-    StorageCtlr,
+    InputController,
+    StorageController,
     EthernetNic,
     Iommu, // Add more device types as needed
 }
@@ -56,20 +56,20 @@ pub enum DeviceInterface {
     Ns16750MultiPortUart,
     Ns16850MultiPortUart,
     Ns16950MultiPortUart,
-    I2CHostCtlr,
-    SpiHostCtlr,
-    AhciStorageCtlr,
+    I2CHostController,
+    SpiHostController,
+    AhciSataController,
     SdHostController,
-    SerialAttachedScsi,
+    ScsiSasController,
     // PCI Express
     PcieHostBridge,
     PciToPciBridgeNormalDecode,
     PciToPciBridgeSubtractiveDecode,
-    NvmExpressStorageCtlr,
+    NvmExpressController,
     // USB
     Usb4Router,
-    XhciUsbHostCtlr,
-    EhciUsbHostCtlr,
+    XhciUsbHostController,
+    EhciUsbHostController,
     UsbHidClass,
     CdcAcmVirtualSerial,
     CdcNcmVirtualEthernet,
@@ -84,13 +84,13 @@ pub enum DeviceInterface {
     VirtioGpu,
     // x86-64 platform components
     #[cfg(target_arch = "x86_64")]
-    I8042InputCtlr,
+    I8042InputController,
     #[cfg(target_arch = "x86_64")]
     IoApic,
     #[cfg(target_arch = "x86_64")]
     IoXapic,
     #[cfg(target_arch = "x86_64")]
-    SmBusCtlr,
+    SmBusController,
     #[cfg(target_arch = "x86_64")]
     IntelVtdIommu,
     #[cfg(target_arch = "x86_64")]
@@ -133,11 +133,13 @@ impl Display for DeviceInterface {
             DeviceInterface::Ns16950MultiPortUart => {
                 "National Semiconductor 16950 compatible Multi-Port UART"
             }
-            DeviceInterface::I2CHostCtlr => "Inter-Integrated Circuit (I2C) Host Controller",
-            DeviceInterface::SpiHostCtlr => "Serial Peripheral Interface (SPI) Host Controller",
-            DeviceInterface::AhciStorageCtlr => "AHCI Storage Controller",
+            DeviceInterface::I2CHostController => "Inter-Integrated Circuit (I2C) Host Controller",
+            DeviceInterface::SpiHostController => {
+                "Serial Peripheral Interface (SPI) Host Controller"
+            }
+            DeviceInterface::AhciSataController => "AHCI SATA Storage Controller",
             DeviceInterface::SdHostController => "SD Host Controller",
-            DeviceInterface::SerialAttachedScsi => "Serial Attached SCSI Controller",
+            DeviceInterface::ScsiSasController => "Serial Attached SCSI Controller",
             DeviceInterface::PcieHostBridge => "PCI Express Host Bridge",
             DeviceInterface::PciToPciBridgeNormalDecode => {
                 "PCI (Express) to PCI (Express) Bridge (Normal Decode)"
@@ -145,14 +147,14 @@ impl Display for DeviceInterface {
             DeviceInterface::PciToPciBridgeSubtractiveDecode => {
                 "PCI (Express) to PCI (Express) Bridge (Subtractive Decode)"
             }
-            DeviceInterface::NvmExpressStorageCtlr => {
+            DeviceInterface::NvmExpressController => {
                 "Non-Volatile Memory Express (NVMe) Storage Controller"
             }
             DeviceInterface::Usb4Router => "USB4 Router",
-            DeviceInterface::XhciUsbHostCtlr => {
+            DeviceInterface::XhciUsbHostController => {
                 "eXtensible Host Controller Interface (xHCI) compatible USB Host Controller"
             }
-            DeviceInterface::EhciUsbHostCtlr => {
+            DeviceInterface::EhciUsbHostController => {
                 "Enhanced Host Controller Interface (EHCI) compatible USB Host Controller"
             }
             DeviceInterface::UsbHidClass => "USB Human Interface Device (HID) Class Device",
@@ -177,7 +179,7 @@ impl Display for DeviceInterface {
             DeviceInterface::UsbBulkDisplayClass => "USB Bulk Display Class Device",
             DeviceInterface::VirtioGpu => "Virtio Virtual Graphics Processing Unit (GPU)",
             #[cfg(target_arch = "x86_64")]
-            DeviceInterface::I8042InputCtlr => "i8042 (PS/2) compatible Input Controller",
+            DeviceInterface::I8042InputController => "i8042 (PS/2) compatible Input Controller",
             #[cfg(target_arch = "x86_64")]
             DeviceInterface::IoApic => {
                 "Input/Output Advanced Programmable Interrupt Controller (I/O APIC)"
@@ -187,7 +189,7 @@ impl Display for DeviceInterface {
                 "Extended Input/Output Advanced Programmable Interrupt Controller (IOxAPIC)"
             }
             #[cfg(target_arch = "x86_64")]
-            DeviceInterface::SmBusCtlr => "System Management Bus (SMBus) Controller",
+            DeviceInterface::SmBusController => "System Management Bus (SMBus) Controller",
             #[cfg(target_arch = "x86_64")]
             DeviceInterface::IntelVtdIommu => {
                 "Intel Virtualization Technology for Directed I/O (VT-d) Input/Output Memory \

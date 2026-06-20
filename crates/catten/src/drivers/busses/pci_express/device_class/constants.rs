@@ -19,6 +19,11 @@ pub mod device_class {
     pub type PciProgIf = u8;
     pub type PciClassFull = (PciClassCode, PciSubclassCode, PciProgIf);
 
+    /* Mass Storage Controllers */
+    pub const AHCI_SATA_CONTROLLER: PciClassFull = (0x01, 0x06, 0x01);
+    pub const SCSI_SAS_CONTROLLER: PciClassFull = (0x01, 0x07, 0x00);
+    pub const NVME_CONTROLLER: PciClassFull = (0x01, 0x08, 0x02);
+
     /* Display Controllers */
     pub const VGA_COMPATIBLE: PciClassFull = (0x03, 0x00, 0x00);
     pub const OTHER_DISPLAY_CONTROLLER: PciClassFull = (0x03, 0x80, 0x00);
