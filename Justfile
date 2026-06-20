@@ -50,9 +50,6 @@ qemu-run-x86_64 profile="debug" serial="" features="qemu" gdb="false": (create-i
         -device virtio-vga \
         -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw,if=none,id=nvme0 \
         -device nvme,drive=nvme0,serial=catten00 \
-        -drive file={{image_dir}}/scsi-test.hdd,format=raw,if=none,id=scsi_disk0 \
-        -device virtio-scsi-pci,id=scsi0 \
-        -device scsi-hd,drive=scsi_disk0,bus=scsi0.0 \
         -nic none \
         -device qemu-xhci,id=xhci \
         -device usb-kbd,bus=xhci.0 \

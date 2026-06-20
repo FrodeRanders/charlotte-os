@@ -69,6 +69,9 @@ impl Into<DeviceInterface> for PciIdentifier {
             These purposely bind less tightly than vendor specific matches since there could be devices that use the
             same class codes but require device specific drivers or special handling in the same driver.
             */
+            (_, _, device_class::AHCI_SATA_CONTROLLER) => DeviceInterface::AhciSataController,
+            (_, _, device_class::SCSI_SAS_CONTROLLER) => DeviceInterface::ScsiSasController,
+            (_, _, device_class::NVME_CONTROLLER) => DeviceInterface::NvmExpressController,
             (_, _, device_class::HOST_BRIDGE) => DeviceInterface::PcieHostBridge,
             (_, _, device_class::PCI_TO_PCI_BRIDGE) => DeviceInterface::PciToPciBridgeNormalDecode,
             (_, _, device_class::PCI_TO_PCI_BRIDGE_SUB_DEC) => {
@@ -91,10 +94,10 @@ impl Into<DeviceInterface> for PciIdentifier {
             #[cfg(target_arch = "x86_64")]
             (_, _, device_class::HPET) => DeviceInterface::HighPrecisionEventTimer,
             (_, _, device_class::SD_HOST_CONTROLLER) => DeviceInterface::SdHostController,
-            (_, _, device_class::USB_EHCI) => DeviceInterface::EhciUsbHostCtlr,
-            (_, _, device_class::USB_XHCI) => DeviceInterface::XhciUsbHostCtlr,
+            (_, _, device_class::USB_EHCI) => DeviceInterface::EhciUsbHostController,
+            (_, _, device_class::USB_XHCI) => DeviceInterface::XhciUsbHostController,
             (_, _, device_class::USB4_ROUTER) => DeviceInterface::Usb4Router,
-            (_, _, device_class::SMBUS_CONTROLLER) => DeviceInterface::SmBusCtlr,
+            (_, _, device_class::SMBUS_CONTROLLER) => DeviceInterface::SmBusController,
             (_, _, device_class::IPMI_KCS) => DeviceInterface::IpmiKcs,
 
             /* Unrecognized Devices */
