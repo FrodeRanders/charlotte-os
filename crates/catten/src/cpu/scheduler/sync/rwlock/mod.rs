@@ -8,6 +8,8 @@ use lock_api::RawRwLock;
 use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, get_thread_id};
 use crate::klib::observer::{Observable, Observer};
 
+pub type RwLock<T> = lock_api::RwLock<RwLockCore, T>;
+
 struct Waitlist(ConcurrentQueue<Weak<dyn Observer>>);
 impl Default for Waitlist {
     fn default() -> Self {
@@ -17,7 +19,7 @@ impl Default for Waitlist {
 
 impl Observable for Waitlist {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
-        self.0.push(observer);
+        self.0.push(observer).expect("Failed to register observer");
     }
 }
 
