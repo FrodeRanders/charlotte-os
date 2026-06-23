@@ -8,16 +8,38 @@ use core::result::Result;
 
 use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
 use crate::cpu::isa::io::IoReg8;
-use crate::drivers::uart::Uart;
 use crate::klib::io::Read;
 
-pub struct Ns16550Driver {
-    ports: Vec<Ns16550>,
+pub struct Ns16x50Driver {
+    ports: Vec<Ns16x50>,
 }
 
 #[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-pub struct Ns16550 {
+pub enum IfceType {
+    Ns16550,
+    Ns16550A,
+    Ns16650,
+    Ns16750,
+    Ns16850,
+    Ns16950,
+}
+
+impl IfceType {
+    fn queue_size(&self) -> usize {
+        match self {
+            IfceType::Ns16550 => 0, // Original 16550 had a broken FIFO
+            IfceType::Ns16550A => 16,
+            IfceType::Ns16650 => 32,
+            IfceType::Ns16750 => 64,
+            IfceType::Ns16850 => 128,
+            IfceType::Ns16950 => 256,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Ns16x50 {
+    ifce: IfceType,
     base: IoReg8,
 }
 #[derive(Debug, Clone, Copy)]
@@ -25,7 +47,7 @@ pub enum Error {
     FailedSelfTest,
 }
 
-impl Ns16550 {
+impl Ns16x50 {
     fn is_transmit_empty(&self) -> i32 {
         (unsafe { (self.base + 5).read() } & 0x20).into()
     }
@@ -38,13 +60,10 @@ impl Ns16550 {
         while !self.received() {}
         unsafe { (self.base).read() as char }
     }
-}
 
-impl Uart for Ns16550 {
-    type Error = Error;
-
-    fn try_new(base: IoReg8) -> Result<Self, Error> {
-        let port = Ns16550 {
+    fn try_new(ifce: IfceType, base: IoReg8) -> Result<Self, Error> {
+        let port = Ns16x50 {
+            ifce: ifce, // Use the provided interface type
             base: base,
         };
         unsafe {
@@ -68,7 +87,7 @@ impl Uart for Ns16550 {
     }
 }
 
-impl Write for Ns16550 {
+impl Write for Ns16x50 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
             self.write_char(c)?
@@ -96,7 +115,7 @@ impl Write for Ns16550 {
     }
 }
 
-impl Read for Ns16550 {
+impl Read for Ns16x50 {
     fn read(&mut self, buf: &mut [u8]) -> usize {
         for i in 0..buf.len() {
             buf[i] = self.read_char() as u8;
@@ -105,4 +124,4 @@ impl Read for Ns16550 {
     }
 }
 
-unsafe impl Send for Ns16550 {}
+unsafe impl Send for Ns16x50 {}
