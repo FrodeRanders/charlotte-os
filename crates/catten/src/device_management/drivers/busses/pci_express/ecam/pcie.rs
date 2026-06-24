@@ -1,4 +1,4 @@
-use crate::drivers::busses::pci_express::ecam::headers;
+use crate::device_management::drivers::busses::pci_express::ecam::headers;
 
 /// The size of the configuration space for legacy PCI and PCI-X local bus devices as may be used
 /// via PCIe to PCI/PCI-X bridges.

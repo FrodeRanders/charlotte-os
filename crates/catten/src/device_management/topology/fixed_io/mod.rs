@@ -20,16 +20,11 @@
 
 use hashbrown::HashMap;
 
-use super::DeviceId;
-use crate::cpu::isa::io::IoReg8;
-
-pub struct IoRange {
-    pub start: IoReg8,
-    pub len: usize,
-}
+pub use crate::cpu::isa::io::IoRegion;
+use crate::device_management::DeviceId;
 
 pub struct IoMap {
-    entries: HashMap<DeviceId, IoRange>,
+    entries: HashMap<DeviceId, IoRegion>,
 }
 
 impl IoMap {
@@ -39,11 +34,11 @@ impl IoMap {
         }
     }
 
-    pub fn insert(&mut self, device_id: DeviceId, range: IoRange) {
+    pub fn insert(&mut self, device_id: DeviceId, range: IoRegion) {
         self.entries.insert(device_id, range);
     }
 
-    pub fn get(&self, device_id: &DeviceId) -> Option<&IoRange> {
+    pub fn get(&self, device_id: &DeviceId) -> Option<&IoRegion> {
         self.entries.get(device_id)
     }
 }

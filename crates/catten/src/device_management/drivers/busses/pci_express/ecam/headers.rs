@@ -1,7 +1,7 @@
 use core::mem::ManuallyDrop;
 
-use crate::drivers::busses::pci_express::device_class::PciIdentifier;
-use crate::drivers::busses::pci_express::ecam::capabilities::standard::PciCapabilityOffset;
+use crate::device_management::drivers::busses::pci_express::device_class::PciIdentifier;
+use crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::PciCapabilityOffset;
 
 #[repr(C, packed)]
 /// The Common portion of the PCIe configuration space header; shared by both endpoint and bridge
