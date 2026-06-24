@@ -2,7 +2,7 @@ pub mod aer;
 pub mod rsbar;
 
 use super::*;
-use crate::drivers::busses::pci_express::ecam::capabilities::standard::{
+use crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::{
     PciCapabilityId,
     find_capability,
 };

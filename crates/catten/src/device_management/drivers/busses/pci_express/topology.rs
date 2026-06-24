@@ -5,9 +5,9 @@ use core::ptr::NonNull;
 
 use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::drivers::busses::pci_express::device_class::PciIdentifier;
-use crate::drivers::busses::pci_express::ecam;
-use crate::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
+use crate::device_management::drivers::busses::pci_express::device_class::PciIdentifier;
+use crate::device_management::drivers::busses::pci_express::ecam;
+use crate::device_management::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
 use crate::logln;
 use crate::memory::{PAddr, VAddr};
 
