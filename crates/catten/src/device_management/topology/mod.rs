@@ -1,5 +1,3 @@
-pub mod fixed_io;
-
 use spin::LazyLock;
 
 use crate::device_management::drivers::busses::pci_express::topology::{
@@ -13,7 +11,6 @@ pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopol
 /// A device function's location in the system's bus topology.
 /// Used by drivers to access the device and configure access to it through its parent bus.
 pub enum DeviceLocation {
-    FixedIo(fixed_io::IoRegion),
     Pcie(PcieLocation),
     //Usb(usb::UsbAddress),
 }
