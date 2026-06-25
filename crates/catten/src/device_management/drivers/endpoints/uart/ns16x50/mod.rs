@@ -1,6 +1,4 @@
-//! # National Semiconductor 16550 Compatible UART Driver
-#[cfg(all(target_arch = "x86_64", feature = "legacy_com_ports"))]
-pub mod legacy_ports;
+//! # National Semiconductor 16x50 Series Compatible UART Driver
 
 use alloc::vec::Vec;
 use core::fmt::{self, Write};
@@ -124,4 +122,4 @@ impl Read for Ns16x50 {
     }
 }
 
-unsafe impl Send for Ns16x50 {}
+unsafe impl Sync for Ns16x50 {}
