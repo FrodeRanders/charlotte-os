@@ -5,6 +5,7 @@ use core::ptr::NonNull;
 
 use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
+use crate::cpu::multiprocessor::spin::mutex::Mutex as SpinMutex;
 use crate::device_management::drivers::busses::pci_express::device_class::PciIdentifier;
 use crate::device_management::drivers::busses::pci_express::ecam;
 use crate::device_management::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
@@ -382,7 +383,7 @@ impl PcieFunction {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct PcieEndpoint {
     number: PcieFunctionNum,
     identifier: PciIdentifier,
@@ -390,7 +391,7 @@ pub struct PcieEndpoint {
      * used for reading/writing config space registers inside this PCIe bus driver ONLY
      * other drivers and the rest of the kernel should use safe functions exposed by this bus
      * driver */
-    cfg_ptr: NonNull<PcieCfgSpace>,
+    cfg_ptr: SpinMutex<NonNull<PcieCfgSpace>>,
 }
 
 impl PcieEndpoint {
@@ -415,8 +416,10 @@ impl PcieEndpoint {
         PcieEndpoint {
             number: function_num,
             identifier,
-            cfg_ptr: NonNull::new(cfg_space_vaddr.into_mut())
-                .expect("Invalid PCIe config space pointer"),
+            cfg_ptr: SpinMutex::new(
+                NonNull::new(cfg_space_vaddr.into_mut())
+                    .expect("Invalid PCIe config space pointer"),
+            ),
         }
     }
 }

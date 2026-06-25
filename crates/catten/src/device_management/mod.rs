@@ -1,10 +1,15 @@
 //! # The Device Manager
+
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+
+use drivers::busses::*;
+use drivers::endpoints::*;
 pub mod drivers;
 pub mod hw_interface;
 pub mod topology;
 
-pub struct DeviceTable {
-    pub pcie_root_complex: Vec<drivers::busses::pci_express::PcieRootComplex>,
-    pub uart: Vec<drivers::uart::Uart>,
-    pub usb_hci: Vec<drivers::usb_hci::UsbHostController>,
+pub struct DeviceControlPlaneTable {
+    pub pcie_root_complex: Vec<pci_express::topology::PcieSegmentGroup>,
+    pub uart: Vec<Arc<dyn uart::Uart>>,
 }
