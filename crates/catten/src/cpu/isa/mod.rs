@@ -2,6 +2,7 @@
 //!
 //! This module provides a set of common interfaces used to access the ISA specific
 //! functionality needed by the kernel:
+//! - [`Constants`](constants): ISA specific constant values
 //! - [`Initialization`](init): ISA specific system initialization and deinitialization
 //! - [`Interrupts`](interrupts): wrappers over ISA specific interrupt management structures
 //! - [`Input/Output`](io): wrappers over MMIO and Port IO
