@@ -44,8 +44,6 @@ qemu-run-x86_64 profile="debug" serial="" features="qemu" gdb="false": (create-i
         -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
         -boot d \
         -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
-        -chardev file,path=logs/pci_serial.txt,id=pci_ser0 \
-        -device pci-serial,chardev=pci_ser0 \
         -vga none \
         -device virtio-vga \
         -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw,if=none,id=nvme0 \
