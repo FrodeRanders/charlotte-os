@@ -26,7 +26,6 @@ pub mod cpu;
 pub mod deferred_work_manager;
 pub mod device_management;
 pub mod environment;
-pub mod framebuffer;
 pub mod init;
 pub mod klib;
 pub mod log;

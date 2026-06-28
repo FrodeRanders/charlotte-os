@@ -6,5 +6,5 @@ build-std-features = ["compiler-builtins-mem"]
 [env]
 # Tell clang/cc and bindgen to use a real clang triple instead of our custom one,
 # since clang doesn't know about the 'catten' environment component.
-CFLAGS_x86_64-unknown-none-catten = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
+CFLAGS_x86_64-unknown-none-catten = "-ffreestanding -mcmodel=kernel"
 BINDGEN_EXTRA_CLANG_ARGS_x86_64-unknown-none-catten = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
