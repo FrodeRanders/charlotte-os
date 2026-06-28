@@ -4,7 +4,7 @@ use spin::LazyLock;
 
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 use crate::cpu::isa::system_info::{CpuInfo, IsaExtension};
-use crate::environment::boot_protocol::limine::{TSC_FREQUENCY_REQUEST, TscFrequencyResponse};
+use crate::environment::boot_protocol::limine::TSC_FREQUENCY_REQUEST;
 use crate::klib::time::duration::ExtDuration;
 
 pub static IS_TSC_INVARIANT: LazyLock<bool> =
@@ -30,13 +30,10 @@ pub fn rdtsc() -> u64 {
     ((tsc_high as u64) << 32) | tsc_low as u64
 }
 
+#[inline(always)]
 fn get_tsc_freq() -> u64 {
-    if let Some(response) = unsafe { TSC_FREQUENCY_REQUEST.get_response::<TscFrequencyResponse>() }
-    {
-        unsafe { (*response.as_ptr()).frequency }
-    } else {
-        panic!(
-            "The Timestamp Counter (TSC) frequency could not be determined. Unable to continue."
-        );
-    }
+    TSC_FREQUENCY_REQUEST
+        .response()
+        .expect("The TSC frequency could not be determined. Total system failure.")
+        .frequency
 }
