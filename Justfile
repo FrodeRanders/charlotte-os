@@ -30,7 +30,7 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
 vm_memory := "512M"
 vm_num_lps := "8"
 
-qemu-run-x86_64 profile="debug" serial="" features="qemu" gdb="false": (create-image "x86_64" profile features)
+qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_64" profile features)
     #!/usr/bin/env bash
     if [ ! -f {{image_dir}}/scsi-test.hdd ]; then
         dd if=/dev/zero of={{image_dir}}/scsi-test.hdd bs=4K count=262144
@@ -43,7 +43,6 @@ qemu-run-x86_64 profile="debug" serial="" features="qemu" gdb="false": (create-i
         -m {{vm_memory}} \
         -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
         -boot d \
-        -serial {{if serial != "" {"file:"+serial} else {"stdio"}}} \
         -vga none \
         -device virtio-vga \
         -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw,if=none,id=nvme0 \
