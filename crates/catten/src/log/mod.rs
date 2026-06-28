@@ -30,22 +30,22 @@ pub fn early_restore_interrupts(interrupts_were_enabled: bool) {
 
 #[macro_export]
 macro_rules! early_log {
-    ($text:expr $(, $arg:tt)*) => ({
-        let interrupts_were_enabled = $crate::log::early_save_interrupts();
-        use core::fmt::Write;
-        let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        $crate::log::early_restore_interrupts(interrupts_were_enabled);
-    })
+    ($text:expr $(, $arg:tt)*) => {{
+        // let interrupts_were_enabled = $crate::log::early_save_interrupts();
+        // use core::fmt::Write;
+        // let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        // $crate::log::early_restore_interrupts(interrupts_were_enabled);
+    }};
 }
 
 #[macro_export]
 macro_rules! early_logln {
-    ($text:expr $(, $arg:tt)*) => ({
-        let interrupts_were_enabled = $crate::log::early_save_interrupts();
-        use core::fmt::Write;
-        let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        $crate::log::early_restore_interrupts(interrupts_were_enabled);
-    })
+    ($text:expr $(, $arg:tt)*) => {{
+        // let interrupts_were_enabled = $crate::log::early_save_interrupts();
+        // use core::fmt::Write;
+        // let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        // $crate::log::early_restore_interrupts(interrupts_were_enabled);
+    }};
 }
 
 #[macro_export]
