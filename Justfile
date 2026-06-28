@@ -11,12 +11,12 @@ temp_mnt_dir := "~/temp-mnt"
 create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features)
     #!/usr/bin/env bash
     if [ ! -d {{image_dir}} ]; then mkdir {{image_dir}}; fi
-    touch {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd
-    dd if=/dev/zero of={{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd bs=4K count=1048576
-    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd mklabel gpt
-    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd mkpart ESP fat32 1MiB 100%
-    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd set 1 esp on
-    lodev=$(sudo losetup -fP --show {{image_dir}}/charlotte-{{arch}}-{{profile}}.hdd)
+    touch {{image_dir}}/charlotte-{{arch}}-{{profile}}.img
+    dd if=/dev/zero of={{image_dir}}/charlotte-{{arch}}-{{profile}}.img bs=4K count=1048576
+    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.img mklabel gpt
+    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.img mkpart ESP fat32 1MiB 100%
+    parted -s {{image_dir}}/charlotte-{{arch}}-{{profile}}.img set 1 esp on
+    lodev=$(sudo losetup -fP --show {{image_dir}}/charlotte-{{arch}}-{{profile}}.img)
     sudo mkfs.fat -F32 ${lodev}p1
     if [ ! -d {{temp_mnt_dir}} ]; then mkdir {{temp_mnt_dir}}; fi
     sudo mount ${lodev}p1 {{temp_mnt_dir}}
@@ -32,8 +32,8 @@ vm_num_lps := "8"
 
 qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_64" profile features)
     #!/usr/bin/env bash
-    if [ ! -f {{image_dir}}/scsi-test.hdd ]; then
-        dd if=/dev/zero of={{image_dir}}/scsi-test.hdd bs=4K count=262144
+    if [ ! -f {{image_dir}}/scsi-test.img ]; then
+        dd if=/dev/zero of={{image_dir}}/scsi-test.img bs=4K count=262144
     fi
     qemu-system-x86_64 \
         -enable-kvm \
@@ -44,8 +44,8 @@ qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_
         -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \
         -boot d \
         -vga none \
-        -device virtio-vga \
-        -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.hdd,format=raw,if=none,id=nvme0 \
+        -device virtio-vga,xres=3840,yres=2160 \
+        -drive file={{image_dir}}/charlotte-x86_64-{{profile}}.img,format=raw,if=none,id=nvme0 \
         -device nvme,drive=nvme0,serial=catten00 \
         -nic none \
         -device qemu-xhci,id=xhci \
@@ -58,7 +58,7 @@ qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_
 
 qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
     qemu-system-aarch64 -M virt -cpu cortex-a76 -smp {{vm_num_lps}} -m {{vm_memory}} -device ramfb -device qemu-xhci -device usb-kbd -m {{vm_memory}} -bios /usr/share/edk2/aarch64/QEMU_EFI.fd -boot d \
-    -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.hdd,format=raw \
+    -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.img,format=raw \
     {{ if gdb == "true" {"-s -S"} else {""} }}
 
 clean:
@@ -67,4 +67,3 @@ clean:
 
 distclean: clean
     if [ -f Cargo.lock ]; then rm Cargo.lock; fi
-    if [ -d logs ]; then rm logs/*.txt; fi

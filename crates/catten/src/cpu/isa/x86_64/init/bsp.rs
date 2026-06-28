@@ -9,8 +9,11 @@ use crate::early_logln;
 
 static mut BSP_INTERRUPT_STACK: [u8; INTERRUPT_STACK_SIZE] = [0u8; INTERRUPT_STACK_SIZE];
 static mut BSP_DF_STACK: [u8; INTERRUPT_STACK_SIZE] = [0u8; INTERRUPT_STACK_SIZE];
-pub static BSP_TSS: LazyLock<Tss> = LazyLock::new(|| {
-    Tss::new((&raw const BSP_INTERRUPT_STACK) as u64, (&raw const BSP_DF_STACK) as u64)
+pub static BSP_TSS: LazyLock<Tss> = LazyLock::new(|| unsafe {
+    Tss::new(
+        (&raw const BSP_INTERRUPT_STACK).byte_add(INTERRUPT_STACK_SIZE) as u64,
+        (&raw const BSP_DF_STACK).byte_add(INTERRUPT_STACK_SIZE) as u64,
+    )
 });
 static BSP_GDT: LazyLock<Gdt> = LazyLock::new(|| Gdt::new(&BSP_TSS));
 pub static BSP_IDT: LazyLock<Idt> = LazyLock::new(|| {
