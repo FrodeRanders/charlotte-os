@@ -33,7 +33,7 @@ macro_rules! early_log {
     ($text:expr $(, $arg:tt)*) => ({
         let interrupts_were_enabled = $crate::log::early_save_interrupts();
         use core::fmt::Write;
-        write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
         $crate::log::early_restore_interrupts(interrupts_were_enabled);
     })
 }
@@ -43,7 +43,7 @@ macro_rules! early_logln {
     ($text:expr $(, $arg:tt)*) => ({
         let interrupts_were_enabled = $crate::log::early_save_interrupts();
         use core::fmt::Write;
-        writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
         $crate::log::early_restore_interrupts(interrupts_were_enabled);
     })
 }
@@ -53,7 +53,7 @@ macro_rules! log {
     ($text:expr $(, $arg:tt)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
         use core::fmt::Write;
-        write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
     })
 }
@@ -62,7 +62,7 @@ macro_rules! logln {
     ($text:expr $(, $arg:tt)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
         use core::fmt::Write;
-        writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+        let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
     })
 }
