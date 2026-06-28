@@ -6,8 +6,7 @@ use talc::base::binning::Binning;
 use talc::source::Source;
 use talc::*;
 
-use crate::cpu::isa::interface::memory::address::{Address, VirtualAddress};
-use crate::cpu::isa::memory::paging::PAGE_SIZE;
+use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::multiprocessor::spin::mutex::MutexCore;
 use crate::klib::size::mebibytes;
 use crate::memory::VAddr;
