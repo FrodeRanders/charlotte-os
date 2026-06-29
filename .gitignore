@@ -1,6 +1,5 @@
 target/
 Cargo.lock
 os-images/
-log*
 .continue/mcpServers/new-mcp-server.yaml
 .codex
