@@ -8,16 +8,16 @@ use crate::memory::VAddr;
 
 #[repr(u8)]
 pub enum MadtEntryType {
-    LocalApic = 0,
-    IoApic = 1,
-    InterruptSourceOverride = 2,
-    NmiSource = 3,
-    LocalApicNmi = 4,
-    LocalApicAddressOverride = 5,
-    IoSapic = 6,
-    LocalSapic = 7,
-    PlatformInterruptSource = 8,
-    ProcessorLocalX2Apic = 9,
+    LocalApic = 0x0,
+    IoApic = 0x1,
+    InterruptSourceOverride = 0x2,
+    NmiSource = 0x3,
+    LocalApicNmi = 0x4,
+    LocalApicAddressOverride = 0x5,
+    IoSapic = 0x6,
+    LocalSapic = 0x7,
+    PlatformInterruptSource = 0x8,
+    ProcessorLocalX2Apic = 0x9,
     LocalX2ApicNmi = 0xa,
     GicCpuInterface = 0xb,
     GicDistributor = 0xc,
@@ -88,5 +88,3 @@ pub struct Madt {
     lapic_address: u32,
     flags: u32,
 }
-
-impl Madt {}
