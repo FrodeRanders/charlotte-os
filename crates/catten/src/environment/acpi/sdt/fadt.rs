@@ -7,7 +7,7 @@ pub struct Fadt {
     header: SdtHeader,
     firmware_ctrl: u32,
     dsdt: u32,
-    // field used in ACPI 1.0; no longer in use, for compatibility only
+    // reserved field used in ACPI 1.0; no longer in use, for compatibility only
     reserved: u8,
     preferred_pm_profile: u8,
     sci_int: u16,
