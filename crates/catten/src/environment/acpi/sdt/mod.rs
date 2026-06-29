@@ -1,6 +1,7 @@
 //! ACPI System Description Tables (SDTs)
 
 pub mod fadt;
+pub mod madt;
 pub mod mcfg;
 
 #[repr(u8)]
