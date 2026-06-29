@@ -188,15 +188,15 @@ impl PcieBusSegment {
         bus_num: PcieBusSegmentNum,
     ) -> Self {
         logln!(
-            "[drivers::busses::pci] Enumerating PCIe bus segment {} of segment group {}",
+            "[drivers::busses::pci_express] Enumerating PCIe bus segment {} of segment group {}",
             bus_num,
             segment_group_num
         );
         let mut devices: [PcieDevice; MAX_DEVICES_PER_BUS] =
             [const { PcieDevice::Empty }; MAX_DEVICES_PER_BUS];
         logln!(
-            "[drivers::busses::pci] Initialized device array for bus segment {} of segment group \
-             {}. Starting device enumeration...",
+            "[drivers::busses::pci_express] Initialized device array for bus segment {} of \
+             segment group {}. Starting device enumeration...",
             bus_num,
             segment_group_num
         );
