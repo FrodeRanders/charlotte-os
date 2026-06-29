@@ -14,11 +14,11 @@ use crate::memory::{AddressSpaceInterface, KERNEL_AS, PAddr, VAddr};
 const ECAM_SIZE: usize = mebibytes(256); /* Each PCIe segment group's ECAM occupies 256 MiB of address space */
 
 pub(super) fn map_ecam(base: PAddr) -> VAddr {
-    logln!("[drivers::bus::pci] Mapping PCIe ECAM at physical address {:?}", base);
+    logln!("[drivers::busses::pci_express] Mapping PCIe ECAM at physical address {:?}", base);
     let mut kas = KERNEL_AS.lock();
     logln!(
-        "[drivers::bus::pci] Finding free virtual address range for PCIe ECAM mapping of size \
-         {:?} bytes",
+        "[drivers::busses::pci_express] Finding free virtual address range for PCIe ECAM mapping \
+         of size {:?} bytes",
         ECAM_SIZE
     );
     let vbase = kas
@@ -30,7 +30,8 @@ pub(super) fn map_ecam(base: PAddr) -> VAddr {
         )
         .expect("Failed to find free virtual address range for PCIe ECAM mapping");
     logln!(
-        "[drivers::bus::pci] Mapping PCIe ECAM at physical address {:?} to virtual address {:?}",
+        "[drivers::busses::pci_express] Mapping PCIe ECAM at physical address {:?} to virtual \
+         address {:?}",
         base,
         vbase
     );
@@ -44,8 +45,8 @@ pub(super) fn map_ecam(base: PAddr) -> VAddr {
         kas.map_large_page(mem_mapping).expect("Failed to map large page for a PCIe ECAM!");
     }
     logln!(
-        "[drivers::bus::pci] Successfully mapped PCIe ECAM at physical address {:?} to virtual \
-         address {:?}",
+        "[drivers::busses::pci_express] Successfully mapped PCIe ECAM at physical address {:?} to \
+         virtual address {:?}",
         base,
         vbase
     );
