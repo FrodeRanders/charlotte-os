@@ -1,5 +1,6 @@
 //! # Multiple APIC Description Table (MADT)
 
+use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
@@ -81,10 +82,38 @@ impl Iterator for MadtEntryIter {
     }
 }
 
+const NUM_ENTRY_TYPES: usize = 28usize;
+
+pub struct MadtEntryIndex {
+    ptr_matrix: [Vec<NonNull<MadtEntryGeneric>>; NUM_ENTRY_TYPES],
+}
+
+impl MadtEntryIndex {
+    pub fn get_type(&self, entry_type: MadtEntryType) -> &Vec<NonNull<MadtEntryGeneric>> {
+        &self.ptr_matrix[entry_type as usize]
+    }
+}
+
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct Madt {
     header: SdtHeader,
     lapic_address: u32,
     flags: u32,
+}
+
+impl Madt {
+    pub fn parse(&self) -> MadtEntryIndex {
+        let mut ptr_matrix: [Vec<NonNull<MadtEntryGeneric>>; NUM_ENTRY_TYPES] = Default::default();
+        let iter = MadtEntryIter::new(self);
+        for entry_ptr in iter {
+            let entry_type = unsafe { entry_ptr.as_ref() }.entry_type as usize;
+            if entry_type < NUM_ENTRY_TYPES {
+                ptr_matrix[entry_type].push(entry_ptr);
+            }
+        }
+        MadtEntryIndex {
+            ptr_matrix,
+        }
+    }
 }
