@@ -1,11 +1,15 @@
 //! # Multiple APIC Description Table (MADT)
 
+mod ioapic;
+
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::environment::acpi::SdtHeader;
 use crate::memory::VAddr;
+
+type GlobalSystemInterruptVector = u32;
 
 #[repr(u8)]
 pub enum MadtEntryType {
