@@ -4,7 +4,7 @@
 
 ## Programming Languages
 
-- CharlotteOS is written primarily in the latest Edition of Rust, with architecture-specific assembly where required or advantageousf.
+- CharlotteOS is written primarily in the latest Edition of Rust, with architecture-specific assembly where required or advantageous.
 - x86-64 assembly uses Intel syntax as implemented by `rustc`/`llvm-mc`.
 
 ---
@@ -15,60 +15,23 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 
 ### Supported Architectures and Their Requirements
 
-#### x86-64 (Primary ISA)
+#### x86-64
 
 - Invariant Timestamp Counter
 - Local APIC with x2APIC mode
+- Always Running APIC Timer (ARAT) available on all logical processors
 - Full standards conforming UEFI and ACPI firmware environment
 - Intel or AMD compatible IOMMU
 
-#### Aarch64 (Secondary ISA)
-
-- ARMv8.2A or later
-- GICv3 or later
-- Secure Monitor Call (SMC) interface with PSCI
-- SystemReady compliant firmware - Full or DT band
-
-#### RISC-V (Tertiary ISA)
-
-- RVA22 or later
-- Advanced Interrupt Architecture (AIA)
-- Supervisor Binary Interface (SBI)
-- Boot and Runtime Services (BRS) specification compliant firmware
+#### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 
 ---
 
 ## Firmware Model
 
-The Catten kernel requires at least the EBBR subset of UEFI and either of ACPI or Devicetree. The format is not the determining factor—**device documentation and correctness to the respective specification are.**
+System firmware is required to implement the UEFI specification and version 2.0 or later of the ACPI specification.
 
-### UEFI
-
-- Required for PC/server-class systems on all architectures.
-- EBBR subset acceptable for embedded systems.
-
-### ACPI
-
-- Expected on PC/server-class machines across ISAs and all x86-64 systems.
-- ACPI tables must be complete and spec-compliant enough to allow device discovery without vendor-specific workarounds or drivers.
-- ACPI Machine Language (AML) code must be strictly specification conforming.
-
-### Flattened Devicetree (FDT)
-
-- Fully supported for SoC-style platforms.
-- FDT must conform to the Devicetree specificion and accurately describe hardware resources.
-- All `compatible` strings must map to publicly documented hardware blocks or IP cores or the described
-hardware likely will not work.
-
-### Documentation Requirement
-
-Whether via ACPI or DT:
-
-- Devices must be identifiable.
-- Devices must be documented.
-- “Unknown peripheral at address 0xXXXX” is not acceptable without vendor documentation.
-
-This ensures that Catten can operate without relying on undocumented Linux driver behavior, hard-coded quirks, or vendor-specific hacks.
+The latest versions of both specifications can be found at <https://uefi.org/specifications>.
 
 ---
 
@@ -91,37 +54,35 @@ PC and Server:
 - Recommended: ≥ 64 GiB
 - Minimum: 4 GiB
 - Supported device classes:
-  - NVMe (PCIe)
-  - USB Mass Storage Device Class (MSC)
-  - AHCI (SATA)
-  - SCSI over PCIe serial
+  - [Planned] NVMe (PCIe)
+  - [Planned] USB Mass Storage Device Class (MSC)
+  - [Planned] AHCI (SATA)
+  - [Planned] SDHCI (PCIe SD card reader)
 
 ### Display
 
-- Linear framebuffer exposed via:
-  - UEFI GOP
-  - FDT `simplefb` node
+- Linear framebuffer exposed via UEFI GOP
 
 ### Input Devices
 
 - Keyboards:
-  - i8042 PS/2
-  - USB HID
-  - I²C HID (documented ACPI/FDT only)
+  - [Planned] i8042 PS/2
+  - [Planned] USB HID
+  - [Planned] I²C HID
+
 - Pointing Devices:
-  - i8042 PS/2
-  - USB HID
-  - I²C HID (documented ACPI/FDT only)
+  - [Planned] i8042 PS/2
+  - [Planned] USB HID
+  - [Planned] I²C HID
 
 ### Serial Console
 
-- NS16550 compatible UART
-- Arm PL011 compatible UART
-- USB CDC-ACM (virtual serial)
+- [Planned] NS16550 compatible UART over PCIe
+- [Planned] USB CDC-ACM (virtual serial)
 
 ### Networking
 
-- USB CDC-NCM (Ethernet over USB)
+- [Planned] USB CDC-NCM (Ethernet over USB)
 
 ---
 
