@@ -1,6 +1,7 @@
 //! # Multiple APIC Description Table (MADT)
 
 mod ioapic;
+mod nmi_source;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -11,6 +12,7 @@ use crate::memory::VAddr;
 
 type GlobalSystemInterruptVector = u32;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MadtEntryType {
     LocalApic = 0x0,

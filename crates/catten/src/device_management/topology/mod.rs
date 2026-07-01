@@ -4,7 +4,7 @@ use crate::device_management::drivers::busses::pci_express::topology::{
     PcieLocation,
     PcieTopology,
 };
-use crate::environment::get_pcie_segments;
+use crate::environment::get_pcie_segment_groups;
 
 pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopology::new);
 
@@ -29,7 +29,7 @@ pub struct DeviceTopology {
 impl DeviceTopology {
     pub fn new() -> Self {
         DeviceTopology {
-            pcie: PcieTopology::new(get_pcie_segments()),
+            pcie: PcieTopology::new(get_pcie_segment_groups()),
         }
     }
 }

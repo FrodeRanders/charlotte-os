@@ -41,11 +41,11 @@ mod riscv_sbi;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
 mod uefi_rt;
 
-pub fn get_pcie_segments() -> Vec<PcieSegmentGroup> {
+pub fn get_pcie_segment_groups() -> Vec<PcieSegmentGroup> {
     cfg_select! {
         all(feature = "acpi", feature = "devicetree") => {
             panic!("The Catten Kernel does not support compiling in both the acpi and devicetree
-            features as standards do not allows systems to expose both at the same time. Please 
+            features as standards do not allow systems to expose both at the same time. Please 
             recompile your kernel with only the one you actually intend to use.")
         },
         feature = "acpi" => acpi::sdt::mcfg::parse_mcfg(),

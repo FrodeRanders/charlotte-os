@@ -1,4 +1,5 @@
 use super::GlobalSystemInterruptVector;
+use crate::environment::acpi::sdt::madt::MadtEntryType;
 use crate::memory::PAddr;
 
 type IoApicId = u8;
@@ -6,7 +7,7 @@ type IoApicId = u8;
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct IoApic {
-    entry_type: u8,
+    entry_type: MadtEntryType,
     length: u8,
     ioapic_id: IoApicId,
     reserved: u8,
