@@ -1,5 +1,3 @@
-use crate::environment::acpi::sdt::madt::{GlobalSystemInterruptVector, MadtEntryType};
-
 const FLAGS_POLARITY_MASK: u16 = 0b11;
 const FLAGS_POLARITY_SHIFT: u16 = 0;
 const FLAGS_TRIGGER_MASK: u16 = 0b11;
@@ -25,7 +23,7 @@ pub enum NmiSrcTrigger {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct NmiSrcFlags(u16);
+pub(super) struct NmiSrcFlags(u16);
 
 impl NmiSrcFlags {
     pub fn polarity(&self) -> NmiSrcPolarity {
@@ -47,13 +45,4 @@ impl NmiSrcFlags {
             _ => unreachable!(),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-#[repr(C, packed)]
-pub struct NmiSource {
-    entry_type: MadtEntryType,
-    length: u8,
-    flags: NmiSrcFlags,
-    global_system_interrupt: GlobalSystemInterruptVector,
 }
