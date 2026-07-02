@@ -1,49 +1,17 @@
 //! # Multiple APIC Description Table (MADT)
 
-mod ioapic;
-mod nmi_source;
+mod entry_types;
+mod interrupt_flags;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::environment::acpi::SdtHeader;
+use crate::environment::acpi::sdt::madt::entry_types::MadtEntryType;
 use crate::memory::VAddr;
 
-type GlobalSystemInterruptVector = u32;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum MadtEntryType {
-    LocalApic = 0x0,
-    IoApic = 0x1,
-    InterruptSourceOverride = 0x2,
-    NmiSource = 0x3,
-    LocalApicNmi = 0x4,
-    LocalApicAddressOverride = 0x5,
-    IoSapic = 0x6,
-    LocalSapic = 0x7,
-    PlatformInterruptSource = 0x8,
-    ProcessorLocalX2Apic = 0x9,
-    LocalX2ApicNmi = 0xa,
-    GicCpuInterface = 0xb,
-    GicDistributor = 0xc,
-    GicMsiFrame = 0xd,
-    GicRedistributor = 0xe,
-    GicInterruptTranslationService = 0xf,
-    MultiprocessorWakeup = 0x10,
-    CoreProgrammableInterruptController = 0x11,
-    LegacyIoProgrammableInterruptController = 0x12,
-    HyperTransportProgrammableInterruptController = 0x13,
-    ExtendIoProgrammableInterruptController = 0x14,
-    MsiProgrammableInterruptController = 0x15,
-    BridgeIoProgrammableInterruptController = 0x16,
-    LowPinCountProgrammableInterruptController = 0x17,
-    RiscVHartLocalInterruptController = 0x18,
-    RiscVIncomingMsiController = 0x19,
-    RiscVAdvancedPlatformLevelInterruptController = 0x1a,
-    RiscVPlatformLevelInterruptController = 0x1b,
-}
+type GlobalSystemInterrupt = u32;
 
 #[derive(Debug)]
 #[repr(C, packed)]
@@ -95,7 +63,7 @@ pub struct MadtEntryIndex {
 }
 
 impl MadtEntryIndex {
-    pub fn get_type(&self, entry_type: MadtEntryType) -> &Vec<NonNull<MadtEntryGeneric>> {
+    fn get_type(&self, entry_type: MadtEntryType) -> &Vec<NonNull<MadtEntryGeneric>> {
         &self.ptr_matrix[entry_type as usize]
     }
 }
