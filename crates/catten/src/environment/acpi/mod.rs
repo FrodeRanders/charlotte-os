@@ -1,4 +1,4 @@
-//! Advanced Configuration and Power Interface (ACPI) Subsystem
+//! The Advanced Configuration and Power Interface (ACPI) Subsystem
 //!
 //! The Advanced Configuration and Power Interface (ACPI) is an open industry specification that
 //! defines a flexible and extensible interface for hardware discovery, configuration, power
@@ -19,7 +19,7 @@
 //! addresses of other ACPI tables, as well as some common data structures and utilities for working
 //! with the headers that are common to all ACPI tables.
 //!
-//! The main reference needed to understand and work with this module is the [ACPI specification](https://uefi.org/specs/ACPI/6.6/).
+//! The primary reference needed to understand and work with this module is the [ACPI specification](https://uefi.org/specs/ACPI/6.6/).
 //! In addition to the specification the source code of [uACPI](https://github.com/uACPI/uACPI) a portable C language
 //! ACPI implementation made to be robust enough to handle buggy firmware can be very helpful to
 //! understand how to work with ACPI and handle various edge cases and quirks of real world

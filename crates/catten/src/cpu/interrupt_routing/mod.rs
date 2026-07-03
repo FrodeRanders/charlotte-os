@@ -8,3 +8,12 @@
 //! - Providing a unified interface for devices to register and unregister interrupt handlers.
 //! - Ensuring that the interrupt service load is roughly balanced across all logical processors in
 //!   the system.
+
+use hashbrown::HashMap;
+
+pub struct InterruptDescriptor {
+    pub gsi: u32,
+    pub flags: u16,
+}
+
+pub type IsaIrqOverrideTable = HashMap<u8, InterruptDescriptor>;
