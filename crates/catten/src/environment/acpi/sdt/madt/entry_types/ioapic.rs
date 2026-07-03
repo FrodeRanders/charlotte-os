@@ -4,6 +4,8 @@ use crate::memory::PAddr;
 
 type IoApicId = u8;
 
+/// The MADT I/O APIC Structure overlay struct.
+/// Ref: ACPI 6.6 Section 5.2.12.3
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct IoApicEntry {
