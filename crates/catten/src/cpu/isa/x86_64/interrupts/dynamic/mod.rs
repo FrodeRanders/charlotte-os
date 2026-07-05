@@ -266,7 +266,9 @@ unsafe extern "custom" {
 macro_rules! register_dyn_isr {
     ($idt:expr, $offset:expr, $isr:expr) => {
         $idt.set_gate(
-            FIXED_INTERRUPT_VECTOR_COUNT + $offset,
+            // Dynamic entries start after all fixed ones except the spurious interrupt vector
+            // which is always 255 since it is the lowest priority
+            (FIXED_INTERRUPT_VECTOR_COUNT - 1) + $offset,
             $isr,
             gdt::KERNEL_CODE_SELECTOR,
             None,

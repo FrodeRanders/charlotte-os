@@ -6,7 +6,7 @@
 .extern DYN_VEC_START_OFFSET
 
 .macro DYN_ISR vector:req
-    .global dyn_isr_\vector
+.global dyn_isr_\vector
 dyn_isr_\vector:
     push rax
     push rdi
@@ -17,7 +17,12 @@ dyn_isr_\vector:
     push r9
     mov rdi, \vector
     call get_dyn_ih
+// if the function pointer returned by get_dyn_ih is null, skip the call
+    test rax, rax
+    jz skip_ih_call_\vector
+// make the call to the interrupt handler if the function pointer is non-null
     call qword ptr [rax]
+skip_ih_call_\vector:
     // Execute context switch if pending
     call cond_yield_lp
     pop r9
@@ -31,6 +36,10 @@ dyn_isr_\vector:
 .endm
 
 .section .text
+.altmacro
+.set vector_num, 0
 .rept 220
-    DYN_ISR \@i
+    DYN_ISR %vector_num
+    .set vector_num, vector_num+1
 .endr
+.noaltmacro
