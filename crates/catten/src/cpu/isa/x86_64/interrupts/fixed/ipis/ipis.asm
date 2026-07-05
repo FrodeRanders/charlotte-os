@@ -16,16 +16,16 @@
     push r13
     push r14
     push r15
-    push rflags
+    pushfq
 /* IPIs are always level triggered so as not to be missed. Thus when the ISR runs we must signal
    end of interrupt to the local interrupt controller to ensure the ISR isn't called repeatedly
    ad infinitum
 */
-    call LocalIntCtlr::signal_eoi
+    call signal_eoi
 .endm
 
 .macro IPI_EPILOGUE
-    pop rflags
+    popfq
     pop r15
     pop r14
     pop r13
