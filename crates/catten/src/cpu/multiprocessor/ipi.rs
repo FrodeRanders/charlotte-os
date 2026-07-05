@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 
 use concurrent_queue::ConcurrentQueue;
 
-use crate::cpu::isa::constants::interrupt_vectors::UNICAST_IPI_VECTOR;
+use crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR;
 use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
 use crate::cpu::isa::interrupts::LocalIntCtlr;
 use crate::cpu::isa::lp::LpId;
@@ -27,7 +27,7 @@ pub static IPI_CMD_QUEUES: spin::LazyLock<IpiCmdQueues> = spin::LazyLock::new(Ip
 
 #[inline(always)]
 pub fn send_ipi(target_lp: LpId) {
-    LocalIntCtlr::send_unicast_ipi(target_lp, UNICAST_IPI_VECTOR)
+    LocalIntCtlr::send_unicast_ipi(target_lp, ASYNC_IPI_VECTOR)
         .expect(&format!("Failed to send an IPI from LP {} to LP {target_lp}", get_lp_id()));
 }
 

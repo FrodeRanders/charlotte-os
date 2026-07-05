@@ -1,20 +1,32 @@
 //! # x2APIC Local Advanced Programmable Interrupt Controller
 mod id;
 
-use core::arch::asm;
-use core::mem::MaybeUninit;
+use core::{
+    arch::asm,
+    mem::MaybeUninit,
+};
 
 use spin::LazyLock;
 
 use super::super::constants::interrupt_vectors::*;
-use crate::cpu::isa::interface::interrupts::{InterruptManagerIfce, LocalIntCtlrIfce};
-use crate::cpu::isa::interface::timers::LpTimerIfce;
-use crate::cpu::isa::interrupts::InterruptManager;
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::timers::apic_timer::ApicTimer;
-use crate::cpu::isa::x86_64::constants::msrs;
-use crate::cpu::multiprocessor::spin::per_lp::PerLp;
-use crate::get_lp_id;
+use crate::{
+    cpu::{
+        isa::{
+            interface::{
+                interrupts::LocalIntCtlrIfce,
+                timers::LpTimerIfce,
+            },
+            lp::{
+                InterruptVectorNum,
+                LpId,
+            },
+            timers::apic_timer::ApicTimer,
+            x86_64::constants::msrs,
+        },
+        multiprocessor::spin::per_lp::PerLp,
+    },
+    get_lp_id,
+};
 
 pub static LAPICS: LazyLock<PerLp<MaybeUninit<X2Apic>>> =
     LazyLock::new(|| PerLp::new(|| MaybeUninit::uninit()));
@@ -132,10 +144,7 @@ impl LocalIntCtlrIfce for X2Apic {
     /// Send a unicast IPI to the target logical processor
     ///
     /// Ref: Intel SDM Vol.3 12.12.10.1
-    fn send_unicast_ipi(
-        target_lp: LpId,
-        target_vector: <InterruptManager as InterruptManagerIfce>::IntDispatchNum,
-    ) -> Result<(), Error> {
+    fn send_unicast_ipi(target_lp: LpId, target_vector: InterruptVectorNum) -> Result<(), Error> {
         if let Some(apic_id) = Self::translate_lp_id(target_lp) {
             // Get the physical APIC ID for the target LP
             let dest = apic_id.physical;
