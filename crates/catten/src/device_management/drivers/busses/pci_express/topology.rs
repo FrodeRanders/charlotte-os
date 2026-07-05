@@ -1,21 +1,36 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use core::ops::Deref;
-use core::ptr::NonNull;
+use alloc::{
+    boxed::Box,
+    vec::Vec,
+};
+use core::{
+    ops::Deref,
+    ptr::NonNull,
+};
 
-use super::{Error, MAX_DEVICES_PER_BUS, MAX_FUNCTIONS_PER_DEVICE};
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::multiprocessor::spin::mutex::Mutex as SpinMutex;
-use crate::device_management::drivers::busses::pci_express::device_class::PciIdentifier;
-use crate::device_management::drivers::busses::pci_express::ecam;
-use crate::device_management::drivers::busses::pci_express::ecam::pcie::PcieCfgSpace;
-use crate::logln;
-use crate::memory::{PAddr, VAddr};
+use crate::{
+    cpu::{
+        isa::interface::memory::address::VirtualAddress,
+        multiprocessor::spin::mutex::Mutex as SpinMutex,
+    },
+    device_management::drivers::busses::pci_express::{
+        Error,
+        MAX_DEVICES_PER_BUS,
+        MAX_FUNCTIONS_PER_DEVICE,
+        device_class::PciIdentifier,
+        ecam,
+        ecam::pcie::PcieCfgSpace,
+    },
+    logln,
+    memory::{
+        PAddr,
+        VAddr,
+    },
+};
 
 pub type PcieSegmentGroupNum = u16;
 pub type PcieBusSegmentNum = u8;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PcieDeviceNum(u8);
 impl TryFrom<u8> for PcieDeviceNum {
     type Error = ();
@@ -40,7 +55,7 @@ impl Deref for PcieDeviceNum {
         &self.0
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PcieFunctionNum(u8);
 impl TryFrom<u8> for PcieFunctionNum {
     type Error = ();
@@ -66,7 +81,7 @@ impl Deref for PcieFunctionNum {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct PcieLocation {
     segment_group: PcieSegmentGroupNum,
     bus_segment: PcieBusSegmentNum,
