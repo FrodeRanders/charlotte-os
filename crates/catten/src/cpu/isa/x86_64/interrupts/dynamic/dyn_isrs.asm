@@ -32,5 +32,5 @@ dyn_isr_\vector:
 
 .section .text
 .rept 220
-    DYN_ISR \@i + DYN_VEC_START_OFFSET
+    DYN_ISR \@i
 .endr
