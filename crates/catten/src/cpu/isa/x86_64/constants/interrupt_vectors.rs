@@ -1,5 +1,4 @@
 pub const LAPIC_TIMER_VECTOR: u8 = 32;
-pub const UNICAST_IPI_VECTOR: u8 = 33;
-pub const MULTICAST_IPI_VECTOR: u8 = 34;
-pub const BROADCAST_IPI_VECTOR: u8 = 35;
+pub const ASYNC_IPI_VECTOR: u8 = 33;
+pub const SYNC_IPI_VECTOR: u8 = 34;
 pub const SPURIOUS_INTERRUPT_VECTOR_NUM: u8 = 255;

@@ -28,18 +28,13 @@ use crate::device_management::drivers::busses::pci_express::topology::PcieSegmen
 // Advanced Configuration and Power Interface (ACPI)
 #[cfg(any(target_arch = "x86_64", feature = "acpi"))]
 pub mod acpi;
-pub mod boot_protocol;
-// Device Tree
-#[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]
-mod devicetree;
-// ARM Secure Monitor Call (SMC) Interface
 #[cfg(target_arch = "aarch64")]
-mod arm_smc;
-// RISC-V Supervisor Binary Interface (RISC-V SBI)
-#[cfg(target_arch = "riscv64")]
-mod riscv_sbi;
+pub mod arm_smc;
+pub mod boot_protocol;
+#[cfg(all(not(target_arch = "x86_64"), feature = "devicetree"))]
+pub mod devicetree;
 // Unified Extensible Firmware Interface (UEFI) Runtime Services
-mod uefi_rt;
+mod uefi_rts;
 
 pub fn get_pcie_segment_groups() -> Vec<PcieSegmentGroup> {
     cfg_select! {

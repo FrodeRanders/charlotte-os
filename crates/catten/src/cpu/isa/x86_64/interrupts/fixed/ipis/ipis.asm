@@ -1,8 +1,6 @@
 .code64
 
-.section .text
-.global isr_interprocessor_interrupt
-isr_interprocessor_interrupt:
+.macro IPI_PROLOGUE
     push rax
     push rbx
     push rcx
@@ -18,7 +16,16 @@ isr_interprocessor_interrupt:
     push r13
     push r14
     push r15
-    call handle_unicast_ipi
+    push rflags
+/* IPIs are always level triggered so as not to be missed. Thus when the ISR runs we must signal
+   end of interrupt to the local interrupt controller to ensure the ISR isn't called repeatedly
+   ad infinitum
+*/
+    call LocalIntCtlr::signal_eoi
+.endm
+
+.macro IPI_EPILOGUE
+    pop rflags
     pop r15
     pop r14
     pop r13
@@ -34,4 +41,28 @@ isr_interprocessor_interrupt:
     pop rcx
     pop rbx
     pop rax
+.endm
+
+.section .data
+.global sync_ipi_barrier
+sync_ipi_barrier:
+    .8byte 0
+
+.section .text
+.global isr_asynchronous_ipi
+isr_asynchronous_ipi:
+    IPI_PROLOGUE
+    call ih_asynchronous_ipi
+    IPI_EPILOGUE
+    iretq
+
+.global isr_synchronous_ipi
+isr_synchronous_ipi:
+    IPI_PROLOGUE
+    call ih_synchronous_ipi
+    lock dec qword ptr [sync_ipi_barrier]
+barrier_loop:
+    lock cmp qword ptr [sync_ipi_barrier], 0
+    jnz barrier_loop
+    IPI_EPILOGUE
     iretq
