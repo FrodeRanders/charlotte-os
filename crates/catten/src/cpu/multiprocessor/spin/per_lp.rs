@@ -99,3 +99,9 @@ impl<'a, T> PerLp<T> {
         }
     }
 }
+
+impl<T: Default> Default for PerLp<T> {
+    fn default() -> Self {
+        Self::new(T::default)
+    }
+}
