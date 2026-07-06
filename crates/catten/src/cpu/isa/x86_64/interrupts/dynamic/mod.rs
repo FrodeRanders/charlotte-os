@@ -7,6 +7,7 @@ use crate::cpu::{
     isa::{
         constants::interrupt_vectors::FIXED_INTERRUPT_VECTOR_COUNT,
         init::gdt,
+        interface::interrupts::DynInterruptDispatcherIfce,
         interrupts::idt::Idt,
         lp::{
             InterruptVectorNum,
@@ -18,23 +19,49 @@ use crate::cpu::{
 
 pub const DYN_VECS_PER_LP: u64 = 220;
 pub const DYN_VEC_START_OFFSET: u64 = 35;
-pub static DYN_IH_TABLE: LazyLock<PerLp<[Option<InterruptHandler>; DYN_VECS_PER_LP as usize]>> =
-    LazyLock::new(|| PerLp::new(|| [None; DYN_VECS_PER_LP as usize]));
-
 #[unsafe(no_mangle)]
-pub extern "C" fn set_dyn_ih(lp: LpId, vector: InterruptVectorNum, handler: InterruptHandler) {
-    let mut table = unsafe { DYN_IH_TABLE.get_nonlocal_mut(lp) };
-    table[vector as usize] = Some(handler);
+pub static DYN_IH_MATRIX: LazyLock<DynInterruptDispatcher> =
+    LazyLock::new(DynInterruptDispatcher::default);
+
+#[derive(Debug)]
+pub struct DynInterruptDispatcher {
+    matrix: PerLp<[Option<InterruptHandler>; DYN_VECS_PER_LP as usize]>,
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn get_dyn_ih(vector: InterruptVectorNum) -> *const InterruptHandler {
-    if let Ok(table) = DYN_IH_TABLE.try_get() {
-        if let Some(ih) = table[vector as usize] {
-            return ih as *const InterruptHandler;
+impl Default for DynInterruptDispatcher {
+    fn default() -> Self {
+        DynInterruptDispatcher {
+            matrix: PerLp::new(|| [None; DYN_VECS_PER_LP as usize]),
         }
     }
-    core::ptr::null()
+}
+
+impl DynInterruptDispatcherIfce for DynInterruptDispatcher {
+    #[unsafe(no_mangle)]
+    extern "C" fn set_dyn_ih(
+        &self,
+        lp: LpId,
+        vector: InterruptVectorNum,
+        handler: InterruptHandler,
+    ) {
+        let mut table = unsafe { self.matrix.get_nonlocal_mut(lp) };
+        table[vector as usize] = Some(handler);
+    }
+
+    #[unsafe(no_mangle)]
+    extern "C" fn get_dyn_ih(&self, vector: InterruptVectorNum) -> *const InterruptHandler {
+        if let Ok(table) = self.matrix.try_get() {
+            if let Some(ih) = table[vector as usize] {
+                return ih as *const InterruptHandler;
+            }
+        }
+        core::ptr::null()
+    }
+
+    fn is_vector_available(&self, lp: LpId, vector: InterruptVectorNum) -> bool {
+        let table = unsafe { self.matrix.get_nonlocal(lp) };
+        table[vector as usize].is_none()
+    }
 }
 
 global_asm!(include_str!("dyn_isrs.asm"));
