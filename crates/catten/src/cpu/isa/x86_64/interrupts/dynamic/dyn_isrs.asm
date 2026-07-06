@@ -19,13 +19,13 @@ dyn_isr_\vector:
     lea rdi, [DYN_IH_MATRIX]
     mov rsi, \vector
     call get_dyn_ih
-; if the function pointer returned by get_dyn_ih is null, skip the call
+//; if the function pointer returned by get_dyn_ih is null, skip the call
     test rax, rax
     jz skip_ih_call_\vector
-; make the call to the interrupt handler if the function pointer is non-null
+//; make the call to the interrupt handler if the function pointer is non-null
     call qword ptr [rax]
 skip_ih_call_\vector:
-    ; Execute context switch if pending
+    //; Execute context switch if pending
     call cond_yield_lp
     pop r9
     pop r8
