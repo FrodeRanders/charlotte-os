@@ -29,12 +29,9 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
 
 vm_memory := "512M"
 vm_num_lps := "8"
+usb_image_path := "./test_data/disk_images/test-usb.img"
 
 qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_64" profile features)
-    #!/usr/bin/env bash
-    if [ ! -f {{image_dir}}/scsi-test.img ]; then
-        dd if=/dev/zero of={{image_dir}}/scsi-test.img bs=4K count=262144
-    fi
     qemu-system-x86_64 \
         -enable-kvm \
         -M q35,kernel-irqchip=split \
@@ -53,13 +50,58 @@ qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_
         -device usb-mouse,bus=xhci.0 \
         -netdev user,id=usbnet0 \
         -device usb-net,netdev=usbnet0,bus=xhci.0 \
+        -device usb-storage,bus=xhci.0,drive=usbdrive0 \
+        -drive if=none,id=usbdrive0,format=raw,file={{usb_image_path}} \
         -device amd-iommu \
         {{ if gdb == "true" {"-s -S"} else {""} }}
 
 qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
-    qemu-system-aarch64 -M virt -cpu cortex-a76 -smp {{vm_num_lps}} -m {{vm_memory}} -device ramfb -device qemu-xhci -device usb-kbd -m {{vm_memory}} -bios /usr/share/edk2/aarch64/QEMU_EFI.fd -boot d \
-    -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.img,format=raw \
-    {{ if gdb == "true" {"-s -S"} else {""} }}
+    qemu-system-aarch64 \
+        -M virt \
+        -cpu cortex-a710 \
+        -smp {{vm_num_lps}} \
+        -m {{vm_memory}} \
+        -bios /usr/share/edk2/aarch64/QEMU_EFI.fd \
+        -boot d \
+        -device ramfb \
+        -device qemu-xhci,id=xhci \
+        -device usb-kbd,bus=xhci.0 \
+        -device usb-mouse,bus=xhci.0 \
+        -device usb-net,netdev=usbnet0,bus=xhci.0 \
+        -device arm-smmu \
+        -drive file={{image_dir}}/charlotte-aarch64-{{profile}}.img,format=raw \
+        -device usb-storage,bus=xhci.0,drive=usbdrive0 \
+        -drive if=none,id=usbdrive0,format=raw,file={{usb_image_path}} \
+        {{ if gdb == "true" {"-s -S"} else {""} }}
+
+qemu-run-riscv64 profile="debug" gdb="false": (create-image "riscv64" profile)
+    qemu-system-riscv64 \
+        -M virt \
+        -cpu tt-ascalon \
+        -smp {{vm_num_lps}} \
+        -m {{vm_memory}} \
+        -bios /usr/share/edk2/riscv64/QEMU_EFI.fd \
+        -boot d \
+        -device ramfb \
+        -device qemu-xhci,id=xhci \
+        -device usb-kbd,bus=xhci.0 \
+        -device usb-mouse,bus=xhci.0 \
+        -device usb-net,netdev=usbnet0,bus=xhci.0 \
+        -device riscv-iommu-pci \
+        -drive file={{image_dir}}/charlotte-riscv64-{{profile}}.img,format=raw \
+        -device usb-storage,bus=xhci.0,drive=usbdrive0 \
+        -drive if=none,id=usbdrive0,format=raw,file={{usb_image_path}} \
+        {{ if gdb == "true" {"-s -S"} else {""} }}
+
+update-loc:
+    tokei \
+        --exclude target \
+        --exclude .git \
+        --exclude .vscode \
+        --exclude .github \
+        --exclude limine-binary \
+        --exclude os-images \
+    > loc.txt
 
 clean:
     cargo clean
