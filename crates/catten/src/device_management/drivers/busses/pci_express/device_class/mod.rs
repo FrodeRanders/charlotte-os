@@ -25,13 +25,14 @@ impl Display for PciIdentifier {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "0x{:04x}:0x{:04x} (class 0x{:02x}, subclass 0x{:02x}, prog IF 0x{:02x}) => {}",
+            "| {}[0x{:04x}]:0x{:04x} | {}[class 0x{:02x}, subclass 0x{:02x}, prog IF 0x{:02x}] |",
+            constants::vendor_id::pci_vendor_id_to_str(self.vendor_id),
             self.vendor_id,
             self.device_id,
+            Into::<HwDeviceIfce>::into(*self),
             self.class_code,
             self.subclass,
             self.prog_if,
-            Into::<HwDeviceIfce>::into(*self)
         )
     }
 }
@@ -50,6 +51,8 @@ impl Into<HwDeviceIfce> for PciIdentifier {
 
             /* Intel */
             (vendor_id::INTEL, _, device_class::VGA_COMPATIBLE) => HwDeviceIfce::IntelGpu,
+            #[cfg(target_arch = "x86_64")]
+            (vendor_id::INTEL, _, device_class::IOMMU) => HwDeviceIfce::IntelVtdIommu,
 
             /* Nvidia */
             (vendor_id::NVIDIA, _, device_class::VGA_COMPATIBLE) => HwDeviceIfce::NvidiaGpu,
@@ -58,11 +61,11 @@ impl Into<HwDeviceIfce> for PciIdentifier {
             // This is technically virtio-vga but we don't use the legacy VGA interface just the one
             // it shares with virtio-gpu so we map it to virtio-gpu.
             #[cfg(feature = "virtio_gpu")]
-            (vendor_id::REDHAT, _, device_class::VGA_COMPATIBLE) => HwDeviceIfce::VirtioGpu,
-            #[cfg(feature = "virtio_gpu")]
-            (vendor_id::REDHAT, _, device_class::OTHER_DISPLAY_CONTROLLER) => {
-                HwDeviceIfce::VirtioGpu
-            }
+            (
+                vendor_id::REDHAT_VIRTIO | vendor_id::REDHAT,
+                _,
+                device_class::VGA_COMPATIBLE | device_class::OTHER_DISPLAY_CONTROLLER,
+            ) => HwDeviceIfce::VirtioGpu,
 
             /* Generic Device Class Interfaces
 
@@ -77,6 +80,7 @@ impl Into<HwDeviceIfce> for PciIdentifier {
             (_, _, device_class::PCI_TO_PCI_BRIDGE_SUB_DEC) => {
                 HwDeviceIfce::PciToPciBridgeSubtractiveDecode
             }
+            (_, _, device_class::PCI_TO_ISA_BRIDGE) => HwDeviceIfce::PciToIsaBridge,
             (_, _, device_class::NS16550) => HwDeviceIfce::Ns16550Uart,
             (_, _, device_class::NS16650) => HwDeviceIfce::Ns16650Uart,
             (_, _, device_class::NS16750) => HwDeviceIfce::Ns16750Uart,
@@ -88,9 +92,7 @@ impl Into<HwDeviceIfce> for PciIdentifier {
             (_, _, device_class::NS16850_MULTI_PORT) => HwDeviceIfce::Ns16850MultiPortUart,
             (_, _, device_class::NS16950_MULTI_PORT) => HwDeviceIfce::Ns16950MultiPortUart,
             #[cfg(target_arch = "x86_64")]
-            (_, _, device_class::IOAPIC) => HwDeviceIfce::IoApic,
-            #[cfg(target_arch = "x86_64")]
-            (_, _, device_class::IOXAPIC) => HwDeviceIfce::IoXapic,
+            (_, _, device_class::IOAPIC | device_class::IOXAPIC) => HwDeviceIfce::IoApic,
             #[cfg(target_arch = "x86_64")]
             (_, _, device_class::HPET) => HwDeviceIfce::HighPrecisionEventTimer,
             (_, _, device_class::SD_HOST_CONTROLLER) => HwDeviceIfce::SdHostController,

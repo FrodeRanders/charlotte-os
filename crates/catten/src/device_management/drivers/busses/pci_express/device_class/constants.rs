@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 pub mod vendor_id {
     pub type PciVendorId = u16;
 
@@ -10,7 +12,23 @@ pub mod vendor_id {
     pub const NVIDIA: PciVendorId = 0x10de;
     pub const QEMU: PciVendorId = 0x1234;
     // Red Hat, Inc. (primarily used for virtio devices)
-    pub const REDHAT: PciVendorId = 0x1af4;
+    pub const REDHAT_VIRTIO: PciVendorId = 0x1af4;
+    pub const REDHAT: PciVendorId = 0x1b36;
+
+    pub const fn pci_vendor_id_to_str(vendor_id: PciVendorId) -> &'static str {
+        match vendor_id {
+            VENDOR_ID_UNKNOWN => "Unknown Vendor",
+            VENDOR_ID_INVALID => "Invalid Vendor",
+            INTEL => "Intel Corporation",
+            AMD => "Advanced Micro Devices, Inc.",
+            ARM => "ARM Ltd.",
+            NVIDIA => "Nvidia Corporation",
+            QEMU => "QEMU (Virtual Machine)",
+            REDHAT_VIRTIO => "Red Hat, Inc. (VirtIO)",
+            REDHAT => "Red Hat, Inc.",
+            _ => "Unknown Vendor",
+        }
+    }
 }
 
 pub mod device_class {
@@ -30,6 +48,7 @@ pub mod device_class {
 
     /* Bridges */
     pub const HOST_BRIDGE: PciClassFull = (0x06, 0x00, 0x00);
+    pub const PCI_TO_ISA_BRIDGE: PciClassFull = (0x06, 0x01, 0x00);
     pub const PCI_TO_PCI_BRIDGE: PciClassFull = (0x06, 0x04, 0x00);
     pub const PCI_TO_PCI_BRIDGE_SUB_DEC: PciClassFull = (0x06, 0x04, 0x01);
 
