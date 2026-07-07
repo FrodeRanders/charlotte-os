@@ -29,6 +29,7 @@ pub struct PerLp<T> {
     data: Box<[RwLock<T>]>,
 }
 
+/// A structure that provides per-Logical Processor (LP) sharded memory for a value of type `T`.
 impl<'a, T> PerLp<T> {
     pub fn new<F: Fn() -> T>(initializer: F) -> Self {
         PerLp {
