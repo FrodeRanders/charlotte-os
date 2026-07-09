@@ -167,12 +167,31 @@ impl GicV3 {
             mmio_write32(sgi, GICR_ICENABLER0, 1 << intid);
         }
     }
+
+    /// Map the GIC distributor and this core's redistributor MMIO frames into
+    /// the kernel address space via the HHDM as Device memory.
+    fn map_mmio() {
+        use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+        use crate::memory::KERNEL_AS;
+        let mut kas = KERNEL_AS.lock();
+        // Distributor: a single 64 KiB frame.
+        kas.map_mmio_region(GICD_BASE, 0x1_0000)
+            .expect("Failed to map GIC distributor MMIO");
+        // This core's redistributor: RD_base + SGI_base (two 64 KiB frames).
+        kas.map_mmio_region(gicr_rd_base(), GICR_STRIDE)
+            .expect("Failed to map GIC redistributor MMIO");
+    }
 }
 
 impl LocalIntCtlrIfce for GicV3 {
     type Error = Error;
 
     fn init_lp() {
+        // Ensure the distributor and this core's redistributor MMIO are mapped
+        // into the kernel address space (Device memory via the HHDM) before we
+        // touch any GIC register. Limine does not HHDM-map MMIO from base
+        // revision 3 onwards, so we map it explicitly here.
+        Self::map_mmio();
         // The distributor is system-wide; enabling affinity routing and Group 1
         // is idempotent and safe to repeat from each core as it comes online.
         unsafe {

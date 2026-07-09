@@ -33,12 +33,16 @@ pub static ADDRESS_SPACE_TABLE: LazyLock<AddressSpaceTable> = LazyLock::new(Addr
 /// kernel virtual memory map at which point this address should be updated to reflect the new
 /// location.
 pub static HHDM_BASE: LazyLock<VAddr> = LazyLock::new(|| {
-    VAddr::from(
-        HHDM_REQUEST
-            .response()
-            .expect("Limine failed to provide a higher half direct mapping region.")
-            .offset as usize,
-    )
+    let offset = HHDM_REQUEST
+        .response()
+        .expect("Limine failed to provide a higher half direct mapping region.")
+        .offset as usize;
+    // The HHDM offset is already a valid, bootloader-chosen higher-half virtual
+    // address and must be stored verbatim. It must NOT go through
+    // `VAddr::from`, whose x86-style canonical sign-extension (treating bit 47
+    // as the sign bit) zeroes AArch64's TTBR1 base of 0xffff_0000_0000_0000,
+    // because that address has bit 47 clear.
+    unsafe { VAddr::from_raw_unchecked(offset) }
 });
 /// The physical frame allocator instance used by the kernel.
 pub static PHYSICAL_FRAME_ALLOCATOR: LazyLock<Mutex<PhysicalFrameAllocator>> =

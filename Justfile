@@ -21,7 +21,7 @@ create-image arch="x86_64" profile="debug" features="": (build-catten arch profi
     if [ ! -d {{temp_mnt_dir}} ]; then mkdir {{temp_mnt_dir}}; fi
     sudo mount ${lodev}p1 {{temp_mnt_dir}}
     sudo mkdir -p {{temp_mnt_dir}}/EFI/BOOT
-    sudo cp ./limine-binary/BOOTX64.EFI {{temp_mnt_dir}}/EFI/BOOT/BOOTX64.EFI
+    sudo cp ./limine-binary/{{ if arch == "x86_64" { "BOOTX64.EFI" } else if arch == "aarch64" { "BOOTAA64.EFI" } else if arch == "riscv64" { "BOOTRISCV64.EFI" } else { "BOOTX64.EFI" } }} {{temp_mnt_dir}}/EFI/BOOT/{{ if arch == "x86_64" { "BOOTX64.EFI" } else if arch == "aarch64" { "BOOTAA64.EFI" } else if arch == "riscv64" { "BOOTRISCV64.EFI" } else { "BOOTX64.EFI" } }}
     sudo cp ./target/{{ if arch == "x86_64" { "x86_64-unknown-none-catten" } else if arch == "aarch64" { "aarch64-unknown-none-catten" } else if arch == "riscv64" { "riscv64gc-unknown-none-catten" } else { arch + "-unknown-none" } }}/{{profile}}/catten ./limine.conf {{temp_mnt_dir}}
     sudo umount {{temp_mnt_dir}}
     sudo losetup -d $lodev
@@ -57,7 +57,7 @@ qemu-run-x86_64 profile="debug" features="qemu" gdb="false": (create-image "x86_
 
 qemu-run-aarch64 profile="debug" gdb="false": (create-image "aarch64" profile)
     qemu-system-aarch64 \
-        -M virt \
+        -M virt,gic-version=3 \
         -cpu cortex-a710 \
         -smp {{vm_num_lps}} \
         -m {{vm_memory}} \

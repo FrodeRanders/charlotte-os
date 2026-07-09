@@ -61,6 +61,11 @@ pub const MAIR_IDX_NORMAL: u64 = 0;
 /// not currently emit device mappings through this path; MMIO handling will add
 /// a dedicated Device-nGnRnE index when the device layer needs it.
 pub const MAIR_IDX_FRAMEBUFFER: u64 = 1;
+/// `MAIR_EL1` attribute index used for strongly-ordered device memory
+/// (Device-nGnRnE). Limine leaves attribute indices 2-7 set to `0x00`, which is
+/// precisely the Device-nGnRnE encoding, so index 2 is usable for MMIO without
+/// having to reprogram the attributes referenced by existing mappings.
+pub const MAIR_IDX_DEVICE: u64 = 2;
 
 /// A single translation table descriptor.
 #[repr(transparent)]
