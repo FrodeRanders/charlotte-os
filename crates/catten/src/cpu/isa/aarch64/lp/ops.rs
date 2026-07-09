@@ -55,23 +55,23 @@ use crate::memory::VAddr;
 pub fn store_lp_id(lp_id: LpId) {
     unsafe {
         core::arch::asm!(
-            "msr tpidr_el1, {lp_id:w}",
-            lp_id = in(reg) lp_id,
+            "msr tpidr_el1, {lp_id:x}",
+            lp_id = in(reg) lp_id as u64,
             options(nomem, nostack, preserves_flags)
         );
     }
 }
 
 pub fn get_lp_id() -> LpId {
-    let lp_id: u32;
+    let lp_id: u64;
     unsafe {
         core::arch::asm!(
-            "mrs {lp_id:w}, tpidr_el1",
+            "mrs {lp_id:x}, tpidr_el1",
             lp_id = out(reg) lp_id,
             options(nomem, nostack, preserves_flags)
         );
     }
-    lp_id
+    lp_id as LpId
 }
 
 pub fn get_lic_id() -> u32 {
