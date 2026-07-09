@@ -18,6 +18,7 @@ use crate::{
     },
 };
 
+/* The bitwise left shifts of various values within their containing registers */
 const IOAPIC_ID_SHIFT: u8 = 24;
 const IOAPIC_ID_MASK: u32 = 0xfu32 << IOAPIC_ID_SHIFT;
 
@@ -27,6 +28,7 @@ const IOAPIC_VER_MASK: u32 = 0xffu32 << IOAPIC_VER_SHIFT;
 const IOAPIC_MAX_REDIR_SHIFT: u8 = 16;
 const IOAPIC_MAX_REDIR_MASK: u32 = 0xffu32 << IOAPIC_MAX_REDIR_SHIFT;
 
+/// IOAPIC Error type
 pub enum Error {
     InvalidDeliveryMode(u8),
     LpIdOutOfRange(LpId),
@@ -34,6 +36,16 @@ pub enum Error {
 }
 
 #[repr(transparent)]
+/// The IOAPIC struct is a transparent struct containing the base MMIO address of the IOAPIC
+/// programming interface.
+///
+/// This interface uses indexed register access via two actual 32-bit MMIO
+/// registers: The IOREGSEL register is used to select the register to access, and the actual data
+/// read/write is performed using the 32-bit IOWIN register located immediately after it. 64-bit
+/// registers are accessed by accessing their sequential lower and higher 32-bit halves in two
+/// separate transactions one after another.
+///
+/// Ref: [IOAPIC - OSDev Wiki](https://wiki.osdev.org/IOAPIC)
 pub struct IoApic(IoReg32);
 
 type IoApicRegIdx = u32;
@@ -41,7 +53,7 @@ pub type RedirIdx = u32;
 impl IoApic {
     //const ARB_REG_IDX: u32 = 2;
     const ID_REG_IDX: u32 = 0;
-    const IOWIN_REG_OFFSET: u16 = 1;
+    const IOWIN_MMIO_BYTE_OFFSET: u16 = 4;
     const REDIR_TABLE_BASE_IDX: u32 = 16;
     const REG_BITS: u8 = 32;
     const VER_ENTRY_MAX_REG_IDX: u32 = 1;
@@ -49,14 +61,14 @@ impl IoApic {
     fn read32(&self, reg_idx: IoApicRegIdx) -> u32 {
         unsafe {
             self.0.write(reg_idx);
-            (self.0 + Self::IOWIN_REG_OFFSET).read()
+            (self.0 + Self::IOWIN_MMIO_BYTE_OFFSET).read()
         }
     }
 
     fn write32(&mut self, reg_idx: IoApicRegIdx, value: u32) {
         unsafe {
             self.0.write(reg_idx);
-            (self.0 + Self::IOWIN_REG_OFFSET).write(value);
+            (self.0 + Self::IOWIN_MMIO_BYTE_OFFSET).write(value);
         }
     }
 
