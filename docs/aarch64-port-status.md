@@ -19,25 +19,33 @@
 - AArch64 ISA code has grown from ~843 LOC to **~2748 LOC** (x86-64 is
   ~4865 LOC). There are no remaining `todo!()`/`unimplemented!()` stubs in the
   AArch64 ISA tree.
-- **Caveats**: boots headless only on macOS (the `display`/flanterm feature
-  needs a GNU/LLVM cross-toolchain; the serial console is the log sink); GIC and
-  UART MMIO base addresses are QEMU-`virt` hardcoded pending device-tree
-  support; execution reaches the kernel device-probe idle loop — no EL0/userspace
-  path is exercised yet.
+- **Caveats**: the `display`/framebuffer (flanterm) feature now builds and
+  boots on AArch64 (see "Display / framebuffer" below), but a usable framebuffer
+  is not always provisioned by QEMU/edk2 on `virt`; the kernel falls back to the
+  PL011 serial console when none is available, so serial is the reliable log
+  sink on macOS. GIC and UART MMIO base addresses are QEMU-`virt` hardcoded
+  pending device-tree support; execution reaches the kernel device-probe idle
+  loop — no EL0/userspace path is exercised yet.
 
 ## How to build and run
 
 ```sh
 brew install qemu mtools          # one-time
 rustup component add rust-src     # one-time (build-std)
-./scripts/run-aarch64.sh          # builds headless kernel, image, boots QEMU
+rustup component add llvm-tools   # one-time (only needed for --display)
+./scripts/run-aarch64.sh          # headless: builds kernel, image, boots QEMU
+./scripts/run-aarch64.sh --display  # framebuffer window + serial
 # serial console is on stdio; press Ctrl-A X to quit
 ```
 
-The script builds with `--no-default-features --features acpi` (headless, so the
-PL011 serial console is the log sink and the flanterm C dependency is avoided),
-creates a FAT EFI image with `mtools` (no sudo / loopback mounts), and launches
+The default (headless) build uses `--no-default-features --features acpi`, so the
+PL011 serial console is the log sink and the flanterm C dependency is avoided; it
+creates a FAT EFI image with `mtools` (no sudo / loopback mounts) and launches
 `qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a710`.
+
+The `--display` build additionally enables the `display,virtio_gpu` features
+(the flanterm framebuffer console) and boots with a ramfb display window. See
+"Display / framebuffer" below.
 
 ## What was implemented
 
@@ -97,6 +105,28 @@ cornerstone of Catten's async-first model:
 - `Justfile`: arch-correct EFI file (`BOOTAA64.EFI`) in `create-image`;
   `gic-version=3` in the aarch64 recipe. `limine.conf`: serial enabled.
 
+### 6. Display / framebuffer (flanterm)
+The `display` feature draws log output to a linear framebuffer via the C
+`flanterm` library (`log/flanterm.rs`). On AArch64 it now builds, links, and
+boots:
+- **Build/link fix.** `flanterm` is compiled by the `cc` crate. Its C sources
+  cross-compile to ELF correctly (via the `CFLAGS_*`/`BINDGEN_EXTRA_CLANG_ARGS_*`
+  target env in `.cargo/config.toml`), but on macOS the *archiver* defaulted to
+  Apple's `ar`/`ranlib`, which cannot build a valid archive from ELF objects — it
+  silently produced an empty Mach-O archive, so the flanterm symbols went missing
+  at link time. The run script points the `cc` crate at the toolchain's ELF-aware
+  `llvm-ar` via `AR_aarch64_unknown_none_catten`, resolved from the active Rust
+  sysroot (needs the `llvm-tools` component).
+- **Graceful fallback.** `FlantermConsole` holds an optional context; if the
+  bootloader provides no usable framebuffer (missing response, zero dimensions,
+  null address, or flanterm init failure) it reports unavailable instead of
+  panicking, and `log!`/`logln!` fall back to the PL011 serial console so output
+  is never lost.
+- **Status.** When Limine hands over a usable framebuffer (e.g. `ramfb` with a
+  real display surface) flanterm initialises (observed 800×600×32). GOP mode
+  provisioning on QEMU aarch64 `virt` + edk2 is itself flaky between boots and is
+  outside the kernel's control; the serial fallback covers the gap.
+
 ## Bugs found only by booting
 
 These were invisible at compile time and were diagnosed via QEMU's `-d int`
@@ -125,11 +155,14 @@ exception log and `lldb` on the QEMU gdb stub:
 
 ## Remaining work / known limitations
 
-- **Display/framebuffer path on macOS.** The `display` feature pulls in the C
-  `flanterm` library; the Apple toolchain produces Mach-O objects that
-  `rust-lld` cannot link into the ELF kernel (this also affects x86-64 on
-  macOS). Options: a GNU/LLVM cross toolchain (`llvm-ar`/`llvm-ranlib`), a Linux
-  build container, or continue headless via serial.
+- **Display/framebuffer.** The `display` feature (flanterm framebuffer console)
+  now builds and boots on AArch64; see the "Display / framebuffer" section below.
+  The remaining rough edge is that a usable framebuffer is not reliably
+  provisioned by QEMU/edk2 on `virt` (GOP mode setup is flaky and requires a real
+  display surface), so the kernel falls back to the serial console when none is
+  present. On macOS the `display` build additionally requires the toolchain
+  `llvm-ar` (ELF-aware archiver) rather than Apple's `ar`; this is wired up
+  automatically by `scripts/run-aarch64.sh --display`.
 - **Device-tree discovery.** GIC distributor/redistributor and PL011 base
   addresses are hardcoded to the QEMU `virt` defaults. They should be read from
   the `/intc` and `/pl011` device-tree nodes; the `devicetree` feature and
@@ -174,8 +207,10 @@ Steady state: hundreds of thousands of timer IRQs serviced with **0 faults**.
   `build-std`.
 - Host tested: `aarch64-apple-darwin` (Apple M2), QEMU 11.x, edk2 aarch64
   firmware shipped with QEMU (`edk2-aarch64-code.fd`).
-- x86-64 Rust build is unaffected by the port; on macOS it still fails only at
-  the flanterm C link step (host toolchain limitation, not a kernel bug).
+- x86-64 Rust build is unaffected by the port; on macOS its default (display)
+  build still fails at the flanterm C link step for the same Apple-`ar` reason
+  described above — the `AR=llvm-ar` fix is currently wired only for the aarch64
+  display build in `scripts/run-aarch64.sh` and could be applied to x86-64 too.
 
 ## Key references in-tree
 
