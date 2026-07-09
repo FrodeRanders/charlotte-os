@@ -12,6 +12,7 @@ use super::MemoryInterfaceImpl;
 use crate::cpu::isa::aarch64::memory::address::paddr::PAddr;
 use crate::cpu::isa::aarch64::memory::address::vaddr::VAddr;
 use crate::cpu::isa::interface::memory::address::Address;
+use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
 use crate::klib::size::{gibibytes, kibibytes, mebibytes};
 
@@ -66,6 +67,38 @@ impl AddressSpace {
 
     pub fn set_ttbr1(&mut self, ttbr1: u64) {
         self.ttbr1_el1 = ttbr1;
+    }
+
+    /// Map a physical MMIO region into this address space at its higher half
+    /// direct map (HHDM) alias, using strongly-ordered Device-nGnRnE memory.
+    ///
+    /// The region is mapped page-by-page starting at `HHDM_BASE + phys_base`,
+    /// so the standard `PAddr::into_hhdm_*` helpers used by device drivers
+    /// resolve to these mappings. `phys_base` and `size` are rounded to whole
+    /// pages. This is needed because, from Limine base revision 3 onwards, the
+    /// bootloader only HHDM-maps real RAM, leaving MMIO unmapped until the
+    /// kernel maps it explicitly.
+    pub fn map_mmio_region(
+        &mut self,
+        phys_base: usize,
+        size: usize,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        use crate::cpu::isa::interface::memory::address::PhysicalAddress;
+        let start = phys_base & !(PAGE_SIZE - 1);
+        let end = (phys_base + size + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+        for phys in (start..end).step_by(PAGE_SIZE) {
+            let frame = PAddr::from(phys as u64);
+            // The HHDM alias of this physical page is where drivers expect it.
+            let hhdm_vaddr =
+                VAddr::from_ptr(unsafe { frame.into_hhdm_ptr::<u8>() });
+            let mut walker = walker::Walker::new(self, hhdm_vaddr);
+            match walker.map_mmio_page(frame, true) {
+                Ok(())
+                | Err(<MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
     }
 }
 

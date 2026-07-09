@@ -33,6 +33,15 @@ SECTIONS
         *(.rodata .rodata.*)
     } :rodata
 
+    /* Limine boot protocol requests. These must be KEPT because they are not */
+    /* referenced from code and would otherwise be removed by --gc-sections, */
+    /* which would cause Limine to ignore them and fall back to defaults. */
+    .limine_requests : {
+        KEEP(*(.limine_requests_start))
+        KEEP(*(.limine_requests))
+        KEEP(*(.limine_requests_end))
+    } :rodata
+
     /* Move to the next memory page for .data */
     . += CONSTANT(MAXPAGESIZE);
 

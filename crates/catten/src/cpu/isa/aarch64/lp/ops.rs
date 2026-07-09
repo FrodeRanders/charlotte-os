@@ -52,6 +52,41 @@ use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
 use crate::logln;
 use crate::memory::VAddr;
 
+/// Enable Advanced SIMD and floating-point instruction access at EL1 (and EL0).
+///
+/// The kernel is compiled with the `+neon` feature, so the compiler freely
+/// emits FP/SIMD instructions (for `memcpy`, formatting, etc.). Those trap as
+/// "undefined instruction" unless `CPACR_EL1.FPEN` permits them. Limine leaves
+/// FP/SIMD access trapped, so this must run before any Rust code that could use
+/// those registers — i.e. as the very first thing on each logical processor.
+#[inline(always)]
+pub fn enable_fp_simd() {
+    unsafe {
+        // Ensure the kernel executes at EL1h (using SP_ELx) rather than EL1t
+        // (using SP_EL0). Some entry paths may hand control over in EL1t; if we
+        // stayed there, an interrupt taken in kernel code would push state onto
+        // SP_EL0, which we do not maintain as a valid kernel stack. We copy the
+        // current stack pointer into SP_EL1 before selecting it so the switch
+        // does not lose the stack.
+        core::arch::asm!(
+            "mov {tmp}, sp",     // capture the currently active SP (SP_EL0 if EL1t)
+            "msr spsel, #1",     // select SP_EL1 as the active stack pointer
+            "mov sp, {tmp}",     // point SP_EL1 at the same stack we were using
+            tmp = out(reg) _,
+            options(preserves_flags)
+        );
+        // CPACR_EL1.FPEN = 0b11: do not trap FP/SIMD at EL0 or EL1.
+        core::arch::asm!(
+            "mrs {tmp}, cpacr_el1",
+            "orr {tmp}, {tmp}, #(0b11 << 20)",
+            "msr cpacr_el1, {tmp}",
+            "isb",
+            tmp = out(reg) _,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+}
+
 pub fn store_lp_id(lp_id: LpId) {
     unsafe {
         core::arch::asm!(

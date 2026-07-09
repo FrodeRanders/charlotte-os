@@ -18,7 +18,7 @@
 use core::ptr::NonNull;
 
 use super::{is_table_unused, AddressSpace, PageTable, PAGE_SIZE};
-use super::descriptor::{Descriptor, MAIR_IDX_NORMAL};
+use super::descriptor::{Descriptor, MAIR_IDX_DEVICE, MAIR_IDX_NORMAL};
 use crate::cpu::isa::aarch64::memory::address::paddr::PAddr;
 use crate::cpu::isa::aarch64::memory::address::vaddr::VAddr;
 use crate::cpu::isa::aarch64::memory::tlb;
@@ -206,6 +206,26 @@ impl<'vas> Walker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> WalkerResult<()> {
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, MAIR_IDX_NORMAL, true)
+    }
+
+    /// Map a single 4 KiB page of strongly-ordered device memory (MMIO). Unlike
+    /// [`map_page`](Self::map_page) this uses the Device-nGnRnE memory attribute,
+    /// forces execute-never, and does not zero the target (which would be an
+    /// erroneous access to a device register block).
+    pub fn map_mmio_page(&mut self, frame: PAddr, writable: bool) -> WalkerResult<()> {
+        self.map_page_with_attrs(frame, writable, false, true, MAIR_IDX_DEVICE, false)
+    }
+
+    fn map_page_with_attrs(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+        mair_index: u64,
+        zero_frame: bool,
+    ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk())?;
         self.ensure_root();
         if self.l1_ptr.is_null() {
@@ -227,11 +247,13 @@ impl<'vas> Walker<'vas> {
                 writable,
                 user_accessible,
                 no_execute,
-                MAIR_IDX_NORMAL,
+                mair_index,
                 true,
             );
-            // Clear the freshly mapped page, matching the x86-64 path.
-            core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            if zero_frame {
+                // Clear the freshly mapped page, matching the x86-64 path.
+                core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            }
         }
         tlb::inval_page(self.vaddr);
         Ok(())

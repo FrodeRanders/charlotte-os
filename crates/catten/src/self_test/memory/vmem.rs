@@ -6,9 +6,12 @@ use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::linear::{MemoryMapping, PageType, VAddr};
 
 pub fn test_vmem() {
+    // Raw heap-debug probe of a fixed x86-64 HHDM address; skipped elsewhere.
+    #[cfg(target_arch = "x86_64")]
     let hhdm = 0xffff8000003ffff8usize as *const usize;
     macro_rules! probe {
         ($w:expr) => {
+            #[cfg(target_arch = "x86_64")]
             crate::early_logln!(
                 "[HEAPDBG] vmem {} phys0x3ffff8={:#x}",
                 $w,

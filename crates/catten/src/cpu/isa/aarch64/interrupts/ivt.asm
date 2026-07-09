@@ -36,41 +36,29 @@
 .balign 128
 .global ivt
 ivt:
-// Exception from current EL while using SP_EL0
-// Unused because we don't use SP_EL0 as the stack pointer in kernelspace
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
-nop
+// Exception from current EL while using SP_EL0 (EL1t).
+// The kernel normally runs on SP_ELx, but a thread may be running in EL1t when
+// an interrupt arrives, so these entries must dispatch just like the SP_ELx
+// group rather than being left unused.
+push_volatile_regs
+bl sync_dispatcher
+pop_volatile_regs
+eret
+.balign 128
+push_volatile_regs
+bl irq_dispatcher
+pop_volatile_regs
+eret
+.balign 128
+push_volatile_regs
+bl fiq_dispatcher
+pop_volatile_regs
+eret
+.balign 128
+push_volatile_regs
+bl serr_dispatcher
+pop_volatile_regs
+eret
 // Exception from current EL using SP_ELx
 .balign 128
 push_volatile_regs
