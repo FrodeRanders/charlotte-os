@@ -1,9 +1,14 @@
-use crate::cpu::{
-    interrupt_routing::InterruptHandler,
-    isa::lp::{
-        InterruptVectorNum,
-        LpId,
+use core::ptr::NonNull;
+
+use crate::{
+    cpu::{
+        interrupt_routing::InterruptHandler,
+        isa::lp::{
+            InterruptVectorNum,
+            LpId,
+        },
     },
+    memory::VAddr,
 };
 
 /// Dynamic Interrupt Dispatcher Interface
@@ -38,4 +43,28 @@ pub trait LocalIntCtlrIfce {
     ) -> Result<(), Self::Error>;
     /// Signal End of Interrupt
     fn signal_eoi();
+}
+
+pub trait ExternalInterruptControllerIfce {
+    type EicPinNum;
+    type Error;
+
+    /// Initialize the external interrupt controller
+    fn init(&mut self);
+    /// Wire-up an external interrupt to a logical processor and vector
+    fn setup_ext_int(
+        &mut self,
+        lp: LpId,
+        vector: InterruptVectorNum,
+        pin_num: Self::EicPinNum,
+        active_low: bool,
+        level_triggered: bool,
+        mask_state: bool,
+    ) -> Result<(), Self::Error>;
+    /// Set the mask state of an external interrupt pin
+    fn set_ext_int_mask_state(
+        &mut self,
+        pin_num: Self::EicPinNum,
+        mask_state: bool,
+    ) -> Result<(), Self::Error>;
 }
