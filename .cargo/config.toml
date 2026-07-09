@@ -8,3 +8,5 @@ build-std-features = ["compiler-builtins-mem"]
 # since clang doesn't know about the 'catten' environment component.
 CFLAGS_x86_64-unknown-none-catten = "-ffreestanding -mcmodel=kernel"
 BINDGEN_EXTRA_CLANG_ARGS_x86_64-unknown-none-catten = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
+CFLAGS_aarch64-unknown-none-catten = "-ffreestanding"
+BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-none-catten = "--target=aarch64-unknown-none-elf -ffreestanding"

@@ -1,10 +1,18 @@
 #[macro_export]
-macro_rules! halt {
+macro_rules! await_interrupt {
     () => {
-        unsafe { core::arch::asm!("wfe", options(noreturn, nomem, nostack, preserves_flags)) }
+        loop {
+            unsafe {
+                core::arch::asm!(
+                    "msr daifclr, 0b1111",
+                    "wfi",
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        }
     };
 }
-pub use halt;
+pub use await_interrupt;
 #[macro_export]
 macro_rules! mask_interrupts {
     () => {
@@ -19,6 +27,22 @@ macro_rules! unmask_interrupts {
     };
 }
 pub use unmask_interrupts;
+
+/// Returns `true` if IRQs are currently unmasked (enabled) on the calling
+/// logical processor. The DAIF `I` bit (bit 7) is set when IRQs are masked, so
+/// interrupts are enabled when it is clear.
+#[inline(always)]
+pub fn get_int_state() -> bool {
+    let daif: u64;
+    unsafe {
+        core::arch::asm!(
+            "mrs {daif}, daif",
+            daif = out(reg) daif,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    daif & (1 << 7) == 0
+}
 
 use crate::cpu::isa::lp::LpId;
 use crate::memory::VAddr;
