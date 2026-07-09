@@ -8,7 +8,8 @@ use address::paddr::PAddr;
 use address::vaddr::VAddr;
 
 use crate::cpu::isa::interface::memory::address::{Address, PhysicalAddress, VirtualAddress};
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
+pub use crate::cpu::isa::interface::memory::MemoryInterface;
+use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryMapping};
 
 pub struct MemoryInterfaceImpl;
 
@@ -102,7 +103,7 @@ impl AddressSpaceInterface for AddressSpace {
                 "at s1e1a, {vaddr}",
                 "isb", // Weakly ordered ISA is weakly ordered lol
                 "mrrs x0, x1, par_el1",
-                vaddr = in(reg) vaddr.into_ptr(),
+                vaddr = in(reg) vaddr.into_ptr::<u8>(),
                 lateout("x0") par_el1.0,
                 lateout("x1") par_el1.1,
             );

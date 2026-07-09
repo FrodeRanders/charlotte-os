@@ -20,6 +20,7 @@ pub enum HwDeviceIfce {
     AhciSataController,
     SdHostController,
     ScsiSasController,
+    SmBusController,
     // PCI Express
     PcieHostBridge,
     PciToPciBridgeNormalDecode,
@@ -48,14 +49,14 @@ pub enum HwDeviceIfce {
     #[cfg(target_arch = "x86_64")]
     IoApic,
     #[cfg(target_arch = "x86_64")]
-    SmBusController,
-    #[cfg(target_arch = "x86_64")]
     IntelVtdIommu,
     #[cfg(target_arch = "x86_64")]
     AmdViIommu,
     #[cfg(target_arch = "x86_64")]
     HighPrecisionEventTimer,
     // Arm platform components
+    #[cfg(target_arch = "aarch64")]
+    ArmGpu,
     #[cfg(target_arch = "aarch64")]
     ArmPl011Uart,
     #[cfg(target_arch = "aarch64")]
@@ -86,6 +87,7 @@ impl core::fmt::Display for HwDeviceIfce {
             HwDeviceIfce::AhciSataController => "AHCI SATA Controller",
             HwDeviceIfce::SdHostController => "SD Host Controller",
             HwDeviceIfce::ScsiSasController => "Serial Attached SCSI Controller",
+            HwDeviceIfce::SmBusController => "System Management Bus (SMBus) Controller",
             HwDeviceIfce::PcieHostBridge => "PCI Express Host Bridge",
             HwDeviceIfce::PciToPciBridgeNormalDecode => {
                 "PCI (Express) to PCI (Express) Bridge (Normal Decode)"
@@ -119,8 +121,6 @@ impl core::fmt::Display for HwDeviceIfce {
                 "IOAPIC/IOxAPIC (I/O Advanced Programmable Interrupt Controller)"
             }
             #[cfg(target_arch = "x86_64")]
-            HwDeviceIfce::SmBusController => "System Management Bus (SMBus) Controller",
-            #[cfg(target_arch = "x86_64")]
             HwDeviceIfce::IntelVtdIommu => {
                 "Intel VT-d IOMMU (Intel Virtualization Technology for Directed I/O)"
             }
@@ -128,6 +128,8 @@ impl core::fmt::Display for HwDeviceIfce {
             HwDeviceIfce::AmdViIommu => "AMD-V IOMMU (Virtualization Technology for I/O)",
             #[cfg(target_arch = "x86_64")]
             HwDeviceIfce::HighPrecisionEventTimer => "High Precision Event Timer (HPET)",
+            #[cfg(target_arch = "aarch64")]
+            HwDeviceIfce::ArmGpu => "ARM VGA Compatible Device, Model Unknown",
             #[cfg(target_arch = "aarch64")]
             HwDeviceIfce::ArmPl011Uart => "ARM PrimeCell PL011 UART",
             #[cfg(target_arch = "aarch64")]

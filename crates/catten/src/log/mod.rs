@@ -6,7 +6,9 @@
 //! stored in a file. For now they print to the framebuffer and can be observed directly on the
 //! screen.
 
+#[cfg(feature = "display")]
 mod chars;
+#[cfg(feature = "display")]
 pub mod flanterm;
 
 #[inline(always)]
@@ -51,18 +53,24 @@ macro_rules! early_logln {
 #[macro_export]
 macro_rules! log {
     ($text:expr $(, $arg:tt)*) => ({
-        $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
-        use core::fmt::Write;
-        let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
+        #[cfg(feature = "display")]
+        {
+            $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
+            use core::fmt::Write;
+            let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+            $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
+        }
     })
 }
 #[macro_export]
 macro_rules! logln {
     ($text:expr $(, $arg:tt)*) => ({
-        $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
-        use core::fmt::Write;
-        let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
+        #[cfg(feature = "display")]
+        {
+            $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
+            use core::fmt::Write;
+            let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
+            $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
+        }
     })
 }
