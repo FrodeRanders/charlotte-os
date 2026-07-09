@@ -1,223 +1,190 @@
-# AArch64 Port Gap Analysis
+# AArch64 Port Status
 
-> Status snapshot of the CharlotteOS / Catten kernel AArch64 (ARM64) port.
-> Goal context: assess whether the kernel can run on an Apple Silicon (M2) Mac
-> under virtualization (QEMU `virt` machine).
+> Status of the CharlotteOS / Catten kernel AArch64 (ARM64) port.
+> Goal context: run the kernel on an Apple Silicon (M2) Mac under virtualization
+> (QEMU `virt` machine).
 
 ## TL;DR
 
-- The kernel **currently only builds and runs on x86-64**.
-- AArch64 scaffolding exists (target spec, linker script, Justfile recipe,
-  Limine `BOOTAA64.EFI`, ISA module tree) but the **AArch64 build does not
-  compile**: 50 errors.
-- AArch64 has roughly **843 lines** of ISA code versus **~4865 lines** for
-  x86-64. The core runtime subsystems (interrupt controller, timer, MMU/paging,
-  thread context / context switching) are empty stubs or `todo!()`.
-- Reaching a bootable AArch64 kernel is a **substantial porting effort**, not a
-  configuration change.
+- The AArch64 kernel **builds and boots end to end** under QEMU `virt` with a
+  GICv3. It initialises memory, brings up all secondary cores, passes the
+  physical/virtual memory and allocator self-tests, enumerates PCIe via ECAM,
+  and runs the scheduler with the ARM Generic Timer driving **stable,
+  fault-free preemptive context switches** (hundreds of thousands of timer
+  interrupts handled with zero faults, deterministic across repeated runs).
+- All six previously-missing subsystems are implemented: ARM Generic Timer,
+  MMU/paging (VMSAv8-64), thread context / context switching, GICv3, plus the
+  boot-enablement layer (PL011 serial console, MMIO mapping, Limine request
+  fixes).
+- AArch64 ISA code has grown from ~843 LOC to **~2748 LOC** (x86-64 is
+  ~4865 LOC). There are no remaining `todo!()`/`unimplemented!()` stubs in the
+  AArch64 ISA tree.
+- **Caveats**: boots headless only on macOS (the `display`/flanterm feature
+  needs a GNU/LLVM cross-toolchain; the serial console is the log sink); GIC and
+  UART MMIO base addresses are QEMU-`virt` hardcoded pending device-tree
+  support; execution reaches the kernel device-probe idle loop — no EL0/userspace
+  path is exercised yet.
 
-## How this was assessed
+## How to build and run
 
-- Read the ISA abstraction traits under
-  `crates/catten/src/cpu/isa/interface/` and compared the x86-64 and aarch64
-  implementations under `crates/catten/src/cpu/isa/{x86_64,aarch64}/`.
-- Attempted builds with the project's custom target specs:
-  - `cargo build -p catten --target target_specs/x86_64-unknown-none-catten.json`
-  - `cargo build -p catten --target target_specs/aarch64-unknown-none-catten.json --no-default-features --features acpi`
-- Toolchain: `nightly` (per `rust-toolchain.toml`), host `aarch64-apple-darwin`.
-  `rust-src` component is required (`rustup component add rust-src`) because the
-  build uses `build-std`.
+```sh
+brew install qemu mtools          # one-time
+rustup component add rust-src     # one-time (build-std)
+./scripts/run-aarch64.sh          # builds headless kernel, image, boots QEMU
+# serial console is on stdio; press Ctrl-A X to quit
+```
 
-## Build status matrix
+The script builds with `--no-default-features --features acpi` (headless, so the
+PL011 serial console is the log sink and the flanterm C dependency is avoided),
+creates a FAT EFI image with `mtools` (no sudo / loopback mounts), and launches
+`qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a710`.
 
-| Target | Rust compiles? | Links? | Notes |
-|--------|----------------|--------|-------|
-| x86-64 | Yes (all crates) | No (on macOS) | Fails only at the final link of the C `flanterm` static lib. `ranlib` warns `not a mach-o file`; `rust-lld` then reports `undefined symbol: flanterm_write`, `flanterm_fb_init`, etc. This is a macOS cross-compilation toolchain issue, not a kernel bug. |
-| aarch64 | No | n/a | 50 compile errors (see below). With default features it fails even earlier because `flanterm_bindings`' `bindgen` rejects the custom triple: `version 'catten' in target triple 'aarch64-unknown-none-catten' is invalid`. |
+## What was implemented
 
-### macOS-specific build caveat
+### 1. ARM Generic Timer (`cpu/isa/aarch64/timers/`)
+`LpTimerIfce` implemented on the EL1 physical timer with the system counter as
+the monotonic timestamp source:
+- `CNTFRQ_EL0` for the counter frequency, `CNTPCT_EL0` for `now()`.
+- Deadlines via `CNTP_CVAL_EL0`; enable/mask via `CNTP_CTL_EL0`.
+- Per-LP timer instances; `print_timer_info()` reports frequency/period.
+- No programmable divisor and a fixed hardware-wired PPI, so `set_divisor`
+  returns `DivisorNotSupported` and `set_isr_dispatch_number` only records.
 
-Even x86-64 does not fully link on macOS out of the box because the C toolchain
-(`cc`/`ar`/`ranlib` from Apple's toolchain) produces Mach-O objects that
-`rust-lld` cannot combine into an ELF kernel. Building the kernel reliably will
-likely require a GNU/LLVM cross toolchain (e.g. `llvm` from Homebrew with
-`llvm-ar`/`llvm-ranlib`, or a Linux build environment / container). This affects
-both architectures and is independent of the AArch64 code gaps.
+### 2. MMU / paging (`cpu/isa/aarch64/memory/`)
+Full `AddressSpaceInterface` for the 4 KiB granule, 48-bit VA, four-level
+(L0-L3) hierarchy matching Limine's translation regime:
+- `descriptor.rs`: VMSAv8-64 table/block/page descriptors, `MAIR` indices
+  (0 = Normal WB per Limine, 2 = Device-nGnRnE for MMIO), AF, inner-shareable,
+  `AP[2:1]` permissions, PXN/UXN.
+- `walker.rs`: four-level walker with TTBR0/TTBR1 root selection by address
+  half; map/unmap/translate for 4 KiB pages, 2 MiB (L2) and 1 GiB (L1) blocks;
+  allocates and reclaims intermediate tables; `map_mmio_page` for device memory.
+- `paging/mod.rs`: `AddressSpace` (`ttbr0_el1`/`ttbr1_el1`), `load()` with
+  `DSB ISH`/`ISB`, `map_mmio_region` (maps MMIO to its HHDM alias),
+  `HwAsid`, size constants.
+- **TLB maintenance uses hardware broadcast** (`TLBI ...IS` inner-shareable with
+  `DSB`/`ISB`) rather than the x86-style IPI shootdown — the architecturally
+  correct, async-first approach on AArch64.
 
-## The ISA abstraction contract
+### 3. Thread context & context switching (`cpu/isa/aarch64/lp/`)
+Cooperative, callee-saved-register context switching — cheap threads are a
+cornerstone of Catten's async-first model:
+- `switch_ctx`: saves x19-x30 + `TTBR0_EL1` on the outgoing kernel stack, swaps
+  SP, restores with barrier sync; null-`curr` abandons the boot context.
+- `cond_yield_lp`: collects switch params under the scheduler locks, releases
+  all locks, then switches (so a stack-abandoning switch cannot leak guards).
+- `kernel_thread_trampoline` / `user_trampoline` (EL0 via
+  `ELR_EL1`/`SP_EL0`/`SPSR_EL1` + `eret`).
+- `ThreadContext` with `create_kernel/user_thread_context`, synthesising an
+  initial stack frame that matches `switch_ctx`'s restore order.
 
-Generic (arch-independent) kernel code depends on each architecture providing an
-implementation of the traits in `crates/catten/src/cpu/isa/interface/`:
+### 4. GICv3 interrupt controller (`cpu/isa/aarch64/interrupts/`)
+- CPU interface via `ICC_*_EL1` system registers (SRE, PMR, Group 1 enable).
+- Redistributor power-up (clear ProcessorSleep, wait ChildrenAsleep) + enable
+  the per-core timer PPI (INTID 30).
+- Distributor enable (affinity routing + Group 1).
+- `send_unicast_ipi` via `ICC_SGI1R_EL1`; acknowledge/EOI via
+  `ICC_IAR1_EL1`/`ICC_EOIR1_EL1` (per-LP acked-INTID so the argument-less
+  `signal_eoi` completes the right interrupt).
+- Real exception dispatchers: `irq_dispatcher` acks → advances the timer queue
+  (waking observer threads) or drains the IPI queue → EOI → `cond_yield_lp`.
+- GIC MMIO mapped as Device memory before first use.
 
-| Interface (trait) | Purpose | x86-64 | aarch64 |
-|-------------------|---------|--------|---------|
-| `init::InitInterface` | BSP/AP bring-up, deinit | Done (`init/{bsp,ap,gdt}.rs`) | Partial (`init/mod.rs` only loads IVT) |
-| `system_info::CpuInfoIfce` | Vendor/model, VA/PA bits, ISA extensions | Done | **Done** (`system_info/` reads MIDR_EL1, ID_AA64* regs) |
-| `io::*RegNIfce` | MMIO / port IO register wrappers | Done (8/16/32/64, port + MMIO) | Partial (only `IoReg8` MMIO) |
-| `memory::MemoryInterface` + `AddressSpaceInterface` | Page tables, map/unmap, translate | Done (4K/2M/1G, PTE walker) | **Stub** (only `get_current`/`load`/`translate_address`; all map/unmap/find/is_mapped are `todo!()`; large/huge page fns missing entirely) |
-| `interrupts::LocalIntCtlrIfce` | Local interrupt controller, IPIs, EOI | Done (x2APIC) | **Empty** (`GicRedist` is a unit struct with no impl) |
-| `interrupts::DynInterruptDispatcherIfce` | Dynamic vector dispatch | Done | Missing |
-| `interrupts::ExternalInterruptControllerIfce` | External IRQ routing (IOAPIC/GIC distributor) | In progress | Missing |
-| `timers::LpTimerIfce` | Per-LP timer + timestamp source | Done (APIC timer + TSC) | **Empty** (`ArmGenericTimer` is a unit struct with no impl) |
-| `lp::LpIsaDataIfce` + LP ops | Per-LP data, context switch, trampolines, int masking | Done | Partial (masking, ID regs present; **context switch + trampolines missing**) |
+### 5. Boot enablement
+- **PL011 UART serial console** (`log/serial.rs`) as the AArch64 log backend,
+  mapped as Device memory via the HHDM; `early_log`/`log`/`logln` routed to it.
+- `scripts/run-aarch64.sh`: macOS-friendly image build + QEMU run.
+- `Justfile`: arch-correct EFI file (`BOOTAA64.EFI`) in `create-image`;
+  `gic-version=3` in the aarch64 recipe. `limine.conf`: serial enabled.
 
-## Per-module gap detail (aarch64)
+## Bugs found only by booting
 
-### 1. Interrupt controller — GIC (blocking)
-`crates/catten/src/cpu/isa/aarch64/interrupts/gic/mod.rs`
-- `GicRedist` is a bare `pub struct GicRedist;` with **no `LocalIntCtlrIfce`
-  impl**. Missing `init_lp`, `send_unicast_ipi`, `signal_eoi`.
-- The exception vector table (`ivt.asm`) is wired up (`vbar_el1`) and dispatchers
-  are declared, but `sync_dispatcher`/`irq_dispatcher`/`fiq_dispatcher`/
-  `serr_dispatcher` in `interrupts/mod.rs` are **empty bodies** — no ESR_EL1
-  decoding, no GIC acknowledge/EOI, no register save/restore of the trap frame
-  beyond the volatile-reg macros.
-- Needed: GICv3 (or GICv2 for QEMU `virt`) distributor + redistributor + CPU
-  interface driver, SGI-based IPIs, EOI/priority handling, IRQ→handler routing.
+These were invisible at compile time and were diagnosed via QEMU's `-d int`
+exception log and `lldb` on the QEMU gdb stub:
 
-### 2. Per-LP timer — ARM Generic Timer (blocking)
-`crates/catten/src/cpu/isa/aarch64/timers/mod.rs`
-- `ArmGenericTimer` is a bare unit struct; **`LpTimerIfce` not implemented**.
-- This single gap cascades into ~14 build errors because generic
-  `crates/catten/src/timers/mod.rs` uses `LpTimer::now()`,
-  `LpTimer::get_ts_cycle_period()`, `TimerEvent`, and `TimerQueue` which all
-  require the trait.
-- Needed: `CNTPCT_EL0`/`CNTVCT_EL0` timestamp source, `CNTP_*`/`CNTV_*` compare
-  registers for deadlines, frequency from `CNTFRQ_EL0`, interrupt masking, and a
-  `print_timer_info()` equivalent (imported by `main.rs`).
+1. **Limine requests garbage-collected.** The request statics (including the
+   base-revision marker) were unreferenced and dropped by `--gc-sections`, so
+   Limine fell back to base revision 0 — which it now *rejects* on AArch64 —
+   and refused to boot. Fixed by placing requests in `.limine_requests*`
+   sections marked `#[used]` and `KEEP`-ing them in both linker scripts.
+2. **`HHDM_BASE` resolved to 0.** The shared `VAddr::from` applies x86 canonical
+   sign-extension (bit 47 as sign), which zeroes AArch64's HHDM base of
+   `0xffff_0000_0000_0000` (bit 47 clear). Fixed by storing the bootloader
+   offset verbatim via `from_raw_unchecked`. This was the "x86 canonical rules
+   should work on aarch64" assumption in the code being wrong.
+3. **FP/SIMD trap.** The `+neon`-compiled kernel used FP/SIMD before
+   `CPACR_EL1.FPEN` was set, faulting as "undefined instruction". Fixed by
+   enabling FP/SIMD early on every core.
+4. **EL1t vs EL1h.** Running in EL1t meant interrupts pushed state onto an
+   invalid `SP_EL0`, producing a runaway fault storm. Fixed by forcing EL1h
+   (SP_ELx) early (copying the active SP into SP_EL1 before selecting it) and by
+   making the IVT dispatch the SP_EL0 exception group as well.
+5. **GICv2 vs GICv3, and unmapped MMIO.** QEMU `virt` does not default to GICv3;
+   the driver requires `-M virt,gic-version=3`. GIC (and UART) MMIO also had to
+   be explicitly mapped as Device memory because Limine only HHDM-maps real RAM.
 
-### 3. MMU / paging (blocking)
-`crates/catten/src/cpu/isa/aarch64/memory/mod.rs`, `memory/paging/mod.rs`,
-`memory/tlb.rs`
-- `AddressSpaceInterface` only implements `get_current`, `load`, and
-  `translate_address` (via `AT S1E1A` + `PAR_EL1`). All of `find_free_region`,
-  `map_page`, `unmap_page`, `is_mapped` are `todo!()`.
-- The whole large-page / huge-page half of the trait is **not implemented**:
-  `PAGE_SIZE`, `LARGE_PAGE_SIZE`, `HUGE_PAGE_SIZE`,
-  `find_free_region_large_aligned`, `find_free_region_huge_aligned`,
-  `map_large_page`, `unmap_large_page`, `map_huge_page`, `unmap_huge_page`,
-  `is_mapped_large_page`, `is_mapped_huge_page` (error E0046).
-- `paging/mod.rs` declares `PAGE_SIZE = 64 KiB` (via `crate::common::size`) but
-  `MemoryInterfaceImpl::PAGE_SIZE = 4096` — an inconsistency to resolve (choose a
-  granule: 4 KiB is simplest for QEMU `virt`).
-- `tlb.rs`: `inval_range_kernel`, `inval_range_user`, `inval_asid` are `todo!()`
-  (need `TLBI` instruction sequences + `DSB`/`ISB`).
-- There is no AArch64 page-table entry (PTE) abstraction or table walker
-  equivalent to x86-64's `paging/pte.rs` and `paging/pth_walker.rs`.
+## Remaining work / known limitations
 
-### 4. Thread context & context switching (blocking)
-`crates/catten/src/cpu/isa/aarch64/lp/thread_context/mod.rs`, `lp/ops.rs`
-- `ThreadContext` is a unit struct whose `new` is `todo!()`; it does not derive
-  `Debug` (required by generic thread code).
-- The generic scheduler (`cpu/scheduler/threads/mod.rs`) calls
-  `ThreadContext::create_user_thread_context` and
-  `create_kernel_thread_context` — **neither exists** for aarch64.
-- No AArch64 equivalent of x86-64's `switch_ctx` / `enter_init_thread_ctx` /
-  `user_trampoline` / `kernel_thread_trampoline` naked-asm routines. This is the
-  heart of the scheduler; without it there is no multitasking. Needs callee-saved
-  register + `SP`/`ELR_EL1`/`SPSR_EL1`/`TTBR0_EL1` save-restore and an
-  `eret`-based user trampoline.
-- `lp/ops.rs` is missing `get_int_state` and `await_interrupt` (a fn/macro),
-  both imported by generic code (`panic.rs`, interrupt tracking, spin mutex).
-  A `halt!` macro exists but the naming/signature differs from what generic code
-  imports (`await_interrupt`).
+- **Display/framebuffer path on macOS.** The `display` feature pulls in the C
+  `flanterm` library; the Apple toolchain produces Mach-O objects that
+  `rust-lld` cannot link into the ELF kernel (this also affects x86-64 on
+  macOS). Options: a GNU/LLVM cross toolchain (`llvm-ar`/`llvm-ranlib`), a Linux
+  build container, or continue headless via serial.
+- **Device-tree discovery.** GIC distributor/redistributor and PL011 base
+  addresses are hardcoded to the QEMU `virt` defaults. They should be read from
+  the `/intc` and `/pl011` device-tree nodes; the `devicetree` feature and
+  `flat_device_tree` dependency exist but the consumer (`get_pcie_segment_groups`
+  for DT) is still `todo!()`. ACPI parsing works on `virt` (which does expose
+  ACPI), so this is not blocking today.
+- **No EL0 / userspace exercised.** `user_trampoline` and
+  `create_user_thread_context` are implemented but only kernel threads have been
+  run; the EL0 drop and syscall path are untested.
+- **SPI / external interrupt routing.** Only PPIs (timer) and SGIs (IPIs) are
+  wired; device SPIs will need the `ExternalInterruptControllerIfce` path
+  (GICD `IROUTER`/config) once drivers attach.
+- **Self-tests.** x86-specific hardcoded HHDM debug probes were gated out for
+  AArch64; the portable map/write/read/unmap VMM test does run and pass.
+- **Not runtime-hardened.** The port boots reliably in QEMU but has not been
+  tested on real hardware, under stress, or with KASLR.
 
-### 5. Missing type aliases and modules (mechanical, but blocking)
-- `cpu/isa/aarch64/lp/mod.rs` does not define `EicId`, `EicPinNum`,
-  `InterruptVectorNum` (x86-64 does). Imported by
-  `cpu/interrupt_routing/mod.rs` and the timer code.
-- No `cpu/isa/aarch64/constants` module (x86-64 has
-  `constants::{interrupt_vectors, msrs, rflags}`). Generic code imports
-  `crate::cpu::isa::constants::interrupt_vectors::{ASYNC_IPI_VECTOR,
-  LAPIC_TIMER_VECTOR}` unconditionally.
-- `crate::common::{size,bitwise}` is referenced by aarch64 code but **does not
-  exist** — the real modules are `crate::klib::{size,bitwise}`. (These are import
-  bugs in the aarch64 tree.)
-- `cpu/isa/aarch64/memory/paging` does not export an `AddressSpace` type that
-  `memory/allocators/stack_allocator.rs` imports.
-- `MemoryInterface` is imported privately (`E0603`) — a `pub use` visibility fix
-  in the aarch64 `memory/mod.rs`.
+## Verified boot output (abridged)
 
-### 6. Device / platform enumeration (secondary)
-- `HwDeviceIfce` has aarch64 variants gated behind `#[cfg(target_arch =
-  "aarch64")]` (`ArmPl011Uart`, `ArmGic`, `ArmSmmu`) but the PCIe class matcher
-  references `HwDeviceIfce::ArmGpu`, which is **not a declared variant** (only
-  `AmdGpu`/`IntelGpu`/`NvidiaGpu` exist). Similarly `SmBusController` is gated
-  x86-only yet matched unconditionally in the aarch64 build.
-- No PL011 UART driver (the natural early console on QEMU `virt`), and no
-  device-tree consumer even though a `devicetree` feature and `flat_device_tree`
-  dependency exist. On the `virt` machine, hardware discovery is via **FDT**,
-  not ACPI — see firmware section below.
+```
+Catten Kernel Version 0.8.1
+LP 0..3 designated and initialised (4 cores online)
+All physical memory subsystem tests passed.
+All virtual memory tests passed!            (maps/reads/unmaps a higher-half page)
+Kernel allocator self-test: PASSED
+Testing Complete. All Tests Passed!
+CPU Vendor: ARM    PA bits: 40    VA bits: 48
+The ARM Generic Timer frequency is 62500000 Hz.
+[ACPI] Finished parsing XSDT. Found 5 tables.  (FADT, MCFG, SPCR, GTDT, MADT)
+LP 0: Probing device topology...
+  Segment Group 0 (ECAM @ 0xffff820000000000, buses 0x00-0xff)
+    00:00.0  PCI Express Host Bridge
+    00:01.0  Red Hat VirtIO
+    00:02.0  Red Hat VirtIO
+```
 
-### 7. Cross-cutting issues surfaced by the aarch64 build
-- `cpu/multiprocessor/startup.rs` imports `limine::mp::MP_FLAG_X2APIC`
-  unconditionally; the pulled-in `limine` crate version does not expose it, and
-  it is an x86 concept. SMP bring-up needs an arch-gated path (Limine MP + PSCI
-  on ARM).
-- `panic.rs` returns `()` instead of `!` once `await_interrupt!` is unresolved —
-  will resolve once the LP ops are provided.
-- `display`/`flanterm` feature cannot be built for the custom
-  `-catten` triple because `bindgen`/`clang` reject the environment component.
-  The `.cargo/config.toml` sets `CFLAGS_*`/`BINDGEN_EXTRA_CLANG_ARGS_*` only for
-  `x86_64-unknown-none-catten`; an equivalent entry for
-  `aarch64-unknown-none-catten` (`--target=aarch64-unknown-none-elf`) is missing.
+Steady state: hundreds of thousands of timer IRQs serviced with **0 faults**.
 
-## Firmware / boot model concern for Apple Silicon + QEMU
+## Toolchain / environment notes
 
-- The kernel's firmware abstraction assumes UEFI + ACPI on servers/PCs, and
-  ACPI **or** a Flattened Device Tree (FDT) on embedded. `environment/mod.rs`
-  gates ACPI on `x86_64` or the `acpi` feature and provides an `arm_smc` module
-  and a `devicetree` feature, but `get_pcie_segment_groups()` for devicetree is
-  `todo!()`.
-- QEMU `-M virt` (what the `qemu-run-aarch64` recipe uses) presents an **FDT**,
-  not ACPI, unless `acpi=on` is requested. Booting there realistically requires
-  the device-tree path, which is unimplemented.
-- Practical route on an M2 Mac: QEMU (TCG or HVF) running the `virt` machine with
-  edk2 `QEMU_EFI.fd` + Limine `BOOTAA64.EFI`. Note QEMU HVF acceleration on
-  Apple Silicon runs AArch64 guests natively; TCG works but is slower.
-
-## Build / tooling infrastructure gaps
-
-- **`Justfile` bug**: `create-image` always copies `./limine-binary/BOOTX64.EFI`
-  to `EFI/BOOT/BOOTX64.EFI`, even for the aarch64 image. AArch64 UEFI needs
-  `BOOTAA64.EFI` (present in `limine-binary/`) at `EFI/BOOT/BOOTAA64.EFI`.
-- **Linux-only image tooling**: `create-image` uses `losetup`, `parted`,
-  `mkfs.fat`, and `mount`, none of which exist on macOS. On an M2 this recipe
-  cannot run as-is; it needs a macOS-compatible path (e.g. `hdiutil` + `mtools`
-  `mformat`/`mcopy`, or building the image inside a Linux container/VM).
-- `just` itself is not installed in this environment (`brew install just`).
-- `rust-src` must be added to the nightly toolchain for `build-std`.
-- A GNU/LLVM cross toolchain is needed for the `flanterm` C dependency (see macOS
-  caveat above), or build headless with `--no-default-features` (drops the
-  `display` feature) until the framebuffer console is ported.
-
-## Suggested porting order (dependency-first)
-
-1. **Mechanical unblock**: fix imports (`crate::klib::*` not `crate::common::*`),
-   add `constants` module + interrupt-vector constants, add `EicId`/`EicPinNum`/
-   `InterruptVectorNum` aliases, fix `HwDeviceIfce` variant mismatches, make
-   `MemoryInterface` re-export public, arch-gate `MP_FLAG_X2APIC`, add
-   `get_int_state`/`await_interrupt` to `lp/ops.rs`, add the aarch64
-   `BINDGEN_EXTRA_CLANG_ARGS`/`CFLAGS` cargo env (or build headless).
-2. **ARM Generic Timer** (`LpTimerIfce`) — unblocks ~14 errors and the scheduler
-   tick.
-3. **GIC driver** (`LocalIntCtlrIfce` + dispatchers) — interrupts, IPIs, EOI.
-4. **MMU/paging** — full `AddressSpaceInterface` incl. large/huge pages + TLB
-   invalidation, choosing a granule (4 KiB recommended for `virt`).
-5. **Thread context + context switch asm** — `create_{kernel,user}_thread_context`,
-   `switch_ctx`, trampolines; the core of preemptive multitasking.
-6. **Platform enumeration**: PL011 UART early console, device-tree parsing for
-   PCIe/SMMU, SMP bring-up (PSCI).
-7. **Build/boot glue**: fix `Justfile` for `BOOTAA64.EFI` + macOS image creation,
-   QEMU `virt` run recipe validation.
+- Toolchain: `nightly` (per `rust-toolchain.toml`); `rust-src` required for
+  `build-std`.
+- Host tested: `aarch64-apple-darwin` (Apple M2), QEMU 11.x, edk2 aarch64
+  firmware shipped with QEMU (`edk2-aarch64-code.fd`).
+- x86-64 Rust build is unaffected by the port; on macOS it still fails only at
+  the flanterm C link step (host toolchain limitation, not a kernel bug).
 
 ## Key references in-tree
 
 - ISA traits: `crates/catten/src/cpu/isa/interface/`
-- x86-64 reference impl (use as the template): `crates/catten/src/cpu/isa/x86_64/`
-- aarch64 work-in-progress: `crates/catten/src/cpu/isa/aarch64/`
+- x86-64 reference impl: `crates/catten/src/cpu/isa/x86_64/`
+- aarch64 implementation: `crates/catten/src/cpu/isa/aarch64/`
+- Serial console: `crates/catten/src/log/serial.rs`
 - Generic timer system: `crates/catten/src/timers/mod.rs`
 - Scheduler / threads: `crates/catten/src/cpu/scheduler/`
-- SMP startup: `crates/catten/src/cpu/multiprocessor/startup.rs`
 - Firmware abstraction: `crates/catten/src/environment/`
-- Build recipes: `Justfile`; target spec: `target_specs/aarch64-unknown-none-catten.json`
+- Run script: `scripts/run-aarch64.sh`; target spec:
+  `target_specs/aarch64-unknown-none-catten.json`
