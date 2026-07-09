@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
-use alloc::fmt::Write;
 use core::ffi::{c_char, c_void};
+use core::fmt::Write;
 use core::ptr::null_mut;
 
 use flanterm_bindings::*;
@@ -10,31 +10,53 @@ use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::environment::boot_protocol::limine::FRAMEBUFFER_REQUEST;
 use crate::log::chars::{FONT_HEIGHT, FONT_WIDTH};
 
-pub struct FlantermContext {
-    ctx: Box<flanterm_context>,
+/// The framebuffer terminal console.
+///
+/// A usable linear framebuffer is not guaranteed to be present: the bootloader
+/// may not have been given one (e.g. a headless configuration, or a platform
+/// where firmware exposes no Graphics Output Protocol). In that case this holds
+/// `None` and callers fall back to the serial console, rather than the kernel
+/// faulting while trying to draw to a nonexistent framebuffer.
+pub struct FlantermConsole {
+    ctx: Option<Box<flanterm_context>>,
 }
 
-impl FlantermContext {
-    pub fn new(ctx: Box<flanterm_context>) -> Self {
-        FlantermContext {
-            ctx,
-        }
+impl FlantermConsole {
+    /// Whether a framebuffer terminal is actually available.
+    pub fn is_available(&self) -> bool {
+        self.ctx.is_some()
     }
 }
 
-impl Write for FlantermContext {
-    fn write_str(&mut self, str: &str) -> core::fmt::Result {
-        let ctx_mut = &mut *self.ctx;
-        unsafe {
-            flanterm_write(ctx_mut, str.as_ptr() as *const c_char, str.len());
+impl Write for FlantermConsole {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        if let Some(ctx) = self.ctx.as_mut() {
+            unsafe {
+                flanterm_write(&mut **ctx, s.as_ptr() as *const c_char, s.len());
+            }
         }
         Ok(())
     }
 }
 
-pub static FT_CTX: LazyLock<Mutex<FlantermContext>> = LazyLock::new(|| {
-    let fb_res = FRAMEBUFFER_REQUEST.response().expect("Failed to get Limine framebuffer response");
-    let fb = fb_res.framebuffers().first().expect("No framebuffer found in Limine response");
+pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| {
+    Mutex::new(init_console())
+});
+
+/// Attempt to initialise the framebuffer terminal from the Limine framebuffer
+/// response. Returns a console with no backing context if there is no usable
+/// framebuffer (missing response, no framebuffers, zero dimensions, or a null
+/// address), or if `flanterm` itself fails to initialise.
+fn init_console() -> FlantermConsole {
+    let Some(fb_res) = FRAMEBUFFER_REQUEST.response() else {
+        return FlantermConsole { ctx: None };
+    };
+    let Some(fb) = fb_res.framebuffers().first() else {
+        return FlantermConsole { ctx: None };
+    };
+    if fb.address().is_null() || fb.width == 0 || fb.height == 0 || fb.pitch == 0 {
+        return FlantermConsole { ctx: None };
+    }
     let ctx_mut = unsafe {
         flanterm_fb_init(
             Some(malloc),
@@ -65,8 +87,13 @@ pub static FT_CTX: LazyLock<Mutex<FlantermContext>> = LazyLock::new(|| {
             0,
         )
     };
-    Mutex::new(FlantermContext::new(unsafe { Box::from_raw(ctx_mut) }))
-});
+    if ctx_mut.is_null() {
+        return FlantermConsole { ctx: None };
+    }
+    FlantermConsole {
+        ctx: Some(unsafe { Box::from_raw(ctx_mut) }),
+    }
+}
 
 pub extern "C" fn malloc(size: usize) -> *mut c_void {
     let layout =

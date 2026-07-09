@@ -64,20 +64,56 @@ macro_rules! early_logln {
     }};
 }
 
+/// Write already-formatted log output to the active console backend.
+///
+/// Backend selection:
+/// - With the `display` feature, output goes to the framebuffer terminal when a
+///   usable framebuffer is present. On AArch64, if the framebuffer terminal is
+///   unavailable (no framebuffer from the bootloader), output falls back to the
+///   PL011 serial console so logs are never silently lost.
+/// - Without the `display` feature, AArch64 uses the serial console.
+#[doc(hidden)]
+pub fn _write_args(args: core::fmt::Arguments, newline: bool) {
+    use core::fmt::Write;
+    #[cfg(feature = "display")]
+    {
+        let mut console = crate::log::flanterm::FT_CTX.lock();
+        if console.is_available() {
+            let _ = console.write_fmt(args);
+            if newline {
+                let _ = console.write_str("\n");
+            }
+            return;
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            let _ = console.write_fmt(args);
+            if newline {
+                let _ = console.write_str("\n");
+            }
+            return;
+        }
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        let mut serial = crate::log::serial::SERIAL.lock();
+        let _ = serial.write_fmt(args);
+        if newline {
+            let _ = serial.write_str("\n");
+        }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let _ = args;
+        let _ = newline;
+    }
+}
+
 #[macro_export]
 macro_rules! log {
     ($text:expr $(, $arg:tt)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
-        #[cfg(feature = "display")]
-        {
-            use core::fmt::Write;
-            let _ = write!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        }
-        #[cfg(all(target_arch = "aarch64", not(feature = "display")))]
-        {
-            use core::fmt::Write;
-            let _ = write!($crate::log::serial::SERIAL.lock(), $text $(, $arg)*);
-        }
+        $crate::log::_write_args(format_args!($text $(, $arg)*), false);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
     })
 }
@@ -85,16 +121,7 @@ macro_rules! log {
 macro_rules! logln {
     ($text:expr $(, $arg:tt)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
-        #[cfg(feature = "display")]
-        {
-            use core::fmt::Write;
-            let _ = writeln!($crate::log::flanterm::FT_CTX.lock(), $text $(, $arg)*);
-        }
-        #[cfg(all(target_arch = "aarch64", not(feature = "display")))]
-        {
-            use core::fmt::Write;
-            let _ = writeln!($crate::log::serial::SERIAL.lock(), $text $(, $arg)*);
-        }
+        $crate::log::_write_args(format_args!($text $(, $arg)*), true);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
     })
 }
