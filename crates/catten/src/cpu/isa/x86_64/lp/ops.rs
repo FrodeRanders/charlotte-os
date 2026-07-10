@@ -12,6 +12,15 @@ pub fn init_lp_state() {
             out("rax") _
         }
     }
+    // Enable SYSCALL/SYSRET. The handler address comes from the
+    // syscall_entry trampoline in interrupts/syscall.rs.
+    unsafe extern "C" {
+        fn syscall_entry();
+    }
+    let handler_addr = unsafe { syscall_entry as usize as u64 };
+    unsafe {
+        crate::cpu::isa::x86_64::constants::msrs::setup_syscall(handler_addr);
+    }
 }
 
 #[rustfmt::skip]
