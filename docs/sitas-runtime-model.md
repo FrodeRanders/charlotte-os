@@ -649,12 +649,48 @@ cleanly, no new warnings. This directly seeds Option B (Phase 3): the
 `Closure` variant is the prototype of a typed `ShardMailbox<M>` and the bounded
 queue enforces the sitas bounded-mailbox discipline in the kernel itself.
 
-**Prerequisites that do not exist yet (scoping the eventual prototype):** there
-is no syscall entry/dispatch (`sync_dispatcher` panics on SVC; x86_64 has no
-`SYSCALL` handler), no per-AS capability table (only PCIe device capabilities
-exist), and no userspace-mappable CQ/SQ. x86_64 IPI handlers are stubbed
-(`todo!()`), so the first runnable prototype targets AArch64.
-
 ### Phase 3 — Option B (`charlotte-os` `shard-local-kernel`)
 
-_Not started._
+_In progress. First deliverables complete: lock-free `ShardLocal<T>` and typed
+`ShardMailbox<M>`._
+
+**What was done (branch `shard-local-kernel`, builds on the IPI work from Phase
+2):**
+
+- **`ShardLocal<T>`** (`crates/catten/src/cpu/multiprocessor/spin/shard_local.rs`)
+  — a lock-free per-LP container that replaces `PerLp<T>`'s `RwLock` with
+  `UnsafeCell<T>` + two runtime assertions: (1) owner-check (the caller must be
+  on the owning LP), (2) re-entrancy guard (a per-LP `AtomicBool` borrow flag,
+  set on entry, cleared via RAII `BorrowGuard` on exit). `try_with(f)` returns
+  `Result<R, ShardLocalAccessError>`; `with(f)` panics on violation. There is no
+  lock — the safety comes from the single-threaded-LP invariant that sitas's
+  `ShardLocal<T>` enforces clousure-style. Useful for LP-local data that is
+  never touched from an IRQ handler or cross-LP.
+
+- **`ShardMailbox<M>`** (`crates/catten/src/cpu/multiprocessor/shard_mailbox.rs`)
+  — a typed bounded per-LP queue (`ConcurrentQueue::bounded(256)`) with
+  cloneable `ShardSender<M>` and single-consumer `ShardReceiver<M>`. `try_send`
+  returns `Err(M)` on backpressure (sitas `ShardSendError::Full` equivalent) and
+  delivers a wake IPI on success; `try_recv` polls the local queue.
+  `ShardMailboxSet<M>` is the per-LP collection indexed by `LpId`, with
+  `sender_to(lp)` and `receiver_for(lp)`. This is the kernel realization of
+  sitas's typed owned-message transport.
+
+Self-tests (`crates/catten/src/self_test/shard.rs`) validate: `try_with`
+owner-access and value persistence, re-entrant access rejection, `try_send` /
+`try_recv` round-trip, send-backpressure on full queue, and multiple-clone
+senders. Both architectures build cleanly, no new warnings.
+
+**Decision-gate status:**
+
+- *Does the discipline improve kernel code without fighting `no_std`?*
+  **Yes.** `ShardLocal<T>`'s closure-based access eliminates the spin-lock
+  acquire for LP-local data that is never touched cross-LP or from an IRQ. The
+  API is a complement to (not a replacement for) `PerLp<T>` — use `PerLp<T>`
+  when interrupt-safety or cross-LP access is needed, `ShardLocal<T>` when the
+  data is strictly single-LP. The borrow flag is a single `AtomicBool` swap
+  vs. a CAS loop + interrupt mask.
+- *Does it stay compatible with the existing scheduler and IPI paths?* **Yes.**
+  `ShardMailbox<M>` uses the existing `send_ipi` and bounded `ConcurrentQueue`
+  from the IPI generalization (Phase 2, step 5). `ShardLocal<T>` is a new type
+  alongside `PerLp<T>`, not a replacement — no existing callers are affected.
