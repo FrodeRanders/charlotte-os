@@ -1,7 +1,7 @@
 # Sitas on CharlotteOS: A Co-Designed Shard-per-Core Runtime
 
 > A design note exploring what a Seastar-like, shard-per-core userspace runtime
-> ([`sitas`](https://github.com/gautelis/sitas)) would look like implemented on
+> ([`sitas`](https://github.com/FrodeRanders/sitas)) would look like implemented on
 > top of — or in co-design with — CharlotteOS, an operating system built to be
 > asynchronous from the first commit and to *expose* that asynchrony to its
 > inhabitants.
