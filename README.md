@@ -23,6 +23,23 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 - Full standards conforming UEFI and ACPI firmware environment
 - Intel or AMD compatible IOMMU
 
+#### AArch64 (ARM64)
+
+- ARMv8-A or later application processor
+- Generic Interrupt Controller version 3 (GICv3)
+- ARM Generic Timer
+- Full standards conforming UEFI and ACPI firmware environment (ARM SystemReady
+  compliant), or a Flattened Device Tree (FDT) on embedded platforms
+- ARM System Memory Management Unit (SMMU) for IOMMU functionality
+
+AArch64 support is under active development. The kernel currently boots on the
+QEMU `virt` machine (GICv3): it initializes memory, brings up all secondary
+processors, runs the scheduler with preemptive context switching driven by the
+ARM Generic Timer, and enumerates PCIe via ECAM. See
+[`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) for a detailed
+status report, including current limitations (device-tree discovery and
+userspace/EL0 execution are not yet implemented).
+
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 
 ---
