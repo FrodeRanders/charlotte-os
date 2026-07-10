@@ -30,6 +30,7 @@ impl UserEntryFrames {
     fn new(asp: AddressSpaceId, entry_point: u64, iretq_rsp: VAddr, flags: u64) -> Self {
         UserEntryFrames {
             cr3: ADDRESS_SPACE_TABLE
+                .lock()
                 .get(asp)
                 .expect("Address space not found when creating thread context.")
                 .get_cr3(),

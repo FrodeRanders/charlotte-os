@@ -251,8 +251,16 @@ impl<'vas> Walker<'vas> {
                 true,
             );
             if zero_frame {
-                // Clear the freshly mapped page, matching the x86-64 path.
                 core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+                unsafe {
+                    core::arch::asm!(
+                        "dsb ishst",
+                        "ic ialluis",
+                        "dsb ish",
+                        "isb",
+                        options(nomem, nostack, preserves_flags),
+                    );
+                }
             }
         }
         tlb::inval_page(self.vaddr);
