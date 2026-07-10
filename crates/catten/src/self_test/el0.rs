@@ -22,12 +22,11 @@ use crate::completion::{self, OpCode, OpResult};
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 use crate::cpu::isa::memory::paging::AddressSpace;
 use crate::cpu::scheduler::spawn_thread;
-use crate::klib::collections::id_table::IdTable;
 use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 use crate::memory::{
     linear::{MemoryMapping, PageType, VAddr},
-    KERNEL_AS,
+    ADDRESS_SPACE_TABLE, KERNEL_AS,
 };
 
 /// Virtual address in the lower half (TTBR0) for the user code page.
@@ -59,10 +58,6 @@ const USER_THREAD_CODE: &[u8] = &[
 /// writes the assembly stub, and returns the `AddressSpaceId`.
 #[cfg(target_arch = "aarch64")]
 fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr) -> usize {
-    use spin::mutex::Mutex;
-    static TEST_AS_TABLE: spin::LazyLock<Mutex<IdTable<AddressSpace>>> =
-        spin::LazyLock::new(|| Mutex::new(IdTable::new()));
-
     logln!("Creating user address space...");
 
     let user_as = {
@@ -72,24 +67,23 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         as_
     };
 
-    let mut table = TEST_AS_TABLE.lock();
-    let asid = table.add_element(user_as);
-    logln!("User AS registered with asid={}", asid);
+    // Register in the global table so create_user_thread_context finds it.
+    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    logln!("User AS registered in global table with asid={}", asid);
 
     // --- map user code page ---------------------------------------------------
     let code_frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
         .allocate_frame()
         .expect("failed to allocate physical frame for user code page");
-    logln!("Allocated code frame {:?} at vaddr {:?}", code_frame, vaddr);
+    logln!("Allocated code frame at vaddr {:?}", vaddr);
 
     let code_mapping = MemoryMapping {
         vaddr,
         paddr: code_frame,
         page_type: PageType::UserCode,
     };
-    let mut user_as_mut = table.get_mut(asid).expect("failed to retrieve AS for mapping");
-    user_as_mut
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for mapping")
         .map_page(code_mapping.clone())
         .expect("failed to map user code page");
 
@@ -100,6 +94,18 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
             USER_THREAD_CODE.as_ptr(),
             code_hhdm,
             USER_THREAD_CODE.len(),
+        );
+    }
+    // Full I-cache invalidation sequence: clean D-cache to PoU, then invalidate
+    // I-cache to PoU, with barriers. This is the architected sequence for
+    // making code visible to the instruction fetch after writing via D-side.
+    unsafe {
+        core::arch::asm!(
+            "dsb ishst",        // ensure prior stores are visible
+            "ic ialluis",       // invalidate I-cache (all, inner shareable)
+            "dsb ish",          // ensure I-cache invalidation is complete
+            "isb",              // synchronize context
+            options(nomem, nostack, preserves_flags),
         );
     }
 
@@ -113,10 +119,9 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
     let cq_mapping = MemoryMapping {
         vaddr: cq_vaddr,
         paddr: cq_frame,
-        page_type: PageType::UserData, // read + write, EL0-accessible
+        page_type: PageType::UserData,
     };
-    let mut user_as_mut2 = table.get_mut(asid).expect("failed to retrieve AS for CQ mapping");
-    user_as_mut2
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for CQ mapping")
         .map_page(cq_mapping)
         .expect("failed to map CQ ring page");
 
@@ -125,15 +130,15 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         .lock()
         .allocate_frame()
         .expect("failed to allocate physical frame for result page");
-    logln!("Allocated result frame {:?} at vaddr {:?}", result_frame, result_vaddr);
+    logln!("Allocated result frame at vaddr {:?}", result_vaddr);
 
     let result_mapping = MemoryMapping {
         vaddr: result_vaddr,
         paddr: result_frame,
-        page_type: PageType::UserData, // read + write
+        page_type: PageType::UserData,
     };
-    let mut as3 = table.get_mut(asid).expect("failed to retrieve AS for result mapping");
-    as3.map_page(result_mapping).expect("failed to map result page");
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for result mapping")
+        .map_page(result_mapping).expect("failed to map result page");
 
     // Initialize the CQ ring on this physical frame, then register the AS
     // with the completion subsystem so `complete()` writes to the ring.

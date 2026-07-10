@@ -130,6 +130,7 @@ impl ThreadContext {
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // Run the user thread in its own address space's lower half (TTBR0).
         let ttbr0_el1 = ADDRESS_SPACE_TABLE
+            .lock()
             .get(asid)
             .expect("Address space not found when creating thread context.")
             .get_ttbr0();
