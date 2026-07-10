@@ -5,7 +5,8 @@ use core::arch::{asm, global_asm};
 pub use gic::*;
 
 use crate::cpu::isa::constants::interrupt_vectors::{ASYNC_IPI_VECTOR, LAPIC_TIMER_VECTOR};
-use crate::cpu::isa::lp::ops::cond_yield_lp;
+use crate::cpu::isa::lp::ops::{cond_yield_lp, get_lp_id};
+use crate::syscall::{self, ec_from_esr, EC_SVC_AARCH64, MAX_SYSCALL, TrapFrame};
 
 // Include the interrupt vector table assembly
 global_asm!(include_str!("ivt.asm"));
@@ -23,9 +24,12 @@ pub fn load_ivt() {
     }
 }
 
-/// Synchronous exception dispatcher (e.g. data/instruction aborts, SVC). No
-/// device interrupts arrive here; for now unexpected synchronous exceptions are
-/// fatal while the exception decoding layer is developed.
+/// Synchronous exception dispatcher (data/instruction aborts, SVC, etc.). On
+/// the SVC path (exception class 0x15) it extracts the syscall number from
+/// ESR_EL1.ISS, reads the volatile register context saved by the IVT entry's
+/// `push_volatile_regs` into a [`TrapFrame`], advances ELR_EL1 past the SVC
+/// instruction, and hands off to [`syscall::syscall_dispatch`]. For every other
+/// exception class the existing fatal-panic behavior is preserved.
 #[unsafe(no_mangle)]
 pub extern "C" fn sync_dispatcher() {
     let esr_el1: u64;
@@ -36,9 +40,82 @@ pub extern "C" fn sync_dispatcher() {
         asm!("mrs {}, elr_el1", out(reg) elr_el1, options(nomem, nostack, preserves_flags));
         asm!("mrs {}, far_el1", out(reg) far_el1, options(nomem, nostack, preserves_flags));
     }
+
+    let ec = ec_from_esr(esr_el1);
+
+    if ec == EC_SVC_AARCH64 {
+        let svc_imm = (esr_el1 & 0xFFFF) as u16;
+        if svc_imm > MAX_SYSCALL {
+            panic!("Unknown syscall number: {svc_imm}");
+        }
+
+        let spsr: u64;
+        let sp_el0: u64;
+        unsafe {
+            asm!("mrs {}, spsr_el1", out(reg) spsr, options(nomem, nostack, preserves_flags));
+        }
+        unsafe {
+            asm!("mrs {}, sp_el0", out(reg) sp_el0, options(nomem, nostack, preserves_flags));
+        }
+
+        let mut frame = TrapFrame {
+            regs: [0u64; 19],
+            elr_el1: elr_el1.wrapping_add(4), // skip the SVC instruction on return
+            spsr_el1: spsr,
+            sp_el0,
+            lp_id: get_lp_id(),
+        };
+
+        // Read the saved volatile registers from the kernel stack. After
+        // `push_volatile_regs` the stack pointer points to x18; the mapping
+        // below is derived directly from the push ordering in ivt.asm:
+        //
+        //  offset 0: x18     (<- sp)
+        //  offset 8: x16,x17 (stp pair)
+        //  …
+        //  offset 136: x0,x1 (first stp pair pushed)
+        let sp: u64;
+        unsafe {
+            asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
+        }
+        let base = sp as *const u64;
+        unsafe {
+            frame.regs[0] = base.add(17).read_volatile(); // x0
+            frame.regs[1] = base.add(18).read_volatile(); // x1
+            frame.regs[2] = base.add(15).read_volatile(); // x2
+            frame.regs[3] = base.add(16).read_volatile(); // x3
+            frame.regs[4] = base.add(13).read_volatile(); // x4
+            frame.regs[5] = base.add(14).read_volatile(); // x5
+            frame.regs[6] = base.add(11).read_volatile(); // x6
+            frame.regs[7] = base.add(12).read_volatile(); // x7
+            frame.regs[8] = base.add(9).read_volatile(); // x8
+            frame.regs[9] = base.add(10).read_volatile(); // x9
+            frame.regs[10] = base.add(7).read_volatile(); // x10
+            frame.regs[11] = base.add(8).read_volatile(); // x11
+            frame.regs[12] = base.add(5).read_volatile(); // x12
+            frame.regs[13] = base.add(6).read_volatile(); // x13
+            frame.regs[14] = base.add(3).read_volatile(); // x14
+            frame.regs[15] = base.add(4).read_volatile(); // x15
+            frame.regs[16] = base.add(1).read_volatile(); // x16
+            frame.regs[17] = base.add(2).read_volatile(); // x17
+            frame.regs[18] = base.add(0).read_volatile(); // x18
+        }
+
+        syscall::syscall_dispatch(&frame, svc_imm);
+
+        // Write back x0 (return value) to the stack slot so `pop_volatile_regs`
+        // restores it into the user's x0 before `eret`.
+        unsafe {
+            (base.add(17) as *mut u64).write_volatile(frame.regs[0]);
+            asm!("msr elr_el1, {}", in(reg) frame.elr_el1, options(nomem, nostack, preserves_flags));
+        }
+
+        return;
+    }
+
+    // Not SVC — fatal.
     panic!(
-        "Unhandled synchronous exception: ESR_EL1={:#x}, ELR_EL1={:#x}, FAR_EL1={:#x}",
-        esr_el1, elr_el1, far_el1
+        "Unhandled synchronous exception: EC={ec:#x}, ESR_EL1={esr_el1:#x}, ELR_EL1={elr_el1:#x}, FAR_EL1={far_el1:#x}",
     );
 }
 

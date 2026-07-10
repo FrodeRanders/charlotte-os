@@ -558,13 +558,46 @@ backpressure).
 
 **What is deliberately *not* here yet** (honest scoping): `wait` is implemented
 but not exercised in self-tests because it blocks the calling thread, and
-self-tests run before the BSP yields to the scheduler; there is no EL0 syscall
-entry to call these from userspace (`sync_dispatcher` still panics on SVC); and
-there is no shared-memory CQ/SQ ring — completion is delivered via the observer
-wake, not yet a userspace-visible queue. The module builds and links cleanly for
-both `aarch64-unknown-none-catten` and `x86_64-unknown-none-catten` (with the
-`display` feature off, which has an unrelated pre-existing host-link issue), and
-adds no new warnings.
+self-tests run before the BSP yields to the scheduler; there is no real-EL0
+test thread (the dispatch path is exercised via synthetic `TrapFrame` — §9.3);
+and there is no shared-memory CQ/SQ ring — completion is delivered via the
+observer wake, not yet a userspace-visible queue. The module builds and links
+cleanly for both `aarch64-unknown-none-catten` and `x86_64-unknown-none-catten`
+(with the `display` feature off, which has an unrelated pre-existing host-link
+issue), and adds no new warnings.
+
+### 9.3 Syscall entry prototype: `sync_dispatcher` no longer panics on SVC
+
+The AArch64 `sync_dispatcher` now decodes `ESR_EL1.EC` and routes SVC
+instructions to a syscall dispatch table (`crates/catten/src/syscall/mod.rs`).
+When an SVC is taken from EL0 (EC = 0x15):
+
+1. The raw volatile registers saved on the kernel stack by `push_volatile_regs`
+   (x0–x18, 19 u64 values) are read into a `TrapFrame`, together with the
+   architectural state (`SPSR_EL1`, `SP_EL0`, the exception link register).
+2. `ELR_EL1` is advanced by 4 (past the 4-byte SVC instruction) and written
+   back so the IVT tail `eret` returns to the following instruction.
+3. The SVC immediate from `ESR_EL1.ISS` is used as the syscall number; a match
+   arm routes it to the corresponding handler in the dispatch table.
+4. The syscall handler reads arguments from `frame.regs[0..]` (x0–x7 in the
+   AArch64 calling convention) and calls the completion-cap operations.
+5. Any result the handler writes into `frame.regs[0]` (x0) is written back to
+   the stack before the IVT `pop_volatile_regs` restores it into the user's x0.
+
+The dispatch table currently maps SVC #0 (LOG, a debug/test placeholder) and
+SVC #1–6 (the five completion-cap operations) to handler functions.
+Self-tests in `crates/catten/src/self_test/syscall.rs` exercise every dispatch
+route by calling `syscall_dispatch` directly with a synthetic `TrapFrame`,
+verifying that the completion-cap operations (submit/complete/poll/cancel/close)
+are reachable through the syscall table without panicking.
+
+**What is not here yet:** a real-EL0 test thread that executes actual `SVC #n`
+instructions. That requires mapping a page with user access (`AP_EL0`) in a
+user address space, writing a small assembly stub there, and creating a user
+thread with that page as its entry point — page-table work deferred to the next
+step. The dispatch path itself is real and exercised from the self-test harness.
+An unknown syscall number still panics (fatal), which is the expected behavior
+until error-return conventions are defined.
 
 ---
 
@@ -580,6 +613,8 @@ adds no new warnings.
 3. **Bring up a syscall entry path on AArch64** (decode `ESR_EL1.EC == 0b010101`
    in `sync_dispatcher` instead of panicking) sufficient to call `submit`/`wait`
    from an EL0 test thread.
+   **(Done — see §9.3: syscall dispatch table wired; self-tests exercise all
+   routes via synthetic `TrapFrame`. Real-EL0 test thread deferred.)**
 4. **Bound `IPI_CMD_QUEUES`** and generalize `IpiRpc` toward a typed message, so
    cross-shard submit exerts backpressure (this also seeds Option B / Phase 3).
 5. **Feed back into Option A:** generalize sitas's `ReactorBackend::Handle` from
