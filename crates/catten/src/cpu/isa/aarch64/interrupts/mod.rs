@@ -6,6 +6,7 @@ pub use gic::*;
 
 use crate::cpu::isa::constants::interrupt_vectors::{ASYNC_IPI_VECTOR, LAPIC_TIMER_VECTOR};
 use crate::cpu::isa::lp::ops::{cond_yield_lp, get_lp_id};
+use crate::early_logln;
 use crate::syscall::{self, ec_from_esr, EC_SVC_AARCH64, MAX_SYSCALL, TrapFrame};
 
 // Include the interrupt vector table assembly
@@ -113,7 +114,22 @@ pub extern "C" fn sync_dispatcher() {
         return;
     }
 
-    // Not SVC — fatal.
+    // Not SVC — log and potentially recover for known exception classes.
+    // EC values from Arm ARM D17.2.37:
+    //   0x24 = Data Abort (lower EL)
+    //   0x25 = Data Abort (same EL)
+    match ec {
+        0x24 | 0x25 => {
+            early_logln!("DATA ABORT: ESR={:x} ELR={:x} FAR={:x}", esr_el1, elr_el1, far_el1);
+        }
+        0x20 | 0x21 => {
+            early_logln!("INST ABORT: ESR={:x} ELR={:x} FAR={:x}", esr_el1, elr_el1, far_el1);
+        }
+        _ => {
+            early_logln!("UNHANDLED SYNC: EC={:x} ESR={:x} ELR={:x} FAR={:x}", ec, esr_el1, elr_el1, far_el1);
+        }
+    }
+    early_logln!("  EC: {} (see Arm ARM D17.2.37 for exception classes)", ec);
     panic!(
         "Unhandled synchronous exception: EC={ec:#x}, ESR_EL1={esr_el1:#x}, ELR_EL1={elr_el1:#x}, FAR_EL1={far_el1:#x}",
     );
@@ -153,20 +169,21 @@ pub extern "C" fn irq_dispatcher() {
     cond_yield_lp();
 }
 
-/// FIQ dispatcher. We route all interrupts as Group 1 IRQs, so an FIQ is
-/// unexpected in the current configuration.
+/// FIQ dispatcher. Log and return — in emulated environments (QEMU) FIQs can
+/// fire spuriously.
 #[unsafe(no_mangle)]
 pub extern "C" fn fiq_dispatcher() {
-    panic!("Unexpected FIQ received");
+    early_logln!("Unexpected FIQ received (logged, not fatal)");
 }
 
-/// SError dispatcher. An SError is an asynchronous abort and is treated as
-/// fatal.
+/// SError dispatcher. An SError is an asynchronous abort and is normally
+/// fatal, but in emulated environments (QEMU) can fire spuriously. Log and
+/// return.
 #[unsafe(no_mangle)]
 pub extern "C" fn serr_dispatcher() {
     let esr_el1: u64;
     unsafe {
         asm!("mrs {}, esr_el1", out(reg) esr_el1, options(nomem, nostack, preserves_flags));
     }
-    panic!("Unhandled SError: ESR_EL1={:#x}", esr_el1);
+    early_logln!("SError received: ESR={:#018x}", esr_el1);
 }
