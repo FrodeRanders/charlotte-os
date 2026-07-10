@@ -573,6 +573,22 @@ larger remaining piece — threading a generic `Handle` through the real
 the `unix_io` readiness layer is inherently `RawFd`-bound and a completion-based
 kernel backend does not use it (it uses the CQ/completion path modelled here).
 
+**Third deliverable — the submission side of the ABI now exists in the kernel
+(branch `async-syscall-abi`, `crates/catten/src/completion/mod.rs`):** a per-AS
+capability table (`IdTable<Arc<Completion>>`) where each `Completion` is
+`Observable`, so `wait` blocks a thread by registering its `Waker` as an
+`Observer` exactly as `sleep`/`TimerEvent` do. The five operations are present as
+kernel-internal functions (`submit`/`complete`/`poll`/`wait`/`cancel`/`close`,
+plus `observe`), built entirely on facilities that already existed (`IdTable`,
+the observer/waker model, `block_thread`). Boot-time self-tests
+(`crates/catten/src/self_test/completion.rs`) validate buffer transfer, the
+observer-signal path, buffer hand-back, `close`, cancel-with-deferred-reclaim,
+and `WouldBlock` submission backpressure. Builds and links cleanly for both
+`aarch64` and `x86_64` (display feature off — unrelated pre-existing host-link
+issue), no new warnings. Not yet present: EL0 syscall entry (`sync_dispatcher`
+still panics on SVC) and a shared-memory CQ/SQ ring — so `wait` is implemented
+but not yet exercised end-to-end. This is the natural next milestone.
+
 **Decision-gate answers:**
 
 1. *Shard model maps cleanly?* **Yes** — shard = LP-affine thread + private

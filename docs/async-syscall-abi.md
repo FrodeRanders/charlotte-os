@@ -527,6 +527,45 @@ This confirms the Phase-2 finding empirically: the wait primitive is trivial and
 the design weight is entirely on *what a waitable interest is* — here, a
 `CompletionCap` backed by a capability table + buffer-ownership contract.
 
+### 9.2 Kernel prototype: the `completion` module
+
+The submission side of the ABI now exists **in the kernel** as
+`crates/catten/src/completion/mod.rs`, exercised by boot-time self-tests in
+`crates/catten/src/self_test/completion.rs`. It is built entirely on facilities
+that already existed:
+
+- a per-address-space **capability table** is an
+  `IdTable<Arc<Completion>>` keyed by `AddressSpaceId` — the same `IdTable` that
+  backs the thread and address-space tables;
+- a `Completion` is `Observable`: a waiting thread registers its `Waker` as an
+  `Observer` (via `SystemScheduler::block_thread`) and `complete()` notifies
+  them — byte-for-byte the mechanism `TimerEvent`/`sleep` already use;
+- an owned `Vec<u8>` transferred on `submit` is retained until a terminal
+  completion hands it back (buffer ownership / deferred reclaim).
+
+The five operations are present as kernel-internal functions: `submit → cap`,
+`complete(cap, result)` (the kernel-side hook a worker's exit-observer would
+call), `poll` (non-blocking drain), `wait` (blocks via `block_thread`, with a
+lost-wake re-check), `cancel`, `close`, plus an `observe` hook mirroring "monitor
+a capability with the same mechanism the kernel uses."
+
+**What the self-tests validate at boot** (whitebox integration tests, the kernel
+has no `cargo test`): buffer transfer on submit; the observer-signal path firing
+on completion; the buffer handed back on `poll`; `close` freeing the slot; cancel
+retaining the buffer until the terminal `Cancelled` completion (deferred
+reclaim); and `submit` returning `WouldBlock` at the capacity bound (submission
+backpressure).
+
+**What is deliberately *not* here yet** (honest scoping): `wait` is implemented
+but not exercised in self-tests because it blocks the calling thread, and
+self-tests run before the BSP yields to the scheduler; there is no EL0 syscall
+entry to call these from userspace (`sync_dispatcher` still panics on SVC); and
+there is no shared-memory CQ/SQ ring — completion is delivered via the observer
+wake, not yet a userspace-visible queue. The module builds and links cleanly for
+both `aarch64-unknown-none-catten` and `x86_64-unknown-none-catten` (with the
+`display` feature off, which has an unrelated pre-existing host-link issue), and
+adds no new warnings.
+
 ---
 
 ## 10. Suggested next steps (within Option C)
@@ -537,6 +576,7 @@ the design weight is entirely on *what a waitable interest is* — here, a
 2. **Prototype the capability table** (per-AS `IdTable`-backed map from
    `CompletionCap` → `Arc<dyn Observable>`), reusing `IdTable` and the
    observer/waker machinery.
+   **(Done — see §9.2: in-tree `completion` module with boot-time self-tests.)**
 3. **Bring up a syscall entry path on AArch64** (decode `ESR_EL1.EC == 0b010101`
    in `sync_dispatcher` instead of panicking) sufficient to call `submit`/`wait`
    from an EL0 test thread.
@@ -545,14 +585,7 @@ the design weight is entirely on *what a waitable interest is* — here, a
 5. **Feed back into Option A:** generalize sitas's `ReactorBackend::Handle` from
    `RawFd` to an associated type end-to-end (the readiness layer), then implement
    `CharlotteReactor` against a mock of this ABI to validate the shapes before the
-   kernel path exists. **(Done in part — see §9.1:** the `CharlotteReactor` +
-   `MockKernel` reference model exists and is tested against the
-   `ReactorBackend<Handle = CompletionCap>` contract. The remaining, larger piece
-   is threading a generic `Handle` through the `Executor`/`Scheduler` readiness
-   layer so the *real* executor can run on the CharlotteOS backend; that is
-   deferred because the `unix_io` readiness layer is inherently `RawFd`-bound and
-   a completion-based kernel backend does not use it — it uses the
-   completion/CQ path modelled here instead.)
+   kernel path exists. **(Done — see §9.1.)**
 
 ---
 
