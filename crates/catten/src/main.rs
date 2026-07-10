@@ -23,6 +23,7 @@
 extern crate alloc;
 
 pub mod cpu;
+pub mod completion;
 pub mod deferred_work_manager;
 pub mod device_management;
 pub mod environment;

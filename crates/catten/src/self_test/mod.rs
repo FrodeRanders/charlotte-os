@@ -5,6 +5,7 @@
 //! some tests in this module. In software engineering terminology the tests in this module should
 //! be whitebox integration tests that can be run after Catten initializes itself.
 
+pub mod completion;
 pub mod memory;
 
 use crate::logln;
@@ -26,5 +27,6 @@ pub fn run_self_tests() {
     memory::pmem::test_pmem();
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
+    completion::test_completion_caps();
     logln!("Testing Complete. All Tests Passed!");
 }
