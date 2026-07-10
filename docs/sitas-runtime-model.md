@@ -558,6 +558,21 @@ surface: `submit → CompletionCap`, `wait(cq, min_complete, deadline)`,
 `wake(cq)`, `cancel(cap)`, `close(cap)`. It includes a non-compiled Rust type
 sketch and an explicit list of what must be built vs. reused.
 
+**Second deliverable — the ABI now has an executable model (sitas branch
+`reactor-handle-seam`, `src/charlotte_abi.rs`):** an in-memory `MockKernel`
+implementing the five operations plus a `CharlotteReactor` that satisfies
+sitas's Option-A `ReactorBackend` contract with `Handle = CompletionCap`. Nine
+tests exercise every decision-gate claim (completion path returning the owned
+buffer; cross-shard wake unblocking a blocked reactor; `cancel` with deferred
+buffer reclaim; `WouldBlock` submission backpressure and non-lossy CQ overflow;
+driving the reactor purely through the trait). `cargo fmt`/`clippy -D
+warnings`/`test`/`doc` all clean; the existing 318+ tests are unaffected. This
+turns Option C from "on paper" into a validated, executable specification. The
+larger remaining piece — threading a generic `Handle` through the real
+`Executor`/`Scheduler` so the actual executor runs on the backend — is deferred:
+the `unix_io` readiness layer is inherently `RawFd`-bound and a completion-based
+kernel backend does not use it (it uses the CQ/completion path modelled here).
+
 **Decision-gate answers:**
 
 1. *Shard model maps cleanly?* **Yes** — shard = LP-affine thread + private
