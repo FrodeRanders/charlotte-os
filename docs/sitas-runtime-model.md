@@ -450,7 +450,7 @@ Rules for the spikes:
   - Timer events / awaitable completion: `crates/catten/src/timers/mod.rs`
   - Scheduler surface: `crates/catten/src/cpu/scheduler/mod.rs`
   - AArch64 IRQ→IPI→yield path: `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`
-- `sitas` (../gautelis/sitas):
+- ([`sitas`](https://github.com/FrodeRanders/sitas)):
   - Architecture & invariants: `docs/ARCHITECTURE.md`
   - OS seam to replace: `src/os.rs`, `src/executor/driver.rs`
   - Shard runtime: `src/runtime.rs`, `src/sharded_executor.rs`
