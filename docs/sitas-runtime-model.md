@@ -468,7 +468,48 @@ is grounded in evidence rather than recollection.
 
 ### Phase 1 — Option A (`sitas` `os-backend-seam`)
 
-_In progress._
+_In progress. First step complete: reactor contract extracted and validated._
+
+**What was done (commit `61ead07` on `sitas` branch `os-backend-seam`):** added a
+`reactor_backend` module defining the OS contract the executor requires as
+explicit traits — `ReactorBackend` (obtain a waker; block until an interest is
+ready / woken / timed out), `ReactorWaker` (cross-thread wake), and
+`ReactorEvent` (owned wait result). Blanket impls prove the existing Unix
+`OsReactor`/`OsWaker`/`OsEvent` satisfy it with no behavior change; a mock
+in-memory backend in tests proves a non-Unix backend is implementable behind the
+same interface. `cargo fmt`/`clippy -D warnings`/`test` all green (318+ existing
+tests unaffected).
+
+**Decision-gate answers so far:**
+
+1. *Is the OS contract genuinely small and clean?* **Yes — strikingly so.** By
+   inspection of `executor::driver`, the executor needs exactly three things
+   from the OS: obtain a cloneable waker, block-until-ready-or-woken-or-timeout,
+   and wake from elsewhere. The whole reactor seam is `waker()`,
+   `wait(read, write, timeout) -> Event`, and `wake()`. This strongly supports
+   Option A's feasibility and de-risks the CharlotteOS backend.
+2. *Does a non-Unix backend become possible?* **Yes.** The mock backend
+   satisfies the contract with no OS descriptors, using an opaque capability-id
+   `Handle` type instead of `RawFd` — exactly the shape a CharlotteOS
+   completion-capability reactor would take. The associated `Handle` type is the
+   key design win: the executor's notion of "the thing I registered interest in"
+   is no longer hardwired to a Unix file descriptor.
+
+**Notes / open items carried forward:**
+
+- This step defines and validates the boundary but does **not** yet thread the
+  trait through `Executor`/`Scheduler` (they still hold concrete
+  `OsReactor`/`OsWaker`). That generic-threading is the next sub-step and will
+  reveal whether the `RawFd`-typed interest tracking inside `Scheduler`
+  (`read_interest_fds`/`wake_readable_fds`) generalizes cleanly to an associated
+  `Handle`.
+- The `io_uring` completion path (`executor::driver` under
+  `#[cfg(target_os = "linux")]`) is a *second* wait source not yet covered by
+  the reactor trait. This mirrors sitas's own "unify the wait sources" roadmap
+  item and is exactly where CharlotteOS could do better from the start (one
+  completion-wait primitive for timers, IPIs, and async-syscall completions).
+- The `ShardRuntime` half of the seam (shard spawn + typed channel, replacing
+  `std::thread` + `std::sync::mpsc`) is still to be sketched.
 
 ### Phase 2 — Option C (`charlotte-os` `async-syscall-abi`)
 
