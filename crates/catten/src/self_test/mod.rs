@@ -7,6 +7,7 @@
 
 pub mod completion;
 pub mod cq;
+pub mod cq_completion;
 pub mod el0;
 pub mod ipi;
 pub mod memory;
@@ -39,5 +40,6 @@ pub fn run_self_tests() {
     shard::test_shard_mailbox();
     el0::test_el0_syscall_round_trip();
     cq::test_cq_ring();
+    cq_completion::test_cq_ring_in_completion();
     logln!("Testing Complete. All Tests Passed!");
 }

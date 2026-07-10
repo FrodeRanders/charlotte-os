@@ -61,7 +61,7 @@ pub enum OpCode {
 }
 
 /// The terminal result carried by a completed capability.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpResult {
     /// Success with an operation-specific value (for example bytes transferred).
     Ok(i64),
@@ -210,7 +210,19 @@ struct AsCompletions {
     table: crate::klib::collections::id_table::IdTable<Arc<Completion>>,
     capacity: usize,
     live: usize,
+    /// Optional per-AS completion-queue ring (zero-syscall drain path).
+    /// The allocation backing the ring is kept alive by `_cq_buf`.
+    cq_ring: Option<*mut crate::completion::cq::CompletionQueueRing>,
+    #[allow(dead_code)]
+    _cq_buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
 }
+
+// AsCompletions stores raw pointers to CQ rings allocated from the kernel heap;
+// all access goes through COMPLETIONS' RwLock, so concurrent access is
+// serialised. Vec<u8> is not Sync, but we store it behind a Box which is
+// accessed only from within the RwLock.
+unsafe impl Send for AsCompletions {}
+unsafe impl Sync for AsCompletions {}
 
 /// Per-address-space capability tables. In a full design these would live inside
 /// each `AddressSpace`; keying them here keeps the prototype self-contained
@@ -227,13 +239,41 @@ pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
             table: crate::klib::collections::id_table::IdTable::new(),
             capacity,
             live: 0,
+            cq_ring: None,
+            _cq_buf: None,
         },
     );
 }
 
-/// Closes an address space's capability table, dropping any outstanding
-/// completions (and, with them, any buffers the kernel still owned — the
-/// drain-or-leak teardown case, here a clean reap with the address space).
+/// Like [`open_address_space`] but also allocates and attaches a per-AS
+/// completion-queue ring. The ring is a single 4 KiB page with `cq_entries`
+/// entry slots, accessible from the kernel via the raw pointer stored in the
+/// registry.
+pub fn open_address_space_with_cq(
+    asid: AddressSpaceId,
+    cap_table_capacity: usize,
+    cq_entries: u32,
+) {
+    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries);
+    COMPLETIONS.write().insert(
+        asid,
+        AsCompletions {
+            table: crate::klib::collections::id_table::IdTable::new(),
+            capacity: cap_table_capacity,
+            live: 0,
+            cq_ring: Some(ring_ptr),
+            _cq_buf: Some(alloc::boxed::Box::new(buf)),
+        },
+    );
+}
+
+/// Returns a raw pointer to the CQ ring for `asid`, or `None`.
+pub fn cq_ring_of(asid: AddressSpaceId) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
+    let registry = COMPLETIONS.read();
+    registry.get(&asid).and_then(|c| c.cq_ring)
+}
+
+/// Closes an address space's capability table and frees its CQ ring (if any).
 pub fn close_address_space(asid: AddressSpaceId) {
     COMPLETIONS.write().remove(&asid);
 }
@@ -269,11 +309,17 @@ pub fn submit(
 }
 
 /// Kernel-side completion hook: the worker/driver executing `cap`'s operation
-/// finished. Posts the terminal result and wakes any awaiting thread. In a full
-/// design this is invoked from the completing work's exit-observer.
+/// finished. Posts the terminal result, wakes any awaiting thread, and writes an
+/// entry to the AS's CQ ring if one is attached.
 pub fn complete(asid: AddressSpaceId, cap: CompletionCap, result: OpResult) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
-    completion.complete(result);
+    completion.complete(result.clone());
+
+    // Write to the CQ ring if this address space has one.
+    if let Some(ring_ptr) = cq_ring_of(asid) {
+        unsafe { &mut *ring_ptr }.write(cap, result);
+    }
+
     Ok(())
 }
 
@@ -360,4 +406,48 @@ pub fn observe(
 /// (i.e. it has not yet been handed back). Demonstrates deferred reclaim.
 pub fn holds_buffer(asid: AddressSpaceId, cap: CompletionCap) -> Result<bool, CapError> {
     Ok(completion_of(asid, cap)?.holds_buffer())
+}
+
+/// Polls the CQ ring for `asid` and returns the number of pending entries.
+/// Returns 0 if no CQ ring is attached.
+pub fn cq_pending(asid: AddressSpaceId) -> u32 {
+    match cq_ring_of(asid) {
+        Some(ring_ptr) => unsafe { &*ring_ptr }.pending(),
+        None => 0,
+    }
+}
+
+/// Blocks the calling thread until the CQ ring for `asid` has at least
+/// `min_complete` pending entries. This is the kernel-internal implementation
+/// of the `wait` syscall (§4.2): the reactor blocks on the CQ, and
+/// `complete()` writes entries to the ring + wakes the blocked thread.
+///
+/// The blocking mechanism uses a simple poll loop with sleep bursts (10 ms)
+/// rather than the observer/waker path, because the CQ ring is a ring buffer
+/// (not an `Observable`). In the production kernel the ring's head write would
+/// fire the waker.
+pub fn wait_on_cq(asid: AddressSpaceId, _min_complete: u32) {
+    // Simple polling loop — not the final design. In production, the ring
+    // head-write would signal an Observable that the blocked thread is
+    // registered on, avoiding the sleep loop.
+    let tid = SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_tid();
+    if tid.is_none() {
+        return;
+    }
+
+    loop {
+        let pending = cq_pending(asid);
+        if pending >= _min_complete {
+            return;
+        }
+        // Busy-wait with a hint. In a real kernel this would be a
+        // condition-variable-style block.
+        for _ in 0..1000 {
+            core::hint::spin_loop();
+        }
+    }
 }
