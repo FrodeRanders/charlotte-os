@@ -90,7 +90,7 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
     };
     let mut user_as_mut = table.get_mut(asid).expect("failed to retrieve AS for mapping");
     user_as_mut
-        .map_page(code_mapping)
+        .map_page(code_mapping.clone())
         .expect("failed to map user code page");
 
     // Write the assembly stub into the code page through HHDM.
