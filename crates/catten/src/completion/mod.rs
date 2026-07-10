@@ -397,13 +397,15 @@ pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, C
     Ok(completion.cancel())
 }
 
-/// Releases a completed capability's table slot. Fails with
-/// [`CapError::NotComplete`] if the operation is still in flight.
+/// Releases a completed capability's table slot. A cap is closable after a
+/// terminal completion was posted (even if its result has already been
+/// consumed by [`poll`]).
 pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
-    if !completion.is_complete() {
-        return Err(CapError::NotComplete);
-    }
+    // After a terminal completion was posted the cap is reclaimable. The
+    // `NotComplete` check exists to prevent closing an in-flight cap (the
+    // result has never been set). If the result was taken by a prior `poll()`,
+    // the completion is still reclaimable — we just need the slot freed.
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
     as_completions

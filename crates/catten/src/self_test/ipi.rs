@@ -48,8 +48,9 @@ pub fn test_ipi_bounded_queue() {
     ipi::drain_local_ipi_queue();
 
     // --- backpressure: fill the queue, then verify rejection -----------------
-    // Fill to capacity - 1 so one more push should still succeed.
-    let max = capacity;
+    // Drain any leftover entries, then get the current capacity.
+    ipi::drain_local_ipi_queue();
+    let max = 256; // DEFAULT_QUEUE_CAPACITY
     for _ in 0..max {
         let _ = ipi::try_send_ipi_rpc(target, IpiRpc::Wakeup);
     }
