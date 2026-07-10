@@ -26,6 +26,7 @@
 use core::sync::atomic::{fence, Ordering};
 
 use crate::completion::{CompletionCap, OpResult};
+use crate::memory::physical::PAddr;
 
 /// One completion entry in the ring (16 bytes).
 #[repr(C)]
@@ -65,7 +66,7 @@ impl CompletionQueueRing {
     /// The returned buffer is page-aligned and one 4 KiB page in size.
     pub fn new_page(num_entries: u32) -> (alloc::vec::Vec<u8>, *mut Self) {
         let page_size = 4096;
-        let header_size = core::mem::size_of::<u32>() * 4; // 16 bytes
+        let header_size = core::mem::size_of::<u32>() * 4;
         let max_entries = ((page_size - header_size) / core::mem::size_of::<CqEntry>()) as u32;
         let capacity = num_entries.min(max_entries);
 
@@ -80,6 +81,37 @@ impl CompletionQueueRing {
         }
 
         (buf, ptr)
+    }
+
+    /// Initializes a `CompletionQueueRing` on a pre-allocated physical frame.
+    /// The frame must be at least one 4 KiB page. The ring is accessed through
+    /// the HHDM window; the caller is responsible for mapping the same physical
+    /// frame into the target address space for userspace access.
+    ///
+    /// # Safety
+    ///
+    /// `frame` must be a valid, 4 KiB-aligned physical address that is not used
+    /// for any other purpose while this ring is alive.
+    pub unsafe fn init_at_phys(frame: PAddr, num_entries: u32) -> *mut Self {
+        let page_size = 4096;
+        let header_size = core::mem::size_of::<u32>() * 4;
+        let max_entries = ((page_size - header_size) / core::mem::size_of::<CqEntry>()) as u32;
+        let capacity = num_entries.min(max_entries);
+
+        let ptr: *mut Self = frame.into();
+
+        // Zero the entire page first (clean HHDM memory).
+        let byte_ptr: *mut u8 = frame.into();
+        for i in 0..page_size {
+            byte_ptr.add(i).write_volatile(0);
+        }
+
+        (*ptr).head = 0;
+        (*ptr).tail = 0;
+        (*ptr).capacity = capacity;
+        (*ptr).overflow = 0;
+
+        ptr
     }
 
     /// Returns the number of pending (un-consumed) entries.

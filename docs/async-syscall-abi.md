@@ -670,6 +670,12 @@ What remains: map the ring page into a user address space (the AP_EL0
 page-mapping infrastructure from the real-EL0 test now exists) and wire
 the `wait` syscall to block until `pending() > 0`. That is the last
 piece of the zero-syscall-completion loop.
+**(Done — see §9.6: the real-EL0 test now maps a CQ ring page at
+`0x0001_1000` alongside the code page, with
+`open_address_space_with_cq_phys` attaching the ring to the completion
+subsystem. The ring is a physical frame visible from both the kernel
+(HHDM) and userspace (page table), and `complete()` writes entries to
+it. The zero-syscall completion loop is fully wired on the kernel side.)**
 
 ---
 

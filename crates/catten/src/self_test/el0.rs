@@ -18,6 +18,7 @@
 //! The kernel log output from `sync_dispatcher` and the LOG handler confirms
 //! the round-trip at runtime.
 
+use crate::completion::{self, OpCode, OpResult};
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 use crate::cpu::isa::memory::paging::AddressSpace;
 use crate::cpu::scheduler::spawn_thread;
@@ -31,6 +32,8 @@ use crate::memory::{
 
 /// Virtual address in the lower half (TTBR0) for the user code page.
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
+/// Virtual address in the lower half (TTBR0) for the shared CQ ring page.
+const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 
 /// AArch64 assembly stub for the user thread.
 ///
@@ -44,12 +47,11 @@ const USER_THREAD_CODE: &[u8] = &[
     0xFC, 0xFF, 0xFF, 0x17, // B -4    = 17_FFFF_FC (branch back 4 instructions)
 ];
 
-/// Creates a user address space, maps a user-code page at `vaddr` that contains
-/// the assembly stub, and returns the `AddressSpaceId`.
+/// Creates a user address space, maps a user-code page at `vaddr` and a
+/// shared CQ ring page at `cq_vaddr`, writes the assembly stub, and returns
+/// the `AddressSpaceId`.
 #[cfg(target_arch = "aarch64")]
-fn prepare_user_address_space(vaddr: VAddr) -> usize {
-    // Use a local Mutex<IdTable> for the test since ADDRESS_SPACE_TABLE is a
-    // LazyLock without a Mutex wrapper (only get() works on it).
+fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr) -> usize {
     use spin::mutex::Mutex;
     static TEST_AS_TABLE: spin::LazyLock<Mutex<IdTable<AddressSpace>>> =
         spin::LazyLock::new(|| Mutex::new(IdTable::new()));
@@ -65,40 +67,57 @@ fn prepare_user_address_space(vaddr: VAddr) -> usize {
 
     let mut table = TEST_AS_TABLE.lock();
     let asid = table.add_element(user_as);
-    // The kernel ASID 0 is reserved; make our test ASID non-zero so
-    // Thread::new branches into create_user_thread_context rather than
-    // create_kernel_thread_context.
     let asid = asid + 1;
     logln!("User AS registered with asid={}", asid);
 
-    // Allocate a physical frame for the user code page.
-    let frame = PHYSICAL_FRAME_ALLOCATOR
+    // --- map user code page ---------------------------------------------------
+    let code_frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
         .allocate_frame()
         .expect("failed to allocate physical frame for user code page");
-    logln!("Allocated physical frame {:?} for user code at vaddr {:?}", frame, vaddr);
+    logln!("Allocated code frame {:?} at vaddr {:?}", code_frame, vaddr);
 
-    let mapping = MemoryMapping {
+    let code_mapping = MemoryMapping {
         vaddr,
-        paddr: frame,
+        paddr: code_frame,
         page_type: PageType::UserCode,
     };
-
     let mut user_as_mut = table.get_mut(asid).expect("failed to retrieve AS for mapping");
     user_as_mut
-        .map_page(mapping)
+        .map_page(code_mapping)
         .expect("failed to map user code page");
 
-    // Write the assembly stub into the page through HHDM.
-    let hhdm_ptr = <crate::memory::physical::PAddr as Into<*mut u8>>::into(frame);
-    logln!("Writing user thread code to HHDM ptr {:?}", hhdm_ptr);
+    // Write the assembly stub into the code page through HHDM.
+    let code_hhdm: *mut u8 = code_frame.into();
     unsafe {
         core::ptr::copy_nonoverlapping(
             USER_THREAD_CODE.as_ptr(),
-            hhdm_ptr,
+            code_hhdm,
             USER_THREAD_CODE.len(),
         );
     }
+
+    // --- map CQ ring page (shared kernel↔user) --------------------------------
+    let cq_frame = PHYSICAL_FRAME_ALLOCATOR
+        .lock()
+        .allocate_frame()
+        .expect("failed to allocate physical frame for CQ ring");
+    logln!("Allocated CQ ring frame {:?} at vaddr {:?}", cq_frame, cq_vaddr);
+
+    let cq_mapping = MemoryMapping {
+        vaddr: cq_vaddr,
+        paddr: cq_frame,
+        page_type: PageType::UserData, // read + write, EL0-accessible
+    };
+    let mut user_as_mut2 = table.get_mut(asid).expect("failed to retrieve AS for CQ mapping");
+    user_as_mut2
+        .map_page(cq_mapping)
+        .expect("failed to map CQ ring page");
+
+    // Initialize the CQ ring on this physical frame, then register the AS
+    // with the completion subsystem so `complete()` writes to the ring.
+    crate::completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
+    logln!("CQ ring attached to completion AS asid={}", asid);
 
     asid
 }
@@ -124,7 +143,23 @@ pub fn test_el0_syscall_round_trip() {
         logln!("Testing EL0 SVC round-trip...");
 
         let vaddr = VAddr::from(USER_CODE_VADDR);
-        let asid = prepare_user_address_space(vaddr);
+        let cq_vaddr = VAddr::from(USER_CQ_VADDR);
+        let asid = prepare_user_address_space(vaddr, cq_vaddr);
+
+        // Verify the CQ ring is attached and functioning: submit a cap,
+        // complete it, and check the ring entry.
+        let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+        assert_eq!(completion::cq_pending(asid), 0);
+        completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
+        assert_eq!(completion::cq_pending(asid), 1);
+
+        // Drain and verify the ring entry.
+        let ring_ptr = completion::cq_ring_of(asid).expect("CQ ring must be attached");
+        let entry = unsafe { &mut *ring_ptr }.read().expect("ring entry must be present");
+        assert_eq!(entry.cap, cap as u64);
+        assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(1)));
+
+        logln!("CQ ring verified: shared kernel↔user page at vaddr {:?}", cq_vaddr);
 
         // Create the user thread. `Thread::new` with `asid != KERNEL_ASID` calls
         // `create_user_thread_context`, which looks up TTBR0 from the AS table,
