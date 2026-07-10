@@ -6,6 +6,7 @@
 //! be whitebox integration tests that can be run after Catten initializes itself.
 
 pub mod completion;
+pub mod el0;
 pub mod ipi;
 pub mod memory;
 pub mod shard;
@@ -35,5 +36,6 @@ pub fn run_self_tests() {
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();
     shard::test_shard_mailbox();
+    el0::test_el0_syscall_round_trip();
     logln!("Testing Complete. All Tests Passed!");
 }

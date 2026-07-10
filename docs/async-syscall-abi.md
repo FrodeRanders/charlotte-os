@@ -599,6 +599,15 @@ step. The dispatch path itself is real and exercised from the self-test harness.
 An unknown syscall number still panics (fatal), which is the expected behavior
 until error-return conventions are defined.
 
+**Update (branch `shard-local-kernel`):** the first real-EL0 user thread now
+exists as a self-test (`crates/catten/src/self_test/el0.rs`). It creates a user
+address space, maps a user-code page at `0x0001_0000` with `AP_EL0` access,
+writes an AArch64 assembly stub (`SVC #0; wfi; b -4`) into it, and calls
+`spawn_thread(asid, vaddr)` to create a user thread. When the scheduler switches
+to this thread, `user_trampoline` eret's to EL0, the stub executes `SVC #0`,
+`sync_dispatcher` decodes and dispatches it, advances `ELR_EL1` by 4, and
+eret's back. This validates the entire syscall infrastructure end-to-end.
+
 ### 9.4 Bounded cross-LP IPI queue and typed-message dispatch
 
 The cross-shard backpressure specified in §6 now exists in the kernel. The

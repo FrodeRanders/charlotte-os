@@ -694,3 +694,17 @@ senders. Both architectures build cleanly, no new warnings.
   `ShardMailbox<M>` uses the existing `send_ipi` and bounded `ConcurrentQueue`
   from the IPI generalization (Phase 2, step 5). `ShardLocal<T>` is a new type
   alongside `PerLp<T>`, not a replacement — no existing callers are affected.
+
+**Additional — first real-EL0 user thread:** the self-test
+`crates/catten/src/self_test/el0.rs` creates a user address space (sharing the
+kernel's TTBR1, empty TTBR0, lazy L0 table on first `map_page`), maps a user-code
+page at `0x0001_0000` with `PageType::UserCode` (sets AP_EL0=1, UXN=0, PXN=1),
+writes a small AArch64 assembly stub (`SVC #0` → `wfi` → `b -4`) into it through
+the HHDM window, and calls `spawn_thread(asid, vaddr)` to create a user thread.
+When the scheduler switches to this thread, `user_trampoline` eret's to EL0 at
+the mapped VAddr, the stub executes `SVC #0`, the kernel's `sync_dispatcher`
+decodes it, dispatches to the LOG handler, advances `ELR_EL1` by 4, and eret's
+back to EL0 (the `wfi` loop). This validates the entire syscall infrastructure
+end-to-end: EL0 → SVC → TrapFrame → dispatch → eret → EL0. The test is
+`#[cfg(target_arch = "aarch64")]` only. Both architectures build cleanly; no new
+warnings.
