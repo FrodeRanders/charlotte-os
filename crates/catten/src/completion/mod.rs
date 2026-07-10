@@ -268,6 +268,31 @@ pub fn open_address_space_with_cq(
 }
 
 /// Returns a raw pointer to the CQ ring for `asid`, or `None`.
+/// Like [`open_address_space_with_cq`] but initialises the ring on a
+/// pre-allocated physical frame (for mappings where the same frame must also
+/// appear in a user page table).
+pub fn open_address_space_with_cq_phys(
+    asid: AddressSpaceId,
+    cap_table_capacity: usize,
+    ring_frame: crate::memory::physical::PAddr,
+    cq_entries: u32,
+) {
+    let ring_ptr = unsafe {
+        crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries)
+    };
+    COMPLETIONS.write().insert(
+        asid,
+        AsCompletions {
+            table: crate::klib::collections::id_table::IdTable::new(),
+            capacity: cap_table_capacity,
+            live: 0,
+            cq_ring: Some(ring_ptr),
+            _cq_buf: None,
+        },
+    );
+}
+
+/// Returns a raw pointer to the CQ ring for `asid`, or `None`.
 pub fn cq_ring_of(asid: AddressSpaceId) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
     let registry = COMPLETIONS.read();
     registry.get(&asid).and_then(|c| c.cq_ring)
