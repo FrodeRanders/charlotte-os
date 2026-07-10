@@ -1,0 +1,436 @@
+# Sitas on CharlotteOS: A Co-Designed Shard-per-Core Runtime
+
+> A design note exploring what a Seastar-like, shard-per-core userspace runtime
+> ([`sitas`](https://github.com/gautelis/sitas)) would look like implemented on
+> top of — or in co-design with — CharlotteOS, an operating system built to be
+> asynchronous from the first commit and to *expose* that asynchrony to its
+> inhabitants.
+>
+> Status: exploratory. This note records the ideas; it does not commit the
+> kernel to any specific ABI. Nothing here is implemented yet.
+
+---
+
+## 1. Why these two projects belong together
+
+Two independent experiments arrived at the same shape from opposite directions.
+
+**`sitas`** starts in userspace and asks: *what does shared-nothing,
+shard-per-core concurrency look like when it is built out of Rust ownership
+instead of locks?* Its answer is a discipline: each shard owns its state, only
+the owning shard mutates it, and everything that crosses a shard boundary is an
+**owned value moved through an explicit typed message**. On top of that it grows
+a custom async executor, per-shard reactors, `io_uring` completion I/O, and
+snapshot-based observability — deliberately re-deriving the Seastar model rather
+than cloning it.
+
+**CharlotteOS** starts in the kernel and asks: *hardware is asynchronous with
+respect to the CPU, so why is the OS synchronous?* Its answer is to make the
+kernel async-first — cheap threads, an observer/waker event model, and (per its
+design) system calls that are asynchronous by default, returning a completion
+capability that userspace can wait on.
+
+The essay that framed this collaboration
+([*"Hardware Is Asynchronous. Most of Our Operating Systems Still Aren't."*](https://vorjdux.com/articles/hardware-is-async.html))
+makes the tell explicit: a Unix file descriptor, a Windows `HANDLE`, and an
+observer capability are the same primitive — *a kernel-managed reference to
+something you can wait on*. Everyone converges on it. The interesting move is to
+**start there on purpose**.
+
+`sitas` and CharlotteOS have both started there. This document is about what
+happens when they meet: a userspace runtime whose async model **agrees** with
+the kernel it runs on, instead of emulating async-first on a blocking
+foundation. That agreement is the whole point — it removes the "retrofit tax"
+(async-signal-safety, thread pools, `io_uring`-over-blocking-AIO) that exists
+only because the runtime and the OS disagree about what is fundamental.
+
+---
+
+## 2. The structural correspondence
+
+The reason this is more than an analogy: **the pieces already exist on both
+sides, and they line up almost one-to-one.** CharlotteOS's kernel already
+contains the kernel-side equivalents of sitas's runtime layers (several were
+built or completed during the AArch64 port).
+
+| `sitas` concept | Role | CharlotteOS equivalent (exists today) |
+|---|---|---|
+| Shard = OS thread pinned to a core | Unit of isolation | **Logical Processor (LP)** + `PerLp<T>` sharded state |
+| `ShardId` explicit placement | Addressing | `LpId` |
+| Shard mailbox (`ShardSender`/`ShardReceiver`, bounded, owned `M: Send`) | Cross-shard transport | `IPI_CMD_QUEUES`: per-LP `ConcurrentQueue<IpiRpc>` + `send_unicast_ipi` |
+| Custom executor `Waker` re-enqueue | Wake a task | `Waker` (`cpu/scheduler/threads/waker.rs`) submitting a ready thread |
+| `Reply<T>` / `Notify` (awaitable completion) | Await a result | `Observable`/`Observer` + `TimerEvent` |
+| Reactor idle wait (`epoll`/`kqueue`/`poll`) | Block until events | GIC/APIC IRQ dispatch → timer/IPI → `cond_yield_lp` |
+| `io_uring` completion I/O | Async syscalls | (Design goal) async syscalls returning a completion capability |
+| `ShardLocal<T>` (no mutex, owner-checked, non-escaping refs) | Shard-owned mutable state | `PerLp<T>` (no mutex, LP-owner-checked via `RwLock` guards) |
+| CPU pinning (`sched_setaffinity`, cpuset-aware) | Bind shard to core | Intrinsic: an LP *is* a core; the scheduler is already per-LP |
+| NUMA memory placement (`set_mempolicy`) | Local allocation | (Future) per-LP allocator arenas |
+| `ShardSnapshot` / `RuntimeSnapshot` owned observability | Debug without shared state | The kernel's house style is already owned snapshots |
+| Scheduling groups (weighted virtual runtime) | Resource classes | `RoundRobin` LP scheduler (extension point) |
+
+The lesson: **`sitas` is, in effect, re-deriving in userspace the runtime that
+CharlotteOS is trying to be natively.** Where sitas fought to build a reactor on
+top of a synchronous OS, CharlotteOS offers the reactor as the substrate.
+
+### 2.1 The one primitive underneath everything
+
+Both projects reduce to one waitable-handle primitive:
+
+- sitas: `Reply<T>` / `ReplyFuture<T>` / `Notify` — waker-aware, `no`-external-runtime.
+- CharlotteOS: `Weak<dyn Observer>` registered against an `Observable`
+  (e.g. a `TimerEvent`), where `Observer::notify` wakes a blocked thread.
+
+sitas's `Reply<T>` stores a `Waker`; CharlotteOS's `Waker` *is* an `Observer`
+that resubmits a thread to the scheduler. These are the same object with
+different names. A CharlotteOS **completion capability** is exactly the fusion:
+a kernel-managed handle that a userspace task can `.await`, backed by the
+observer list the kernel already maintains.
+
+---
+
+## 3. Three realizations, from least to most ambitious
+
+### Option A — `sitas` as a `no_std` guest runtime (port the seam)
+
+Keep sitas's entire semantic core — the shard model, typed commands,
+`Reply<T>`, `ShardLocal<T>`, the executor, scheduling groups, observability —
+and replace only its **bottom layer**, the `os` module, with a CharlotteOS
+backend.
+
+This is realistic because sitas was architected precisely so the OS is a thin,
+swappable seam:
+
+- The `os` module (~1,000 lines: pipe/`epoll`/`kqueue`/`poll` + socket FFI +
+  `io_uring`) is the *entire* OS-facing surface.
+- Everything above it is std/ownership logic that is already `no_std` in spirit
+  (edition 2024, zero external dependencies).
+
+What changes:
+
+| sitas today (Unix) | sitas on CharlotteOS |
+|---|---|
+| `std::thread` per shard | CharlotteOS thread per LP (`spawn_thread`, LP-affine) |
+| `std::sync::mpsc` mailbox | kernel capability-backed typed channel |
+| `OsReactor::wait` (epoll/kqueue) | await a set of kernel completion capabilities |
+| `OsWaker::wake` (pipe write) | signal a capability / cross-LP IPI |
+| `io_uring` file/net futures | async syscall → completion capability |
+| `std` alloc/collections | `alloc` + `core` |
+
+Result: sitas becomes the reference **userspace shard runtime for
+CharlotteOS** — the most faithful expression of both projects' "boring core,
+experimental edge" stance, with minimal kernel change.
+
+### Option B — sitas's *discipline* adopted inside the kernel
+
+CharlotteOS already has the ingredients; sitas contributes the **invariants** as
+an internal programming model:
+
+- Promote `PerLp<T>` into a `ShardLocal<T>`-style API that enforces sitas's
+  strongest rule — *references to shard-owned state must not escape the access
+  closure or cross `.await`.* Today `PerLp<T>` hands out `RwLock` guards; sitas
+  shows how to get the same safety with an owner-check + closure and no lock on
+  the hot path.
+- Generalize `IpiRpc` into a typed `ShardMailbox<M>`. The kernel already does
+  exactly this for one message type (TLB shootdown RPCs over
+  `IPI_CMD_QUEUES`); sitas shows how to make it a first-class, typed,
+  owned-message transport for any `M`.
+- Unify `TimerEvent`/`Observer` and a task `Waker` into one "awaitable
+  completion" type used everywhere in the kernel.
+
+This is less "run sitas" and more "**CharlotteOS adopts sitas's invariants as
+its concurrency doctrine**," which keeps the kernel's own code shared-nothing.
+
+### Option C — sitas as the executable spec of the async syscall ABI
+
+The deepest connection. sitas's central research question —
+*what is the right submission/completion boundary for async I/O?* — **is**
+the userspace↔kernel ABI question CharlotteOS must answer. So sitas can serve as
+the **executable specification** of CharlotteOS's async syscall interface:
+
+- sitas `submit_* -> Reply<T>` and its `io_uring` completion model → the shape
+  of a CharlotteOS async syscall: *submit an operation, receive a completion
+  capability, await it.*
+- sitas shard-per-core → CharlotteOS per-LP scheduling; a sitas "shard" is a
+  userspace thread bound to an LP with a private kernel completion queue.
+- sitas `ShardedSubmitter` (submit to another shard, await the handle) →
+  cross-LP work submission over IPI — which the kernel already implements for
+  its own use.
+
+In this framing you design the syscall ABI by making sitas run well on it: if
+the shard model, completion futures, and cross-shard submit map cleanly onto the
+ABI, the ABI is right.
+
+The three options are not exclusive. A natural path is **A first** (prove the
+seam), which pressure-tests the ABI ideas that feed **C**, while **B**
+opportunistically pulls sitas's discipline into kernel code where it already
+half-exists.
+
+---
+
+## 4. The seam: an OS backend trait for sitas
+
+The concrete first engineering step benefits sitas *even on Unix*: extract the
+implicit OS contract into an explicit trait so the Unix backend and a future
+CharlotteOS backend implement the same interface. Today the coupling is direct
+(`executor::driver` calls `os::OsReactor` under `#[cfg(unix)]`); the goal is to
+make the reactor/mailbox/thread-spawn a named boundary.
+
+### 4.1 What the executor actually needs from the OS
+
+Reading `src/executor/driver.rs` and `src/os.rs`, the executor's idle path needs
+exactly three capabilities:
+
+1. **Block until something happens**, with a deadline: readiness on a set of I/O
+   handles, or a wake, or a timeout (`OsReactor::wait_io`).
+2. **Wake a blocked reactor** from another thread/core (`OsWaker::wake`).
+3. **Submit/complete async operations** (the `io_uring` completion path), which
+   is really "an operation whose completion is itself a wakeable event."
+
+Everything else (timers, `Reply<T>`, `Notify`, `ShardLocal<T>`) is built in safe
+Rust on top of those.
+
+### 4.2 A proposed backend trait
+
+```rust
+/// The OS capabilities a single-shard executor needs. One instance per shard.
+/// The Unix implementation wraps epoll/kqueue/poll + a wake pipe; the
+/// CharlotteOS implementation wraps kernel completion capabilities.
+pub trait ShardOsBackend {
+    /// Opaque, cheaply-cloneable handle used to wake this shard's reactor from
+    /// another shard/core. On Unix: the pipe write end. On CharlotteOS: a
+    /// capability whose signal delivers a cross-LP IPI.
+    type Waker: ShardWaker;
+
+    /// A kernel/OS reference to a pending async operation whose completion is a
+    /// wakeable event. On Unix: an io_uring operation id. On CharlotteOS: a
+    /// completion capability returned by an async syscall.
+    type Completion: ShardCompletion;
+
+    fn waker(&self) -> Self::Waker;
+
+    /// Block until: an interest becomes ready, a completion arrives, the reactor
+    /// is woken, or the deadline elapses. This is the executor's only sleep.
+    fn wait(
+        &self,
+        interests: &Interests<'_>,
+        deadline: Option<Instant>,
+    ) -> io::Result<ShardEvent>;
+}
+
+pub trait ShardWaker: Clone + Send + Sync {
+    fn wake(&self) -> io::Result<()>;
+}
+
+pub trait ShardCompletion {
+    /// Non-blocking check; the reactor turns readiness into a task wake.
+    fn poll(&self) -> Poll<io::Result<CompletionResult>>;
+}
+```
+
+`Interests` carries the current readiness registrations and pending completions
+the reactor should watch; `ShardEvent` reports which fired (mirroring today's
+`OsEvent { woke, readable, writable }` plus completions). The executor loop in
+`driver.rs` becomes backend-agnostic: it calls `backend.wait(..)` and applies
+the returned event, exactly as it does now for `OsReactor`.
+
+A parallel, smaller trait covers **shard startup and cross-shard transport** so
+`sharded_executor` and `shard_mailbox` are not hardwired to `std::thread` +
+`std::sync::mpsc`:
+
+```rust
+pub trait ShardRuntime {
+    type JoinHandle;
+    /// Spawn one shard worker, ideally pinned to a specific core/LP.
+    fn spawn_shard(&self, shard: ShardId, placement: Placement, entry: ShardEntry)
+        -> io::Result<Self::JoinHandle>;
+    /// Create a bounded owned-message channel between shards.
+    fn channel<M: Send + 'static>(&self, capacity: usize)
+        -> (ShardSender<M>, ShardReceiver<M>);
+}
+```
+
+On Unix these are thin wrappers over what sitas already does. On CharlotteOS
+they map to `spawn_thread` (LP-affine) and a kernel capability channel.
+
+### 4.3 Why this helps sitas immediately
+
+Even before CharlotteOS exists as a target, this refactor:
+
+- turns the current `#[cfg(unix)]` sprawl in `driver.rs`/`os.rs` into one named
+  contract;
+- makes the `io_uring` vs readiness "two wait sources" tension (a known sitas
+  non-goal item) a matter of *which backend*, not scattered cfgs;
+- gives a clean place to add a test/mock backend for executor unit tests;
+- documents, in types, exactly what sitas assumes about the OS.
+
+---
+
+## 5. The CharlotteOS side: what the backend binds to
+
+The CharlotteOS backend of the trait above binds to kernel facilities that
+mostly already exist. Concretely:
+
+### 5.1 Shard = LP-affine thread
+`crate::cpu::scheduler::spawn_thread(asid, entry)` already creates a thread; the
+scheduler is already per-LP (`SYSTEM_SCHEDULER` holds one `LpScheduler` per LP).
+`ShardRuntime::spawn_shard` maps to spawning one thread per LP and keeping it
+there. Unlike Unix, **placement is not advisory** — an LP is a core, so a sitas
+shard bound to an LP is bound to a core by construction. No `sched_setaffinity`
+race, no cpuset surprises.
+
+### 5.2 Mailbox = typed capability channel
+The kernel already runs a per-LP owned-message queue: `IPI_CMD_QUEUES`
+(`ConcurrentQueue<IpiRpc>`), drained by `drain_local_ipi_queue()` from the IRQ
+path, with delivery kicked by `send_unicast_ipi`. Generalizing `IpiRpc` to a
+typed `M` and exposing it to userspace as a capability yields sitas's
+`ShardSender<M>`/`ShardReceiver<M>` directly. The cache-behavior analysis in
+sitas's `ARCHITECTURE.md` (payload cache-line migration, queue-metadata false
+sharing, one-heavily-targeted-inbox coherence bottleneck) applies verbatim and
+is, if anything, *more* controllable in-kernel.
+
+### 5.3 Reactor wait = await completion capabilities
+`OsReactor::wait` (block until readiness/wake/timeout) maps to the kernel
+blocking a thread on a set of completion capabilities. The machinery exists:
+`TimerEvent` is `Observable`, threads block by registering their `Waker` as an
+`Observer` (see `SystemScheduler::block_thread`), and `sleep`/timer expiry wakes
+them. Generalize "block on a timer event" to "block on any completion
+capability" and the reactor is native.
+
+### 5.4 Async syscalls = the completion path
+This is the design frontier and where Option C lives. CharlotteOS's stated model
+is that nearly all syscalls are asynchronous, returning a completion capability
+(the `Thread`'s exit-observer comment in `scheduler/threads/mod.rs` already
+describes syscalls registering a completion capability as an observer of the
+worker thread). sitas's `io_uring` futures (`read_at`, `write_all_at`, and the
+abandoned-buffer safety discipline) are the userspace consumer that would drive
+the shape of this ABI: submit an op + owned buffer, get a completion capability,
+await it, reclaim the buffer on completion. sitas's **drain-or-leak teardown
+rule** ("never free a buffer while the kernel may still touch it") is exactly
+the ownership contract the kernel side must honor too.
+
+### 5.5 Wake = IPI
+`ShardWaker::wake` from shard A targeting shard B is `send_ipi(target_lp)` / a
+signaled capability that raises a cross-LP IPI, landing in B's IRQ dispatcher,
+which drains work and yields — the path we wired during the AArch64 GIC work
+(`irq_dispatcher` → `drain_local_ipi_queue` → `cond_yield_lp`).
+
+---
+
+## 6. What it looks like assembled (Option A)
+
+```
+CharlotteOS user process
+ ├─ 1 thread per LP        (kernel: spawn_thread, LP-affine)   ← ShardRuntime
+ ├─ sitas executor / LP    (unchanged: tasks, wakers, timers,
+ │                           scheduling groups, observability)
+ ├─ sitas ShardLocal<T>    (unchanged: KV, counter, your services)
+ ├─ sitas Reply<T>/Notify  (unchanged: awaitable completions)
+ └─ ShardOsBackend (CharlotteOS)      ← the only new code
+        wait()        → await kernel completion capabilities (deadline-aware)
+        Waker::wake() → signal capability → cross-LP IPI
+        channel<M>()  → kernel typed capability channel
+        Completion    → async-syscall completion capability
+```
+
+Everything above the backend is sitas as it exists. The backend is the port.
+And because the kernel's async model already matches sitas's, the backend is a
+*translation*, not an *emulation* — there is no blocking call being faked, no
+thread parked to simulate a completion, no signal-handler tightrope.
+
+---
+
+## 7. Where the friction (and the research) is
+
+Honest corners, because the interesting failures live here:
+
+1. **`no_std` reality.** sitas is std-only today (even the "std-only baseline"
+   is a selling point). Splitting the semantic core into a `no_std` +
+   `alloc` crate with the OS behind a trait is real work, though the zero
+   external dependencies help. Some `std` types (`Instant`, `mpsc`, `thread`)
+   need `core`/`alloc` replacements backed by the kernel.
+2. **Cancellation across the boundary.** sitas already treats drop as
+   cancellation and has the abandoned-`io_uring`-buffer safety model. On
+   CharlotteOS the same question becomes "what happens to an in-flight async
+   syscall when the awaiting task is dropped?" — the kernel needs a cancel +
+   deferred-reclaim contract mirroring sitas's drain-or-leak. This is a place
+   where sitas's existing discipline can *specify* kernel behavior.
+3. **Backpressure end to end.** sitas has bounded mailboxes and a spawn
+   `BackpressureGuard`. Extending backpressure through a kernel capability
+   channel (what happens when a shard's inbound completion queue is full?) is an
+   open ABI question — and exactly the kind the essay flags as "hard problems
+   move, they don't disappear."
+4. **Interrupting user code at an arbitrary instruction.** The async-first model
+   still has to deliver upcalls/wakes into a running userspace shard safely.
+   CharlotteOS's upcall design and sitas's cooperative-only executor (no
+   preemption within a shard) have to agree on where wakes are observed.
+5. **Two wait sources → one.** sitas's roadmap wants to unify
+   timers/readiness/`io_uring` into one deadline-aware wait. On CharlotteOS
+   there is a chance to get this right from the start: **one** completion-wait
+   primitive that covers timers, IPIs, and async-syscall completions — because
+   the kernel controls all three.
+
+---
+
+## 8. Why this is worth pursuing
+
+- **A rare alignment.** Almost every Rust async runtime fights its OS. sitas on
+  CharlotteOS is a case where the runtime and the kernel *agree* on the async
+  model. That makes the pairing a clean experiment in what the essay calls
+  building the alternative "clean, with no backwards-compatibility burden."
+- **Bidirectional validation.** sitas gives CharlotteOS a demanding,
+  well-specified userspace consumer to design its async syscall ABI against
+  (Option C). CharlotteOS gives sitas a substrate where its model is native, not
+  emulated (Option A). Each is the other's proof.
+- **The invariants transfer.** sitas's shared-nothing discipline is not
+  Unix-specific; it is an *ownership* discipline. It is arguably more at home in
+  a kernel that already shards state per LP than in a userspace fighting a global
+  address space (Option B).
+- **It's the same idea, honestly followed.** Both projects independently
+  concluded that the right primitive is a waitable completion handle and that
+  state should be shard-owned. Putting them together is not a mashup; it is two
+  halves of one thesis meeting in the middle.
+
+---
+
+## 9. Suggested first steps
+
+Ordered so each step has standalone value:
+
+1. **Extract the `ShardOsBackend` / `ShardRuntime` traits in sitas** (Unix
+   backend implements them; no behavior change). Immediately improves sitas by
+   replacing `#[cfg(unix)]` sprawl with a named contract and enabling a mock
+   backend for tests.
+2. **Split sitas into `sitas-core` (`no_std` + `alloc`, the model + executor
+   behind the traits) and `sitas-unix` (the backend).** Proves the core is
+   OS-agnostic.
+3. **Draft the CharlotteOS async-syscall/completion-capability ABI** using
+   sitas's `submit -> Reply/Completion` and `io_uring` buffer-ownership model as
+   the reference consumer (Option C on paper).
+4. **Prototype `sitas-charlotte`**: implement the backend traits against
+   `spawn_thread`, a typed capability channel (generalized `IpiRpc`), and the
+   completion-capability wait. Bring up `basic_kv` on CharlotteOS as the
+   hello-world.
+5. **Feed back into the kernel (Option B):** where the prototype shows
+   `PerLp<T>`/`IpiRpc` want sitas's `ShardLocal<T>`/typed-mailbox ergonomics,
+   upstream those into CharlotteOS itself.
+
+---
+
+## 10. References
+
+- CharlotteOS in-tree:
+  - Per-LP state: `crates/catten/src/cpu/multiprocessor/spin/per_lp.rs`
+  - Cross-LP mailbox / IPI RPC: `crates/catten/src/cpu/multiprocessor/ipi.rs`
+  - Observer/waker model: `crates/catten/src/klib/observer/mod.rs`,
+    `crates/catten/src/cpu/scheduler/threads/waker.rs`
+  - Timer events / awaitable completion: `crates/catten/src/timers/mod.rs`
+  - Scheduler surface: `crates/catten/src/cpu/scheduler/mod.rs`
+  - AArch64 IRQ→IPI→yield path: `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`
+- `sitas` (../gautelis/sitas):
+  - Architecture & invariants: `docs/ARCHITECTURE.md`
+  - OS seam to replace: `src/os.rs`, `src/executor/driver.rs`
+  - Shard runtime: `src/runtime.rs`, `src/sharded_executor.rs`
+  - Shard-local state: `src/shard_local.rs`
+  - Reply/Notify completion primitives: `src/runtime.rs`, `src/executor/sync.rs`
+- Motivation: *"Hardware Is Asynchronous. Most of Our Operating Systems Still
+  Aren't."* — <https://vorjdux.com/articles/hardware-is-async.html>
