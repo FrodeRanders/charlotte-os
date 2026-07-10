@@ -495,6 +495,38 @@ in Phase 1 ("what is a waitable interest?") is answered by a kernel-managed
 completion capability rather than a Unix file descriptor — and the rest of the
 backend falls out as a translation.
 
+### 9.1 Validation status: the ABI has an executable model
+
+The type sketch above is no longer only on paper. A **reference model of this
+ABI now exists and is tested in the sitas repository** (branch
+`reactor-handle-seam`, `src/charlotte_abi.rs`): an in-memory `MockKernel`
+implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
+a `CharlotteReactor` that implements sitas's `ReactorBackend` contract with
+`Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it
+is the ABI's semantics made executable, so the shapes can be exercised before
+any kernel path exists.
+
+Tests validate each decision-gate claim concretely:
+
+- **Completion path:** `submit → complete → wait` reports the ready capability
+  and drains a completion that hands the owned buffer back (the `Reply<T>` /
+  `WriteAtUringCompletion` shape).
+- **Cross-shard wake:** a blocked reactor is unblocked by a cloned waker from
+  another thread (the model's stand-in for a cross-LP IPI).
+- **Cancellation / deferred reclaim:** `cancel` on an in-flight op returns
+  `CancelRequested` and the kernel *keeps* the buffer until the terminal
+  (`Cancelled`) completion hands it back — sitas's `defer_buffer_drop`, mirrored.
+- **Backpressure:** a full capability table returns `SubmitError::WouldBlock`;
+  a full completion queue refuses the post **non-lossily** (op stays in flight,
+  keeps its buffer, queue marked overflow-pending) until a drain frees space.
+- **Contract fit:** the reactor is driven purely through
+  `ReactorBackend<Handle = CompletionCap>`, proving the executor could rely on it
+  exactly as it relies on `OsReactor` today.
+
+This confirms the Phase-2 finding empirically: the wait primitive is trivial and
+the design weight is entirely on *what a waitable interest is* — here, a
+`CompletionCap` backed by a capability table + buffer-ownership contract.
+
 ---
 
 ## 10. Suggested next steps (within Option C)
@@ -513,7 +545,14 @@ backend falls out as a translation.
 5. **Feed back into Option A:** generalize sitas's `ReactorBackend::Handle` from
    `RawFd` to an associated type end-to-end (the readiness layer), then implement
    `CharlotteReactor` against a mock of this ABI to validate the shapes before the
-   kernel path exists.
+   kernel path exists. **(Done in part — see §9.1:** the `CharlotteReactor` +
+   `MockKernel` reference model exists and is tested against the
+   `ReactorBackend<Handle = CompletionCap>` contract. The remaining, larger piece
+   is threading a generic `Handle` through the `Executor`/`Scheduler` readiness
+   layer so the *real* executor can run on the CharlotteOS backend; that is
+   deferred because the `unix_io` readiness layer is inherently `RawFd`-bound and
+   a completion-based kernel backend does not use it — it uses the
+   completion/CQ path modelled here instead.)
 
 ---
 
