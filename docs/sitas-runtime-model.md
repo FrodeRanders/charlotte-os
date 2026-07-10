@@ -544,7 +544,52 @@ design effort must concentrate, not on the wait primitive itself.
 
 ### Phase 2 — Option C (`charlotte-os` `async-syscall-abi`)
 
-_Not started._
+_In progress. First deliverable complete: the async syscall / completion-capability
+ABI is drafted and specified against Option A's trait boundary._
+
+**What was done (branch `async-syscall-abi`):** wrote
+[`docs/async-syscall-abi.md`](./async-syscall-abi.md) — a full ABI specification
+that treats sitas as the executable spec. It grounds the design in the kernel
+facilities that already exist (`Thread: Observable` + `Waker: Observer` +
+`SystemScheduler::block_thread`, per-LP schedulers, `IPI_CMD_QUEUES`, the
+AArch64 `irq_dispatcher → drain_local_ipi_queue → cond_yield_lp` path) and maps
+sitas's `ReactorBackend`/`Reply<T>`/`ShardedSubmitter` onto a five-operation
+surface: `submit → CompletionCap`, `wait(cq, min_complete, deadline)`,
+`wake(cq)`, `cancel(cap)`, `close(cap)`. It includes a non-compiled Rust type
+sketch and an explicit list of what must be built vs. reused.
+
+**Decision-gate answers:**
+
+1. *Shard model maps cleanly?* **Yes** — shard = LP-affine thread + private
+   completion queue; placement is stronger than Unix (an LP *is* a core).
+2. *Completion futures map cleanly?* **Yes, more naturally than on Unix.**
+   `Reply<T>`/`ReplyFuture<T>`/`JoinHandle` all reduce to "await one
+   `CompletionCap` via the CQ." The kernel already stores a `Waker` as an
+   `Observer`; sitas stores a `Waker` in `ReplyShared` — the same object. A
+   one-shot completion event beats fd readiness (no re-arm) and **unifies
+   sitas's two wait sources into one CQ** (resolves the §7.5 roadmap item).
+3. *Cross-shard submit maps cleanly?* **Yes** — `submit_to(other)` → enqueue on
+   target LP + `wake`, exactly what the kernel already does for TLB-shootdown
+   RPCs; the delta is a typed, bounded message.
+4. *Cancellation expressible?* **Yes — and the reference consumer specifies it.**
+   sitas's drop-as-cancel + `defer_buffer_drop` + drain-or-leak translate
+   directly into the ABI's `cancel` + deferred-reclaim buffer contract. An open
+   kernel question (§7.2) becomes a settled contract.
+5. *Backpressure expressible?* **Yes, with one required kernel change:** bounded
+   SQ + non-lossy overflow-pending CQ + **bounding the per-LP cross-shard queue**
+   (`IPI_CMD_QUEUES` is unbounded today). With that, backpressure is end-to-end.
+
+**The confirmed center of gravity (from Phase 1):** the hard part is not the
+wait primitive (trivial, already in-kernel) but **what a waitable interest is**.
+The ABI answers this with `type Handle = CompletionCap`: a kernel-managed
+completion capability backed by a per-AS capability table + a buffer-ownership
+contract. That table + contract is what Option C should prototype first.
+
+**Prerequisites that do not exist yet (scoping the eventual prototype):** there
+is no syscall entry/dispatch (`sync_dispatcher` panics on SVC; x86_64 has no
+`SYSCALL` handler), no per-AS capability table (only PCIe device capabilities
+exist), and no userspace-mappable CQ/SQ. x86_64 IPI handlers are stubbed
+(`todo!()`), so the first runnable prototype targets AArch64.
 
 ### Phase 3 — Option B (`charlotte-os` `shard-local-kernel`)
 
