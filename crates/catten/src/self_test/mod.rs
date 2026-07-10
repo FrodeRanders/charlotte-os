@@ -6,6 +6,7 @@
 //! be whitebox integration tests that can be run after Catten initializes itself.
 
 pub mod completion;
+pub mod ipi;
 pub mod memory;
 pub mod syscall;
 
@@ -30,5 +31,6 @@ pub fn run_self_tests() {
     memory::allocator::test_allocator();
     completion::test_completion_caps();
     syscall::test_syscall_dispatch();
+    ipi::test_ipi_bounded_queue();
     logln!("Testing Complete. All Tests Passed!");
 }

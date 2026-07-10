@@ -599,6 +599,40 @@ step. The dispatch path itself is real and exercised from the self-test harness.
 An unknown syscall number still panics (fatal), which is the expected behavior
 until error-return conventions are defined.
 
+### 9.4 Bounded cross-LP IPI queue and typed-message dispatch
+
+The cross-shard backpressure specified in §6 now exists in the kernel. The
+`IPI_CMD_QUEUES` are **bounded** (256 entries per LP, configurable via
+`DEFAULT_QUEUE_CAPACITY` in `ipi.rs`), created via `ConcurrentQueue::bounded`
+instead of the previous `unbounded`. Two push paths exist:
+
+- `try_push_to` / `try_send_ipi_rpc` — when the target LP's queue is full,
+  `push()` on the bounded `ConcurrentQueue` returns `Err(Full(rpc))`, which
+  propagates back to the caller as first-class backpressure (analogous to
+  `submit` returning `WouldBlock`). This is the path sitas's
+  `ShardedSubmitter::submit_to` would use.
+- `push_to` / `send_ipi_rpc` — a must-not-drop path for kernel-internal RPCs
+  (TLB shootdowns, scheduler wakeups). If the queue is full, the oldest entry is
+  force-evicted (a `force_push` fallback sized to virtually never fire).
+
+The `IpiRpc` enum gains a `Closure(Box<dyn FnOnce() + Send>)` variant, plus a
+manual `Debug` impl. `try_run_on_lp(target, closure)` wraps arbitrary work in
+this variant and returns the closure back on backpressure. This is the
+kernel-side seed of a typed `ShardMailbox<M>`: a sender boxes work and the
+target LP executes it on its own scheduler.
+
+The `dispatch_ipi_rpc` function (shared by `drain_local_ipi_queue` from the
+AArch64 IRQ path and `ih_interprocessor_interrupt` on x86_64) handles the
+`Closure` variant by calling `f()`, executing the boxed work inline.
+
+Self-tests in `crates/catten/src/self_test/ipi.rs` validate: bounded queue
+semantics (entry count, backpressure on full queue), `try_run_on_lp` closure
+execution (flag set after drain), `try_send_ipi_rpc` Wakeup round-trip, and
+backpressure rejection returning the exact `IpiRpc` variant sent. Tests run
+locally on the BSP since only one LP is active at boot time; the contract is
+independent of whether the target LP is local or remote. Builds cleanly for
+both architectures, no new warnings.
+
 ---
 
 ## 10. Suggested next steps (within Option C)
@@ -617,6 +651,8 @@ until error-return conventions are defined.
    routes via synthetic `TrapFrame`. Real-EL0 test thread deferred.)**
 4. **Bound `IPI_CMD_QUEUES`** and generalize `IpiRpc` toward a typed message, so
    cross-shard submit exerts backpressure (this also seeds Option B / Phase 3).
+   **(Done — see §9.4: bounded per-LP queues with `push`-returns-backpressure
+   + `Closure` variant for arbitrary cross-LP work dispatch.)**
 5. **Feed back into Option A:** generalize sitas's `ReactorBackend::Handle` from
    `RawFd` to an associated type end-to-end (the readiness layer), then implement
    `CharlotteReactor` against a mock of this ABI to validate the shapes before the

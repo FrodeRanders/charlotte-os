@@ -632,6 +632,23 @@ The ABI answers this with `type Handle = CompletionCap`: a kernel-managed
 completion capability backed by a per-AS capability table + a buffer-ownership
 contract. That table + contract is what Option C should prototype first.
 
+**Fifth deliverable — bounded cross-LP IPI queue + typed-message dispatch:**
+`IPI_CMD_QUEUES` is now bounded per LP (`ConcurrentQueue::bounded(256)`) and
+`IpiRpc` carries a `Closure(Box<dyn FnOnce() + Send>)` variant that packages
+arbitrary work for cross-LP execution — the kernel side of the cross-shard
+backpressure contract from the ABI doc §6. `try_push_to`/`try_send_ipi_rpc`
+propagate `Err(Full(rpc))` back to the caller (first-class backpressure);
+kernel-internal RPCs (TLB shootdown, scheduler wakeup) use `push_to` with a
+force-evict fallback. `try_run_on_lp(target, closure)` wraps work in the
+`Closure` variant and returns the closure on backpressure. Both
+`drain_local_ipi_queue` (AArch64 IRQ path) and `ih_interprocessor_interrupt`
+(x86_64 legacy path) dispatch `Closure` by invoking `f()`. Self-tests
+(`self_test/ipi.rs` — bounded semantics, closure execution, backpressure
+rejection returning the exact RPC variant sent) pass; both architectures build
+cleanly, no new warnings. This directly seeds Option B (Phase 3): the
+`Closure` variant is the prototype of a typed `ShardMailbox<M>` and the bounded
+queue enforces the sitas bounded-mailbox discipline in the kernel itself.
+
 **Prerequisites that do not exist yet (scoping the eventual prototype):** there
 is no syscall entry/dispatch (`sync_dispatcher` panics on SVC; x86_64 has no
 `SYSCALL` handler), no per-AS capability table (only PCIe device capabilities
