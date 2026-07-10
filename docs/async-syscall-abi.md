@@ -661,7 +661,10 @@ detected (head + 1 == tail) and counted rather than silently overwriting.
 
 Self-tests validate: write → pending count, drain in insertion order,
 fill-to-capacity, overflow detection, and `OpResult` ↔ `i64` encoding
-round-trip. Both architectures build cleanly.
+round-trip. An integration self-test (`self_test/cq_completion.rs`) validates
+the full submit → complete → ring-entry cycle: an AS with an attached CQ ring,
+`complete()` writes the entry to the ring, `cq_pending()` returns the count,
+and the ring is drained and verified. Both architectures build cleanly.
 
 What remains: map the ring page into a user address space (the AP_EL0
 page-mapping infrastructure from the real-EL0 test now exists) and wire
