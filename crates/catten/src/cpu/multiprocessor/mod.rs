@@ -2,6 +2,7 @@
 pub mod cpu_topology;
 pub mod interrupt_tracking;
 pub mod ipi;
+pub mod shard_mailbox;
 pub mod spin;
 pub mod startup;
 
