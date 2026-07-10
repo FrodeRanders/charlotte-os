@@ -416,6 +416,30 @@ Ordered so each step has standalone value:
 
 ---
 
+## 9a. Phased execution plan (spikes, one branch per alternative)
+
+The three alternatives of §3 are pursued as **time-boxed spikes**, in the order
+**A → C → B**, following the dependency arrows: A produces the reusable trait
+seam that C specs against, and B is most convincing once the userspace shape it
+serves is understood. Each spike is small, reversible, and ends by appending a
+"what we learned" note to this document. Nothing merges into a mainline branch
+until we consciously decide it earns its place.
+
+| Phase | Alt | Repo | Branch | Deliverable | Decision gate |
+|-------|-----|------|--------|-------------|---------------|
+| 1 | **A** | `sitas` | `os-backend-seam` | Extract `ShardOsBackend`/`ShardRuntime` traits; Unix backend implements them with no behavior change. Optionally begin the `sitas-core`/`sitas-unix` split. | Is the OS contract genuinely small and clean? Does the Unix build/test stay green? Does a mock backend become possible? |
+| 2 | **C** | `charlotte-os` | `async-syscall-abi` | Written async syscall / completion-capability ABI, specified against A's trait boundary as the reference consumer. Optional in-tree Rust type sketch. | Do sitas's shard model, completion futures, and cross-shard submit map cleanly onto the ABI? Are cancellation and backpressure expressible? |
+| 3 | **B** | `charlotte-os` | `shard-local-kernel` | Generalize `PerLp<T>` → a `ShardLocal<T>`-style API (non-escaping references) and `IpiRpc` → a typed `ShardMailbox<M>`. | Does the discipline improve kernel code without fighting `no_std`? Does it stay compatible with the existing scheduler and IPI paths? |
+
+Rules for the spikes:
+
+- Each branch stays a spike: minimal, self-contained, not merged until decided.
+- The AArch64 work stays isolated on its own branch and is not entangled here.
+- Findings are recorded per phase in §11 so the eventual decision is documented
+  rather than remembered.
+
+---
+
 ## 10. References
 
 - CharlotteOS in-tree:
@@ -434,3 +458,22 @@ Ordered so each step has standalone value:
   - Reply/Notify completion primitives: `src/runtime.rs`, `src/executor/sync.rs`
 - Motivation: *"Hardware Is Asynchronous. Most of Our Operating Systems Still
   Aren't."* — <https://vorjdux.com/articles/hardware-is-async.html>
+
+---
+
+## 11. Findings (updated per spike)
+
+Recorded as each phase completes, so the eventual choice among the alternatives
+is grounded in evidence rather than recollection.
+
+### Phase 1 — Option A (`sitas` `os-backend-seam`)
+
+_In progress._
+
+### Phase 2 — Option C (`charlotte-os` `async-syscall-abi`)
+
+_Not started._
+
+### Phase 3 — Option B (`charlotte-os` `shard-local-kernel`)
+
+_Not started._
