@@ -116,6 +116,10 @@ struct CompletionInner {
     buffer: Option<Vec<u8>>,
     result: Option<OpResult>,
     cancelling: bool,
+    /// Set when take() consumes the result. A cap is reclaimable iff
+    /// `result.is_some()` (terminal result posted) OR `drained` (result
+    /// already consumed by a prior take()).
+    drained: bool,
 }
 
 /// A kernel object naming one in-flight or completed operation.
@@ -135,9 +139,15 @@ impl Completion {
                 buffer,
                 result: None,
                 cancelling: false,
+                drained: false,
             }),
             observers: ConcurrentQueue::unbounded(),
         })
+    }
+
+    fn is_reclaimable(&self) -> bool {
+        let inner = self.inner.lock();
+        inner.result.is_some() || inner.drained
     }
 
     fn is_complete(&self) -> bool {
@@ -175,11 +185,16 @@ impl Completion {
     }
 
     /// Drains the terminal result and returns the buffer to the caller. Returns
-    /// `None` while the operation is still in flight.
+    /// `None` while the operation is still in flight. Sets the `drained` flag
+    /// so the cap remains reclaimable after the result is consumed.
     fn take(&self) -> Option<Completed> {
         let mut inner = self.inner.lock();
-        inner.result.take().map(|result| Completed {
-            result,
+        let result = inner.result.take();
+        if result.is_some() {
+            inner.drained = true;
+        }
+        result.map(|r| Completed {
+            result: r,
             buffer: inner.buffer.take(),
         })
     }
@@ -397,15 +412,14 @@ pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, C
     Ok(completion.cancel())
 }
 
-/// Releases a completed capability's table slot. A cap is closable after a
-/// terminal completion was posted (even if its result has already been
-/// consumed by [`poll`]).
+/// Releases a completed or already-drained capability slot. Fails with
+/// [`CapError::NotComplete`] if the operation is still in flight (neither
+/// completed nor drained).
 pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
-    // After a terminal completion was posted the cap is reclaimable. The
-    // `NotComplete` check exists to prevent closing an in-flight cap (the
-    // result has never been set). If the result was taken by a prior `poll()`,
-    // the completion is still reclaimable — we just need the slot freed.
+    if !completion.is_reclaimable() {
+        return Err(CapError::NotComplete);
+    }
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
     as_completions

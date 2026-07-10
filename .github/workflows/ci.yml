@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main, async-syscall-abi, shard-local-kernel]
+  pull_request:
+    branches: [dev, main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-none-catten
+          - x86_64-unknown-none-catten
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target == 'aarch64-unknown-none-catten' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
+
+      - name: Build kernel
+        run: |
+          cargo build --package catten \
+            --target "target_specs/${{ matrix.target }}.json" \
+            --no-default-features --features acpi
+        env:
+          RUSTFLAGS: "-D warnings"
+
+  test:
+    name: Test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-none-catten
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-unknown-none
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-arm mtools
+
+      - name: Build kernel
+        run: |
+          cargo build --package catten \
+            --target "target_specs/${{ matrix.target }}.json" \
+            --no-default-features --features acpi
+
+      - name: Boot QEMU (smp=1) and verify self-tests
+        run: |
+          set -euo pipefail
+          KERNEL="target/${{ matrix.target }}/debug/catten"
+          IMAGE="/tmp/catten-boot.img"
+          # Create bootable image
+          dd if=/dev/zero of="$IMAGE" bs=1M count=64 status=none
+          mformat -i "$IMAGE" -F -v CATOS ::
+          mmd -i "$IMAGE" ::/EFI
+          mmd -i "$IMAGE" ::/EFI/BOOT
+          mcopy -i "$IMAGE" limine-binary/BOOTAA64.EFI ::/EFI/BOOT/BOOTAA64.EFI
+          mcopy -i "$IMAGE" "$KERNEL" ::/catten
+          mcopy -i "$IMAGE" limine.conf ::/limine.conf
+          # Boot QEMU, capture serial output
+          qemu-system-aarch64 \
+            -M virt,gic-version=3 \
+            -cpu cortex-a710 \
+            -smp 1 \
+            -m 512M \
+            -bios /usr/share/AAVMF/AAVMF_CODE.fd \
+            -drive "if=none,file=$IMAGE,format=raw,id=drive0" \
+            -device virtio-blk-device,drive=drive0 \
+            -serial file:/tmp/serial.log \
+            -display none \
+            -no-reboot &
+          QPID=$!
+          # Wait up to 60s for boot + tests to complete
+          for i in $(seq 60); do
+            if grep -q "Testing Complete. All Tests Passed" /tmp/serial.log 2>/dev/null; then
+              echo "=== ALL SELF-TESTS PASSED ==="
+              cat /tmp/serial.log
+              kill $QPID 2>/dev/null || true
+              exit 0
+            fi
+            if grep -q "panicked at" /tmp/serial.log 2>/dev/null; then
+              echo "=== TEST FAILURE ==="
+              cat /tmp/serial.log
+              kill $QPID 2>/dev/null || true
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "=== TIMEOUT (60s) ==="
+          cat /tmp/serial.log
+          kill $QPID 2>/dev/null || true
+          exit 1
