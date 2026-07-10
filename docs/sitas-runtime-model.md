@@ -511,6 +511,37 @@ tests unaffected).
 - The `ShardRuntime` half of the seam (shard spawn + typed channel, replacing
   `std::thread` + `std::sync::mpsc`) is still to be sketched.
 
+**Step 2 — trait threaded through `Executor`/`Scheduler` (commit `d1085bb`):**
+the reactor is now a real type parameter, `Executor<R: ReactorBackend<Handle =
+RawFd> = OsReactor>`, defaulted so existing callers are unchanged. The driver's
+idle wait goes through `R` via the trait rather than a concrete `OsReactor`. The
+scheduler's waker is type-erased to `Box<dyn SchedulerWake>` — because the
+scheduler only ever *wakes* its reactor and never needs the concrete type, this
+avoids rippling a type parameter through ~10 files while still routing wakes
+through the active backend. All 318+ tests, `fmt`, and `clippy -D warnings`
+green; `executor_sleep` and `async_tcp_echo` verified end-to-end.
+
+**The sharpest finding from threading it through:** the reactor *seam* abstracts
+cleanly, but the **readiness-tracking layer is the real coupling point**, not the
+reactor. `io_interest`/`unix_io` and the `io_uring` completion fd all identify
+interests by `RawFd` (33 uses across three files), so the backend's `Handle` is
+currently pinned to `RawFd` by a bound on the `Executor` struct. In other words:
+*abstracting "block until an event" was trivial; abstracting "what is an
+interest" is the actual work.* This is a direct, useful input to Option C — the
+CharlotteOS async ABI's central question is precisely **what a waitable interest
+handle is** (a completion capability), and this spike shows that is where the
+design effort must concentrate, not on the wait primitive itself.
+
+**Carried into the next sub-step / Option C:**
+
+- Generalize the interest `Handle` from `RawFd` to an associated type end-to-end
+  (scheduler interest maps, `io_interest`, readiness futures). This is the change
+  that would let a CharlotteOS completion-capability backend drop in.
+- The `io_uring` completion path remains a second wait source; unifying it with
+  readiness under one handle/one wait is shared work between sitas's roadmap and
+  the CharlotteOS ABI.
+- `ShardRuntime` (spawn + typed channel) half still to be sketched.
+
 ### Phase 2 — Option C (`charlotte-os` `async-syscall-abi`)
 
 _Not started._
