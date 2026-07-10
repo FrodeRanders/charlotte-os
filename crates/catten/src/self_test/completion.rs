@@ -39,6 +39,12 @@ pub fn test_completion_caps() {
     completion::close(asid, cap).unwrap();
     assert!(completion::poll(asid, cap).is_err());
 
+    // --- close rejects in-flight caps (must complete or be drained first) ----
+    let cap_inflight = completion::submit(asid, OpCode::Nop, None).unwrap();
+    assert!(completion::close(asid, cap_inflight).is_err()); // NotComplete
+    completion::complete(asid, cap_inflight, OpResult::Ok(0)).unwrap();
+    completion::close(asid, cap_inflight).unwrap(); // now it works
+
     // --- cancel retains the buffer until the terminal completion -------------
     let cap2 = completion::submit(asid, OpCode::Write, Some(alloc::vec![1u8, 2, 3])).unwrap();
     assert_eq!(
