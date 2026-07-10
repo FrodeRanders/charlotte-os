@@ -33,6 +33,7 @@ pub mod log;
 pub mod memory;
 pub mod panic;
 pub mod self_test;
+pub mod syscall;
 pub mod timers;
 
 use core::hint::unreachable_unchecked;

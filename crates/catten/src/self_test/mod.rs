@@ -7,6 +7,7 @@
 
 pub mod completion;
 pub mod memory;
+pub mod syscall;
 
 use crate::logln;
 
@@ -28,5 +29,6 @@ pub fn run_self_tests() {
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
     completion::test_completion_caps();
+    syscall::test_syscall_dispatch();
     logln!("Testing Complete. All Tests Passed!");
 }

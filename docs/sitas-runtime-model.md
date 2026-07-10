@@ -585,9 +585,25 @@ the observer/waker model, `block_thread`). Boot-time self-tests
 observer-signal path, buffer hand-back, `close`, cancel-with-deferred-reclaim,
 and `WouldBlock` submission backpressure. Builds and links cleanly for both
 `aarch64` and `x86_64` (display feature off — unrelated pre-existing host-link
-issue), no new warnings. Not yet present: EL0 syscall entry (`sync_dispatcher`
-still panics on SVC) and a shared-memory CQ/SQ ring — so `wait` is implemented
-but not yet exercised end-to-end. This is the natural next milestone.
+issue), no new warnings.
+
+**Fourth deliverable — syscall entry path:** the AArch64 `sync_dispatcher` in
+`interrupts/mod.rs` no longer panics on SVC. It decodes `ESR_EL1.EC`, and when
+EC == 0x15 (SVC from AArch64) reads the volatile register context saved by the
+IVT's `push_volatile_regs` into a `TrapFrame` (x0-x18, ELR_EL1, SPSR_EL1,
+SP_EL0), advances `ELR_EL1` by 4 to skip the SVC instruction on `eret`, extracts
+the SVC immediate from `ESR_EL1.ISS` as the syscall number, and hands off to
+`syscall_dispatch()` in `crates/catten/src/syscall/mod.rs`. The dispatch table
+maps SVC #0 (LOG) and SVC #1–6 (the five completion operations) to handler
+functions that call the `completion` module. Boot-time self-tests
+(`crates/catten/src/self_test/syscall.rs`) exercise every dispatch route by
+calling `syscall_dispatch` directly with a synthetic `TrapFrame`, verifying all
+seven syscalls route without panicking and the completion-cap operations are
+reachable through the table. The real-EL0 SVC path (`sync_dispatcher` with
+`push_volatile_regs` on the kernel stack, `eret` back to EL0) is compiled into
+`sync_dispatcher` but not exercised in self-tests because that requires a
+user-mapped code page (page-table work deferred). Builds cleanly for both
+architectures, no new warnings.
 
 **Decision-gate answers:**
 
