@@ -37,14 +37,11 @@ const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 
 /// AArch64 assembly stub for the user thread.
 ///
-/// `SVC #0` — invoke the LOG syscall (syscall number 0).
-/// `wfi`    — wait for interrupt (idle loop).
-/// `b -4`   — branch back to the `wfi` (infinite loop at EL0).
+/// `SVC #0` — invoke the LOG syscall (syscall number 0), then loop forever.
 #[cfg(target_arch = "aarch64")]
 const USER_THREAD_CODE: &[u8] = &[
-    0x01, 0x00, 0x00, 0xD4, // SVC #0  = D4_0000_01 (the immediate is in bits [20:5])
-    0x7F, 0x00, 0x03, 0xD5, // WFI     = D5_0300_7F
-    0xFC, 0xFF, 0xFF, 0x17, // B -4    = 17_FFFF_FC (branch back 4 instructions)
+    0x01, 0x00, 0x00, 0xD4, // SVC #0
+    0x00, 0x00, 0x00, 0x14, // B #0  = infinite loop (branch to self)
 ];
 
 /// Creates a user address space, maps a user-code page at `vaddr` and a
@@ -67,7 +64,6 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr) -> usize {
 
     let mut table = TEST_AS_TABLE.lock();
     let asid = table.add_element(user_as);
-    let asid = asid + 1;
     logln!("User AS registered with asid={}", asid);
 
     // --- map user code page ---------------------------------------------------
