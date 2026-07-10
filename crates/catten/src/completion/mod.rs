@@ -15,18 +15,19 @@
 //!   until a terminal completion hands it back — the buffer-ownership /
 //!   deferred-reclaim contract mirrored from sitas's `io_uring` discipline.
 //!
+//! The [`cq`] submodule provides a shared-memory completion-queue ring (io_uring-
+//! style) for zero-syscall completion delivery to userspace.
+//!
 //! ## Scope and honesty
 //!
-//! There is **no syscall entry path yet** (`sync_dispatcher` panics on SVC; no
-//! x86_64 `SYSCALL` handler) and no userspace-mappable completion-queue ring, so
-//! this prototype exposes the five ABI operations as *kernel-internal* functions
-//! and is exercised by boot-time self-tests rather than from EL0. [`complete`] is
-//! the kernel-side hook a real worker/driver would call when its work finishes;
-//! in the future that call site is the exit-observer of the worker thread (see
-//! `scheduler::threads::mod.rs:63-69`). The submission-side capability table and
-//! the buffer-ownership contract — the *center of gravity* identified in Phase 2
-//! — are real here; the shared-memory CQ/SQ rings and the EL0 syscall glue are
-//! the remaining, larger pieces.
+//! The AArch64 syscall entry path is wired (`sync_dispatcher` decodes SVC,
+//! dispatches to the syscall table, and a real-EL0 test thread exercises the
+//! round-trip). The CQ ring in [`cq`] is the next layer: mapping it into a user
+//! address space enables zero-syscall completion draining from userspace.
+//! The submission-side capability table and buffer-ownership contract are real;
+//! [`complete`] is the kernel-side hook a worker's exit-observer would call.
+
+pub mod cq;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::{Arc, Weak};

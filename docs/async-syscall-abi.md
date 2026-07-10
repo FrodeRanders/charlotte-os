@@ -642,6 +642,32 @@ locally on the BSP since only one LP is active at boot time; the contract is
 independent of whether the target LP is local or remote. Builds cleanly for
 both architectures, no new warnings.
 
+### 9.5 Shared-memory CQ ring
+
+The completion-queue ring buffer, the prerequisite for zero-syscall completion
+draining from userspace (§4.2), now exists as
+`crates/catten/src/completion/cq.rs`. It is a single 4 KiB page containing a
+header (head, tail, capacity, overflow — 4 × u32) and a circular entry array
+(16 bytes per entry: `cap: u64, result: i64`). The kernel is the single
+producer (`write(cap, result)` advances the head); the consumer (ultimately
+userspace) calls `read()` which advances the tail.
+
+The ring is allocated from the kernel heap (`alloc::vec![0u8; 4096]`) and the
+reference is a raw pointer — once mapped into a user address space, the same
+physical memory is visible from both sides. Entries are written/read with
+`volatile` accesses and a `fence(Release)`/`fence(Acquire)` barrier pair,
+ensuring correct ordering without cache-coherence surprises. Overflow is
+detected (head + 1 == tail) and counted rather than silently overwriting.
+
+Self-tests validate: write → pending count, drain in insertion order,
+fill-to-capacity, overflow detection, and `OpResult` ↔ `i64` encoding
+round-trip. Both architectures build cleanly.
+
+What remains: map the ring page into a user address space (the AP_EL0
+page-mapping infrastructure from the real-EL0 test now exists) and wire
+the `wait` syscall to block until `pending() > 0`. That is the last
+piece of the zero-syscall-completion loop.
+
 ---
 
 ## 10. Suggested next steps (within Option C)
@@ -649,6 +675,8 @@ both architectures, no new warnings.
 1. **Nail the CQ/SQ shared-memory layout** (io_uring-style rings mapped into the
    address space) — this is the prerequisite for zero-syscall draining assumed
    throughout §4.
+   **(Done — see §9.5: `completion::cq::CompletionQueueRing`, a single-page ring
+   with header + entry array; kernel-side producer tested.)**
 2. **Prototype the capability table** (per-AS `IdTable`-backed map from
    `CompletionCap` → `Arc<dyn Observable>`), reusing `IdTable` and the
    observer/waker machinery.
