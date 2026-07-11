@@ -1,55 +1,62 @@
-//! CharlotteOS sitas runtime demonstration.
+//! CharlotteOS sitas spawn test — exercises SVC #7 (SPAWN_THREAD).
 //!
-//! Uses the `sitas-charlotte` `CharlotteReactor` to exercise the async syscall
-//! ABI end-to-end: submit an operation via the kernel's COMPLETION_SUBMIT
-//! syscall, wait for the CQ ring to show a completion, read the result, and
-//! write a sentinel to the result page.
+//! Calls the SPAWN_THREAD syscall to create a kernel thread on LP 0 that runs
+//! a small test function. The spawned thread writes a sentinel to the result
+//! page; the main thread polls for the sentinel and signals success.
 
 #![no_std]
 #![no_main]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use core::panic::PanicInfo;
-use sitas_charlotte::CharlotteReactor;
 
 const RESULT_PAGE: *mut u32 = 0x0000_0000_0001_2000usize as *mut u32;
 
-/// Write a u32 to the result page (mapped at 0x12000 in the user AS).
-unsafe fn write_result(value: u32) {
-    unsafe { core::ptr::write_volatile(RESULT_PAGE, value) };
+/// The function the spawned thread will execute. Writes the sentinel 0xCAFE
+/// to the result page.
+unsafe fn thread_entry() {
+    unsafe { core::ptr::write_volatile(RESULT_PAGE, 0xCAFEu32) };
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    // Create a reactor for the test user AS (asid=1) on LP 0.
-    let reactor = CharlotteReactor::new(1, 0);
+    // The raw binary is loaded at 0x10000. Compute thread_entry's offset from
+    // the start of the binary and construct the correct virtual address.
+    let base = 0x10000usize;
+    let entry_offset = unsafe { thread_entry as usize } - unsafe { _start as usize };
+    let entry_vaddr = base + entry_offset;
 
-    // Submit a NOP operation via COMPLETION_SUBMIT (syscall #1).
-    // The kernel test pre-populates the CQ ring with one entry.
-    let cap = reactor.submit_wait(0, None);
-    unsafe { write_result(cap as u32) };
-
-    // Spin-poll the CQ ring until a completion arrives.
-    let mut seen: u32 = 0;
-    for _ in 0..10_000_000 {
-        let pending = reactor.cq().pending();
-        if pending > 0 {
-            if let Some(entry) = reactor.cq().read_one() {
-                seen = entry.result as u64 as u32;
-                break;
-            }
-        }
+    // Call SVC #7 (SPAWN_THREAD).
+    // Arguments: x0=asid(1), x1=entry_vaddr, x2=target_lp(0)
+    let tid: u64;
+    unsafe {
+        core::arch::asm!(
+            "svc #7",
+            inlateout("x0") 1u64 => tid,
+            in("x1") entry_vaddr as u64,
+            in("x2") 0u64,
+            options(nostack, nomem, preserves_flags),
+        );
     }
-    unsafe { write_result(seen) };
+
+    // Spin-poll the result page for the sentinel from the spawned thread.
+    for _ in 0..10_000_000 {
+        let sentinel = unsafe { core::ptr::read_volatile(RESULT_PAGE) };
+        if sentinel == 0xCAFE {
+            unsafe { core::ptr::write_volatile(RESULT_PAGE, tid as u32) };
+            break;
+        }
+        core::hint::spin_loop();
+    }
 
     loop {
-        unsafe { core::arch::asm!("wfi", options(nomem, nostack)) };
+        unsafe { core::hint::spin_loop() };
     }
 }
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {
-        unsafe { core::arch::asm!("wfi", options(nomem, nostack)) };
+        unsafe { core::hint::spin_loop() };
     }
 }

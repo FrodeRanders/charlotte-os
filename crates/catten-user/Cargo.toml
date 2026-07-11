@@ -2,17 +2,13 @@
 name = "catten-user"
 version = "0.1.0"
 edition = "2024"
-description = "CharlotteOS test user binary — exercises sitas shard-per-core runtime on CharlotteOS"
+description = "CharlotteOS test user binary"
 
 [[bin]]
 name = "catten-user"
 path = "src/main.rs"
 test = false
 bench = false
-
-[dependencies]
-sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
-sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }
 
 [profile.dev]
 panic = "abort"
