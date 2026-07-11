@@ -20,6 +20,7 @@
 //! `ESR_EL1[15:0]` (the ISS field for SVC). This kernel uses that immediate as
 //! the syscall number.
 
+use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 use crate::cpu::isa::lp::LpId;
 
 /// A snapshot of the volatile register set and architectural state at the moment
@@ -49,6 +50,8 @@ pub mod call_no {
     pub const COMPLETION_WAIT: u16 = 4;
     pub const COMPLETION_CANCEL: u16 = 5;
     pub const COMPLETION_CLOSE: u16 = 6;
+    /// Spawn a kernel thread pinned to a specific LP.
+    pub const SPAWN_THREAD: u16 = 7;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -61,7 +64,7 @@ pub const EC_SVC_AARCH64: u8 = 0x15;
 
 /// The single entry point from the ISA-specific [`sync_dispatcher`]. Panics on
 /// an unknown syscall.
-pub fn syscall_dispatch(frame: &TrapFrame, syscall_no: u16) {
+pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
     match syscall_no {
         call_no::LOG => sys_log(frame),
         call_no::COMPLETION_SUBMIT => sys_completion_submit(frame),
@@ -70,20 +73,21 @@ pub fn syscall_dispatch(frame: &TrapFrame, syscall_no: u16) {
         call_no::COMPLETION_WAIT => sys_completion_wait(frame),
         call_no::COMPLETION_CANCEL => sys_completion_cancel(frame),
         call_no::COMPLETION_CLOSE => sys_completion_close(frame),
+        call_no::SPAWN_THREAD => sys_spawn_thread(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
 
 // ---- individual syscall implementations ------------------------------------
 
-fn sys_log(frame: &TrapFrame) {
+fn sys_log(frame: &mut TrapFrame) {
     let _ptr = frame.regs[0] as *const u8;
     let _len = frame.regs[1] as usize;
     let lp = frame.lp_id;
     crate::early_logln!("[EL0 SYSCALL] LOG from userspace on LP {}", lp);
 }
 
-fn sys_completion_submit(frame: &TrapFrame) {
+fn sys_completion_submit(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let op_code = frame.regs[1];
     let op = match op_code {
@@ -98,7 +102,7 @@ fn sys_completion_submit(frame: &TrapFrame) {
     }
 }
 
-fn sys_completion_complete(frame: &TrapFrame) {
+fn sys_completion_complete(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let cap = frame.regs[1] as usize;
     let result_code = frame.regs[2] as i64;
@@ -110,7 +114,7 @@ fn sys_completion_complete(frame: &TrapFrame) {
     let _ = crate::completion::complete(asid, cap, result);
 }
 
-fn sys_completion_poll(frame: &TrapFrame) {
+fn sys_completion_poll(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let cap = frame.regs[1] as usize;
     match crate::completion::poll(asid, cap) {
@@ -120,20 +124,47 @@ fn sys_completion_poll(frame: &TrapFrame) {
     }
 }
 
-fn sys_completion_wait(frame: &TrapFrame) {
+fn sys_completion_wait(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let cap = frame.regs[1] as usize;
     let _ = crate::completion::wait(asid, cap);
 }
 
-fn sys_completion_cancel(frame: &TrapFrame) {
+fn sys_completion_cancel(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let cap = frame.regs[1] as usize;
     let _ = crate::completion::cancel(asid, cap);
 }
 
-fn sys_completion_close(frame: &TrapFrame) {
+fn sys_completion_close(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let cap = frame.regs[1] as usize;
     let _ = crate::completion::close(asid, cap);
+}
+
+fn sys_spawn_thread(frame: &mut TrapFrame) {
+    use crate::memory::linear::VAddr;
+    let asid = frame.regs[0] as crate::memory::AddressSpaceId;
+    let entry_vaddr = VAddr::from(frame.regs[1] as usize);
+    let target_lp = frame.regs[2] as u32;
+    // Translate the user VA to a physical address. Keep the lock alive for
+    // the duration of `translate_address` (it returns a reference to the AS).
+    let paddr = {
+        let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+        let as_mut = table.get_mut(asid)
+            .expect("SPAWN_THREAD: address space not found");
+        as_mut.translate_address(entry_vaddr)
+            .expect("SPAWN_THREAD: failed to translate entry VAddr")
+    };
+    let entry: *const u8 = paddr.into();
+    let entry_fn: extern "C" fn() = unsafe { core::mem::transmute(entry) };
+    let tid = crate::cpu::scheduler::spawn_thread(
+        crate::memory::KERNEL_ASID,
+        entry_fn,
+    );
+    let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .submit_to_lp(tid, target_lp);
+    // Return the thread id in x0.
+    frame.regs[0] = tid as u64;
 }
