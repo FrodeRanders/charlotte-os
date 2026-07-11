@@ -110,6 +110,11 @@ pub fn get_lp_id() -> LpId {
 }
 
 pub fn get_lic_id() -> u32 {
+    (mpidr() & 0xff) as u32
+}
+
+/// Returns the raw MPIDR_EL1 value for this logical processor.
+pub fn mpidr() -> u64 {
     let mpidr_el1: u64;
     unsafe {
         core::arch::asm!(
@@ -118,8 +123,18 @@ pub fn get_lic_id() -> u32 {
             options(nomem, nostack, preserves_flags)
         );
     }
-    // The Affinity Level 0 field (bits [7:0]) contains the CPU ID within the cluster
-    (mpidr_el1 & 0xff) as u32
+    mpidr_el1
+}
+
+/// Print the MPIDR at boot so we can verify the topology.
+pub fn log_mpidr() {
+    let m = mpidr();
+    let a3 = (m >> 32) & 0xff;
+    let a2 = (m >> 16) & 0xff;
+    let a1 = (m >> 8)  & 0xff;
+    let a0 = m & 0xff;
+    let lp = get_lp_id();
+    crate::early_logln!("[MPIDR] LP{} mpidr={} aff={}.{}.{}.{}", lp, m, a3, a2, a1, a0);
 }
 
 pub fn set_lp_local_base(vaddr: VAddr) {

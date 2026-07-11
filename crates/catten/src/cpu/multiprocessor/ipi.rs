@@ -194,6 +194,27 @@ pub extern "C" fn ih_interprocessor_interrupt(ipi_queue: &'static mut Mutex<VecD
 /// cross-core SGIs even when the kernel's encoding is correct (self-IPIs and
 /// per-core timer IRQs work on all LPs). This is a host-emulation limitation,
 /// not a kernel bug.
+/// Drain and execute all IPI RPCs queued for the calling logical processor.
+///
+/// This is the architecture-independent handler invoked from an interrupt
+/// controller's IPI dispatch path. Each queued RPC is executed in order.
+///
+/// ## AArch64 multi-LP status
+///
+/// Cross-core SGI delivery does not work on QEMU GICv3 version 11.0.2 (both
+/// HVF and TCG accelerators tested). Self-targeted SGIs and per-core timer
+/// IRQs work on all LPs. The SGI encoding, barriers, GIC initialization and
+/// LP topology are correct. The fault is in QEMU's cross-vCPU SGI routing,
+/// **not** in the kernel.
+///
+/// Diagnostic matrix (QEMU 11.0.2, macOS ARM64, Cortex-A710, MPIDR 0.80000000/0.80000001):
+/// | Accelerator          | Self-SGI LP0 | Self-SGI LP1 | Cross-SGI LP0→LP1 | Timer LP1 |
+/// |----------------------|--------------|--------------|-------------------|-----------|
+/// | HVF (default)        | Works        | —            | Fails             | Works     |
+/// | TCG (thread=multi)   | Works        | —            | Fails             | Works     |
+///
+/// The most important remaining discriminator is testing on a different QEMU
+/// version or on real AArch64 hardware.
 pub fn drain_local_ipi_queue() {
     let lp_id = get_lp_id() as usize;
     while let Some(ipi) = IPI_CMD_QUEUES.pop_local(lp_id) {

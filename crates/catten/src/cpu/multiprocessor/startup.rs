@@ -67,4 +67,6 @@ pub unsafe fn assign_id() {
             (get_lp_id())
         );
     }
+    #[cfg(target_arch = "aarch64")]
+    crate::cpu::isa::lp::ops::log_mpidr();
 }
