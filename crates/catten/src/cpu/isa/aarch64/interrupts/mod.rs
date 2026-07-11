@@ -106,7 +106,7 @@ pub extern "C" fn sync_dispatcher() {
             frame.regs[18] = base.add(0).read_volatile(); // x18
         }
 
-        syscall::syscall_dispatch(&frame, svc_imm);
+        syscall::syscall_dispatch(&mut frame, svc_imm);
 
         // Write back x0 (return value) to the stack slot so `pop_volatile_regs`
         // restores it into the user's x0 before `eret`.

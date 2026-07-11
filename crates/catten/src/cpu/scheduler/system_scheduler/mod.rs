@@ -65,6 +65,18 @@ impl SystemScheduler {
         Ok(lp_id)
     }
 
+    /// Submit a thread to a specific LP, pinning it there. Used by
+    /// `ShardRuntime::spawn_shard` to bind a sitas shard to a core.
+    pub fn submit_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
+        let sched = &self.lp_schedulers[&target_lp];
+        let was_idle = sched.lock().is_idle();
+        sched.lock().add_thread(tid).expect("Error adding thread to target LP");
+        if was_idle && target_lp != get_lp_id() {
+            LocalIntCtlr::send_unicast_ipi(target_lp, LAPIC_TIMER_VECTOR).ok();
+        }
+        Ok(())
+    }
+
     /// Block the specified thread at least until the given event notifies its observers
     pub fn block_thread<'a>(
         &mut self,
