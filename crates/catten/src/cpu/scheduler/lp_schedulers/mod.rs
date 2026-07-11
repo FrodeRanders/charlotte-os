@@ -37,11 +37,34 @@ pub enum Error {
     ThreadNotAssignedToThisLp,
 }
 
+/// Tracks the per-LP quantum timer state.
+///
+/// `pending` is the "a context switch has been requested" flag: it is set both
+/// when the quantum timer fires and when a thread calls `yield_lp`. `armed`
+/// tracks whether a quantum `TimerEvent` is currently in flight in the timer
+/// queue, so that exactly one is ever queued at a time — otherwise every manual
+/// yield would enqueue another quantum event and the timer queue would grow
+/// without bound.
 #[derive(Debug)]
-struct TimerEventObserver(AtomicBool);
+struct TimerEventObserver {
+    pending: AtomicBool,
+    armed: AtomicBool,
+}
+
+impl TimerEventObserver {
+    fn new() -> Self {
+        Self {
+            pending: AtomicBool::new(false),
+            armed: AtomicBool::new(false),
+        }
+    }
+}
 
 impl Observer for TimerEventObserver {
     fn notify(self: Arc<Self>) {
-        self.0.store(true, Ordering::Release);
+        // The quantum event fired: it is no longer in flight, and a context
+        // switch is now due.
+        self.armed.store(false, Ordering::Release);
+        self.pending.store(true, Ordering::Release);
     }
 }
