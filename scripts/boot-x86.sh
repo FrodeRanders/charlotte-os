@@ -21,7 +21,7 @@ mcopy -i "$IMAGE" "$PROJECT_DIR/limine.conf" ::/limine.conf
 echo "=== Booting QEMU x86_64 (TCG, smp=1, 90s) ==="
 qemu-system-x86_64 \
     -M q35 \
-    -cpu qemu64,+x2apic \
+    -cpu max \
     -smp 1 \
     -m 512M \
     -drive "if=pflash,format=raw,unit=0,file=$FW,readonly=on" \
