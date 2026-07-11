@@ -94,8 +94,21 @@ impl CpuInfoIfce for CpuInfo {
     }
 
     fn get_vaddr_sig_bits() -> u8 {
-        let cpuid_result = __cpuid_count(0x80000008, 0);
-        ((cpuid_result.eax >> 8) & 0xff) as u8
+        // Report the width of the *active* paging mode, not the CPU's maximum
+        // capability. CPUID 0x80000008 EAX[15:8] gives the largest linear
+        // address width the CPU supports (e.g. 57 when LA57 is available), but
+        // the bootloader (Limine) may have enabled only 4-level paging. Using
+        // the CPUID capability would select a linear address map with 5-level
+        // (57-bit) canonical addresses that are *non-canonical* under the
+        // active 4-level regime, causing a #GP on first dereference.
+        //
+        // The active mode is determined by CR4.LA57 (bit 12): set => 5-level
+        // (57-bit), clear => 4-level (48-bit).
+        let cr4: u64;
+        unsafe {
+            core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+        }
+        if cr4 & (1 << 12) != 0 { 57 } else { 48 }
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {

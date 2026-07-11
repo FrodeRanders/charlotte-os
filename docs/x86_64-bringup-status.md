@@ -19,30 +19,29 @@
    model that supports them. `-cpu qemu64` does **not**; `-cpu max` does. The
    boot script uses `-cpu max`. (A real fix would gate on CPUID and fall back,
    or require these features explicitly.)
-4. **BSP progresses through**: `assign_id` → ISA init (GDT/IDT/segment reload)
-   → physical frame allocator init → into kernel-heap allocator init.
+4. **Full boot + all self-tests pass.** As of the LA57 fix (below), x86_64
+   boots all the way through ISA init, physical memory, kernel heap allocator,
+   and **every self-test** (completion-capability, syscall dispatch, IPI,
+   ShardLocal, ShardMailbox, CQ ring — the same suite that passes on AArch64),
+   then proceeds to PCIe device enumeration with zero panics. Only the real-EL0
+   test is AArch64-gated (`#[cfg(target_arch = "aarch64")]`).
 
-## Current blocker: kernel heap allocator init
+## RESOLVED: heap #GP (was "bug A") — LA57 / paging-mode mismatch
 
-`init_primary_allocator` (`memory/allocators/global_allocator.rs`) faults. With
-the panic handler fixed (see below), the fault is now **visible** rather than a
-silent triple-fault:
+**Symptom:** a #GP with `RAX = 0xff90000000000000` (non-canonical under 4-level
+paging) during kernel-heap large-page mapping.
 
-```
-LP 0: Initializing kernel allocator...
-[HEAPDBG] allocate_large_frame -> 0x200000
-A kernel panic has occurred with the following cause:
-General protection fault at RIP=0xffffffff80004b80, error code=0x0,
-RAX=0xff90000000000000
-```
+**Root cause:** `CpuInfo::get_vaddr_sig_bits()` read the CPU's *maximum* linear
+address width from CPUID `0x80000008` EAX[15:8]. With `-cpu max` that is **57**
+(the CPU supports 5-level paging / LA57). The kernel then selected
+`LA_MAP_57BIT`, whose `kernel_allocator_arena` base is `0xff90000000000000` —
+canonical only under 5-level paging. But Limine boots with **4-level** paging
+(48-bit VAs), under which that address is non-canonical → #GP on first
+dereference.
 
-It is a **#GP, not a #PF**: `RAX = 0xff90000000000000` is a **non-canonical
-address** (bits 63:48 ≠ bit 47) being dereferenced somewhere in the x86_64
-large-page mapping path (PthWalker / HHDM pointer computation / PDE format).
-This is the remaining bug to fix. The physical frame allocator hands out
-`0x200000`; the mapping code then forms a bad pointer from it. Investigate
-`PAddr::into()` (HHDM base) and the 2 MiB PDE construction in
-`x86_64/memory/paging/pth_walker.rs` + `pte.rs`.
+**Fix:** `get_vaddr_sig_bits()` now reports the width of the *active* paging
+mode, derived from `CR4.LA57` (bit 12): set ⇒ 57, clear ⇒ 48. This selects
+`LA_MAP_48BIT` under Limine's 4-level paging, so all kernel VAs are canonical.
 
 ## RESOLVED: silent triple-fault on any fault (was "bug B")
 
@@ -73,12 +72,13 @@ handlers all work correctly. Exception delivery was **never** broken.
   GDT layout, matching the existing `user_trampoline`).
 - **Ring-3 execution** has never been exercised on x86_64.
 
-## Suggested order for a future x86_64 session
+## Remaining work (B and A both fixed; x86_64 boots + all self-tests pass)
 
-1. Fix exception delivery (B) so faults are visible (verify IDT load, ISR
-   stubs, TSS `rsp0`/IST). Add a deliberate fault test.
-2. Fix the 2 MiB large-page PDE (A); confirm heap init completes and self-tests
-   run (they are architecture-agnostic and already pass on AArch64).
-3. Fix SYSCALL GS base + choose `IRETQ` return; exercise a ring-3 test mirroring
-   the AArch64 `self_test/el0.rs`.
+1. **Ring-3 / SYSCALL**: fix the SYSCALL GS base (`IA32_KERNEL_GS_BASE` + a
+   per-CPU data area) and return to ring 3 via `IRETQ` (the GDT ordering can't
+   satisfy `SYSRET`); then exercise a ring-3 test mirroring `self_test/el0.rs`.
+2. **Multi-LP bring-up** (`-smp > 1`): AP startup + per-LP GDT/TSS/IDT (the
+   x86_64 async IPI handler is now unstubbed).
+3. **Robust CPU-feature handling**: gate `RDTSCP`/`FSGSBASE` on CPUID instead of
+   requiring `-cpu max`.
 </content>
