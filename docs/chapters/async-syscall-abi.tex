@@ -106,7 +106,7 @@ tests (\texttt{charlotte\_abi.rs}) validate it.
 
 \begin{itemize}
     \item \textbf{Submission backpressure:} the per-AS capability table is
-        bounded. \texttt{submit} returns \texttt{SubmitError::WouldBlock} when
+        bounded. \texttt{submit} returns \\ \texttt{SubmitError::WouldBlock} when
         full. The caller must drain completions (freeing slots) before
         retrying.
     \item \textbf{Completion backpressure:} the CQ ring is bounded. When full,

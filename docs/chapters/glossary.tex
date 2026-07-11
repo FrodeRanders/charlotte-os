@@ -35,7 +35,7 @@
     \item[PerLp<T>] A boxed slice of \texttt{RwLock<T>}, one per LP.
         Interrupt-safe (masks interrupts on acquire).
     \item[Quantum timer] The per-LP periodic timer (10 ms) that drives
-        preemptive context switching in the \texttt{RoundRobin} scheduler.
+        preemptive context switching in the \\ \texttt{RoundRobin} scheduler.
     \item[Reaper] The deferred-thread-cleanup mechanism: dead threads are
         moved to \texttt{DEAD\_THREADS} and dropped from the next thread's
         context after the context switch.

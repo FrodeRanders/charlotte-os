@@ -15,7 +15,7 @@
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
         integrated with AS.
     \item \textbf{Syscall dispatch:} AArch64 SVC handler (7 syscalls:
-        LOG, COMPLETION\_SUBMIT/COMPLETE/POLL/WAIT/CANCEL/CLOSE,
+        LOG, COMPLETION\_SUBMIT/COMPLETE/\\POLL/WAIT/CANCEL/CLOSE,
         SPAWN\_THREAD). x86-64 SYSCALL trampoline exists, connected to
         dispatch table.
     \item \textbf{IPI:} bounded per-LP queues, backpressure, typed closure
@@ -42,7 +42,7 @@
     \item \textbf{Full \texttt{ShardSet} threading layer:} the
         \texttt{ShardRuntime} trait needs to be threaded through the
         \texttt{ShardSet::start} call chain (used by \texttt{ShardedKv} and
-        other higher-level services). \texttt{ShardedExecutor} works directly;
+        other higher-level services). \\ \texttt{ShardedExecutor} works directly;
         the higher-level modules still use \texttt{thread::spawn} internally.
     \item \textbf{Multi-LP cross-core IPI:} QEMU GICv3 SGI delivery does not
         work cross-core on this host (both HVF and TCG tested). Self-targeted
@@ -57,9 +57,9 @@
 
 \begin{itemize}
     \item \textbf{sitas} (\texttt{reactor-handle-seam}):
-        \texttt{ReactorBackend} trait, ABI reference model
+        \texttt{ReactorBackend} trait, ABI reference model \\
         (\texttt{charlotte\_abi.rs}), \texttt{sitas-core} no\_std crate
-        (ringbuf, ShardRuntime, ShardLocal, ShardMailbox, basic\_kv),
+        (ringbuf, ShardRuntime, ShardLocal, ShardMailbox, basic\_kv), 
         \texttt{sitas-charlotte} crate (ReactorBackend + ShardRuntime backend).
     \item \textbf{CharlotteOS} (\texttt{dev}): consolidated kernel ---
         completion subsystem, syscall dispatch, bounded IPI, ShardLocal,
