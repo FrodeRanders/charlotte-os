@@ -1,0 +1,78 @@
+\documentclass{techdoc}
+
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage[table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage{graphicx}
+\usepackage[useregional]{datetime2}
+
+\usepackage{titlesec}
+\setcounter{secnumdepth}{4}
+\titleformat{\paragraph}
+{\normalfont\normalsize\bfseries}{\theparagraph}{1em}{}
+\titlespacing*{\paragraph}
+{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+
+\date{\today}
+\title{CharlotteOS}
+\subtitle{Async-first kernel, sitas shard-per-core runtime, and the async syscall ABI}
+\editors{Frode Randers}
+\author{OpenAI Codex and DeepSeek}
+
+\makeatletter
+\renewcommand{\maketitle}{%
+    \thispagestyle{empty}
+    \setlength{\parindent}{0mm}
+    \begin{center}
+    \vspace*{18mm}
+    {\huge\textsc{\@thetitle{}}}
+    \vspace*{18mm}
+    {\huge\textsc{\@thesubtitle{}}}
+    \vspace*{8mm}
+    {\large\@theeditors{}}
+    \vfill
+    {\large\today}
+    \end{center}
+}
+\makeatother
+
+\begin{document}
+
+    \rhead{}
+    \maketitle
+    \vfill
+    \newpage
+    \renewcommand\contentsname{Contents}
+    \tableofcontents
+    \newpage
+
+    \input{chapters/introduction.tex}
+    \newpage
+
+    \input{chapters/architecture.tex}
+    \newpage
+
+    \input{chapters/execution-model.tex}
+    \newpage
+
+    \input{chapters/async-syscall-abi.tex}
+    \newpage
+
+    \input{chapters/programming-model.tex}
+    \newpage
+
+    \input{chapters/development.tex}
+    \newpage
+
+    \input{chapters/current-status.tex}
+    \newpage
+
+    \input{chapters/glossary.tex}
+
+\end{document}

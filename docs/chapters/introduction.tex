@@ -1,0 +1,66 @@
+\chapter{Introduction}
+
+\section{Why this document exists}
+
+Two independent experiments arrived at the same shape from opposite directions.
+
+\paragraph{sitas} starts in userspace and asks: \textit{what does shared-nothing,
+shard-per-core concurrency look like when it is built out of Rust ownership
+instead of locks?} Its answer is a discipline: each shard owns its state, only
+the owning shard mutates it, and everything that crosses a shard boundary is an
+owned value moved through an explicit typed message. On top of that it grows a
+custom async executor, per-shard reactors, \texttt{io\_uring} completion I/O,
+and snapshot-based observability --- deliberately re-deriving the Seastar model
+rather than cloning it.
+
+\paragraph{CharlotteOS} starts in the kernel and asks: \textit{hardware is
+asynchronous with respect to the CPU, so why is the OS synchronous?} Its answer
+is to make the kernel async-first --- cheap threads, an observer/waker event
+model, and system calls that are asynchronous by default, returning a completion
+capability that userspace can wait on.
+
+Both projects converged on the same primitive: a waitable completion handle.
+This document is about what happens when they meet: a userspace runtime whose
+async model \textbf{agrees} with the kernel it runs on, instead of emulating
+async-first on a blocking foundation. That agreement is the whole point --- it
+removes the ``retrofit tax'' (async-signal-safety, thread pools,
+\texttt{io\_uring}-over-blocking-AIO) that exists only because the runtime and
+the OS disagree about what is fundamental.
+
+\section{Who this is for}
+
+This document is written for developers and programmers. It assumes familiarity
+with Rust (ownership, \texttt{Send}, \texttt{Future}), concurrency primitives
+(threads, atomics, message passing), and basic OS architecture (scheduling,
+interrupts, address spaces). It does \textbf{not} assume prior knowledge of
+Seastar, \texttt{io\_uring}, or AArch64 details.
+
+The tone is instructional, not promotional. Every claim is based on what has
+actually been built and verified (on QEMU AArch64 and x86-64). Unimplemented
+ideas are flagged as such.
+
+\section{The thesis in one sentence}
+
+\textbf{Hardware is asynchronous; the OS and the userspace runtime should be
+too.} CharlotteOS and sitas both \emph{start} from that premise instead of
+retrofitting async onto a synchronous base. They are two halves of the same
+idea, originally built independently, now converging.
+
+\section{Document structure}
+
+\begin{itemize}
+    \item \textbf{Chapter 2} --- Architecture: the kernel's structural model
+        (Logical Processors, Observers, per-LP state, the scheduler).
+    \item \textbf{Chapter 3} --- Execution model: threads, blocking, context
+        switching, timers, and the block-wake path.
+    \item \textbf{Chapter 4} --- The async syscall ABI: completions, submission,
+        the CQ ring, cancellation, and backpressure.
+    \item \textbf{Chapter 5} --- Programming model: invariants, ShardLocal,
+        ShardMailbox, and rule-of-thumb guidance for kernel code.
+    \item \textbf{Chapter 6} --- Development: build targets, QEMU boot, the
+        self-test framework, and CI.
+    \item \textbf{Chapter 7} --- Current status: what exists, what is verified,
+        what is known-broken or deferred.
+\end{itemize}
+
+\endinput

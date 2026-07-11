@@ -1,0 +1,119 @@
+\chapter{Architecture}
+
+\section{The logical processor}
+
+A \textbf{Logical Processor} (LP) is one hardware core. The kernel shards its
+state per-LP using \texttt{PerLp<T>}: an array of \texttt{RwLock<T>}, one slot
+per LP, indexed by the LP's identity. The LP identity is stored in a
+register (\texttt{TPIDR\_EL1} on AArch64, \texttt{TSC\_AUX} on x86-64) and
+read with a single instruction --- it is always safe to call from any context,
+including interrupt handlers.
+
+LP placement is \textbf{not advisory}: an LP \emph{is} a core. When a sitas
+shard is bound to an LP it is bound to a core by construction. No
+\texttt{sched\_setaffinity} race, no cpuset surprises.
+
+\section{Per-LP state}
+
+\paragraph{PerLp<T>} A boxed slice of \texttt{RwLock<T>}, one per LP. The lock
+masks interrupts on acquire, preventing ISR self-deadlock. Used for data
+accessed from both thread context and interrupt context (timer queues, LAPIC
+registers, interrupt depth counters).
+
+\paragraph{ShardLocal<T>} (newer, sitas-inspired.) A lock-free per-LP container
+that stores its slots behind \texttt{UnsafeCell<T>} rather than
+\texttt{RwLock<T>}. Access is through a closure (\texttt{with(fn)} or
+\texttt{try\_with(fn)}) that asserts:
+\begin{itemize}
+    \item The caller is on the owning LP (panics otherwise).
+    \item The slot is not already borrowed by a re-entrant call (a per-LP
+        \texttt{AtomicBool} borrow flag, RAII-guarded).
+\end{itemize}
+The closure ensures the \texttt{\&mut T} never escapes the accessor. Use
+\texttt{PerLp<T>} when interrupt-safety or cross-LP access is needed; use
+\texttt{ShardLocal<T>} for single-LP, thread-only data (it has no spin-lock
+acquire cost).
+
+\section{The observer / waker model}
+
+CharlotteOS's event mechanism reduces to one pattern: a thread registers its
+\texttt{Waker} (an \texttt{Observer} wrapping its \texttt{ThreadId}) on an
+\texttt{Observable}. When the observable fires, it calls
+\texttt{Observer::notify()}, which submits the thread to the system scheduler
+as ready.
+
+\paragraph{Observable} trait: \texttt{fn register\_observer(\&self, observer:
+Weak<dyn Observer>)}.
+
+\paragraph{Observer} trait: \texttt{fn notify(self: Arc<Self>)} --- called by
+an Observable when the event occurs. The kernel's \texttt{Waker} implements
+\texttt{Observer} by calling \texttt{submit\_ready\_thread(tid)}, queueing the
+thread on the least-loaded LP.
+
+\paragraph{Wiring} \texttt{sleep(50ms)} creates a \texttt{TimerEvent}
+(Observable), calls \texttt{block\_thread(tid, \&event)} to register the
+thread's \texttt{Waker} on the event and mark the thread Blocked, pushes the
+event into the per-LP timer queue, and yields. When the timer IRQ fires it
+processes the event, calls \texttt{signal()} which wakes the thread. The
+completion-capability model uses the exact same mechanism: a
+\texttt{Completion} is Observable, and \texttt{wait(cap)} blocks on it.
+
+\section{The scheduler}
+
+The system scheduler (\texttt{SYSTEM\_SCHEDULER}) is a per-LP collection of
+pluggable \texttt{LpScheduler} instances. The only current implementation is
+\texttt{RoundRobin}: threads are queued in a FIFO, and a per-LP quantum timer
+(10 ms) marks a context-switch-pending flag.
+
+Key operations:
+\begin{itemize}
+    \item \texttt{spawn\_thread(asid, entry)} --- creates a Thread, adds it to
+        the master table, submits it to the scheduler. Returns a
+        \texttt{ThreadId}.
+    \item \texttt{block\_thread(tid, \&event)} --- registers the thread's
+        \texttt{Waker} on the observable, marks the thread Blocked, removes it
+        from the run queue. The thread saves its context on the subsequent
+        \texttt{yield\_lp()} and resumes from the same point when woken.
+    \item \texttt{submit\_ready\_thread(tid)} --- re-admits a thread to the
+        least-loaded LP's run queue. Used by \texttt{Waker::notify()} and other
+        wake paths.
+    \item \texttt{yield\_lp()} --- sets the pending flag and calls
+        \texttt{cond\_yield\_lp()}, which performs the register/stack switch if
+        another thread is ready.
+\end{itemize}
+
+\texttt{abort()} removes a returning thread from the scheduler and moves it to
+\texttt{DEAD\_THREADS} (a deferred reaper list). The reaper drops the thread
+from a different thread's context (after the context switch), so the thread's
+own kernel stack (which is freed on drop) is no longer in use.
+
+\section{Inter-processor interrupts (IPIs)}
+
+The \texttt{IPI\_CMD\_QUEUES} are per-LP bounded \texttt{ConcurrentQueue}
+queues (256 entries by default). Sending a cross-LP work item pushes an RPC to
+the target LP's queue and delivers an IPI. The target's IRQ dispatcher drains
+the queue in order.
+
+\texttt{IpiRpc} carries kernel-internal RPCs (TLB shootdown, scheduler wakeup)
+and a \texttt{Closure(Box<dyn FnOnce() + Send>)} variant for arbitrary
+cross-LP work dispatch --- the seed of sitas's typed \texttt{ShardMailbox<M>}.
+
+Two push paths:
+\begin{itemize}
+    \item \texttt{try\_push\_to} / \texttt{try\_send\_ipi\_rpc} --- returns
+        \texttt{Err(rpc)} on full queue (first-class backpressure).
+    \item \texttt{push\_to} / \texttt{send\_ipi\_rpc} --- non-fallible
+        force-push for must-not-drop kernel RPCs. Evicts the oldest entry if
+        full.
+\end{itemize}
+
+\section{Capability tables}
+
+A per-address-space \texttt{IdTable<Arc<Completion>>} maps a small integer
+\texttt{CompletionCap} (an index into the table) to a kernel object naming an
+in-flight or completed operation. The table is bounded (submission
+backpressure: \texttt{submit} returns \texttt{WouldBlock} when full).
+\texttt{Completion} is \texttt{Observable}: a waiting thread's \texttt{Waker}
+is registered on it via \texttt{completion::wait(asid, cap)}.
+
+\endinput

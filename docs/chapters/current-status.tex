@@ -1,0 +1,59 @@
+\chapter{Current status}
+
+\section{Verified (boots on QEMU, zero panics)}
+
+\begin{itemize}
+    \item \textbf{AArch64:} boots, all self-tests pass (\texttt{Testing
+        Complete. All Tests Passed!}), the async-syscall demo succeeds with
+        \texttt{Ok(42)} via exit-observer, real-EL0 user thread executes and
+        reads the shared CQ ring.
+    \item \textbf{x86-64:} boots with \texttt{-cpu max}, all self-tests pass,
+        the async-syscall demo succeeds with \texttt{Ok(42)} via
+        exit-observer. (x86-64 ring-3 / SYSCALL userspace is \textbf{not} yet
+        exercised.)
+    \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
+        close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
+        integrated with AS.
+    \item \textbf{Syscall dispatch:} AArch64 SVC handler decodes EC, builds
+        TrapFrame, dispatches to handler table. x86-64 SYSCALL trampoline
+        exists but is not yet connected to the dispatch table.
+    \item \textbf{IPI:} bounded per-LP queues, backpressure, typed closure
+        dispatch, AArch64 and x86-64 unstubbed.
+    \item \textbf{ShardLocal<T> / ShardMailbox<M>:} implemented and tested.
+    \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
+        deferred reaper.
+    \item \textbf{CI:} GitHub Actions builds both arches, QEMU boot gate.
+\end{itemize}
+
+\section{Known limitations}
+
+\begin{itemize}
+    \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists,
+        GS base and IRETQ return path remain to be wired (see
+        \texttt{docs/x86\_64-bringup-status.md}). The EL0 test and the
+        real-EL0 user thread are AArch64-only.
+    \item \textbf{sleep / preemption:} fully fixed on AArch64; re-arming and
+        quantum-guard are correct. The earlier heisenbugs (timer stops, bounded
+        growth) are resolved.
+    \item \textbf{Guard-page overlap:} adjacent kernel stacks share guard pages
+        (\texttt{find\_free\_region} doesn't account for unmapped guards);
+        reference-counting in the stack allocator prevents leaks. A stack freed
+        while adjacent to a live one is handled correctly.
+    \item \textbf{Multi-LP:} infrastructure exists but \texttt{-smp > 1} has
+        not been exercised. AP startup, per-LP GDT/TSS/IDT, and cross-LP IPI
+        work correctly in single-LP tests; multi-LP would be the next scaling
+        step.
+    \item \textbf{CQ ring userspace mapping:} the CQ ring is allocated on a
+        physical frame and the real-EL0 test proves mapping a shared page into
+        a user AS; wiring the ring for actual userspace consumption is deferred.
+\end{itemize}
+
+\section{Prior art / independent verification}
+
+The sitas repository (\texttt{reactor-handle-seam} branch) contains an
+in-memory reference model of the CharlotteOS ABI
+(\texttt{src/charlotte\_abi.rs}) with 9 tests validating the contract shapes
+against the \texttt{ReactorBackend} trait. This model was built before the
+kernel prototype existed and independently verified the ABI design.
+
+\endinput
