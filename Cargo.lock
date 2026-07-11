@@ -59,13 +59,17 @@ dependencies = [
  "hashbrown",
  "limine",
  "lock_api",
- "spin",
+ "spin 0.12.1",
  "talc",
 ]
 
 [[package]]
 name = "catten-user"
 version = "0.1.0"
+dependencies = [
+ "sitas-charlotte",
+ "sitas-core",
+]
 
 [[package]]
 name = "cc"
@@ -323,6 +327,29 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "sitas-charlotte"
+version = "0.1.0"
+dependencies = [
+ "sitas-core",
+]
+
+[[package]]
+name = "sitas-core"
+version = "0.1.0"
+dependencies = [
+ "spin 0.9.8",
+]
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "spin"
