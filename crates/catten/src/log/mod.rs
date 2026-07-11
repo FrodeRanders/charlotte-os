@@ -18,6 +18,8 @@ mod chars;
 pub mod flanterm;
 #[cfg(target_arch = "aarch64")]
 pub mod serial;
+#[cfg(target_arch = "x86_64")]
+pub mod serial_x86;
 
 #[inline(always)]
 pub fn early_save_interrupts() -> bool {
@@ -50,6 +52,11 @@ macro_rules! early_log {
             use core::fmt::Write;
             let _ = write!($crate::log::serial::SERIAL.lock(), $text $(, $arg)*);
         }
+        #[cfg(target_arch = "x86_64")]
+        {
+            use core::fmt::Write;
+            let _ = write!($crate::log::serial_x86::SERIAL.lock(), $text $(, $arg)*);
+        }
     }};
 }
 
@@ -60,6 +67,11 @@ macro_rules! early_logln {
         {
             use core::fmt::Write;
             let _ = writeln!($crate::log::serial::SERIAL.lock(), $text $(, $arg)*);
+        }
+        #[cfg(target_arch = "x86_64")]
+        {
+            use core::fmt::Write;
+            let _ = writeln!($crate::log::serial_x86::SERIAL.lock(), $text $(, $arg)*);
         }
     }};
 }
@@ -102,7 +114,15 @@ pub fn _write_args(args: core::fmt::Arguments, newline: bool) {
             let _ = serial.write_str("\n");
         }
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(target_arch = "x86_64")]
+    {
+        let mut serial = crate::log::serial_x86::SERIAL.lock();
+        let _ = serial.write_fmt(args);
+        if newline {
+            let _ = serial.write_str("\n");
+        }
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
         let _ = args;
         let _ = newline;
