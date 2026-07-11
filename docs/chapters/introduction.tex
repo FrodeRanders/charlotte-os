@@ -59,15 +59,15 @@ CharlotteOS. Everything was verified on QEMU.
         block / yield / wake, deferred thread reaper, per-LP thread pinning
         (\texttt{submit\_to\_lp} for sitas shard placement).
     \item \textbf{Cross-LP IPI} --- bounded per-LP queues with first-class
-        backpressure, typed closure dispatch (\texttt{IpiRpc::Closure}).
+        backpressure, typed closure dispatch \\ (\texttt{IpiRpc::Closure}).
     \item \textbf{Shard-per-core programming model} ---
-        \texttt{ShardLocal<T>} (lock-free, owner-checked),
+        \texttt{ShardLocal<T>} (lock-free, owner-checked), \\
         \texttt{ShardMailbox<M>} (typed bounded queue).
     \item \textbf{Real-EL0 user thread} --- compiled Rust binary runs at EL0,
         calls SVC from userspace, round-trips through the kernel's dispatch
         and returns.
     \item \textbf{sitas integration} --- sitas executor (no\_std) +
-        sitas-charlotte ReactorBackend + \texttt{ShardRuntime::spawn\_shard}
+        sitas-charlotte ReactorBackend + \\ \texttt{ShardRuntime::spawn\_shard}
         via SVC \#7. The sitas shard executor runs on CharlotteOS.
 \end{itemize}
 

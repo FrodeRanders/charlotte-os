@@ -95,7 +95,7 @@ the target LP's queue and delivers an IPI. The target's IRQ dispatcher drains
 the queue in order.
 
 \texttt{IpiRpc} carries kernel-internal RPCs (TLB shootdown, scheduler wakeup)
-and a \texttt{Closure(Box<dyn FnOnce() + Send>)} variant for arbitrary
+and a \\ \texttt{Closure(Box<dyn FnOnce() + Send>)} variant for arbitrary
 cross-LP work dispatch --- the seed of sitas's typed \texttt{ShardMailbox<M>}.
 
 Two push paths:
