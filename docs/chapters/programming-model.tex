@@ -45,10 +45,10 @@ illustrate this.
 \section{Primitives}
 
 \subsection{ShardLocal<T>} Lock-free per-LP container. Use for single-LP,
-thread-only data. Access: \texttt{sl.with(|val| \{ *val = 42; \})}.
+thread-only data. \\Access: \texttt{sl.with(|val| \{ *val = 42; \})}.
 
 \subsection{ShardMailbox<M>} Typed bounded per-LP queue. Cloneable
-\texttt{ShardSender<M>} (any LP can send), single-consumer
+\texttt{ShardSender<M>} (any LP can send), single-consumer\\
 \texttt{ShardReceiver<M>} (one per LP). \texttt{try\_send(m)} returns
 \texttt{Err(m)} on backpressure.
 
