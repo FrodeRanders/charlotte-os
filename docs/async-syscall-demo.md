@@ -85,22 +85,32 @@ rewrite `deallocate_stack` to derive the page count from them.
 
 ## Known remaining limitations
 
-- **Adjacent-stack guard overlap.** `find_free_region` does not account for the
-  (unmapped) guard pages, so back-to-back stack allocations can share a guard
-  region; freeing one can then invalidate the other's guard bookkeeping. This
-  leaks a stack rather than crashing (`ThreadContext::drop` logs and continues).
-  Proper fix: reserve guard pages in the free-region search.
-- **x86_64 demo.** On x86_64 the worker's `sleep` and completion both work
-  (it reaches "work finished, completing capability"), but the final coordinator
-  resume needs the x86_64 `cond_yield_lp` to get the same treatment as AArch64.
-  x86_64 self-tests all pass.
+*(Both prior limitations are now fixed — see below.)*
+
+### Fixed: adjacent-stack guard overlap
+
+`find_free_region` does not account for the (unmapped) guard pages, so
+back-to-back stack allocations shared a guard region (one stack's upper guard =
+the next stack's lower guard); freeing the first removed the shared guard and
+broke the second's bookkeeping, leaking its stack. Fixed by **reference-counting
+guard pages** (`KERNEL_GUARD_PAGES: BTreeMap<VAddr, usize>`): a shared guard now
+survives until both stacks are freed. All demo stacks are now freed cleanly.
+
+### Fixed: x86_64 demo parity
+
+Two x86_64-specific fixes bring it to parity with AArch64:
+- `cond_yield_lp` now re-arms the quantum timer even when there is nothing to
+  switch to (as on AArch64).
+- `kernel_thread_trampoline` now **calls `abort`** when a thread's entry point
+  returns, instead of halting the CPU forever (`hlt` loop). Previously a
+  returning kernel thread froze the LP.
+
+The demo now runs to completion on **both** AArch64 and x86_64: worker sleeps →
+completes → coordinator resumes with `Ok(42)` → `SUCCESS`, and both threads exit
+cleanly and are reaped, with zero panics and no leaked stacks.
 
 ## Follow-up
 
-- Reserve guard pages in `find_free_region` so adjacent stacks don't share
-  guard regions (removes the last stack leak on thread exit).
-- Bring the x86_64 `cond_yield_lp` block/wake path to parity with AArch64 so the
-  demo's coordinator resumes there too.
 - Fire completions from the worker thread's exit-observer (`Thread::Drop`) now
   that clean thread exit works, matching the ABI's intended design
   (`scheduler/threads/mod.rs:63-69`), instead of an explicit `complete` call.
