@@ -2,7 +2,7 @@
 name = "catten-user"
 version = "0.1.0"
 edition = "2024"
-description = "CharlotteOS test user binary — exercises the async syscall ABI from EL0"
+description = "CharlotteOS test user binary"
 
 [[bin]]
 name = "catten-user"
