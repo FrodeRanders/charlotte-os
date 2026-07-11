@@ -1,27 +1,29 @@
 //! # Async-syscall demonstration (Option C, end-to-end)
 //!
 //! Demonstrates the full asynchronous completion loop with real kernel threads,
-//! after the scheduler is active:
+//! after the scheduler is active, using the ABI's intended completion mechanism
+//! — the completion capability fires when the worker thread **exits** (its
+//! exit-observer), not via an explicit `complete` call:
 //!
-//! 1. A **coordinator** thread submits an operation → receives a
-//!    [`CompletionCap`](crate::completion::CompletionCap), spawns a **worker**
-//!    thread to perform the work, then blocks in
+//! 1. A **coordinator** thread submits an operation via
+//!    [`completion::submit_worker`](crate::completion::submit_worker), which
+//!    spawns a **worker** thread and returns a
+//!    [`CompletionCap`](crate::completion::CompletionCap) registered as the
+//!    worker's exit-observer. The coordinator then blocks in
 //!    [`completion::wait`](crate::completion::wait) on the capability.
 //! 2. The **worker** performs genuinely asynchronous work — it
 //!    [`sleep`](crate::cpu::scheduler::sleep)s, yielding the LP to the timer —
-//!    then calls [`completion::complete`](crate::completion::complete), which
-//!    signals the capability's observers and wakes the coordinator.
-//! 3. The coordinator resumes, [`poll`](crate::completion::poll)s the result,
-//!    and reports success.
+//!    then simply **returns**. It never touches the capability.
+//! 3. When the worker returns it is aborted and reaped; its `Thread::Drop`
+//!    fires the exit-observer, which completes the capability and wakes the
+//!    coordinator. The coordinator resumes, [`poll`](crate::completion::poll)s
+//!    the result, and reports success.
 //!
-//! This is the "submit → async work → complete → wake" loop the async-syscall
-//! ABI is built around, exercised end-to-end across a real context switch. Both
-//! demo threads return cleanly when finished, exercising the thread-exit path.
+//! This is the "submit → async work → (thread exit) → complete → wake" loop the
+//! async-syscall ABI is built around, exercised end-to-end across real context
+//! switches. Both demo threads exit cleanly and are reaped.
 
-use concurrent_queue::ConcurrentQueue;
-use spin::LazyLock;
-
-use crate::completion::{self, CompletionCap, OpCode, OpResult};
+use crate::completion::{self, OpResult};
 use crate::cpu::scheduler::{sleep, spawn_thread};
 use crate::klib::time::duration::ExtDuration;
 use crate::logln;
@@ -29,10 +31,6 @@ use crate::memory::{AddressSpaceId, KERNEL_ASID};
 
 /// A distinct address-space id for the demo's completion table (not the kernel).
 const DEMO_ASID: AddressSpaceId = 0xA0C_D000;
-
-/// Work handed from the coordinator to the worker: which capability to complete.
-static WORK_QUEUE: LazyLock<ConcurrentQueue<(AddressSpaceId, CompletionCap)>> =
-    LazyLock::new(|| ConcurrentQueue::unbounded());
 
 /// Spawns the async-syscall demonstration coordinator thread. Call this after
 /// the scheduler is active (e.g. from `bsp_main` alongside the device probe).
@@ -45,24 +43,21 @@ extern "C" fn async_syscall_coordinator() {
     logln!("[async-demo] coordinator: opening completion address space");
     completion::open_address_space(DEMO_ASID, 8);
 
-    let cap = match completion::submit(DEMO_ASID, OpCode::Nop, None) {
+    // Submit an operation performed by a worker thread. The returned capability
+    // completes when the worker thread exits (its exit-observer). The worker
+    // reports its result via the exit-observer's terminal result (Ok(42) here).
+    let cap = match completion::submit_worker(DEMO_ASID, async_syscall_worker, OpResult::Ok(42)) {
         Ok(cap) => cap,
         Err(_) => {
-            logln!("[async-demo] coordinator: submit failed");
+            logln!("[async-demo] coordinator: submit_worker failed");
             return;
         }
     };
-    logln!("[async-demo] coordinator: submitted operation, got capability");
+    logln!("[async-demo] coordinator: submitted worker, now awaiting completion...");
 
-    // Hand the capability to a worker and let it perform the async work.
-    let _ = WORK_QUEUE.push((DEMO_ASID, cap));
-    let _worker = spawn_thread(KERNEL_ASID, async_syscall_worker);
-    logln!("[async-demo] coordinator: spawned worker, now awaiting completion...");
-
-    // Block until the worker completes the capability.
+    // Block until the worker thread exits and its exit-observer completes `cap`.
     let _ = completion::wait(DEMO_ASID, cap);
 
-    // Resumed: the worker completed the operation and woke us.
     match completion::poll(DEMO_ASID, cap) {
         Ok(Some(done)) => match done.result {
             OpResult::Ok(v) => {
@@ -72,22 +67,16 @@ extern "C" fn async_syscall_coordinator() {
         },
         _ => logln!("[async-demo] coordinator: ERROR: capability not complete after wait"),
     }
-    logln!("[async-demo] SUCCESS: async syscall round-trip complete");
-    // Return cleanly: the thread trampoline calls `abort`, which now defers the
-    // thread's teardown to the reaper so its kernel stack is freed safely.
+    logln!("[async-demo] SUCCESS: async syscall round-trip complete (via thread-exit observer)");
+    // Return cleanly: the thread is reaped.
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn async_syscall_worker() {
-    if let Ok((asid, cap)) = WORK_QUEUE.pop() {
-        logln!("[async-demo] worker: received work, performing async work (sleep 50ms)");
-        // Genuinely asynchronous: the worker blocks on the timer, yielding the
-        // LP; the timer wakes it 50 ms later.
-        sleep(ExtDuration::from_millis(50));
-        logln!("[async-demo] worker: work finished, completing capability");
-        let _ = completion::complete(asid, cap, OpResult::Ok(42));
-    } else {
-        logln!("[async-demo] worker: no work in queue");
-    }
-    // Return cleanly (the trampoline calls `abort` -> reaper frees the stack).
+    logln!("[async-demo] worker: performing async work (sleep 50ms)");
+    // Genuinely asynchronous: block on the timer, yielding the LP.
+    sleep(ExtDuration::from_millis(50));
+    logln!("[async-demo] worker: work finished, exiting (completion fires on exit)");
+    // Simply return. The worker does NOT touch the capability: exiting the
+    // thread is the completion event (its exit-observer fires `complete`).
 }

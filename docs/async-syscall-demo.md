@@ -9,23 +9,30 @@
 
 `demo::spawn_async_syscall_demo()` is spawned from `bsp_main` (after the
 scheduler is active) and exercises the completion ABI's core loop with real
-kernel threads across real context switches:
+kernel threads across real context switches, using the ABI's **intended**
+completion mechanism — the completion capability fires when the worker thread
+**exits** (its exit-observer), not via an explicit `complete` call:
 
-1. **Coordinator** thread: opens a per-address-space completion table,
-   `submit`s an operation (→ a `CompletionCap`), spawns a **worker**, then
-   **blocks** in `completion::wait` on the capability.
-2. **Worker** thread: performs asynchronous work (interleaved with other
-   threads via `yield_lp`), then calls `completion::complete`, which signals the
-   capability's observers and **wakes the coordinator**.
-3. **Coordinator** resumes exactly where it blocked, `poll`s the result, and
+1. **Coordinator** thread: opens a per-address-space completion table, calls
+   `completion::submit_worker`, which spawns a **worker** thread and returns a
+   `CompletionCap` registered as that worker's exit-observer, then **blocks** in
+   `completion::wait` on the capability.
+2. **Worker** thread: performs asynchronous work (`sleep`, yielding the LP to
+   the timer), then simply **returns**. It never touches the capability.
+3. On return the worker is aborted and reaped; its `Thread::Drop` fires the
+   exit-observer, which `complete`s the capability and **wakes the coordinator**.
+4. **Coordinator** resumes exactly where it blocked, `poll`s the result, and
    reports `COMPLETION RECEIVED, result Ok(42)` / `SUCCESS`.
 
-Verified on QEMU AArch64: the loop completes with zero panics, and the boot
-continues normally afterward (self-tests all still pass).
+Verified on QEMU **AArch64 and x86_64**: the loop completes with zero panics and
+no leaked stacks, and the boot continues normally afterward (self-tests all
+still pass).
 
-This is the "submit → async work → complete → wake" loop the whole async-syscall
-ABI is built around, demonstrated for the first time with genuine blocking and
-cross-thread wakeups — not just the single-threaded self-tests.
+This is the "submit → async work → (thread exit) → complete → wake" loop the
+whole async-syscall ABI is built around
+(`scheduler/threads/mod.rs:63-69`), demonstrated end-to-end: the thread
+performing the work exiting *is* the completion event, exactly as the design
+intends. The worker never references the capability.
 
 ## Scheduler / timer / lifecycle bugs found and fixed
 
@@ -111,7 +118,7 @@ cleanly and are reaped, with zero panics and no leaked stacks.
 
 ## Follow-up
 
-- Fire completions from the worker thread's exit-observer (`Thread::Drop`) now
-  that clean thread exit works, matching the ABI's intended design
-  (`scheduler/threads/mod.rs:63-69`), instead of an explicit `complete` call.
+*(The prior follow-up — firing completions from the worker thread's
+exit-observer — is now implemented; see [`completion::submit_worker`] and the
+demo above.)*
 </content>

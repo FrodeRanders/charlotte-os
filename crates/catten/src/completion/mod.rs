@@ -120,6 +120,32 @@ struct CompletionInner {
     /// `result.is_some()` (terminal result posted) OR `drained` (result
     /// already consumed by a prior take()).
     drained: bool,
+    /// Keeps the exit-observer (if any) alive for as long as the capability
+    /// exists. `observe_thread_exit` stores only a `Weak`, so the strong `Arc`
+    /// must live somewhere; it lives here, so the observer can still fire when
+    /// the worker thread exits.
+    exit_observer: Option<Arc<CompletionExitObserver>>,
+}
+
+/// An [`Observer`] that completes a capability when the worker thread it is
+/// registered against exits. This is the ABI's intended completion mechanism
+/// (see `scheduler/threads/mod.rs:63-69`): a completion capability is registered
+/// as an exit-observer of the thread performing the work, so the thread exiting
+/// *is* the completion event.
+struct CompletionExitObserver {
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    /// The result to post when the thread exits.
+    result: OpResult,
+}
+
+impl Observer for CompletionExitObserver {
+    fn notify(self: Arc<Self>) {
+        // The worker thread has exited: post the terminal result. This runs
+        // from the reaper (`reap_dead_threads` in `cond_yield_lp`), which holds
+        // no scheduler locks, so waking a waiter via `complete` is safe.
+        let _ = complete(self.asid, self.cap, self.result.clone());
+    }
 }
 
 /// A kernel object naming one in-flight or completed operation.
@@ -140,9 +166,14 @@ impl Completion {
                 result: None,
                 cancelling: false,
                 drained: false,
+                exit_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
         })
+    }
+
+    fn set_exit_observer(&self, observer: Arc<CompletionExitObserver>) {
+        self.inner.lock().exit_observer = Some(observer);
     }
 
     fn is_reclaimable(&self) -> bool {
@@ -345,6 +376,38 @@ pub fn submit(
     }
     let cap = as_completions.table.add_element(Completion::new(buffer));
     as_completions.live += 1;
+    Ok(cap)
+}
+
+/// Submits an operation that is performed by a freshly spawned kernel worker
+/// thread, and returns a capability that completes **when the worker thread
+/// exits**.
+///
+/// This is the ABI's intended asynchronous-completion mechanism (see
+/// `scheduler/threads/mod.rs:63-69`): the returned capability is registered as
+/// an exit-observer of the worker thread, so the worker simply performs its work
+/// and returns — the thread exiting *is* the completion event, which fires the
+/// capability and wakes any waiter. The worker does not touch the capability.
+///
+/// `result` is the terminal result posted when the worker exits.
+pub fn submit_worker(
+    asid: AddressSpaceId,
+    worker_entry: extern "C" fn(),
+    result: OpResult,
+) -> Result<CompletionCap, SubmitError> {
+    let cap = submit(asid, OpCode::Nop, None)?;
+    // Spawn the worker that performs the operation.
+    let tid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, worker_entry);
+    // Register an exit-observer that completes the capability when the worker
+    // exits, and keep the observer alive by storing it in the completion.
+    let observer = Arc::new(CompletionExitObserver { asid, cap, result });
+    let _ = crate::cpu::scheduler::observe_thread_exit(
+        tid,
+        Arc::downgrade(&observer) as Weak<dyn Observer>,
+    );
+    if let Ok(completion) = completion_of(asid, cap) {
+        completion.set_exit_observer(observer);
+    }
     Ok(cap)
 }
 
