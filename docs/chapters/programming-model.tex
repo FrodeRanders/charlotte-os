@@ -44,24 +44,24 @@ illustrate this.
 
 \section{Primitives}
 
-\paragraph{ShardLocal<T>} Lock-free per-LP container. Use for single-LP,
+\subsection{ShardLocal<T>} Lock-free per-LP container. Use for single-LP,
 thread-only data. Access: \texttt{sl.with(|val| \{ *val = 42; \})}.
 
-\paragraph{ShardMailbox<M>} Typed bounded per-LP queue. Cloneable
+\subsection{ShardMailbox<M>} Typed bounded per-LP queue. Cloneable
 \texttt{ShardSender<M>} (any LP can send), single-consumer
 \texttt{ShardReceiver<M>} (one per LP). \texttt{try\_send(m)} returns
 \texttt{Err(m)} on backpressure.
 
-\paragraph{IPI closure} \texttt{try\_run\_on\_lp(target\_lp, || \{ ... \})}.
+\subsection{IPI closure} \texttt{try\_run\_on\_lp(target\_lp, || \{ ... \})}.
 Boxes arbitrary work and delivers it to the target LP's IPI queue. Returns the
 closure on full queue.
 
-\paragraph{Completion API} \texttt{submit}, \texttt{submit\_worker},
+\subsection{Completion API} \texttt{submit}, \texttt{submit\_worker},
 \texttt{complete}, \texttt{poll}, \texttt{wait}, \texttt{cancel}, \texttt{close}.
-The exit-observer path (\texttt{submit\_worker}) is the intended default; the
+The exit-observer path \\ (\texttt{submit\_worker}) is the intended default; the
 explicit \texttt{complete} is the escape hatch for non-thread-based work.
 
-\paragraph{CQ ring} \texttt{CompletionQueueRing} for zero-syscall completion
+\subsection{CQ ring} \texttt{CompletionQueueRing} for zero-syscall completion
 draining. Kernel side: \texttt{write(cap, result)}. Consumer side:
 \texttt{read() -> Option<CqEntry>}. Integration: \texttt{open\_as\_with\_cq}
 attaches a ring to a capability table; \texttt{complete()} writes to it.
