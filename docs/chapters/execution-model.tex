@@ -10,13 +10,13 @@ A thread is created with \texttt{spawn\_thread(asid, entry\_point)}. The
 runs at EL1 / ring 0) or a user thread (\texttt{asid > 0}, drops to EL0 via
 \texttt{user\_trampoline}).
 
-\paragraph{Entry} The trampoline unmasks interrupts, calls the entry function,
+\subsection{Entry} The trampoline unmasks interrupts, calls the entry function,
 then calls \texttt{abort()} when the entry returns. \texttt{abort()} removes
 the thread from the scheduler and moves it to \texttt{DEAD\_THREADS}; the
 reaper drops it (freeing its stack) from the next thread's context, after the
 context switch.
 
-\paragraph{Blocking} A thread blocks by calling \texttt{block\_thread(tid,
+\subsection{Blocking} A thread blocks by calling \texttt{block\_thread(tid,
 \&observable)} through a higher-level primitive (\texttt{sleep}, \texttt{wait}).
 The call marks the thread Blocked, registers its \texttt{Waker} as an observer
 on the event, removes it from the LP's run queue, and \texttt{yield\_lp()} saves
@@ -24,12 +24,12 @@ the thread's execution context and switches away. When the event fires, the
 waker submits the thread back to the run queue; the thread resumes exactly
 where it blocked.
 
-\paragraph{Waking} \texttt{Waker::notify(tid)} calls
+\subsection{Waking} \texttt{Waker::notify(tid)} calls
 \texttt{submit\_ready\_thread(tid)}, which adds the thread to the least-loaded
 LP's run queue and sends a wakeup IPI if that LP is idle and is not the
 calling LP. The thread runs at the next scheduling opportunity.
 
-\paragraph{Yielding} \texttt{yield\_lp()} sets the context-switch-pending flag
+\subsection{Yielding} \texttt{yield\_lp()} sets the context-switch-pending flag
 and calls \texttt{cond\_yield\_lp()}. If the flag is set and another thread is
 runnable, the current thread's callee-saved registers and stack pointer are
 saved to its \texttt{ThreadContext}, and the next thread's are restored.

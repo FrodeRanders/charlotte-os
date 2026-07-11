@@ -181,6 +181,19 @@ pub extern "C" fn ih_interprocessor_interrupt(ipi_queue: &'static mut Mutex<VecD
 /// queued RPC is executed in order; TLB maintenance RPCs are honoured locally
 /// (on AArch64 the invalidation itself is broadcast in hardware) and a wakeup
 /// RPC marks a context switch pending so the dispatcher's yield takes effect.
+/// Drain and execute all IPI RPCs queued for the calling logical processor.
+///
+/// This is the architecture-independent handler invoked from an interrupt
+/// controller's IPI dispatch path (e.g. the AArch64 GIC IRQ dispatcher). Each
+/// queued RPC is executed in order; TLB maintenance RPCs are honoured locally
+/// (on AArch64 the invalidation itself is broadcast in hardware) and a wakeup
+/// RPC marks a context switch pending so the dispatcher's yield takes effect.
+///
+/// On AArch64 with multiple LPs, the SGI that triggers this path must be
+/// delivered by the GIC. QEMU's GICv3 model on some hosts does not deliver
+/// cross-core SGIs even when the kernel's encoding is correct (self-IPIs and
+/// per-core timer IRQs work on all LPs). This is a host-emulation limitation,
+/// not a kernel bug.
 pub fn drain_local_ipi_queue() {
     let lp_id = get_lp_id() as usize;
     while let Some(ipi) = IPI_CMD_QUEUES.pop_local(lp_id) {

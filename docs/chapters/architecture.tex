@@ -42,15 +42,15 @@ CharlotteOS's event mechanism reduces to one pattern: a thread registers its
 \texttt{Observer::notify()}, which submits the thread to the system scheduler
 as ready.
 
-\paragraph{Observable} trait: \texttt{fn register\_observer(\&self, observer:
+\subsection{Observable} trait: \texttt{fn register\_observer(\&self, observer:
 Weak<dyn Observer>)}.
 
-\paragraph{Observer} trait: \texttt{fn notify(self: Arc<Self>)} --- called by
+\subsection{Observer} trait: \texttt{fn notify(self: Arc<Self>)} --- called by
 an Observable when the event occurs. The kernel's \texttt{Waker} implements
 \texttt{Observer} by calling \texttt{submit\_ready\_thread(tid)}, queueing the
 thread on the least-loaded LP.
 
-\paragraph{Wiring} \texttt{sleep(50ms)} creates a \texttt{TimerEvent}
+\subsection{Wiring} \texttt{sleep(50ms)} creates a \texttt{TimerEvent}
 (Observable), calls \texttt{block\_thread(tid, \&event)} to register the
 thread's \texttt{Waker} on the event and mark the thread Blocked, pushes the
 event into the per-LP timer queue, and yields. When the timer IRQ fires it

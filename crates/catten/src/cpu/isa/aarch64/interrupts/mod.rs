@@ -151,6 +151,17 @@ pub extern "C" fn irq_dispatcher() {
     if intid >= 1020 {
         return;
     }
+    {
+        use core::sync::atomic::{AtomicBool, Ordering};
+        static SEEN: [AtomicBool; 2] = [
+            AtomicBool::new(false),
+            AtomicBool::new(false),
+        ];
+        let lp = get_lp_id() as usize;
+        if lp < 2 && !SEEN[lp].swap(true, Ordering::Relaxed) {
+            crate::early_logln!("[IRQDBG] LP{}: irq_dispatcher first call, intid={}", lp, intid);
+        }
+    }
     match intid {
         LAPIC_TIMER_VECTOR => {
             // Advance the timer queue, firing any events whose deadline passed

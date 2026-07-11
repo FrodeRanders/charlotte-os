@@ -3,3 +3,9 @@ Cargo.lock
 os-images/
 .continue/mcpServers/new-mcp-server.yaml
 .codex
+.DS_Store
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
