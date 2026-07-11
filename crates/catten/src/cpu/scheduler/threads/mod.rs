@@ -19,6 +19,31 @@ pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
 pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
 
+/// Threads that have exited but are awaiting reaping. A thread cannot free its
+/// own kernel stack (in `ThreadContext::drop`) while it is still executing on
+/// it, so `abort` moves the dying thread here instead of dropping it. The
+/// reaper ([`reap_dead_threads`]) drops them later, from the context of a
+/// *different* thread, so the stack is no longer in use.
+pub static DEAD_THREADS: LazyLock<RwLock<Vec<Thread>>> = LazyLock::new(|| RwLock::new(Vec::new()));
+
+/// Drops any threads awaiting reaping, freeing their stacks. MUST be called from
+/// a thread other than the one being reaped (e.g. from `cond_yield_lp` after the
+/// context switch away from the dying thread). Safe to call when the list is
+/// empty.
+pub fn reap_dead_threads() {
+    // Move the dead threads out under the lock, then drop them after releasing
+    // it so their `Drop` (which frees stacks via the frame allocator) does not
+    // run while holding the DEAD_THREADS lock.
+    let dead: Vec<Thread> = {
+        let mut guard = DEAD_THREADS.write();
+        if guard.is_empty() {
+            return;
+        }
+        core::mem::take(&mut *guard)
+    };
+    drop(dead);
+}
+
 pub type ThreadCount = usize;
 
 #[derive(Debug)]

@@ -1,6 +1,6 @@
 use alloc::collections::vec_deque::VecDeque;
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::Ordering;
 
 use hashbrown::HashMap;
 
@@ -51,7 +51,7 @@ impl RoundRobin {
             lp_id,
             quantum,
             is_idle: false,
-            timer_event_observer: Arc::new(super::TimerEventObserver(AtomicBool::default())),
+            timer_event_observer: Arc::new(super::TimerEventObserver::new()),
             run_queue: VecDeque::new(),
             current_handle: None,
             hwasid_map: HashMap::new(),
@@ -59,6 +59,18 @@ impl RoundRobin {
     }
 
     fn set_next_timer_event(&self) {
+        // Keep exactly one quantum event in flight. If one is already armed,
+        // do not enqueue another — otherwise manual `yield_lp` calls (which
+        // also clear the pending flag) would each add a quantum event and the
+        // timer queue would grow without bound.
+        if self
+            .timer_event_observer
+            .armed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
         let mut timer_event = TimerEvent::from(self.quantum);
         timer_event.register_observer(
             Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
@@ -81,15 +93,15 @@ impl LpScheduler for RoundRobin {
     }
 
     fn is_ctx_switch_pending(&self) -> bool {
-        self.timer_event_observer.0.load(Ordering::Acquire)
+        self.timer_event_observer.pending.load(Ordering::Acquire)
     }
 
     fn set_ctx_switch_pending(&self) {
-        self.timer_event_observer.0.store(true, core::sync::atomic::Ordering::Release);
+        self.timer_event_observer.pending.store(true, Ordering::Release);
     }
 
     fn clear_ctx_switch_pending(&self) {
-        self.timer_event_observer.0.store(false, core::sync::atomic::Ordering::Release);
+        self.timer_event_observer.pending.store(false, Ordering::Release);
         self.set_next_timer_event();
     }
 

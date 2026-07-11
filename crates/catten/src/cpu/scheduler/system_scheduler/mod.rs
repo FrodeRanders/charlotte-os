@@ -11,7 +11,7 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::cpu::multiprocessor::spin::rwlock::RwLock;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
+use crate::cpu::scheduler::threads::{DEAD_THREADS, MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
 use crate::logln;
 use crate::memory::AddressSpaceId;
 
@@ -125,10 +125,15 @@ impl SystemScheduler {
                 .remove_thread(tid)
                 .expect("Error removing thread from LP scheduler while aborting");
         }
-        MASTER_THREAD_TABLE
+        // Move the thread out of the table WITHOUT dropping it: a thread cannot
+        // free its own kernel stack while still executing on it. The reaper
+        // (`reap_dead_threads`, called from `cond_yield_lp` after switching away)
+        // drops it later from another thread's context.
+        let thread = MASTER_THREAD_TABLE
             .write()
-            .remove_element(tid)
+            .take_element(tid)
             .map_err(|_| Error::InvalidThread)?;
+        DEAD_THREADS.write().push(thread);
         Ok(tid)
     }
 

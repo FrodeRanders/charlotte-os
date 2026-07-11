@@ -283,6 +283,8 @@ pub extern "C" fn cond_yield_lp() {
     if let Some((curr_rsp0_ptr, next_rsp0_ptr)) = switch_params {
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
     }
+    // Reap exited threads now that we are on a different thread's stack.
+    crate::cpu::scheduler::threads::reap_dead_threads();
     if interrupts_were_enabled {
         unmask_interrupts!();
     }

@@ -22,7 +22,8 @@ use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
 use crate::completion::{self, CompletionCap, OpCode, OpResult};
-use crate::cpu::scheduler::{spawn_thread, yield_lp};
+use crate::cpu::scheduler::{sleep, spawn_thread};
+use crate::klib::time::duration::ExtDuration;
 use crate::logln;
 use crate::memory::{AddressSpaceId, KERNEL_ASID};
 
@@ -48,7 +49,7 @@ extern "C" fn async_syscall_coordinator() {
         Ok(cap) => cap,
         Err(_) => {
             logln!("[async-demo] coordinator: submit failed");
-            park();
+            return;
         }
     };
     logln!("[async-demo] coordinator: submitted operation, got capability");
@@ -72,32 +73,21 @@ extern "C" fn async_syscall_coordinator() {
         _ => logln!("[async-demo] coordinator: ERROR: capability not complete after wait"),
     }
     logln!("[async-demo] SUCCESS: async syscall round-trip complete");
-    // Park (blocked-idle would be cleaner, but thread teardown via `abort` is
-    // not yet reliable — see docs).
-    park();
+    // Return cleanly: the thread trampoline calls `abort`, which now defers the
+    // thread's teardown to the reaper so its kernel stack is freed safely.
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn async_syscall_worker() {
     if let Ok((asid, cap)) = WORK_QUEUE.pop() {
-        logln!("[async-demo] worker: received work, performing async work");
-        // Simulate asynchronous work interleaved with other threads: yield the
-        // LP several times so the scheduler runs other work between steps.
-        for _ in 0..5 {
-            yield_lp();
-        }
+        logln!("[async-demo] worker: received work, performing async work (sleep 50ms)");
+        // Genuinely asynchronous: the worker blocks on the timer, yielding the
+        // LP; the timer wakes it 50 ms later.
+        sleep(ExtDuration::from_millis(50));
         logln!("[async-demo] worker: work finished, completing capability");
         let _ = completion::complete(asid, cap, OpResult::Ok(42));
     } else {
         logln!("[async-demo] worker: no work in queue");
     }
-    park();
-}
-
-/// Parks the current thread by yielding the LP forever. Used because reliable
-/// thread teardown (`abort`) is still being brought up.
-fn park() -> ! {
-    loop {
-        yield_lp();
-    }
+    // Return cleanly (the trampoline calls `abort` -> reaper frees the stack).
 }

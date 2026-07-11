@@ -49,7 +49,11 @@ pub fn yield_lp() {
 /// program's runtime library, however upcalls are still solely the purview of the kernel and we
 /// should at least attempt delivery prior to abort.
 pub fn abort() -> ! {
-    if let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() {
+    // Bind `tid` to a value so the temporary SYSTEM_SCHEDULER read guard and LP
+    // scheduler lock in the scrutinee are released before the body runs;
+    // otherwise `abort_thread` (which re-locks the LP scheduler) would deadlock.
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
         logln!("Thread {} is aborting execution.", tid);
         SYSTEM_SCHEDULER.read().abort_thread(tid).expect("Error aborting thread");
     }
@@ -60,17 +64,20 @@ pub fn abort() -> ! {
 /// Blocks the current thread for at least the specified duration.
 pub fn sleep(duration: ExtDuration) {
     let mut timer_event = TimerEvent::from(duration);
-    if let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() {
+    // Bind `tid` first so the read guard + LP scheduler lock in the scrutinee
+    // are released before `block_thread` (which takes SYSTEM_SCHEDULER.write());
+    // holding the read guard across the write would deadlock the RwLock.
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
         SYSTEM_SCHEDULER
             .write()
             .block_thread(tid, &mut timer_event)
             .expect("Error putting thread to sleep");
         TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);
-        // Yield immediately so the sleep takes effect deterministically: the
-        // block above marks the thread Blocked and registers its waker on the
-        // timer event, and this yield saves the thread's context and switches
-        // away. When the timer expires it fires the waker, re-admitting the
-        // thread, which then resumes right here.
+        // Yield so the sleep takes effect: `block_thread` marks the thread
+        // Blocked and registers its waker on the timer event; this yield saves
+        // the thread's context and switches away. When the timer expires it
+        // fires the waker, re-admitting the thread, which resumes here.
         yield_lp();
     }
 }

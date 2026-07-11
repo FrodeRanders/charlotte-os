@@ -124,6 +124,10 @@ impl TimerQueue {
                 return;
             }
         }
+        // The queue drained completely. Stop the timer so it does not keep
+        // firing on a stale (already-passed) compare value — the ARM Generic
+        // Timer interrupt is level-triggered and would otherwise re-assert.
+        let _ = LpTimer::get().lock().stop();
     }
 
     fn get_next_deadline(&self) -> Option<Timestamp> {

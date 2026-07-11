@@ -56,6 +56,17 @@ impl<'a, T> IdTable<T> {
         Ok(())
     }
 
+    /// Removes an element from the table and returns it, rather than dropping it
+    /// in place. Useful when the caller must control *when and where* the
+    /// element is dropped (e.g. a thread being reaped must not have its stack
+    /// freed while it is still executing on it).
+    pub fn take_element(&mut self, element_id: usize) -> Result<T, Error> {
+        let element = self.list.get_mut(element_id).ok_or(Error::IdNotActive)?;
+        let taken = element.take().ok_or(Error::IdNotActive)?;
+        self.available_ids.push(element_id);
+        Ok(taken)
+    }
+
     pub fn iter(&'a self) -> core::slice::Iter<'a, Option<T>> {
         self.list.iter()
     }

@@ -117,11 +117,13 @@ pub struct ThreadContext {
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if let Some(user_stack_buf) = self._user_stack_buf {
-            deallocate_stack(user_stack_buf)
-                .expect("Failed to deallocate user stack for thread context.");
+            if deallocate_stack(user_stack_buf).is_err() {
+                crate::early_logln!("[REAPDBG] failed to free user stack");
+            }
         }
-        deallocate_stack(self._kernel_stack_buf)
-            .expect("Failed to deallocate kernel stack for thread context.");
+        if deallocate_stack(self._kernel_stack_buf).is_err() {
+            crate::early_logln!("[REAPDBG] failed to free kernel stack");
+        }
     }
 }
 
