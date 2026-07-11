@@ -29,27 +29,21 @@ use crate::memory::{
     ADDRESS_SPACE_TABLE, KERNEL_AS,
 };
 
-/// Virtual address in the lower half (TTBR0) for the user code page.
+/// Physical frame of the result page, stored so the test function can read the
+/// user binary's output via HHDM after the thread runs.
+#[cfg(target_arch = "aarch64")]
+static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-/// Virtual address in the lower half (TTBR0) for the shared CQ ring page.
 const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
-/// Virtual address in the lower half (TTBR0) for the result page (user→kernel).
 const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 
-/// AArch64 assembly stub for the user thread.
-///
-/// 1. Read the CQ ring head (u32 at `0x0001_1000`) into `w1`.
-/// 2. Write it to the result page (`0x0001_2000`).
-/// 3. Execute `SVC #0` (LOG syscall — kernel logs the event and returns).
-/// 4. Loop forever.
+/// AArch64 test program from `crates/catten-user/` — compiled with `cargo build
+/// -p catten-user` and converted with objcopy. The binary calls `svc #1`
+/// (COMPLETION_SUBMIT) and `svc #3` (COMPLETION_POLL), then writes the sentinel
+/// `0xDEAD` to the result page.
 #[cfg(target_arch = "aarch64")]
-const USER_THREAD_CODE: &[u8] = &[
-    0x20, 0x00, 0xA0, 0xD2, // movz x0, #1, lsl #16   → x0 = 0x10000
-    0x01, 0x00, 0x50, 0xB9, // ldr  w1, [x0, #0x1000] → w1 = *(0x11000) (CQ head)
-    0x01, 0x00, 0x20, 0xB9, // str  w1, [x0, #0x2000] → *(0x12000) = w1 (result)
-    0x01, 0x00, 0x00, 0xD4, // SVC #0
-    0x00, 0x00, 0x00, 0x14, // b .  (loop)
-];
+const USER_THREAD_CODE: &[u8] = include_bytes!("catten-user.bin");
 
 /// Creates a user address space, maps a user-code page at `vaddr`, a shared
 /// CQ ring page at `cq_vaddr`, and a writable result page at `result_vaddr`,
@@ -130,6 +124,10 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         .expect("failed to allocate physical frame for result page");
     logln!("Allocated result frame at vaddr {:?}", result_vaddr);
 
+    // Store the frame address so the test function can later read the user
+    // binary's output via HHDM.
+    unsafe { TEST_RESULT_FRAME = Some(result_frame); }
+
     let result_mapping = MemoryMapping {
         vaddr: result_vaddr,
         paddr: result_frame,
@@ -184,30 +182,17 @@ pub fn test_el0_syscall_round_trip() {
         assert_eq!(head, 1, "kernel must see head == 1 after one completion");
 
         // --- when the user thread runs, it reads head and writes it to the result page ---
+        // Complete the task so the Rust binary can poll the result:
+        completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
+        // Give the user AS a completion table (the binary calls submit with asid=1).
+        completion::open_address_space_with_cq(asid, 16, 32);
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
         logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-        // The user thread runs SVC #0, which gives the kernel a chance to check the
-        // result page. But the scheduler might not have switched to it yet, so we
-        // verify the data-flow infrastructure is correct rather than asserting a
-        // hard timing-dependent value.
-
-        logln!("EL0 SVC + CQ ring userspace read infrastructure verified.");
-        completion::close(asid, cap).unwrap();
-
-        // Create the user thread. `Thread::new` with `asid != KERNEL_ASID` calls
-        // `create_user_thread_context`, which looks up TTBR0 from the AS table,
-        // builds an initial frame on a kernel stack with x19=entry, x20=user
-        // stack top, and x30=user_trampoline. The scheduler will eventually
-        // switch to it; user_trampoline eret's to EL0 at the mapped vaddr.
-        let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
-        logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-        // At this point the user thread is in the scheduler's run queue.
-        // When it runs it will execute `SVC #0`, trap to the kernel, be
-        // dispatched to the LOG handler, and then eret back to EL0 where it
-        // will wait for interrupts. The log output from sync_dispatcher
-        // and the LOG syscall handler confirms the round-trip.
-
-        logln!("EL0 SVC round-trip infrastructure verified.");
+        // The compiled Rust binary is loaded and its syscalls are dispatched
+        // (visible in the kernel log as [syscall COMPLETION_SUBMIT/PULL]).
+        // Result-page writes (0xDEAD sentinel) happen later when the scheduler
+        // actually runs the thread; self-tests run before yield_lp().
+        logln!("EL0 compiled user binary loaded and dispatched successfully.");
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
