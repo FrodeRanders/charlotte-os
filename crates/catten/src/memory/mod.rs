@@ -25,10 +25,21 @@ pub const KERNEL_ASID: AddressSpaceId = 0;
 /// first accessed. Which should happen during the BSP init process.
 pub static KERNEL_AS: LazyLock<Mutex<AddressSpace>> =
     LazyLock::new(|| Mutex::new(AddressSpace::get_current()));
-/// Holds all userspace address spaces, indexed by their kernel assigned AddressSpaceId.
+/// Holds all address spaces, indexed by their kernel assigned AddressSpaceId.
+///
+/// Index 0 ([`KERNEL_ASID`]) is reserved for the kernel address space and is
+/// pre-populated on first access, so user address spaces are always assigned
+/// non-zero ids. This is essential: `Thread::new` treats `asid == KERNEL_ASID`
+/// as a kernel thread (runs at EL1/ring 0), so a user AS must never be given
+/// id 0.
 type AddressSpaceTable = IdTable<AddressSpace>;
-pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> =
-    LazyLock::new(|| Mutex::new(AddressSpaceTable::new()));
+pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> = LazyLock::new(|| {
+    let mut table = AddressSpaceTable::new();
+    // Reserve id 0 for the kernel address space.
+    let kernel_id = table.add_element(AddressSpace::get_current());
+    debug_assert_eq!(kernel_id, KERNEL_ASID, "kernel AS must occupy id 0");
+    Mutex::new(table)
+});
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the
 /// kernel virtual memory map at which point this address should be updated to reflect the new
