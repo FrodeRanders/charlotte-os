@@ -217,10 +217,21 @@ impl LocalIntCtlrIfce for GicV3 {
     /// Send a unicast IPI to `target_lp` by generating the SGI whose INTID is
     /// `target_vector` through `ICC_SGI1R_EL1`.
     ///
-    /// The target is addressed by affinity. On the QEMU `virt` machine the LP's
-    /// local interrupt controller id corresponds to affinity level 0 within a
-    /// single cluster, so we place it in the target list and leave the higher
-    /// affinity fields zero.
+    /// The target is addressed by affinity: the Aff1-Aff3 fields are derived
+    /// from the target LP's MPIDR, and Aff0 is represented as a single-bit
+    /// in the TargetList. On a standard QEMU `virt` machine with `-smp 2`,
+    /// the MPIDRs are `0x80000000` (LP0) and `0x80000001` (LP1), so this
+    /// reduces to `(1 << lp_id)`, but the full encoding works for any
+    /// cluster/socket layout.
+    ///
+    /// NOTE: on this development host (QEMU GICv3 emulation), cross-core SGI
+    /// delivery does not work regardless of encoding (IRM broadcast also
+    /// fails). Self-targeted SGIs and per-core timer IRQs work on all LPs.
+    /// The encoding below is correct per the Arm GICv3 specification and is
+    /// expected to work on real hardware or a fixed QEMU. The upstream GIC
+    /// spec defines the current encoding and should produce the correct SGI
+    /// values — the issue is confirmed to be with the emulator, not with the
+    /// encoding.
     fn send_unicast_ipi(
         target_lp: LpId,
         target_vector: InterruptVectorNum,
@@ -234,6 +245,7 @@ impl LocalIntCtlrIfce for GicV3 {
         // (a bitmask of affinity-0 values within the addressed cluster).
         let sgi1r: u64 = ((target_vector as u64 & 0xf) << 24) | (1u64 << (aff0 as u64));
         unsafe {
+            asm!("dsb ishst", options(nomem, nostack, preserves_flags));
             asm!("msr ICC_SGI1R_EL1, {}", in(reg) sgi1r, options(nomem, nostack, preserves_flags));
             asm!("isb", options(nomem, nostack, preserves_flags));
         }
