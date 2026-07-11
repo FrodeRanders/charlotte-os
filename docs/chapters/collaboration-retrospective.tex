@@ -1,0 +1,575 @@
+\chapter{The Collaboration: A Retrospective}
+
+\section{The convergence}
+
+Two independent projects started from opposite ends of the software stack and
+built toward the same shape, without coordination.
+
+\paragraph{sitas} began in userspace, asking: \emph{what does shared-nothing,
+shard-per-core concurrency look like when it is built out of Rust ownership
+instead of locks?} Its answer was a discipline --- each shard owns its state,
+only the owning shard mutates it, everything crossing a shard boundary is an
+owned value moved through an explicit typed message. On top of that it grew a
+custom async executor, per-shard reactors, \texttt{io\_uring} completion I/O,
+and snapshot-based observability.
+
+\paragraph{CharlotteOS} began in the kernel, asking: \emph{hardware is
+asynchronous with respect to the CPU, so why is the OS synchronous?} Its answer
+was to make the kernel async-first --- cheap threads, an observer/waker event
+model, and system calls that are asynchronous by default, returning a
+completion capability that userspace can wait on.
+
+Both projects independently converged on the same primitive: a waitable
+completion handle. sitas called it \texttt{Reply<T>} / \texttt{Notify};
+CharlotteOS called it \texttt{Observer} / \texttt{Waker}. They are the same
+object with different names.
+
+The insight that drove the collaboration: \textbf{a userspace runtime whose
+async model agrees with the kernel it runs on removes the ``retrofit tax''}
+--- the async-signal-safety, thread pools, and \texttt{io\_uring}-over-blocking
+emulation that exist only because the runtime and the OS disagree about what is
+fundamental.
+
+\section{The structural correspondence}
+
+The reason the projects belong together is deeper than analogy: the pieces
+already existed on both sides, and they lined up almost one-to-one.
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{l|l|l}
+\textbf{sitas concept} & \textbf{Role} & \textbf{CharlotteOS equivalent} \\
+\hline
+Shard = OS thread pinned to core & Unit of isolation & Logical Processor (LP) + \texttt{PerLp<T>} \\
+\texttt{ShardId} explicit placement & Addressing & \texttt{LpId} \\
+Shard mailbox (\texttt{ShardSender}/\texttt{ShardReceiver}) & Cross-shard transport & \texttt{IPI\_CMD\_QUEUES} (bounded per-LP) \\
+Custom executor \texttt{Waker} re-enqueue & Wake a task & \texttt{Waker(ThreadId)} + \texttt{submit\_ready\_thread} \\
+\texttt{Reply<T>} / \texttt{Notify} awaitable completion & Await a result & \texttt{Observable} / \texttt{Observer} + \texttt{TimerEvent} \\
+Reactor idle wait & Block until events & GIC/APIC IRQ dispatch $\rightarrow$ \texttt{cond\_yield\_lp} \\
+\texttt{io\_uring} completion I/O & Async syscalls & Completion-capability ABI (design goal) \\
+\texttt{ShardLocal<T>} (no mutex, owner-checked) & Shard-owned mutable state & \texttt{ShardLocal<T>} in-kernel (sitas-derived) \\
+CPU pinning & Bind shard to core & LP \emph{is} a core (not advisory) \\
+\end{tabularx}
+\end{table}
+
+\texttt{sitas} was, in effect, re-deriving in userspace the runtime that
+CharlotteOS was trying to be natively. Where sitas fought to build a reactor on
+top of a synchronous OS, CharlotteOS offered the reactor as the substrate.
+
+\section{The exploration phases (A $\rightarrow$ C $\rightarrow$ B)}
+
+The collaboration was structured as three time-boxed spikes, pursued in
+dependency order, each building on the prior. Nothing was merged until it
+earned its place. All spikes were verified on QEMU (AArch64 and, later, x86-64).
+
+\subsection{Phase A --- OS backend seam (sitas)}
+
+\textbf{Goal:} extract the reactor's OS dependency into an explicit trait, so
+the executor can be backed by anything that can block until events and wake
+from elsewhere --- not just Unix \texttt{epoll}/\texttt{kqueue}.
+
+\textbf{Deliverable:} the \texttt{ReactorBackend} trait (in sitas's
+\texttt{reactor\_backend.rs}). Three methods capture everything the executor
+needs from the OS:
+
+\begin{itemize}
+    \item \texttt{waker()} --- obtain a cloneable waker.
+    \item \texttt{wait(read, write, timeout)} $\rightarrow$ \texttt{Event} ---
+        block until an interest becomes ready, the reactor is woken, or a
+        deadline elapses.
+    \item \texttt{wake()} --- wake a blocked reactor from another thread/core.
+\end{itemize}
+
+A mock in-memory backend proved a non-Unix backend is implementable behind the
+same interface. The existing Unix \texttt{OsReactor} / \texttt{OsWaker} /
+\texttt{OsEvent} satisfied the contract with zero changes.
+
+\textbf{Key finding:} abstracting ``block until an event'' was trivial.
+Abstracting ``\emph{what is a waitable interest}'' was the real work. On Unix
+the interest is a \texttt{RawFd}; the trait's \texttt{Handle} associated type
+is where the design pressure concentrates. For CharlotteOS, \texttt{Handle} is a
+completion capability.
+
+\subsection{Phase C --- Async syscall ABI (CharlotteOS kernel)}
+
+\textbf{Goal:} design the userspace$\leftrightarrow$kernel boundary for
+asynchronous system calls, using sitas as the executable specification. If
+sitas's shard model, completion futures, and cross-shard submit map cleanly
+onto the ABI, the ABI is right.
+
+\textbf{Deliverable:} five kernel-internal operations that later became the
+syscall table:
+
+\begin{enumerate}
+    \item \texttt{submit(op, args, buffers)} $\rightarrow$ \texttt{CompletionCap}
+        (a per-address-space handle naming in-flight work).
+    \item \texttt{wait(cq, min\_complete, deadline)} $\rightarrow$ count (the
+        reactor's only sleep).
+    \item \texttt{wake(cq)} (cross-shard wake via IPI).
+    \item \texttt{cancel(cap)} (deferred buffer reclaim).
+    \item \texttt{close(cap)} (release a completed slot).
+\end{enumerate}
+
+Each built on facilities that already existed in the kernel: the per-AS
+\texttt{IdTable} for the capability table, the \texttt{Observable}/\texttt{Observer}
+mechanism for completing operations, the per-LP \texttt{RoundRobin} scheduler
+for blocking and waking threads, and the bounded \texttt{IPI\_CMD\_QUEUES} for
+cross-core communication.
+
+\textbf{Key infrastructure built in this phase:}
+
+\begin{itemize}
+    \item \textbf{Completion-capability table} (\texttt{completion/mod.rs}) ---
+        per-address-space \texttt{IdTable<Arc<Completion>>}, bounded for
+        submission backpressure.
+    \item \textbf{CQ ring} (\texttt{completion/cq.rs}) --- a shared-memory
+        io\_uring-style ring buffer for zero-syscall completion delivery.
+        Single 4 KiB page, header + entry array. The kernel writes entries;
+        userspace reads them without syscalls.
+    \item \textbf{Syscall dispatch} (\texttt{syscall/mod.rs}) --- the AArch64
+        \texttt{sync\_dispatcher} decodes \texttt{ESR\_EL1.EC} and routes SVC
+        instructions to a dispatch table. A \texttt{TrapFrame} captures the user
+        register state.
+    \item \textbf{Bounded IPI queues} --- \texttt{IPI\_CMD\_QUEUES} became
+        bounded per-LP \texttt{ConcurrentQueue<256>} with first-class
+        backpressure (\texttt{try\_push\_to} returns \texttt{Err(rpc)} on full).
+    \item \textbf{\texttt{IpiRpc::Closure}} variant --- arbitrary
+        \texttt{FnOnce() + Send} work dispatched to a target LP, the seed of
+        \texttt{ShardMailbox<M>}.
+\end{itemize}
+
+\subsection{Phase B --- sitas's discipline inside the kernel}
+
+\textbf{Goal:} adopt sitas's shared-nothing invariants as the kernel's own
+concurrency doctrine. CharlotteOS already had the ingredients; sitas
+contributed the rules.
+
+\textbf{Deliverables:}
+
+\begin{itemize}
+    \item \textbf{\texttt{ShardLocal<T>}} --- a lock-free per-LP container
+        replacing \texttt{PerLp<T>}'s \texttt{RwLock} with \texttt{UnsafeCell<T>}
+        and two runtime assertions: owner-check (the caller must be on the
+        owning LP) and re-entrancy guard (borrow flag). Closure-based access
+        ensures \texttt{\&mut T} never escapes.
+    \item \textbf{\texttt{ShardMailbox<M>}} --- a typed, bounded per-LP queue
+        with cloneable \texttt{ShardSender<M>} and single-consumer
+        \texttt{ShardReceiver<M>}, built on the bounded IPI infrastructure.
+        \texttt{try\_send} returns \texttt{Err(m)} on backpressure.
+\end{itemize}
+
+\subsection{Beyond the plan --- what was built additionally}
+
+\begin{itemize}
+    \item \textbf{Exit-observer completion} --- the ABI's intended mechanism:
+        \texttt{submit\_worker} registers a completion capability as the
+        worker thread's exit-observer. The thread exiting \emph{is} the
+        completion event. This required fixing the thread lifecycle
+        (deferred reaper) so threads could return cleanly.
+    \item \textbf{Real-EL0 user thread} --- the first userspace thread running
+        at EL0, invoking \texttt{SVC} from compiled Rust code, with the kernel
+        dispatching the syscall and returning.
+    \item \textbf{x86-64 parity} --- serial console (16550 UART), SYSCALL entry
+        trampoline, unstubbed IPI handlers, LA57 paging-mode fix. The same
+        self-test suite passes on both architectures.
+    \item \textbf{16550 UART serial driver} --- x86-64 headless boot was
+        completely silent before this; debugging was impossible.
+    \item \textbf{Multi-LP bring-up} --- kernel boots with \texttt{-smp 2} on
+        AArch64 (cross-core SGI delivery is blocked by a QEMU GICv3 emulation
+        defect; self-targeted SGIs and per-core timers work on all LPs).
+    \item \textbf{sitas-core no\_std refactor} --- the sitas executor, reactor
+        traits, ShardLocal, ShardMailbox, and completion primitives were split
+        from the Unix backend into a \texttt{no\_std + alloc} crate. A lock-free
+        \texttt{ringbuf} replaced \texttt{concurrent-queue}. The
+        \texttt{ShardRuntime} trait abstracts thread spawning.
+    \item \textbf{sitas-charlotte backend} --- implements
+        \texttt{ReactorBackend} and \texttt{ShardRuntime} against the kernel's
+        async syscall ABI. The user binary links sitas-core + sitas-charlotte
+        and runs \texttt{ShardedExecutor} on CharlotteOS.
+\end{itemize}
+
+\section{The async syscall ABI in detail}
+
+The ABI is the concrete interface where both projects meet. It is specified
+against sitas's \texttt{ReactorBackend} trait and implemented in the
+CharlotteOS kernel.
+
+\subsection{The five operations}
+
+\begin{description}
+    \item[\texttt{submit(asid, op, buffer)} $\rightarrow$ \texttt{CompletionCap}]
+        Returns immediately with a capability naming the in-flight operation.
+        Ownership of the buffer transfers to the kernel until a terminal
+        completion posts it back. Returns \texttt{SubmitError::WouldBlock} on
+        submission backpressure (capability table full).
+
+    \item[\texttt{wait(asid, cap)} $\rightarrow$ \texttt{Result<(), CapError>}]
+        Blocks the calling thread until the specified capability reaches
+        terminal completion. Internally registers the thread's \texttt{Waker}
+        as an \texttt{Observer} of the \texttt{Completion} (which is
+        \texttt{Observable}) and yields.
+
+    \item[\texttt{poll(asid, cap)} $\rightarrow$ \texttt{Option<Completed>}]
+        Non-blocking check. Returns \texttt{None} while in flight; returns
+        \texttt{Some(Completed \{ result, buffer \})} when terminal. Buffer
+        ownership returns to the caller.
+
+    \item[\texttt{cancel(asid, cap)} $\rightarrow$ \texttt{CancelState}]
+        Requests cancellation. If in flight, returns \texttt{CancelRequested}:
+        the kernel retains any transferred buffer until it posts a terminal
+        \texttt{Cancelled} completion (deferred reclaim). If already complete,
+        returns \texttt{AlreadyComplete}.
+
+    \item[\texttt{close(asid, cap)} $\rightarrow$ \texttt{Result<(), CapError>}]
+        Frees the capability-table slot after the terminal completion was
+        posted or the result was consumed by \texttt{poll}. Fails with
+        \texttt{NotComplete} for in-flight operations.
+\end{description}
+
+\subsection{The exit-observer completion path}
+
+The ABI's intended completion mechanism is declarative: \textbf{the worker
+thread exiting IS the completion event.} \texttt{submit\_worker(asid,
+worker\_entry, result)} spawns a worker thread and registers the returned
+capability as the worker's exit-observer. The worker performs its work and
+returns; the thread's \texttt{Thread::Drop} fires the exit-observer, which
+calls \texttt{complete()} and wakes any waiter. The worker never references the
+capability explicitly.
+
+This matches the design comment in
+\texttt{scheduler/threads/mod.rs:63--69} and is implemented as
+\texttt{CompletionExitObserver} in
+\texttt{crates/catten/src/completion/mod.rs}.
+
+\subsection{The CQ ring}
+
+A shared-memory io\_uring-style ring buffer for zero-syscall completion
+delivery. A single 4 KiB page contains a header (head, tail, capacity,
+overflow) and a circular array of entries. The kernel (producer) writes entries
+via \texttt{write(cap, result)}; userspace (consumer) drains via
+\texttt{read() $\rightarrow$ Option<CqEntry>} -- zero syscalls.
+
+\subsection{Cancellation and the buffer-reclaim contract}
+
+When userspace drops a \texttt{CompletionCap} without awaiting it:
+
+\begin{enumerate}
+    \item The kernel marks the operation cancelling but \textbf{retains the
+        buffer} --- it may still be the target of DMA or kernel access.
+    \item A terminal \texttt{Cancelled} completion is eventually posted,
+        handing the buffer back.
+    \item On teardown, outstanding buffers are leaked rather than freed while
+        the kernel may touch them.
+\end{enumerate}
+
+This is the kernel-side mirror of sitas's \texttt{defer\_buffer\_drop} and
+\texttt{mem::forget}-on-timeout rule.
+
+\subsection{Backpressure}
+
+\begin{itemize}
+    \item \textbf{Submission:} the per-AS capability table is bounded.
+        \texttt{submit} returns \texttt{WouldBlock} when full.
+    \item \textbf{Completion:} the CQ ring is bounded. When full, the kernel
+        does \emph{not} drop completions; it stops producing and marks the
+        queue overflow-pending.
+    \item \textbf{Cross-LP:} \texttt{IPI\_CMD\_QUEUES} are bounded per target
+        LP. \texttt{try\_push\_to} returns \texttt{Err(rpc)} on full.
+\end{itemize}
+
+\section{The bugs we found (and the real value of running on hardware)}
+
+Bootstrapping an async-first kernel on real hardware (QEMU) surfaced a series
+of latent bugs that static analysis and self-tests never caught. Each fix
+enabled the next layer of work. The following are the most instructive, in the
+order they were discovered.
+
+\subsection{Panic handler recursed through heap-dependent \texttt{logln}}
+
+\textbf{Symptom:} any fault during early boot (before the heap allocator was
+ready) silently triple-faulted instead of printing a panic message --- making
+\emph{every} early bug look like a mysterious hang.
+
+\textbf{Root cause:} the panic handler used \texttt{logln!}, which routes
+through \texttt{INT\_STATE} --- a \texttt{LazyLock} whose first-use
+initialization allocates from the kernel heap (\texttt{alloc::vec!}). A fault
+before the heap was ready caused the panic handler's \texttt{logln!} to trigger
+a heap allocation $\rightarrow$ another fault $\rightarrow$ re-entered the
+panic handler $\rightarrow$ infinite recursion $\rightarrow$ stack overflow
+$\rightarrow$ triple fault.
+
+\textbf{Fix:} the panic handler now uses \texttt{early\_logln!} (direct serial
+writes, no heap, no \texttt{INT\_STATE}). A panic handler must never depend on
+the allocator it might be reporting a failure about.
+
+This was the single most valuable fix of the entire project: it unmasked every
+subsequent fault as a visible panic instead of a silent triple-fault.
+
+\subsection{Blocked threads lost their execution context}
+
+\textbf{Symptom:} a thread that blocked in \texttt{wait()} (or \texttt{sleep()})
+restarted from its entry point when woken, instead of resuming where it
+blocked.
+
+\textbf{Root cause:} \texttt{block\_thread} cleared the LP scheduler's
+\texttt{current\_handle} for the running thread, so the subsequent
+\texttt{cond\_yield\_lp} read \texttt{curr\_tid == None} and
+\texttt{switch\_ctx(null, ...)} \textbf{skipped saving} the blocking thread's
+execution context.
+
+\textbf{Fix:} a self-blocking thread now stays \texttt{current\_handle} until
+the yield saves its context; \texttt{RoundRobin::next} declines to re-queue a
+\texttt{Blocked} thread. This was a foundational fix: \texttt{wait()} and
+\texttt{sleep()} had never been exercised before.
+
+\subsection{RwLock held-across-call deadlocks in \texttt{sleep()} and
+\texttt{abort()}}
+
+\textbf{Symptom:} \texttt{sleep()} worked reliably with diagnostic logging but
+hung without it --- a classic heisenbug.
+
+\textbf{Root cause:} \texttt{sleep()} held a \texttt{SYSTEM\_SCHEDULER.read()}
+guard (plus the LP scheduler lock) across
+\texttt{SYSTEM\_SCHEDULER.write().block\_thread(...)} --- a read-then-write
+RwLock self-deadlock. The diagnostic version happened to bind the thread ID
+first, releasing the guard. \texttt{abort()} had the same pattern with the LP
+scheduler lock.
+
+\textbf{Fix:} bind the value out of the scrutinee first so the temporary
+guards drop before the re-locking call.
+
+\subsection{Quantum timer grew the timer queue without bound}
+
+\textbf{Symptom:} after extended operation, the per-LP timer queue contained
+thousands of quantum events, consuming unbounded memory.
+
+\textbf{Root cause:} \texttt{clear\_ctx\_switch\_pending} enqueued a new
+quantum \texttt{TimerEvent} on every yield, not just on quantum expiry. Manual
+yields accumulated quantum events forever.
+
+\textbf{Fix:} an \texttt{armed} flag keeps exactly one quantum event in flight
+(the quantum's own firing clears it). Also, \texttt{cond\_yield\_lp} re-arms even
+when there is nothing to switch to (previously the timer stopped when only one
+thread was runnable), and \texttt{process\_events} stops the level-triggered
+timer when the queue drains.
+
+\subsection{A thread cannot free its own kernel stack}
+
+\textbf{Symptom:} a returning kernel thread hung during teardown.
+
+\textbf{Root cause:} \texttt{ThreadContext::Drop} calls
+\texttt{deallocate\_stack}, which frees the kernel stack --- but the returning
+thread is still executing on that stack when \texttt{abort} drops it.
+
+\textbf{Fix:} a \textbf{deferred reaper}. \texttt{abort} moves the dying thread
+to \texttt{DEAD\_THREADS} (\texttt{IdTable::take\_element} extracts it without
+dropping), and \texttt{cond\_yield\_lp} calls \texttt{reap\_dead\_threads()}
+\emph{after} switching away, so the stack is freed from a different thread's
+context.
+
+\subsection{Stack allocator never registered guard pages}
+
+\textbf{Symptom:} \texttt{deallocate\_stack} always failed with
+\texttt{InvalidStack}, causing the reaper to leak stacks.
+
+\textbf{Root cause:} \texttt{allocate\_stack} never populated
+\texttt{KERNEL\_GUARD\_PAGE\_SET}, so \texttt{validate\_stack} couldn't find
+the guards.
+
+\textbf{Fix:} register lower and upper guard pages on allocation, and rewrite
+\texttt{deallocate\_stack} to derive the page count from them. Reference-count
+guard pages (using \texttt{BTreeMap<VAddr, usize>}) so adjacent stacks sharing
+a guard survive until both are freed.
+
+\subsection{LA57 paging-mode mismatch on x86-64}
+
+\textbf{Symptom:} a \texttt{\#GP} with \texttt{RAX = 0xff90000000000000}
+(clearly non-canonical under 4-level paging) during kernel-heap large-page
+mapping.
+
+\textbf{Root cause:} \texttt{CpuInfo::get\_vaddr\_sig\_bits()} read the CPU's
+\emph{maximum} linear address width from CPUID \texttt{0x80000008}
+EAX[15:8] -- with \texttt{-cpu max} that is 57 (the CPU supports 5-level
+paging). The kernel then selected \texttt{LA\_MAP\_57BIT}, whose
+\texttt{kernel\_allocator\_arena} base is \texttt{0xff90000000000000} --
+canonical only under 5-level paging. But Limine boots with 4-level paging
+(48-bit VAs), under which that address is non-canonical.
+
+\textbf{Fix:} derive the address width from \texttt{CR4.LA57} (bit 12) ---
+the \emph{active} paging mode, not the CPU's capability.
+
+\subsection{ASID-0 collision (``the TLB bug that wasn't'')}
+
+\textbf{Symptom:} the first user thread faulted at its entry point with
+an instruction abort (\texttt{EC=0x21}, ``no change in exception level'').
+
+\textbf{Root cause:} the global \texttt{ADDRESS\_SPACE\_TABLE} started empty,
+so the first user address space got id 0, which equals \texttt{KERNEL\_ASID}.
+\texttt{Thread::new} then built a \emph{kernel} thread context, running the
+user code at EL1 where \texttt{PXN=1} forbids execution. The EC decode
+(\texttt{0x21} = fault without EL change) was the tell --- the code was
+never at EL0.
+
+\textbf{Fix:} pre-populate the table with the kernel AS at id 0, so user
+spaces always get non-zero ids.
+
+A second bug in the same test: \texttt{sync\_dispatcher} added 4 to
+\texttt{ELR\_EL1} on SVC, but AArch64 already sets ELR to the instruction
+\emph{after} SVC. The +4 overshot the loop instruction, landing in zeroed
+memory (\texttt{EC=0} undefined instruction).
+
+\subsection{x86-64 \texttt{kernel\_thread\_trampoline} halted on thread return}
+
+\textbf{Symptom:} on x86-64, the async demo's worker thread completed its
+work but the coordinator never resumed.
+
+\textbf{Root cause:} the x86-64 \texttt{kernel\_thread\_trampoline} entered a
+\texttt{hlt} loop when a thread's entry returned, instead of calling
+\texttt{abort()} like the AArch64 trampoline. The CPU halted, freezing the LP.
+
+\textbf{Fix:} make the x86-64 trampoline call \texttt{abort} on entry return,
+matching AArch64's behavior. (The AArch64 trampoline had always called
+\texttt{abort} via \texttt{bl abort} after the entry point returned.)
+
+\section{Verification}
+
+All verification is via QEMU emulation (AArch64 \texttt{virt} and x86-64
+\texttt{q35} machines, TCG accelerator). The kernel has no host-side test
+framework; all tests are boot-time \textbf{kernel self-tests} that run from
+\texttt{main.rs:104} via \texttt{self\_test::run\_self\_tests()}.
+
+\subsection{Self-test suite (both architectures pass)}
+
+\begin{itemize}
+    \item \texttt{self\_test/completion.rs} --- buffer ownership, cancel /
+        deferred-reclaim, backpressure, close rejection
+    \item \texttt{self\_test/syscall.rs} --- dispatch table routing via
+        synthetic TrapFrame (all 7 syscalls routed without panicking)
+    \item \texttt{self\_test/ipi.rs} --- bounded queue, backpressure, closure
+        dispatch
+    \item \texttt{self\_test/shard.rs} --- \texttt{ShardLocal<T>} owner-check /
+        re-entrancy guard, \texttt{ShardMailbox<M>} send/recv
+    \item \texttt{self\_test/el0.rs} --- real-EL0 user thread (AArch64 only),
+        compiled Rust binary calling SVC with correct dispatch
+    \item \texttt{self\_test/cq.rs} --- CQ ring write/drain/overflow detection
+    \item \texttt{self\_test/cq\_completion.rs} --- CQ ring integrated with
+        completion subsystem
+\end{itemize}
+
+\subsection{Async-syscall demo (both architectures)}
+
+The \texttt{demo.rs} spawns a coordinator + worker from \texttt{bsp\_main}.
+The coordinator calls \texttt{submit\_worker}, which spawns a worker and
+registers the capability as the worker's exit-observer. The worker performs
+async work (\texttt{sleep 50ms}) and returns; the thread-exit fires the
+observer, completing the capability and waking the coordinator. Verified
+output:
+
+\begin{verbatim}
+Testing Complete. All Tests Passed!
+[async-demo] coordinator: submitted worker, now awaiting completion...
+[async-demo] worker: performing async work (sleep 50ms)
+[async-demo] worker: work finished, exiting (completion fires on exit)
+[async-demo] coordinator: COMPLETION RECEIVED, result Ok(42)
+[async-demo] SUCCESS: async syscall round-trip complete (via thread-exit observer)
+\end{verbatim}
+
+\subsection{sitas integration}
+
+The user binary (\texttt{crates/catten-user/}) compiles against
+\texttt{sitas-core} (no\_std executor) and \texttt{sitas-charlotte}
+(ReactorBackend against kernel syscalls). The binary creates a
+\texttt{ShardedExecutor} with \texttt{CharlotteReactor} as the
+\texttt{ShardRuntime}, spawning a shard thread via SVC \#7
+(\texttt{SPAWN\_THREAD}). The spawned thread writes a sentinel to the shared
+result page. Binary size: 144 bytes (up from 48 without sitas). Zero panics.
+
+\subsection{CI}
+
+GitHub Actions (\texttt{.github/workflows/ci.yml}) builds both architectures
+with \texttt{-D warnings}, and runs an automated QEMU boot gate on the
+\texttt{dev} branch (60-second timeout, grepping for ``Testing Complete. All
+Tests Passed!'').
+
+\section{What we learned}
+
+\begin{enumerate}
+    \item \textbf{The block-yield-wake cycle is the hard problem.} Designing
+        the completion ABI was straightforward compared to making
+        \texttt{wait()} correctly save and restore thread state through the
+        cooperative scheduler. Every scheduling primitive (\texttt{sleep},
+        \texttt{wait}, \texttt{abort}) exercised a new path and surfaced a new
+        bug.
+
+    \item \textbf{Booting on real hardware finds bugs that static analysis
+        cannot.} The panic-handler recursion, ASID-0 collision, and LA57
+        paging mismatch were all invisible in self-tests and logical reasoning.
+        Every one was found by booting and observing the actual fault.
+
+    \item \textbf{The observer/waker pattern is the right primitive.} Once
+        \texttt{Completion} was made \texttt{Observable} and \texttt{wait()}
+        used the same path as \texttt{sleep()}, the entire completion subsystem
+        fell into place. The exit-observer mechanism is the natural endpoint:
+        a thread exiting \emph{is} the completion event.
+
+    \item \textbf{The async model genuinely removes the retrofit tax.} On
+        CharlotteOS, \texttt{wait(cap)} blocks exactly as \texttt{sleep(50ms)}
+        blocks --- both register a \texttt{Waker} on an \texttt{Observable} and
+        yield. There is no emulation, no thread pool, no signal-handler
+        tightrope. The kernel and the runtime agree about what is fundamental.
+
+    \item \textbf{The sitas traits were essential for co-design.} The
+        \texttt{ReactorBackend} trait defined in Phase A became the executable
+        specification for the async syscall ABI in Phase C. The sitas-charlotte
+        backend validates the ABI shapes before any kernel path exists. This
+        bidirectional validation is the core of the collaboration.
+\end{enumerate}
+
+\section{Current status (July 2026)}
+
+\textbf{Verified on QEMU AArch64 and x86-64:}
+
+\begin{itemize}
+    \item Both architectures boot, all self-tests pass, exit-observer
+        async demo succeeds.
+    \item Completion subsystem: submit, complete, poll, wait, cancel, close,
+        \texttt{submit\_worker}, exit-observer, CQ ring.
+    \item Syscall dispatch: AArch64 SVC handler (7 syscalls). x86-64 SYSCALL
+        trampoline exists (connected to dispatch table).
+    \item IPI: bounded per-LP queues, backpressure, typed closure dispatch.
+    \item \texttt{ShardLocal<T>} / \texttt{ShardMailbox<M>} in-kernel.
+    \item Scheduler: RoundRobin, quantum timer, block/yield/wake, deferred
+        reaper, per-LP thread pinning.
+    \item sitas-core no\_std crate + sitas-charlotte ReactorBackend +
+        \texttt{ShardRuntime::spawn\_shard} (SVC \#7).
+    \item CI: GitHub Actions builds both arches, QEMU boot gate.
+\end{itemize}
+
+\textbf{Known limitations (documented, scoped):}
+
+\begin{itemize}
+    \item x86-64 ring-3 / SYSCALL userspace (GS base, IRETQ return) --- not
+        yet exercised.
+    \item Full \texttt{ShardSet}/\texttt{Sharded} threading layer (the
+        \texttt{ShardRuntime} trait needs to be threaded through the
+        \texttt{ShardSet::start} call-chain; currently \texttt{ShardedExecutor}
+        works directly but the higher-level service modules still use
+        \texttt{thread::spawn}).
+    \item Multi-LP cross-core IPI (QEMU GICv3 SGI delivery defect --- self-IPIs
+        and per-core timers work on all LPs).
+\end{itemize}
+
+\section{Repositories and branches}
+
+\begin{itemize}
+    \item \textbf{sitas} (\texttt{reactor-handle-seam}):
+        \texttt{ReactorBackend} trait, ABI reference model
+        (\texttt{charlotte\_abi.rs}), \texttt{sitas-core} no\_std crate,
+        \texttt{sitas-charlotte} crate.
+    \item \textbf{CharlotteOS} (\texttt{dev}): consolidated kernel with
+        completion subsystem, syscall dispatch, bounded IPI queues,
+        ShardLocal, ShardMailbox, CQ ring, real-EL0 test, exit-observer
+        completion, \texttt{SPAWN\_THREAD} syscall, sitas user binary.
+\end{itemize}
+
+\endinput
