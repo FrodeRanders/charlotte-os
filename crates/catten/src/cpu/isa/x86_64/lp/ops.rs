@@ -225,6 +225,10 @@ pub extern "C" fn cond_yield_lp() {
                             }
                             _ => {}
                         }
+                        // Nothing else to run: still clear the pending flag so
+                        // the quantum timer is re-armed (otherwise the timer
+                        // stops when a single thread is runnable).
+                        lsched.clear_ctx_switch_pending();
                         None
                     }
                 } else {
@@ -377,10 +381,10 @@ pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
         "sti",
         "sub rsp, 8",
         "call r12",
-        "add rsp, 8",
-        "cli",
-        "2:",
-        "hlt",
-        "jmp 2b",
+        // The entry point returned: abort the thread so it is descheduled and
+        // reaped (rsp is 16-byte aligned here after the `sub rsp, 8` above, as
+        // required by the SysV ABI for the call). `abort` never returns.
+        "call {abort}",
+        abort = sym crate::cpu::scheduler::abort,
     );
 }

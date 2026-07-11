@@ -10,7 +10,7 @@
 //! reallocation such that from that thread's perspective it is as if the stack overflow never
 //! happened.
 
-use alloc::collections::BTreeSet;
+use alloc::collections::BTreeMap;
 use core::ops::Bound::{Excluded, Unbounded};
 
 use spin::{LazyLock, RwLock};
@@ -23,8 +23,16 @@ use crate::memory::linear::VAddr;
 use crate::memory::linear::address_map::LA_MAP;
 use crate::memory::{AddressSpaceInterface, KERNEL_AS};
 
-static KERNEL_GUARD_PAGE_SET: LazyLock<RwLock<BTreeSet<VAddr>>> =
-    LazyLock::new(|| RwLock::new(BTreeSet::new()));
+/// Reference-counted set of kernel stack guard-page addresses.
+///
+/// `find_free_region` places stacks back-to-back and only checks whether pages
+/// are *mapped*; guard pages are intentionally left unmapped, so one stack's
+/// upper guard page and the next stack's lower guard page can be the *same*
+/// address. Reference counting lets such a shared guard survive until *both*
+/// stacks are freed, instead of the first free removing a guard the second
+/// still relies on.
+static KERNEL_GUARD_PAGES: LazyLock<RwLock<BTreeMap<VAddr, usize>>> =
+    LazyLock::new(|| RwLock::new(BTreeMap::new()));
 #[derive(Debug)]
 pub enum Error {
     IsaMemoryIfce(<MemoryInterfaceImpl as MemoryInterface>::Error),
@@ -68,10 +76,11 @@ pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
     logln!("Mapping a thread stack at {stack_buf_base:?}.");
     memory::try_allocate_and_map_range(stack_buf_base, memory::PageSize::Standard, n_pages)?;
     logln!("Thread stack mapped.");
-    // Record the guard pages so the stack can be validated and freed later.
-    let mut guard_set = KERNEL_GUARD_PAGE_SET.write();
-    guard_set.insert(lower_guard);
-    guard_set.insert(upper_guard);
+    // Record the guard pages (reference-counted; a guard may be shared with an
+    // adjacent stack).
+    let mut guards = KERNEL_GUARD_PAGES.write();
+    *guards.entry(lower_guard).or_insert(0) += 1;
+    *guards.entry(upper_guard).or_insert(0) += 1;
     Ok(stack_buf_base)
 }
 
@@ -83,20 +92,28 @@ pub fn deallocate_stack(stack_buf_base: VAddr) -> Result<(), Error> {
     // The number of usable pages is the distance from the base up to the next
     // (upper) guard page.
     let upper_guard = {
-        let guard_set = KERNEL_GUARD_PAGE_SET.read();
-        if !guard_set.contains(&lower_guard) {
+        let guards = KERNEL_GUARD_PAGES.read();
+        if !guards.contains_key(&lower_guard) {
             return Err(Error::InvalidStack);
         }
-        guard_set
+        guards
             .range((Excluded(&lower_guard), Unbounded))
             .next()
-            .copied()
+            .map(|(addr, _)| *addr)
             .ok_or(Error::InvalidStack)?
     };
     let n_pages = (upper_guard - stack_buf_base) as usize / page;
     memory::unmap_and_deallocate_range(stack_buf_base, PageSize::Standard, n_pages);
-    let mut guard_set = KERNEL_GUARD_PAGE_SET.write();
-    guard_set.remove(&lower_guard);
-    guard_set.remove(&upper_guard);
+    // Drop a reference on each guard page; remove it only when no adjacent stack
+    // still relies on it.
+    let mut guards = KERNEL_GUARD_PAGES.write();
+    for guard in [lower_guard, upper_guard] {
+        if let Some(count) = guards.get_mut(&guard) {
+            *count -= 1;
+            if *count == 0 {
+                guards.remove(&guard);
+            }
+        }
+    }
     Ok(())
 }
