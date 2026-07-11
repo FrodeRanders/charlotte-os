@@ -86,6 +86,10 @@ pub extern "C" fn bsp_main() -> ! {
         crate::cpu::isa::lp::ops::enable_fp_simd();
         crate::log::serial::init();
     }
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::log::serial_x86::init();
+    }
     early_logln!(
         "Catten Kernel Version {}.{}.{}",
         (KERNEL_VERSION.0),
