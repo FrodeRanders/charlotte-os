@@ -1,64 +1,99 @@
 \chapter{Introduction}
 
-\section{Why this document exists}
+\section{The thesis}
 
-Two independent experiments arrived at the same shape from opposite directions.
+\textbf{Hardware is asynchronous; the operating system and the userspace
+runtime should be too.} Two projects, started independently from opposite ends of
+the software stack, built toward the same shape and converged on the same
+primitive: a waitable completion handle.
 
-\subsection{sitas} starts in userspace and asks: \textit{what does shared-nothing,
+\paragraph{CharlotteOS} starts in the kernel and asks: \emph{hardware is
+asynchronous with respect to the CPU, so why is the OS synchronous?} Its answer
+is to make the kernel async-first --- cheap threads, an observer/waker event
+model, and system calls that are asynchronous by default, returning a
+completion capability that userspace can wait on.
+
+\paragraph{sitas} starts in userspace and asks: \emph{what does shared-nothing,
 shard-per-core concurrency look like when it is built out of Rust ownership
 instead of locks?} Its answer is a discipline: each shard owns its state, only
 the owning shard mutates it, and everything that crosses a shard boundary is an
-owned value moved through an explicit typed message. On top of that it grows a
-custom async executor, per-shard reactors, \texttt{io\_uring} completion I/O,
-and snapshot-based observability.
+owned value moved through an explicit typed message.
 
-\subsection{CharlotteOS} starts in the kernel and asks: \textit{hardware is
-asynchronous with respect to the CPU, so why is the OS synchronous?} Its answer
-is to make the kernel async-first --- cheap threads, an observer/waker event
-model, and system calls that are asynchronous by default, returning a completion
-capability that userspace can wait on.
+Both projects independently converged. sitas's \texttt{Reply<T>} and
+\texttt{Notify} (awaitable completions) are the same object as CharlotteOS's
+\texttt{Observer} and \texttt{Waker}, just with different names. sitas's shard
+mailbox (\texttt{ShardSender}/\texttt{ShardReceiver}) is a bounded per-core
+typed queue --- as are CharlotteOS's bounded per-LP \texttt{IPI\_CMD\_QUEUES}.
+sitas's \texttt{ShardLocal<T>} (lock-free, owner-checked, closure-based access)
+is a Rust-ownership alternative to CharlotteOS's \texttt{PerLp<T>}
+(lock-wrapped).
 
-Both projects converged on the same primitive: a waitable completion handle.
-This document is about what happens when they meet: a userspace runtime whose
-async model \textbf{agrees} with the kernel it runs on, instead of emulating
-async-first on a blocking foundation. That agreement is the whole point --- it
-removes the ``retrofit tax'' (async-signal-safety, thread pools,
-\texttt{io\_uring}-over-blocking-AIO) that exists only because the runtime and
-the OS disagree about what is fundamental.
+This document describes what happens when these two projects meet: a userspace
+runtime whose async model \textbf{agrees} with the kernel it runs on, instead
+of emulating async-first on a blocking foundation. That agreement removes the
+``retrofit tax'' --- the async-signal-safety, thread pools, and
+\texttt{io\_uring}-over-blocking emulation that exist only because the runtime
+and the OS disagree about what is fundamental.
+
+\section{What was built and verified}
+
+The collaboration produced a booting, self-testing async-first kernel on both
+AArch64 and x86-64, with a full async syscall ABI (completion capabilities, CQ
+ring, exit-observer completion), a sitas-derived shard-per-core programming
+model in the kernel (\texttt{ShardLocal<T>}, \texttt{ShardMailbox<M>}, bounded
+IPI queues), and a sitas shard-per-core executor running as a user binary on
+CharlotteOS. Everything was verified on QEMU.
+
+\textbf{Key deliverables:}
+
+\begin{itemize}
+    \item \textbf{Completion-capability subsystem} --- per-address-space
+        capability tables, submit / complete / poll / wait / cancel / close,
+        \texttt{submit\_worker} (exit-observer), shared-memory CQ ring for
+        zero-syscall completion delivery.
+    \item \textbf{Syscall dispatch} --- AArch64 SVC handler decodes
+        \texttt{ESR\_EL1.EC}, builds a \texttt{TrapFrame}, dispatches to a
+        typed handler table. x86-64 SYSCALL trampoline (MSR-based entry,
+        \texttt{swapgs} / \texttt{sysretq}).
+    \item \textbf{Scheduler} --- \texttt{RoundRobin} per LP, quantum timer,
+        block / yield / wake, deferred thread reaper, per-LP thread pinning
+        (\texttt{submit\_to\_lp} for sitas shard placement).
+    \item \textbf{Cross-LP IPI} --- bounded per-LP queues with first-class
+        backpressure, typed closure dispatch (\texttt{IpiRpc::Closure}).
+    \item \textbf{Shard-per-core programming model} ---
+        \texttt{ShardLocal<T>} (lock-free, owner-checked),
+        \texttt{ShardMailbox<M>} (typed bounded queue).
+    \item \textbf{Real-EL0 user thread} --- compiled Rust binary runs at EL0,
+        calls SVC from userspace, round-trips through the kernel's dispatch
+        and returns.
+    \item \textbf{sitas integration} --- sitas executor (no\_std) +
+        sitas-charlotte ReactorBackend + \texttt{ShardRuntime::spawn\_shard}
+        via SVC \#7. The sitas shard executor runs on CharlotteOS.
+\end{itemize}
+
+\section{How this document is organized}
+
+\begin{itemize}
+    \item \textbf{Chapter 2} --- Architecture: Logical Processors, Observers,
+        capability tables, the scheduler, IPIs.
+    \item \textbf{Chapter 3} --- Execution model: threads, blocking, context
+        switching, timers.
+    \item \textbf{Chapter 4} --- The async syscall ABI: the five operations,
+        exit-observer completions, the CQ ring, cancellation, backpressure.
+    \item \textbf{Chapter 5} --- Programming model: invariants, ShardLocal,
+        ShardMailbox, guidance.
+    \item \textbf{Chapter 6} --- Development: build, QEMU boot, self-tests, CI.
+    \item \textbf{Chapter 7} --- What we learned: bugs found on hardware, root
+        causes, fixes, and key insights.
+    \item \textbf{Chapter 8} --- Current status: what is verified, known
+        limitations, repositories.
+\end{itemize}
 
 \section{Who this is for}
 
-This document is written for developers. It assumes familiarity
-with Rust (ownership, \texttt{Send}, \texttt{Future}), concurrency primitives
-(threads, atomics, message passing), and basic OS architecture (scheduling,
-interrupts, address spaces). 
-
-Every claim is based on what has
-actually been built and verified (on QEMU AArch64 and x86-64). Unimplemented
-ideas are flagged as such.
-
-\section{The thesis in one sentence}
-
-\textbf{Hardware is asynchronous; the OS and the userspace runtime should be
-too.} CharlotteOS and sitas both \emph{start} from that premise instead of
-retrofitting async onto a synchronous base. They are two halves of the same
-idea, originally built independently, now converging.
-
-\section{Document structure}
-
-\begin{itemize}
-    \item \textbf{Chapter 2} --- Architecture: the kernel's structural model
-        (Logical Processors, Observers, per-LP state, the scheduler).
-    \item \textbf{Chapter 3} --- Execution model: threads, blocking, context
-        switching, timers, and the block-wake path.
-    \item \textbf{Chapter 4} --- The async syscall ABI: completions, submission,
-        the CQ ring, cancellation, and backpressure.
-    \item \textbf{Chapter 5} --- Programming model: invariants, ShardLocal,
-        ShardMailbox, and rule-of-thumb guidance for kernel code.
-    \item \textbf{Chapter 6} --- Development: build targets, QEMU boot, the
-        self-test framework, and CI.
-    \item \textbf{Chapter 7} --- Current status: what exists, what is verified,
-        what is known-broken or deferred.
-\end{itemize}
+Developers familiar with Rust (ownership, \texttt{Send}, \texttt{Future}),
+concurrency primitives, and basic OS architecture. Every claim is based on what
+was built and verified on QEMU AArch64 and x86-64. Unimplemented ideas are
+flagged.
 
 \endinput

@@ -1,59 +1,96 @@
-\chapter{Current status}
+\chapter{Current Status}
 
 \section{Verified (boots on QEMU, zero panics)}
 
 \begin{itemize}
-    \item \textbf{AArch64:} boots, all self-tests pass (\texttt{Testing
-        Complete. All Tests Passed!}), the async-syscall demo succeeds with
-        \texttt{Ok(42)} via exit-observer, real-EL0 user thread executes and
-        reads the shared CQ ring.
+    \item \textbf{AArch64:} boots, all self-tests pass, the async-syscall demo
+        succeeds with \texttt{Ok(42)} via exit-observer, real-EL0 user thread
+        executes at EL0 and dispatches syscalls. sitas user binary runs
+        \texttt{ShardedExecutor} via SVC \#7.
     \item \textbf{x86-64:} boots with \texttt{-cpu max}, all self-tests pass,
-        the async-syscall demo succeeds with \texttt{Ok(42)} via
-        exit-observer. (x86-64 ring-3 / SYSCALL userspace is \textbf{not} yet
-        exercised.)
+        the async-syscall demo succeeds with \texttt{Ok(42)} via exit-observer.
+        (x86-64 ring-3 SYSCALL userspace is implemented but not yet exercised
+        with a user thread.)
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
         integrated with AS.
-    \item \textbf{Syscall dispatch:} AArch64 SVC handler decodes EC, builds
-        TrapFrame, dispatches to handler table. x86-64 SYSCALL trampoline
-        exists but is not yet connected to the dispatch table.
+    \item \textbf{Syscall dispatch:} AArch64 SVC handler (7 syscalls:
+        LOG, COMPLETION\_SUBMIT/COMPLETE/POLL/WAIT/CANCEL/CLOSE,
+        SPAWN\_THREAD). x86-64 SYSCALL trampoline exists, connected to
+        dispatch table.
     \item \textbf{IPI:} bounded per-LP queues, backpressure, typed closure
-        dispatch, AArch64 and x86-64 unstubbed.
-    \item \textbf{ShardLocal<T> / ShardMailbox<M>:} implemented and tested.
+        dispatch, both architectures unstubbed.
+    \item \textbf{ShardLocal<T> / ShardMailbox<M>:} implemented and tested
+        in-kernel.
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
-        deferred reaper.
-    \item \textbf{CI:} GitHub Actions builds both arches, QEMU boot gate.
+        deferred reaper, per-LP thread pinning (\texttt{submit\_to\_lp}).
+    \item \textbf{sitas integration:} sitas-core (no\_std executor) compiles
+        for aarch64-unknown-none. sitas-charlotte (ReactorBackend +
+        ShardRuntime::spawn\_shard via SVC \#7) links against the kernel's
+        syscall ABI. User binary creates a \texttt{ShardedExecutor} and spawns
+        a shard thread.
+    \item \textbf{CI:} GitHub Actions builds both architectures with
+        \texttt{-D warnings}, QEMU boot gate.
 \end{itemize}
 
 \section{Known limitations}
 
 \begin{itemize}
     \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists,
-        GS base and IRETQ return path remain to be wired (see
-        \texttt{docs/x86\_64-bringup-status.md}). The EL0 test and the
+        GS base and IRETQ return path remain to be wired. The EL0 test and
         real-EL0 user thread are AArch64-only.
-    \item \textbf{sleep / preemption:} fully fixed on AArch64; re-arming and
-        quantum-guard are correct. The earlier heisenbugs (timer stops, bounded
-        growth) are resolved.
-    \item \textbf{Guard-page overlap:} adjacent kernel stacks share guard pages
-        (\texttt{find\_free\_region} doesn't account for unmapped guards);
-        reference-counting in the stack allocator prevents leaks. A stack freed
-        while adjacent to a live one is handled correctly.
-    \item \textbf{Multi-LP:} infrastructure exists but \texttt{-smp > 1} has
-        not been exercised. AP startup, per-LP GDT/TSS/IDT, and cross-LP IPI
-        work correctly in single-LP tests; multi-LP would be the next scaling
-        step.
-    \item \textbf{CQ ring userspace mapping:} the CQ ring is allocated on a
-        physical frame and the real-EL0 test proves mapping a shared page into
-        a user AS; wiring the ring for actual userspace consumption is deferred.
+    \item \textbf{Full \texttt{ShardSet} threading layer:} the
+        \texttt{ShardRuntime} trait needs to be threaded through the
+        \texttt{ShardSet::start} call chain (used by \texttt{ShardedKv} and
+        other higher-level services). \texttt{ShardedExecutor} works directly;
+        the higher-level modules still use \texttt{thread::spawn} internally.
+    \item \textbf{Multi-LP cross-core IPI:} QEMU GICv3 SGI delivery does not
+        work cross-core on this host (both HVF and TCG tested). Self-targeted
+        SGIs and per-core timers work on all LPs. Kernel SGI encoding is
+        correct; issue is confirmed in QEMU 11.0.2's GICv3 model.
+    \item \textbf{CQ ring userspace mapping:} the ring is allocated on a
+        physical frame and proven mappable into a user AS; wiring for actual
+        userspace consumption is deferred.
 \end{itemize}
 
-\section{Prior art / independent verification}
+\section{Repositories and branches}
 
-The sitas repository (\texttt{reactor-handle-seam} branch) contains an
-in-memory reference model of the CharlotteOS ABI
-(\texttt{src/charlotte\_abi.rs}) with 9 tests validating the contract shapes
-against the \texttt{ReactorBackend} trait. This model was built before the
-kernel prototype existed and independently verified the ABI design.
+\begin{itemize}
+    \item \textbf{sitas} (\texttt{reactor-handle-seam}):
+        \texttt{ReactorBackend} trait, ABI reference model
+        (\texttt{charlotte\_abi.rs}), \texttt{sitas-core} no\_std crate
+        (ringbuf, ShardRuntime, ShardLocal, ShardMailbox, basic\_kv),
+        \texttt{sitas-charlotte} crate (ReactorBackend + ShardRuntime backend).
+    \item \textbf{CharlotteOS} (\texttt{dev}): consolidated kernel ---
+        completion subsystem, syscall dispatch, bounded IPI, ShardLocal,
+        ShardMailbox, CQ ring, real-EL0 test, exit-observer completion,
+        SPAWN\_THREAD syscall, sitas user binary, developer manual (31-page
+        PDF).
+\end{itemize}
+
+\section{Build and boot}
+
+\textbf{AArch64:}
+\begin{verbatim}
+cargo build --package catten \
+  --target target_specs/aarch64-unknown-none-catten.json \
+  --no-default-features --features acpi
+./scripts/boot-smp1.sh
+\end{verbatim}
+
+\textbf{x86-64:}
+\begin{verbatim}
+cargo build --package catten \
+  --target target_specs/x86_64-unknown-none-catten.json \
+  --no-default-features --features acpi
+./scripts/boot-x86.sh
+\end{verbatim}
+
+\textbf{sitas user binary (requires nightly + build-std):}
+\begin{verbatim}
+cargo +nightly build -p catten-user \
+  --target crates/catten-user/aarch64-unknown-none.json \
+  -Zbuild-std=core,alloc,compiler_builtins
+\end{verbatim}
 
 \endinput
