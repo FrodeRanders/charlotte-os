@@ -24,37 +24,42 @@
 
 ## Current blocker: kernel heap allocator init
 
-`init_primary_allocator` (`memory/allocators/global_allocator.rs`) hangs. The
-sequence, confirmed by instrumentation:
+`init_primary_allocator` (`memory/allocators/global_allocator.rs`) faults. With
+the panic handler fixed (see below), the fault is now **visible** rather than a
+silent triple-fault:
 
-1. `try_allocate_and_map_range(base, Large, 1)` allocates a 2 MiB frame
-   (`allocate_large_frame -> 0x200000`) and calls the x86_64 `map_large_page`.
-2. `map_large_page` completes every step: walk, `ensure_pml4`, allocate + zero
-   the PDPT (parent index 0), allocate + zero the PD (parent index 0), and set
-   the PD large-page entry. It returns `Ok`.
-3. Back in `init_primary_allocator`, the global-allocator lock is acquired
-   cleanly (not contended).
-4. **The first write to the freshly-mapped heap base VA hangs** — and a full
-   CR3 reload (TLB flush) before the write does **not** help.
+```
+LP 0: Initializing kernel allocator...
+[HEAPDBG] allocate_large_frame -> 0x200000
+A kernel panic has occurred with the following cause:
+General protection fault at RIP=0xffffffff80004b80, error code=0x0,
+RAX=0xff90000000000000
+```
 
-### Two distinct bugs implied
+It is a **#GP, not a #PF**: `RAX = 0xff90000000000000` is a **non-canonical
+address** (bits 63:48 ≠ bit 47) being dereferenced somewhere in the x86_64
+large-page mapping path (PthWalker / HHDM pointer computation / PDE format).
+This is the remaining bug to fix. The physical frame allocator hands out
+`0x200000`; the mapping code then forms a bad pointer from it. Investigate
+`PAddr::into()` (HHDM base) and the 2 MiB PDE construction in
+`x86_64/memory/paging/pth_walker.rs` + `pte.rs`.
 
-- **(A) The large-page mapping is not effective.** Writing to the mapped VA
-  faults even though `map_large_page` reported success and the TLB was flushed.
-  Likely causes to investigate: the 2 MiB PD entry format (PS bit / reserved
-  bits / PAT bit 12 / address field alignment in `pte.rs::set_frame` +
-  `set_page_size`), or the HHDM write to the page-table frame not reaching the
-  live table. Note the arena VA has `pml4_index == 0` and `pdpt_index == 0`
-  (a low-canonical address) — worth confirming that is intended and not
-  colliding with an existing mapping.
+## RESOLVED: silent triple-fault on any fault (was "bug B")
 
-- **(B) The page-fault handler does not fire.** A bad write should raise `#PF`
-  and hit `ih_page_fault` (which panics with a message). Instead the machine
-  goes silent — a triple fault (QEMU `-no-reboot` halts). This means x86_64
-  exception delivery is itself broken: the IDT entry, the ISR asm stub, the
-  TSS/IST kernel stack, or the GDT selectors used by the IDT gate are wrong.
-  **Fix (B) first** — once faults are visible, (A) becomes debuggable instead
-  of silently triple-faulting.
+**Root cause:** the panic handler used `logln!`, which routes through
+`INT_STATE` — a `LazyLock` whose first-use initialization **allocates from the
+kernel heap** (`alloc::vec!`). When a fault occurred before the heap was ready
+(or *because* the memory subsystem faulted), the panic handler's `logln!`
+triggered a heap access → another fault → re-entered the panic handler →
+infinite recursion → stack overflow → triple fault (silent hang).
+
+This masked *every* early fault as a silent hang and was why the heap fault
+looked like a mysterious lockup.
+
+**Fix:** the panic handler now uses `early_logln!` (direct serial writes, no
+heap, no `INT_STATE`). Verified: a deliberate page fault now prints
+`Page fault at RIP=… faulting address=…` and exception delivery + the #PF/#GP
+handlers all work correctly. Exception delivery was **never** broken.
 
 ## Known issues beyond the boot blocker (from earlier study)
 
