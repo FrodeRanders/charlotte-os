@@ -1,0 +1,58 @@
+\chapter{Glossary}
+
+\begin{description}
+    \item[AS (Address Space)] A page-table context identified by an
+        \texttt{AddressSpaceId} (0 = kernel, >0 = user). Contains the
+        \texttt{TTBR0\_EL1} (user) and \texttt{TTBR1\_EL1} (kernel) pointers
+        on AArch64, or \texttt{CR3} on x86-64.
+    \item[Block (verb)] To remove a running thread from the scheduler and
+        register its \texttt{Waker} on an \texttt{Observable}. The thread
+        yields; when the event fires the waker re-admits it.
+    \item[CQ ring (Completion Queue)] A shared-memory ring buffer for
+        zero-syscall completion delivery from the kernel to userspace.
+    \item[Capability table] A per-AS \texttt{IdTable<Arc<Completion>>} mapping
+        \texttt{CompletionCap} (index) to an in-flight or completed operation.
+    \item[Completion] A kernel object representing an in-flight or completed
+        async operation. \texttt{Observable}: threads \texttt{wait} on it,
+        \texttt{complete} signals it.
+    \item[Exit-observer] An \texttt{Observer} registered on a
+        \texttt{Thread}; fires when the thread is dropped (exits). The ABI's
+        intended completion mechanism: \texttt{submit\_worker} registers the
+        capability as the worker's exit-observer.
+    \item[HHDM (Higher Half Direct Mapping)] A linear mapping of all physical
+        memory into the kernel's virtual address space, provided by the
+        bootloader (Limine). \texttt{PAddr -> *mut T} goes through HHDM.
+    \item[IdTable] A sparse \texttt{Vec<Option<T>>} with ID recycling. Used for
+        the thread table, address-space table, and capability table.
+    \item[IPI (Inter-Processor Interrupt)] A signal from one LP to another.
+        The kernel's IPI queues are bounded per-LP \texttt{ConcurrentQueue}
+        instances carrying \texttt{IpiRpc} values.
+    \item[LP (Logical Processor)] One hardware core. The unit of sharding in
+        both the kernel and sitas.
+    \item[Observable / Observer] The event-notification pattern. An
+        \texttt{Observable} holds \texttt{Weak<dyn Observer>} references;
+        when it fires, it calls \texttt{Observer::notify()}.
+    \item[PerLp<T>] A boxed slice of \texttt{RwLock<T>}, one per LP.
+        Interrupt-safe (masks interrupts on acquire).
+    \item[Quantum timer] The per-LP periodic timer (10 ms) that drives
+        preemptive context switching in the \texttt{RoundRobin} scheduler.
+    \item[Reaper] The deferred-thread-cleanup mechanism: dead threads are
+        moved to \texttt{DEAD\_THREADS} and dropped from the next thread's
+        context after the context switch.
+    \item[ShardLocal<T>] A lock-free per-LP container using
+        \texttt{UnsafeCell<T>} with an owner-check and borrow-flag guard.
+        sitas-derived.
+    \item[ShardMailbox<M>] A typed bounded per-LP queue with
+        \texttt{ShardSender<M>} (cloneable) and \texttt{ShardReceiver<M>}
+        (single-consumer). First-class backpressure. sitas-derived.
+    \item[TrapFrame] An architecture-specific snapshot of the user register
+        state at the moment an exception was taken. Passed to the syscall
+        handler on AArch64.
+    \item[Waker] An \texttt{Observer} wrapping a \texttt{ThreadId}. When
+        notified, calls \texttt{submit\_ready\_thread(tid)}.
+    \item[Yield] To voluntarily give up the LP by calling
+        \texttt{yield\_lp()}. Saves the thread's context and lets the scheduler
+        run the next ready thread.
+\end{description}
+
+\endinput
