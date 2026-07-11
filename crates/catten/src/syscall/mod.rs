@@ -79,7 +79,8 @@ pub fn syscall_dispatch(frame: &TrapFrame, syscall_no: u16) {
 fn sys_log(frame: &TrapFrame) {
     let _ptr = frame.regs[0] as *const u8;
     let _len = frame.regs[1] as usize;
-    let _lp = frame.lp_id;
+    let lp = frame.lp_id;
+    crate::early_logln!("[EL0 SYSCALL] LOG from userspace on LP {}", lp);
 }
 
 fn sys_completion_submit(frame: &TrapFrame) {

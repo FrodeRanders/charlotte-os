@@ -61,7 +61,11 @@ pub extern "C" fn sync_dispatcher() {
 
         let mut frame = TrapFrame {
             regs: [0u64; 19],
-            elr_el1: elr_el1.wrapping_add(4), // skip the SVC instruction on return
+            // For an SVC exception, ELR_EL1 already holds the address of the
+            // instruction *after* the SVC (the preferred return address). Do
+            // NOT advance it — unlike data/instruction aborts, which point at
+            // the faulting instruction.
+            elr_el1,
             spsr_el1: spsr,
             sp_el0,
             lp_id: get_lp_id(),
