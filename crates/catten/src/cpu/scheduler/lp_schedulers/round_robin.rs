@@ -96,15 +96,31 @@ impl LpScheduler for RoundRobin {
     fn next(&mut self) -> Result<ThreadId, Error> {
         if !self.run_queue.is_empty() {
             let previous_handle = self.current_handle;
-            if let Some(handle) = self.current_handle {
-                self.run_queue.push_back(handle);
+            // A thread that blocked itself remains `current_handle` until this
+            // point so that `cond_yield_lp` can save its execution context. It
+            // must NOT be re-queued or marked Ready — it is Blocked and will be
+            // re-admitted only when its waker fires.
+            let previous_blocked = if let Some(handle) = previous_handle {
+                matches!(
+                    MASTER_THREAD_TABLE.read().get(handle.0),
+                    Ok(t) if matches!(t.state, ThreadState::Blocked(_))
+                )
+            } else {
+                false
+            };
+            if let Some(handle) = previous_handle {
+                if !previous_blocked {
+                    self.run_queue.push_back(handle);
+                }
             }
             self.current_handle = Some(unsafe { self.run_queue.pop_front().unwrap_unchecked() });
             let next_tid = unsafe { self.current_handle.unwrap_unchecked() }.0;
             let mut tt_guard = MASTER_THREAD_TABLE.write();
             if let Some(previous_handle) = previous_handle {
-                tt_guard.get_mut(previous_handle.0).as_mut().unwrap().state =
-                    ThreadState::Ready(self.lp_id);
+                if !previous_blocked {
+                    tt_guard.get_mut(previous_handle.0).as_mut().unwrap().state =
+                        ThreadState::Ready(self.lp_id);
+                }
             }
             tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
             Ok(next_tid)

@@ -66,6 +66,12 @@ pub fn sleep(duration: ExtDuration) {
             .block_thread(tid, &mut timer_event)
             .expect("Error putting thread to sleep");
         TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);
+        // Yield immediately so the sleep takes effect deterministically: the
+        // block above marks the thread Blocked and registers its waker on the
+        // timer event, and this yield saves the thread's context and switches
+        // away. When the timer expires it fires the waker, re-admitting the
+        // thread, which then resumes right here.
+        yield_lp();
     }
 }
 
