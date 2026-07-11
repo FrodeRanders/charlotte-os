@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
 use alloc::collections::btree_map::BTreeMap;
-use alloc::format;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 
@@ -74,7 +73,17 @@ impl SystemScheduler {
     ) -> Result<(), Error> {
         if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
             match thread.state {
-                ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => {
+                ThreadState::Running(_) => {
+                    // The thread is currently executing on its LP and is
+                    // blocking itself. Do NOT remove it from the LP scheduler
+                    // yet: it must remain the LP's `current_handle` so that the
+                    // following `cond_yield_lp` saves its execution context to
+                    // its own `saved_sp`. `RoundRobin::next` declines to
+                    // re-queue a Blocked thread, so it will not be rescheduled
+                    // until its waker fires and re-admits it.
+                }
+                ThreadState::Ready(lp_id) => {
+                    // Queued but not running: pull it out of the run queue.
                     self.lp_schedulers[&lp_id]
                         .lock()
                         .remove_thread(tid)
@@ -97,24 +106,30 @@ impl SystemScheduler {
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
-        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
-            match thread.state {
-                ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => {
-                    self.lp_schedulers[&lp_id]
-                        .lock()
-                        .remove_thread(tid)
-                        .expect("Error removing thread from LP scheduler while aborting");
-                }
-                _ => {}
+        // Determine which LP the thread is assigned to under a short-lived read
+        // lock, so we do NOT hold a MASTER_THREAD_TABLE guard across the later
+        // write lock (doing so would self-deadlock the non-reentrant RwLock).
+        let lp = {
+            let table = MASTER_THREAD_TABLE.read();
+            match table.get(tid) {
+                Ok(thread) => match thread.state {
+                    ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => Some(lp_id),
+                    _ => None,
+                },
+                Err(_) => return Err(Error::InvalidThread),
             }
-            MASTER_THREAD_TABLE
-                .write()
-                .remove_element(tid)
-                .expect(&format!("Failed to delete thread {tid}"));
-            Ok(tid)
-        } else {
-            Err(Error::InvalidThread)
+        };
+        if let Some(lp_id) = lp {
+            self.lp_schedulers[&lp_id]
+                .lock()
+                .remove_thread(tid)
+                .expect("Error removing thread from LP scheduler while aborting");
         }
+        MASTER_THREAD_TABLE
+            .write()
+            .remove_element(tid)
+            .map_err(|_| Error::InvalidThread)?;
+        Ok(tid)
     }
 
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {

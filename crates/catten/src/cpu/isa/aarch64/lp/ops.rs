@@ -183,6 +183,13 @@ pub extern "C" fn cond_yield_lp() {
                         lsched.clear_ctx_switch_pending();
                         Some((curr_sp_ptr, next_sp_ptr))
                     } else {
+                        // The only runnable thread is the current one, so there
+                        // is nothing to switch to. Still clear the pending flag
+                        // (which re-arms the quantum timer): otherwise, with a
+                        // single runnable thread, the timer is never re-armed
+                        // and stops firing, which would freeze `sleep` and any
+                        // other timer-driven wakeups.
+                        lsched.clear_ctx_switch_pending();
                         None
                     }
                 } else {
