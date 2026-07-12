@@ -9,3 +9,4 @@ os-images/
 *.out
 *.synctex.gz
 *.toc
+.idea/
