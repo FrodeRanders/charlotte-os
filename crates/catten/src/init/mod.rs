@@ -63,10 +63,11 @@ pub fn ap_init() {
         }
     }
     logln!("LP {lp_id}: Performing ISA independent initialization.");
+    // Build the scheduler (which creates this LP's idle thread) before taking
+    // the system-scheduler write lock, so thread creation does not run under it.
+    let sched = Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10)));
     unsafe {
-        SYSTEM_SCHEDULER
-            .write()
-            .set_lp_scheduler(Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10))));
+        SYSTEM_SCHEDULER.write().set_lp_scheduler(sched);
     }
     logln!("LP {lp_id}: ISA independent initialization complete.");
 }

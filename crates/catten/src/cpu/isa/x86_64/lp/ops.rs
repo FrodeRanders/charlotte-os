@@ -388,3 +388,18 @@ pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
         abort = sym crate::cpu::scheduler::abort,
     );
 }
+
+/// Entry point of a logical processor's dedicated idle thread.
+///
+/// The idle thread runs only when its LP has no other runnable thread. It waits
+/// for an interrupt; the interrupt handler's tail (`cond_yield_lp`) switches to
+/// any thread that has since become runnable, so when execution resumes here
+/// there was simply nothing to run and we wait again. Interrupts are
+/// (re-)enabled on each iteration so the quantum timer and IPIs can wake the LP.
+pub extern "C" fn lp_idle_loop() {
+    loop {
+        unsafe {
+            core::arch::asm!("sti", "hlt", options(nomem, nostack, preserves_flags));
+        }
+    }
+}

@@ -7,10 +7,10 @@ use hashbrown::HashMap;
 use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::memory::paging::HwAsid;
 use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadCount, ThreadId, ThreadState};
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadCount, ThreadId, ThreadState};
 use crate::klib::observer::{Observable, Observer};
 use crate::klib::time::duration::ExtDuration;
-use crate::memory::AddressSpaceId;
+use crate::memory::{AddressSpaceId, KERNEL_ASID};
 use crate::timers::{TIMER_QUEUES, TimerEvent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,10 +43,26 @@ pub struct RoundRobin {
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
     hwasid_map: HashMap<AddressSpaceId, HwAsid>,
+    /// This LP's dedicated idle thread, run only when there is no other
+    /// runnable thread. It exists so that a thread which blocks itself (or
+    /// exits) while it is the sole runnable thread on this LP is switched away
+    /// from — saving its context correctly — rather than being spuriously
+    /// resumed. It is per-LP because a single thread context cannot be run on
+    /// two LPs at once (the `on_cpu` hand-off in `switch_ctx` would serialise
+    /// them). It is never placed in `run_queue`; `next` returns it as a
+    /// fallback only.
+    idle_tid: ThreadId,
 }
 
 impl RoundRobin {
     pub fn new(lp_id: LpId, quantum: ExtDuration) -> Self {
+        // Create this LP's dedicated idle thread up front and register it in the
+        // master thread table. It is never submitted to a run queue; it is only
+        // ever returned by `next` as the fallback when nothing else is runnable.
+        let idle_tid = {
+            let idle = Thread::new(KERNEL_ASID, crate::cpu::isa::lp::ops::lp_idle_loop);
+            MASTER_THREAD_TABLE.write().add_element(idle)
+        };
         Self {
             lp_id,
             quantum,
@@ -55,6 +71,7 @@ impl RoundRobin {
             run_queue: VecDeque::new(),
             current_handle: None,
             hwasid_map: HashMap::new(),
+            idle_tid,
         }
     }
 
@@ -106,43 +123,48 @@ impl LpScheduler for RoundRobin {
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {
-        if !self.run_queue.is_empty() {
-            let previous_handle = self.current_handle;
-            // A thread that blocked itself remains `current_handle` until this
-            // point so that `cond_yield_lp` can save its execution context. It
-            // must NOT be re-queued or marked Ready — it is Blocked and will be
-            // re-admitted only when its waker fires.
-            let previous_blocked = if let Some(handle) = previous_handle {
-                matches!(
-                    MASTER_THREAD_TABLE.read().get(handle.0),
-                    Ok(t) if matches!(t.state, ThreadState::Blocked(_))
-                )
-            } else {
-                false
-            };
-            if let Some(handle) = previous_handle {
-                if !previous_blocked {
-                    self.run_queue.push_back(handle);
-                }
-            }
-            self.current_handle = Some(unsafe { self.run_queue.pop_front().unwrap_unchecked() });
-            let next_tid = unsafe { self.current_handle.unwrap_unchecked() }.0;
-            let mut tt_guard = MASTER_THREAD_TABLE.write();
-            if let Some(previous_handle) = previous_handle {
-                if !previous_blocked {
-                    tt_guard.get_mut(previous_handle.0).as_mut().unwrap().state =
-                        ThreadState::Ready(self.lp_id);
-                }
-            }
-            tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
-            Ok(next_tid)
+        let previous_handle = self.current_handle;
+        // A thread that blocked itself remains `current_handle` until this
+        // point so that `cond_yield_lp` can save its execution context. It must
+        // NOT be re-queued or marked Ready — it is Blocked and will be
+        // re-admitted only when its waker fires. The idle thread is likewise
+        // never re-queued: it is the fallback, not a normal run-queue member.
+        let previous_blocked = if let Some(handle) = previous_handle {
+            matches!(
+                MASTER_THREAD_TABLE.read().get(handle.0),
+                Ok(t) if matches!(t.state, ThreadState::Blocked(_))
+            )
         } else {
-            if self.current_handle.is_some() {
-                Ok(unsafe { self.current_handle.unwrap_unchecked() }.0)
-            } else {
-                Err(Error::NoRunnableThreads)
-            }
+            false
+        };
+        let previous_is_idle = matches!(previous_handle, Some(h) if h.0 == self.idle_tid);
+        let requeue_previous = previous_handle.is_some() && !previous_blocked && !previous_is_idle;
+
+        if requeue_previous {
+            self.run_queue.push_back(unsafe { previous_handle.unwrap_unchecked() });
         }
+
+        // Prefer a real runnable thread; otherwise fall back to this LP's idle
+        // thread. Falling back to idle (rather than returning the outgoing
+        // thread) is what lets a self-blocked or exited sole thread be switched
+        // away from correctly instead of being spuriously resumed.
+        let next_handle = match self.run_queue.pop_front() {
+            Some(handle) => handle,
+            None => ThreadHandle(self.idle_tid),
+        };
+        self.current_handle = Some(next_handle);
+        let next_tid = next_handle.0;
+
+        let mut tt_guard = MASTER_THREAD_TABLE.write();
+        if requeue_previous {
+            tt_guard
+                .get_mut(unsafe { previous_handle.unwrap_unchecked() }.0)
+                .as_mut()
+                .unwrap()
+                .state = ThreadState::Ready(self.lp_id);
+        }
+        tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
+        Ok(next_tid)
     }
 
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
@@ -196,11 +218,9 @@ impl LpScheduler for RoundRobin {
     }
 
     fn thread_count(&self) -> ThreadCount {
-        self.run_queue.len()
-            + if self.current_handle.is_some() {
-                1
-            } else {
-                0
-            }
+        // The idle thread is not real work and must not skew load balancing.
+        let current_is_real =
+            matches!(self.current_handle, Some(h) if h.0 != self.idle_tid);
+        self.run_queue.len() + if current_is_real { 1 } else { 0 }
     }
 }
