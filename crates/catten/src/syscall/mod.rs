@@ -20,7 +20,6 @@
 //! `ESR_EL1[15:0]` (the ISS field for SVC). This kernel uses that immediate as
 //! the syscall number.
 
-use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 use crate::cpu::isa::lp::LpId;
 
 /// A snapshot of the volatile register set and architectural state at the moment
@@ -97,7 +96,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         _ => panic!("Unknown op_code in syscall submit: {}", op_code),
     };
     match crate::completion::submit(asid, op, None) {
-        Ok(_cap) => {}
+        Ok(cap) => frame.regs[0] = cap as u64,
         Err(_) => panic!("syscall completion submit failed"),
     }
 }
@@ -143,28 +142,35 @@ fn sys_completion_close(frame: &mut TrapFrame) {
 }
 
 fn sys_spawn_thread(frame: &mut TrapFrame) {
-    use crate::memory::linear::VAddr;
+    use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+    use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread};
     let asid = frame.regs[0] as crate::memory::AddressSpaceId;
-    let entry_vaddr = VAddr::from(frame.regs[1] as usize);
-    let target_lp = frame.regs[2] as u32;
-    // Translate the user VA to a physical address. Keep the lock alive for
-    // the duration of `translate_address` (it returns a reference to the AS).
-    let paddr = {
-        let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
-        let as_mut = table.get_mut(asid)
-            .expect("SPAWN_THREAD: address space not found");
-        as_mut.translate_address(entry_vaddr)
-            .expect("SPAWN_THREAD: failed to translate entry VAddr")
-    };
-    let entry: *const u8 = paddr.into();
-    let entry_fn: extern "C" fn() = unsafe { core::mem::transmute(entry) };
-    let tid = crate::cpu::scheduler::spawn_thread(
-        crate::memory::KERNEL_ASID,
-        entry_fn,
+    let entry_vaddr = frame.regs[1] as usize;
+    let target_lp = frame.regs[2] as LpId;
+
+    // A shard runs at EL0 in the *caller's* address space. `Thread::new` with a
+    // non-kernel ASID builds a user thread context that drops to EL0 via
+    // `user_trampoline`, loading the entry into ELR_EL1 and switching TTBR0 to
+    // the caller's AS. The entry is therefore a virtual address in that AS and
+    // must NOT be translated to a physical/HHDM pointer — doing so (and using
+    // KERNEL_ASID) would run the target as an EL1 kernel thread.
+    assert!(
+        asid != crate::memory::KERNEL_ASID,
+        "SPAWN_THREAD: refusing to spawn a shard into the kernel address space",
     );
-    let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+    let entry_fn: extern "C" fn() =
+        unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
+
+    // Create the thread and pin it directly to the requested LP. We must not go
+    // through `scheduler::spawn_thread` (which submits to the least-loaded LP)
+    // and then `submit_to_lp`: that would enqueue the same thread on two run
+    // queues.
+    let thread = Thread::new(asid, entry_fn);
+    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    SYSTEM_SCHEDULER
         .read()
-        .submit_to_lp(tid, target_lp);
+        .submit_to_lp(tid, target_lp)
+        .expect("SPAWN_THREAD: failed to pin shard thread to target LP");
     // Return the thread id in x0.
     frame.regs[0] = tid as u64;
 }

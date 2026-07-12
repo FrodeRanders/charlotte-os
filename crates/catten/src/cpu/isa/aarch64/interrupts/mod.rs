@@ -32,7 +32,7 @@ pub fn load_ivt() {
 /// instruction, and hands off to [`syscall::syscall_dispatch`]. For every other
 /// exception class the existing fatal-panic behavior is preserved.
 #[unsafe(no_mangle)]
-pub extern "C" fn sync_dispatcher() {
+pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
     let esr_el1: u64;
     let elr_el1: u64;
     let far_el1: u64;
@@ -71,20 +71,17 @@ pub extern "C" fn sync_dispatcher() {
             lp_id: get_lp_id(),
         };
 
-        // Read the saved volatile registers from the kernel stack. After
-        // `push_volatile_regs` the stack pointer points to x0; the mapping
-        // below is derived directly from the push ordering in ivt.asm:
+        // Read the saved volatile registers from the kernel stack. `frame_base`
+        // is the stack pointer captured by the vector entry immediately after
+        // `push_volatile_regs`, so it points at the saved x0. The mapping below
+        // is derived directly from the push ordering in ivt.asm:
         //
-        //  offset 0: x0,x1 (<- sp)
+        //  offset 0: x0,x1 (<- frame_base)
         //  offset 16: x2,x3
         //  …
         //  offset 144: x18,pad
         //  offset 160: x30,pad
-        let sp: u64;
-        unsafe {
-            asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
-        }
-        let base = sp as *const u64;
+        let base = frame_base as *const u64;
         unsafe {
             frame.regs[0] = base.add(0).read_volatile(); // x0
             frame.regs[1] = base.add(1).read_volatile(); // x1

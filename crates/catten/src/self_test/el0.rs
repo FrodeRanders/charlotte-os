@@ -1,22 +1,25 @@
 //! Self-test: create a user thread at EL0 that invokes SVC and verifies the
-//! kernel's syscall dispatch → return path.
+//! kernel's syscall dispatch → return path *and* its side effects.
 //!
 //! This is the first real-EL0 exercise in the kernel. It:
-//! 1. Creates a user address space, maps one page with `AP_EL0` access.
-//! 2. Writes a small AArch64 assembly stub to that page.
-//! 3. Creates a user thread whose entry point is the mapped page.
-//! 4. The stub executes `SVC #0` (LOG), then loops via `wfi`.
+//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ
+//!    ring page, and a writable result page.
+//! 2. Writes a small hand-written AArch64 stub to the code page.
+//! 3. Creates a user thread whose entry point is the mapped code page.
+//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned
+//!    capability and a sentinel to the result page, then loops via `wfe`.
 //!
-//! When the user thread runs, `SVC #0` traps to `sync_dispatcher`, which decodes
-//! ESR_EL1.EC, builds a TrapFrame, dispatches to the LOG handler, advances
-//! ELR_EL1 by 4, and `eret`s back to EL0. The thread then executes the `wfi`
-//! loop.
+//! When the user thread runs, `SVC #1` traps to `sync_dispatcher`, which decodes
+//! ESR_EL1.EC, builds a TrapFrame, dispatches to the submit handler (which
+//! writes the allocated cap back into x0), advances ELR_EL1 by 4, and `eret`s
+//! back to EL0. The stub then writes `0xDEAD` and the returned cap to the
+//! result page.
 //!
-//! The test does NOT currently have a way to observe the user thread's
-//! side-effects from the kernel (no shared-memory CQ yet), so it validates the
-//! infrastructure compiles and the thread creation + SVC-on-EL0 path is wired.
-//! The kernel log output from `sync_dispatcher` and the LOG handler confirms
-//! the round-trip at runtime.
+//! Because self-tests run on the boot path *before* `yield_lp()`, the spawned
+//! user thread cannot run inline. A companion kernel thread
+//! ([`verify_el0_result`]) is spawned to poll the result page (via its HHDM
+//! alias) once the scheduler is active and assert the sentinel and returned
+//! cap, panicking on mismatch or timeout.
 
 use crate::completion::{self, OpCode, OpResult};
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -38,12 +41,39 @@ const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
 const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 
-/// AArch64 test program from `crates/catten-user/` — compiled with `cargo build
-/// -p catten-user` and converted with objcopy. The binary calls `svc #1`
-/// (COMPLETION_SUBMIT) and `svc #3` (COMPLETION_POLL), then writes the sentinel
-/// `0xDEAD` to the result page.
+/// Hand-written, position-independent AArch64 EL0 stub. Replaces the previously
+/// embedded (and stale) `catten-user.bin` so the test validates the *current*
+/// syscall ABI rather than a committed binary. It exercises the submit path and
+/// the syscall return-value contract:
+///
+/// ```asm
+///     mov   x0, #1                 // asid = 1 (this test's only user AS)
+///     mov   x1, #0                 // OpCode::Nop
+///     svc   #1                     // COMPLETION_SUBMIT -> kernel returns cap in x0
+///     movz  x2, #0x2000
+///     movk  x2, #0x1, lsl #16      // x2 = 0x0001_2000 (USER_RESULT_VADDR)
+///     movz  w3, #0xdead            // sentinel proving the stub ran
+///     str   w3, [x2]               // result[0] = 0xDEAD
+///     str   w0, [x2, #4]           // result[1] = returned cap
+/// 1:  wfe
+///     b     1b
+/// ```
+///
+/// Assembled with `clang -arch arm64`; the little-endian encodings below are
+/// copied verbatim from `llvm-objdump -d`.
 #[cfg(target_arch = "aarch64")]
-const USER_THREAD_CODE: &[u8] = include_bytes!("catten-user.bin");
+const USER_THREAD_CODE: &[u8] = &[
+    0x20, 0x00, 0x80, 0xd2, // mov  x0, #1
+    0x01, 0x00, 0x80, 0xd2, // mov  x1, #0
+    0x21, 0x00, 0x00, 0xd4, // svc  #1
+    0x02, 0x00, 0x84, 0xd2, // mov  x2, #0x2000
+    0x22, 0x00, 0xa0, 0xf2, // movk x2, #0x1, lsl #16
+    0xa3, 0xd5, 0x9b, 0x52, // mov  w3, #0xdead
+    0x43, 0x00, 0x00, 0xb9, // str  w3, [x2]
+    0x40, 0x04, 0x00, 0xb9, // str  w0, [x2, #4]
+    0x5f, 0x20, 0x03, 0xd5, // wfe
+    0xff, 0xff, 0xff, 0x17, // b .-4
+];
 
 /// Creates a user address space, maps a user-code page at `vaddr`, a shared
 /// CQ ring page at `cq_vaddr`, and a writable result page at `result_vaddr`,
@@ -168,6 +198,9 @@ pub fn test_el0_syscall_round_trip() {
         let cq_vaddr = VAddr::from(USER_CQ_VADDR);
         let result_vaddr = VAddr::from(USER_RESULT_VADDR);
         let asid = prepare_user_address_space(vaddr, cq_vaddr, result_vaddr);
+        // The stub hard-codes asid=1; this test's user AS is the first non-kernel
+        // AS, so it must land on id 1 for the stub's submit to target it.
+        assert_eq!(asid, 1, "EL0 test assumes the user AS is asid 1");
 
         // --- verify CQ ring visible from kernel side --------------------------
         let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
@@ -181,21 +214,69 @@ pub fn test_el0_syscall_round_trip() {
         let head = unsafe { core::ptr::read_volatile(&ring.head) };
         assert_eq!(head, 1, "kernel must see head == 1 after one completion");
 
-        // --- when the user thread runs, it reads head and writes it to the result page ---
-        // Complete the task so the Rust binary can poll the result:
-        completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
-        // Give the user AS a completion table (the binary calls submit with asid=1).
-        completion::open_address_space_with_cq(asid, 16, 32);
+        // Free this cap so the freed id (0) is what the user thread's own
+        // COMPLETION_SUBMIT will be assigned. Because the input asid is 1, a
+        // returned cap of 0 proves the kernel actually wrote x0 on the way out
+        // (the old handler discarded the cap, leaving x0 == asid == 1).
+        completion::close(asid, cap).unwrap();
+
+        // Spawn the EL0 user thread. The completion table + phys-mapped CQ that
+        // `prepare_user_address_space` attached stay in place — we deliberately
+        // do NOT reopen the AS with a heap-backed CQ, which would detach the
+        // page mapped into the user address space.
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
         logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-        // The compiled Rust binary is loaded and its syscalls are dispatched
-        // (visible in the kernel log as [syscall COMPLETION_SUBMIT/PULL]).
-        // Result-page writes (0xDEAD sentinel) happen later when the scheduler
-        // actually runs the thread; self-tests run before yield_lp().
-        logln!("EL0 compiled user binary loaded and dispatched successfully.");
+
+        // The verification thread runs after `yield_lp()` (self-tests run on the
+        // boot path before the scheduler is entered), polls the result page via
+        // HHDM, and asserts the sentinel + returned cap. It panics on timeout or
+        // mismatch, so a broken EL0/submit path fails the boot rather than
+        // silently logging success.
+        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_result);
+        logln!("EL0 verifier thread spawned with tid={}; assertion deferred to scheduler.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
         logln!("Skipping EL0 SVC round-trip test (AArch64 only).");
+    }
+}
+
+/// Kernel thread that verifies the EL0 user thread's side effects. Polls the
+/// result page (via its HHDM alias) until the stub writes its sentinel, then
+/// asserts the returned completion cap. Panics on mismatch or timeout.
+///
+/// Uses cooperative `yield_lp` polling rather than `sleep` so it does not add a
+/// blocking waiter to the timer path while the rest of the system is coming up.
+#[cfg(target_arch = "aarch64")]
+extern "C" fn verify_el0_result() {
+    use crate::cpu::scheduler::yield_lp;
+
+    let frame = unsafe { TEST_RESULT_FRAME }.expect("EL0 test: result frame not initialized");
+    let base: *mut u8 = frame.into();
+    let result = base as *const u32;
+    let mut spins: u64 = 0;
+    loop {
+        let sentinel = unsafe { core::ptr::read_volatile(result) };
+        if sentinel == 0xDEAD {
+            let cap = unsafe { core::ptr::read_volatile(result.add(1)) };
+            assert_eq!(
+                cap, 0,
+                "EL0: COMPLETION_SUBMIT must return the kernel cap (0) in x0, got {}",
+                cap
+            );
+            logln!(
+                "[EL0] SUCCESS: user thread ran at EL0, submit returned cap {}, result page verified.",
+                cap
+            );
+            loop {
+                yield_lp();
+            }
+        }
+        spins += 1;
+        assert!(
+            spins < 20_000_000,
+            "[EL0] FAILED: user thread did not write the result-page sentinel",
+        );
+        yield_lp();
     }
 }

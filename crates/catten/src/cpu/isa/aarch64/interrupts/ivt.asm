@@ -43,6 +43,11 @@ ivt:
 // an interrupt arrives, so these entries must dispatch just like the SP_ELx
 // group rather than being left unused.
 push_volatile_regs
+// Pass the saved-register frame base (== current sp, which points at the
+// saved x0/x1 pair) to sync_dispatcher as its first argument. Reading `sp`
+// inside the compiled dispatcher would observe the value *after* its own
+// prologue adjusts the stack, so the base must be captured here.
+mov x0, sp
 bl sync_dispatcher
 pop_volatile_regs
 eret
@@ -64,6 +69,11 @@ eret
 // Exception from current EL using SP_ELx
 .balign 128
 push_volatile_regs
+// Pass the saved-register frame base (== current sp, which points at the
+// saved x0/x1 pair) to sync_dispatcher as its first argument. Reading `sp`
+// inside the compiled dispatcher would observe the value *after* its own
+// prologue adjusts the stack, so the base must be captured here.
+mov x0, sp
 bl sync_dispatcher
 pop_volatile_regs
 eret
@@ -86,6 +96,11 @@ eret
 // Exception from a lower EL and at least one lower EL is AArch64
 .balign 128
 push_volatile_regs
+// Pass the saved-register frame base (== current sp, which points at the
+// saved x0/x1 pair) to sync_dispatcher as its first argument. Reading `sp`
+// inside the compiled dispatcher would observe the value *after* its own
+// prologue adjusts the stack, so the base must be captured here.
+mov x0, sp
 bl sync_dispatcher
 pop_volatile_regs
 eret
