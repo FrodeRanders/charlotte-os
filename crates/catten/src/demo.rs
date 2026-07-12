@@ -55,12 +55,12 @@ extern "C" fn cross_lp_demo() {
     let my_lp = get_lp_id();
     logln!("[xLP] LP{}: {} LPs detected", my_lp, lp_count);
 
-    // Spawn a receiver on the OTHER LP that waits for incoming IPI messages.
+    // Spawn a receiver on each LP that waits for incoming messages.
     if my_lp == 0 {
-        spawn_thread(KERNEL_ASID, xlp_receiver_on_lp1);
+        spawn_thread(KERNEL_ASID, xlp_receiver_on_lp);
     }
     if my_lp == 1 {
-        spawn_thread(KERNEL_ASID, xlp_receiver_on_lp1);
+        spawn_thread(KERNEL_ASID, xlp_receiver_on_lp);
     }
 
     // LP0 sends a ShardMailbox message to LP1 after the receiver is running.
@@ -68,22 +68,24 @@ extern "C" fn cross_lp_demo() {
         sleep(ExtDuration::from_millis(20));
         let mailbox: shard_mailbox::ShardMailboxSet<u64> =
             shard_mailbox::ShardMailboxSet::new(shard_mailbox::DEFAULT_CAPACITY);
+
+        // Cross-LP send: LP0 to LP1 (requires an IPI to wake LP1). Kept for when
+        // the QEMU AArch64 core-wake bug is fixed; on QEMU this will not be
+        // received because other cores cannot currently be woken.
         let s = mailbox.sender_to(1);
         s.try_send(84).expect("xLP send to LP1 failed");
         logln!("[xLP] LP0: sent 84 to LP1 via ShardMailbox + IPI");
 
-        // Self-send: LP0 to LP0 (no IPI needed).
+        // Self-send: LP0 to LP0 (no IPI needed). This is the demo path that
+        // works on QEMU. The receiver spawned on LP0 exercises try_recv.
         let s2 = mailbox.sender_to(0);
-        let mut r2 = mailbox.receiver_for(0);
         s2.try_send(21).expect("self-LP send failed");
-        if let Some(v) = r2.try_recv() {
-            logln!("[xLP] LP0: self-send received {}", v);
-        }
+        logln!("[xLP] LP0: self-sent 21 to LP0 via ShardMailbox");
     }
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn xlp_receiver_on_lp1() {
+extern "C" fn xlp_receiver_on_lp() {
     let my_lp = get_lp_id();
     logln!("[xLP] receiver on LP{}: started, waiting for messages", my_lp);
     let mailbox: shard_mailbox::ShardMailboxSet<u64> =

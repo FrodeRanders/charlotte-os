@@ -67,6 +67,16 @@ pub struct ThreadContext {
     /// resides. `cond_yield_lp` reads and writes this field through a raw
     /// pointer during a context switch.
     pub saved_sp: u64,
+    /// Ownership flag for the SMP context-switch handshake. Nonzero while the
+    /// thread is owned by *some* logical processor — i.e. from the moment it is
+    /// selected to run until `switch_ctx` has finished saving its context on the
+    /// way out. `switch_ctx` release-clears it after the outgoing save and
+    /// acquire-waits for it to be zero before restoring an incoming thread, so a
+    /// thread woken onto another LP can never be resumed with a stale `saved_sp`
+    /// before the LP that last ran it has finished saving (the wake-before-save
+    /// race). `switch_ctx` accesses this with byte-sized acquire/release and
+    /// exclusive operations.
+    pub on_cpu: u8,
     _kernel_stack_buf: VAddr,
     _user_stack_buf: Option<VAddr>,
 }
@@ -113,6 +123,7 @@ impl ThreadContext {
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
+            on_cpu: 0,
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack_buf: None,
         })
@@ -156,6 +167,7 @@ impl ThreadContext {
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
+            on_cpu: 0,
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack_buf: Some(user_stack_buf),
         })

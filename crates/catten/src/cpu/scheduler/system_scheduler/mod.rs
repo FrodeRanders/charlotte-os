@@ -11,7 +11,7 @@ use crate::cpu::isa::lp::LpId;
 use crate::cpu::isa::lp::ops::get_lp_id;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::cpu::multiprocessor::spin::rwlock::RwLock;
-use crate::cpu::scheduler::threads::{DEAD_THREADS, MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
+use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
 use crate::logln;
 use crate::memory::AddressSpaceId;
 
@@ -52,11 +52,13 @@ impl SystemScheduler {
         logln!("Getting least loaded lp.");
         let least_loaded_lp = self.get_least_loaded_lp();
         logln!("Locking least loaded lp.");
-        let was_idle = least_loaded_lp.lock().is_idle();
+        let mut lp_guard = least_loaded_lp.lock();
+        let was_idle = lp_guard.is_idle();
         logln!("Adding thread to least loaded lp.");
-        least_loaded_lp.lock().add_thread(tid).expect("Error adding thread to least loaded LP");
+        lp_guard.add_thread(tid).expect("Error adding thread to least loaded LP");
         logln!("Thread added to least loaded lp. Getting LP ID.");
-        let lp_id = least_loaded_lp.lock().get_lp_id();
+        let lp_id = lp_guard.get_lp_id();
+        drop(lp_guard);
         logln!("LP ID obtained. Returning with ID value.");
         if was_idle && lp_id != get_lp_id() {
             logln!("LP {lp_id} was idle, sending wakeup IPI.");
@@ -69,8 +71,10 @@ impl SystemScheduler {
     /// `ShardRuntime::spawn_shard` to bind a sitas shard to a core.
     pub fn submit_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
         let sched = &self.lp_schedulers[&target_lp];
-        let was_idle = sched.lock().is_idle();
-        sched.lock().add_thread(tid).expect("Error adding thread to target LP");
+        let mut sched_guard = sched.lock();
+        let was_idle = sched_guard.is_idle();
+        sched_guard.add_thread(tid).expect("Error adding thread to target LP");
+        drop(sched_guard);
         if was_idle && target_lp != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(target_lp, LAPIC_TIMER_VECTOR).ok();
         }
@@ -118,10 +122,10 @@ impl SystemScheduler {
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
-        // Determine which LP the thread is assigned to under a short-lived read
+        // Determine where the thread is known to be under a short-lived read
         // lock, so we do NOT hold a MASTER_THREAD_TABLE guard across the later
         // write lock (doing so would self-deadlock the non-reentrant RwLock).
-        let lp = {
+        let state_lp = {
             let table = MASTER_THREAD_TABLE.read();
             match table.get(tid) {
                 Ok(thread) => match thread.state {
@@ -131,21 +135,26 @@ impl SystemScheduler {
                 Err(_) => return Err(Error::InvalidThread),
             }
         };
-        if let Some(lp_id) = lp {
+        let current_lp = state_lp.or_else(|| self.current_lp_for_thread(tid));
+        let remove_lp = state_lp.or(current_lp);
+        if let Some(lp_id) = remove_lp {
             self.lp_schedulers[&lp_id]
                 .lock()
                 .remove_thread(tid)
                 .expect("Error removing thread from LP scheduler while aborting");
         }
         // Move the thread out of the table WITHOUT dropping it: a thread cannot
-        // free its own kernel stack while still executing on it. The reaper
-        // (`reap_dead_threads`, called from `cond_yield_lp` after switching away)
-        // drops it later from another thread's context.
+        // free its own kernel stack while still executing on it. Stage it for
+        // reaping on the LP it last ran on (its own LP for a self-abort). That
+        // LP's `reap_dead_threads` (called from `cond_yield_lp` after switching
+        // away) drops it later, once it is guaranteed off its stack. Staging it
+        // on any other LP would risk freeing a stack still in use.
+        let stage_lp = current_lp.unwrap_or_else(get_lp_id);
         let thread = MASTER_THREAD_TABLE
             .write()
             .take_element(tid)
             .map_err(|_| Error::InvalidThread)?;
-        DEAD_THREADS.write().push(thread);
+        crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);
         Ok(tid)
     }
 
@@ -165,6 +174,16 @@ impl SystemScheduler {
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1
+    }
+
+    fn current_lp_for_thread(&self, tid: ThreadId) -> Option<LpId> {
+        self.lp_schedulers.iter().find_map(|(&lp_id, sched)| {
+            if sched.lock().get_tid() == Some(tid) {
+                Some(lp_id)
+            } else {
+                None
+            }
+        })
     }
 }
 

@@ -1,5 +1,7 @@
 pub mod waker;
 
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::mem::offset_of;
@@ -19,27 +21,43 @@ pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
 pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
 
-/// Threads that have exited but are awaiting reaping. A thread cannot free its
-/// own kernel stack (in `ThreadContext::drop`) while it is still executing on
-/// it, so `abort` moves the dying thread here instead of dropping it. The
-/// reaper ([`reap_dead_threads`]) drops them later, from the context of a
-/// *different* thread, so the stack is no longer in use.
-pub static DEAD_THREADS: LazyLock<RwLock<Vec<Thread>>> = LazyLock::new(|| RwLock::new(Vec::new()));
+/// Threads that have exited but are awaiting reaping, keyed by the logical
+/// processor on which they last executed. A thread cannot free its own kernel
+/// stack (in `ThreadContext::drop`) while it is still executing on it, so
+/// `abort` stages the dying thread here instead of dropping it.
+///
+/// The list is **per-LP** on purpose: a thread is reaped only by the LP it died
+/// on, and only from [`reap_dead_threads`], which runs in `cond_yield_lp`
+/// *after* the `switch_ctx` that leaves the dying thread's stack. This
+/// guarantees the dying thread is no longer executing anywhere before its stack
+/// is freed. A shared, cross-LP list would let one LP free a stack that a thread
+/// on another LP has not yet switched off — a use-after-free that manifests as a
+/// translation fault on the next timer-IRQ return.
+pub static DEAD_THREADS: LazyLock<RwLock<BTreeMap<LpId, Vec<Thread>>>> =
+    LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
-/// Drops any threads awaiting reaping, freeing their stacks. MUST be called from
-/// a thread other than the one being reaped (e.g. from `cond_yield_lp` after the
-/// context switch away from the dying thread). Safe to call when the list is
-/// empty.
+/// Stage a thread that has stopped being scheduled on `lp` for reaping by that
+/// same LP. The thread's stack is not freed until [`reap_dead_threads`] runs on
+/// `lp` after a context switch away from it.
+pub fn stage_dead_thread(lp: LpId, thread: Thread) {
+    DEAD_THREADS.write().entry(lp).or_default().push(thread);
+}
+
+/// Drops any threads awaiting reaping on the *current* LP, freeing their stacks.
+/// MUST be called from a thread other than the one being reaped (e.g. from
+/// `cond_yield_lp` after the context switch away from the dying thread). Safe to
+/// call when there is nothing to reap.
 pub fn reap_dead_threads() {
-    // Move the dead threads out under the lock, then drop them after releasing
-    // it so their `Drop` (which frees stacks via the frame allocator) does not
-    // run while holding the DEAD_THREADS lock.
+    let lp = crate::cpu::isa::lp::ops::get_lp_id();
+    // Move this LP's dead threads out under the lock, then drop them after
+    // releasing it so their `Drop` (which frees stacks via the frame allocator)
+    // does not run while holding the DEAD_THREADS lock.
     let dead: Vec<Thread> = {
         let mut guard = DEAD_THREADS.write();
-        if guard.is_empty() {
-            return;
+        match guard.get_mut(&lp) {
+            Some(threads) if !threads.is_empty() => core::mem::take(threads),
+            _ => return,
         }
-        core::mem::take(&mut *guard)
     };
     drop(dead);
 }
@@ -56,7 +74,15 @@ pub enum ThreadState {
 
 #[derive(Debug)]
 pub struct Thread {
-    pub context: ThreadContext,
+    /// Boxed so the context (and therefore its `saved_sp`/`rsp_cpl0` field) has
+    /// a **stable heap address**. `cond_yield_lp` captures a raw pointer to that
+    /// field under lock and dereferences it lock-free inside `switch_ctx`; if the
+    /// context lived inline in `MASTER_THREAD_TABLE`'s backing `Vec`, a
+    /// concurrent `spawn_thread` on another LP that grows the `Vec` would move
+    /// every `Thread` and leave that pointer dangling — corrupting the saved
+    /// stack pointer of the thread being switched. The `Box` keeps the context
+    /// pinned regardless of table reallocation.
+    pub context: Box<ThreadContext>,
     pub asid: AddressSpaceId,
     pub state: ThreadState,
     exit_observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
@@ -67,13 +93,13 @@ pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
 impl Thread {
     pub fn new(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Self {
         Thread {
-            context: if asid != KERNEL_ASID {
+            context: Box::new(if asid != KERNEL_ASID {
                 ThreadContext::create_user_thread_context(asid, entry_point)
                     .expect("Error creating user thread context")
             } else {
                 ThreadContext::create_kernel_thread_context(entry_point)
                     .expect("Error creating kernel thread context")
-            },
+            }),
             asid,
             state: ThreadState::NeedsLpAssignment,
             exit_observers: spin::Mutex::new(Vec::new()),

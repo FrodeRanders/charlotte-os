@@ -175,7 +175,7 @@ pub extern "C" fn cond_yield_lp() {
     let interrupts_were_enabled = get_int_state();
     mask_interrupts!();
     // Collect switch parameters and release all locks before calling switch_ctx.
-    let switch_params: Option<(*mut u64, *const u64)> = {
+    let switch_params: Option<(*mut u64, *const u64, *mut u8, *mut u8)> = {
         let sched = SYSTEM_SCHEDULER.read();
         let mut lsched = sched.get_lp_scheduler().lock();
         if lsched.is_ctx_switch_pending() {
@@ -183,20 +183,22 @@ pub extern "C" fn cond_yield_lp() {
             if let Ok(next_tid) = lsched.next() {
                 if let Some(curr_tid) = curr_tid {
                     if next_tid != curr_tid {
-                        let (curr_sp_ptr, next_sp_ptr) = {
+                        let (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu) = {
                             let mut tt_guard = MASTER_THREAD_TABLE.write();
                             let curr_thread = tt_guard
                                 .get_mut(curr_tid)
                                 .expect("Current thread not found during yield.");
                             let curr_sp_ptr = &raw mut curr_thread.context.saved_sp;
+                            let curr_on_cpu = &raw mut curr_thread.context.on_cpu;
                             let next_thread = tt_guard
                                 .get_mut(next_tid)
                                 .expect("Next thread not found during yield.");
                             let next_sp_ptr = &raw mut next_thread.context.saved_sp;
-                            (curr_sp_ptr, next_sp_ptr)
+                            let next_on_cpu = &raw mut next_thread.context.on_cpu;
+                            (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu)
                         };
                         lsched.clear_ctx_switch_pending();
-                        Some((curr_sp_ptr, next_sp_ptr))
+                        Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu))
                     } else {
                         // The only runnable thread is the current one, so there
                         // is nothing to switch to. Still clear the pending flag
@@ -208,15 +210,18 @@ pub extern "C" fn cond_yield_lp() {
                         None
                     }
                 } else {
-                    let next_sp_ptr = {
+                    let (next_sp_ptr, next_on_cpu) = {
                         let mut tt_guard = MASTER_THREAD_TABLE.write();
                         let next_thread = tt_guard
                             .get_mut(next_tid)
                             .expect("Next thread not found during yield.");
-                        &raw mut next_thread.context.saved_sp
+                        (
+                            &raw mut next_thread.context.saved_sp as *const u64,
+                            &raw mut next_thread.context.on_cpu,
+                        )
                     };
                     lsched.clear_ctx_switch_pending();
-                    Some((core::ptr::null_mut(), next_sp_ptr))
+                    Some((core::ptr::null_mut(), next_sp_ptr, core::ptr::null_mut(), next_on_cpu))
                 }
             } else {
                 logln!(
@@ -231,9 +236,9 @@ pub extern "C" fn cond_yield_lp() {
         }
         // lsched and sched guards dropped here before switch_ctx
     };
-    if let Some((curr_sp_ptr, next_sp_ptr)) = switch_params {
+    if let Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu)) = switch_params {
         unsafe {
-            switch_ctx(curr_sp_ptr, next_sp_ptr);
+            switch_ctx(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu);
         }
     }
     // Reap any threads that exited: this runs after switching away from a dying
@@ -253,6 +258,17 @@ pub extern "C" fn cond_yield_lp() {
 /// context). `next_sp_ptr` points at the stack pointer to restore for the
 /// incoming thread.
 ///
+/// `curr_on_cpu` / `next_on_cpu` point at the respective threads' `on_cpu`
+/// ownership bytes (null when there is no such thread, e.g. an abandoned boot
+/// context). The routine implements the SMP hand-off:
+///  1. save the outgoing thread, then **release-store** `*curr_on_cpu = 0`,
+///     publishing the completed save to other LPs;
+///  2. **acquire-wait** until `*next_on_cpu == 0`, so a thread that was woken
+///     onto this LP is never restored until the LP that last ran it finished
+///     saving it (closing the wake-before-save race), then claim it by setting
+///     `*next_on_cpu = 1`;
+///  3. restore the incoming thread.
+///
 /// The saved frame layout (from higher to lower address, i.e. in push order)
 /// is: `ttbr0_el1`, then the callee-saved general purpose registers x19-x30.
 /// The AArch64 PCS requires x19-x28 plus the frame pointer x29 and the link
@@ -262,10 +278,15 @@ pub extern "C" fn cond_yield_lp() {
 /// called `switch_ctx` (or into a trampoline for a freshly created thread).
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
-pub unsafe extern "C" fn switch_ctx(curr_sp_ptr: *mut u64, next_sp_ptr: *const u64) {
+pub unsafe extern "C" fn switch_ctx(
+    curr_sp_ptr: *mut u64,
+    next_sp_ptr: *const u64,
+    curr_on_cpu: *mut u8,
+    next_on_cpu: *mut u8,
+) {
     naked_asm!(
-        // x0 = curr_sp_ptr, x1 = next_sp_ptr
-        "cbz x0, 1f",
+        // x0 = curr_sp_ptr, x1 = next_sp_ptr, x2 = curr_on_cpu, x3 = next_on_cpu
+        "cbz x0, 2f",
         // Save callee-saved registers of the outgoing thread.
         "stp x29, x30, [sp, #-16]!",
         "stp x27, x28, [sp, #-16]!",
@@ -276,19 +297,38 @@ pub unsafe extern "C" fn switch_ctx(curr_sp_ptr: *mut u64, next_sp_ptr: *const u
         // Save the outgoing thread's user translation table base register as a
         // 16-byte pair (with a zero pad) to keep the stack 16-byte aligned, as
         // required by the SP alignment check that firmware enables.
-        "mrs x2, ttbr0_el1",
-        "stp x2, xzr, [sp, #-16]!",
+        "mrs x4, ttbr0_el1",
+        "stp x4, xzr, [sp, #-16]!",
         // Store the outgoing stack pointer into *curr_sp_ptr.
-        "mov x2, sp",
-        "str x2, [x0]",
-        "1:",
+        "mov x4, sp",
+        "str x4, [x0]",
+        // Publish the completed save: release-store *curr_on_cpu = 0 so another
+        // LP that acquire-observes it may safely restore this thread. The
+        // release orders the saved_sp store above before the flag clear.
+        "cbz x2, 2f",
+        "stlrb wzr, [x2]",
+        "2:",
+        // Wait until the incoming thread is no longer owned by any LP (its last
+        // LP finished saving it), then atomically claim it. The exclusive
+        // acquire load pairs with the release-store above so we observe its
+        // fully-saved context; the store-exclusive prevents two LPs from both
+        // claiming the same thread if a scheduler bug ever duplicates a run
+        // queue entry.
+        "cbz x3, 4f",
+        "3:",
+        "ldaxrb w4, [x3]",
+        "cbnz w4, 3b",
+        "mov w5, #1",
+        "stxrb w6, w5, [x3]",
+        "cbnz w6, 3b",
+        "4:",
         // Load the incoming stack pointer from *next_sp_ptr.
-        "ldr x2, [x1]",
-        "mov sp, x2",
+        "ldr x4, [x1]",
+        "mov sp, x4",
         // Restore the incoming thread's user translation table base register
         // and synchronise so subsequent EL0 accesses use the new mappings.
-        "ldp x2, xzr, [sp], #16",
-        "msr ttbr0_el1, x2",
+        "ldp x4, xzr, [sp], #16",
+        "msr ttbr0_el1, x4",
         "dsb ish",
         "isb",
         // Restore callee-saved registers.
@@ -339,4 +379,3 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
         "eret",
     );
 }
-
