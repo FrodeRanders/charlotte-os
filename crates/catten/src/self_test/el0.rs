@@ -54,10 +54,14 @@ const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 ///     movk  x2, #0x1, lsl #16      // x2 = 0x0001_2000 (USER_RESULT_VADDR)
 ///     movz  w3, #0xdead            // sentinel proving the stub ran
 ///     str   w3, [x2]               // result[0] = 0xDEAD
-///     str   w0, [x2, #4]           // result[1] = returned cap
-/// 1:  wfe
+///     str   w0, [x2, #4]            // result[1] = returned cap
+/// 1:  nop
 ///     b     1b
 /// ```
+///
+/// The spin loop uses `nop` rather than `wfe`: at EL0, `WFE` traps to EL1 under
+/// hypervisors such as Apple's HVF (`EC=1`, "trapped WF*"), whereas a plain
+/// branch loop does not and is simply preempted by the scheduler tick.
 ///
 /// Assembled with `clang -arch arm64`; the little-endian encodings below are
 /// copied verbatim from `llvm-objdump -d`.
@@ -71,7 +75,7 @@ const USER_THREAD_CODE: &[u8] = &[
     0xa3, 0xd5, 0x9b, 0x52, // mov  w3, #0xdead
     0x43, 0x00, 0x00, 0xb9, // str  w3, [x2]
     0x40, 0x04, 0x00, 0xb9, // str  w0, [x2, #4]
-    0x5f, 0x20, 0x03, 0xd5, // wfe
+    0x1f, 0x20, 0x03, 0xd5, // nop
     0xff, 0xff, 0xff, 0x17, // b .-4
 ];
 

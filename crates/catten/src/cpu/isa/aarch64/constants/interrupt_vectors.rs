@@ -10,9 +10,13 @@
 //! See the ARM Generic Interrupt Controller Architecture Specification for
 //! details.
 
-/// EL1 physical timer PPI (INTID 30) as presented by the GIC on the QEMU
-/// `virt` machine and typical ARM platforms.
-pub const LAPIC_TIMER_VECTOR: u32 = 30;
+/// EL1 virtual timer PPI (INTID 27) as presented by the GIC on the QEMU
+/// `virt` machine and typical ARM platforms. The virtual timer (`CNTV_*`) is
+/// used rather than the EL1 physical timer (`CNTP_*`) because hypervisors such
+/// as Apple's HVF only expose the virtual timer to guests and trap physical
+/// timer access; the virtual timer works under both hardware-accelerated and
+/// emulated (TCG) execution.
+pub const LAPIC_TIMER_VECTOR: u32 = 27;
 
 /// SGI used for asynchronous inter-processor interrupts.
 pub const ASYNC_IPI_VECTOR: u32 = 0;

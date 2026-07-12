@@ -207,7 +207,7 @@ impl LocalIntCtlrIfce for GicV3 {
         }
         Self::redistributor_wake();
         Self::cpu_interface_init();
-        // Enable the EL1 physical timer PPI (INTID 30) so the scheduler tick is
+        // Enable the EL1 virtual timer PPI (INTID 27) so the scheduler tick is
         // delivered to this core.
         Self::enable_private_int(
             crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR,

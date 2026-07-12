@@ -98,9 +98,19 @@ impl TimerQueue {
                 let timer = LpTimer::get();
                 let mut timerlk = timer.lock();
                 let _ = timerlk.stop();
-                timerlk
-                    .set_deadline(next_event.deadline)
-                    .expect("Failed to set timer deadline for new event");
+                match timerlk.set_deadline(next_event.deadline) {
+                    Ok(()) => {}
+                    // The deadline is already in the past by the time we arm the
+                    // timer (a very short duration, or scheduling/lock latency —
+                    // readily hit on real hardware with a high-resolution
+                    // counter). Arm a minimal timeout instead so the interrupt
+                    // fires promptly and `process_events` handles the due event,
+                    // mirroring the `DeadlinePassed` handling there.
+                    Err(LpTimerError::DeadlinePassed) => {
+                        let _ = timerlk.set_duration(ExtDuration::from_nanos(1));
+                    }
+                    Err(e) => panic!("Failed to set timer deadline for new event: {e:?}"),
+                }
                 timerlk.start().expect("Failed to start timer for new event");
             }
         }

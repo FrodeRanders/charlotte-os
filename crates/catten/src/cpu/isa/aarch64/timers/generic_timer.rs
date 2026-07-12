@@ -3,10 +3,16 @@
 //! The ARM Generic Timer provides a per-core, always-on system counter plus a
 //! set of per-core timers. We use:
 //! - `CNTFRQ_EL0`: the frequency of the system counter in Hz (timestamp source).
-//! - `CNTPCT_EL0`: the current system counter value (our monotonic timestamp).
-//! - The EL1 physical timer (`CNTP_CTL_EL0`, `CNTP_CVAL_EL0`, `CNTP_TVAL_EL0`)
-//!   as the per-LP interrupt source. It raises its PPI (INTID 30 on the GIC of
-//!   the QEMU `virt` machine) when `CNTPCT_EL0 >= CNTP_CVAL_EL0`.
+//! - `CNTVCT_EL0`: the current virtual counter value (our monotonic timestamp).
+//! - The EL1 virtual timer (`CNTV_CTL_EL0`, `CNTV_CVAL_EL0`, `CNTV_TVAL_EL0`)
+//!   as the per-LP interrupt source. It raises its PPI (INTID 27 on the GIC of
+//!   the QEMU `virt` machine) when `CNTVCT_EL0 >= CNTV_CVAL_EL0`.
+//!
+//! The virtual timer is used in preference to the EL1 physical timer (`CNTP_*`)
+//! because hypervisors such as Apple's HVF only expose the virtual timer to a
+//! guest and trap physical-timer register accesses (which surface as an
+//! "unknown reason" synchronous exception). The virtual timer behaves
+//! identically under emulated (TCG) execution, so this works in both cases.
 //!
 //! See the ARM Architecture Reference Manual (ARM ARM), chapter D12 "The
 //! Generic Timer in AArch64 state".
@@ -27,10 +33,10 @@ use crate::klib::time::duration::ExtDuration;
 
 pub type LpTimer = ArmGenericTimer;
 
-/// `CNTP_CTL_EL0` ENABLE bit: enables the timer.
-const CNTP_CTL_ENABLE: u64 = 1 << 0;
-/// `CNTP_CTL_EL0` IMASK bit: when set, the timer interrupt is masked.
-const CNTP_CTL_IMASK: u64 = 1 << 1;
+/// `CNTV_CTL_EL0` ENABLE bit: enables the timer.
+const CNTV_CTL_ENABLE: u64 = 1 << 0;
+/// `CNTV_CTL_EL0` IMASK bit: when set, the timer interrupt is masked.
+const CNTV_CTL_IMASK: u64 = 1 << 1;
 
 /// The frequency of the system counter in Hz, read from `CNTFRQ_EL0`. This is a
 /// fixed, firmware-programmed value that is identical on every core.
@@ -57,16 +63,16 @@ fn read_cntfrq() -> u64 {
     freq
 }
 
-/// Read the system counter (`CNTPCT_EL0`). An `isb` is issued first because the
+/// Read the virtual counter (`CNTVCT_EL0`). An `isb` is issued first because the
 /// architecture permits the counter read to be reordered; the barrier ensures we
 /// observe an up-to-date value.
 #[inline]
-fn read_cntpct() -> u64 {
+fn read_cntvct() -> u64 {
     let count: u64;
     unsafe {
         asm!(
             "isb",
-            "mrs {}, cntpct_el0",
+            "mrs {}, cntvct_el0",
             out(reg) count,
             options(nomem, nostack)
         );
@@ -75,25 +81,25 @@ fn read_cntpct() -> u64 {
 }
 
 #[inline]
-fn read_cntp_ctl() -> u64 {
+fn read_cntv_ctl() -> u64 {
     let ctl: u64;
     unsafe {
-        asm!("mrs {}, cntp_ctl_el0", out(reg) ctl, options(nomem, nostack, preserves_flags));
+        asm!("mrs {}, cntv_ctl_el0", out(reg) ctl, options(nomem, nostack, preserves_flags));
     }
     ctl
 }
 
 #[inline]
-fn write_cntp_ctl(ctl: u64) {
+fn write_cntv_ctl(ctl: u64) {
     unsafe {
-        asm!("msr cntp_ctl_el0, {}", in(reg) ctl, options(nomem, nostack, preserves_flags));
+        asm!("msr cntv_ctl_el0, {}", in(reg) ctl, options(nomem, nostack, preserves_flags));
     }
 }
 
 #[inline]
-fn write_cntp_cval(cval: u64) {
+fn write_cntv_cval(cval: u64) {
     unsafe {
-        asm!("msr cntp_cval_el0, {}", in(reg) cval, options(nomem, nostack, preserves_flags));
+        asm!("msr cntv_cval_el0, {}", in(reg) cval, options(nomem, nostack, preserves_flags));
     }
 }
 
@@ -110,9 +116,9 @@ pub struct ArmGenericTimer {
 impl ArmGenericTimer {
     pub fn new(dispatch_num: <Self as LpTimerIfce>::IntDispatchNum) -> Self {
         // Ensure the timer starts disabled but with its interrupt unmasked, so
-        // that arming it later (by programming CNTP_CVAL and setting ENABLE) is
+        // that arming it later (by programming CNTV_CVAL and setting ENABLE) is
         // all that is required to make it fire.
-        write_cntp_ctl(0);
+        write_cntv_ctl(0);
         ArmGenericTimer {
             compare_value: 0,
             dispatch_num,
@@ -132,14 +138,14 @@ impl LpTimerIfce for ArmGenericTimer {
     type TickCount = u64;
     type Timestamp = u64;
 
-    const NAME: &'static str = "ARM Generic Timer (EL1 Physical)";
+    const NAME: &'static str = "ARM Generic Timer (EL1 Virtual)";
 
     fn get() -> Arc<Mutex<Self>> {
         GENERIC_TIMERS[get_lp_id() as usize].clone()
     }
 
     fn now() -> Self::Timestamp {
-        read_cntpct()
+        read_cntvct()
     }
 
     fn get_ts_cycle_period() -> ExtDuration {
@@ -186,15 +192,15 @@ impl LpTimerIfce for ArmGenericTimer {
     fn start(&mut self) -> Result<(), LpTimerError> {
         // Program the compare value and enable the timer with its interrupt
         // unmasked.
-        write_cntp_cval(self.compare_value);
-        let ctl = (read_cntp_ctl() & !CNTP_CTL_IMASK) | CNTP_CTL_ENABLE;
-        write_cntp_ctl(ctl);
+        write_cntv_cval(self.compare_value);
+        let ctl = (read_cntv_ctl() & !CNTV_CTL_IMASK) | CNTV_CTL_ENABLE;
+        write_cntv_ctl(ctl);
         Ok(())
     }
 
     fn stop(&mut self) -> Result<(), LpTimerError> {
-        let ctl = read_cntp_ctl() & !CNTP_CTL_ENABLE;
-        write_cntp_ctl(ctl);
+        let ctl = read_cntv_ctl() & !CNTV_CTL_ENABLE;
+        write_cntv_ctl(ctl);
         Ok(())
     }
 
@@ -203,17 +209,17 @@ impl LpTimerIfce for ArmGenericTimer {
     }
 
     fn get_interrupt_mask(&mut self) -> Result<bool, LpTimerError> {
-        Ok(read_cntp_ctl() & CNTP_CTL_IMASK != 0)
+        Ok(read_cntv_ctl() & CNTV_CTL_IMASK != 0)
     }
 
     fn set_interrupt_mask(&mut self, mask: bool) -> Result<(), LpTimerError> {
-        let mut ctl = read_cntp_ctl();
+        let mut ctl = read_cntv_ctl();
         if mask {
-            ctl |= CNTP_CTL_IMASK;
+            ctl |= CNTV_CTL_IMASK;
         } else {
-            ctl &= !CNTP_CTL_IMASK;
+            ctl &= !CNTV_CTL_IMASK;
         }
-        write_cntp_ctl(ctl);
+        write_cntv_ctl(ctl);
         Ok(())
     }
 
