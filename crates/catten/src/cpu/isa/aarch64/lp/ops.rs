@@ -328,7 +328,18 @@ pub unsafe extern "C" fn switch_ctx(
         // Restore the incoming thread's user translation table base register
         // and synchronise so subsequent EL0 accesses use the new mappings.
         "ldp x4, xzr, [sp], #16",
+        "mrs x5, ttbr0_el1",
         "msr ttbr0_el1, x4",
+        // If the address space changed, invalidate this core's stage-1 TLB.
+        // Address spaces do not yet carry distinct hardware ASIDs (TTBR0.ASID is
+        // 0 for all of them), so without this a second user address space would
+        // hit stale TLB entries from the first — benign under emulation but a
+        // real fault on hardware/HVF. Kernel<->kernel switches keep the same
+        // TTBR0 and skip the flush.
+        "cmp x4, x5",
+        "b.eq 5f",
+        "tlbi vmalle1",
+        "5:",
         "dsb ish",
         "isb",
         // Restore callee-saved registers.
