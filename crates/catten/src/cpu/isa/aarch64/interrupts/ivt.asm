@@ -27,6 +27,28 @@
     ldp x30, xzr, [sp], #16
 .endm
 
+// Save/restore the exception-return state (ELR_EL1, SPSR_EL1, SP_EL0) onto the
+// per-thread kernel stack. Used on the IRQ path, which may context-switch
+// inside the dispatcher: while a preempted thread is descheduled, other
+// threads' exceptions overwrite these banked system registers, so they must be
+// preserved on the (stack-resident, per-thread) frame and restored on the way
+// out. x9/x10 are scratch here and are already saved by push_volatile_regs.
+.macro push_return_state
+    mrs x9, elr_el1
+    mrs x10, spsr_el1
+    stp x9, x10, [sp, #-16]!
+    mrs x9, sp_el0
+    stp x9, xzr, [sp, #-16]!
+.endm
+
+.macro pop_return_state
+    ldp x9, x10, [sp], #16
+    msr sp_el0, x9
+    ldp x9, x10, [sp], #16
+    msr elr_el1, x9
+    msr spsr_el1, x10
+.endm
+
 .text
 .extern sync_dispatcher
 .extern irq_dispatcher
@@ -53,9 +75,7 @@ pop_volatile_regs
 eret
 .balign 128
 push_volatile_regs
-bl irq_dispatcher
-pop_volatile_regs
-eret
+b irq_common
 .balign 128
 push_volatile_regs
 bl fiq_dispatcher
@@ -80,9 +100,7 @@ eret
 
 .balign 128
 push_volatile_regs
-bl irq_dispatcher
-pop_volatile_regs
-eret
+b irq_common
 .balign 128
 push_volatile_regs
 bl fiq_dispatcher
@@ -106,9 +124,7 @@ pop_volatile_regs
 eret
 .balign 128
 push_volatile_regs
-bl irq_dispatcher
-pop_volatile_regs
-eret
+b irq_common
 .balign 128
 push_volatile_regs
 bl fiq_dispatcher
@@ -156,3 +172,16 @@ nop
 nop
 nop
 // End of IVT
+
+// Shared IRQ handler, out of line so it is not constrained by the 128-byte
+// vector slot. The three IRQ vectors tail-branch here after saving the
+// volatile registers. Because `irq_dispatcher` may context-switch (the timer
+// tick drives the scheduler), the exception-return state is saved on this
+// thread's kernel stack and restored on the way out so a preempted thread —
+// including an EL0 thread — resumes with the correct ELR/SPSR/SP_EL0.
+irq_common:
+push_return_state
+bl irq_dispatcher
+pop_return_state
+pop_volatile_regs
+eret

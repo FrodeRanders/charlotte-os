@@ -108,9 +108,20 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 
         // Write back x0 (return value) to the stack slot so `pop_volatile_regs`
         // restores it into the user's x0 before `eret`.
+        // Restore the caller's exception-return state before the `eret` in the
+        // vector epilogue. ELR/SPSR/SP_EL0 live only in per-CPU (banked) system
+        // registers, but a syscall may block (e.g. COMPLETION_WAIT), and while
+        // this thread is descheduled other threads' exceptions overwrite those
+        // registers. Because the values were captured into this (per-thread,
+        // kernel-stack-resident) TrapFrame at entry, restoring all three here
+        // makes the return correct regardless of what ran in between. Restoring
+        // only ELR (as before) left SPSR/SP_EL0 stale, so a blocked EL0 thread
+        // could `eret` back to the wrong EL or with the wrong user stack.
         unsafe {
             (base as *mut u64).write_volatile(frame.regs[0]);
             asm!("msr elr_el1, {}", in(reg) frame.elr_el1, options(nomem, nostack, preserves_flags));
+            asm!("msr spsr_el1, {}", in(reg) frame.spsr_el1, options(nomem, nostack, preserves_flags));
+            asm!("msr sp_el0, {}", in(reg) frame.sp_el0, options(nomem, nostack, preserves_flags));
         }
 
         return;
