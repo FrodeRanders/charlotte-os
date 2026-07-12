@@ -416,12 +416,16 @@ pub fn submit_worker(
 /// entry to the AS's CQ ring if one is attached.
 pub fn complete(asid: AddressSpaceId, cap: CompletionCap, result: OpResult) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
-    completion.complete(result.clone());
 
-    // Write to the CQ ring if this address space has one.
+    // Publish the completion entry to the shared CQ ring *before* waking any
+    // waiter. A userspace consumer that blocks in `wait` and then drains the
+    // ring the moment it is woken must observe the entry, so the ring write has
+    // to happen-before the wake, not after it.
     if let Some(ring_ptr) = cq_ring_of(asid) {
-        unsafe { &mut *ring_ptr }.write(cap, result);
+        unsafe { &mut *ring_ptr }.write(cap, result.clone());
     }
+
+    completion.complete(result);
 
     Ok(())
 }
