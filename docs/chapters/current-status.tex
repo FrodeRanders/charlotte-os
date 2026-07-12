@@ -88,7 +88,7 @@ cargo build --package catten \
 
 \textbf{sitas user binary (requires nightly + build-std):}
 \begin{verbatim}
-cargo +nightly build -p catten-user \
+cargo +nightly build --manifest-path crates/catten-user/Cargo.toml \
   --target crates/catten-user/aarch64-unknown-none.json \
   -Zbuild-std=core,alloc,compiler_builtins
 \end{verbatim}

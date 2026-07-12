@@ -1,5 +1,11 @@
 [workspace]
 members = ["crates/*"]
+# catten-user is a no_std/no_main EL0 test program built for its own custom
+# target, and it currently depends on the in-progress ../../gautelis/sitas
+# crates which do not yet build. Exclude it from the workspace so root-level
+# `cargo build`/`check` and rust-analyzer do not attempt it. Build it directly
+# with `--manifest-path crates/catten-user/Cargo.toml` once sitas compiles.
+exclude = ["crates/catten-user"]
 resolver = "3"
 
 [profile.dev]
