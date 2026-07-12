@@ -1,16 +1,22 @@
 # Investigation: intermittent multi‑LP data‑abort panic (AArch64)
 
-Status: **UNRESOLVED**. Several real concurrency hazards were fixed along the way,
-but the specific panic still reproduces (~40% of boots) on `-smp 2` and `-smp 4`.
+Status: **CANDIDATE FIX FOUND**. Several real concurrency hazards were fixed along the way,
+and the final investigation round identified a decisive AArch64 IVT bug: asynchronous
+exception vectors used `bl` but did **not** save/restore `x30` (the link register). An IRQ can
+arrive while normal kernel code has a live return address in `x30`; clobbering it lets the
+interrupted function return through the vector's link address, corrupting control flow and
+eventually stack position. Saving `x30` in the vector frame made the previously reproducible
+`-smp 2` boot complete the full 90 s validation window without the data abort.
 This document records the symptom, the evidence, every hypothesis tested (and how),
-the code changes made, the central contradiction that is still unexplained, and a
-concrete plan to finish the job.
+the code changes made, the former contradiction, and the remaining validation work.
 
 ---
 
 ## 1. Symptom
 
 On QEMU AArch64 with more than one logical processor (LP), boot intermittently ends in:
+
+Before the vector-frame alignment fix, the reproducible signature was:
 
 ```
 DATA ABORT: ESR=96000007 ELR=ffffffff800002d0 FAR=ffff810000033000
@@ -19,10 +25,23 @@ Unhandled synchronous exception: EC=0x25, ESR_EL1=0x96000007, ELR_EL1=0xffffffff
 ```
 
 - `-smp 1`: **never** reproduces. The async‑syscall demo completes (`[async] SUCCESS`).
-- `-smp 2` / `-smp 4`: reproduces intermittently, always with the **same** `ELR` and `FAR`.
+- Before the `x30` fix, `-smp 2` / `-smp 4` reproduced intermittently. The stable invariant was the **same**
+  `FAR` (`0xffff810000033000`); the exact `ELR` can move when the vector-frame layout or
+  initial stack top is changed.
+
+After the vector-frame alignment fix (§9.5), a normal `-smp 2` run still reproduces with
+`FAR=ffff810000033000` and usually `ELR=ffffffff800002d0` in the current binary. A temporary
+16-byte kernel-stack-top headroom experiment (§7.10) changed the failing vector instruction to
+`ELR=ffffffff800002ac` while keeping the same `FAR`, proving the failure is tightly tied to the
+upper guard page and not to the specific `x0/x1` pop alone.
 
 The panic originates in `sync_dispatcher` (`crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`),
 in the data‑abort branch that treats any non‑SVC synchronous exception as fatal.
+
+After saving/restoring `x30` in `push_volatile_regs`/`pop_volatile_regs`, one traced
+`scripts/boot-smp2.sh` run and one clean post-cleanup `scripts/boot-smp2.sh` run completed
+without the panic. That is strong evidence but not yet a statistical proof; run a loop of
+SMP2/SMP4 boots before declaring the issue fully closed.
 
 ---
 
@@ -111,6 +130,23 @@ of `pop_volatile_regs` in the **IRQ, current‑EL, `SP_ELx`** vector (vector off
 
 So the fault happens on **interrupt return**, restoring `x0/x1` just before `eret`.
 
+Important update: `push_volatile_regs` used to push 19 words (`0x98` bytes), leaving `SP`
+8-byte misaligned during the Rust `irq_dispatcher` call. This was fixed by saving `x18` as
+`stp x18, xzr, [sp, #-16]!` and popping it symmetrically. With the fixed vector, the same
+address `0xffffffff800002d0` remains the final `ldp x0,x1,[sp],#0x10`, but the first pop is
+now `0xffffffff800002ac: ldp x18,xzr,[sp],#0x10`. The persistent panic after this fix means
+the old vector misalignment was a real ABI bug, but not the trigger.
+
+Final update: the vector also failed to save `x30`. This is an asynchronous-exception ABI
+violation. Unlike an ordinary function call, an IRQ can interrupt code at any instruction; the
+interrupted code may be relying on `x30` as its current return address. The IVT's
+`bl irq_dispatcher` overwrote that return address, and the old `pop_volatile_regs` never
+restored it. The final layout saves `x30` first (`stp x30, xzr, [sp, #-16]!`), then saves
+`x18`, then descends through the volatile register pairs so the final `sp` points at `x0`.
+It restores in the opposite order and restores `x30` last (`ldp x30, xzr, [sp], #16`). The
+SVC trap-frame decode is now intentionally simple: `base[n]` holds `xN` for `x0` through
+`x18`; `x30` is at `base[20]`. The total vector frame is `0xB0` bytes.
+
 ### 3.3 What the SP must have been
 `ldp x0,x1,[sp],#0x10` reads `[sp]` and `[sp+8]`; `sp` is 16‑byte aligned so both lie in the
 same page. `FAR = sp = 0x033000`. `x0/x1` were the *first* pair pushed by
@@ -184,7 +220,7 @@ consistent victim.
 
 ---
 
-## 6. The central contradiction (still unexplained)
+## 6. The former central contradiction
 
 The fault is on the interrupt‑return **pop** at `sp = 0x033000`. For the matching
 interrupt‑*entry* **push** (`stp x0,x1,[sp,#-16]!` at vector `0x280`) to have succeeded, the
@@ -202,15 +238,91 @@ forever, `find_free_region` can never hand `0x033000` out as a usable page (its 
 keep the shared L3 table (which covers `0x000000–0x1fffff` of the arena, i.e. all of stacks
 1–? ) alive, so teardown of stack 4 should not free stack 3's pages.
 
-**Conclusion:** either the mental model of the stack/guard layout under churn is wrong, or the
-fault is not what a naïve reading of `ELR`/`FAR` implies (e.g. a lower‑level SP/exception
-detail, or `saved_sp` corruption that shifts the whole IRQ‑return unwind by exactly `0x10`).
-This contradiction is the crux and is **not yet resolved**.
+This looked like a page-table or stack-allocator contradiction, but later evidence points to a
+simpler explanation: the vector clobbered `x30`, so normal kernel code could return to the
+wrong place after an interrupt. Once control flow is corrupted, the later guard-page fault is
+a downstream symptom; the apparently impossible push/pop story was an inference from the final
+faulting instruction, not proof that `0x033000` had ever been mapped.
 
 Corollary observed empirically: a temporary check that validated each thread's `saved_sp`
 against its own kernel‑stack bounds **immediately before restore** in `cond_yield_lp`
 (`[SPDBG]`) **never fired**, even on crashing boots. So whatever is wrong keeps `saved_sp`
 *in bounds* — a subtle ~`0x10` drift, not a wild pointer.
+
+### 6.1 New ground truth from crash-only instrumentation
+
+In the latest pass, a temporary fatal-path-only print was added to the data-abort case in
+`sync_dispatcher`. It read `SPSR_EL1`, the handler's current `sp`, and `TPIDR_EL1`/LP id
+without taking scheduler locks. On a reproducing `-smp 2` run:
+
+```
+DATA ABORT: ESR=96000007 ELR=ffffffff800002d0 FAR=ffff810000033000
+  A64DBG: lp=1 spsr=20000005 handler_sp=ffff810000032e40
+```
+
+Meaning:
+
+- The faulting LP is **LP1**.
+- `SPSR_EL1=0x20000005` again confirms **EL1h**, so the interrupted context was using
+  `SP_EL1`.
+- `handler_sp=...032e40` is inside the `probe_device_topology` usable stack
+  (`0x023000..0x032fff`), which means the synchronous data-abort handler itself was running
+  on the expected live probe stack after its own vector entry frame had been pushed.
+
+This materially narrowed the problem. It was not merely "some freed stack was restored" or a
+random stale pointer: the CPU was taking the fatal synchronous exception while using the live
+probe stack.
+
+### 6.2 Failed stack-headroom experiment
+
+A temporary experiment started new AArch64 kernel-thread stacks 16 bytes below the usable top:
+
+```
+kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE - 16
+```
+
+This was deliberately conservative and kept the initial `SP` 16-byte aligned. If the only bug
+were a one-slot `SP_EL1` drift above the thread's normal stack top, this should have moved the
+IRQ frame away from the guard.
+
+Result: the panic still reproduced, but the `ELR` moved:
+
+```
+DATA ABORT: ESR=96000007 ELR=ffffffff800002ac FAR=ffff810000033000
+  A64DBG: lp=1 spsr=20000005 handler_sp=ffff810000032e40
+```
+
+In the aligned vector, `0x...2ac` is the **first** pop (`ldp x18,xzr,[sp],#0x10`) rather than
+the last pop. The `FAR` stayed exactly `0x033000`. This experiment was reverted because it is
+not a fix, but it is useful evidence: the failure tracks the guard page itself and not a single
+hard-coded vector instruction.
+
+### 6.3 Final vector trace and root-cause pivot
+
+A per-LP IRQ vector trace was added temporarily. The first attempt used a Rust function call;
+that was too perturbing. The second attempt wrote directly from assembly, but putting the whole
+trace body inline overflowed the 128-byte AArch64 vector slot and caused FIQ/SError spam. The
+fixed probe used a short vector `bl` to an out-of-line assembly helper and confirmed the
+failure still reached the current-EL IRQ pop.
+
+That probe made the missing `x30` save obvious: the vector itself was doing multiple `bl`
+instructions while preserving only `x0` through `x18`. Even the original, uninstrumented
+vector did `bl irq_dispatcher`, which clobbered the interrupted code's live `x30`. Saving
+`x30` in the vector frame is therefore required regardless of this specific panic.
+
+Validation after adding the `x30` save:
+
+```
+cargo build --package catten \
+  --target target_specs/aarch64-unknown-none-catten.json \
+  --no-default-features --features acpi
+
+./scripts/boot-smp2.sh
+```
+
+Result: the full 90 s SMP2 boot window completed with `[async] SUCCESS`, normal thread teardown,
+and no `DATA ABORT`. After removing the temporary trace/page-table/IRQ instrumentation, the same
+90 s SMP2 script completed cleanly again.
 
 ---
 
@@ -225,8 +337,12 @@ against its own kernel‑stack bounds **immediately before restore** in `cond_yi
 | 5 | **Double‑dispatch**: the same tid is run on two LPs. | Added a global per‑LP "running tid" table + a check in `RoundRobin::next` that logs `[SCHEDDBG] DOUBLE-RUN` / "ALREADY Running". | Detector **never fired**. (Note: heavy per‑dispatch logging perturbs timing and hides the race — keep detectors log‑silent except on the anomaly.) |
 | 6 | **Corrupt `saved_sp` at restore**. | `[SPDBG]` bounds check in `cond_yield_lp`. | **Never fired** (see §6). |
 | 7 | Memory‑ordering race (needs barriers) vs. logical race. | Attempt `-accel tcg,thread=single`. | **Inconclusive** — too slow to reach the crash window in budget. |
+| 8 | **AArch64 IVT ABI violation**: `push_volatile_regs` saved 19 words (`0x98`), leaving `SP` 8-byte aligned across `bl irq_dispatcher` and the Rust call chain. | Padded the vector frame by saving `x18` as an `stp x18,xzr` pair and updated SVC trap-frame offsets. Rebuilt and reran `scripts/boot-smp2.sh`. | Real ABI bug, **fixed**, but panic **persists** with the same guard-page `FAR`. |
+| 9 | **Duplicate wake/enqueue race**: `RoundRobin::add_thread` checked `ThreadState` under a read lock, dropped it, enqueued, then later took a write lock to mark `Ready`; two LPs could concurrently wake/enqueue the same blocked tid. | Made `add_thread` perform check + `Ready(lp)` transition + queue insertion while holding `MASTER_THREAD_TABLE.write()`. Also changed `switch_ctx`'s `on_cpu` claim from load/store to an exclusive atomic claim loop (`ldaxrb`/`stxrb`). | Real SMP bug, **fixed/hardened**, but panic **persists**. |
+| 10 | **One-slot top-of-stack drift**: if `SP_EL1` drifts by 16 bytes, leave 16 bytes of unused headroom under the upper guard. | Temporarily set initial kernel stack top to usable-top minus 16 bytes. | **Not a fix**. Panic still reproduced; `ELR` moved to the first vector pop (`0x...2ac`) while `FAR` stayed `0x033000`. Experiment reverted. |
+| 11 | **AArch64 IVT clobbers `x30`**: an IRQ uses `bl irq_dispatcher`, but the vector only saved `x0`-`x18`; interrupted kernel code's live link register was destroyed. | Saved `x30` in `push_volatile_regs` and restored it last in `pop_volatile_regs`; then reorganized the frame so `base[n]` maps directly to `xN` for SVC decoding. Rebuilt and reran `scripts/boot-smp2.sh`. | **Candidate root cause.** A traced full 90 s SMP2 run and a post-cleanup full 90 s SMP2 run both completed without the data abort. Needs repeated SMP2/SMP4 soak, but this is the first change that makes the known reproducer pass. |
 
-All of #1–#4 remain in the tree as correct hardening (see §9 and §10).
+All of #1–#4 and #8–#11 remain in the tree as correct hardening/fix work (see §9 and §10).
 
 ---
 
@@ -246,8 +362,9 @@ instrumentation that had already been reverted in source). Conclusions about hyp
 
 ## 9. Changes made (kept in the tree)
 
-All changes compile cleanly for `aarch64-unknown-none-catten` and do **not** regress `-smp 1`
-(which still prints `[async] SUCCESS`). None is verified to fix the reported panic.
+All changes compile cleanly for `aarch64-unknown-none-catten`. The final `x30` change made the
+known `scripts/boot-smp2.sh` reproducer complete its full 90 s window in both traced and clean
+post-cleanup builds without the data abort; more SMP2/SMP4 soak runs are still recommended.
 
 1. **Per‑LP dead‑thread reaping** — closes a cross‑LP stack UAF.
    - `crates/catten/src/cpu/scheduler/threads/mod.rs`: `DEAD_THREADS` changed from
@@ -277,8 +394,28 @@ All changes compile cleanly for `aarch64-unknown-none-catten` and do **not** reg
    - `crates/catten/src/cpu/isa/aarch64/lp/ops.rs`: `switch_ctx` now takes
      `(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu)`. After saving the outgoing thread
      it `stlrb wzr,[curr_on_cpu]` (release‑publish "saved"); before restoring the incoming
-     thread it acquire‑spins `ldarb … cbnz` until `*next_on_cpu == 0`, then claims it
-     (`stlrb #1`). `cond_yield_lp` captures and passes the `on_cpu` pointers.
+     thread it acquire/exclusive-spins (`ldaxrb … cbnz`) until `*next_on_cpu == 0`, then
+     atomically claims it with `stxrb #1`. `cond_yield_lp` captures and passes the `on_cpu`
+     pointers. This was initially a release/acquire handshake and later hardened to an atomic
+     claim after the duplicate-enqueue race in `RoundRobin::add_thread` was found.
+
+5. **AArch64 IVT frame fixes** — closes real asynchronous-exception ABI violations.
+   - `crates/catten/src/cpu/isa/aarch64/interrupts/ivt.asm`: `push_volatile_regs` now saves
+     `x30` first, then saves `x18`, `x16/x17`, ..., down to `x0/x1`, so the final frame base
+     points at `x0`. It pops in the opposite order and restores `x30` last. The interrupt
+     vector frame is now `0xB0` bytes instead of the original `0x98`, so the Rust dispatcher
+     is entered with a 16-byte-aligned stack and the interrupted code's link register is
+     restored before `eret`.
+   - `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`: SVC trap-frame register extraction
+     offsets were updated for the new vector-frame layout; `regs[n]` now reads from
+     `base.add(n)`, and the x0 return-value writeback writes to `base`.
+
+6. **Atomic `RoundRobin::add_thread` state transition** — closes a duplicate enqueue/wake race.
+   - `crates/catten/src/cpu/scheduler/lp_schedulers/round_robin.rs`: `add_thread` now holds
+     `MASTER_THREAD_TABLE.write()` while checking `ThreadState`, marking the thread `Ready`,
+     and appending the run-queue handle. The old code checked under a read lock and only marked
+     `Ready` after queue insertion, leaving a window where two LPs could both observe a blocked
+     thread and enqueue it.
 
 Unrelated, from the earlier part of this session (also in the diff): `crates/catten/src/demo.rs`
 was refactored (rename `xlp_receiver_on_lp1 → xlp_receiver_on_lp`, move the self‑post `try_recv`
@@ -290,40 +427,52 @@ into the receiver, keep the LP0→LP1 send but demo self‑post only).
 handler were all removed. Confirm with:
 `rg -n "SPDBG|STKDBG|SCHEDDBG|irq_sp|saved_sp_oob" crates/catten/src` → no matches.
 
+The latest fatal-path `A64DBG` instrumentation (`lp`, `spsr`, `handler_sp`) and one-shot
+`IRQDBG` probe were also removed after capture. Confirm with:
+`rg -n "A64DBG|IRQDBG|IRQTRACE|PTDBG|STACK_TOP_HEADROOM" crates/catten/src` → no matches.
+
 ---
 
 ## 10. If we want a minimal tree instead
 
 - Definitely keep #1 (per‑LP reap) and #3 (boxed context) — small, isolated, clearly correct.
+- #5 (IVT frame fixes) should definitely stay; saving `x30` is required for asynchronous
+  exceptions, and the `x18` padding fixes stack alignment.
+- #6 (atomic add_thread transition) should stay; it is a small, concrete scheduler race fix.
 - #2 (arena lock + IRQ masking) and #4 (`switch_ctx` asm handshake) are correct but larger /
   asm‑level; they can be reverted if a smaller surface is preferred while the real bug is
-  hunted. `git diff` lists exactly the six changed files.
+  hunted, but doing so would intentionally re-open real races found during the investigation.
 
 ---
 
-## 11. Remaining suspects (ranked)
+## 11. Remaining validation and fallback suspects
 
-1. **Shared‑guard / `find_free_region` layout under churn.** The contradiction in §6 most
-   likely means a stack sometimes ends up with `0x033000` *usable* (mapped), gets an IRQ
-   frame on it, and is then torn down. Re‑examine `allocate_stack`/`deallocate_stack`'s
-   `KERNEL_GUARD_PAGES` reference‑counting and the "next guard after lower_guard" computation
-   in `deallocate_stack` for an off‑by‑one that could unmap a page an adjacent live stack (or
-   an in‑flight IRQ frame) is using. Watch the case where `unmap_page` frees an intermediate
-   L2/L1/L0 table (`walker.rs`) — it covers a 2 MiB / 1 GiB range; confirm `is_table_unused`
-   can never free a table that still maps a live neighbour.
-2. **`push_volatile_regs` pushes 19 registers = `0x98` bytes**, leaving `SP` 8‑byte (not
-   16‑byte) aligned across `bl irq_dispatcher` and the whole nested call chain
-   (`ivt.asm`). It's symmetric with `pop_volatile_regs`, but it is an AAPCS/`SCTLR_EL1.SA`
-   violation and a latent source of subtle misbehaviour worth eliminating (pad to `0xA0`).
-3. **The lock‑free `switch_ctx` design** in `cond_yield_lp` (raw `saved_sp` pointers used with
-   all scheduler locks dropped). The `on_cpu` handshake covers the save/restore ordering, but
-   any *other* lock‑free access to a `Thread` between capture and use is still suspect.
+Primary next step: **soak the `x30` fix**.
+
+1. Run `scripts/boot-smp2.sh` in a loop (at least 20 iterations). Before the fix, this was
+   roughly a 40% reproducer, so 20 clean runs would be meaningful.
+2. Run `scripts/boot-aarch64.sh` / a 4-LP equivalent repeatedly, because the original report
+   included `-smp 4`.
+3. If either SMP2 or SMP4 reproduces again, restore only fatal-path diagnostics, not hot-path
+   scheduler logging. The useful fields were `SPSR_EL1`, `handler_sp`, `SP_EL0`, `TTBR0/1`,
+   and a page-table dump for `0x032000`, `0x033000`, and `0x034000`.
+
+If the panic returns after the `x30` fix, the fallback suspects are:
+
+1. **Shared‑guard / `find_free_region` layout under churn.** Re‑examine
+   `allocate_stack`/`deallocate_stack` guard reference-counting and the "next guard after
+   lower_guard" computation in `deallocate_stack`.
+2. **The lock‑free `switch_ctx` design** in `cond_yield_lp`. The `on_cpu` handshake covers
+   save/restore ordering, but any other lock-free access to a `Thread` between capture and use
+   remains worth auditing.
+3. **Page-table/TLB contradiction.** Current code uses `tlbi vaae1is`, but if the same
+   guard-page fault returns, re-check the exact PTE state at the abort.
 
 ---
 
-## 12. Recommended next step: capture ground truth with a debugger
+## 12. Debugger path if it reproduces again
 
-Static reasoning has repeatedly failed here; get the actual machine state at the fault.
+If the panic returns after the `x30` fix, capture the actual machine state at the fault.
 
 1. Boot paused with the gdb stub (image must contain the fresh kernel):
    `scripts/run-aarch64.sh debug --gdb` (adds `-s -S`), or add `-s -S` to the manual `qemu`
@@ -342,6 +491,17 @@ Static reasoning has repeatedly failed here; get the actual machine state at the
    - Read the scheduler state: `MASTER_THREAD_TABLE` and each `RoundRobin.current_handle` to
      learn the running tid per LP at the moment of the fault.
    - Dump the page‑table entry for `0x033000` (is it a guard, or was it ever a leaf?).
+
+If using source instrumentation instead of a debugger, prefer fatal-path-only logging:
+
+```
+asm!("mrs {}, spsr_el1", out(reg) spsr);
+asm!("mov {}, sp", out(reg) handler_sp);
+early_logln!("A64DBG: lp={} spsr={:x} handler_sp={:x}", lp, spsr, handler_sp);
+```
+
+Do **not** add hot-path scheduler logging unless the log only fires on an anomaly; it changes
+timing enough to hide this race.
 
 Also worth building for the next session:
 - A **tighter, deterministic reproducer**: a boot‑time stress thread that rapidly
@@ -366,4 +526,3 @@ Also worth building for the next session:
 - Page‑table walker / `unmap_page`: `crates/catten/src/cpu/isa/aarch64/memory/paging/walker.rs`
 - TLB invalidation: `crates/catten/src/cpu/isa/aarch64/memory/tlb.rs`
 - Demo under test: `crates/catten/src/demo.rs`, spawned from `crates/catten/src/main.rs`
-</content>

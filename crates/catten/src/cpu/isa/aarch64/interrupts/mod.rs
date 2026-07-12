@@ -72,38 +72,39 @@ pub extern "C" fn sync_dispatcher() {
         };
 
         // Read the saved volatile registers from the kernel stack. After
-        // `push_volatile_regs` the stack pointer points to x18; the mapping
+        // `push_volatile_regs` the stack pointer points to x0; the mapping
         // below is derived directly from the push ordering in ivt.asm:
         //
-        //  offset 0: x18     (<- sp)
-        //  offset 8: x16,x17 (stp pair)
+        //  offset 0: x0,x1 (<- sp)
+        //  offset 16: x2,x3
         //  …
-        //  offset 136: x0,x1 (first stp pair pushed)
+        //  offset 144: x18,pad
+        //  offset 160: x30,pad
         let sp: u64;
         unsafe {
             asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
         }
         let base = sp as *const u64;
         unsafe {
-            frame.regs[0] = base.add(17).read_volatile(); // x0
-            frame.regs[1] = base.add(18).read_volatile(); // x1
-            frame.regs[2] = base.add(15).read_volatile(); // x2
-            frame.regs[3] = base.add(16).read_volatile(); // x3
-            frame.regs[4] = base.add(13).read_volatile(); // x4
-            frame.regs[5] = base.add(14).read_volatile(); // x5
-            frame.regs[6] = base.add(11).read_volatile(); // x6
-            frame.regs[7] = base.add(12).read_volatile(); // x7
-            frame.regs[8] = base.add(9).read_volatile(); // x8
-            frame.regs[9] = base.add(10).read_volatile(); // x9
-            frame.regs[10] = base.add(7).read_volatile(); // x10
-            frame.regs[11] = base.add(8).read_volatile(); // x11
-            frame.regs[12] = base.add(5).read_volatile(); // x12
-            frame.regs[13] = base.add(6).read_volatile(); // x13
-            frame.regs[14] = base.add(3).read_volatile(); // x14
-            frame.regs[15] = base.add(4).read_volatile(); // x15
-            frame.regs[16] = base.add(1).read_volatile(); // x16
-            frame.regs[17] = base.add(2).read_volatile(); // x17
-            frame.regs[18] = base.add(0).read_volatile(); // x18
+            frame.regs[0] = base.add(0).read_volatile(); // x0
+            frame.regs[1] = base.add(1).read_volatile(); // x1
+            frame.regs[2] = base.add(2).read_volatile(); // x2
+            frame.regs[3] = base.add(3).read_volatile(); // x3
+            frame.regs[4] = base.add(4).read_volatile(); // x4
+            frame.regs[5] = base.add(5).read_volatile(); // x5
+            frame.regs[6] = base.add(6).read_volatile(); // x6
+            frame.regs[7] = base.add(7).read_volatile(); // x7
+            frame.regs[8] = base.add(8).read_volatile(); // x8
+            frame.regs[9] = base.add(9).read_volatile(); // x9
+            frame.regs[10] = base.add(10).read_volatile(); // x10
+            frame.regs[11] = base.add(11).read_volatile(); // x11
+            frame.regs[12] = base.add(12).read_volatile(); // x12
+            frame.regs[13] = base.add(13).read_volatile(); // x13
+            frame.regs[14] = base.add(14).read_volatile(); // x14
+            frame.regs[15] = base.add(15).read_volatile(); // x15
+            frame.regs[16] = base.add(16).read_volatile(); // x16
+            frame.regs[17] = base.add(17).read_volatile(); // x17
+            frame.regs[18] = base.add(18).read_volatile(); // x18
         }
 
         syscall::syscall_dispatch(&mut frame, svc_imm);
@@ -111,7 +112,7 @@ pub extern "C" fn sync_dispatcher() {
         // Write back x0 (return value) to the stack slot so `pop_volatile_regs`
         // restores it into the user's x0 before `eret`.
         unsafe {
-            (base.add(17) as *mut u64).write_volatile(frame.regs[0]);
+            (base as *mut u64).write_volatile(frame.regs[0]);
             asm!("msr elr_el1, {}", in(reg) frame.elr_el1, options(nomem, nostack, preserves_flags));
         }
 
@@ -150,17 +151,6 @@ pub extern "C" fn irq_dispatcher() {
     // INTIDs 1020-1023 are special/spurious and require no handling or EOI.
     if intid >= 1020 {
         return;
-    }
-    {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        static SEEN: [AtomicBool; 2] = [
-            AtomicBool::new(false),
-            AtomicBool::new(false),
-        ];
-        let lp = get_lp_id() as usize;
-        if lp < 2 && !SEEN[lp].swap(true, Ordering::Relaxed) {
-            crate::early_logln!("[IRQDBG] LP{}: irq_dispatcher first call, intid={}", lp, intid);
-        }
     }
     match intid {
         LAPIC_TIMER_VECTOR => {

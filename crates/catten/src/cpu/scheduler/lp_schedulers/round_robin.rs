@@ -146,22 +146,18 @@ impl LpScheduler for RoundRobin {
     }
 
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
-        let thread_already_assigned = {
-            let tt_guard = MASTER_THREAD_TABLE.read();
-            matches!(
-                tt_guard.get(tid).as_ref().unwrap().state,
-                ThreadState::Running(_) | ThreadState::Ready(_)
-            )
-        };
-
-        if thread_already_assigned {
-            Err(Error::ThreadAlreadyAssignedToLp)
-        } else {
-            let new_handle = ThreadHandle(tid);
-            self.run_queue.push_back(new_handle);
-            MASTER_THREAD_TABLE.write().get_mut(tid).as_mut().unwrap().state =
-                ThreadState::Ready(self.lp_id);
-            Ok(())
+        let mut tt_guard = MASTER_THREAD_TABLE.write();
+        let mut thread_slot = tt_guard.get_mut(tid);
+        let thread = thread_slot.as_mut().unwrap();
+        match thread.state {
+            ThreadState::Running(_) | ThreadState::Ready(_) => {
+                Err(Error::ThreadAlreadyAssignedToLp)
+            }
+            ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
+                thread.state = ThreadState::Ready(self.lp_id);
+                self.run_queue.push_back(ThreadHandle(tid));
+                Ok(())
+            }
         }
     }
 

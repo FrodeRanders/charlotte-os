@@ -13,9 +13,10 @@
 use alloc::collections::BTreeMap;
 use core::ops::Bound::{Excluded, Unbounded};
 
-use spin::{LazyLock, RwLock};
+use spin::{LazyLock, Mutex, RwLock};
 
 use super::memory;
+use crate::cpu::isa::lp::ops::{get_int_state, mask_interrupts, unmask_interrupts};
 use crate::cpu::isa::memory::{MemoryInterface, MemoryInterfaceImpl};
 use crate::logln;
 use crate::memory::allocators::memory::PageSize;
@@ -33,6 +34,34 @@ use crate::memory::{AddressSpaceInterface, KERNEL_AS};
 /// still relies on.
 static KERNEL_GUARD_PAGES: LazyLock<RwLock<BTreeMap<VAddr, usize>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
+
+/// Serializes *all* kernel-stack arena management (free-region search, mapping,
+/// guard-page bookkeeping, and teardown) across logical processors.
+///
+/// Without it, two LPs could each `find_free_region` and receive the same base
+/// before either maps it — a TOCTOU that overlaps two stacks — or race on the
+/// guard-page map while another LP unmaps an adjacent stack. The entire
+/// alloc/free operation is therefore performed under this lock, and interrupts
+/// are masked while it is held so a timer preemption on the same LP cannot
+/// re-enter the allocator (e.g. via `reap_dead_threads` -> `deallocate_stack`)
+/// and self-deadlock on the same lock.
+static STACK_ARENA_LOCK: Mutex<()> = Mutex::new(());
+
+/// Runs `f` with interrupts masked and [`STACK_ARENA_LOCK`] held, releasing the
+/// lock *before* restoring the previous interrupt state (so a preemption taken
+/// right after unmasking cannot observe the lock still held by this LP).
+fn with_arena<R>(f: impl FnOnce() -> R) -> R {
+    let ints_were_enabled = get_int_state();
+    mask_interrupts!();
+    let result = {
+        let _lock = STACK_ARENA_LOCK.lock();
+        f()
+    };
+    if ints_were_enabled {
+        unmask_interrupts!();
+    }
+    result
+}
 #[derive(Debug)]
 pub enum Error {
     IsaMemoryIfce(<MemoryInterfaceImpl as MemoryInterface>::Error),
@@ -59,6 +88,11 @@ impl From<memory::Error> for Error {
 /// guard page below and one above, which are recorded in
 /// [`KERNEL_GUARD_PAGE_SET`] so the stack can later be validated and freed.
 pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
+    // Serialize the whole region-search-then-map sequence against other LPs.
+    with_arena(|| allocate_stack_locked(n_pages))
+}
+
+fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
     const NUM_GUARD_PAGES: usize = 2;
     let page = PageSize::Standard.num_bytes();
     // find a suitable range in the kernel stack arena
@@ -87,6 +121,11 @@ pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
 /// Deallocate a kernel stack previously allocated by [`allocate_stack`]. The
 /// argument is the base address returned by `allocate_stack`.
 pub fn deallocate_stack(stack_buf_base: VAddr) -> Result<(), Error> {
+    // Serialize teardown against concurrent alloc/free on other LPs.
+    with_arena(|| deallocate_stack_locked(stack_buf_base))
+}
+
+fn deallocate_stack_locked(stack_buf_base: VAddr) -> Result<(), Error> {
     let page = PageSize::Standard.num_bytes();
     let lower_guard = stack_buf_base - page;
     // The number of usable pages is the distance from the base up to the next
