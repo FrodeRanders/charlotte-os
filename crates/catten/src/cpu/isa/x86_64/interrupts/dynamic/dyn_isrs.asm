@@ -16,6 +16,8 @@ dyn_isr_\vector:
     push rcx
     push r8
     push r9
+    push r10
+    push r11
     lea rdi, [DYN_IH_MATRIX]
     mov rsi, \vector
     call get_dyn_ih
@@ -27,6 +29,8 @@ dyn_isr_\vector:
 skip_ih_call_\vector:
     //; Execute context switch if pending
     call cond_yield_lp
+    pop r11
+    pop r10
     pop r9
     pop r8
     pop rcx

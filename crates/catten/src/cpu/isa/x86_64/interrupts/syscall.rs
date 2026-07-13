@@ -7,7 +7,8 @@
 //!
 //! ## Limitations
 //!
-//! The trampoline currently saves only RCX/R11 (clobbered by SYSCALL) and RAX.
+//! The trampoline currently saves only RCX/R11 (clobbered by SYSCALL) and the
+//! original RAX syscall number.
 //! A full implementation would save/restore all caller-saved registers and
 //! build an architecture-specific TrapFrame for the dispatch layer. This is
 //! sufficient for the prototype: it proves the SYSCALL entry path works.
@@ -25,7 +26,7 @@ global_asm!(
     "push rax",
     "mov rdi, rax",
     "call {syscall_handler}",
-    "pop rax",
+    "add rsp, 8",
     "pop rcx",
     "pop r11",
     "mov rsp, gs:[0x8]",
