@@ -46,6 +46,10 @@ pub struct TrapFrame {
     pub spsr_el1: u64,
     pub sp_el0: u64,
     pub lp_id: LpId,
+    /// Address-space id of the calling thread, looked up from the scheduler at
+    /// exception entry.  For the real SVC path this is the EL0 thread's AS;
+    /// self-tests that call `syscall_dispatch` directly may set it manually.
+    pub asid: AddressSpaceId,
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
@@ -120,11 +124,13 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 // ---- individual syscall implementations ------------------------------------
 
 fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
-    match crate::cpu::scheduler::current_thread_asid() {
-        Some(asid) if asid != crate::memory::KERNEL_ASID => asid,
-        // Kernel threads and synthetic self-tests are allowed to pass an ASID
-        // explicitly. Real EL0 callers are scoped by their thread state above.
-        _ => frame.regs[0] as crate::memory::AddressSpaceId,
+    if frame.asid != crate::memory::KERNEL_ASID {
+        // Real EL0 syscall: asid was captured from the thread at entry.
+        frame.asid
+    } else {
+        // Synthetic self-test frame (asid defaults to KERNEL_ASID): the test
+        // passes the ASID explicitly in x0.
+        frame.regs[0] as crate::memory::AddressSpaceId
     }
 }
 

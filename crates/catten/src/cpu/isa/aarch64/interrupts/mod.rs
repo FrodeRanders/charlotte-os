@@ -69,7 +69,24 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             spsr_el1: spsr,
             sp_el0,
             lp_id: get_lp_id(),
+            asid: crate::memory::KERNEL_ASID, // overwritten below if a user thread
         };
+
+        // Derive the caller's address space from the running thread's context
+        // rather than trusting a user-supplied register.  This makes ASID
+        // authority correct: a thread cannot operate on an address space other
+        // than its own.
+        if let Some(tid) = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .get_lp_scheduler()
+            .lock()
+            .get_tid()
+        {
+            if let Ok(thread) = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE.read().get(tid)
+            {
+                frame.asid = thread.asid;
+            }
+        }
 
         // Read the saved volatile registers from the kernel stack. `frame_base`
         // is the stack pointer captured by the vector entry immediately after

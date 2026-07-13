@@ -33,6 +33,7 @@ fn synthetic_trap_frame(x0: u64, x1: u64, x2: u64, x3: u64) -> TrapFrame {
         spsr_el1: 0,
         sp_el0: 0,
         lp_id: 0 as LpId,
+        asid: crate::memory::KERNEL_ASID,
     }
 }
 
