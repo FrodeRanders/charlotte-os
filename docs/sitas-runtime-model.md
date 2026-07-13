@@ -769,8 +769,9 @@ smoke-test calls. Receiver capabilities are AS-scoped single-consumer endpoints
 per LP, sender opens validate the target LP up front, and mailbox capability
 tables can be torn down with the address space. The hand-written EL0 ping-pong
 stub has been migrated from raw-LP mailbox calls to mailbox endpoint-capability
-calls, but its default boot gate remains disabled because the test still hangs
-under the pre-existing HVF-flaky path and needs a dedicated stabilization pass.
-The remaining larger ABI work is to switch `sitas-charlotte` to the `CQ_WAIT`
-syscall instead of busy-polling and replace the flat RWX sitas loader with an
-ELF/segment-aware loader.
+calls and is back in the default boot gate. The hang was not a mailbox-table or
+HVF permission bug: the Pong receive loop used a bad `CBNZ` immediate, branched
+back to `mov x18, x0` after an empty receive, and overwrote its receiver
+capability with zero. The remaining larger ABI work is to switch
+`sitas-charlotte` to the `CQ_WAIT` syscall instead of busy-polling and replace
+the flat RWX sitas loader with an ELF/segment-aware loader.

@@ -43,7 +43,7 @@ pub fn run_self_tests() {
     shard::test_shard_mailbox();
     el0::test_el0_syscall_round_trip();
     el0_demo::test_el0_cross_lp_async();
-    // el0_pingpong::test_el0_ping_pong();  // flaky on HVF, see commit msg
+    el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();
     cq::test_cq_ring();
     cq_completion::test_cq_ring_in_completion();
