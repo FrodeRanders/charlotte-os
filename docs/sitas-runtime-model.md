@@ -707,3 +707,51 @@ on `dev` branch pushes. Consolidated into `dev` branch. Two boot scripts:
 
 ### Phase 3 — Option B (`charlotte-os` `shard-local-kernel`) — **COMPLETE**
 _Phase 2 (C) and Phase 3 (B) are now consolidated on the `dev` branch._
+
+### Current scrutiny against the runtime model
+
+The codebase has moved well beyond the original "nothing implemented yet"
+status in this note: `sitas-core`/`sitas-charlotte` exist, CharlotteOS has a
+completion-capability table, shared CQ ring, real AArch64 SVC dispatch, EL0
+thread spawning, bounded IPI queues, `ShardLocal<T>`, and a typed
+`ShardMailbox<M>`. The present sitas smoke test therefore proves a meaningful
+slice of Option A/C/B: a no-std Rust userspace binary can allocate, spawn a
+shard, exercise `ShardedKv`, and report success from EL0.
+
+The review also exposed the line between "executable spike" and "OS ABI":
+
+1. **Caller identity is not yet authority.** Several EL0 syscalls accept an
+   ASID in `x0` and operate on that address space's completion table or spawn
+   into that address space. For a real ABI, the kernel must derive the caller's
+   address space from the running thread/trap context. User-supplied ASIDs are
+   acceptable only for kernel-side self-tests and bootstrapping diagnostics.
+2. **CQ delivery must become non-lossy.** The CQ ring currently increments an
+   overflow counter when full. The model requires the opposite contract:
+   completions are either delivered, retained in a kernel backlog, or explicit
+   backpressure is returned before submission. A terminal completion must never
+   be silently lost from the userspace-visible completion path.
+3. **Polling must return ownership/result data.** A syscall-level poll that
+   drains a completion but discards the result violates the completion-capability
+   contract. Poll and wait need a stable register/shared-memory result ABI.
+4. **Mailbox syscalls are not capability channels yet.** The kernel has a typed
+   bounded `ShardMailbox<M>`, but the exposed EL0 mailbox calls are still a
+   global `u64` smoke-test path. A real userspace channel needs a capability
+   naming the channel/receiver, not a transient receiver object constructed on
+   each syscall.
+5. **The sitas loader is still a flat-image harness.** `UserFlatImage` RWX pages
+   and fixed CQ/result/heap virtual addresses were the right way to get the
+   first binary running, but the next boundary is an ELF loader with segment
+   permissions, declared heap/stack metadata, and no global result-page ABI.
+6. **The reactor wait path is still polling.** The runtime model's core win is
+   one native wait primitive for timers, IPIs, and completions. Today the CQ
+   wait path still spins; the next implementation step is to make the CQ itself
+   observable and block the shard on CQ readiness.
+7. **Kernel cross-LP closures need a safer representation.** Returning an
+   arbitrary `FnOnce` closure on IPI queue backpressure via trait-object pointer
+   casts is too brittle for kernel code. The long-term typed mailbox path should
+   avoid this escape hatch or represent returned work without unsafe downcast
+   assumptions.
+
+Implementation should proceed in that order: make authority correct first,
+then make completion delivery non-lossy, then tighten the exposed channel and
+loader surfaces.

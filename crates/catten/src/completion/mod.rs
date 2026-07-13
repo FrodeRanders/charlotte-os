@@ -5,15 +5,14 @@
 //! the kernel side of the boundary directly on facilities that already exist:
 //!
 //! - [`IdTable`](crate::klib::collections::id_table::IdTable) backs a per-address-space
-//!   **capability table** mapping a small integer [`CompletionCap`] to a kernel
-//!   object naming an in-flight or completed operation;
-//! - the [`Observable`]/[`Observer`] mechanism (the same one `TimerEvent` and
-//!   thread-exit use) is how a completion signals the threads awaiting it — so
-//!   [`wait`] blocks exactly as [`sleep`](crate::cpu::scheduler::sleep) does,
-//!   registering the caller's `Waker` as an observer;
-//! - an owned `Vec<u8>` transferred on [`submit`] is retained by the kernel
-//!   until a terminal completion hands it back — the buffer-ownership /
-//!   deferred-reclaim contract mirrored from sitas's `io_uring` discipline.
+//!   **capability table** mapping a small integer [`CompletionCap`] to a kernel object naming an
+//!   in-flight or completed operation;
+//! - the [`Observable`]/[`Observer`] mechanism (the same one `TimerEvent` and thread-exit use) is
+//!   how a completion signals the threads awaiting it — so [`wait`] blocks exactly as
+//!   [`sleep`](crate::cpu::scheduler::sleep) does, registering the caller's `Waker` as an observer;
+//! - an owned `Vec<u8>` transferred on [`submit`] is retained by the kernel until a terminal
+//!   completion hands it back — the buffer-ownership / deferred-reclaim contract mirrored from
+//!   sitas's `io_uring` discipline.
 //!
 //! The [`cq`] submodule provides a shared-memory completion-queue ring (io_uring-
 //! style) for zero-syscall completion delivery to userspace.
@@ -29,17 +28,36 @@
 
 pub mod cq;
 
-use alloc::collections::BTreeMap;
-use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
+use alloc::{
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
+    sync::{
+        Arc,
+        Weak,
+    },
+    vec::Vec,
+};
 
 use concurrent_queue::ConcurrentQueue;
-use spin::{LazyLock, Mutex, RwLock};
+use spin::{
+    LazyLock,
+    Mutex,
+    RwLock,
+};
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::yield_lp;
-use crate::klib::observer::{Observable, Observer};
-use crate::memory::AddressSpaceId;
+use crate::{
+    cpu::scheduler::{
+        system_scheduler::SYSTEM_SCHEDULER,
+        yield_lp,
+    },
+    klib::observer::{
+        Observable,
+        Observer,
+    },
+    memory::AddressSpaceId,
+};
 
 /// A per-address-space handle naming an in-flight or completed async operation.
 ///
@@ -198,11 +216,13 @@ impl Completion {
             if inner.result.is_some() {
                 return;
             }
-            inner.result = Some(if inner.cancelling {
-                OpResult::Cancelled
-            } else {
-                result
-            });
+            inner.result = Some(
+                if inner.cancelling {
+                    OpResult::Cancelled
+                } else {
+                    result
+                },
+            );
         }
         self.signal();
     }
@@ -259,6 +279,10 @@ struct AsCompletions {
     /// Optional per-AS completion-queue ring (zero-syscall drain path).
     /// The allocation backing the ring is kept alive by `_cq_buf`.
     cq_ring: Option<*mut crate::completion::cq::CompletionQueueRing>,
+    /// CQ entries that could not fit in the shared ring yet. This preserves the
+    /// non-lossy completion contract: a full userspace ring delays delivery but
+    /// does not discard terminal completions.
+    pending_cq: VecDeque<(CompletionCap, OpResult)>,
     #[allow(dead_code)]
     _cq_buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
 }
@@ -286,6 +310,7 @@ pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
             capacity,
             live: 0,
             cq_ring: None,
+            pending_cq: VecDeque::new(),
             _cq_buf: None,
         },
     );
@@ -308,6 +333,7 @@ pub fn open_address_space_with_cq(
             capacity: cap_table_capacity,
             live: 0,
             cq_ring: Some(ring_ptr),
+            pending_cq: VecDeque::new(),
             _cq_buf: Some(alloc::boxed::Box::new(buf)),
         },
     );
@@ -323,9 +349,8 @@ pub fn open_address_space_with_cq_phys(
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
 ) {
-    let ring_ptr = unsafe {
-        crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries)
-    };
+    let ring_ptr =
+        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) };
     COMPLETIONS.write().insert(
         asid,
         AsCompletions {
@@ -333,6 +358,7 @@ pub fn open_address_space_with_cq_phys(
             capacity: cap_table_capacity,
             live: 0,
             cq_ring: Some(ring_ptr),
+            pending_cq: VecDeque::new(),
             _cq_buf: None,
         },
     );
@@ -349,13 +375,13 @@ pub fn close_address_space(asid: AddressSpaceId) {
     COMPLETIONS.write().remove(&asid);
 }
 
-pub fn completion_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<Arc<Completion>, CapError> {
+pub fn completion_of(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+) -> Result<Arc<Completion>, CapError> {
     let registry = COMPLETIONS.read();
     let as_completions = registry.get(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    let completion = as_completions
-        .table
-        .get(cap)
-        .map_err(|_| CapError::UnknownCap)?;
+    let completion = as_completions.table.get(cap).map_err(|_| CapError::UnknownCap)?;
     Ok(completion.clone())
 }
 
@@ -368,9 +394,7 @@ pub fn submit(
     buffer: Option<Vec<u8>>,
 ) -> Result<CompletionCap, SubmitError> {
     let mut registry = COMPLETIONS.write();
-    let as_completions = registry
-        .get_mut(&asid)
-        .ok_or(SubmitError::UnknownAddressSpace)?;
+    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
@@ -400,7 +424,11 @@ pub fn submit_worker(
     let tid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, worker_entry);
     // Register an exit-observer that completes the capability when the worker
     // exits, and keep the observer alive by storing it in the completion.
-    let observer = Arc::new(CompletionExitObserver { asid, cap, result });
+    let observer = Arc::new(CompletionExitObserver {
+        asid,
+        cap,
+        result,
+    });
     let _ = crate::cpu::scheduler::observe_thread_exit(
         tid,
         Arc::downgrade(&observer) as Weak<dyn Observer>,
@@ -414,20 +442,45 @@ pub fn submit_worker(
 /// Kernel-side completion hook: the worker/driver executing `cap`'s operation
 /// finished. Posts the terminal result, wakes any awaiting thread, and writes an
 /// entry to the AS's CQ ring if one is attached.
-pub fn complete(asid: AddressSpaceId, cap: CompletionCap, result: OpResult) -> Result<(), CapError> {
+pub fn complete(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    result: OpResult,
+) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
 
     // Publish the completion entry to the shared CQ ring *before* waking any
     // waiter. A userspace consumer that blocks in `wait` and then drains the
     // ring the moment it is woken must observe the entry, so the ring write has
     // to happen-before the wake, not after it.
-    if let Some(ring_ptr) = cq_ring_of(asid) {
-        unsafe { &mut *ring_ptr }.write(cap, result.clone());
+    {
+        let mut registry = COMPLETIONS.write();
+        if let Some(as_completions) = registry.get_mut(&asid) {
+            flush_pending_cq(as_completions);
+            if let Some(ring_ptr) = as_completions.cq_ring {
+                if !unsafe { &mut *ring_ptr }.write(cap, result.clone()) {
+                    as_completions.pending_cq.push_back((cap, result.clone()));
+                }
+            }
+        }
     }
 
     completion.complete(result);
 
     Ok(())
+}
+
+fn flush_pending_cq(as_completions: &mut AsCompletions) {
+    let Some(ring_ptr) = as_completions.cq_ring else {
+        return;
+    };
+    while let Some((cap, result)) = as_completions.pending_cq.front().cloned() {
+        if unsafe { &mut *ring_ptr }.write(cap, result) {
+            as_completions.pending_cq.pop_front();
+        } else {
+            break;
+        }
+    }
 }
 
 /// Non-blocking check: drains and returns the completion if it is terminal,
@@ -450,12 +503,8 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
         return Ok(());
     }
 
-    let tid = SYSTEM_SCHEDULER
-        .read()
-        .get_lp_scheduler()
-        .lock()
-        .get_tid()
-        .ok_or(CapError::UnknownCap)?;
+    let tid =
+        SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().ok_or(CapError::UnknownCap)?;
 
     SYSTEM_SCHEDULER
         .write()
@@ -489,10 +538,7 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     }
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    as_completions
-        .table
-        .remove_element(cap)
-        .map_err(|_| CapError::UnknownCap)?;
+    as_completions.table.remove_element(cap).map_err(|_| CapError::UnknownCap)?;
     as_completions.live = as_completions.live.saturating_sub(1);
     Ok(())
 }
@@ -519,8 +565,15 @@ pub fn holds_buffer(asid: AddressSpaceId, cap: CompletionCap) -> Result<bool, Ca
 /// Polls the CQ ring for `asid` and returns the number of pending entries.
 /// Returns 0 if no CQ ring is attached.
 pub fn cq_pending(asid: AddressSpaceId) -> u32 {
-    match cq_ring_of(asid) {
-        Some(ring_ptr) => unsafe { &*ring_ptr }.pending(),
+    let mut registry = COMPLETIONS.write();
+    match registry.get_mut(&asid) {
+        Some(as_completions) => {
+            flush_pending_cq(as_completions);
+            match as_completions.cq_ring {
+                Some(ring_ptr) => unsafe { &*ring_ptr }.pending(),
+                None => 0,
+            }
+        }
         None => 0,
     }
 }
@@ -538,11 +591,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, _min_complete: u32) {
     // Simple polling loop — not the final design. In production, the ring
     // head-write would signal an Observable that the blocked thread is
     // registered on, avoiding the sleep loop.
-    let tid = SYSTEM_SCHEDULER
-        .read()
-        .get_lp_scheduler()
-        .lock()
-        .get_tid();
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
     if tid.is_none() {
         return;
     }

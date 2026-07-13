@@ -17,16 +17,28 @@
 //! `SubmitError::WouldBlock` / `ShardSendError::Full` contract. The receiver
 //! drains entries one at a time via [`ShardReceiver::try_recv`].
 
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use alloc::{
+    sync::Arc,
+    vec::Vec,
+};
+use core::sync::atomic::{
+    AtomicBool,
+    AtomicU64,
+    Ordering,
+};
 
 use concurrent_queue::ConcurrentQueue;
 
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::multiprocessor::get_lp_count;
-use crate::cpu::multiprocessor::ipi;
+use crate::cpu::{
+    isa::lp::{
+        ops::get_lp_id,
+        LpId,
+    },
+    multiprocessor::{
+        get_lp_count,
+        ipi,
+    },
+};
 
 /// Default per-LP queue capacity.
 pub const DEFAULT_CAPACITY: usize = 256;
@@ -130,7 +142,9 @@ impl<M> ShardMailboxSet<M> {
                 sent: AtomicU64::new(0),
             }));
         }
-        Self { mailboxes }
+        Self {
+            mailboxes,
+        }
     }
 
     /// Returns a cloneable sender for `target_lp`. `target_lp` must be in range.
@@ -146,22 +160,34 @@ impl<M> ShardMailboxSet<M> {
         }
     }
 
+    /// Sends directly to `target_lp` without constructing a sender handle.
+    /// Returns the original message if the LP is invalid or its queue is full.
+    pub fn try_send_to(&self, target_lp: LpId, message: M) -> Result<(), M> {
+        let idx = target_lp as usize;
+        let Some(shared) = self.mailboxes.get(idx) else {
+            return Err(message);
+        };
+        if let Err(e) = shared.queue.push(message) {
+            return Err(e.into_inner());
+        }
+        ipi::send_ipi(shared.lp_id);
+        shared.sent.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+
     /// Takes the receiver for `lp`. Panics if `lp` is out of range or if a
     /// receiver was already taken for that LP.
     #[track_caller]
     pub fn receiver_for(&self, lp: LpId) -> ShardReceiver<M> {
         let idx = lp as usize;
-        assert!(
-            idx < self.mailboxes.len(),
-            "ShardMailboxSet::receiver_for: LP {lp} out of range"
-        );
+        assert!(idx < self.mailboxes.len(), "ShardMailboxSet::receiver_for: LP {lp} out of range");
         let shared = Arc::clone(&self.mailboxes[idx]);
         let prev = shared.receiver_taken.swap(true, Ordering::AcqRel);
-        assert!(
-            !prev,
-            "ShardMailboxSet::receiver_for: receiver for LP {lp} already taken",
-        );
-        ShardReceiver { shared, taken: true }
+        assert!(!prev, "ShardMailboxSet::receiver_for: receiver for LP {lp} already taken",);
+        ShardReceiver {
+            shared,
+            taken: true,
+        }
     }
 
     /// Takes the receiver for the **calling LP**. Convenience wrapper around
@@ -169,5 +195,13 @@ impl<M> ShardMailboxSet<M> {
     #[track_caller]
     pub fn receiver_for_current_lp(&self) -> ShardReceiver<M> {
         self.receiver_for(get_lp_id())
+    }
+
+    /// Receives one message for the calling LP without taking the durable
+    /// receiver handle. This exists for the current EL0 syscall smoke-test ABI;
+    /// a production userspace channel should expose receiver capabilities.
+    pub fn try_recv_for_current_lp(&self) -> Option<M> {
+        let idx = get_lp_id() as usize;
+        self.mailboxes.get(idx)?.queue.pop().ok()
     }
 }

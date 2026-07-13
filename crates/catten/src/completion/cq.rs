@@ -23,10 +23,18 @@
 //! address. For the self-test we drain from the kernel side; in production the
 //! consumer runs in userspace.
 
-use core::sync::atomic::{fence, Ordering};
+use core::sync::atomic::{
+    fence,
+    Ordering,
+};
 
-use crate::completion::{CompletionCap, OpResult};
-use crate::memory::physical::PAddr;
+use crate::{
+    completion::{
+        CompletionCap,
+        OpResult,
+    },
+    memory::physical::PAddr,
+};
 
 /// One completion entry in the ring (16 bytes).
 #[repr(C)]
@@ -50,9 +58,9 @@ pub struct CompletionQueueRing {
     pub tail: u32,
     /// Fixed number of entry slots.
     pub capacity: u32,
-    /// Cumulative count of completions dropped because the ring was full
-    /// (non-lossy: we only drop if `complete()` has nowhere to put the entry
-    /// AND the observer path is also unavailable — this is a debug counter).
+    /// Cumulative count of producer writes that found the shared ring full.
+    /// `completion::complete()` retains those entries in a kernel backlog and
+    /// retries later, so this is pressure telemetry, not a drop count.
     pub overflow: u32,
     /// Entry array. `capacity` entries, indexed modulo.
     pub entries: [CqEntry; 0],
@@ -102,14 +110,16 @@ impl CompletionQueueRing {
 
         // Zero the entire page first (clean HHDM memory).
         let byte_ptr: *mut u8 = frame.into();
-        for i in 0..page_size {
-            byte_ptr.add(i).write_volatile(0);
-        }
+        unsafe {
+            for i in 0..page_size {
+                byte_ptr.add(i).write_volatile(0);
+            }
 
-        (*ptr).head = 0;
-        (*ptr).tail = 0;
-        (*ptr).capacity = capacity;
-        (*ptr).overflow = 0;
+            (*ptr).head = 0;
+            (*ptr).tail = 0;
+            (*ptr).capacity = capacity;
+            (*ptr).overflow = 0;
+        }
 
         ptr
     }
@@ -132,31 +142,24 @@ impl CompletionQueueRing {
     }
 
     /// Kernel (producer) side: write one completion entry. If the ring is full,
-    /// the write is skipped and the overflow counter is incremented. Returns
-    /// `true` if the entry was posted.
+    /// the write is skipped and the overflow counter is incremented. The caller
+    /// is responsible for retaining the entry and retrying later.
     pub fn write(&mut self, cap: CompletionCap, result: OpResult) -> bool {
         let result_code = op_result_to_i64(result);
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
         let next = (h + 1) % self.capacity;
         if next == t {
-            // Ring is full — drop on the floor (non-lossy contract is enforced
-            // by the bounded IPI queue / observer path; this is a debug
-            // counter).
+            // Ring is full. The completion layer keeps the entry in its
+            // per-address-space backlog and retries on a later completion.
             self.overflow = self.overflow.wrapping_add(1);
             return false;
         }
 
         let entry_ptr = self.entry_ptr(h as usize);
         unsafe {
-            core::ptr::write_volatile(
-                &mut (*entry_ptr).cap,
-                cap as u64,
-            );
-            core::ptr::write_volatile(
-                &mut (*entry_ptr).result,
-                result_code,
-            );
+            core::ptr::write_volatile(&mut (*entry_ptr).cap, cap as u64);
+            core::ptr::write_volatile(&mut (*entry_ptr).result, result_code);
         }
         fence(Ordering::Release);
         unsafe { core::ptr::write_volatile(&mut self.head, next) };
@@ -177,7 +180,10 @@ impl CompletionQueueRing {
         let result = unsafe { core::ptr::read_volatile(&(*entry_ptr).result) };
         let next = (t + 1) % self.capacity;
         unsafe { core::ptr::write_volatile(&mut self.tail, next) };
-        Some(CqEntry { cap, result })
+        Some(CqEntry {
+            cap,
+            result,
+        })
     }
 
     fn entry_ptr(&self, idx: usize) -> *mut CqEntry {

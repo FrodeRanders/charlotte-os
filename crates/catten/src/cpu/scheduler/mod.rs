@@ -26,6 +26,13 @@ pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Threa
     tid
 }
 
+/// Returns the address-space id of the currently running thread, if execution
+/// is currently inside scheduler-managed thread context.
+pub fn current_thread_asid() -> Option<AddressSpaceId> {
+    let tid = system_scheduler::get_thread_id()?;
+    MASTER_THREAD_TABLE.read().get(tid).ok().map(|thread| thread.asid)
+}
+
 /// Unconditionally yields the current logical processor to the scheduler for a context switch.
 ///
 /// This can safely be called from anywhere including outside of thread context. However if it is

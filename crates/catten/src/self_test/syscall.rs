@@ -3,10 +3,20 @@
 //! Exercises every dispatch route by calling syscall_dispatch directly with a
 //! synthetic TrapFrame.
 
-use crate::completion::{self, OpCode, OpResult};
-use crate::cpu::isa::lp::LpId;
-use crate::logln;
-use crate::syscall::{self, call_no, TrapFrame};
+use crate::{
+    completion::{
+        self,
+        OpCode,
+        OpResult,
+    },
+    cpu::isa::lp::LpId,
+    logln,
+    syscall::{
+        self,
+        call_no,
+        TrapFrame,
+    },
+};
 
 fn synthetic_trap_frame(x0: u64, x1: u64, x2: u64, x3: u64) -> TrapFrame {
     let mut regs = [0u64; 19];
@@ -14,31 +24,58 @@ fn synthetic_trap_frame(x0: u64, x1: u64, x2: u64, x3: u64) -> TrapFrame {
     regs[1] = x1;
     regs[2] = x2;
     regs[3] = x3;
-    TrapFrame { regs, elr_el1: 0xDEADBEEF0000, spsr_el1: 0, sp_el0: 0, lp_id: 0 as LpId }
+    TrapFrame {
+        regs,
+        elr_el1: 0xdeadbeef0000,
+        spsr_el1: 0,
+        sp_el0: 0,
+        lp_id: 0 as LpId,
+    }
 }
 
 pub fn test_syscall_dispatch() {
     logln!("Testing syscall dispatch subsystem...");
-    let asid = 0xCAFE;
+    let asid = 0xcafe;
     completion::open_address_space(asid, 256);
 
     // LOG
-    { let mut f = synthetic_trap_frame(0xDEAD, 0xBEEF, 0, 0); syscall::syscall_dispatch(&mut f, call_no::LOG); }
+    {
+        let mut f = synthetic_trap_frame(0xdead, 0xbeef, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::LOG);
+    }
     // COMPLETION_SUBMIT
     let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
-    { let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0); syscall::syscall_dispatch(&mut f, call_no::COMPLETION_SUBMIT); }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_SUBMIT);
+    }
     // COMPLETION_COMPLETE
-    { let mut f = synthetic_trap_frame(asid as u64, cap as u64, 42, 0); syscall::syscall_dispatch(&mut f, call_no::COMPLETION_COMPLETE); }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, cap as u64, 42, 0);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_COMPLETE);
+    }
     // COMPLETION_POLL
-    { let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0); syscall::syscall_dispatch(&mut f, call_no::COMPLETION_POLL); }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_POLL);
+        assert_eq!(f.regs[0], 0, "poll should report completed");
+        assert_eq!(f.regs[1] as i64, 42, "poll should return result code");
+        assert_eq!(f.regs[2], 0, "poll should report no returned buffer");
+    }
     // Verify via direct API
     let done = completion::poll(asid, cap).unwrap();
     assert!(done.is_none(), "cap already drained by syscall dispatch");
     // CLOSE
-    { let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0); syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CLOSE); }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, cap as u64, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CLOSE);
+    }
     // CANCEL (on a fresh cap)
     let cap2 = completion::submit(asid, OpCode::Write, None).unwrap();
-    { let mut f = synthetic_trap_frame(asid as u64, cap2 as u64, 0, 0); syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CANCEL); }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, cap2 as u64, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CANCEL);
+    }
     completion::complete(asid, cap2, OpResult::Cancelled).unwrap();
     completion::close(asid, cap2).unwrap();
 
