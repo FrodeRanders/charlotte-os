@@ -28,8 +28,8 @@ use crate::{
             interface::interrupts::LocalIntCtlrIfce,
             interrupts::LocalIntCtlr,
             lp::{
-                ops::get_lp_id,
                 LpId,
+                ops::get_lp_id,
             },
             memory::tlb,
         },
@@ -40,9 +40,9 @@ use crate::{
         scheduler::system_scheduler::SYSTEM_SCHEDULER,
     },
     memory::{
-        linear::VAddr,
         AddressSpaceId,
         KERNEL_ASID,
+        linear::VAddr,
     },
 };
 

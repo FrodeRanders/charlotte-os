@@ -1,6 +1,8 @@
-use crate::environment::acpi::sdt::madt::GlobalSystemInterrupt;
-use crate::environment::acpi::sdt::madt::entry_types::MadtEntryType;
-use crate::environment::acpi::sdt::madt::interrupt_flags::InterruptFlags;
+use crate::environment::acpi::sdt::madt::{
+    GlobalSystemInterrupt,
+    entry_types::MadtEntryType,
+    interrupt_flags::InterruptFlags,
+};
 
 /// The MADT NMI Source Structure overlay struct.
 /// Ref: ACPI 6.6 Section 5.2.12.6

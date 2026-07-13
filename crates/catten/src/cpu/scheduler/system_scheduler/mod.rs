@@ -1,19 +1,39 @@
-use alloc::boxed::Box;
-use alloc::collections::btree_map::BTreeMap;
-use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    collections::btree_map::BTreeMap,
+    sync::{
+        Arc,
+        Weak,
+    },
+    vec::Vec,
+};
 
 use super::lp_schedulers::LpScheduler;
-use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interrupts::LocalIntCtlr;
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-use crate::cpu::multiprocessor::spin::rwlock::RwLock;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, ThreadId, ThreadState, waker};
-use crate::logln;
-use crate::memory::AddressSpaceId;
+use crate::{
+    cpu::{
+        isa::{
+            constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
+            interface::interrupts::LocalIntCtlrIfce,
+            interrupts::LocalIntCtlr,
+            lp::{
+                LpId,
+                ops::get_lp_id,
+            },
+        },
+        multiprocessor::spin::{
+            mutex::Mutex,
+            rwlock::RwLock,
+        },
+        scheduler::threads::{
+            MASTER_THREAD_TABLE,
+            ThreadId,
+            ThreadState,
+            waker,
+        },
+    },
+    logln,
+    memory::AddressSpaceId,
+};
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
@@ -150,10 +170,8 @@ impl SystemScheduler {
         // away) drops it later, once it is guaranteed off its stack. Staging it
         // on any other LP would risk freeing a stack still in use.
         let stage_lp = current_lp.unwrap_or_else(get_lp_id);
-        let thread = MASTER_THREAD_TABLE
-            .write()
-            .take_element(tid)
-            .map_err(|_| Error::InvalidThread)?;
+        let thread =
+            MASTER_THREAD_TABLE.write().take_element(tid).map_err(|_| Error::InvalidThread)?;
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);
         Ok(tid)
     }

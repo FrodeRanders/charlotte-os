@@ -24,8 +24,8 @@
 //! consumer runs in userspace.
 
 use core::sync::atomic::{
-    fence,
     Ordering,
+    fence,
 };
 
 use crate::{

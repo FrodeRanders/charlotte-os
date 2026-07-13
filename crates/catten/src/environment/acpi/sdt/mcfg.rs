@@ -1,11 +1,19 @@
 use alloc::vec::Vec;
 use core::ptr::read_unaligned;
 
-use crate::device_management::drivers::busses::pci_express::topology::PcieSegmentGroup;
-use crate::environment::acpi::{AcpiTableType, SdtHeader, TABLE_MAP};
-use crate::logln;
-use crate::memory::PAddr;
-use crate::memory::physical::PhysicalAddress;
+use crate::{
+    device_management::drivers::busses::pci_express::topology::PcieSegmentGroup,
+    environment::acpi::{
+        AcpiTableType,
+        SdtHeader,
+        TABLE_MAP,
+    },
+    logln,
+    memory::{
+        PAddr,
+        physical::PhysicalAddress,
+    },
+};
 
 const MCFG_HEADER_RESERVED_SIZE: usize = 8;
 const MCFG_HEADER_SIZE: usize = core::mem::size_of::<SdtHeader>() + MCFG_HEADER_RESERVED_SIZE;

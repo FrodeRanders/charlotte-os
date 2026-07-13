@@ -9,13 +9,21 @@
 //! [`init`] performs the standard 16550 initialization (disable interrupts,
 //! set 38400 8N1, enable FIFO). Output is dropped until `init` has run.
 
-use core::fmt::{self, Write};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+    fmt::{
+        self,
+        Write,
+    },
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 
 use spin::Mutex;
 
 /// COM1 base I/O port.
-const COM1: u16 = 0x3F8;
+const COM1: u16 = 0x3f8;
 
 /// Register offsets from the base port.
 const DATA: u16 = 0; // Data register (DLAB=0)
@@ -59,8 +67,8 @@ pub fn init() {
         outb(COM1 + DLL, 0x03); // divisor low  = 3 → 38400 baud
         outb(COM1 + DLH, 0x00); // divisor high = 0
         outb(COM1 + LCR, 0x03); // 8 bits, no parity, one stop bit; DLAB=0
-        outb(COM1 + FCR, 0xC7); // enable FIFO, clear, 14-byte threshold
-        outb(COM1 + MCR, 0x0B); // RTS/DSR set, OUT2 (IRQ enable line)
+        outb(COM1 + FCR, 0xc7); // enable FIFO, clear, 14-byte threshold
+        outb(COM1 + MCR, 0x0b); // RTS/DSR set, OUT2 (IRQ enable line)
     }
     READY.store(true, Ordering::Release);
 }

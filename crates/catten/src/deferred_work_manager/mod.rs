@@ -15,9 +15,16 @@
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread};
-use crate::memory::KERNEL_ASID;
+use crate::{
+    cpu::scheduler::{
+        system_scheduler::SYSTEM_SCHEDULER,
+        threads::{
+            MASTER_THREAD_TABLE,
+            Thread,
+        },
+    },
+    memory::KERNEL_ASID,
+};
 
 pub static DWM: LazyLock<DeferredWorkManager> = LazyLock::new(DeferredWorkManager::new);
 

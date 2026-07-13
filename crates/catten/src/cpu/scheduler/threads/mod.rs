@@ -1,20 +1,39 @@
 pub mod waker;
 
-use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
-use alloc::sync::{Arc, Weak};
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        Weak,
+    },
+    vec::Vec,
+};
 use core::mem::offset_of;
 
 use spin::LazyLock;
 
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::thread_context::ThreadContext;
-use crate::cpu::multiprocessor::spin::rwlock::RwLock;
-use crate::cpu::scheduler::threads::waker::Waker;
-use crate::klib::collections::id_table::IdTable;
-use crate::klib::observer::{Observable, Observer};
-use crate::memory::{AddressSpaceId, KERNEL_ASID};
+use crate::{
+    cpu::{
+        isa::lp::{
+            LpId,
+            thread_context::ThreadContext,
+        },
+        multiprocessor::spin::rwlock::RwLock,
+        scheduler::threads::waker::Waker,
+    },
+    klib::{
+        collections::id_table::IdTable,
+        observer::{
+            Observable,
+            Observer,
+        },
+    },
+    memory::{
+        AddressSpaceId,
+        KERNEL_ASID,
+    },
+};
 
 pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
     LazyLock::new(|| RwLock::new(ThreadTable::new()));
@@ -93,13 +112,15 @@ pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
 impl Thread {
     pub fn new(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Self {
         Thread {
-            context: Box::new(if asid != KERNEL_ASID {
-                ThreadContext::create_user_thread_context(asid, entry_point)
-                    .expect("Error creating user thread context")
-            } else {
-                ThreadContext::create_kernel_thread_context(entry_point)
-                    .expect("Error creating kernel thread context")
-            }),
+            context: Box::new(
+                if asid != KERNEL_ASID {
+                    ThreadContext::create_user_thread_context(asid, entry_point)
+                        .expect("Error creating user thread context")
+                } else {
+                    ThreadContext::create_kernel_thread_context(entry_point)
+                        .expect("Error creating kernel thread context")
+                },
+            ),
             asid,
             state: ThreadState::NeedsLpAssignment,
             exit_observers: spin::Mutex::new(Vec::new()),

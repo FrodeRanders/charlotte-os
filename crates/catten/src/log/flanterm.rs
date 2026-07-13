@@ -1,14 +1,24 @@
 use alloc::boxed::Box;
-use core::ffi::{c_char, c_void};
-use core::fmt::Write;
-use core::ptr::null_mut;
+use core::{
+    ffi::{
+        c_char,
+        c_void,
+    },
+    fmt::Write,
+    ptr::null_mut,
+};
 
 use flanterm_bindings::*;
 use spin::LazyLock;
 
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-use crate::environment::boot_protocol::limine::FRAMEBUFFER_REQUEST;
-use crate::log::chars::{FONT_HEIGHT, FONT_WIDTH};
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    environment::boot_protocol::limine::FRAMEBUFFER_REQUEST,
+    log::chars::{
+        FONT_HEIGHT,
+        FONT_WIDTH,
+    },
+};
 
 /// The framebuffer terminal console.
 ///
@@ -39,9 +49,7 @@ impl Write for FlantermConsole {
     }
 }
 
-pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| {
-    Mutex::new(init_console())
-});
+pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| Mutex::new(init_console()));
 
 /// Attempt to initialise the framebuffer terminal from the Limine framebuffer
 /// response. Returns a console with no backing context if there is no usable
@@ -49,13 +57,19 @@ pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| {
 /// address), or if `flanterm` itself fails to initialise.
 fn init_console() -> FlantermConsole {
     let Some(fb_res) = FRAMEBUFFER_REQUEST.response() else {
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     };
     let Some(fb) = fb_res.framebuffers().first() else {
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     };
     if fb.address().is_null() || fb.width == 0 || fb.height == 0 || fb.pitch == 0 {
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     }
     let ctx_mut = unsafe {
         flanterm_fb_init(
@@ -88,7 +102,9 @@ fn init_console() -> FlantermConsole {
         )
     };
     if ctx_mut.is_null() {
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     }
     FlantermConsole {
         ctx: Some(unsafe { Box::from_raw(ctx_mut) }),

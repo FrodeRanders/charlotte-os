@@ -1,9 +1,16 @@
 pub mod address;
 
-use crate::cpu::isa::memory::MemoryInterfaceImpl;
-use crate::cpu::isa::memory::address::paddr::PAddr;
-use crate::cpu::isa::memory::address::vaddr::VAddr;
-pub use crate::memory::linear::{MemoryMapping, PageType};
+use crate::cpu::isa::memory::{
+    MemoryInterfaceImpl,
+    address::{
+        paddr::PAddr,
+        vaddr::VAddr,
+    },
+};
+pub use crate::memory::linear::{
+    MemoryMapping,
+    PageType,
+};
 
 pub trait MemoryInterface {
     type VAddr: address::VirtualAddress;

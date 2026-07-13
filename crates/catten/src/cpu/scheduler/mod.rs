@@ -1,13 +1,29 @@
 use alloc::sync::Weak;
 use core::hint::unreachable_unchecked;
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
-use crate::klib::observer::{Observable as _, Observer};
-use crate::klib::time::duration::ExtDuration;
-use crate::logln;
-use crate::memory::AddressSpaceId;
-use crate::timers::{TIMER_QUEUES, TimerEvent};
+use crate::{
+    cpu::scheduler::{
+        system_scheduler::SYSTEM_SCHEDULER,
+        threads::{
+            MASTER_THREAD_TABLE,
+            Thread,
+            ThreadId,
+        },
+    },
+    klib::{
+        observer::{
+            Observable as _,
+            Observer,
+        },
+        time::duration::ExtDuration,
+    },
+    logln,
+    memory::AddressSpaceId,
+    timers::{
+        TIMER_QUEUES,
+        TimerEvent,
+    },
+};
 
 pub mod lp_schedulers;
 pub mod sync;

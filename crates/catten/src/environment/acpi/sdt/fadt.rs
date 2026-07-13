@@ -1,5 +1,7 @@
-use super::super::SdtHeader;
-use super::*;
+use super::{
+    super::SdtHeader,
+    *,
+};
 use crate::memory::PAddr;
 
 #[repr(C, packed)]

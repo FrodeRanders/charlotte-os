@@ -32,19 +32,25 @@
 //! generally assume that target system firmware appropriately conforms to the latest published ACPI
 //! specification.
 
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    format,
+    string::String,
+    vec::Vec,
+};
 use core::ptr::NonNull;
 
 use hashbrown::HashMap;
 use spin::LazyLock;
 
-use crate::cpu::isa::interface::memory::address::Address;
-use crate::environment::boot_protocol::limine::RSDP_REQUEST;
-use crate::logln;
-use crate::memory::PAddr;
-use crate::memory::physical::PhysicalAddress;
+use crate::{
+    cpu::isa::interface::memory::address::Address,
+    environment::boot_protocol::limine::RSDP_REQUEST,
+    logln,
+    memory::{
+        PAddr,
+        physical::PhysicalAddress,
+    },
+};
 
 pub mod aml;
 pub mod sdt;

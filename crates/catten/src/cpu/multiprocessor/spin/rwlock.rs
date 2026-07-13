@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicI64, Ordering};
+use core::sync::atomic::{
+    AtomicI64,
+    Ordering,
+};
 
 use lock_api::RawRwLock;
 

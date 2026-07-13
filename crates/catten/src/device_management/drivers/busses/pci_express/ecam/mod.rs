@@ -4,12 +4,25 @@ pub mod capabilities;
 pub mod headers;
 pub mod pcie;
 
-use crate::klib::size::mebibytes;
-use crate::logln;
-use crate::memory::allocators::memory::PageSize;
-use crate::memory::linear::MemoryMapping;
-use crate::memory::linear::address_map::{LA_MAP, LinearMemoryRegion, RegionType};
-use crate::memory::{AddressSpaceInterface, KERNEL_AS, PAddr, VAddr};
+use crate::{
+    klib::size::mebibytes,
+    logln,
+    memory::{
+        AddressSpaceInterface,
+        KERNEL_AS,
+        PAddr,
+        VAddr,
+        allocators::memory::PageSize,
+        linear::{
+            MemoryMapping,
+            address_map::{
+                LA_MAP,
+                LinearMemoryRegion,
+                RegionType,
+            },
+        },
+    },
+};
 
 const ECAM_SIZE: usize = mebibytes(256); /* Each PCIe segment group's ECAM occupies 256 MiB of address space */
 

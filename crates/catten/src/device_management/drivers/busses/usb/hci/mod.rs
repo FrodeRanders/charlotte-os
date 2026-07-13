@@ -1,8 +1,10 @@
 use alloc::sync::Arc;
 
-use crate::device_management::drivers::DeviceControlPlane;
-use crate::device_management::drivers::busses::BusControlPlane;
-use crate::device_management::drivers::endpoints::EndpointControlPlane;
+use crate::device_management::drivers::{
+    DeviceControlPlane,
+    busses::BusControlPlane,
+    endpoints::EndpointControlPlane,
+};
 
 pub mod xhci;
 

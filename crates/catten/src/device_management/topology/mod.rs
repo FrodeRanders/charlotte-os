@@ -1,10 +1,12 @@
 use spin::LazyLock;
 
-use crate::device_management::drivers::busses::pci_express::topology::{
-    PcieLocation,
-    PcieTopology,
+use crate::{
+    device_management::drivers::busses::pci_express::topology::{
+        PcieLocation,
+        PcieTopology,
+    },
+    environment::get_pcie_segment_groups,
 };
-use crate::environment::get_pcie_segment_groups;
 
 pub static DEVICE_TOPOLOGY: LazyLock<DeviceTopology> = LazyLock::new(DeviceTopology::new);
 

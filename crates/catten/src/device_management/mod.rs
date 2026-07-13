@@ -1,10 +1,14 @@
 //! # The Device Manager
 
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use alloc::{
+    sync::Arc,
+    vec::Vec,
+};
 
-use drivers::busses::*;
-use drivers::endpoints::*;
+use drivers::{
+    busses::*,
+    endpoints::*,
+};
 pub mod drivers;
 pub mod hw_interface;
 pub mod topology;

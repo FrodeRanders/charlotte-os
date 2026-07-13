@@ -1,16 +1,32 @@
 //! # Kernel Timer System
 
-use alloc::collections::vec_deque::VecDeque;
-use alloc::sync::Weak;
+use alloc::{
+    collections::vec_deque::VecDeque,
+    sync::Weak,
+};
 
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
-use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
-use crate::cpu::isa::timers::LpTimer;
-use crate::cpu::multiprocessor::spin::per_lp::PerLp;
-use crate::klib::observer::{Observable, Observer};
-use crate::klib::time::duration::ExtDuration;
+use crate::{
+    cpu::{
+        isa::{
+            interface::timers::{
+                LpTimerError,
+                LpTimerIfce,
+            },
+            timers::LpTimer,
+        },
+        multiprocessor::spin::per_lp::PerLp,
+    },
+    klib::{
+        observer::{
+            Observable,
+            Observer,
+        },
+        time::duration::ExtDuration,
+    },
+};
 
 pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
     LazyLock::new(|| PerLp::new(TimerQueue::default));
@@ -21,7 +37,7 @@ pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 /// can be set using either a duration or an absolute timestamp.
 #[derive(Debug)]
 pub struct TimerEvent {
-    deadline:  Timestamp,
+    deadline: Timestamp,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
 }
 

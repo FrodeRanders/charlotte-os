@@ -31,8 +31,8 @@ use concurrent_queue::ConcurrentQueue;
 
 use crate::cpu::{
     isa::lp::{
-        ops::get_lp_id,
         LpId,
+        ops::get_lp_id,
     },
     multiprocessor::{
         get_lp_count,

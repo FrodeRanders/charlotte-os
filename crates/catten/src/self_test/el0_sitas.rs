@@ -23,8 +23,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
-    linear::{MemoryMapping, PageType, VAddr},
-    ADDRESS_SPACE_TABLE, KERNEL_AS,
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
+    linear::{
+        MemoryMapping,
+        PageType,
+        VAddr,
+    },
 };
 
 // The binary is linked and mapped at 0x20000.
@@ -123,7 +128,10 @@ pub fn test_el0_sitas() {
         // I-cache invalidation for all freshly written code.
         unsafe {
             core::arch::asm!(
-                "dsb ishst", "ic ialluis", "dsb ish", "isb",
+                "dsb ishst",
+                "ic ialluis",
+                "dsb ish",
+                "isb",
                 options(nomem, nostack, preserves_flags),
             );
         }
@@ -149,7 +157,9 @@ pub fn test_el0_sitas() {
             .lock()
             .allocate_frame()
             .expect("[sitas] failed to allocate result frame");
-        unsafe { SITAS_RESULT_FRAME = Some(result_frame); }
+        unsafe {
+            SITAS_RESULT_FRAME = Some(result_frame);
+        }
         ADDRESS_SPACE_TABLE
             .lock()
             .get_mut(asid)
@@ -223,12 +233,15 @@ extern "C" fn verify_el0_sitas() {
                 "[sitas] SUCCESS: catten-user Rust binary ran at EL0, produced result {:#x}.",
                 sentinel
             );
-            loop { yield_lp(); }
+            loop {
+                yield_lp();
+            }
         }
         spins += 1;
         assert!(
             spins < 80_000_000,
-            "[sitas] FAILED: basic_kv_test did not post result (got {:#x})", sentinel,
+            "[sitas] FAILED: basic_kv_test did not post result (got {:#x})",
+            sentinel,
         );
         yield_lp();
     }

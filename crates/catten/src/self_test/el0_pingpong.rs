@@ -28,13 +28,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
     linear::{
         MemoryMapping,
         PageType,
         VAddr,
     },
-    ADDRESS_SPACE_TABLE,
-    KERNEL_AS,
 };
 
 #[cfg(target_arch = "aarch64")]
@@ -228,8 +228,8 @@ pub fn test_el0_ping_pong() {
             use crate::cpu::scheduler::{
                 system_scheduler::SYSTEM_SCHEDULER,
                 threads::{
-                    Thread,
                     MASTER_THREAD_TABLE,
+                    Thread,
                 },
             };
             let t = Thread::new(asid as crate::memory::AddressSpaceId, ping_entry);
@@ -241,8 +241,8 @@ pub fn test_el0_ping_pong() {
             use crate::cpu::scheduler::{
                 system_scheduler::SYSTEM_SCHEDULER,
                 threads::{
-                    Thread,
                     MASTER_THREAD_TABLE,
+                    Thread,
                 },
             };
             let t = Thread::new(asid as crate::memory::AddressSpaceId, pong_entry);

@@ -1,14 +1,18 @@
-use limine::request::{
-    ExecutableAddressRequest,
-    FramebufferRequest,
-    HhdmRequest,
-    MemmapRequest,
-    MpRequest,
-    RsdpRequest,
-    StackSizeRequest,
-    TscFrequencyRequest,
+use limine::{
+    BaseRevision,
+    RequestsEndMarker,
+    RequestsStartMarker,
+    request::{
+        ExecutableAddressRequest,
+        FramebufferRequest,
+        HhdmRequest,
+        MemmapRequest,
+        MpRequest,
+        RsdpRequest,
+        StackSizeRequest,
+        TscFrequencyRequest,
+    },
 };
-use limine::{BaseRevision, RequestsEndMarker, RequestsStartMarker};
 
 use crate::memory::allocators::memory::PageSize;
 

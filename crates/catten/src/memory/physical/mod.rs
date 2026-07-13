@@ -6,15 +6,28 @@
 use limine::memmap::MEMMAP_USABLE;
 pub use limine::request::MemmapResponse;
 
-pub use crate::cpu::isa::interface::memory::MemoryInterface;
-use crate::cpu::isa::interface::memory::address::Address;
-pub use crate::cpu::isa::interface::memory::address::PhysicalAddress;
-pub use crate::cpu::isa::memory::MemoryInterfaceImpl;
-pub use crate::cpu::isa::memory::address::paddr::{PAddr, PAddrError};
-use crate::early_logln;
-use crate::klib::constants::BITS_PER_BYTE;
-use crate::klib::size::kibibytes;
-use crate::memory::allocators::memory::PageSize;
+pub use crate::cpu::isa::{
+    interface::memory::{
+        MemoryInterface,
+        address::PhysicalAddress,
+    },
+    memory::{
+        MemoryInterfaceImpl,
+        address::paddr::{
+            PAddr,
+            PAddrError,
+        },
+    },
+};
+use crate::{
+    cpu::isa::interface::memory::address::Address,
+    early_logln,
+    klib::{
+        constants::BITS_PER_BYTE,
+        size::kibibytes,
+    },
+    memory::allocators::memory::PageSize,
+};
 
 /// Page frames are 4 KiB in size on all supported architectures.
 const PAGE_FRAME_SIZE: usize = kibibytes(4);

@@ -1,9 +1,16 @@
 #[cfg(target_arch = "x86_64")]
 use limine::mp::MP_FLAG_X2APIC;
-use spin::{LazyLock, RwLock};
+use spin::{
+    LazyLock,
+    RwLock,
+};
 
-use crate::environment::boot_protocol::limine::MP_REQUEST;
-use crate::{ap_main, early_logln, logln};
+use crate::{
+    ap_main,
+    early_logln,
+    environment::boot_protocol::limine::MP_REQUEST,
+    logln,
+};
 
 pub(super) static LP_COUNT: LazyLock<RwLock<u32>> = LazyLock::new(|| {
     RwLock::new({
@@ -45,7 +52,10 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
     }
 }
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{
+    AtomicU32,
+    Ordering,
+};
 
 use crate::cpu::isa::lp::ops::*;
 

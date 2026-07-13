@@ -1,7 +1,9 @@
 pub mod address_map;
 
-pub use crate::cpu::isa::memory::address::paddr::PAddr;
-pub use crate::cpu::isa::memory::address::vaddr::VAddr;
+pub use crate::cpu::isa::memory::address::{
+    paddr::PAddr,
+    vaddr::VAddr,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {

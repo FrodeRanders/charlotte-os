@@ -1,6 +1,10 @@
-use crate::environment::acpi::sdt::madt::GlobalSystemInterrupt;
-use crate::environment::acpi::sdt::madt::entry_types::MadtEntryType;
-use crate::memory::PAddr;
+use crate::{
+    environment::acpi::sdt::madt::{
+        GlobalSystemInterrupt,
+        entry_types::MadtEntryType,
+    },
+    memory::PAddr,
+};
 
 type IoApicId = u8;
 

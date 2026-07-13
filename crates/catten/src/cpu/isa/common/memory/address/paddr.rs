@@ -1,8 +1,20 @@
-use core::ops::{Add, AddAssign, Sub};
+use core::ops::{
+    Add,
+    AddAssign,
+    Sub,
+};
 
-use crate::cpu::isa::interface::memory::address::{Address, PhysicalAddress, VirtualAddress};
-use crate::cpu::isa::memory::address::PADDR_MASK;
-use crate::memory::HHDM_BASE;
+use crate::{
+    cpu::isa::{
+        interface::memory::address::{
+            Address,
+            PhysicalAddress,
+            VirtualAddress,
+        },
+        memory::address::PADDR_MASK,
+    },
+    memory::HHDM_BASE,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum PAddrError {

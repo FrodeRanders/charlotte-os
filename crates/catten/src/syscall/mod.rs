@@ -26,8 +26,8 @@ use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
         lp::{
-            ops::get_lp_id,
             LpId,
+            ops::get_lp_id,
         },
     },
     memory::AddressSpaceId,
@@ -240,8 +240,8 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     use crate::cpu::scheduler::{
         system_scheduler::SYSTEM_SCHEDULER,
         threads::{
-            Thread,
             MASTER_THREAD_TABLE,
+            Thread,
         },
     };
     let asid = caller_asid(frame);
@@ -465,8 +465,8 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             time::duration::ExtDuration,
         },
         timers::{
-            TimerEvent,
             TIMER_QUEUES,
+            TimerEvent,
         },
     };
 

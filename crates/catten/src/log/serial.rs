@@ -16,13 +16,23 @@
 //!
 //! See the ARM PrimeCell UART (PL011) Technical Reference Manual (ARM DDI 0183).
 
-use core::fmt::{self, Write};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+    fmt::{
+        self,
+        Write,
+    },
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 
 use spin::Mutex;
 
-use crate::cpu::isa::memory::address::paddr::PAddr;
-use crate::cpu::isa::interface::memory::address::PhysicalAddress;
+use crate::cpu::isa::{
+    interface::memory::address::PhysicalAddress,
+    memory::address::paddr::PAddr,
+};
 
 /// QEMU `virt` PL011 UART0 MMIO physical base address.
 const PL011_BASE: usize = 0x0900_0000;
@@ -44,8 +54,10 @@ pub static SERIAL: Mutex<Pl011> = Mutex::new(Pl011);
 /// call more than once (subsequent calls are no-ops). Until it has run, output
 /// is silently dropped rather than faulting on the unmapped MMIO page.
 pub fn init() {
-    use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-    use crate::memory::KERNEL_AS;
+    use crate::{
+        cpu::isa::interface::memory::AddressSpaceInterface,
+        memory::KERNEL_AS,
+    };
     KERNEL_AS
         .lock()
         .map_mmio_region(PL011_BASE, 0x1000)

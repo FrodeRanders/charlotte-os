@@ -1,12 +1,24 @@
 //! # National Semiconductor 16x50 Series Compatible UART Driver
 
 use alloc::vec::Vec;
-use core::fmt::{self, Write};
-use core::result::Result;
+use core::{
+    fmt::{
+        self,
+        Write,
+    },
+    result::Result,
+};
 
-use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
-use crate::cpu::isa::io::IoReg8;
-use crate::klib::io::Read;
+use crate::{
+    cpu::isa::{
+        interface::io::{
+            IReg8Ifce,
+            OReg8Ifce,
+        },
+        io::IoReg8,
+    },
+    klib::io::Read,
+};
 
 pub struct Ns16x50Driver {
     ports: Vec<Ns16x50>,

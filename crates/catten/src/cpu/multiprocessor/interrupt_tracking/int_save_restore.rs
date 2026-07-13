@@ -1,11 +1,23 @@
-use alloc::vec;
-use alloc::vec::Vec;
-use core::sync::atomic::{AtomicBool, Ordering};
+use alloc::{
+    vec,
+    vec::Vec,
+};
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
 use spin::LazyLock;
 
-use crate::cpu::isa::lp::ops::{get_int_state, get_lp_id, mask_interrupts, unmask_interrupts};
-use crate::cpu::multiprocessor::get_lp_count;
+use crate::cpu::{
+    isa::lp::ops::{
+        get_int_state,
+        get_lp_id,
+        mask_interrupts,
+        unmask_interrupts,
+    },
+    multiprocessor::get_lp_count,
+};
 
 pub static INT_STATE: LazyLock<IntState> = LazyLock::new(|| IntState::new());
 

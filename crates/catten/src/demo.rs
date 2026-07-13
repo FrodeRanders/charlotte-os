@@ -3,18 +3,36 @@
 //! Exercises the async-syscall ABI (exit-observer completion) and cross-LP
 //! messaging via ShardMailbox when multiple LPs are available.
 
-use crate::completion::{self, OpResult};
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::multiprocessor::shard_mailbox;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadId};
-use crate::cpu::scheduler::{sleep, spawn_thread};
-use crate::klib::time::duration::ExtDuration;
-use crate::logln;
-use crate::memory::{AddressSpaceId, KERNEL_ASID};
 use spin::LazyLock;
 
-const DEMO_ASID: AddressSpaceId = 0xA0C_D000;
+use crate::{
+    completion::{
+        self,
+        OpResult,
+    },
+    cpu::{
+        isa::lp::ops::get_lp_id,
+        multiprocessor::shard_mailbox,
+        scheduler::{
+            sleep,
+            spawn_thread,
+            system_scheduler::SYSTEM_SCHEDULER,
+            threads::{
+                MASTER_THREAD_TABLE,
+                Thread,
+                ThreadId,
+            },
+        },
+    },
+    klib::time::duration::ExtDuration,
+    logln,
+    memory::{
+        AddressSpaceId,
+        KERNEL_ASID,
+    },
+};
+
+const DEMO_ASID: AddressSpaceId = 0xa0c_d000;
 static XLP_MAILBOX: LazyLock<shard_mailbox::ShardMailboxSet<u64>> =
     LazyLock::new(|| shard_mailbox::ShardMailboxSet::new(shard_mailbox::DEFAULT_CAPACITY));
 
@@ -40,7 +58,10 @@ extern "C" fn async_syscall_coordinator() {
 
     let cap = match completion::submit_worker(DEMO_ASID, async_syscall_worker, OpResult::Ok(42)) {
         Ok(cap) => cap,
-        Err(_) => { logln!("[async] submit_worker failed"); return; }
+        Err(_) => {
+            logln!("[async] submit_worker failed");
+            return;
+        }
     };
     logln!("[async] coordinator: submitted worker, awaiting completion...");
     let _ = completion::wait(DEMO_ASID, cap);
@@ -84,10 +105,7 @@ extern "C" fn cross_lp_demo() {
     // ...and a single sender on LP0 that fans a distinct message out to every LP
     // (including LP0 itself, exercising both cross-LP and self-LP delivery).
     spawn_thread_on_lp(xlp_sender, 0);
-    logln!(
-        "[xLP] coordinator: spawned {} receivers (one per LP) and a sender on LP0",
-        lp_count
-    );
+    logln!("[xLP] coordinator: spawned {} receivers (one per LP) and a sender on LP0", lp_count);
 }
 
 #[unsafe(no_mangle)]
@@ -121,7 +139,9 @@ extern "C" fn xlp_receiver() {
             } else {
                 logln!(
                     "[xLP] receiver on LP{}: received {}, expected {} (MISMATCH)",
-                    my_lp, msg, expected
+                    my_lp,
+                    msg,
+                    expected
                 );
             }
             return;

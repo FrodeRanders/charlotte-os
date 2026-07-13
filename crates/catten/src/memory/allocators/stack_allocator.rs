@@ -11,18 +11,41 @@
 //! happened.
 
 use alloc::collections::BTreeMap;
-use core::ops::Bound::{Excluded, Unbounded};
+use core::ops::Bound::{
+    Excluded,
+    Unbounded,
+};
 
-use spin::{LazyLock, Mutex, RwLock};
+use spin::{
+    LazyLock,
+    Mutex,
+    RwLock,
+};
 
 use super::memory;
-use crate::cpu::isa::lp::ops::{get_int_state, mask_interrupts, unmask_interrupts};
-use crate::cpu::isa::memory::{MemoryInterface, MemoryInterfaceImpl};
-use crate::logln;
-use crate::memory::allocators::memory::PageSize;
-use crate::memory::linear::VAddr;
-use crate::memory::linear::address_map::LA_MAP;
-use crate::memory::{AddressSpaceInterface, KERNEL_AS};
+use crate::{
+    cpu::isa::{
+        lp::ops::{
+            get_int_state,
+            mask_interrupts,
+            unmask_interrupts,
+        },
+        memory::{
+            MemoryInterface,
+            MemoryInterfaceImpl,
+        },
+    },
+    logln,
+    memory::{
+        AddressSpaceInterface,
+        KERNEL_AS,
+        allocators::memory::PageSize,
+        linear::{
+            VAddr,
+            address_map::LA_MAP,
+        },
+    },
+};
 
 /// Reference-counted set of kernel stack guard-page addresses.
 ///

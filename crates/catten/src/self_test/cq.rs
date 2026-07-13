@@ -3,9 +3,16 @@
 //! Validates the kernel-side producer logic: write completions, read/drain
 //! them, overflow detection, and pending count correctness.
 
-use crate::completion::cq::{self, op_result_to_i64};
-use crate::completion::OpResult;
-use crate::logln;
+use crate::{
+    completion::{
+        OpResult,
+        cq::{
+            self,
+            op_result_to_i64,
+        },
+    },
+    logln,
+};
 
 pub fn test_cq_ring() {
     logln!("Testing completion-queue ring...");

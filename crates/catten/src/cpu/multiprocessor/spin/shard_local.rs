@@ -9,11 +9,11 @@
 //! **`ShardLocal<T>`** stores each slot in an `UnsafeCell<T>` and only exposes
 //! `&mut T` through a synchronous closure, with two runtime assertions:
 //!
-//! 1. **Owner check** — the caller must be on the LP that owns this slot
-//!    (panics otherwise; `try_with` returns `NotOnOwner`).
-//! 2. **Re-entrancy guard** — a per-LP borrow flag is set on entry and cleared
-//!    on exit (RAII `BorrowGuard`), preventing two concurrent `&mut T` handles
-//!    to the same LP's slot (panics; `try_with` returns `AlreadyBorrowed`).
+//! 1. **Owner check** — the caller must be on the LP that owns this slot (panics otherwise;
+//!    `try_with` returns `NotOnOwner`).
+//! 2. **Re-entrancy guard** — a per-LP borrow flag is set on entry and cleared on exit (RAII
+//!    `BorrowGuard`), preventing two concurrent `&mut T` handles to the same LP's slot (panics;
+//!    `try_with` returns `AlreadyBorrowed`).
 //!
 //! The contract mirrors sitas's `ShardLocal<T>`: access is synchronous,
 //! non-blocking (no spin-lock acquire), and the reference never crosses the
@@ -30,15 +30,25 @@
 //! | Contention cost | CAS loop on every access | `AtomicBool` swap + assertion |
 //! | Use case | Data touched from ISR or cross-LP | Single-LP, thread-local-only data |
 
-use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, Ordering};
+use alloc::{
+    boxed::Box,
+    vec::Vec,
+};
+use core::{
+    cell::UnsafeCell,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::multiprocessor::get_lp_count;
+use crate::cpu::{
+    isa::lp::{
+        LpId,
+        ops::get_lp_id,
+    },
+    multiprocessor::get_lp_count,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ShardLocalAccessError {
@@ -66,9 +76,7 @@ unsafe impl<T: Send> Sync for ShardLocal<T> {}
 // Manual Debug since UnsafeCell isn't Debug + we don't want to print T.
 impl<T> core::fmt::Debug for ShardLocal<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("ShardLocal")
-            .field("lp_count", &self.cells.len())
-            .finish()
+        f.debug_struct("ShardLocal").field("lp_count", &self.cells.len()).finish()
     }
 }
 
@@ -113,7 +121,9 @@ impl<T> ShardLocal<T> {
         if flag.swap(true, Ordering::AcqRel) {
             return Err(ShardLocalAccessError::AlreadyBorrowed);
         }
-        let _guard = BorrowGuard { flag };
+        let _guard = BorrowGuard {
+            flag,
+        };
         // Safety: we are on the owning LP, the borrow flag is set so no other
         // code on this LP can enter `with`/`try_with`, and cross-LP mutation is
         // forbidden by construction (no nonlocal accessor).
@@ -146,7 +156,9 @@ impl<T> ShardLocal<T> {
         if flag.swap(true, Ordering::AcqRel) {
             return Err(ShardLocalAccessError::AlreadyBorrowed);
         }
-        let _guard = BorrowGuard { flag };
+        let _guard = BorrowGuard {
+            flag,
+        };
         let value = unsafe { &mut *self.cells[idx].get() };
         Ok(f(value))
     }

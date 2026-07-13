@@ -1,8 +1,19 @@
-use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-use crate::logln;
-use crate::memory::linear::{MemoryMapping, PageType, VAddr};
-use crate::memory::physical::*;
-use crate::memory::{AddressSpace, KERNEL_AS, PHYSICAL_FRAME_ALLOCATOR, physical};
+use crate::{
+    cpu::isa::interface::memory::AddressSpaceInterface,
+    logln,
+    memory::{
+        AddressSpace,
+        KERNEL_AS,
+        PHYSICAL_FRAME_ALLOCATOR,
+        linear::{
+            MemoryMapping,
+            PageType,
+            VAddr,
+        },
+        physical,
+        physical::*,
+    },
+};
 
 #[derive(Debug)]
 pub enum Error {

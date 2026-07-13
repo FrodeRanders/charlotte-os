@@ -1,5 +1,7 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    vec::Vec,
+};
 
 pub fn make_boxed_slice<T, F: Fn() -> T>(count: usize, generator: F) -> Box<[T]> {
     let mut v = Vec::<T>::new();

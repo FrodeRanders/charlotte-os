@@ -1,6 +1,8 @@
-use crate::cpu::isa::interface::memory::address::PhysicalAddress;
-use crate::logln;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
+use crate::{
+    cpu::isa::interface::memory::address::PhysicalAddress,
+    logln,
+    memory::PHYSICAL_FRAME_ALLOCATOR,
+};
 
 pub fn test_pmem() {
     logln!("Starting physical memory subsystem tests...");

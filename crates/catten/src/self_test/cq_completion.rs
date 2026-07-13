@@ -4,13 +4,19 @@
 //! CQ ring, submit a capability, complete it (writes to the ring), and verify
 //! the ring entry appears with correct values.
 
-use crate::completion::{self, OpCode, OpResult};
-use crate::logln;
+use crate::{
+    completion::{
+        self,
+        OpCode,
+        OpResult,
+    },
+    logln,
+};
 
 pub fn test_cq_ring_in_completion() {
     logln!("Testing CQ ring integration with completion subsystem...");
 
-    let asid = 0xC0FFEE;
+    let asid = 0xc0ffee;
     // Open an AS with a capability table (capacity 16) and a CQ ring (32 slots).
     completion::open_address_space_with_cq(asid, 16, 32);
 
@@ -27,14 +33,10 @@ pub fn test_cq_ring_in_completion() {
     assert_eq!(completion::cq_pending(asid), 1);
 
     // Drain the ring entry and verify it.
-    let ring_ptr = completion::cq_ring_of(asid)
-        .expect("CQ ring must exist");
+    let ring_ptr = completion::cq_ring_of(asid).expect("CQ ring must exist");
     let entry = unsafe { &mut *ring_ptr }.read().expect("first entry must be present");
     assert_eq!(entry.cap, cap as u64);
-    assert_eq!(
-        entry.result,
-        crate::completion::cq::op_result_to_i64(OpResult::Ok(4))
-    );
+    assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(4)));
 
     assert_eq!(completion::cq_pending(asid), 0);
 
@@ -56,10 +58,7 @@ pub fn test_cq_ring_in_completion() {
 
     let e2 = ring.read().unwrap();
     assert_eq!(e2.cap, c2 as u64);
-    assert_eq!(
-        e2.result,
-        crate::completion::cq::op_result_to_i64(OpResult::Cancelled)
-    );
+    assert_eq!(e2.result, crate::completion::cq::op_result_to_i64(OpResult::Cancelled));
 
     let e3 = ring.read().unwrap();
     assert_eq!(e3.cap, c3 as u64);

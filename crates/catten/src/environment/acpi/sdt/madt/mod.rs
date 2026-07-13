@@ -6,10 +6,14 @@ mod interrupt_flags;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::environment::acpi::SdtHeader;
-use crate::environment::acpi::sdt::madt::entry_types::MadtEntryType;
-use crate::memory::VAddr;
+use crate::{
+    cpu::isa::interface::memory::address::VirtualAddress,
+    environment::acpi::{
+        SdtHeader,
+        sdt::madt::entry_types::MadtEntryType,
+    },
+    memory::VAddr,
+};
 
 type GlobalSystemInterrupt = u32;
 

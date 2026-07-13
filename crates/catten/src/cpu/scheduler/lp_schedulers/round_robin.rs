@@ -1,17 +1,47 @@
-use alloc::collections::vec_deque::VecDeque;
-use alloc::sync::Arc;
+use alloc::{
+    collections::vec_deque::VecDeque,
+    sync::Arc,
+};
 use core::sync::atomic::Ordering;
 
 use hashbrown::HashMap;
 
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::lp_schedulers::{Error, LpScheduler};
-use crate::cpu::scheduler::threads::{MASTER_THREAD_TABLE, Thread, ThreadCount, ThreadId, ThreadState};
-use crate::klib::observer::{Observable, Observer};
-use crate::klib::time::duration::ExtDuration;
-use crate::memory::{AddressSpaceId, KERNEL_ASID};
-use crate::timers::{TIMER_QUEUES, TimerEvent};
+use crate::{
+    cpu::{
+        isa::{
+            lp::LpId,
+            memory::paging::HwAsid,
+        },
+        scheduler::{
+            lp_schedulers::{
+                Error,
+                LpScheduler,
+            },
+            threads::{
+                MASTER_THREAD_TABLE,
+                Thread,
+                ThreadCount,
+                ThreadId,
+                ThreadState,
+            },
+        },
+    },
+    klib::{
+        observer::{
+            Observable,
+            Observer,
+        },
+        time::duration::ExtDuration,
+    },
+    memory::{
+        AddressSpaceId,
+        KERNEL_ASID,
+    },
+    timers::{
+        TIMER_QUEUES,
+        TimerEvent,
+    },
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ThreadHandle(ThreadId);
@@ -223,8 +253,12 @@ impl LpScheduler for RoundRobin {
 
     fn thread_count(&self) -> ThreadCount {
         // The idle thread is not real work and must not skew load balancing.
-        let current_is_real =
-            matches!(self.current_handle, Some(h) if h.0 != self.idle_tid);
-        self.run_queue.len() + if current_is_real { 1 } else { 0 }
+        let current_is_real = matches!(self.current_handle, Some(h) if h.0 != self.idle_tid);
+        self.run_queue.len()
+            + if current_is_real {
+                1
+            } else {
+                0
+            }
     }
 }

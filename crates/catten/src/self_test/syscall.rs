@@ -16,8 +16,8 @@ use crate::{
     logln,
     syscall::{
         self,
-        call_no,
         TrapFrame,
+        call_no,
     },
 };
 

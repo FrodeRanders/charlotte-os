@@ -6,11 +6,11 @@
 //! stored in a file.
 //!
 //! Output backends:
-//! - On AArch64 a PL011 UART serial console ([`serial`]) is always available,
-//!   including as an early console before the rest of the system is up, since
-//!   Limine maps the platform MMIO into the HHDM from the first instruction.
-//! - When the `display` feature is enabled a framebuffer terminal
-//!   ([`flanterm`]) is used for the ordinary `log!`/`logln!` macros.
+//! - On AArch64 a PL011 UART serial console ([`serial`]) is always available, including as an early
+//!   console before the rest of the system is up, since Limine maps the platform MMIO into the HHDM
+//!   from the first instruction.
+//! - When the `display` feature is enabled a framebuffer terminal ([`flanterm`]) is used for the
+//!   ordinary `log!`/`logln!` macros.
 
 #[cfg(feature = "display")]
 mod chars;
@@ -79,10 +79,9 @@ macro_rules! early_logln {
 /// Write already-formatted log output to the active console backend.
 ///
 /// Backend selection:
-/// - With the `display` feature, output goes to the framebuffer terminal when a
-///   usable framebuffer is present. On AArch64, if the framebuffer terminal is
-///   unavailable (no framebuffer from the bootloader), output falls back to the
-///   PL011 serial console so logs are never silently lost.
+/// - With the `display` feature, output goes to the framebuffer terminal when a usable framebuffer
+///   is present. On AArch64, if the framebuffer terminal is unavailable (no framebuffer from the
+///   bootloader), output falls back to the PL011 serial console so logs are never silently lost.
 /// - Without the `display` feature, AArch64 uses the serial console.
 #[doc(hidden)]
 pub fn _write_args(args: core::fmt::Arguments, newline: bool) {

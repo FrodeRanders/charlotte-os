@@ -1,8 +1,15 @@
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
 use lock_api::RawMutex;
 
-use crate::cpu::isa::lp::ops::{get_int_state, mask_interrupts, unmask_interrupts};
+use crate::cpu::isa::lp::ops::{
+    get_int_state,
+    mask_interrupts,
+    unmask_interrupts,
+};
 
 pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 

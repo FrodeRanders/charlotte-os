@@ -1,11 +1,25 @@
 use alloc::sync::Weak;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
 use concurrent_queue::ConcurrentQueue;
-use lock_api::{GuardNoSend, RawMutex};
+use lock_api::{
+    GuardNoSend,
+    RawMutex,
+};
 
-use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, get_thread_id};
-use crate::klib::observer::{Observable, Observer};
+use crate::{
+    cpu::scheduler::system_scheduler::{
+        SYSTEM_SCHEDULER,
+        get_thread_id,
+    },
+    klib::observer::{
+        Observable,
+        Observer,
+    },
+};
 
 pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 

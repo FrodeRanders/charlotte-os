@@ -1,9 +1,21 @@
-use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::memory::paging::AddressSpace;
-use crate::logln;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-use crate::memory::linear::{MemoryMapping, PageType, VAddr};
+use crate::{
+    cpu::isa::{
+        interface::memory::{
+            AddressSpaceInterface,
+            address::VirtualAddress,
+        },
+        memory::paging::AddressSpace,
+    },
+    logln,
+    memory::{
+        PHYSICAL_FRAME_ALLOCATOR,
+        linear::{
+            MemoryMapping,
+            PageType,
+            VAddr,
+        },
+    },
+};
 
 pub fn test_vmem() {
     // Raw heap-debug probe of a fixed x86-64 HHDM address; skipped elsewhere.

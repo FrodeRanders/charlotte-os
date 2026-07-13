@@ -2,11 +2,13 @@ pub mod aer;
 pub mod rsbar;
 
 use super::*;
-use crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::{
-    PciCapabilityId,
-    find_capability,
+use crate::{
+    device_management::drivers::busses::pci_express::ecam::capabilities::standard::{
+        PciCapabilityId,
+        find_capability,
+    },
+    klib::bitwise::mask_shift_read,
 };
-use crate::klib::bitwise::mask_shift_read;
 
 /// This is the offset where the extended capability range starts in the PCI Express extended
 /// configuration space.

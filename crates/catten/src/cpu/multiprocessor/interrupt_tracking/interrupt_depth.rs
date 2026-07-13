@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicU16, Ordering};
+use core::sync::atomic::{
+    AtomicU16,
+    Ordering,
+};
 
 use ::spin::LazyLock;
 

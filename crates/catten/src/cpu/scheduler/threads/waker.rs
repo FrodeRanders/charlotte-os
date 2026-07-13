@@ -1,8 +1,12 @@
 use alloc::sync::Arc;
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::ThreadId;
-use crate::logln;
+use crate::{
+    cpu::scheduler::{
+        system_scheduler::SYSTEM_SCHEDULER,
+        threads::ThreadId,
+    },
+    logln,
+};
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Waker(ThreadId);

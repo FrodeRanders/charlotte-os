@@ -1,16 +1,27 @@
 //! # Initialization Module
 use alloc::boxed::Box;
 
-use crate::cpu::isa::init::IsaInitializer;
-use crate::cpu::isa::interface::init::InitInterface;
-use crate::cpu::isa::lp;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::klib::time::duration::ExtDuration;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-use crate::memory::allocators::global_allocator::init_primary_allocator;
-use crate::{early_logln, logln};
+use crate::{
+    cpu::{
+        isa::{
+            init::IsaInitializer,
+            interface::init::InitInterface,
+            lp,
+            lp::ops::get_lp_id,
+        },
+        scheduler::{
+            lp_schedulers::round_robin::RoundRobin,
+            system_scheduler::SYSTEM_SCHEDULER,
+        },
+    },
+    early_logln,
+    klib::time::duration::ExtDuration,
+    logln,
+    memory::{
+        PHYSICAL_FRAME_ALLOCATOR,
+        allocators::global_allocator::init_primary_allocator,
+    },
+};
 
 pub fn bsp_init() {
     early_logln!("LP 0: Performing ISA specific initialization...");

@@ -2,12 +2,12 @@
 //! kernel's syscall dispatch → return path *and* its side effects.
 //!
 //! This is the first real-EL0 exercise in the kernel. It:
-//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ
-//!    ring page, and a writable result page.
+//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ ring page, and a
+//!    writable result page.
 //! 2. Writes a small hand-written AArch64 stub to the code page.
 //! 3. Creates a user thread whose entry point is the mapped code page.
-//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned
-//!    capability and a sentinel to the result page, then loops via `wfe`.
+//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned capability and a sentinel
+//!    to the result page, then loops via `wfe`.
 //!
 //! When the user thread runs, `SVC #1` traps to `sync_dispatcher`, which decodes
 //! ESR_EL1.EC, builds a TrapFrame, dispatches to the submit handler (which
@@ -21,15 +21,30 @@
 //! alias) once the scheduler is active and assert the sentinel and returned
 //! cap, panicking on mismatch or timeout.
 
-use crate::completion::{self, OpCode, OpResult};
-use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-use crate::cpu::isa::memory::paging::AddressSpace;
-use crate::cpu::scheduler::spawn_thread;
-use crate::logln;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-use crate::memory::{
-    linear::{MemoryMapping, PageType, VAddr},
-    ADDRESS_SPACE_TABLE, KERNEL_AS,
+use crate::{
+    completion::{
+        self,
+        OpCode,
+        OpResult,
+    },
+    cpu::{
+        isa::{
+            interface::memory::AddressSpaceInterface,
+            memory::paging::AddressSpace,
+        },
+        scheduler::spawn_thread,
+    },
+    logln,
+    memory::{
+        ADDRESS_SPACE_TABLE,
+        KERNEL_AS,
+        PHYSICAL_FRAME_ALLOCATOR,
+        linear::{
+            MemoryMapping,
+            PageType,
+            VAddr,
+        },
+    },
 };
 
 /// Physical frame of the result page, stored so the test function can read the
@@ -109,7 +124,10 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         paddr: code_frame,
         page_type: PageType::UserCode,
     };
-    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for mapping")
+    ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(asid)
+        .expect("failed to retrieve AS for mapping")
         .map_page(code_mapping.clone())
         .expect("failed to map user code page");
 
@@ -127,10 +145,10 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
     // making code visible to the instruction fetch after writing via D-side.
     unsafe {
         core::arch::asm!(
-            "dsb ishst",        // ensure prior stores are visible
-            "ic ialluis",       // invalidate I-cache (all, inner shareable)
-            "dsb ish",          // ensure I-cache invalidation is complete
-            "isb",              // synchronize context
+            "dsb ishst",  // ensure prior stores are visible
+            "ic ialluis", // invalidate I-cache (all, inner shareable)
+            "dsb ish",    // ensure I-cache invalidation is complete
+            "isb",        // synchronize context
             options(nomem, nostack, preserves_flags),
         );
     }
@@ -147,7 +165,10 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         paddr: cq_frame,
         page_type: PageType::UserData,
     };
-    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for CQ mapping")
+    ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(asid)
+        .expect("failed to retrieve AS for CQ mapping")
         .map_page(cq_mapping)
         .expect("failed to map CQ ring page");
 
@@ -160,15 +181,21 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
 
     // Store the frame address so the test function can later read the user
     // binary's output via HHDM.
-    unsafe { TEST_RESULT_FRAME = Some(result_frame); }
+    unsafe {
+        TEST_RESULT_FRAME = Some(result_frame);
+    }
 
     let result_mapping = MemoryMapping {
         vaddr: result_vaddr,
         paddr: result_frame,
         page_type: PageType::UserData,
     };
-    ADDRESS_SPACE_TABLE.lock().get_mut(asid).expect("failed to retrieve AS for result mapping")
-        .map_page(result_mapping).expect("failed to map result page");
+    ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(asid)
+        .expect("failed to retrieve AS for result mapping")
+        .map_page(result_mapping)
+        .expect("failed to map result page");
 
     // Initialize the CQ ring on this physical frame, then register the AS
     // with the completion subsystem so `complete()` writes to the ring.
@@ -261,7 +288,7 @@ extern "C" fn verify_el0_result() {
     let mut spins: u64 = 0;
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        if sentinel == 0xDEAD {
+        if sentinel == 0xdead {
             let cap = unsafe { core::ptr::read_volatile(result.add(1)) };
             assert_eq!(
                 cap, 0,
@@ -269,7 +296,8 @@ extern "C" fn verify_el0_result() {
                 cap
             );
             logln!(
-                "[EL0] SUCCESS: user thread ran at EL0, submit returned cap {}, result page verified.",
+                "[EL0] SUCCESS: user thread ran at EL0, submit returned cap {}, result page \
+                 verified.",
                 cap
             );
             loop {

@@ -4,14 +4,22 @@
 //! discipline and the `ShardMailbox<M>` bounded send/receive contract on the
 //! BSP (the only LP active at boot).
 
-use core::sync::atomic::{AtomicBool, Ordering};
-
 use alloc::sync::Arc;
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::multiprocessor::shard_mailbox;
-use crate::cpu::multiprocessor::spin::shard_local::ShardLocal;
-use crate::logln;
+use crate::{
+    cpu::{
+        isa::lp::ops::get_lp_id,
+        multiprocessor::{
+            shard_mailbox,
+            spin::shard_local::ShardLocal,
+        },
+    },
+    logln,
+};
 
 pub fn test_shard_local() {
     logln!("Testing ShardLocal<T> lock-free discipline...");

@@ -7,13 +7,12 @@
 //!
 //! Two hand-written EL0 stubs run in one user address space:
 //!
-//! - **coordinator** (spawned by the kernel): `svc #1` COMPLETION_SUBMIT to get
-//!   a capability, `svc #7` SPAWN_THREAD to launch the worker pinned to LP1,
-//!   `svc #4` COMPLETION_WAIT to block until it completes, then drains the
-//!   result from the shared CQ ring (zero-syscall) and writes it to the result
-//!   page.
-//! - **worker** (spawned by the coordinator onto LP1): `svc #2`
-//!   COMPLETION_COMPLETE to post the result, then spins.
+//! - **coordinator** (spawned by the kernel): `svc #1` COMPLETION_SUBMIT to get a capability, `svc
+//!   #7` SPAWN_THREAD to launch the worker pinned to LP1, `svc #4` COMPLETION_WAIT to block until
+//!   it completes, then drains the result from the shared CQ ring (zero-syscall) and writes it to
+//!   the result page.
+//! - **worker** (spawned by the coordinator onto LP1): `svc #2` COMPLETION_COMPLETE to post the
+//!   result, then spins.
 //!
 //! Because self-tests run before `yield_lp()`, a kernel verifier thread is
 //! spawned to observe the result page once the scheduler is active; it asserts
@@ -36,8 +35,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
-    linear::{MemoryMapping, PageType, VAddr},
-    ADDRESS_SPACE_TABLE, KERNEL_AS,
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
+    linear::{
+        MemoryMapping,
+        PageType,
+        VAddr,
+    },
 };
 
 /// User virtual addresses in the demo's address space.
@@ -114,7 +118,11 @@ fn map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
         .lock()
         .get_mut(asid)
         .expect("el0_demo: AS not found for code mapping")
-        .map_page(MemoryMapping { vaddr, paddr: frame, page_type: PageType::UserCode })
+        .map_page(MemoryMapping {
+            vaddr,
+            paddr: frame,
+            page_type: PageType::UserCode,
+        })
         .expect("el0_demo: failed to map code page");
     let hhdm: *mut u8 = frame.into();
     unsafe {
@@ -132,7 +140,11 @@ fn map_data_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr {
         .lock()
         .get_mut(asid)
         .expect("el0_demo: AS not found for data mapping")
-        .map_page(MemoryMapping { vaddr, paddr: frame, page_type: PageType::UserData })
+        .map_page(MemoryMapping {
+            vaddr,
+            paddr: frame,
+            page_type: PageType::UserData,
+        })
         .expect("el0_demo: failed to map data page");
     frame
 }
@@ -173,7 +185,9 @@ pub fn test_el0_cross_lp_async() {
 
         let cq_frame = map_data_page(asid, VAddr::from(CQ_VADDR));
         let result_frame = map_data_page(asid, VAddr::from(RESULT_VADDR));
-        unsafe { DEMO_RESULT_FRAME = Some(result_frame); }
+        unsafe {
+            DEMO_RESULT_FRAME = Some(result_frame);
+        }
 
         // Hand the address-space id to the EL0 stubs via result[4]; they read it
         // instead of hard-coding, so this exercise does not depend on the asid
@@ -215,7 +229,7 @@ extern "C" fn verify_el0_demo() {
     let mut spins: u64 = 0;
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        if sentinel == 0xC0DE {
+        if sentinel == 0xc0de {
             let cap = unsafe { core::ptr::read_volatile(result.add(1)) };
             let value = unsafe { core::ptr::read_volatile(result.add(2)) };
             assert_eq!(cap, 0, "EL0 xLP: expected coordinator cap 0, got {}", cap);
@@ -227,7 +241,8 @@ extern "C" fn verify_el0_demo() {
             logln!(
                 "[EL0 xLP] SUCCESS: EL0 coordinator submitted cap {}, worker completed cross-LP, \
                  result {} drained from CQ ring \u{2014} all via svc.",
-                cap, value
+                cap,
+                value
             );
             loop {
                 yield_lp();

@@ -1,12 +1,25 @@
 use alloc::sync::Weak;
-use core::ops::Deref;
-use core::sync::atomic::{AtomicI64, Ordering};
+use core::{
+    ops::Deref,
+    sync::atomic::{
+        AtomicI64,
+        Ordering,
+    },
+};
 
 use concurrent_queue::ConcurrentQueue;
 use lock_api::RawRwLock;
 
-use crate::cpu::scheduler::system_scheduler::{SYSTEM_SCHEDULER, get_thread_id};
-use crate::klib::observer::{Observable, Observer};
+use crate::{
+    cpu::scheduler::system_scheduler::{
+        SYSTEM_SCHEDULER,
+        get_thread_id,
+    },
+    klib::observer::{
+        Observable,
+        Observer,
+    },
+};
 
 pub type RwLock<T> = lock_api::RwLock<RwLockCore, T>;
 

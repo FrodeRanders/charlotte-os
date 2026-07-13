@@ -1,13 +1,27 @@
 pub mod round_robin;
-use alloc::fmt::Debug;
-use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
+use alloc::{
+    fmt::Debug,
+    sync::Arc,
+};
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::memory::paging::HwAsid;
-use crate::cpu::scheduler::threads::{ThreadCount, ThreadId};
-use crate::klib::observer::Observer;
-use crate::memory::AddressSpaceId;
+use crate::{
+    cpu::{
+        isa::{
+            lp::LpId,
+            memory::paging::HwAsid,
+        },
+        scheduler::threads::{
+            ThreadCount,
+            ThreadId,
+        },
+    },
+    klib::observer::Observer,
+    memory::AddressSpaceId,
+};
 
 pub trait LpScheduler: Debug + Send {
     fn get_lp_id(&self) -> LpId;

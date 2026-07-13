@@ -1,6 +1,9 @@
 //! Observer pattern implementation for event notification
 
-use alloc::sync::{Arc, Weak};
+use alloc::sync::{
+    Arc,
+    Weak,
+};
 
 pub trait Observable {
     fn register_observer(&self, observer: Weak<dyn Observer>);

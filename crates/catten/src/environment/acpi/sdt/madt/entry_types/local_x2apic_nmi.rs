@@ -1,5 +1,7 @@
-use crate::environment::acpi::sdt::madt::entry_types::MadtEntryType;
-use crate::environment::acpi::sdt::madt::interrupt_flags::InterruptFlags;
+use crate::environment::acpi::sdt::madt::{
+    entry_types::MadtEntryType,
+    interrupt_flags::InterruptFlags,
+};
 
 /// The MADT Local x2APIC NMI Structure overlay struct
 /// The entries specified by this structure need to raise an NMI on the host processor (vector 2)

@@ -1,18 +1,38 @@
-use core::ptr::NonNull;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::{
+    ptr::NonNull,
+    sync::atomic::{
+        AtomicPtr,
+        Ordering,
+    },
+};
 
-use talc::base::Talc;
-use talc::base::binning::Binning;
-use talc::source::Source;
-use talc::*;
+use talc::{
+    base::{
+        Talc,
+        binning::Binning,
+    },
+    source::Source,
+    *,
+};
 
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::multiprocessor::spin::mutex::MutexCore;
-use crate::klib::size::mebibytes;
-use crate::memory::VAddr;
-use crate::memory::allocators::memory::{PageSize, try_allocate_and_map_range};
-use crate::memory::linear::address_map::LA_MAP;
-use crate::memory::linear::address_map::RegionType::KernelAllocatorArena;
+use crate::{
+    cpu::{
+        isa::interface::memory::address::VirtualAddress,
+        multiprocessor::spin::mutex::MutexCore,
+    },
+    klib::size::mebibytes,
+    memory::{
+        VAddr,
+        allocators::memory::{
+            PageSize,
+            try_allocate_and_map_range,
+        },
+        linear::address_map::{
+            LA_MAP,
+            RegionType::KernelAllocatorArena,
+        },
+    },
+};
 
 const INITIAL_HEAP_SIZE: usize = mebibytes(2);
 static ACQUIRE_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);

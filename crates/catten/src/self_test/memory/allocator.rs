@@ -1,4 +1,7 @@
-use alloc::alloc::{alloc, dealloc};
+use alloc::alloc::{
+    alloc,
+    dealloc,
+};
 use core::alloc::Layout;
 
 use crate::logln;
