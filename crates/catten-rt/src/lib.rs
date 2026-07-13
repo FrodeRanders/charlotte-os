@@ -1,8 +1,9 @@
 //! CharlotteOS userspace runtime — the equivalent of `crt0` for EL0 programs.
 //!
-//! Provides the [`entry!`] macro that generates `_start`, `#[panic_handler]`,
-//! and `#[global_allocator]`, so the user's program only needs to define
-//! their business logic.
+//! Provides:
+//! - The [`entry!`] macro that generates `_start`, `#[panic_handler]`,
+//!   and `#[global_allocator]`.
+//! - A [`config`] module for typed input/output via the canonical config page.
 //!
 //! ## Usage
 //!
@@ -12,30 +13,34 @@
 //!
 //! extern crate alloc;
 //! use catten_syscall::*;
+//! use catten_rt::config;
 //!
-//! fn cmain(asid: u64) -> ! {
-//!     let cap = unsafe { submit(OpCode::Nop) };
-//!     unsafe { wait(cap); }
+//! fn cmain() -> ! {
+//!     let a: u32 = config::read(0);
+//!     let b: u32 = config::read(4);
+//!     config::write(0, a.wrapping_add(b));
 //!     unsafe { thread_exit(); }
 //! }
 //!
 //! catten_rt::entry!(cmain);
 //! ```
+//!
+//! The program does **not** define `_start`, `panic_handler`, or an allocator,
+//! and never references `RESULT_PAGE`, `READ_BUF`, ASID, or fixed VAs.
 #![no_std]
+
+pub mod config;
 
 use core::panic::PanicInfo;
 
-// ---- config page ----------------------------------------------------------
-// The kernel writes the calling thread's ASID to offset 16 of the canonical
-// config page (VA 0x0001_F000) during address-space setup.  `_start` reads it
-// here and passes it to the user's entry function.
-pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
+// ---- entry macro -----------------------------------------------------------
 
-/// Generates the full EL0 program entry infrastructure: `_start` (reads
-/// ASID from the kernel-mapped config page and calls the given function),
-/// a `#[panic_handler]`, and a `#[global_allocator]` backed by a talc arena.
+/// Generates the full EL0 program entry infrastructure: `_start`, a
+/// `#[panic_handler]`, and a `#[global_allocator]` backed by a talc arena.
 ///
-/// The user function must have signature `fn(u64) -> !`.
+/// The user function takes no arguments and never returns.  Inputs are read
+/// from the config page via [`config::read`]; outputs are written via
+/// [`config::write`].
 ///
 /// ```ignore
 /// catten_rt::entry!(my_main);
@@ -53,12 +58,7 @@ macro_rules! entry {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn _start() -> ! {
-            let asid = unsafe {
-                ::core::ptr::read_volatile(
-                    ($crate::CONFIG_VADDR as *const u32).add(4)
-                ) as u64
-            };
-            $entry_fn(asid)
+            $entry_fn()
         }
     };
 }

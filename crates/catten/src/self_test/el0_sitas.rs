@@ -173,7 +173,7 @@ pub fn test_el0_sitas() {
             .allocate_frame()
             .expect("[sitas] failed to allocate result frame");
         unsafe {
-            SITAS_RESULT_FRAME = Some(result_frame);
+            SITAS_RESULT_FRAME = Some(config_frame); // verifier polls config page
         }
         ADDRESS_SPACE_TABLE
             .lock()
@@ -207,16 +207,14 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // The binary reads asid from result[4] and inputs a,b from result[0..1].
-        // catten-rt reads asid from the config page at offset 16.
+        // The adder reads a,b from config[0..1]; catten-rt reads asid from
+        // config[4].  Write the inputs to the config page.
         let result_base: *mut u8 = result_frame.into();
         let config_base: *mut u8 = config_frame.into();
         unsafe {
-            core::ptr::write_volatile((result_base as *mut u32).add(4), asid as u32);
-            core::ptr::write_volatile(result_base as *mut u32, 42);           // a
-            core::ptr::write_volatile((result_base as *mut u32).add(1), 7);   // b
-            // catten-rt reads ASID from config[4].
             core::ptr::write_volatile((config_base as *mut u32).add(4), asid as u32);
+            core::ptr::write_volatile(config_base as *mut u32, 42);               // a
+            core::ptr::write_volatile((config_base as *mut u32).add(1), 7);       // b
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
