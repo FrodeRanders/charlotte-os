@@ -231,7 +231,6 @@ fn sys_thread_exit(_frame: &mut TrapFrame) {
 /// MPSC queue per LP; senders target a specific LP, receivers drain their own.
 use crate::cpu::multiprocessor::shard_mailbox::ShardMailboxSet;
 use spin::LazyLock;
-use crate::cpu::isa::lp::ops::get_lp_id;
 static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> =
     LazyLock::new(|| ShardMailboxSet::new(256));
 
@@ -247,7 +246,6 @@ fn sys_mailbox_send(frame: &mut TrapFrame) {
 
 fn sys_mailbox_recv(frame: &mut TrapFrame) {
     let _asid = frame.regs[0];              // reserved
-    let my_lp = get_lp_id();
     let mut recv = USER_MAILBOX.receiver_for_current_lp();
     match recv.try_recv() {
         Some(msg) => {

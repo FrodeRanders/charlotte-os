@@ -106,8 +106,11 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 
         syscall::syscall_dispatch(&mut frame, svc_imm);
 
-        // Write back x0 (return value) to the stack slot so `pop_volatile_regs`
-        // restores it into the user's x0 before `eret`.
+        // Write back the volatile register frame so `pop_volatile_regs`
+        // restores all syscall return registers before `eret`. Several EL0
+        // syscalls return secondary values in x1 (for example mailbox empty
+        // status and wait-timeout completion results), so restoring only x0
+        // loses ABI-visible state.
         // Restore the caller's exception-return state before the `eret` in the
         // vector epilogue. ELR/SPSR/SP_EL0 live only in per-CPU (banked) system
         // registers, but a syscall may block (e.g. COMPLETION_WAIT), and while
@@ -118,7 +121,10 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         // only ELR (as before) left SPSR/SP_EL0 stale, so a blocked EL0 thread
         // could `eret` back to the wrong EL or with the wrong user stack.
         unsafe {
-            (base as *mut u64).write_volatile(frame.regs[0]);
+            let out_base = base as *mut u64;
+            for i in 0..19 {
+                out_base.add(i).write_volatile(frame.regs[i]);
+            }
             asm!("msr elr_el1, {}", in(reg) frame.elr_el1, options(nomem, nostack, preserves_flags));
             asm!("msr spsr_el1, {}", in(reg) frame.spsr_el1, options(nomem, nostack, preserves_flags));
             asm!("msr sp_el0, {}", in(reg) frame.sp_el0, options(nomem, nostack, preserves_flags));
