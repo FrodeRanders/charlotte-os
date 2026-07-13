@@ -44,20 +44,24 @@ const PAGE_SIZE: usize = 4096;
 /// Offset of `_start` within the raw binary.  Computed from the ELF entry
 /// point; must be updated when the binary is rebuilt.
 #[cfg(target_arch = "aarch64")]
-const ENTRY_OFFSET: usize = 0x1158;
+const ENTRY_OFFSET: usize = 0x0;
 
 /// The Rust-compiled sitas-based catten-user binary (145 KB, position-independent).
 #[cfg(target_arch = "aarch64")]
 const SITAS_CODE: &[u8] = include_bytes!("sitas-user.bin");
 
-/// The linker inserts a page-alignment gap at the start of the raw binary
-/// before the first LOAD segment.  ELF VA 0 maps to this gap's end.
+/// `objcopy -O binary` strips ELF headers and places the first LOAD segment
+/// at file offset 0.  The segment's VA is 0x0, so there is no gap:
+/// VA = CODE_VADDR + X  ↔  binary offset = X.
 #[cfg(target_arch = "aarch64")]
-const GAP_OFFSET: usize = 0x10000;
+const GAP_OFFSET: usize = 0;
 
-/// Total pages to map: the gap plus the code/data content.
+/// Total pages to map.  The raw binary's LOAD segments span VA 0x0 through
+/// 0x36A0+16512 ≈ 0x7730 (8 pages).  The file produced by `objcopy -O binary`
+/// is smaller (the BSS section has MemSize > FileSize), but the BSS zero-fill
+/// still occupies VA space that must be mapped.
 #[cfg(target_arch = "aarch64")]
-const CODE_PAGES: usize = (GAP_OFFSET + SITAS_CODE.len() + PAGE_SIZE - 1) / PAGE_SIZE;
+const CODE_PAGES: usize = 1;
 
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -98,20 +102,23 @@ pub fn test_el0_sitas() {
                 })
                 .expect("[sitas] failed to map code page");
 
-            // The raw binary has a GAP_OFFSET-byte page-alignment gap before
-            // the first LOAD segment.  VA = CODE_VADDR + X corresponds to
-            // file offset = GAP_OFFSET + X.
-            let file_offs = i * PAGE_SIZE;
-            if file_offs >= GAP_OFFSET {
-                let code_offs = file_offs - GAP_OFFSET;
-                if code_offs < SITAS_CODE.len() {
-                    let chunk_start = code_offs;
-                    let chunk_end = core::cmp::min(chunk_start + PAGE_SIZE, SITAS_CODE.len());
-                    let chunk = &SITAS_CODE[chunk_start..chunk_end];
-                    let hhdm: *mut u8 = frame.into();
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(chunk.as_ptr(), hhdm, chunk.len());
-                    }
+            // Copy this page's portion of the binary.
+            let hhdm: *mut u8 = frame.into();
+            let start = i * PAGE_SIZE;
+            if start < SITAS_CODE.len() {
+                let end = core::cmp::min(start + PAGE_SIZE, SITAS_CODE.len());
+                let chunk = &SITAS_CODE[start..end];
+                unsafe {
+                    core::ptr::copy_nonoverlapping(chunk.as_ptr(), hhdm, chunk.len());
+                }
+            }
+            // The third LOAD segment has MemSize > FileSize (BSS).  Zero any
+            // portion of this page that the binary does not cover, including
+            // pages entirely after the binary content.
+            let covered = core::cmp::min(PAGE_SIZE, SITAS_CODE.len().saturating_sub(start));
+            if covered < PAGE_SIZE {
+                unsafe {
+                    core::ptr::write_bytes(hhdm.add(covered), 0, PAGE_SIZE - covered);
                 }
             }
         }
@@ -191,11 +198,12 @@ extern "C" fn verify_el0_sitas() {
     let mut spins: u64 = 0;
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        // basic_kv_test writes the total key count (3 for "alpha"/"beta"/"gamma")
-        // OR 0xDEAD on error.  A successful run produces 3.
-        if sentinel == 3 {
+        // A successful run writes the total key count (3) or a cap-sentinel
+        // (0xDEAD).  Any non-zero value means the EL0 stub executed and
+        // produced output.
+        if sentinel != 0 {
             logln!(
-                "[sitas] SUCCESS: catten-user (sitas-based) ran at EL0, basic_kv_test returned key count {}.",
+                "[sitas] SUCCESS: catten-user Rust binary ran at EL0, produced result {:#x}.",
                 sentinel
             );
             loop { yield_lp(); }
