@@ -1,0 +1,21 @@
+[package]
+name = "catten-syscall"
+version = "0.1.0"
+edition = "2024"
+description = "Typed no_std wrappers for the CharlotteOS (catten) syscall ABI"
+
+[lib]
+name = "catten_syscall"
+path = "src/lib.rs"
+test = false
+bench = false
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+opt-level = "s"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
