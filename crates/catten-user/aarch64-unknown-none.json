@@ -6,6 +6,9 @@
   "features": "+v8a,+strict-align,+neon",
   "linker": "rust-lld",
   "linker-flavor": "gnu-lld",
+  "pre-link-args": {
+    "gnu-lld": ["-Tlink.x"]
+  },
   "llvm-target": "aarch64-unknown-none",
   "max-atomic-width": 128,
   "panic-strategy": "abort",

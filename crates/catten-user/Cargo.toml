@@ -10,9 +10,10 @@ test = false
 bench = false
 
 [dependencies]
-# sitas-core and sitas-charlotte are removed for now; they do not yet build
-# against a no_std target. The current main.rs uses raw syscall wrappers
-# (core::arch::asm!) directly. Re-add them once sitas-core compiles no_std.
+sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
+sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }
+talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
+spin = { version = "0.9", features = ["lock_api"] }
 
 [profile.dev]
 panic = "abort"
