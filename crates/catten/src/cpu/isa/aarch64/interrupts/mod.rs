@@ -141,10 +141,10 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         0x0 => {
             // EC=0 with nonzero ISS is typically a trapped WFI/WFE, WFET, or
             // WFIT. Some hypervisors (Apple HVF) may also deliver such traps
-            // spuriously (no actual trapped instruction). Log and continue
-            // rather than panicking: the instruction at ELR was not really a
-            // WAIT, so returning via eret re-executes it just fine.
-            early_logln!("Spurious EL1 sync trap: EC=0 ESR={:x} ELR={:x}", esr_el1, elr_el1);
+            // spuriously (no actual trapped instruction). Returning via eret
+            // re-executes the instruction at ELR just fine.
+            // (No log — HVF in particular can deliver these at high frequency,
+            // and logging each one floods the serial port.)
             return;
         }
         0x24 | 0x25 => {
