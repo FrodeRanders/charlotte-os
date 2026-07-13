@@ -9,7 +9,10 @@ use crate::{
         OpCode,
         OpResult,
     },
-    cpu::isa::lp::LpId,
+    cpu::{
+        isa::lp::LpId,
+        multiprocessor::get_lp_count,
+    },
     logln,
     syscall::{
         self,
@@ -100,6 +103,17 @@ pub fn test_syscall_dispatch() {
         f.regs[0]
     };
     {
+        let mut f = synthetic_trap_frame(asid as u64, 0, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_OPEN_RECV);
+        assert_eq!(f.regs[0], recv_cap, "MAILBOX_OPEN_RECV should reuse the LP receiver cap");
+    }
+    {
+        let invalid_lp = get_lp_count() as u64;
+        let mut f = synthetic_trap_frame(asid as u64, invalid_lp, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_OPEN_SEND);
+        assert_eq!(f.regs[0], 0, "MAILBOX_OPEN_SEND should reject invalid target LPs");
+    }
+    {
         let mut f = synthetic_trap_frame(asid as u64, sender_cap, 0x5a5a, 0);
         syscall::syscall_dispatch(&mut f, call_no::MAILBOX_SEND_CAP);
         assert_eq!(f.regs[0], 0, "MAILBOX_SEND_CAP should send via a sender capability");
@@ -120,6 +134,12 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::MAILBOX_CLOSE);
         assert_eq!(f.regs[0], 0, "MAILBOX_CLOSE should close known caps");
     }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, sender_cap, 0x6b6b, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_SEND_CAP);
+        assert_eq!(f.regs[0], 2, "closed sender caps must be invalid");
+    }
+    syscall::close_mailbox_address_space(asid);
 
     completion::close_address_space(asid);
     logln!("Syscall dispatch subsystem tests passed.");

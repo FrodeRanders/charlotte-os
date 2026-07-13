@@ -286,7 +286,10 @@ use spin::{
 
 /// A kernel-global mailbox set for EL0-to-EL0 inter-LP messaging. One bounded
 /// MPSC queue per LP; senders target a specific LP, receivers drain their own.
-use crate::cpu::multiprocessor::shard_mailbox::ShardMailboxSet;
+use crate::cpu::multiprocessor::{
+    get_lp_count,
+    shard_mailbox::ShardMailboxSet,
+};
 static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> = LazyLock::new(|| ShardMailboxSet::new(256));
 
 type MailboxCap = u64;
@@ -320,10 +323,30 @@ impl AsMailboxCaps {
         self.endpoints.insert(cap, endpoint);
         cap
     }
+
+    fn receiver_for_or_insert(&mut self, lp: LpId) -> MailboxCap {
+        if let Some((cap, _)) = self.endpoints.iter().find(|(_, endpoint)| {
+            matches!(
+                endpoint,
+                MailboxEndpoint::Receiver {
+                    lp: endpoint_lp,
+                } if *endpoint_lp == lp
+            )
+        }) {
+            return *cap;
+        }
+        self.insert(MailboxEndpoint::Receiver {
+            lp,
+        })
+    }
 }
 
 static USER_MAILBOX_CAPS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsMailboxCaps>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
+
+pub fn close_mailbox_address_space(asid: AddressSpaceId) {
+    USER_MAILBOX_CAPS.write().remove(&asid);
+}
 
 fn sys_mailbox_send(frame: &mut TrapFrame) {
     let _asid = caller_asid(frame);
@@ -352,6 +375,10 @@ fn sys_mailbox_recv(frame: &mut TrapFrame) {
 fn sys_mailbox_open_send(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let target_lp = frame.regs[1] as LpId;
+    if target_lp >= get_lp_count() {
+        frame.regs[0] = 0;
+        return;
+    }
     let mut tables = USER_MAILBOX_CAPS.write();
     let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
     frame.regs[0] = caps.insert(MailboxEndpoint::Sender {
@@ -364,9 +391,7 @@ fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
     let lp = frame.lp_id;
     let mut tables = USER_MAILBOX_CAPS.write();
     let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
-    frame.regs[0] = caps.insert(MailboxEndpoint::Receiver {
-        lp,
-    });
+    frame.regs[0] = caps.receiver_for_or_insert(lp);
 }
 
 fn mailbox_endpoint(asid: AddressSpaceId, cap: MailboxCap) -> Option<MailboxEndpoint> {
