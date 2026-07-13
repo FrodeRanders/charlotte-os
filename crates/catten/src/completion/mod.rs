@@ -283,6 +283,8 @@ struct AsCompletions {
     /// non-lossy completion contract: a full userspace ring delays delivery but
     /// does not discard terminal completions.
     pending_cq: VecDeque<(CompletionCap, OpResult)>,
+    /// Threads blocked waiting for this address space's CQ to become readable.
+    cq_observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
     _cq_buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
 }
@@ -311,6 +313,7 @@ pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
             live: 0,
             cq_ring: None,
             pending_cq: VecDeque::new(),
+            cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: None,
         },
     );
@@ -334,6 +337,7 @@ pub fn open_address_space_with_cq(
             live: 0,
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
+            cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: Some(alloc::boxed::Box::new(buf)),
         },
     );
@@ -359,6 +363,7 @@ pub fn open_address_space_with_cq_phys(
             live: 0,
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
+            cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: None,
         },
     );
@@ -465,6 +470,7 @@ pub fn complete(
         }
     }
 
+    signal_cq(asid);
     completion.complete(result);
 
     Ok(())
@@ -479,6 +485,34 @@ fn flush_pending_cq(as_completions: &mut AsCompletions) {
             as_completions.pending_cq.pop_front();
         } else {
             break;
+        }
+    }
+}
+
+fn signal_cq(asid: AddressSpaceId) {
+    let observers = {
+        let registry = COMPLETIONS.read();
+        let Some(as_completions) = registry.get(&asid) else {
+            return;
+        };
+        as_completions.cq_observers.try_iter().collect::<Vec<_>>()
+    };
+    for observer in observers {
+        if let Some(observer) = observer.upgrade() {
+            observer.notify();
+        }
+    }
+}
+
+struct CqObservable {
+    asid: AddressSpaceId,
+}
+
+impl Observable for CqObservable {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        let registry = COMPLETIONS.read();
+        if let Some(as_completions) = registry.get(&self.asid) {
+            let _ = as_completions.cq_observers.push(observer);
         }
     }
 }
@@ -580,31 +614,31 @@ pub fn cq_pending(asid: AddressSpaceId) -> u32 {
 
 /// Blocks the calling thread until the CQ ring for `asid` has at least
 /// `min_complete` pending entries. This is the kernel-internal implementation
-/// of the `wait` syscall (§4.2): the reactor blocks on the CQ, and
-/// `complete()` writes entries to the ring + wakes the blocked thread.
-///
-/// The blocking mechanism uses a simple poll loop with sleep bursts (10 ms)
-/// rather than the observer/waker path, because the CQ ring is a ring buffer
-/// (not an `Observable`). In the production kernel the ring's head write would
-/// fire the waker.
-pub fn wait_on_cq(asid: AddressSpaceId, _min_complete: u32) {
-    // Simple polling loop — not the final design. In production, the ring
-    // head-write would signal an Observable that the blocked thread is
-    // registered on, avoiding the sleep loop.
-    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
-    if tid.is_none() {
+/// of the `wait` syscall (§4.2): the reactor blocks on CQ readiness, and
+/// `complete()` writes entries to the ring/backlog before waking waiters.
+pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
+    let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
         return;
-    }
+    };
+    let cq = CqObservable {
+        asid,
+    };
 
     loop {
-        let pending = cq_pending(asid);
-        if pending >= _min_complete {
+        if cq_pending(asid) >= min_complete {
             return;
         }
-        // Busy-wait with a hint. In a real kernel this would be a
-        // condition-variable-style block.
-        for _ in 0..1000 {
-            core::hint::spin_loop();
+
+        if SYSTEM_SCHEDULER.write().block_thread(tid, &cq).is_err() {
+            return;
         }
+
+        // Lost-wake guard: if the CQ became readable while the waker was being
+        // registered, re-admit the thread before yielding.
+        if cq_pending(asid) >= min_complete {
+            let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
+        }
+
+        yield_lp();
     }
 }
