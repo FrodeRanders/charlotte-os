@@ -18,10 +18,13 @@
 
 use crate::cpu::isa::interface::memory::address::VirtualAddress;
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+use crate::cpu::isa::interface::memory::MemoryMapping;
+use core::sync::atomic::AtomicUsize;
 use crate::cpu::isa::lp::ops::{kernel_thread_trampoline, user_trampoline};
 use crate::cpu::isa::memory::paging::{AddressSpace, PAGE_SIZE};
 use crate::memory::allocators::stack_allocator::{allocate_stack, deallocate_stack, Error};
-use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, VAddr};
+use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, VAddr, PHYSICAL_FRAME_ALLOCATOR};
+use crate::memory::linear::PageType;
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
 
@@ -137,8 +140,45 @@ impl ThreadContext {
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
     ) -> Result<Self, Error> {
-        let user_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
-        let user_stack_top = user_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
+        // Allocate user stack pages from physical frames and map them into the
+        // user address space.  The kernel stack allocator returns higher-half
+        // VAs that have no TTBR0 mapping; EL0 can only use TTBR0.  Because
+        // this prototype has no virtual-memory manager we place each user
+        // thread's stack at a fixed VA region, offset by a per-thread index.
+        const USER_STACK_VADDR_BASE: usize = 0x0000_0000_0100_0000;
+        const USER_STACK_PAGES: usize = 4;
+        const USER_STACK_STRIDE: usize = USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
+        static NEXT_STACK_INDEX: AtomicUsize = AtomicUsize::new(0);
+        let stack_index = NEXT_STACK_INDEX.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        let stack_base = USER_STACK_VADDR_BASE + stack_index * USER_STACK_STRIDE;
+        let user_stack_top_va = stack_base + USER_STACK_PAGES * PAGE_SIZE;
+        // Pre-allocate all frames first (under the frame allocator lock), then
+        // map them (inside the AS table lock).  Order matches el0.rs.
+        let stack_frames: [crate::memory::physical::PAddr; USER_STACK_PAGES] = {
+            let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
+            core::array::from_fn(|_| {
+                pfa.allocate_frame()
+                    .expect("Failed to allocate user stack frame")
+            })
+        };
+        {
+            let mut as_table = ADDRESS_SPACE_TABLE.lock();
+            let user_as = as_table
+                .get_mut(asid)
+                .expect("Address space not found in AS table");
+            for i in 0..USER_STACK_PAGES {
+                let vaddr = VAddr::from(stack_base + i * PAGE_SIZE);
+                user_as
+                    .map_page(MemoryMapping {
+                        vaddr,
+                        paddr: stack_frames[i],
+                        page_type: crate::memory::linear::PageType::UserData,
+                    })
+                    .expect("Failed to map user stack page");
+            }
+        }
+        // user_stack_buf holds the base VA for teardown (Drop).
+        let user_stack_buf = VAddr::from(stack_base);
         let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // Run the user thread in its own address space's lower half (TTBR0).
@@ -152,7 +192,7 @@ impl ThreadContext {
             _pad: 0,
             // user_trampoline loads x19 into ELR_EL1 and x20 into SP_EL0.
             x19: entry_point as usize as u64,
-            x20: <VAddr as Into<u64>>::into(user_stack_top),
+            x20: user_stack_top_va as u64,
             x21: 0,
             x22: 0,
             x23: 0,
