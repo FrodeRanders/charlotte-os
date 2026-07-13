@@ -16,17 +16,67 @@
 //! a thread on an observable event, and completion is delivered by waking it,
 //! rather than by heavyweight thread-pool machinery.
 
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-use crate::cpu::isa::interface::memory::MemoryMapping;
 use core::sync::atomic::AtomicUsize;
-use crate::cpu::isa::lp::ops::{kernel_thread_trampoline, user_trampoline};
-use crate::cpu::isa::memory::paging::{AddressSpace, PAGE_SIZE};
-use crate::memory::allocators::stack_allocator::{allocate_stack, deallocate_stack, Error};
-use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, VAddr, PHYSICAL_FRAME_ALLOCATOR};
-use crate::memory::linear::PageType;
+
+use crate::{
+    cpu::isa::{
+        interface::memory::{
+            address::VirtualAddress,
+            AddressSpaceInterface,
+            MemoryMapping,
+        },
+        lp::ops::{
+            kernel_thread_trampoline,
+            user_trampoline,
+        },
+        memory::paging::{
+            AddressSpace,
+            PAGE_SIZE,
+        },
+    },
+    memory::{
+        allocators::stack_allocator::{
+            allocate_stack,
+            deallocate_stack,
+            Error,
+        },
+        linear::PageType,
+        AddressSpaceId,
+        VAddr,
+        ADDRESS_SPACE_TABLE,
+        PHYSICAL_FRAME_ALLOCATOR,
+    },
+};
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
+const USER_STACK_PAGES: usize = 4;
+
+#[derive(Debug, Clone, Copy)]
+struct UserStack {
+    asid: AddressSpaceId,
+    base: VAddr,
+}
+
+fn deallocate_user_stack(stack: UserStack) -> bool {
+    let mut ok = true;
+    let mut as_table = ADDRESS_SPACE_TABLE.lock();
+    let Ok(user_as) = as_table.get_mut(stack.asid) else {
+        return false;
+    };
+
+    for page_idx in 0..USER_STACK_PAGES {
+        let vaddr = stack.base + page_idx * PAGE_SIZE;
+        match user_as.unmap_page(vaddr) {
+            Ok(frame) => {
+                if PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame).is_err() {
+                    ok = false;
+                }
+            }
+            Err(_) => ok = false,
+        }
+    }
+    ok
+}
 
 /// The initial kernel-stack frame consumed by `switch_ctx`'s restore path when
 /// a freshly created thread is first scheduled.
@@ -81,13 +131,13 @@ pub struct ThreadContext {
     /// exclusive operations.
     pub on_cpu: u8,
     _kernel_stack_buf: VAddr,
-    _user_stack_buf: Option<VAddr>,
+    _user_stack: Option<UserStack>,
 }
 
 impl Drop for ThreadContext {
     fn drop(&mut self) {
-        if let Some(user_stack_buf) = self._user_stack_buf {
-            if deallocate_stack(user_stack_buf).is_err() {
+        if let Some(user_stack) = self._user_stack {
+            if !deallocate_user_stack(user_stack) {
                 crate::early_logln!("WARNING: failed to free user stack on thread teardown");
             }
         }
@@ -128,7 +178,7 @@ impl ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
             on_cpu: 0,
             _kernel_stack_buf: kernel_stack_buf,
-            _user_stack_buf: None,
+            _user_stack: None,
         })
     }
 
@@ -146,7 +196,6 @@ impl ThreadContext {
         // this prototype has no virtual-memory manager we place each user
         // thread's stack at a fixed VA region, offset by a per-thread index.
         const USER_STACK_VADDR_BASE: usize = 0x0000_0000_0100_0000;
-        const USER_STACK_PAGES: usize = 4;
         const USER_STACK_STRIDE: usize = USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
         static NEXT_STACK_INDEX: AtomicUsize = AtomicUsize::new(0);
         let stack_index = NEXT_STACK_INDEX.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
@@ -157,28 +206,27 @@ impl ThreadContext {
         let stack_frames: [crate::memory::physical::PAddr; USER_STACK_PAGES] = {
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
             core::array::from_fn(|_| {
-                pfa.allocate_frame()
-                    .expect("Failed to allocate user stack frame")
+                pfa.allocate_frame().expect("Failed to allocate user stack frame")
             })
         };
         {
             let mut as_table = ADDRESS_SPACE_TABLE.lock();
-            let user_as = as_table
-                .get_mut(asid)
-                .expect("Address space not found in AS table");
+            let user_as = as_table.get_mut(asid).expect("Address space not found in AS table");
             for i in 0..USER_STACK_PAGES {
                 let vaddr = VAddr::from(stack_base + i * PAGE_SIZE);
                 user_as
                     .map_page(MemoryMapping {
                         vaddr,
                         paddr: stack_frames[i],
-                        page_type: crate::memory::linear::PageType::UserData,
+                        page_type: PageType::UserData,
                     })
                     .expect("Failed to map user stack page");
             }
         }
-        // user_stack_buf holds the base VA for teardown (Drop).
-        let user_stack_buf = VAddr::from(stack_base);
+        let user_stack = UserStack {
+            asid,
+            base: VAddr::from(stack_base),
+        };
         let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // Run the user thread in its own address space's lower half (TTBR0).
@@ -209,7 +257,7 @@ impl ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
             on_cpu: 0,
             _kernel_stack_buf: kernel_stack_buf,
-            _user_stack_buf: Some(user_stack_buf),
+            _user_stack: Some(user_stack),
         })
     }
 }
