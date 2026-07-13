@@ -12,23 +12,39 @@
 //! `FnOnce() + Send` work for cross-LP execution — the seed of a typed
 //! `ShardMailbox<M>` (Option B / Phase 3).
 
-use alloc::collections::vec_deque::VecDeque;
-use alloc::format;
-use alloc::vec::Vec;
+use alloc::{
+    collections::vec_deque::VecDeque,
+    format,
+    sync::Arc,
+    vec::Vec,
+};
 
 use concurrent_queue::ConcurrentQueue;
 
-use crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR;
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interrupts::LocalIntCtlr;
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::isa::memory::tlb;
-use crate::cpu::multiprocessor::get_lp_count;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::memory::linear::VAddr;
-use crate::memory::{AddressSpaceId, KERNEL_ASID};
+use crate::{
+    cpu::{
+        isa::{
+            constants::interrupt_vectors::ASYNC_IPI_VECTOR,
+            interface::interrupts::LocalIntCtlrIfce,
+            interrupts::LocalIntCtlr,
+            lp::{
+                ops::get_lp_id,
+                LpId,
+            },
+            memory::tlb,
+        },
+        multiprocessor::{
+            get_lp_count,
+            spin::mutex::Mutex,
+        },
+        scheduler::system_scheduler::SYSTEM_SCHEDULER,
+    },
+    memory::{
+        linear::VAddr,
+        AddressSpaceId,
+        KERNEL_ASID,
+    },
+};
 
 /// Default per-LP IPI queue capacity. `push` on a full bounded queue returns
 /// `Err(Full(rpc))` — first-class, non-fatal backpressure.
@@ -64,9 +80,7 @@ impl IpiCmdQueues {
 
     /// Push with backpressure: returns `Err(rpc)` if the target queue is full.
     pub fn try_push_to(&self, target_lp: usize, ipi: IpiRpc) -> Result<(), IpiRpc> {
-        self.queues[target_lp]
-            .push(ipi)
-            .map_err(|e| e.into_inner())
+        self.queues[target_lp].push(ipi).map_err(|e| e.into_inner())
     }
 
     /// Force-push for kernel-internal must-not-drop RPCs (TLB shootdown, wakeup).
@@ -101,12 +115,9 @@ pub enum IpiRpc {
 impl core::fmt::Debug for IpiRpc {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::VMemInval(a, v, s) => f
-                .debug_tuple("VMemInval")
-                .field(a)
-                .field(v)
-                .field(s)
-                .finish(),
+            Self::VMemInval(a, v, s) => {
+                f.debug_tuple("VMemInval").field(a).field(v).field(s).finish()
+            }
             Self::AsidInval(a) => f.debug_tuple("AsidInval").field(a).finish(),
             Self::Wakeup => write!(f, "Wakeup"),
             Self::Closure(_) => write!(f, "Closure(opaque)"),
@@ -135,33 +146,23 @@ pub fn send_ipi_rpc(target_lp: LpId, rpc: IpiRpc) {
 /// Enqueue an arbitrary closure for execution on the target LP and deliver the
 /// IPI. Returns `Ok(())` on success or `Err(f)` with the original closure if
 /// the target's bounded queue is full (backpressure).
-pub fn try_run_on_lp<F: FnOnce() + Send + 'static>(
-    target_lp: LpId,
-    f: F,
-) -> Result<(), F> {
-    // Pack the closure into a Box whose layout is known: first the vtable
-    // pointer, then the data pointer. After we recover the IpiRpc::Closure box
-    // on the backpressure path we transmute it back to the concrete type via
-    // the pointer, because `Box<dyn FnOnce>` does not support `downcast`.
-    //
-    // Safety: we created the Box from an `F` and only transmute it back when
-    // the outer function owns it again (the closure was never invoked by the
-    // kernel). The type `F` is known to the caller, and the layout of
-    // `Box<F>` and `Box<dyn FnOnce() + Send>` share the same representation
-    // (fat pointer: (data, vtable)).
-    let rpc = IpiRpc::Closure(alloc::boxed::Box::new(f) as alloc::boxed::Box<dyn FnOnce() + Send>);
+pub fn try_run_on_lp<F: FnOnce() + Send + 'static>(target_lp: LpId, f: F) -> Result<(), F> {
+    let shared = Arc::new(spin::Mutex::new(Some(f)));
+    let queued = Arc::clone(&shared);
+    let rpc = IpiRpc::Closure(alloc::boxed::Box::new(move || {
+        if let Some(f) = queued.lock().take() {
+            f();
+        }
+    }) as alloc::boxed::Box<dyn FnOnce() + Send>);
     match try_send_ipi_rpc(target_lp, rpc) {
         Ok(()) => Ok(()),
         Err(IpiRpc::Closure(b)) => {
-            // Recover the original F from the fat-pointer Box via unsafe
-            // pointer cast. The Box was never invoked, so the concrete type is
-            // still `F`.
-            let recovered: alloc::boxed::Box<F> = unsafe {
-                alloc::boxed::Box::from_raw(
-                    alloc::boxed::Box::into_raw(b) as *mut F
-                )
-            };
-            Err(*recovered)
+            drop(b);
+            let f = Arc::try_unwrap(shared)
+                .ok()
+                .and_then(|slot| slot.into_inner())
+                .expect("try_run_on_lp: queued closure was not recoverable after backpressure");
+            Err(f)
         }
         Err(_) => unreachable!(),
     }
@@ -204,11 +205,7 @@ fn dispatch_ipi_rpc(ipi: IpiRpc) {
         }
         IpiRpc::AsidInval(asid) => tlb::inval_asid(asid),
         IpiRpc::Wakeup => {
-            SYSTEM_SCHEDULER
-                .read()
-                .get_lp_scheduler()
-                .lock()
-                .set_ctx_switch_pending();
+            SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
         }
         IpiRpc::Closure(f) => {
             f();

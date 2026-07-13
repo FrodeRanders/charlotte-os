@@ -7,10 +7,18 @@
 //! scheduler on a second LP; the contract (try-push returns backpressure when
 //! full, closures drain and execute) is validated locally.
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
-use crate::cpu::multiprocessor::ipi::{self, IpiRpc};
-use crate::logln;
+use crate::{
+    cpu::multiprocessor::ipi::{
+        self,
+        IpiRpc,
+    },
+    logln,
+};
 
 pub fn test_ipi_bounded_queue() {
     logln!("Testing bounded IPI queue and typed-message dispatch...");
@@ -59,6 +67,20 @@ pub fn test_ipi_bounded_queue() {
     let r = ipi::try_send_ipi_rpc(target, IpiRpc::Wakeup);
     assert!(r.is_err(), "try_send_ipi_rpc must return backpressure on full queue");
     assert!(matches!(r, Err(IpiRpc::Wakeup)), "must return the Wakeup RPC back");
+
+    let recovered = alloc::sync::Arc::new(AtomicBool::new(false));
+    let recovered_flag = recovered.clone();
+    let r = ipi::try_run_on_lp(target, move || {
+        recovered_flag.store(true, Ordering::SeqCst);
+    });
+    match r {
+        Ok(()) => panic!("try_run_on_lp must return backpressure on full queue"),
+        Err(f) => f(),
+    }
+    assert!(
+        recovered.load(Ordering::SeqCst),
+        "try_run_on_lp must return the original closure on backpressure",
+    );
 
     // Drain to free space for the next test.
     ipi::drain_local_ipi_queue();
