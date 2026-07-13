@@ -349,7 +349,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
     COMPLETIONS.write().remove(&asid);
 }
 
-fn completion_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<Arc<Completion>, CapError> {
+pub fn completion_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<Arc<Completion>, CapError> {
     let registry = COMPLETIONS.read();
     let as_completions = registry.get(&asid).ok_or(CapError::UnknownAddressSpace)?;
     let completion = as_completions
