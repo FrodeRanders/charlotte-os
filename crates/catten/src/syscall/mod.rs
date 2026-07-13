@@ -20,6 +20,7 @@
 //! `ESR_EL1[15:0]` (the ISS field for SVC). This kernel uses that immediate as
 //! the syscall number.
 
+use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 use crate::cpu::isa::lp::LpId;
 
 /// A snapshot of the volatile register set and architectural state at the moment
@@ -38,7 +39,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 7;
+pub const MAX_SYSCALL: u16 = 11;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -49,8 +50,15 @@ pub mod call_no {
     pub const COMPLETION_WAIT: u16 = 4;
     pub const COMPLETION_CANCEL: u16 = 5;
     pub const COMPLETION_CLOSE: u16 = 6;
-    /// Spawn a kernel thread pinned to a specific LP.
     pub const SPAWN_THREAD: u16 = 7;
+    /// Terminate the calling EL0 thread.
+    pub const THREAD_EXIT: u16 = 8;
+    /// Send a 64-bit message to a specific LP's mailbox.
+    pub const MAILBOX_SEND: u16 = 9;
+    /// Receive a 64-bit message from the calling LP's mailbox.
+    pub const MAILBOX_RECV: u16 = 10;
+    /// Block on a completion with a timeout (milliseconds in x2).
+    pub const COMPLETION_WAIT_TIMEOUT: u16 = 11;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -73,6 +81,10 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::COMPLETION_CANCEL => sys_completion_cancel(frame),
         call_no::COMPLETION_CLOSE => sys_completion_close(frame),
         call_no::SPAWN_THREAD => sys_spawn_thread(frame),
+        call_no::THREAD_EXIT => sys_thread_exit(frame),
+        call_no::MAILBOX_SEND => sys_mailbox_send(frame),
+        call_no::MAILBOX_RECV => sys_mailbox_recv(frame),
+        call_no::COMPLETION_WAIT_TIMEOUT => sys_completion_wait_timeout(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -89,14 +101,47 @@ fn sys_log(frame: &mut TrapFrame) {
 fn sys_completion_submit(frame: &mut TrapFrame) {
     let asid = frame.regs[0] as usize;
     let op_code = frame.regs[1];
+    let buf_ptr = frame.regs[2] as usize;
+    let buf_len = frame.regs[3] as usize;
+
     let op = match op_code {
         0 => crate::completion::OpCode::Nop,
         1 => crate::completion::OpCode::Read,
         2 => crate::completion::OpCode::Write,
         _ => panic!("Unknown op_code in syscall submit: {}", op_code),
     };
+
+    // For Read/Write operations the user may pass a buffer (VA, len) in x2/x3.
+    // Translate the user VA to an HHDM pointer so the kernel can access the
+    // buffer, allocate a cap, do the "work" synchronously (write a sentinel
+    // into the buffer via HHDM), and complete — proving the full buffer-
+    // ownership round-trip through the ABI with one syscall.
+    let did_read = if op == crate::completion::OpCode::Read && buf_ptr != 0 && buf_len >= 4 {
+        let vaddr = crate::memory::linear::VAddr::from(buf_ptr);
+        let paddr = {
+            let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+            table
+                .get_mut(asid)
+                .expect("SUBMIT: address space not found")
+                .translate_address(vaddr)
+                .expect("SUBMIT: failed to translate user buffer VA")
+        };
+        let hhdm: *mut u8 = paddr.into();
+        Some((hhdm, buf_len))
+    } else {
+        None
+    };
+
     match crate::completion::submit(asid, op, None) {
-        Ok(cap) => frame.regs[0] = cap as u64,
+        Ok(cap) => {
+            if let Some((hhdm, len)) = did_read {
+                // Do the "work": write a sentinel into the user's buffer.
+                unsafe { core::ptr::write_volatile(hhdm as *mut u32, 0xFEED_F00D); }
+                let _ =
+                    crate::completion::complete(asid, cap, crate::completion::OpResult::Ok(len as i64));
+            }
+            frame.regs[0] = cap as u64;
+        }
         Err(_) => panic!("syscall completion submit failed"),
     }
 }
@@ -173,4 +218,113 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
         .expect("SPAWN_THREAD: failed to pin shard thread to target LP");
     // Return the thread id in x0.
     frame.regs[0] = tid as u64;
+}
+
+// ---- new syscalls -----------------------------------------------------------
+
+fn sys_thread_exit(_frame: &mut TrapFrame) {
+    // `abort` deschedules the thread, reaps it, and never returns.
+    crate::cpu::scheduler::abort();
+}
+
+/// A kernel-global mailbox set for EL0-to-EL0 inter-LP messaging. One bounded
+/// MPSC queue per LP; senders target a specific LP, receivers drain their own.
+use crate::cpu::multiprocessor::shard_mailbox::ShardMailboxSet;
+use spin::LazyLock;
+use crate::cpu::isa::lp::ops::get_lp_id;
+static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> =
+    LazyLock::new(|| ShardMailboxSet::new(256));
+
+fn sys_mailbox_send(frame: &mut TrapFrame) {
+    let _asid = frame.regs[0];              // reserved
+    let target_lp = frame.regs[1] as u32;
+    let message = frame.regs[2];
+    frame.regs[0] = match USER_MAILBOX.sender_to(target_lp).try_send(message) {
+        Ok(()) => 0,
+        Err(_) => 1, // queue full
+    };
+}
+
+fn sys_mailbox_recv(frame: &mut TrapFrame) {
+    let _asid = frame.regs[0];              // reserved
+    let my_lp = get_lp_id();
+    let mut recv = USER_MAILBOX.receiver_for_current_lp();
+    match recv.try_recv() {
+        Some(msg) => {
+            frame.regs[0] = msg;
+            frame.regs[1] = 0; // got a message
+        }
+        None => {
+            frame.regs[0] = 0;
+            frame.regs[1] = 1; // empty
+        }
+    }
+}
+
+fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
+    use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
+    use crate::cpu::scheduler::yield_lp;
+    use crate::klib::time::duration::ExtDuration;
+    use crate::klib::observer::Observable as _;
+    use crate::timers::{TIMER_QUEUES, TimerEvent};
+    use alloc::sync::{Arc, Weak};
+
+    let asid = frame.regs[0] as usize;
+    let cap = frame.regs[1] as usize;
+    let timeout_ms = frame.regs[2] as u64;
+
+    // Structure that wakes the blocked thread when signalled (by either the
+    // timer firing or the completion finishing).
+    struct TimeoutWake {
+        tid: crate::cpu::scheduler::threads::ThreadId,
+    }
+    impl crate::klib::observer::Observer for TimeoutWake {
+        fn notify(self: alloc::sync::Arc<Self>) {
+            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(self.tid);
+        }
+    }
+
+    // Fast path: completion already posted.
+    match crate::completion::poll(asid, cap) {
+        Ok(Some(_)) => { frame.regs[0] = 0; return; }
+        _ => {}
+    }
+
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid()
+        .expect("COMPLETION_WAIT_TIMEOUT: no running thread");
+
+    // Block on the completion.
+    SYSTEM_SCHEDULER
+        .write()
+        .block_thread(
+            tid,
+            &*crate::completion::completion_of(asid, cap)
+                .expect("COMPLETION_WAIT_TIMEOUT: unknown cap"),
+        )
+        .expect("COMPLETION_WAIT_TIMEOUT: failed to block thread");
+
+    // Arm a timer that also wakes this thread (timeout path).
+    let timeout_obs = Arc::new(TimeoutWake { tid });
+    let mut timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    timer_event.register_observer(
+        Arc::downgrade(&timeout_obs) as Weak<dyn crate::klib::observer::Observer>
+    );
+    // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
+    // any threads run.
+    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+
+    yield_lp();
+
+    // Woke up: check whether the completion or the timeout won.
+    match crate::completion::poll(asid, cap) {
+        Ok(Some(completed)) => {
+            // Write the result back: x0 = 0 (success), x1 = result code.
+            let code = crate::completion::cq::op_result_to_i64(completed.result);
+            frame.regs[0] = 0;
+            frame.regs[1] = code as u64;
+        }
+        _ => {
+            frame.regs[0] = 1; // timeout
+        }
+    }
 }
