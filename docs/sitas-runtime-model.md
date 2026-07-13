@@ -767,7 +767,10 @@ closures through trait-object pointer casts, and mailbox access now has an
 incremental sender/receiver capability ABI while preserving the legacy raw-LP
 smoke-test calls. Receiver capabilities are AS-scoped single-consumer endpoints
 per LP, sender opens validate the target LP up front, and mailbox capability
-tables can be torn down with the address space. The remaining larger ABI work
-is to switch `sitas-charlotte` to the `CQ_WAIT` syscall instead of busy-polling,
-move the hand-written EL0 mailbox stubs over to the capability calls, and
-replace the flat RWX sitas loader with an ELF/segment-aware loader.
+tables can be torn down with the address space. The hand-written EL0 ping-pong
+stub has been migrated from raw-LP mailbox calls to mailbox endpoint-capability
+calls, but its default boot gate remains disabled because the test still hangs
+under the pre-existing HVF-flaky path and needs a dedicated stabilization pass.
+The remaining larger ABI work is to switch `sitas-charlotte` to the `CQ_WAIT`
+syscall instead of busy-polling and replace the flat RWX sitas loader with an
+ELF/segment-aware loader.

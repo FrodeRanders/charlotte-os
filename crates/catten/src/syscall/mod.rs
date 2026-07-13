@@ -25,7 +25,10 @@ use alloc::collections::BTreeMap;
 use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
-        lp::LpId,
+        lp::{
+            ops::get_lp_id,
+            LpId,
+        },
     },
     memory::AddressSpaceId,
 };
@@ -388,7 +391,7 @@ fn sys_mailbox_open_send(frame: &mut TrapFrame) {
 
 fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let lp = frame.lp_id;
+    let lp = get_lp_id();
     let mut tables = USER_MAILBOX_CAPS.write();
     let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
     frame.regs[0] = caps.receiver_for_or_insert(lp);
@@ -419,7 +422,7 @@ fn sys_mailbox_recv_cap(frame: &mut TrapFrame) {
     match mailbox_endpoint(asid, cap) {
         Some(MailboxEndpoint::Receiver {
             lp,
-        }) if lp == frame.lp_id => match USER_MAILBOX.try_recv_for_current_lp() {
+        }) if lp == get_lp_id() => match USER_MAILBOX.try_recv_for_current_lp() {
             Some(msg) => {
                 frame.regs[0] = msg;
                 frame.regs[1] = 0;
