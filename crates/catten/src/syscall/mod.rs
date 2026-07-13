@@ -41,7 +41,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 11;
+pub const MAX_SYSCALL: u16 = 12;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -61,6 +61,8 @@ pub mod call_no {
     pub const MAILBOX_RECV: u16 = 10;
     /// Block on a completion with a timeout (milliseconds in x2).
     pub const COMPLETION_WAIT_TIMEOUT: u16 = 11;
+    /// Block until the caller's CQ ring has at least `x1` pending entries.
+    pub const CQ_WAIT: u16 = 12;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -87,6 +89,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::MAILBOX_SEND => sys_mailbox_send(frame),
         call_no::MAILBOX_RECV => sys_mailbox_recv(frame),
         call_no::COMPLETION_WAIT_TIMEOUT => sys_completion_wait_timeout(frame),
+        call_no::CQ_WAIT => sys_cq_wait(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -376,4 +379,11 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             frame.regs[0] = 1; // timeout
         }
     }
+}
+
+fn sys_cq_wait(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let min_complete = frame.regs[1].max(1) as u32;
+    crate::completion::wait_on_cq(asid, min_complete);
+    frame.regs[0] = crate::completion::cq_pending(asid) as u64;
 }

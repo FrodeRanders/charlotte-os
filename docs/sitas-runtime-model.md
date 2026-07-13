@@ -762,6 +762,6 @@ status/result instead of discarding it; CQ overflow is retained in a per-AS
 kernel backlog and retried; the smoke-test mailbox receive path no longer takes
 and drops the durable receiver flag on each syscall; and `wait_on_cq` now blocks
 through the scheduler/observer path instead of spinning. The remaining larger
-ABI work is to expose CQ wait as the userspace reactor's actual wait syscall,
-turn mailbox access into named capabilities, and replace the flat RWX sitas
-loader with an ELF/segment-aware loader.
+ABI work is to switch `sitas-charlotte` to the `CQ_WAIT` syscall instead of
+busy-polling, turn mailbox access into named capabilities, and replace the flat
+RWX sitas loader with an ELF/segment-aware loader.

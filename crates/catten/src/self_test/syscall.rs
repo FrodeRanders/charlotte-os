@@ -79,6 +79,13 @@ pub fn test_syscall_dispatch() {
     completion::complete(asid, cap2, OpResult::Cancelled).unwrap();
     completion::close(asid, cap2).unwrap();
 
+    // CQ_WAIT (synthetic, outside thread context): routes and reports pending.
+    {
+        let mut f = synthetic_trap_frame(asid as u64, 1, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::CQ_WAIT);
+        assert_eq!(f.regs[0], 0, "CQ_WAIT should report no pending CQ entries");
+    }
+
     completion::close_address_space(asid);
     logln!("Syscall dispatch subsystem tests passed.");
 }
