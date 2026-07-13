@@ -18,7 +18,8 @@ static ALLOCATOR: TalcLock<spin::Mutex<()>, Claim> =
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    let reactor = CharlotteReactor::new(1, 0);
+    let asid = unsafe { core::ptr::read_volatile(RESULT_PAGE.add(4)) as u64 };
+    let reactor = CharlotteReactor::new(asid, 0);
     unsafe {
         basic_kv::basic_kv_test(&reactor, RESULT_PAGE);
     }

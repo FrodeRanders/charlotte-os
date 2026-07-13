@@ -2,7 +2,7 @@
  * load address directly without computing an entry-point offset. */
 SECTIONS
 {
-    . = 0;
+    . = 0x20000;
     .text : {
         KEEP(*(.text._start .text._start.*))
         *(.text .text.*)

@@ -27,7 +27,7 @@ use crate::memory::{
     ADDRESS_SPACE_TABLE, KERNEL_AS,
 };
 
-// The binary is position-independent (PIE) and we map code at 0x20000.
+// The binary is linked and mapped at 0x20000.
 // It references two fixed addresses:
 //   CQ_RING_VADDR  = 0x11000  (sitas-charlotte::CharlotteReactor)
 //   RESULT_PAGE    = 0x12000  (catten-user main.rs)
@@ -46,8 +46,9 @@ const SITAS_HEAP_PAGES: usize = 13;
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
 
-/// Offset of `_start` within the raw binary.  With the linker script
-/// (`KEEP(*(.text._start ...))`), `_start` is guaranteed to be at offset 0.
+/// Offset of `_start` within the raw binary. The linker script places the
+/// image at VA 0x20000 but keeps `_start` first, so raw offset 0 maps to the
+/// entry virtual address.
 #[cfg(target_arch = "aarch64")]
 const ENTRY_OFFSET: usize = 0x0;
 
@@ -97,11 +98,10 @@ pub fn test_el0_sitas() {
                 .map_page(MemoryMapping {
                     vaddr,
                     paddr: frame,
-                    // Split: code pages executable, data/BSS pages writable.
-                    // The binary's LOAD #1 (code+rodata) ends at ELF VA 0x35C0
-                    // which is page-aligned at 0x4000 (page 4). Pages 0-3 are
-                    // code; pages 4+ are data/BSS.
-                    page_type: if i < 4 { PageType::UserCode } else { PageType::UserData },
+                    // Raw flat images can place code and data in the same 4 KiB
+                    // page. Until this becomes an ELF loader, these pages must
+                    // be both writable and executable.
+                    page_type: PageType::UserFlatImage,
                 })
                 .expect("[sitas] failed to map code page");
 
