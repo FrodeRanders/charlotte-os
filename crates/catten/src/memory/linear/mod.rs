@@ -15,6 +15,7 @@ pub enum PageType {
     KernelData,         //read, write
     KernelRoData,       //read only
     UserCode,           //user, read, execute
+    UserFlatImage,      //user, read, write, execute
     UserData,           //user, read, write
     UserRoData,         //user, read only
     Mmio,               //read, write, no caching
@@ -25,7 +26,10 @@ pub enum PageType {
 impl PageType {
     pub fn is_user_accessible(&self) -> bool {
         match *self {
-            PageType::UserCode | PageType::UserData | PageType::UserRoData => true,
+            PageType::UserCode
+            | PageType::UserFlatImage
+            | PageType::UserData
+            | PageType::UserRoData => true,
             _ => false,
         }
     }
@@ -33,6 +37,7 @@ impl PageType {
     pub fn is_writable(&self) -> bool {
         match *self {
             PageType::KernelData
+            | PageType::UserFlatImage
             | PageType::UserData
             | PageType::Mmio
             | PageType::DirectMemoryAccess
@@ -43,7 +48,7 @@ impl PageType {
 
     pub fn is_no_execute(&self) -> bool {
         match *self {
-            PageType::KernelCode | PageType::UserCode => false,
+            PageType::KernelCode | PageType::UserCode | PageType::UserFlatImage => false,
             _ => true,
         }
     }

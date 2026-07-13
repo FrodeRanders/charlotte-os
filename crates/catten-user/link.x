@@ -3,7 +3,10 @@
 SECTIONS
 {
     . = 0;
-    .text : { *(.text .text.*) }
+    .text : {
+        KEEP(*(.text._start .text._start.*))
+        *(.text .text.*)
+    }
     .rodata : { *(.rodata .rodata.*) }
     .data.rel.ro : { *(.data.rel.ro .data.rel.ro.*) }
     .data : { *(.data .data.*) }

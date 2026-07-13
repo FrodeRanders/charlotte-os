@@ -31,12 +31,17 @@ use crate::memory::{
 // It references two fixed addresses:
 //   CQ_RING_VADDR  = 0x11000  (sitas-charlotte::CharlotteReactor)
 //   RESULT_PAGE    = 0x12000  (catten-user main.rs)
+//   HEAP_BASE      = 0x13000  (catten-user global allocator)
 #[cfg(target_arch = "aarch64")]
 const SITAS_CODE_VADDR: usize = 0x0000_0000_0002_0000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
+#[cfg(target_arch = "aarch64")]
+const SITAS_HEAP_VADDR: usize = 0x0000_0000_0001_3000;
+#[cfg(target_arch = "aarch64")]
+const SITAS_HEAP_PAGES: usize = 13;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
@@ -46,22 +51,30 @@ const PAGE_SIZE: usize = 4096;
 #[cfg(target_arch = "aarch64")]
 const ENTRY_OFFSET: usize = 0x0;
 
-/// The Rust-compiled sitas-based catten-user binary (145 KB, position-independent).
+/// The Rust-compiled sitas-based catten-user binary (position-independent).
 #[cfg(target_arch = "aarch64")]
 const SITAS_CODE: &[u8] = include_bytes!("sitas-user.bin");
 
 /// `objcopy -O binary` strips ELF headers and places the first LOAD segment
-/// at file offset 0.  The segment's VA is 0x0, so there is no gap:
-/// VA = CODE_VADDR + X  ↔  binary offset = X.
+/// at file offset 0. The segment's VA is 0x0, so there is no gap:
+/// VA = CODE_VADDR + X <=> binary offset = X.
 #[cfg(target_arch = "aarch64")]
-const GAP_OFFSET: usize = 0;
+const MIN_CODE_PAGES: usize = 8;
+#[cfg(target_arch = "aarch64")]
+const ZERO_FILL_PAGES: usize = 4;
 
-/// Total pages to map.  The raw binary's LOAD segments span VA 0x0 through
-/// 0x36A0+16512 ≈ 0x7730 (8 pages).  The file produced by `objcopy -O binary`
-/// is smaller (the BSS section has MemSize > FileSize), but the BSS zero-fill
-/// still occupies VA space that must be mapped.
+/// Total pages to map for the flat image. `objcopy -O binary` omits trailing
+/// NOBITS/BSS data, so the loader keeps the previously observed 8-page span as
+/// a floor and reserves extra zero-filled pages for larger rebuilt binaries.
 #[cfg(target_arch = "aarch64")]
-const CODE_PAGES: usize = 1;
+const CODE_PAGES: usize = {
+    let file_and_bss_pages = SITAS_CODE.len().div_ceil(PAGE_SIZE) + ZERO_FILL_PAGES;
+    if file_and_bss_pages > MIN_CODE_PAGES {
+        file_and_bss_pages
+    } else {
+        MIN_CODE_PAGES
+    }
+};
 
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -98,27 +111,22 @@ pub fn test_el0_sitas() {
                 .map_page(MemoryMapping {
                     vaddr,
                     paddr: frame,
-                    page_type: PageType::UserCode,
+                    page_type: PageType::UserFlatImage,
                 })
                 .expect("[sitas] failed to map code page");
 
             // Copy this page's portion of the binary.
             let hhdm: *mut u8 = frame.into();
+            unsafe {
+                core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
+            }
+
             let start = i * PAGE_SIZE;
             if start < SITAS_CODE.len() {
                 let end = core::cmp::min(start + PAGE_SIZE, SITAS_CODE.len());
                 let chunk = &SITAS_CODE[start..end];
                 unsafe {
                     core::ptr::copy_nonoverlapping(chunk.as_ptr(), hhdm, chunk.len());
-                }
-            }
-            // The third LOAD segment has MemSize > FileSize (BSS).  Zero any
-            // portion of this page that the binary does not cover, including
-            // pages entirely after the binary content.
-            let covered = core::cmp::min(PAGE_SIZE, SITAS_CODE.len().saturating_sub(start));
-            if covered < PAGE_SIZE {
-                unsafe {
-                    core::ptr::write_bytes(hhdm.add(covered), 0, PAGE_SIZE - covered);
                 }
             }
         }
@@ -163,6 +171,25 @@ pub fn test_el0_sitas() {
             })
             .expect("[sitas] failed to map result page");
 
+        // --- map user heap pages ---
+        for i in 0..SITAS_HEAP_PAGES {
+            let heap_vaddr = VAddr::from(SITAS_HEAP_VADDR + i * PAGE_SIZE);
+            let heap_frame = PHYSICAL_FRAME_ALLOCATOR
+                .lock()
+                .allocate_frame()
+                .expect("[sitas] failed to allocate heap frame");
+            ADDRESS_SPACE_TABLE
+                .lock()
+                .get_mut(asid)
+                .expect("[sitas] AS not found")
+                .map_page(MemoryMapping {
+                    vaddr: heap_vaddr,
+                    paddr: heap_frame,
+                    page_type: PageType::UserData,
+                })
+                .expect("[sitas] failed to map heap page");
+        }
+
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
         // The binary reads asid from result[4]; write it there.
@@ -176,10 +203,10 @@ pub fn test_el0_sitas() {
         let entry_vaddr = SITAS_CODE_VADDR + ENTRY_OFFSET;
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
-        let tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
+        let _tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
         logln!("[sitas] thread spawned");
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_sitas);
+        let _vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_sitas);
         logln!("[sitas] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]
