@@ -10,11 +10,10 @@ test = false
 bench = false
 
 [dependencies]
+catten-rt = { path = "../catten-rt" }
 catten-syscall = { path = "../catten-syscall" }
 sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
 sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }
-talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
-spin = { version = "0.9", features = ["lock_api"] }
 
 [profile.dev]
 panic = "abort"

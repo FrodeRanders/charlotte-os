@@ -1,33 +1,27 @@
-//! basic_kv on CharlotteOS — exercises sitas ShardedKv via ShardedExecutor.
+//! CharlotteOS adder — adds kernel-placed numbers, subtracts boilerplate.
 #![no_std]
 #![no_main]
-#![deny(unsafe_op_in_unsafe_fn)]
 
-use core::panic::PanicInfo;
-use sitas_charlotte::CharlotteReactor;
-use sitas_core::basic_kv;
-use talc::{source::Claim, TalcLock};
+extern crate alloc;
+use catten_syscall::*;
 
-const HEAP_BASE: usize = 0x0000_0000_0001_3000;
-const HEAP_SIZE: usize = 0x0000_0000_0000_d000;
 const RESULT_PAGE: *mut u32 = 0x0000_0000_0001_2000usize as *mut u32;
+const READ_BUF:   *mut u32 = 0x0000_0000_0001_6000usize as *mut u32;
 
-#[global_allocator]
-static ALLOCATOR: TalcLock<spin::Mutex<()>, Claim> =
-    TalcLock::new(unsafe { Claim::new(HEAP_BASE as *mut u8, HEAP_SIZE) });
+fn cmain(_asid: u64) -> ! {
+    let a = unsafe { core::ptr::read_volatile(RESULT_PAGE) };
+    let b = unsafe { core::ptr::read_volatile(RESULT_PAGE.add(1)) };
 
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
-    let asid = unsafe { core::ptr::read_volatile(RESULT_PAGE.add(4)) as u64 };
-    let reactor = CharlotteReactor::new(asid, 0);
-    unsafe {
-        basic_kv::basic_kv_test(&reactor, RESULT_PAGE);
-    }
+    let cap = unsafe { submit_read(READ_BUF as usize, 32) };
+    unsafe { wait(cap); }
+    let kernel_val = unsafe { core::ptr::read_volatile(READ_BUF) };
 
-    loop { core::hint::spin_loop(); }
+    let sum = a.wrapping_add(b).wrapping_add(kernel_val);
+    unsafe { core::ptr::write_volatile(RESULT_PAGE.add(2), sum); }
+    unsafe { core::ptr::write_volatile(RESULT_PAGE, 0xC0DE); }
+
+    unsafe { close(cap); }
+    unsafe { thread_exit(); }
 }
 
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop { core::hint::spin_loop(); }
-}
+catten_rt::entry!(cmain);

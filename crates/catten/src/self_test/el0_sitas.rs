@@ -33,12 +33,11 @@ use crate::memory::{
 };
 
 // The binary is linked and mapped at 0x20000.
-// It references two fixed addresses:
-//   CQ_RING_VADDR  = 0x11000  (sitas-charlotte::CharlotteReactor)
-//   RESULT_PAGE    = 0x12000  (catten-user main.rs)
-//   HEAP_BASE      = 0x13000  (catten-user global allocator)
+// catten-rt reads the config page at 0x1F000 (ASID at offset 16).
 #[cfg(target_arch = "aarch64")]
 const SITAS_CODE_VADDR: usize = 0x0000_0000_0002_0000;
+#[cfg(target_arch = "aarch64")]
+const SITAS_CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 #[cfg(target_arch = "aarch64")]
@@ -136,6 +135,22 @@ pub fn test_el0_sitas() {
             );
         }
 
+        // --- map config page (catten-rt reads ASID from offset 16) ---
+        let config_frame = PHYSICAL_FRAME_ALLOCATOR
+            .lock()
+            .allocate_frame()
+            .expect("[sitas] failed to allocate config frame");
+        ADDRESS_SPACE_TABLE
+            .lock()
+            .get_mut(asid)
+            .expect("[sitas] AS not found")
+            .map_page(MemoryMapping {
+                vaddr: VAddr::from(SITAS_CONFIG_VADDR),
+                paddr: config_frame,
+                page_type: PageType::UserData,
+            })
+            .expect("[sitas] failed to map config page");
+
         // --- map CQ ring page ---
         let cq_frame = PHYSICAL_FRAME_ALLOCATOR
             .lock()
@@ -193,11 +208,15 @@ pub fn test_el0_sitas() {
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
         // The binary reads asid from result[4] and inputs a,b from result[0..1].
+        // catten-rt reads asid from the config page at offset 16.
         let result_base: *mut u8 = result_frame.into();
+        let config_base: *mut u8 = config_frame.into();
         unsafe {
             core::ptr::write_volatile((result_base as *mut u32).add(4), asid as u32);
             core::ptr::write_volatile(result_base as *mut u32, 42);           // a
             core::ptr::write_volatile((result_base as *mut u32).add(1), 7);   // b
+            // catten-rt reads ASID from config[4].
+            core::ptr::write_volatile((config_base as *mut u32).add(4), asid as u32);
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
