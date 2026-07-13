@@ -46,35 +46,20 @@ const SITAS_HEAP_PAGES: usize = 13;
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
 
-/// Offset of `_start` within the raw binary.  Computed from the ELF entry
-/// point; must be updated when the binary is rebuilt.
+/// Offset of `_start` within the raw binary.  With the linker script
+/// (`KEEP(*(.text._start ...))`), `_start` is guaranteed to be at offset 0.
 #[cfg(target_arch = "aarch64")]
 const ENTRY_OFFSET: usize = 0x0;
+
+/// Total pages to map.  The LOAD segments span VA 0x0..0x3620+128 ≈ 0x36A0
+/// plus a 128 KB BSS tail.  32 pages (128 KiB) covers the binary + BSS
+/// with generous headroom.
+#[cfg(target_arch = "aarch64")]
+const CODE_PAGES: usize = 32;
 
 /// The Rust-compiled sitas-based catten-user binary (position-independent).
 #[cfg(target_arch = "aarch64")]
 const SITAS_CODE: &[u8] = include_bytes!("sitas-user.bin");
-
-/// `objcopy -O binary` strips ELF headers and places the first LOAD segment
-/// at file offset 0. The segment's VA is 0x0, so there is no gap:
-/// VA = CODE_VADDR + X <=> binary offset = X.
-#[cfg(target_arch = "aarch64")]
-const MIN_CODE_PAGES: usize = 8;
-#[cfg(target_arch = "aarch64")]
-const ZERO_FILL_PAGES: usize = 4;
-
-/// Total pages to map for the flat image. `objcopy -O binary` omits trailing
-/// NOBITS/BSS data, so the loader keeps the previously observed 8-page span as
-/// a floor and reserves extra zero-filled pages for larger rebuilt binaries.
-#[cfg(target_arch = "aarch64")]
-const CODE_PAGES: usize = {
-    let file_and_bss_pages = SITAS_CODE.len().div_ceil(PAGE_SIZE) + ZERO_FILL_PAGES;
-    if file_and_bss_pages > MIN_CODE_PAGES {
-        file_and_bss_pages
-    } else {
-        MIN_CODE_PAGES
-    }
-};
 
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -100,6 +85,7 @@ pub fn test_el0_sitas() {
         for i in 0..CODE_PAGES {
             let page_base = SITAS_CODE_VADDR + i * PAGE_SIZE;
             let vaddr = VAddr::from(page_base);
+
             let frame = PHYSICAL_FRAME_ALLOCATOR
                 .lock()
                 .allocate_frame()
@@ -111,14 +97,18 @@ pub fn test_el0_sitas() {
                 .map_page(MemoryMapping {
                     vaddr,
                     paddr: frame,
-                    page_type: PageType::UserFlatImage,
+                    // Split: code pages executable, data/BSS pages writable.
+                    // The binary's LOAD #1 (code+rodata) ends at ELF VA 0x35C0
+                    // which is page-aligned at 0x4000 (page 4). Pages 0-3 are
+                    // code; pages 4+ are data/BSS.
+                    page_type: if i < 4 { PageType::UserCode } else { PageType::UserData },
                 })
                 .expect("[sitas] failed to map code page");
 
             // Copy this page's portion of the binary.
             let hhdm: *mut u8 = frame.into();
             unsafe {
-                core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
+                core::ptr::write_bytes(hhdm, 0, PAGE_SIZE); // zero page first (BSS)
             }
 
             let start = i * PAGE_SIZE;
