@@ -35,6 +35,7 @@ pub enum Error {
     NoRunnableThreads,
     ThreadAlreadyAssignedToLp,
     ThreadNotAssignedToThisLp,
+    InvalidThread,
 }
 
 /// Tracks the per-LP quantum timer state.

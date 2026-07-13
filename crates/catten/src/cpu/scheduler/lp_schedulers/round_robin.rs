@@ -169,8 +169,12 @@ impl LpScheduler for RoundRobin {
 
     fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
         let mut tt_guard = MASTER_THREAD_TABLE.write();
-        let mut thread_slot = tt_guard.get_mut(tid);
-        let thread = thread_slot.as_mut().unwrap();
+        let thread = match tt_guard.get_mut(tid) {
+            Ok(t) => t,
+            // The thread was removed (e.g. exited via THREAD_EXIT) before a
+            // late-arriving observer notification could re-admit it. Harmless.
+            Err(_) => return Err(Error::InvalidThread),
+        };
         match thread.state {
             ThreadState::Running(_) | ThreadState::Ready(_) => {
                 Err(Error::ThreadAlreadyAssignedToLp)
