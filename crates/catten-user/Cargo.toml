@@ -10,8 +10,9 @@ test = false
 bench = false
 
 [dependencies]
-sitas-core = { path = "../../../../gautelis/sitas/crates/sitas-core" }
-sitas-charlotte = { path = "../../../../gautelis/sitas/crates/sitas-charlotte" }
+# sitas-core and sitas-charlotte are removed for now; they do not yet build
+# against a no_std target. The current main.rs uses raw syscall wrappers
+# (core::arch::asm!) directly. Re-add them once sitas-core compiles no_std.
 
 [profile.dev]
 panic = "abort"
