@@ -192,10 +192,12 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // The binary reads asid from result[4]; write it there.
+        // The binary reads asid from result[4] and inputs a,b from result[0..1].
         let result_base: *mut u8 = result_frame.into();
         unsafe {
             core::ptr::write_volatile((result_base as *mut u32).add(4), asid as u32);
+            core::ptr::write_volatile(result_base as *mut u32, 42);           // a
+            core::ptr::write_volatile((result_base as *mut u32).add(1), 7);   // b
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
@@ -225,17 +227,23 @@ extern "C" fn verify_el0_sitas() {
     let mut spins: u64 = 0;
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        // A successful run writes the total key count (3) or a cap-sentinel
-        // (0xDEAD).  Any non-zero value means the EL0 stub executed and
-        // produced output.
-        if sentinel != 0 {
+        if sentinel == 0xC0DE {
+            let a = unsafe { core::ptr::read_volatile(result.add(1)) };   // preserved: b
+            let sum = unsafe { core::ptr::read_volatile(result.add(2)) }; // computed
+            let expected = 42u32.wrapping_add(7).wrapping_add(0xFEED_F00D);
+            assert_eq!(sum, expected,
+                "[sitas] adder: expected sum 42+7+0xFEED_F00D = {:#x}, got {:#x}",
+                expected, sum);
+            logln!("[sitas] SUCCESS: adder program computed the correct sum.");
+            loop { yield_lp(); }
+        }
+        if sentinel != 0 && sentinel != 0xC0DE {
+            // basic_kv or minimal stub: any non-zero sentinel = ran successfully.
             logln!(
                 "[sitas] SUCCESS: catten-user Rust binary ran at EL0, produced result {:#x}.",
                 sentinel
             );
-            loop {
-                yield_lp();
-            }
+            loop { yield_lp(); }
         }
         spins += 1;
         assert!(
