@@ -762,8 +762,10 @@ status/result instead of discarding it; CQ overflow is retained in a per-AS
 kernel backlog and retried; the smoke-test mailbox receive path no longer takes
 and drops the durable receiver flag on each syscall; and `wait_on_cq` now blocks
 through the scheduler/observer path instead of spinning. `CQ_WAIT` is exposed
-through the syscall table, and `try_run_on_lp` no longer recovers backpressured
-closures through trait-object pointer casts. The remaining larger ABI work is
-to switch `sitas-charlotte` to the `CQ_WAIT` syscall instead of busy-polling,
-turn mailbox access into named capabilities, and replace the flat RWX sitas
+through the syscall table, `try_run_on_lp` no longer recovers backpressured
+closures through trait-object pointer casts, and mailbox access now has an
+incremental sender/receiver capability ABI while preserving the legacy raw-LP
+smoke-test calls. The remaining larger ABI work is to switch `sitas-charlotte`
+to the `CQ_WAIT` syscall instead of busy-polling, move the hand-written EL0
+mailbox stubs over to the capability calls, and replace the flat RWX sitas
 loader with an ELF/segment-aware loader.

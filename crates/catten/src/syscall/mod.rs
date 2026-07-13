@@ -20,9 +20,14 @@
 //! `ESR_EL1[15:0]` (the ISS field for SVC). This kernel uses that immediate as
 //! the syscall number.
 
-use crate::cpu::isa::{
-    interface::memory::AddressSpaceInterface,
-    lp::LpId,
+use alloc::collections::BTreeMap;
+
+use crate::{
+    cpu::isa::{
+        interface::memory::AddressSpaceInterface,
+        lp::LpId,
+    },
+    memory::AddressSpaceId,
 };
 
 /// A snapshot of the volatile register set and architectural state at the moment
@@ -41,7 +46,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 12;
+pub const MAX_SYSCALL: u16 = 17;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -63,6 +68,16 @@ pub mod call_no {
     pub const COMPLETION_WAIT_TIMEOUT: u16 = 11;
     /// Block until the caller's CQ ring has at least `x1` pending entries.
     pub const CQ_WAIT: u16 = 12;
+    /// Open a sender capability targeting LP `x1`. Returns cap in `x0`.
+    pub const MAILBOX_OPEN_SEND: u16 = 13;
+    /// Open a receiver capability for the caller's current LP. Returns cap in `x0`.
+    pub const MAILBOX_OPEN_RECV: u16 = 14;
+    /// Send `x2` through sender capability `x1`. Returns status in `x0`.
+    pub const MAILBOX_SEND_CAP: u16 = 15;
+    /// Receive through receiver capability `x1`. Returns msg in `x0`, status in `x1`.
+    pub const MAILBOX_RECV_CAP: u16 = 16;
+    /// Close mailbox capability `x1`. Returns status in `x0`.
+    pub const MAILBOX_CLOSE: u16 = 17;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -90,6 +105,11 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::MAILBOX_RECV => sys_mailbox_recv(frame),
         call_no::COMPLETION_WAIT_TIMEOUT => sys_completion_wait_timeout(frame),
         call_no::CQ_WAIT => sys_cq_wait(frame),
+        call_no::MAILBOX_OPEN_SEND => sys_mailbox_open_send(frame),
+        call_no::MAILBOX_OPEN_RECV => sys_mailbox_open_recv(frame),
+        call_no::MAILBOX_SEND_CAP => sys_mailbox_send_cap(frame),
+        call_no::MAILBOX_RECV_CAP => sys_mailbox_recv_cap(frame),
+        call_no::MAILBOX_CLOSE => sys_mailbox_close(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -259,12 +279,51 @@ fn sys_thread_exit(_frame: &mut TrapFrame) {
     crate::cpu::scheduler::abort();
 }
 
-use spin::LazyLock;
+use spin::{
+    LazyLock,
+    RwLock,
+};
 
 /// A kernel-global mailbox set for EL0-to-EL0 inter-LP messaging. One bounded
 /// MPSC queue per LP; senders target a specific LP, receivers drain their own.
 use crate::cpu::multiprocessor::shard_mailbox::ShardMailboxSet;
 static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> = LazyLock::new(|| ShardMailboxSet::new(256));
+
+type MailboxCap = u64;
+
+#[derive(Clone, Copy)]
+enum MailboxEndpoint {
+    Sender {
+        target_lp: LpId,
+    },
+    Receiver {
+        lp: LpId,
+    },
+}
+
+struct AsMailboxCaps {
+    next: MailboxCap,
+    endpoints: BTreeMap<MailboxCap, MailboxEndpoint>,
+}
+
+impl AsMailboxCaps {
+    fn new() -> Self {
+        Self {
+            next: 1,
+            endpoints: BTreeMap::new(),
+        }
+    }
+
+    fn insert(&mut self, endpoint: MailboxEndpoint) -> MailboxCap {
+        let cap = self.next;
+        self.next = self.next.checked_add(1).expect("mailbox capability id overflow");
+        self.endpoints.insert(cap, endpoint);
+        cap
+    }
+}
+
+static USER_MAILBOX_CAPS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsMailboxCaps>>> =
+    LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
 fn sys_mailbox_send(frame: &mut TrapFrame) {
     let _asid = caller_asid(frame);
@@ -288,6 +347,78 @@ fn sys_mailbox_recv(frame: &mut TrapFrame) {
             frame.regs[1] = 1; // empty
         }
     }
+}
+
+fn sys_mailbox_open_send(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let target_lp = frame.regs[1] as LpId;
+    let mut tables = USER_MAILBOX_CAPS.write();
+    let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
+    frame.regs[0] = caps.insert(MailboxEndpoint::Sender {
+        target_lp,
+    });
+}
+
+fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let lp = frame.lp_id;
+    let mut tables = USER_MAILBOX_CAPS.write();
+    let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
+    frame.regs[0] = caps.insert(MailboxEndpoint::Receiver {
+        lp,
+    });
+}
+
+fn mailbox_endpoint(asid: AddressSpaceId, cap: MailboxCap) -> Option<MailboxEndpoint> {
+    USER_MAILBOX_CAPS.read().get(&asid).and_then(|caps| caps.endpoints.get(&cap).copied())
+}
+
+fn sys_mailbox_send_cap(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1] as MailboxCap;
+    let message = frame.regs[2];
+    frame.regs[0] = match mailbox_endpoint(asid, cap) {
+        Some(MailboxEndpoint::Sender {
+            target_lp,
+        }) => match USER_MAILBOX.try_send_to(target_lp, message) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        },
+        _ => 2,
+    };
+}
+
+fn sys_mailbox_recv_cap(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1] as MailboxCap;
+    match mailbox_endpoint(asid, cap) {
+        Some(MailboxEndpoint::Receiver {
+            lp,
+        }) if lp == frame.lp_id => match USER_MAILBOX.try_recv_for_current_lp() {
+            Some(msg) => {
+                frame.regs[0] = msg;
+                frame.regs[1] = 0;
+            }
+            None => {
+                frame.regs[0] = 0;
+                frame.regs[1] = 1;
+            }
+        },
+        _ => {
+            frame.regs[0] = 0;
+            frame.regs[1] = 2;
+        }
+    }
+}
+
+fn sys_mailbox_close(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1] as MailboxCap;
+    let mut tables = USER_MAILBOX_CAPS.write();
+    frame.regs[0] = match tables.get_mut(&asid).and_then(|caps| caps.endpoints.remove(&cap)) {
+        Some(_) => 0,
+        None => 1,
+    };
 }
 
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {

@@ -86,6 +86,41 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 0, "CQ_WAIT should report no pending CQ entries");
     }
 
+    // Mailbox endpoint capabilities.
+    let sender_cap = {
+        let mut f = synthetic_trap_frame(asid as u64, 0, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_OPEN_SEND);
+        assert_ne!(f.regs[0], 0, "MAILBOX_OPEN_SEND should return a capability");
+        f.regs[0]
+    };
+    let recv_cap = {
+        let mut f = synthetic_trap_frame(asid as u64, 0, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_OPEN_RECV);
+        assert_ne!(f.regs[0], 0, "MAILBOX_OPEN_RECV should return a capability");
+        f.regs[0]
+    };
+    {
+        let mut f = synthetic_trap_frame(asid as u64, sender_cap, 0x5a5a, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_SEND_CAP);
+        assert_eq!(f.regs[0], 0, "MAILBOX_SEND_CAP should send via a sender capability");
+    }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, recv_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_RECV_CAP);
+        assert_eq!(f.regs[1], 0, "MAILBOX_RECV_CAP should report a message");
+        assert_eq!(f.regs[0], 0x5a5a, "MAILBOX_RECV_CAP should return the sent value");
+    }
+    {
+        let mut f = synthetic_trap_frame(asid as u64, recv_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_SEND_CAP);
+        assert_eq!(f.regs[0], 2, "receiver caps must not be usable for send");
+    }
+    for cap in [sender_cap, recv_cap] {
+        let mut f = synthetic_trap_frame(asid as u64, cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MAILBOX_CLOSE);
+        assert_eq!(f.regs[0], 0, "MAILBOX_CLOSE should close known caps");
+    }
+
     completion::close_address_space(asid);
     logln!("Syscall dispatch subsystem tests passed.");
 }
