@@ -43,6 +43,7 @@ pub fn run_self_tests() {
     completion::test_completion_caps();
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_ipc_connection_attach();
+    ipc::test_endpoint_ipc_connection_copy();
     syscall::test_syscall_dispatch();
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();

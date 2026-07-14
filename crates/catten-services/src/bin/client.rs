@@ -1,9 +1,9 @@
 //! The reference client: bootstrap → name lookup → service call.
 //!
 //! Never learns kernel identifiers: it starts with one connection to the
-//! name service, obtains an echo-service connection by name lookup, and
-//! calls it. Results are posted to the config-page output words for the
-//! kernel verifier:
+//! name service, obtains an echo-service connection by looking up a
+//! memory-carried (long) name, and calls it. Results are posted to the
+//! config-page output words for the kernel verifier:
 //!
 //! - `config[1]` (byte 4, u32): echoed value (low 32 bits)
 //! - `config[2]` (byte 8, u32): observed service generation
@@ -21,10 +21,13 @@ use catten_rt::{
 use catten_services::{
     echo,
     ns,
+    stage_name,
     wait_reply,
 };
 use catten_syscall::{
     ipc_scalar_call,
+    ipc_scalar_call_copy,
+    memory_close,
     thread_exit,
 };
 
@@ -41,10 +44,24 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     };
     config::write::<u32>(12, 2); // stage: bootstrap connection received
 
-    // The echo service may not have registered yet; retry the lookup.
+    // Look up the echo service by its memory-carried (long) name. The name
+    // is staged once; copy transfer preserves the client's ownership, so the
+    // same memory object serves every retry. The echo service may not have
+    // registered yet, so retry.
+    let name_cap = match unsafe { stage_name(echo::LONG_NAME) } {
+        Some(cap) => cap,
+        None => unsafe { thread_exit() },
+    };
     let mut attempts: u64 = 0;
     let (generation, echo_connection) = loop {
-        let lookup = unsafe { ipc_scalar_call(ns_connection, ns::OP_LOOKUP, echo::NAME) };
+        let lookup = unsafe {
+            ipc_scalar_call_copy(
+                ns_connection,
+                ns::OP_LOOKUP_NAMED,
+                echo::LONG_NAME.len() as u64,
+                name_cap,
+            )
+        };
         if lookup != 0 {
             let (result, cap) = unsafe { wait_reply(lookup, REPLY_SPINS) };
             if result >= 1 && cap != 0 {
@@ -58,6 +75,9 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
         }
         core::hint::spin_loop();
     };
+    unsafe {
+        memory_close(name_cap);
+    }
     config::write::<u32>(12, 4); // stage: connection obtained
 
     let call = unsafe { ipc_scalar_call(echo_connection, echo::OP_ECHO, ECHO_VALUE) };

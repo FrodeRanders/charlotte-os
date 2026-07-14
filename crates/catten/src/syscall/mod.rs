@@ -135,10 +135,16 @@ pub mod call_no {
     /// Returns pending-call cap in x0. The receiver observes the minted
     /// connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
     pub const IPC_SCALAR_CALL_CONNECTION: u16 = 39;
+    /// Call carrying a delegated connection *and* a copied memory object.
+    /// x1=connection, x2=opcode, x3=arg0, x4=mintable endpoint/connection
+    /// cap, x5=delegated rights, x6=memory cap to copy. Returns pending-call
+    /// cap in x0. The receiver observes the copied memory cap in x7 and the
+    /// minted connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
+    pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 = 40;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_CONNECTION;
+pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_CONNECTION_COPY;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -192,6 +198,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_SCALAR_SEND_COPY => sys_ipc_scalar_send_copy(frame),
         call_no::IPC_SCALAR_CALL_COPY => sys_ipc_scalar_call_copy(frame),
         call_no::IPC_SCALAR_CALL_CONNECTION => sys_ipc_scalar_call_connection(frame),
+        call_no::IPC_SCALAR_CALL_CONNECTION_COPY => sys_ipc_scalar_call_connection_copy(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -744,6 +751,20 @@ fn sys_ipc_scalar_call_connection(frame: &mut TrapFrame) {
     frame.regs[0] =
         ipc::scalar_call_with_connection(asid, connection, opcode, arg0, delegate, rights)
             .unwrap_or(0);
+}
+
+fn sys_ipc_scalar_call_connection_copy(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let delegate = frame.regs[4];
+    let rights = ipc::ConnectionRights::from_bits(frame.regs[5] as u32);
+    let memory = frame.regs[6];
+    frame.regs[0] = ipc::scalar_call_with_connection_copy(
+        asid, connection, opcode, arg0, delegate, rights, memory,
+    )
+    .unwrap_or(0);
 }
 
 fn sys_ipc_scalar_send_move(frame: &mut TrapFrame) {

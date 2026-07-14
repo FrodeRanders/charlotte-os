@@ -186,6 +186,18 @@ unsafe fn svc5(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) 
     ret
 }
 
+#[inline(always)]
+unsafe fn svc6(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        match imm {
+            40 => asm!("svc #40", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, in("x6") arg6, options(nostack, nomem, preserves_flags)),
+            _ => core::hint::unreachable_unchecked(),
+        }
+    }
+    ret
+}
+
 /// Like [`svc3`] but also captures the x1 return value (for syscalls that
 /// return a secondary value in x1, e.g. MAILBOX_RECV_CAP, WAIT_TIMEOUT).
 #[inline(always)]
@@ -647,4 +659,23 @@ pub unsafe fn ipc_scalar_call_connection(
     rights: IpcRights,
 ) -> u64 {
     unsafe { svc5(39, connection, opcode as u64, arg0, delegate, rights.bits() as u64) }
+}
+
+/// Call through a connection carrying both a delegated connection capability
+/// and a copied memory object.
+///
+/// The receiver observes the copied memory cap in the `memory` field and the
+/// minted connection cap in the `connection` field of the received message.
+/// This is the combined-attachment primitive used to register services under
+/// memory-carried (long) names. Returns the pending-call cap, or 0 on error.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_connection_copy(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    delegate: u64,
+    rights: IpcRights,
+    memory: u64,
+) -> u64 {
+    unsafe { svc6(40, connection, opcode as u64, arg0, delegate, rights.bits() as u64, memory) }
 }

@@ -526,6 +526,54 @@ pub fn scalar_call_with_connection(
     delegate_cap: CapabilityId,
     delegate_rights: ConnectionRights,
 ) -> Result<CapabilityId, IpcError> {
+    scalar_call_with_connection_impl(
+        caller,
+        connection_cap,
+        opcode,
+        arg0,
+        delegate_cap,
+        delegate_rights,
+        None,
+    )
+}
+
+/// Scalar call carrying a delegated connection capability *and* a copied
+/// memory object.
+///
+/// Combined attachments allow a single registration call to deliver both a
+/// service's endpoint authority and a memory-carried payload (for example a
+/// long service name): the receiver observes the copied memory cap and the
+/// minted connection cap together with one message.
+pub fn scalar_call_with_connection_copy(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    delegate_cap: CapabilityId,
+    delegate_rights: ConnectionRights,
+    memory_cap: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    scalar_call_with_connection_impl(
+        caller,
+        connection_cap,
+        opcode,
+        arg0,
+        delegate_cap,
+        delegate_rights,
+        Some(memory_cap),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scalar_call_with_connection_impl(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    delegate_cap: CapabilityId,
+    delegate_rights: ConnectionRights,
+    copied_memory: Option<MemoryObjectCap>,
+) -> Result<CapabilityId, IpcError> {
     let mut ipc = IPC.write();
     let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
         Capability::Connection {
@@ -541,6 +589,14 @@ pub fn scalar_call_with_connection(
         mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?;
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = if let Some(memory_cap) = copied_memory {
+        Some(
+            crate::memory::object::copy_to(caller, memory_cap, server)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+        )
+    } else {
+        None
+    };
     let attached_cap = ipc.as_caps(server).insert(Capability::Connection {
         endpoint: delegated_endpoint,
         rights: granted,
@@ -580,7 +636,7 @@ pub fn scalar_call_with_connection(
         opcode,
         arg0,
         Some(token_cap),
-        None,
+        server_memory_cap,
         Some(attached_cap),
     )?;
     drop(ipc);

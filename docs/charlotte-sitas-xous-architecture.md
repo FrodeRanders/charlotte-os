@@ -51,6 +51,13 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     connections, and pending calls track a `ResultObserved` state so
     closing an observed pending-call cap no longer revokes returned
     capabilities.
+-   Syscall `40` (`IPC_SCALAR_CALL_CONNECTION_COPY`) delivers the first
+    combined attachment: one call carries both a copied memory object
+    (`x7` at receive) and a minted connection (`x8`). This is the step
+    toward the §6.5 envelope's independent `segment_count` and
+    `capability_count`, and it is what lets a service register under a
+    memory-carried name and hand over its endpoint authority in a
+    single message.
 -   `crates/catten/src/service/` contains the first Phase 3 supervisor
     slice: a generalized EL0 ELF loader (`loader.rs`), the config-page
     bootstrap-capability contract (`bootstrap.rs`, mirrored by
@@ -61,13 +68,17 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     strictly downward; no userspace code ever names an ASID or LP.
 -   `crates/catten-services` provides the reference EL0 service
     programs built as real ET_EXEC ELFs: a userspace name service
-    (packed u64 names → re-delegable connection plus instance
-    generation; re-registration bumps the generation and closes the
-    previous instance's connection; LOOKUP replies with attenuated
-    `SEND|CALL` connections), an echo service that creates its own
-    endpoint and registers itself by name, and a client that
-    bootstraps, looks up, and calls purely through delegated
-    capabilities.
+    (names → re-delegable connection plus instance generation;
+    re-registration bumps the generation and closes the previous
+    instance's connection; LOOKUP replies with attenuated `SEND|CALL`
+    connections), an echo service that creates its own endpoint and
+    registers itself, and a client that bootstraps, looks up, and calls
+    purely through delegated capabilities. Names travel either as an
+    interim 8-byte packed scalar or, for longer names, in a copied
+    memory object addressed to a unified byte-keyed registry; the
+    reference echo service registers under both a short scalar name and
+    a 30-byte memory-carried name, and the reference client resolves
+    the service through the long name.
 -   `crates/catten-syscall` has EL0 wrappers for endpoint IPC,
     memory-object operations, and memory IPC transfer operations.
 -   Boot-time self-tests cover cross-address-space delegation through
@@ -104,14 +115,16 @@ Phase 3 has since filled the service-management gap at smoke-test
 fidelity: a userspace (EL0) name service now exists, bootstrap
 capability delivery follows a documented config-page contract, service
 instances carry generations that increment on restart, and stale
-connections fail deterministically with `EndpointClosed`. Still
-unimplemented: memory-object-carried (long) service names, policy
-gating on lookup beyond connection delegation, automated restart
-policy in the supervisor, a general process loader contract (stack and
-guard pages, argument/environment blocks, declared heaps), and
-production resource accounting. Names are interim 8-byte packed
-scalars, and the reference service ELFs are prebuilt and embedded in
-the kernel image rather than loaded from storage.
+connections fail deterministically with `EndpointClosed`. Long service
+names are supported through copied memory objects (combined
+connection + memory attachments on one registration call), with the
+8-byte packed scalar form retained as a fast path. Still
+unimplemented: policy gating on lookup beyond connection delegation,
+automated restart policy in the supervisor, a general process loader
+contract (stack and guard pages, argument/environment blocks, declared
+heaps), and production resource accounting. The reference service ELFs
+are prebuilt and embedded in the kernel image rather than loaded from
+storage.
 Completion queues remain separate and should continue to be used for
 kernel/device operation completion rather than as universal IPC
 endpoints.
@@ -179,6 +192,16 @@ Current evidence:
     migrate to `catten-syscall` wrappers; (c) pending calls needed an
     explicit `ResultObserved` state so a caller can close a completed
     call cap without losing capabilities it received in the reply.
+-   A follow-up increment adds memory-carried (long) service names:
+    syscall 40 (`IPC_SCALAR_CALL_CONNECTION_COPY`) carries a copied
+    memory object and a minted connection on one registration call, the
+    name service resolves both scalar and memory-carried names through
+    a single byte-keyed registry, and the reference echo/client
+    programs register and resolve a 30-byte name end to end. Kernel
+    self-test `test_endpoint_ipc_connection_copy` covers the combined
+    attachment, copied-name delivery and verification, sender-ownership
+    retention under copy, and reclamation of both attachments when a
+    queued combined call is cancelled.
 
 ------------------------------------------------------------------------
 

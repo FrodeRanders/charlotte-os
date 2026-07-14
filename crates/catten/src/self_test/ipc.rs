@@ -821,3 +821,131 @@ pub fn test_endpoint_ipc_connection_attach() {
     ipc::close_address_space(nameservice);
     logln!("Endpoint IPC connection attachment tests passed.");
 }
+
+/// Exercises the combined connection + copied-memory attachment primitive
+/// (`scalar_call_with_connection_copy`), the kernel mechanism that lets a
+/// service register under a memory-carried (long) name in one call.
+pub fn test_endpoint_ipc_connection_copy() {
+    logln!("Testing combined connection + copied-memory IPC attachment...");
+
+    let nameservice = create_ipc_memory_test_address_space("named-ns");
+    let service = create_ipc_memory_test_address_space("named-service");
+
+    let ns_endpoint = ipc::endpoint_create(nameservice, 0x4e53_5632, 1, 4)
+        .expect("named name-service endpoint_create failed");
+    let service_ns_conn =
+        ipc::connection_delegate(nameservice, ns_endpoint, service, ConnectionRights::CALL)
+            .expect("named service bootstrap connection delegation failed");
+    let service_endpoint = ipc::endpoint_create(service, 0x4543_4832, 1, 4)
+        .expect("named service endpoint_create failed");
+
+    // The service writes a long name into a memory object, then registers
+    // with a combined connection + copied-name call.
+    let name_bytes: &[u8] = b"system.console.primary.v1";
+    let name_object =
+        object::allocate(service, 1).expect("named name allocation failed");
+    object::map(service, name_object, VAddr::from(0x120000usize), true)
+        .expect("named name map failed");
+    let name_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(service)
+        .expect("named service AS missing")
+        .translate_address(VAddr::from(0x120000usize))
+        .expect("named name translation failed");
+    unsafe {
+        let dst: *mut u8 = name_frame.into();
+        core::ptr::copy_nonoverlapping(name_bytes.as_ptr(), dst, name_bytes.len());
+    }
+    object::unmap(service, name_object).expect("named name unmap failed");
+
+    let register = ipc::scalar_call_with_connection_copy(
+        service,
+        service_ns_conn,
+        1,
+        name_bytes.len() as u64,
+        service_endpoint,
+        ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
+        name_object,
+    )
+    .expect("named combined register call failed");
+
+    // The copy preserves the sender's ownership.
+    assert!(
+        object::info(service, name_object).is_ok(),
+        "copy attachment must not consume the sender's name object"
+    );
+
+    let message =
+        ipc::receive(nameservice, ns_endpoint).expect("named register receive failed");
+    assert_eq!(message.arg0, name_bytes.len() as u64, "name length should arrive in arg0");
+    let stored_conn =
+        message.connection.expect("combined call should carry attached connection");
+    let name_copy = message.memory.expect("combined call should carry copied name memory");
+    let reply = message.reply.expect("combined call should carry reply token");
+
+    // The name service reads the copied name and verifies it.
+    object::map(nameservice, name_copy, VAddr::from(0x130000usize), false)
+        .expect("named copy map failed");
+    let copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(nameservice)
+        .expect("named ns AS missing")
+        .translate_address(VAddr::from(0x130000usize))
+        .expect("named copy translation failed");
+    unsafe {
+        let src: *const u8 = copy_frame.into();
+        for (i, expected) in name_bytes.iter().enumerate() {
+            assert_eq!(
+                core::ptr::read_volatile(src.add(i)),
+                *expected,
+                "copied name byte {} mismatch",
+                i
+            );
+        }
+    }
+    object::unmap(nameservice, name_copy).expect("named copy unmap failed");
+    object::close_cap(nameservice, name_copy).expect("named copy close failed");
+
+    ipc::reply(nameservice, reply, 1).expect("named register reply failed");
+    let value = ipc::poll_reply(service, register)
+        .expect("named register poll failed")
+        .expect("named register reply should be ready");
+    assert_eq!(value.result, 1, "named registration should report generation 1");
+
+    // The stored connection reaches the real service endpoint.
+    ipc::scalar_send(nameservice, stored_conn, 5, 0xabc)
+        .expect("stored named connection should authorize send");
+    let echoed = ipc::receive(service, service_endpoint)
+        .expect("named service should receive delegated send");
+    assert_eq!(echoed.opcode, 5);
+    assert_eq!(echoed.arg0, 0xabc);
+
+    // Cancelling a queued combined call reclaims both attachments.
+    let cancel_name = object::allocate(service, 1).expect("cancel name allocation failed");
+    let cancelled = ipc::scalar_call_with_connection_copy(
+        service,
+        service_ns_conn,
+        1,
+        4,
+        service_endpoint,
+        ConnectionRights::SEND | ConnectionRights::MINT_CONNECTION,
+        cancel_name,
+    )
+    .expect("cancellable combined register call failed");
+    ipc::close_cap(service, cancelled).expect("cancellable combined close failed");
+    assert_eq!(
+        ipc::receive(nameservice, ns_endpoint),
+        Err(IpcError::NoMessage),
+        "cancelled combined call must not be delivered"
+    );
+    assert!(
+        object::info(service, cancel_name).is_ok(),
+        "copy source survives cancellation of the queued call"
+    );
+    object::close_cap(service, cancel_name).expect("cancel name close failed");
+    object::close_cap(service, name_object).expect("named name close failed");
+
+    close_user_address_space(service).expect("named service AS close failed");
+    close_user_address_space(nameservice).expect("named ns AS close failed");
+    logln!("Combined connection + copied-memory IPC attachment tests passed.");
+}

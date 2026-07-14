@@ -16,6 +16,7 @@ use catten_rt::{
 use catten_services::{
     echo,
     ns,
+    stage_name,
     wait_reply,
 };
 use catten_syscall::{
@@ -24,7 +25,9 @@ use catten_syscall::{
     ipc_recv_block,
     ipc_reply,
     ipc_scalar_call_connection,
+    ipc_scalar_call_connection_copy,
     ipc_status,
+    memory_close,
     thread_exit,
 };
 
@@ -44,6 +47,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
     config::write::<u32>(0, 3); // stage: endpoint created
 
+    // Register under the short (scalar) name.
     let register = unsafe {
         ipc_scalar_call_connection(
             ns_connection,
@@ -56,13 +60,41 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 4); // stage: register call sent
+    config::write::<u32>(0, 4); // stage: short register call sent
     let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
     if generation < 1 {
         unsafe { thread_exit() };
     }
     config::write::<u32>(4, generation as u32);
-    config::write::<u32>(0, 5); // stage: registered, serving
+
+    // Register the same endpoint under the long (memory-carried) name.
+    let name_cap = match unsafe { stage_name(echo::LONG_NAME) } {
+        Some(cap) => cap,
+        None => unsafe { thread_exit() },
+    };
+    let register_named = unsafe {
+        ipc_scalar_call_connection_copy(
+            ns_connection,
+            ns::OP_REGISTER_NAMED,
+            echo::LONG_NAME.len() as u64,
+            endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+            name_cap,
+        )
+    };
+    if register_named == 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(0, 5); // stage: long register call sent
+    let (named_generation, _) = unsafe { wait_reply(register_named, REPLY_SPINS) };
+    unsafe {
+        memory_close(name_cap);
+    }
+    if named_generation < 1 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(12, named_generation as u32);
+    config::write::<u32>(0, 6); // stage: registered under both names, serving
 
     let mut served: u32 = 0;
 

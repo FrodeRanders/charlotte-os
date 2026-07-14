@@ -6,6 +6,10 @@
 #![no_std]
 
 /// Pack up to 8 ASCII bytes into a u64 service name (little-endian).
+///
+/// This interim scalar encoding is limited to 8 bytes; longer names travel
+/// in a copied memory object (see [`ns::OP_REGISTER_NAMED`] and
+/// [`ns::OP_LOOKUP_NAMED`]).
 pub const fn name(bytes: &[u8]) -> u64 {
     let mut packed = [0u8; 8];
     let mut i = 0;
@@ -16,24 +20,44 @@ pub const fn name(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(packed)
 }
 
+/// The scratch virtual address services use to stage a memory-carried name.
+///
+/// One free page between the config page (`0x10000`) and the launch input
+/// buffer (`0x12000`) in the standard `catten-rt` address-space layout.
+pub const NAME_SCRATCH_VADDR: usize = 0x0000_0000_0001_1000;
+
+/// Maximum memory-carried name length (fits one page with room to spare).
+pub const MAX_NAME_LEN: usize = 256;
+
 /// Name-service protocol (`charlotte-protocol-name` v1).
 pub mod ns {
     /// Interface id: "NAME".
     pub const INTERFACE: u64 = super::name(b"NAME");
     pub const VERSION: u32 = 1;
 
-    /// Register a service. `arg0` = packed name; the call must attach a
-    /// re-delegable connection (`SEND | CALL | MINT_CONNECTION`) to the
-    /// service's endpoint. Reply result = new instance generation (>= 1).
+    /// Register a service under a short (<= 8 byte) name. `arg0` = packed
+    /// name; the call must attach a re-delegable connection
+    /// (`SEND | CALL | MINT_CONNECTION`) to the service's endpoint. Reply
+    /// result = new instance generation (>= 1).
     pub const OP_REGISTER: u32 = 1;
-    /// Look up a service. `arg0` = packed name. Reply result = current
-    /// generation with an attenuated (`SEND | CALL`) connection cap
+    /// Look up a service by short name. `arg0` = packed name. Reply result =
+    /// current generation with an attenuated (`SEND | CALL`) connection cap
     /// attached, or [`ERR_NOT_FOUND`].
     pub const OP_LOOKUP: u32 = 2;
+    /// Register under a memory-carried (long) name. `arg0` = name length in
+    /// bytes; the call attaches both a copied memory object whose first
+    /// `arg0` bytes are the name and a re-delegable connection. Reply result
+    /// = new instance generation (>= 1), or [`ERR_INVALID`].
+    pub const OP_REGISTER_NAMED: u32 = 3;
+    /// Look up a service by memory-carried (long) name. `arg0` = name length;
+    /// the call attaches a copied memory object holding the name. Reply as
+    /// for [`OP_LOOKUP`].
+    pub const OP_LOOKUP_NAMED: u32 = 4;
 
     /// The name is not registered.
     pub const ERR_NOT_FOUND: i64 = -1;
-    /// A register call did not attach a re-delegable connection.
+    /// A register call did not attach a re-delegable connection, or a named
+    /// call carried a malformed/oversized name.
     pub const ERR_INVALID: i64 = -2;
     /// Unknown opcode.
     pub const ERR_BAD_OPCODE: i64 = -3;
@@ -44,13 +68,46 @@ pub mod echo {
     /// Interface id: "ECHO".
     pub const INTERFACE: u64 = super::name(b"ECHO");
     pub const VERSION: u32 = 1;
-    /// The registered service name.
+    /// The registered short service name.
     pub const NAME: u64 = super::name(b"echo");
+    /// The registered long (memory-carried) service name, demonstrating
+    /// names beyond the 8-byte scalar limit.
+    pub const LONG_NAME: &[u8] = b"system.console.echo.primary.v1";
 
     /// Reply result = `arg0`.
     pub const OP_ECHO: u32 = 1;
     /// Reply 0, then the service exits its protection domain.
     pub const OP_SHUTDOWN: u32 = 2;
+}
+
+/// Stage a memory-carried name: allocate a one-page memory object, write
+/// `name` at offset 0, and return the memory cap (unmapped, ready to attach
+/// to a copied-memory call).
+///
+/// Returns `None` when the name is empty/oversized or allocation fails.
+///
+/// # Safety
+/// Uses [`NAME_SCRATCH_VADDR`], which must be unmapped in the caller's
+/// address space, and must not race with other users of the scratch page.
+pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
+    if name.is_empty() || name.len() > MAX_NAME_LEN {
+        return None;
+    }
+    let cap = unsafe { catten_syscall::memory_alloc(1) };
+    if cap == 0 {
+        return None;
+    }
+    if unsafe { catten_syscall::memory_map(cap, NAME_SCRATCH_VADDR, true) } != 0 {
+        unsafe {
+            catten_syscall::memory_close(cap);
+        }
+        return None;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(name.as_ptr(), NAME_SCRATCH_VADDR as *mut u8, name.len());
+        catten_syscall::memory_unmap(cap);
+    }
+    Some(cap)
 }
 
 /// Spin-poll a pending call until it completes, returning
