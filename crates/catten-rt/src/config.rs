@@ -1,13 +1,29 @@
 //! Typed access to the canonical kernel↔userspace config page.
 //!
 //! The kernel maps a single 4 KiB page at VADDR `0x0001_0000` in every user
-//! address space and writes inputs there during setup.  Userspace programs
-//! read inputs with [`read`] and publish results with [`write`].  No fixed
-//! `RESULT_PAGE` or `READ_BUF` constants are needed — the config page is the
-//! single shared-memory channel.
+//! address space and writes launch metadata there during setup.
 
 /// The canonical config-page virtual address.
 pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
+
+/// Canonical launch input buffer virtual address.
+pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
+
+/// Bytes available in the canonical launch input buffer.
+pub const INPUT_CAPACITY: usize = 4096;
+
+/// Preserved for consumers that still need to inspect the kernel-assigned ASID.
+pub const ASID_OFFSET: usize = 16;
+
+/// Number of 32-bit launch argument words at [`ARGS_OFFSET`].
+pub const ARGC_OFFSET: usize = 24;
+
+/// Launch argument words start here.
+pub const ARGS_OFFSET: usize = 32;
+
+/// Output/status words are intentionally kept at the beginning of the page so
+/// existing kernel verifiers can poll `config[0]` as a sentinel.
+pub const OUTPUT_OFFSET: usize = 0;
 
 /// Read a value of type `T` from `offset` bytes into the config page.
 ///
@@ -26,5 +42,7 @@ pub unsafe fn read<T: Copy>(offset: usize) -> T {
 ///
 /// `offset` should be a multiple of `align_of::<T>()`.
 pub fn write<T: Copy>(offset: usize, value: T) {
-    unsafe { core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value); }
+    unsafe {
+        core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value);
+    }
 }

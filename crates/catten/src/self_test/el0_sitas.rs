@@ -23,13 +23,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
-    ADDRESS_SPACE_TABLE,
-    KERNEL_AS,
     linear::{
         MemoryMapping,
         PageType,
         VAddr,
     },
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
 };
 
 // The binary is linked and mapped at 0x20000.
@@ -41,7 +41,7 @@ const SITAS_CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 #[cfg(target_arch = "aarch64")]
-const SITAS_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
+const SITAS_INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_HEAP_VADDR: usize = 0x0000_0000_0001_3000;
 #[cfg(target_arch = "aarch64")]
@@ -49,6 +49,12 @@ const SITAS_HEAP_PAGES: usize = 13;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
+#[cfg(target_arch = "aarch64")]
+const CONFIG_ASID_OFFSET: usize = 16;
+#[cfg(target_arch = "aarch64")]
+const CONFIG_ARGC_OFFSET: usize = 24;
+#[cfg(target_arch = "aarch64")]
+const CONFIG_ARGS_OFFSET: usize = 32;
 
 /// Offset of `_start` within the raw binary. The linker script places the
 /// image at VA 0x20000 but keeps `_start` first, so raw offset 0 maps to the
@@ -167,11 +173,11 @@ pub fn test_el0_sitas() {
             })
             .expect("[sitas] failed to map CQ page");
 
-        // --- map result page ---
-        let result_frame = PHYSICAL_FRAME_ALLOCATOR
+        // --- map launch input page ---
+        let input_frame = PHYSICAL_FRAME_ALLOCATOR
             .lock()
             .allocate_frame()
-            .expect("[sitas] failed to allocate result frame");
+            .expect("[sitas] failed to allocate input frame");
         unsafe {
             SITAS_RESULT_FRAME = Some(config_frame); // verifier polls config page
         }
@@ -180,11 +186,11 @@ pub fn test_el0_sitas() {
             .get_mut(asid)
             .expect("[sitas] AS not found")
             .map_page(MemoryMapping {
-                vaddr: VAddr::from(SITAS_RESULT_VADDR),
-                paddr: result_frame,
+                vaddr: VAddr::from(SITAS_INPUT_VADDR),
+                paddr: input_frame,
                 page_type: PageType::UserData,
             })
-            .expect("[sitas] failed to map result page");
+            .expect("[sitas] failed to map input page");
 
         // --- map user heap pages ---
         for i in 0..SITAS_HEAP_PAGES {
@@ -207,14 +213,15 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // The adder reads a,b from config[0..1]; catten-rt reads asid from
-        // config[4].  Write the inputs to the config page.
-        let result_base: *mut u8 = result_frame.into();
+        // catten-rt reads launch metadata from the config page. The adder's
+        // cmain receives Args([42, 7]) and Input<32>; crt0 reads exactly 32
+        // bytes into SITAS_INPUT_VADDR before calling cmain.
         let config_base: *mut u8 = config_frame.into();
         unsafe {
-            core::ptr::write_volatile((config_base as *mut u32).add(4), asid as u32);
-            core::ptr::write_volatile(config_base as *mut u32, 42);               // a
-            core::ptr::write_volatile((config_base as *mut u32).add(1), 7);       // b
+            core::ptr::write_volatile(config_base.add(CONFIG_ASID_OFFSET) as *mut usize, asid);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 2);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET) as *mut u32, 42);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET + 4) as *mut u32, 7);
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
@@ -244,23 +251,28 @@ extern "C" fn verify_el0_sitas() {
     let mut spins: u64 = 0;
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
-        if sentinel == 0xC0DE {
-            let a = unsafe { core::ptr::read_volatile(result.add(1)) };   // preserved: b
+        if sentinel == 0xc0de {
             let sum = unsafe { core::ptr::read_volatile(result.add(2)) }; // computed
-            let expected = 42u32.wrapping_add(7).wrapping_add(0xFEED_F00D);
-            assert_eq!(sum, expected,
+            let expected = 42u32.wrapping_add(7).wrapping_add(0xfeed_f00d);
+            assert_eq!(
+                sum, expected,
                 "[sitas] adder: expected sum 42+7+0xFEED_F00D = {:#x}, got {:#x}",
-                expected, sum);
+                expected, sum
+            );
             logln!("[sitas] SUCCESS: adder program computed the correct sum.");
-            loop { yield_lp(); }
+            loop {
+                yield_lp();
+            }
         }
-        if sentinel != 0 && sentinel != 0xC0DE {
+        if sentinel != 0 && sentinel != 0xc0de {
             // basic_kv or minimal stub: any non-zero sentinel = ran successfully.
             logln!(
                 "[sitas] SUCCESS: catten-user Rust binary ran at EL0, produced result {:#x}.",
                 sentinel
             );
-            loop { yield_lp(); }
+            loop {
+                yield_lp();
+            }
         }
         spins += 1;
         assert!(
