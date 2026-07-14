@@ -57,10 +57,33 @@ pub mod ipc_status {
     pub const PERMISSION_DENIED: IpcStatusCode = 6;
     pub const ENDPOINT_CLOSED: IpcStatusCode = 7;
     pub const REPLY_ALREADY_USED: IpcStatusCode = 8;
+    pub const MEMORY_TRANSFER_FAILED: IpcStatusCode = 9;
 }
 
 pub const IPC_REPLY_CANCELLED: i64 = -3;
 pub const IPC_REPLY_ENDPOINT_CLOSED: i64 = -7;
+
+pub type MemoryStatusCode = u64;
+
+pub mod memory_status {
+    use super::MemoryStatusCode;
+
+    pub const OK: MemoryStatusCode = 0;
+    pub const UNKNOWN_CAPABILITY: MemoryStatusCode = 1;
+    pub const WRONG_OWNER: MemoryStatusCode = 2;
+    pub const ALREADY_MAPPED: MemoryStatusCode = 3;
+    pub const NOT_MAPPED: MemoryStatusCode = 4;
+    pub const INVALID_LENGTH: MemoryStatusCode = 5;
+    pub const NOT_PAGE_ALIGNED: MemoryStatusCode = 6;
+    pub const ADDRESS_SPACE_MISSING: MemoryStatusCode = 7;
+    pub const MAP_FAILED: MemoryStatusCode = 8;
+    pub const UNMAP_FAILED: MemoryStatusCode = 9;
+    pub const FRAME_ALLOC_FAILED: MemoryStatusCode = 10;
+    pub const FRAME_FREE_FAILED: MemoryStatusCode = 11;
+    pub const MISSING_RIGHT: MemoryStatusCode = 12;
+    pub const LENDING_ACTIVE: MemoryStatusCode = 13;
+    pub const NOT_LENT: MemoryStatusCode = 14;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpcRights(u32);
@@ -121,6 +144,26 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             23 => asm!("svc #23", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             25 => asm!("svc #25", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             26 => asm!("svc #26", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            28 => asm!("svc #28", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            29 => asm!("svc #29", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            30 => asm!("svc #30", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            31 => asm!("svc #31", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            34 => asm!("svc #34", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            _ => core::hint::unreachable_unchecked(),
+        }
+    }
+    ret
+}
+
+#[inline(always)]
+unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        match imm {
+            32 => asm!("svc #32", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            33 => asm!("svc #33", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            35 => asm!("svc #35", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            36 => asm!("svc #36", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -159,6 +202,21 @@ unsafe fn svc3_x2(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64
     (ret, x1_out, x2_out)
 }
 
+#[inline(always)]
+unsafe fn svc3_x3(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
+    let ret: u64;
+    let x1_out: u64;
+    let x2_out: u64;
+    let x3_out: u64;
+    unsafe {
+        match imm {
+            24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            _ => core::hint::unreachable_unchecked(),
+        }
+    }
+    (ret, x1_out, x2_out, x3_out)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpcMessage {
     pub status: IpcStatusCode,
@@ -168,6 +226,7 @@ pub struct IpcMessage {
     pub sender: u64,
     pub interface: u64,
     pub version: u32,
+    pub memory: u64,
 }
 
 impl IpcMessage {
@@ -186,6 +245,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     let sender: u64;
     let interface: u64;
     let version: u64;
+    let memory: u64;
     unsafe {
         asm!(
             "svc #22",
@@ -196,6 +256,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
             lateout("x4") sender,
             lateout("x5") interface,
             lateout("x6") version,
+            lateout("x7") memory,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -207,6 +268,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
         sender,
         interface,
         version: version as u32,
+        memory,
     }
 }
 
@@ -220,6 +282,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
     let sender: u64;
     let interface: u64;
     let version: u64;
+    let memory: u64;
     unsafe {
         asm!(
             "svc #27",
@@ -230,6 +293,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
             lateout("x4") sender,
             lateout("x5") interface,
             lateout("x6") version,
+            lateout("x7") memory,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -241,6 +305,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
         sender,
         interface,
         version: version as u32,
+        memory,
     }
 }
 
@@ -429,6 +494,15 @@ pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64, u64) {
     unsafe { svc3_x2(24, call, 0, 0) }
 }
 
+/// Poll a pending-call cap, including any returned memory-object cap.
+///
+/// Returns `(0, result, returned_connection, returned_memory)` when ready.
+/// Either returned cap is 0 when absent.
+#[inline(always)]
+pub unsafe fn ipc_reply_poll_with_memory(call: u64) -> (u64, u64, u64, u64) {
+    unsafe { svc3_x3(24, call, 0, 0) }
+}
+
 /// Close an endpoint IPC capability. Returns status code.
 #[inline(always)]
 pub unsafe fn ipc_close(cap: u64) -> u64 {
@@ -439,4 +513,73 @@ pub unsafe fn ipc_close(cap: u64) -> u64 {
 #[inline(always)]
 pub unsafe fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights) -> u64 {
     unsafe { svc3(26, reply, endpoint, rights.bits() as u64) }
+}
+
+/// Allocate a first-class memory object owned by the caller.
+#[inline(always)]
+pub unsafe fn memory_alloc(pages: usize) -> u64 {
+    unsafe { svc3(28, pages as u64, 0, 0) }
+}
+
+/// Map a memory object at `base_vaddr`. Returns a memory status code.
+#[inline(always)]
+pub unsafe fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCode {
+    unsafe { svc3(29, cap, base_vaddr as u64, writable as u64) }
+}
+
+/// Unmap a memory object from the caller. Returns a memory status code.
+#[inline(always)]
+pub unsafe fn memory_unmap(cap: u64) -> MemoryStatusCode {
+    unsafe { svc3(30, cap, 0, 0) }
+}
+
+/// Close a memory object cap. Returns a memory status code.
+#[inline(always)]
+pub unsafe fn memory_close(cap: u64) -> MemoryStatusCode {
+    unsafe { svc3(31, cap, 0, 0) }
+}
+
+/// Send a scalar message and move a memory object to the receiver.
+#[inline(always)]
+pub unsafe fn ipc_scalar_send_move(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    memory: u64,
+) -> IpcStatusCode {
+    unsafe { svc4(32, connection, opcode as u64, arg0, memory) }
+}
+
+/// Call through a connection and move a memory object to the receiver.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+    unsafe { svc4(33, connection, opcode as u64, arg0, memory) }
+}
+
+/// Reply to a call and move a memory object back to the caller.
+#[inline(always)]
+pub unsafe fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> IpcStatusCode {
+    unsafe { svc3(34, reply, memory, result as u64) }
+}
+
+/// Call through a connection with a reply-bound immutable memory borrow.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_borrow_read(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    memory: u64,
+) -> u64 {
+    unsafe { svc4(35, connection, opcode as u64, arg0, memory) }
+}
+
+/// Call through a connection with a reply-bound writable memory borrow.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_borrow_write(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    memory: u64,
+) -> u64 {
+    unsafe { svc4(36, connection, opcode as u64, arg0, memory) }
 }

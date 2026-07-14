@@ -24,12 +24,16 @@ use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
         lp::{
-            LpId,
             ops::get_lp_id,
+            LpId,
         },
     },
     ipc,
-    memory::AddressSpaceId,
+    memory::{
+        object,
+        AddressSpaceId,
+        VAddr,
+    },
 };
 
 /// A snapshot of the volatile register set and architectural state at the moment
@@ -52,7 +56,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 27;
+pub const MAX_SYSCALL: u16 = 36;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -107,6 +111,24 @@ pub mod call_no {
     /// Block until endpoint x1 is readable, then receive one message. Returns
     /// the same register shape as IPC_RECV.
     pub const IPC_RECV_BLOCK: u16 = 27;
+    /// Allocate a memory object owned by the caller. x1=pages. Returns cap in x0.
+    pub const MEMORY_ALLOC: u16 = 28;
+    /// Map memory object x1 at user VA x2. x3=1 writable, 0 read-only.
+    pub const MEMORY_MAP: u16 = 29;
+    /// Unmap memory object x1 from the caller.
+    pub const MEMORY_UNMAP: u16 = 30;
+    /// Close memory object cap x1.
+    pub const MEMORY_CLOSE: u16 = 31;
+    /// Send scalar message with moved memory cap x4.
+    pub const IPC_SCALAR_SEND_MOVE: u16 = 32;
+    /// Call with moved memory cap x4. Returns pending-call cap.
+    pub const IPC_SCALAR_CALL_MOVE: u16 = 33;
+    /// Reply and move memory cap x2 back to caller. x3=result.
+    pub const IPC_REPLY_MOVE: u16 = 34;
+    /// Call with read-borrowed memory cap x4.
+    pub const IPC_SCALAR_CALL_BORROW_READ: u16 = 35;
+    /// Call with writable borrowed memory cap x4.
+    pub const IPC_SCALAR_CALL_BORROW_WRITE: u16 = 36;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -149,6 +171,15 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_CLOSE => sys_ipc_close(frame),
         call_no::IPC_REPLY_CONNECTION => sys_ipc_reply_connection(frame),
         call_no::IPC_RECV_BLOCK => sys_ipc_recv_block(frame),
+        call_no::MEMORY_ALLOC => sys_memory_alloc(frame),
+        call_no::MEMORY_MAP => sys_memory_map(frame),
+        call_no::MEMORY_UNMAP => sys_memory_unmap(frame),
+        call_no::MEMORY_CLOSE => sys_memory_close(frame),
+        call_no::IPC_SCALAR_SEND_MOVE => sys_ipc_scalar_send_move(frame),
+        call_no::IPC_SCALAR_CALL_MOVE => sys_ipc_scalar_call_move(frame),
+        call_no::IPC_REPLY_MOVE => sys_ipc_reply_move(frame),
+        call_no::IPC_SCALAR_CALL_BORROW_READ => sys_ipc_scalar_call_borrow_read(frame),
+        call_no::IPC_SCALAR_CALL_BORROW_WRITE => sys_ipc_scalar_call_borrow_write(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -276,8 +307,8 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     use crate::cpu::scheduler::{
         system_scheduler::SYSTEM_SCHEDULER,
         threads::{
-            MASTER_THREAD_TABLE,
             Thread,
+            MASTER_THREAD_TABLE,
         },
     };
     let asid = caller_asid(frame);
@@ -499,6 +530,60 @@ fn ipc_status(error: ipc::IpcError) -> u64 {
     }
 }
 
+fn memory_status(error: object::MemoryObjectError) -> u64 {
+    match error {
+        object::MemoryObjectError::UnknownCapability => 1,
+        object::MemoryObjectError::WrongOwner => 2,
+        object::MemoryObjectError::AlreadyMapped => 3,
+        object::MemoryObjectError::NotMapped => 4,
+        object::MemoryObjectError::InvalidLength => 5,
+        object::MemoryObjectError::NotPageAligned => 6,
+        object::MemoryObjectError::AddressSpaceMissing => 7,
+        object::MemoryObjectError::MapFailed => 8,
+        object::MemoryObjectError::UnmapFailed => 9,
+        object::MemoryObjectError::FrameAllocFailed => 10,
+        object::MemoryObjectError::FrameFreeFailed => 11,
+        object::MemoryObjectError::MissingRight => 12,
+        object::MemoryObjectError::LendingActive => 13,
+        object::MemoryObjectError::NotLent => 14,
+    }
+}
+
+fn sys_memory_alloc(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let pages = frame.regs[1] as usize;
+    frame.regs[0] = object::allocate(asid, pages).unwrap_or(0);
+}
+
+fn sys_memory_map(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    let base = VAddr::from(frame.regs[2] as usize);
+    let writable = frame.regs[3] != 0;
+    frame.regs[0] = match object::map(asid, cap, base, writable) {
+        Ok(()) => 0,
+        Err(error) => memory_status(error),
+    };
+}
+
+fn sys_memory_unmap(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = match object::unmap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => memory_status(error),
+    };
+}
+
+fn sys_memory_close(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = match object::close_cap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => memory_status(error),
+    };
+}
+
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let interface = frame.regs[1];
@@ -549,10 +634,11 @@ fn recv_into_frame(frame: &mut TrapFrame, asid: AddressSpaceId, endpoint: u64) {
             frame.regs[4] = message.sender as u64;
             frame.regs[5] = message.interface;
             frame.regs[6] = message.version as u64;
+            frame.regs[7] = message.memory.unwrap_or(0);
         }
         Err(error) => {
             frame.regs[0] = ipc_status(error);
-            for reg in &mut frame.regs[1..=6] {
+            for reg in &mut frame.regs[1..=7] {
                 *reg = 0;
             }
         }
@@ -564,7 +650,7 @@ fn sys_ipc_recv_block(frame: &mut TrapFrame) {
     let endpoint = frame.regs[1];
     if let Err(error) = ipc::wait_readable(asid, endpoint) {
         frame.regs[0] = ipc_status(error);
-        for reg in &mut frame.regs[1..=6] {
+        for reg in &mut frame.regs[1..=7] {
             *reg = 0;
         }
         return;
@@ -590,16 +676,19 @@ fn sys_ipc_reply_poll(frame: &mut TrapFrame) {
             frame.regs[0] = 0;
             frame.regs[1] = result.result as u64;
             frame.regs[2] = result.cap.unwrap_or(0);
+            frame.regs[3] = result.memory.unwrap_or(0);
         }
         Ok(None) => {
             frame.regs[0] = 1;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
+            frame.regs[3] = 0;
         }
         Err(error) => {
             frame.regs[0] = ipc_status(error);
             frame.regs[1] = 0;
             frame.regs[2] = 0;
+            frame.regs[3] = 0;
         }
     }
 }
@@ -624,6 +713,62 @@ fn sys_ipc_reply_connection(frame: &mut TrapFrame) {
     };
 }
 
+fn sys_ipc_scalar_send_move(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] = match ipc::scalar_send_with_memory_move(asid, connection, opcode, arg0, memory)
+    {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_scalar_call_move(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] =
+        ipc::scalar_call_with_memory_move(asid, connection, opcode, arg0, memory).unwrap_or(0);
+}
+
+fn sys_ipc_reply_move(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let reply = frame.regs[1];
+    let memory = frame.regs[2];
+    let result = frame.regs[3] as i64;
+    frame.regs[0] = match ipc::reply_with_memory_move(asid, reply, memory, result) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_scalar_call_borrow_read(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] =
+        ipc::scalar_call_with_memory_borrow_read(asid, connection, opcode, arg0, memory)
+            .unwrap_or(0);
+}
+
+fn sys_ipc_scalar_call_borrow_write(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] =
+        ipc::scalar_call_with_memory_borrow_write(asid, connection, opcode, arg0, memory)
+            .unwrap_or(0);
+}
+
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     use alloc::sync::{
         Arc,
@@ -640,8 +785,8 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             time::duration::ExtDuration,
         },
         timers::{
-            TIMER_QUEUES,
             TimerEvent,
+            TIMER_QUEUES,
         },
     };
 
