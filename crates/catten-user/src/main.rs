@@ -12,7 +12,7 @@ use catten_syscall::thread_exit;
 use sitas_charlotte::CharlotteReactor;
 
 fn cmain(_args: Args, _input: Input<0>) -> ! {
-    let reactor = CharlotteReactor::new(0, 0);
+    let reactor = CharlotteReactor::new(0);
 
     unsafe {
         sitas_core::basic_kv::basic_kv_test(&reactor, config::output_ptr());
