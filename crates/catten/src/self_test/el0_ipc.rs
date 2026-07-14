@@ -1,10 +1,10 @@
 //! EL0 endpoint IPC smoke test.
 //!
-//! This exercises the scalar endpoint ABI from a real userspace SVC path:
-//! endpoint creation, same-address-space connection minting, send, call,
-//! receive, reply, and reply polling. The test is intentionally single-AS; it
-//! proves the user/kernel contract without adding a global name registry or a
-//! userspace-provided target ASID.
+//! This exercises the scalar endpoint ABI from real userspace SVC paths:
+//! endpoint creation, same-address-space connection minting, cross-AS
+//! connection delegation seeded by the kernel, send, call, receive, reply, and
+//! reply polling. The userspace stubs never receive or pass ASIDs; authority is
+//! represented only by caps in their own protection domains.
 
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -30,6 +30,8 @@ use crate::memory::{
 core::arch::global_asm!(include_str!("el0_ipc.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_block.asm"));
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(include_str!("el0_ipc_cross_as.asm"));
 
 #[cfg(target_arch = "aarch64")]
 const IPC_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -49,11 +51,25 @@ const IPC_BLOCK_READY_SENTINEL: u32 = 0x0000_5150;
 const IPC_BLOCK_SERVER_SENTINEL: u32 = 0x0000_1c51;
 #[cfg(target_arch = "aarch64")]
 const IPC_BLOCK_CLIENT_SENTINEL: u32 = 0x0000_c117;
+#[cfg(target_arch = "aarch64")]
+const IPC_CROSS_CODE_VADDR: usize = 0x0000_0000_0001_0000;
+#[cfg(target_arch = "aarch64")]
+const IPC_CROSS_RESULT_VADDR: usize = 0x0000_0000_0001_1000;
+#[cfg(target_arch = "aarch64")]
+const IPC_CROSS_READY_SENTINEL: u32 = 0x0000_5e5e;
+#[cfg(target_arch = "aarch64")]
+const IPC_CROSS_SERVER_SENTINEL: u32 = 0x0000_5e51;
+#[cfg(target_arch = "aarch64")]
+const IPC_CROSS_CLIENT_SENTINEL: u32 = 0x0000_c1e1;
 
 #[cfg(target_arch = "aarch64")]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
 static mut IPC_BLOCK_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+#[cfg(target_arch = "aarch64")]
+static mut IPC_CROSS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+#[cfg(target_arch = "aarch64")]
+static mut IPC_CROSS_CLIENT_ASID: crate::memory::AddressSpaceId = 0;
 
 #[cfg(target_arch = "aarch64")]
 unsafe extern "C" {
@@ -63,6 +79,10 @@ unsafe extern "C" {
     static __catten_el0_ipc_block_server_end: u8;
     static __catten_el0_ipc_block_client_start: u8;
     static __catten_el0_ipc_block_client_end: u8;
+    static __catten_el0_ipc_cross_server_start: u8;
+    static __catten_el0_ipc_cross_server_end: u8;
+    static __catten_el0_ipc_cross_client_start: u8;
+    static __catten_el0_ipc_cross_client_end: u8;
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -94,6 +114,22 @@ fn ipc_block_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_block_client_start),
         core::ptr::addr_of!(__catten_el0_ipc_block_client_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_cross_server_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_cross_server_start),
+        core::ptr::addr_of!(__catten_el0_ipc_cross_server_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_cross_client_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_cross_client_start),
+        core::ptr::addr_of!(__catten_el0_ipc_cross_client_end),
     )
 }
 
@@ -143,6 +179,33 @@ fn map_result_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr 
         core::ptr::write_bytes(hhdm, 0, 4096);
     }
     frame
+}
+
+#[cfg(target_arch = "aarch64")]
+fn map_existing_data_page(asid: usize, vaddr: VAddr, frame: crate::memory::physical::PAddr) {
+    ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(asid)
+        .expect("EL0 IPC: address space not found")
+        .map_page(MemoryMapping {
+            vaddr,
+            paddr: frame,
+            page_type: PageType::UserData,
+        })
+        .expect("EL0 IPC: failed to map existing data page");
+}
+
+#[cfg(target_arch = "aarch64")]
+fn create_user_address_space(label: &str) -> usize {
+    let user_as = {
+        let _kas = KERNEL_AS.lock();
+        let mut as_ = AddressSpace::get_current();
+        as_.set_ttbr0(0);
+        as_
+    };
+    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    logln!("[EL0 IPC] {} AS asid={}", label, asid);
+    asid
 }
 
 pub fn test_el0_endpoint_ipc() {
@@ -234,6 +297,68 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
     #[cfg(not(target_arch = "aarch64"))]
     {
         logln!("Skipping EL0 blocking endpoint receive test (AArch64 only).");
+    }
+}
+
+pub fn test_el0_endpoint_ipc_cross_address_space() {
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::ipc::ConnectionRights;
+
+        logln!("Testing EL0 cross-address-space endpoint IPC...");
+
+        let server_asid = create_user_address_space("cross-AS server");
+        let client_asid = create_user_address_space("cross-AS client");
+
+        let endpoint = crate::ipc::endpoint_create(server_asid, 0x4352_4f53, 1, 4)
+            .expect("EL0 IPC cross-AS: endpoint_create should succeed");
+        assert_eq!(endpoint, 1, "EL0 IPC cross-AS stub expects server endpoint cap 1");
+        let connection = crate::ipc::connection_delegate(
+            server_asid,
+            endpoint,
+            client_asid,
+            ConnectionRights::CALL,
+        )
+        .expect("EL0 IPC cross-AS: connection_delegate should succeed");
+        assert_eq!(connection, 1, "EL0 IPC cross-AS stub expects client connection cap 1");
+
+        map_code_page(server_asid, VAddr::from(IPC_CROSS_CODE_VADDR), ipc_cross_server_code());
+        map_code_page(client_asid, VAddr::from(IPC_CROSS_CODE_VADDR), ipc_cross_client_code());
+        unsafe {
+            core::arch::asm!(
+                "dsb ishst",
+                "ic ialluis",
+                "dsb ish",
+                "isb",
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+
+        let result_frame = map_result_page(server_asid, VAddr::from(IPC_CROSS_RESULT_VADDR));
+        map_existing_data_page(client_asid, VAddr::from(IPC_CROSS_RESULT_VADDR), result_frame);
+        unsafe {
+            IPC_CROSS_RESULT_FRAME = Some(result_frame);
+            IPC_CROSS_CLIENT_ASID = client_asid;
+        }
+
+        let entry: extern "C" fn() =
+            unsafe { core::mem::transmute::<usize, extern "C" fn()>(IPC_CROSS_CODE_VADDR) };
+        let server_tid = spawn_thread(server_asid as crate::memory::AddressSpaceId, entry);
+        let client_tid = spawn_thread(client_asid as crate::memory::AddressSpaceId, entry);
+        logln!(
+            "[EL0 IPC cross-AS] server tid={} asid={} client tid={} asid={}",
+            server_tid,
+            server_asid,
+            client_tid,
+            client_asid
+        );
+
+        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_cross_as);
+        logln!("[EL0 IPC cross-AS] verifier tid={}; assertion deferred.", vtid);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        logln!("Skipping EL0 cross-address-space endpoint IPC test (AArch64 only).");
     }
 }
 
@@ -358,6 +483,74 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
             spins < 40_000_000,
             "[EL0 IPC block] FAILED: blocking receive flow did not complete (ready={:#x}, \
              server={:#x}, client={:#x})",
+            ready,
+            server_done,
+            client_done
+        );
+        yield_lp();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+extern "C" fn verify_el0_endpoint_ipc_cross_as() {
+    use crate::cpu::scheduler::yield_lp;
+
+    let frame =
+        unsafe { IPC_CROSS_RESULT_FRAME }.expect("EL0 IPC cross-AS: result frame not initialized");
+    let client_asid = unsafe { IPC_CROSS_CLIENT_ASID };
+    let base: *mut u8 = frame.into();
+    let result = base as *const u32;
+    let mut spins: u64 = 0;
+    loop {
+        let ready = unsafe { core::ptr::read_volatile(result) };
+        let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
+        let client_done = unsafe { core::ptr::read_volatile(result.add(14)) };
+        if ready == IPC_CROSS_READY_SENTINEL
+            && server_done == IPC_CROSS_SERVER_SENTINEL
+            && client_done == IPC_CROSS_CLIENT_SENTINEL
+        {
+            let recv_status = unsafe { core::ptr::read_volatile(result.add(2)) };
+            let recv_opcode = unsafe { core::ptr::read_volatile(result.add(3)) };
+            let recv_arg0 = unsafe { core::ptr::read_volatile(result.add(4)) };
+            let reply_cap = unsafe { core::ptr::read_volatile(result.add(5)) };
+            let sender = unsafe { core::ptr::read_volatile(result.add(6)) };
+            let interface = unsafe { core::ptr::read_volatile(result.add(7)) };
+            let version = unsafe { core::ptr::read_volatile(result.add(8)) };
+            let reply_status = unsafe { core::ptr::read_volatile(result.add(9)) };
+            let call_cap = unsafe { core::ptr::read_volatile(result.add(10)) };
+            let poll_status = unsafe { core::ptr::read_volatile(result.add(11)) };
+            let poll_result = unsafe { core::ptr::read_volatile(result.add(12)) };
+            let poll_cap = unsafe { core::ptr::read_volatile(result.add(13)) };
+
+            assert_eq!(recv_status, 0, "EL0 IPC cross-AS: recv_block failed");
+            assert_eq!(recv_opcode, 0x33, "EL0 IPC cross-AS: opcode mismatch");
+            assert_eq!(recv_arg0, 0x99, "EL0 IPC cross-AS: arg mismatch");
+            assert_ne!(reply_cap, 0, "EL0 IPC cross-AS: missing reply cap");
+            assert_eq!(sender, client_asid as u32, "EL0 IPC cross-AS: sender ASID mismatch");
+            assert_eq!(interface, 0x4352_4f53, "EL0 IPC cross-AS: interface mismatch");
+            assert_eq!(version, 1, "EL0 IPC cross-AS: version mismatch");
+            assert_eq!(reply_status, 0, "EL0 IPC cross-AS: reply failed");
+            assert_ne!(call_cap, 0, "EL0 IPC cross-AS: scalar_call returned no cap");
+            assert_eq!(poll_status, 0, "EL0 IPC cross-AS: reply poll did not complete");
+            assert_eq!(poll_result, 0x6789, "EL0 IPC cross-AS: reply result mismatch");
+            assert_eq!(poll_cap, 0, "EL0 IPC cross-AS: plain reply returned a cap");
+
+            logln!(
+                "[EL0 IPC cross-AS] SUCCESS: client AS {} called server endpoint; call cap {}, \
+                 reply result {:#x}.",
+                sender,
+                call_cap,
+                poll_result
+            );
+            loop {
+                yield_lp();
+            }
+        }
+        spins += 1;
+        assert!(
+            spins < 40_000_000,
+            "[EL0 IPC cross-AS] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
+             client={:#x})",
             ready,
             server_done,
             client_done
