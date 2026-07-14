@@ -26,6 +26,9 @@ type EndpointId = u64;
 type ReplyTokenId = u64;
 type PendingCallId = u64;
 
+pub const REPLY_CANCELLED: i64 = -3;
+pub const REPLY_ENDPOINT_CLOSED: i64 = -7;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcError {
     UnknownCapability,
@@ -218,6 +221,12 @@ impl IpcRegistry {
             .get_mut(&asid)
             .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(IpcError::UnknownCapability)
+    }
+
+    fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
+        if let Some(caps) = self.caps.get_mut(&asid) {
+            caps.caps.retain(|_, cap| *cap != target);
+        }
     }
 }
 
@@ -426,15 +435,15 @@ pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Re
         } => token,
         _ => return Err(IpcError::WrongType),
     };
-    let token = ipc.reply_tokens.get_mut(&token_id).ok_or(IpcError::UnknownCapability)?;
+    let token = ipc.reply_tokens.get(&token_id).ok_or(IpcError::UnknownCapability)?;
     if token.server != server {
         return Err(IpcError::PermissionDenied);
     }
     if token.consumed {
         return Err(IpcError::ReplyAlreadyUsed);
     }
-    token.consumed = true;
     let call_id = token.call;
+    ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
     call.result = Some(result);
     let _ = ipc.remove_cap(server, reply_cap);
@@ -463,23 +472,33 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             endpoint,
             ..
         } => {
-            if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
-                if endpoint.owner == asid {
+            let queued_replies = if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
+                if endpoint.owner != asid {
+                    Vec::new()
+                } else {
                     endpoint.closed = true;
-                    endpoint.queue.clear();
+                    endpoint.queue.drain(..).filter_map(|message| message.reply).collect()
                 }
+            } else {
+                Vec::new()
+            };
+            for reply_cap in queued_replies {
+                consume_reply_cap(&mut ipc, asid, reply_cap, REPLY_ENDPOINT_CLOSED);
             }
         }
         Capability::PendingCall {
             call,
         } => {
             ipc.pending_calls.remove(&call);
+            remove_reply_tokens_for_call(&mut ipc, call);
         }
         Capability::ReplyToken {
             token,
         } => {
-            if let Some(token) = ipc.reply_tokens.get_mut(&token) {
-                token.consumed = true;
+            if let Some(token) = ipc.reply_tokens.remove(&token) {
+                if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
+                    call.result = Some(REPLY_CANCELLED);
+                }
             }
         }
         Capability::Connection {
@@ -501,4 +520,46 @@ pub fn close_address_space(asid: AddressSpaceId) {
         let _ = close_cap(asid, cap);
     }
     IPC.write().caps.remove(&asid);
+}
+
+fn consume_reply_cap(
+    ipc: &mut IpcRegistry,
+    server: AddressSpaceId,
+    reply_cap: CapabilityId,
+    result: i64,
+) {
+    let token = match ipc.remove_cap(server, reply_cap) {
+        Ok(Capability::ReplyToken {
+            token,
+        }) => token,
+        _ => return,
+    };
+    if let Some(token) = ipc.reply_tokens.remove(&token) {
+        if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
+            call.result = Some(result);
+        }
+    }
+}
+
+fn remove_reply_tokens_for_call(ipc: &mut IpcRegistry, call: PendingCallId) {
+    let tokens = ipc
+        .reply_tokens
+        .iter()
+        .filter_map(|(token_id, token)| {
+            if token.call == call {
+                Some((*token_id, token.server))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    for (token, server) in tokens {
+        ipc.reply_tokens.remove(&token);
+        ipc.remove_matching_caps(
+            server,
+            Capability::ReplyToken {
+                token,
+            },
+        );
+    }
 }

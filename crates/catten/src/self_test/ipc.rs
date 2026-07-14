@@ -49,6 +49,30 @@ pub fn test_endpoint_ipc() {
         "consumed reply token cap must not be reusable"
     );
 
+    let cancelled_call = ipc::scalar_call(client, connection, 9, 0x77)
+        .expect("scalar_call should return cancellable pending-call cap");
+    let cancelled_message =
+        ipc::receive(server, endpoint).expect("server should receive cancellable call");
+    let cancelled_reply =
+        cancelled_message.reply.expect("cancellable call message should carry reply token cap");
+    ipc::close_cap(client, cancelled_call).expect("client should be able to close pending call");
+    assert_eq!(
+        ipc::reply(server, cancelled_reply, 14),
+        Err(IpcError::UnknownCapability),
+        "closing a pending call must invalidate the outstanding reply token"
+    );
+
+    let closed_call = ipc::scalar_call(client, connection, 10, 0x88)
+        .expect("scalar_call should enqueue call before endpoint close");
+    ipc::close_cap(server, endpoint).expect("server should be able to close endpoint");
+    assert_eq!(
+        ipc::poll_reply(client, closed_call),
+        Ok(Some(ipc::REPLY_ENDPOINT_CLOSED)),
+        "closing endpoint must complete queued calls instead of stranding callers"
+    );
+
+    let endpoint = ipc::endpoint_create(server, 0x4348_4943, 1, 2)
+        .expect("endpoint_create should return replacement endpoint cap");
     let full_endpoint =
         ipc::endpoint_create(server, 0x4655_4c4c, 1, 1).expect("capacity one endpoint");
     let full_connection =
@@ -66,7 +90,7 @@ pub fn test_endpoint_ipc() {
         "send-only connection must not authorize calls"
     );
     assert_eq!(
-        ipc::receive(client, endpoint),
+        ipc::receive(client, connection),
         Err(IpcError::WrongType),
         "client connection cap must not be usable for receive"
     );
