@@ -1,24 +1,24 @@
-//! CharlotteOS adder — adds kernel-placed numbers, subtracts boilerplate.
+//! CharlotteOS sitas smoke image — runs `basic_kv` behind the crt0 contract.
 #![no_std]
 #![no_main]
 
 extern crate alloc;
 use catten_rt::{
-    config,
     Args,
     Input,
+    config,
 };
 use catten_syscall::thread_exit;
+use sitas_charlotte::CharlotteReactor;
 
-fn cmain(args: Args, input: Input<32>) -> ! {
-    let a = args.get(0).unwrap_or(0);
-    let b = args.get(1).unwrap_or(0);
-    let kernel_val = input.read_u32(0).unwrap_or(0);
+fn cmain(args: Args, _input: Input<0>) -> ! {
+    let asid = u64::from(args.get(0).unwrap_or(0));
+    let lp_id = args.get(1).unwrap_or(0);
+    let reactor = CharlotteReactor::new(asid, lp_id);
 
-    let sum = a.wrapping_add(b).wrapping_add(kernel_val);
-    config::write(0, 0xc0deu32);
-    config::write(4, b);
-    config::write(8, sum);
+    unsafe {
+        sitas_core::basic_kv::basic_kv_test(&reactor, config::CONFIG_VADDR as *mut u32);
+    }
 
     unsafe {
         thread_exit();

@@ -3,7 +3,7 @@
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
 //! binary produced by `cargo +nightly build -p catten-user --target …`
 //! (which links against sitas-core and sitas-charlotte).  The binary is
-//! ~145 KiB and spans multiple 4 KiB pages; the kernel maps them contiguously
+//! ~14 KiB and spans multiple 4 KiB pages; the kernel maps them contiguously
 //! and copies the image in page-sized chunks.
 //!
 //! The binary calls `basic_kv::basic_kv_test`, which exercises `ShardedKv`
@@ -23,13 +23,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
     linear::{
         MemoryMapping,
         PageType,
         VAddr,
     },
-    ADDRESS_SPACE_TABLE,
-    KERNEL_AS,
 };
 
 // The binary is linked and mapped at 0x20000.
@@ -213,15 +213,15 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // catten-rt reads launch metadata from the config page. The adder's
-        // cmain receives Args([42, 7]) and Input<32>; crt0 reads exactly 32
-        // bytes into SITAS_INPUT_VADDR before calling cmain.
+        // catten-rt reads launch metadata from the config page. `basic_kv` uses
+        // Args([asid, lp_id]) and Input<0>; crt0 therefore enters cmain without
+        // consuming a launch input stream.
         let config_base: *mut u8 = config_frame.into();
         unsafe {
             core::ptr::write_volatile(config_base.add(CONFIG_ASID_OFFSET) as *mut usize, asid);
             core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 2);
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET) as *mut u32, 42);
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET + 4) as *mut u32, 7);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET) as *mut u32, asid as u32);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET + 4) as *mut u32, 0);
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
@@ -265,11 +265,12 @@ extern "C" fn verify_el0_sitas() {
             }
         }
         if sentinel != 0 && sentinel != 0xc0de {
-            // basic_kv or minimal stub: any non-zero sentinel = ran successfully.
-            logln!(
-                "[sitas] SUCCESS: catten-user Rust binary ran at EL0, produced result {:#x}.",
+            assert_eq!(
+                sentinel, 3,
+                "[sitas] basic_kv: expected total_len result 3, got {:#x}",
                 sentinel
             );
+            logln!("[sitas] SUCCESS: basic_kv ran at EL0, produced total_len {:#x}.", sentinel);
             loop {
                 yield_lp();
             }
