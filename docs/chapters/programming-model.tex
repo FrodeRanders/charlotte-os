@@ -102,20 +102,16 @@ a \texttt{crt0} supplied by \texttt{catten-rt}. The program provides
 does not define \texttt{\_start}, an allocator, or a panic handler. The type
 \texttt{Input<N>} is the declaration of how many bytes the runtime should read
 before entering \texttt{cmain}. If the program does not need launch input, use
-\texttt{Input<0>}. Command-like values belong in \texttt{Args}; kernel
-identity does not.
+\texttt{Input<0>}. Command-like values belong in \texttt{Args}.
 
-In particular, do not model ASID as a userspace value. A userspace program
-cannot and should not name an address space. The kernel derives caller identity
-from the running thread at trap entry. Completion capabilities, mailbox
-capabilities, and returned handles are the values userspace is allowed to
-hold; ASID is not.
+Userspace application are interested in completion capabilities, mailbox
+capabilities, and returned handles.
 
 When writing sitas-on-CharlotteOS code, keep the sitas model intact:
 \begin{itemize}
     \item A sitas shard is an LP-affine CharlotteOS user thread.
     \item \texttt{sitas-charlotte::CharlotteReactor::new(lp\_id)} binds a
-        reactor to the calling shard's LP. It does not take ASID.
+        reactor to the calling shard's LP.
     \item Async operations return kernel-owned completion capabilities. A
         completion capability is opaque; wait for it, poll it, close it, or
         pass it through a typed channel when the ABI permits that.
@@ -138,7 +134,7 @@ regressed.
 The kernel side must preserve the authority and ownership boundaries that make
 the userspace model sound:
 \begin{itemize}
-    \item \textbf{Caller identity is kernel authority.} Syscalls must derive the
+    \item \textbf{Caller identity is kernel authority.} Syscalls derive the
         caller's address space from \texttt{TrapFrame.asid}; never accept ASID,
         page-table roots, or equivalent authority from userspace registers or
         config pages.
@@ -160,12 +156,18 @@ the userspace model sound:
         references to kernel objects.
 \end{itemize}
 
-The present loader is still a flat-image self-test harness. It maps the
-compiled user image, config page, CQ page, input page, and heap at fixed
-addresses. That is good enough for \texttt{basic\_kv}, but it is not yet a
-general userspace ABI. The next loader should be ELF/segment-aware, zero BSS by
-contract, honor per-segment permissions, and avoid depending on RWX mixed
-code/data pages. Until then, treat every larger sitas binary as both a runtime
-test and a loader-permission test.
+The present sitas smoke loader now consumes a stripped AArch64 ELF image rather
+than a flattened binary. It maps each \texttt{PT\_LOAD} segment at its linked
+virtual address, chooses \texttt{UserCode}, \texttt{UserRoData}, or
+\texttt{UserData} from the segment flags, rejects writable-executable segments,
+rejects LOAD segments that overlap within one 4 KiB page, and relies on the
+freshly zeroed page frames to satisfy the BSS contract. The
+\texttt{catten-user} linker script therefore page-separates executable text,
+read-only data, and writable data.
+
+This is still a self-test loader, not yet a general userspace process loader:
+the config page, CQ page, input page, and heap are still mapped at fixed
+CharlotteOS addresses, and there is no dynamic argument/environment layout.
+Treat larger sitas binaries as both runtime tests and loader-contract tests.
 
 \endinput

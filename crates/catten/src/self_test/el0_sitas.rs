@@ -1,10 +1,10 @@
 //! Self-test: load the Rust-compiled sitas-based catten-user binary at EL0.
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
-//! binary produced by `cargo +nightly build -p catten-user --target …`
-//! (which links against sitas-core and sitas-charlotte).  The binary is
-//! ~14 KiB and spans multiple 4 KiB pages; the kernel maps them contiguously
-//! and copies the image in page-sized chunks.
+//! ELF produced by `cargo +nightly build -p catten-user --target …`
+//! (which links against sitas-core and sitas-charlotte).  The kernel maps
+//! PT_LOAD segments at their linked virtual addresses with page permissions
+//! derived from ELF flags.
 //!
 //! The binary calls `basic_kv::basic_kv_test`, which exercises `ShardedKv`
 //! over `CharlotteReactor`: it creates a KV store, puts keys, reads one back,
@@ -32,10 +32,6 @@ use crate::memory::{
     },
 };
 
-// The binary is linked and mapped at 0x20000.
-// catten-rt reads the config page at 0x1F000 (ASID at offset 16).
-#[cfg(target_arch = "aarch64")]
-const SITAS_CODE_VADDR: usize = 0x0000_0000_0002_0000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
 #[cfg(target_arch = "aarch64")]
@@ -52,31 +48,229 @@ const PAGE_SIZE: usize = 4096;
 #[cfg(target_arch = "aarch64")]
 const CONFIG_ARGC_OFFSET: usize = 24;
 
-/// Offset of `_start` within the raw binary. The linker script places the
-/// image at VA 0x20000 but keeps `_start` first, so raw offset 0 maps to the
-/// entry virtual address.
+/// The Rust-compiled sitas-based catten-user ELF.
 #[cfg(target_arch = "aarch64")]
-const ENTRY_OFFSET: usize = 0x0;
-
-/// Total pages to map.  The LOAD segments span VA 0x0..0x3620+128 ≈ 0x36A0
-/// plus a 128 KB BSS tail.  32 pages (128 KiB) covers the binary + BSS
-/// with generous headroom.
-#[cfg(target_arch = "aarch64")]
-const CODE_PAGES: usize = 32;
-
-/// The Rust-compiled sitas-based catten-user binary (position-independent).
-#[cfg(target_arch = "aarch64")]
-const SITAS_CODE: &[u8] = include_bytes!("sitas-user.bin");
+const SITAS_ELF: &[u8] = include_bytes!("sitas-user.elf");
 
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+
+#[cfg(target_arch = "aarch64")]
+const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
+#[cfg(target_arch = "aarch64")]
+const ELFCLASS64: u8 = 2;
+#[cfg(target_arch = "aarch64")]
+const ELFDATA2LSB: u8 = 1;
+#[cfg(target_arch = "aarch64")]
+const ET_EXEC: u16 = 2;
+#[cfg(target_arch = "aarch64")]
+const EM_AARCH64: u16 = 0xb7;
+#[cfg(target_arch = "aarch64")]
+const PT_LOAD: u32 = 1;
+#[cfg(target_arch = "aarch64")]
+const PF_X: u32 = 1;
+#[cfg(target_arch = "aarch64")]
+const PF_W: u32 = 2;
+
+#[cfg(target_arch = "aarch64")]
+#[derive(Clone, Copy)]
+struct ElfLoadSegment {
+    offset: usize,
+    vaddr: usize,
+    filesz: usize,
+    memsz: usize,
+    flags: u32,
+}
+
+#[cfg(target_arch = "aarch64")]
+fn read_u16_le(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
+}
+
+#[cfg(target_arch = "aarch64")]
+fn read_u32_le(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_le_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]])
+}
+
+#[cfg(target_arch = "aarch64")]
+fn read_u64_le(bytes: &[u8], offset: usize) -> u64 {
+    u64::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7],
+    ])
+}
+
+#[cfg(target_arch = "aarch64")]
+fn align_down(value: usize, align: usize) -> usize {
+    value & !(align - 1)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn align_up(value: usize, align: usize) -> usize {
+    (value + align - 1) & !(align - 1)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn segment_page_type(flags: u32) -> PageType {
+    let executable = flags & PF_X != 0;
+    let writable = flags & PF_W != 0;
+
+    match (executable, writable) {
+        (true, false) => PageType::UserCode,
+        (false, true) => PageType::UserData,
+        (false, false) => PageType::UserRoData,
+        (true, true) => panic!("[sitas] ELF LOAD segment requests writable executable memory"),
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn parse_elf_header(image: &[u8]) -> (usize, usize, usize, usize) {
+    assert!(image.len() >= 64, "[sitas] ELF image is too small");
+    assert_eq!(&image[0..4], ELF_MAGIC, "[sitas] invalid ELF magic");
+    assert_eq!(image[4], ELFCLASS64, "[sitas] ELF image is not 64-bit");
+    assert_eq!(image[5], ELFDATA2LSB, "[sitas] ELF image is not little-endian");
+    assert_eq!(read_u16_le(image, 16), ET_EXEC, "[sitas] ELF image must be ET_EXEC");
+    assert_eq!(read_u16_le(image, 18), EM_AARCH64, "[sitas] ELF image is not AArch64");
+
+    let entry = read_u64_le(image, 24) as usize;
+    let phoff = read_u64_le(image, 32) as usize;
+    let phentsize = read_u16_le(image, 54) as usize;
+    let phnum = read_u16_le(image, 56) as usize;
+    assert_eq!(phentsize, 56, "[sitas] unexpected ELF64 program-header size");
+    assert!(
+        phoff + phentsize * phnum <= image.len(),
+        "[sitas] ELF program-header table exceeds image"
+    );
+
+    (entry, phoff, phentsize, phnum)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn parse_load_segment(image: &[u8], offset: usize) -> Option<ElfLoadSegment> {
+    let p_type = read_u32_le(image, offset);
+    if p_type != PT_LOAD {
+        return None;
+    }
+
+    let flags = read_u32_le(image, offset + 4);
+    let file_offset = read_u64_le(image, offset + 8) as usize;
+    let vaddr = read_u64_le(image, offset + 16) as usize;
+    let filesz = read_u64_le(image, offset + 32) as usize;
+    let memsz = read_u64_le(image, offset + 40) as usize;
+
+    assert!(filesz <= memsz, "[sitas] ELF LOAD filesz exceeds memsz");
+    assert!(file_offset + filesz <= image.len(), "[sitas] ELF LOAD file range exceeds image");
+    assert!(
+        file_offset & (PAGE_SIZE - 1) == vaddr & (PAGE_SIZE - 1),
+        "[sitas] ELF LOAD file and virtual offsets are not page-congruent"
+    );
+
+    Some(ElfLoadSegment {
+        offset: file_offset,
+        vaddr,
+        filesz,
+        memsz,
+        flags,
+    })
+}
+
+#[cfg(target_arch = "aarch64")]
+fn map_elf_load_segment(asid: usize, image: &[u8], segment: ElfLoadSegment) {
+    if segment.memsz == 0 {
+        return;
+    }
+
+    let page_type = segment_page_type(segment.flags);
+    let seg_start = segment.vaddr;
+    let mem_end = segment.vaddr + segment.memsz;
+    let file_end = segment.vaddr + segment.filesz;
+    let map_start = align_down(seg_start, PAGE_SIZE);
+    let map_end = align_up(mem_end, PAGE_SIZE);
+
+    for page_base in (map_start..map_end).step_by(PAGE_SIZE) {
+        let vaddr = VAddr::from(page_base);
+        {
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            let as_ = table.get_mut(asid).expect("[sitas] AS not found");
+            assert!(
+                !as_.is_mapped(vaddr).expect("[sitas] failed to query mapped page"),
+                "[sitas] ELF LOAD segments overlap within one page; relink with page-separated \
+                 segments"
+            );
+        }
+
+        let frame = PHYSICAL_FRAME_ALLOCATOR
+            .lock()
+            .allocate_frame()
+            .expect("[sitas] failed to allocate ELF LOAD frame");
+        ADDRESS_SPACE_TABLE
+            .lock()
+            .get_mut(asid)
+            .expect("[sitas] AS not found")
+            .map_page(MemoryMapping {
+                vaddr,
+                paddr: frame,
+                page_type,
+            })
+            .expect("[sitas] failed to map ELF LOAD page");
+
+        let copy_start = core::cmp::max(page_base, seg_start);
+        let copy_end = core::cmp::min(page_base + PAGE_SIZE, file_end);
+        if copy_start < copy_end {
+            let src_offset = segment.offset + (copy_start - segment.vaddr);
+            let dst_offset = copy_start - page_base;
+            let len = copy_end - copy_start;
+            let hhdm: *mut u8 = frame.into();
+            unsafe {
+                core::ptr::copy_nonoverlapping(
+                    image.as_ptr().add(src_offset),
+                    hhdm.add(dst_offset),
+                    len,
+                );
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn load_user_elf(asid: usize, image: &[u8]) -> usize {
+    let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
+    let mut load_segments = 0usize;
+
+    for i in 0..phnum {
+        let ph_offset = phoff + i * phentsize;
+        if let Some(segment) = parse_load_segment(image, ph_offset) {
+            map_elf_load_segment(asid, image, segment);
+            load_segments += 1;
+        }
+    }
+    assert!(load_segments > 0, "[sitas] ELF image has no LOAD segments");
+
+    unsafe {
+        core::arch::asm!(
+            "dsb ishst",
+            "ic ialluis",
+            "dsb ish",
+            "isb",
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+
+    entry
+}
 
 pub fn test_el0_sitas() {
     #[cfg(target_arch = "aarch64")]
     {
         logln!("Testing EL0 sitas (Rust-compiled catten-user binary)...");
-        logln!("[sitas] binary loaded");
-        logln!("[sitas] mapping pages");
+        logln!("[sitas] ELF loaded");
+        logln!("[sitas] mapping ELF LOAD segments");
 
         // --- create user address space ---
         let user_as = {
@@ -88,54 +282,7 @@ pub fn test_el0_sitas() {
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
         logln!("[sitas] AS created");
 
-        // --- map code pages ---
-        for i in 0..CODE_PAGES {
-            let page_base = SITAS_CODE_VADDR + i * PAGE_SIZE;
-            let vaddr = VAddr::from(page_base);
-
-            let frame = PHYSICAL_FRAME_ALLOCATOR
-                .lock()
-                .allocate_frame()
-                .expect("[sitas] failed to allocate code frame");
-            ADDRESS_SPACE_TABLE
-                .lock()
-                .get_mut(asid)
-                .expect("[sitas] AS not found")
-                .map_page(MemoryMapping {
-                    vaddr,
-                    paddr: frame,
-                    // Raw flat images can place code and data in the same 4 KiB
-                    // page. Until this becomes an ELF loader, these pages must
-                    // be both writable and executable.
-                    page_type: PageType::UserFlatImage,
-                })
-                .expect("[sitas] failed to map code page");
-
-            // Copy this page's portion of the binary.
-            let hhdm: *mut u8 = frame.into();
-            unsafe {
-                core::ptr::write_bytes(hhdm, 0, PAGE_SIZE); // zero page first (BSS)
-            }
-
-            let start = i * PAGE_SIZE;
-            if start < SITAS_CODE.len() {
-                let end = core::cmp::min(start + PAGE_SIZE, SITAS_CODE.len());
-                let chunk = &SITAS_CODE[start..end];
-                unsafe {
-                    core::ptr::copy_nonoverlapping(chunk.as_ptr(), hhdm, chunk.len());
-                }
-            }
-        }
-        // I-cache invalidation for all freshly written code.
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        let entry_vaddr = load_user_elf(asid, SITAS_ELF);
 
         // --- map config page (catten-rt reads ASID from offset 16) ---
         let config_frame = PHYSICAL_FRAME_ALLOCATOR
@@ -216,9 +363,7 @@ pub fn test_el0_sitas() {
             core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 0);
         }
 
-        // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
-        // the loaded binary (PIE places _start at a non-zero offset).
-        let entry_vaddr = SITAS_CODE_VADDR + ENTRY_OFFSET;
+        // Spawn the EL0 thread at the ELF entry point.
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
         let _tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);

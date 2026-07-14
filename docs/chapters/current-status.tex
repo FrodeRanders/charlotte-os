@@ -42,11 +42,11 @@
     \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists,
         GS base and IRETQ return path remain to be wired. The EL0 test and
         real-EL0 user thread are AArch64-only.
-    \item \textbf{General userspace loader:} the sitas smoke still uses a
-        fixed-address flat-image harness, not an ELF loader. Larger or more
-        conventional binaries need segment-aware mapping, BSS zeroing, and
-        permissions derived from program headers rather than from a test-only
-        flat image.
+    \item \textbf{General userspace loader:} the sitas smoke now uses a
+        segment-aware ELF loader for its embedded user image, including
+        per-segment page permissions and zero-filled BSS. It is still a
+        fixed-address self-test harness for config, CQ, input, and heap pages,
+        not a general process loader with argv/env/auxv-style setup.
     \item \textbf{Multi-LP cross-core IPI:} QEMU GICv3 SGI delivery does not
         work cross-core on this host (both HVF and TCG tested). Self-targeted
         SGIs and per-core timers work on all LPs. Kernel SGI encoding is

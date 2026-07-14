@@ -738,10 +738,12 @@ The review also exposed the line between "executable spike" and "OS ABI":
    global `u64` smoke-test path. A real userspace channel needs a capability
    naming the channel/receiver, not a transient receiver object constructed on
    each syscall.
-5. **The sitas loader is still a flat-image harness.** `UserFlatImage` RWX pages
-   and fixed CQ/result/heap virtual addresses were the right way to get the
-   first binary running, but the next boundary is an ELF loader with segment
-   permissions, declared heap/stack metadata, and no global result-page ABI.
+5. **The sitas loader is now segment-aware but still a harness.** The embedded
+   sitas smoke image is a stripped AArch64 ELF. CharlotteOS maps its `PT_LOAD`
+   segments with page permissions derived from ELF flags, zeros BSS through
+   freshly zeroed frames, and rejects writable-executable or overlapping LOAD
+   pages. The remaining boundary is a general process loader with declared
+   heap/stack metadata and no global result-page ABI.
 6. **The reactor wait path is still polling.** The runtime model's core win is
    one native wait primitive for timers, IPIs, and completions. Today the CQ
    wait path still spins; the next implementation step is to make the CQ itself
@@ -773,5 +775,5 @@ calls and is back in the default boot gate. The hang was not a mailbox-table or
 HVF permission bug: the Pong receive loop used a bad `CBNZ` immediate, branched
 back to `mov x18, x0` after an empty receive, and overwrote its receiver
 capability with zero. The remaining larger ABI work is to switch
-`sitas-charlotte` to the `CQ_WAIT` syscall instead of busy-polling and replace
-the flat RWX sitas loader with an ELF/segment-aware loader.
+`sitas-charlotte` to the `CQ_WAIT` syscall instead of busy-polling and promote
+the ELF sitas smoke loader into a general userspace process loader.
