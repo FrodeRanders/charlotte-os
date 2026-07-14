@@ -10,6 +10,7 @@ pub mod cq;
 pub mod cq_completion;
 pub mod el0;
 pub mod el0_demo;
+pub mod el0_ipc;
 pub mod el0_pingpong;
 pub mod el0_sitas;
 pub mod ipc;
@@ -44,6 +45,7 @@ pub fn run_self_tests() {
     shard::test_shard_local();
     shard::test_shard_mailbox();
     el0::test_el0_syscall_round_trip();
+    el0_ipc::test_el0_endpoint_ipc();
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();
