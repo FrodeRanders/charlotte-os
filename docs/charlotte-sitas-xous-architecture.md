@@ -17,11 +17,11 @@
 CharlotteOS now has the first kernel-side slice of this architecture:
 
 - `crates/catten/src/ipc/mod.rs` implements a scalar-only endpoint IPC registry with per-address-space capability tables, endpoint caps, connection caps, pending-call caps, and one-shot reply-token caps.
-- Syscalls `18..=25` expose endpoint creation, same-address-space connection minting, scalar send, scalar call, receive, reply, reply polling, and IPC cap close.
+- Syscalls `18..=26` expose endpoint creation, same-address-space connection minting, scalar send, scalar call, receive, reply, reply polling, reply-time connection delegation, and IPC cap close.
 - `crates/catten-syscall` has EL0 wrappers for the same scalar endpoint ABI.
-- Boot-time self-tests cover cross-address-space delegation through the direct kernel API, queue backpressure, invalid-cap/type failures, scalar call/reply, reply-token single use, teardown, and same-address-space syscall dispatch.
+- Boot-time self-tests cover cross-address-space delegation through the direct kernel API, reply-time connection delegation without userspace ASID parameters, queue backpressure, invalid-cap/type failures, scalar call/reply, reply-token single use, teardown, and same-address-space syscall dispatch.
 
-This is intentionally not the full Xous-style model yet. The first version does not include a userspace name service, cross-address-space connection delegation through a syscall, blocking receive/call scheduling, memory-object attachments, move/lend semantics, capability attachment transfer, cancellation, or production resource accounting. Completion queues remain separate and should continue to be used for kernel/device operation completion rather than as universal IPC endpoints.
+This is intentionally not the full Xous-style model yet. The first version does not include a userspace name service, arbitrary target-domain delegation syscalls, blocking receive/call scheduling, memory-object attachments, move/lend semantics, general capability attachment transfer, cancellation, or production resource accounting. Completion queues remain separate and should continue to be used for kernel/device operation completion rather than as universal IPC endpoints.
 
 ---
 

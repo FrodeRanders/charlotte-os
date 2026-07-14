@@ -52,7 +52,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 25;
+pub const MAX_SYSCALL: u16 = 26;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -101,6 +101,9 @@ pub mod call_no {
     pub const IPC_REPLY_POLL: u16 = 24;
     /// Close an endpoint IPC cap x1.
     pub const IPC_CLOSE: u16 = 25;
+    /// Reply with a delegated connection cap. x1=reply cap, x2=endpoint cap,
+    /// x3=connection rights. Returns status in x0.
+    pub const IPC_REPLY_CONNECTION: u16 = 26;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -141,6 +144,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_REPLY => sys_ipc_reply(frame),
         call_no::IPC_REPLY_POLL => sys_ipc_reply_poll(frame),
         call_no::IPC_CLOSE => sys_ipc_close(frame),
+        call_no::IPC_REPLY_CONNECTION => sys_ipc_reply_connection(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -562,15 +566,18 @@ fn sys_ipc_reply_poll(frame: &mut TrapFrame) {
     match ipc::poll_reply(asid, call) {
         Ok(Some(result)) => {
             frame.regs[0] = 0;
-            frame.regs[1] = result as u64;
+            frame.regs[1] = result.result as u64;
+            frame.regs[2] = result.cap.unwrap_or(0);
         }
         Ok(None) => {
             frame.regs[0] = 1;
             frame.regs[1] = 0;
+            frame.regs[2] = 0;
         }
         Err(error) => {
             frame.regs[0] = ipc_status(error);
             frame.regs[1] = 0;
+            frame.regs[2] = 0;
         }
     }
 }
@@ -579,6 +586,17 @@ fn sys_ipc_close(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
     frame.regs[0] = match ipc::close_cap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_reply_connection(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let reply = frame.regs[1];
+    let endpoint = frame.regs[2];
+    let rights = ipc::ConnectionRights::from_bits(frame.regs[3] as u32);
+    frame.regs[0] = match ipc::reply_with_connection(asid, reply, endpoint, rights, 0) {
         Ok(()) => 0,
         Err(error) => ipc_status(error),
     };

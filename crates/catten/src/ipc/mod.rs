@@ -88,6 +88,12 @@ pub struct ScalarMessage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplyValue {
+    pub result: i64,
+    pub cap: Option<CapabilityId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Capability {
     Endpoint {
         endpoint: EndpointId,
@@ -155,7 +161,7 @@ struct ReplyToken {
 #[derive(Debug)]
 struct PendingCall {
     caller: AddressSpaceId,
-    result: Option<i64>,
+    result: Option<ReplyValue>,
 }
 
 #[derive(Debug)]
@@ -429,6 +435,45 @@ pub fn receive(
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
+    complete_reply(&mut ipc, server, reply_cap, result, None)
+}
+
+pub fn reply_with_connection(
+    server: AddressSpaceId,
+    reply_cap: CapabilityId,
+    endpoint_cap: CapabilityId,
+    rights: ConnectionRights,
+    result: i64,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint, endpoint_rights) = match ipc.cap(server, endpoint_cap)? {
+        Capability::Endpoint {
+            endpoint,
+            rights,
+        } => {
+            if !rights.contains(ConnectionRights::MINT_CONNECTION) {
+                return Err(IpcError::PermissionDenied);
+            }
+            (endpoint, rights)
+        }
+        _ => return Err(IpcError::WrongType),
+    };
+    complete_reply(
+        &mut ipc,
+        server,
+        reply_cap,
+        result,
+        Some((endpoint, rights.intersection(endpoint_rights))),
+    )
+}
+
+fn complete_reply(
+    ipc: &mut IpcRegistry,
+    server: AddressSpaceId,
+    reply_cap: CapabilityId,
+    result: i64,
+    returned_connection: Option<(EndpointId, ConnectionRights)>,
+) -> Result<(), IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
             token,
@@ -443,14 +488,27 @@ pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Re
         return Err(IpcError::ReplyAlreadyUsed);
     }
     let call_id = token.call;
+    let caller = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.caller;
+    let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
+        ipc.as_caps(caller).insert(Capability::Connection {
+            endpoint,
+            rights: endpoint_rights,
+        })
+    });
     ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
-    call.result = Some(result);
+    call.result = Some(ReplyValue {
+        result,
+        cap: returned_cap,
+    });
     let _ = ipc.remove_cap(server, reply_cap);
     Ok(())
 }
 
-pub fn poll_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<Option<i64>, IpcError> {
+pub fn poll_reply(
+    caller: AddressSpaceId,
+    call_cap: CapabilityId,
+) -> Result<Option<ReplyValue>, IpcError> {
     let ipc = IPC.read();
     let call_id = match ipc.cap(caller, call_cap)? {
         Capability::PendingCall {
@@ -497,7 +555,10 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         } => {
             if let Some(token) = ipc.reply_tokens.remove(&token) {
                 if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
-                    call.result = Some(REPLY_CANCELLED);
+                    call.result = Some(ReplyValue {
+                        result: REPLY_CANCELLED,
+                        cap: None,
+                    });
                 }
             }
         }
@@ -536,7 +597,10 @@ fn consume_reply_cap(
     };
     if let Some(token) = ipc.reply_tokens.remove(&token) {
         if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
-            call.result = Some(result);
+            call.result = Some(ReplyValue {
+                result,
+                cap: None,
+            });
         }
     }
 }

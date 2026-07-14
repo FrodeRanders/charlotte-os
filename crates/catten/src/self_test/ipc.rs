@@ -42,7 +42,9 @@ pub fn test_endpoint_ipc() {
     assert_eq!(message.arg0, 0x66);
     assert_eq!(ipc::poll_reply(client, call), Ok(None));
     ipc::reply(server, reply, -12).expect("reply should complete pending call");
-    assert_eq!(ipc::poll_reply(client, call), Ok(Some(-12)));
+    let value = ipc::poll_reply(client, call).expect("poll_reply should succeed").unwrap();
+    assert_eq!(value.result, -12);
+    assert_eq!(value.cap, None);
     assert_eq!(
         ipc::reply(server, reply, 13),
         Err(IpcError::UnknownCapability),
@@ -65,14 +67,46 @@ pub fn test_endpoint_ipc() {
     let closed_call = ipc::scalar_call(client, connection, 10, 0x88)
         .expect("scalar_call should enqueue call before endpoint close");
     ipc::close_cap(server, endpoint).expect("server should be able to close endpoint");
+    let value = ipc::poll_reply(client, closed_call)
+        .expect("poll_reply should succeed")
+        .expect("closed endpoint should complete call");
     assert_eq!(
-        ipc::poll_reply(client, closed_call),
-        Ok(Some(ipc::REPLY_ENDPOINT_CLOSED)),
+        value.result,
+        ipc::REPLY_ENDPOINT_CLOSED,
         "closing endpoint must complete queued calls instead of stranding callers"
     );
+    assert_eq!(value.cap, None);
 
     let endpoint = ipc::endpoint_create(server, 0x4348_4943, 1, 2)
         .expect("endpoint_create should return replacement endpoint cap");
+    let name_endpoint = ipc::endpoint_create(server, 0x4e41_4d45, 1, 2)
+        .expect("endpoint_create should return name-service endpoint cap");
+    let name_connection =
+        ipc::connection_delegate(server, name_endpoint, client, ConnectionRights::CALL)
+            .expect("name-service connection should be delegated to client");
+    let connect_call = ipc::scalar_call(client, name_connection, 99, 0)
+        .expect("client should be able to call name service");
+    let connect_message = ipc::receive(server, name_endpoint)
+        .expect("name service should receive connection request");
+    let connect_reply = connect_message.reply.expect("call should carry reply token");
+    ipc::reply_with_connection(server, connect_reply, endpoint, ConnectionRights::SEND, 0)
+        .expect("name service should be able to return a connection cap");
+    let value = ipc::poll_reply(client, connect_call)
+        .expect("poll_reply should succeed")
+        .expect("connection reply should complete call");
+    assert_eq!(value.result, 0);
+    let returned_connection = value.cap.expect("reply should return delegated connection cap");
+    ipc::scalar_send(client, returned_connection, 42, 0xbeef)
+        .expect("returned connection should authorize send");
+    assert_eq!(
+        ipc::scalar_call(client, returned_connection, 43, 0),
+        Err(IpcError::PermissionDenied),
+        "returned send-only connection must not authorize calls"
+    );
+    let message = ipc::receive(server, endpoint).expect("server should receive delegated send");
+    assert_eq!(message.opcode, 42);
+    assert_eq!(message.arg0, 0xbeef);
+
     let full_endpoint =
         ipc::endpoint_create(server, 0x4655_4c4c, 1, 1).expect("capacity one endpoint");
     let full_connection =

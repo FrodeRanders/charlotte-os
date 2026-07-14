@@ -201,6 +201,7 @@ pub fn test_syscall_dispatch() {
         let mut f = synthetic_trap_frame_in(asid, 0, call, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
         assert_eq!(f.regs[0], 1, "IPC_REPLY_POLL should report pending call");
+        assert_eq!(f.regs[2], 0, "pending call should not report a returned cap");
     }
     {
         let mut f = synthetic_trap_frame_in(asid, 0, reply, 77, 0);
@@ -212,8 +213,48 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
         assert_eq!(f.regs[0], 0, "IPC_REPLY_POLL should report ready call");
         assert_eq!(f.regs[1] as i64, 77);
+        assert_eq!(f.regs[2], 0, "plain reply should not report a returned cap");
     }
-    for cap in [call, connection, endpoint] {
+    let delegated_call = {
+        let mut f = synthetic_trap_frame_in(asid, 0, connection, 13, 0xcc77);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
+        assert_ne!(f.regs[0], 0, "IPC_SCALAR_CALL should return delegated pending-call cap");
+        f.regs[0]
+    };
+    let delegated_reply = {
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
+        assert_eq!(f.regs[0], 0, "IPC_RECV should return delegated call message");
+        assert_eq!(f.regs[1], 13);
+        assert_ne!(f.regs[3], 0, "delegated call should include reply token");
+        f.regs[3]
+    };
+    {
+        let rights = crate::ipc::ConnectionRights::SEND;
+        let mut f =
+            synthetic_trap_frame_in(asid, 0, delegated_reply, endpoint, rights.bits() as u64);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_CONNECTION);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY_CONNECTION should succeed");
+    }
+    let delegated_connection = {
+        let mut f = synthetic_trap_frame_in(asid, 0, delegated_call, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY_POLL should report delegated call ready");
+        assert_eq!(f.regs[1] as i64, 0);
+        assert_ne!(f.regs[2], 0, "delegated reply should return a connection cap");
+        f.regs[2]
+    };
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, delegated_connection, 14, 0xdd88);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_SEND);
+        assert_eq!(f.regs[0], 0, "delegated connection should authorize send");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, delegated_connection, 15, 0xee99);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
+        assert_eq!(f.regs[0], 0, "send-only delegated connection must not authorize calls");
+    }
+    for cap in [delegated_call, delegated_connection, call, connection, endpoint] {
         let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::IPC_CLOSE);
         assert_eq!(f.regs[0], 0, "IPC_CLOSE should close known caps");

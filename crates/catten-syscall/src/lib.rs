@@ -120,6 +120,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             21 => asm!("svc #21", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             23 => asm!("svc #23", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             25 => asm!("svc #25", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            26 => asm!("svc #26", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -142,6 +143,20 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
         }
     }
     (ret, x1_out)
+}
+
+#[inline(always)]
+unsafe fn svc3_x2(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
+    let ret: u64;
+    let x1_out: u64;
+    let x2_out: u64;
+    unsafe {
+        match imm {
+            24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            _ => core::hint::unreachable_unchecked(),
+        }
+    }
+    (ret, x1_out, x2_out)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -351,14 +366,23 @@ pub unsafe fn ipc_reply(reply: u64, result: i64) -> u64 {
     unsafe { svc3(23, reply, result as u64, 0) }
 }
 
-/// Poll a pending-call cap. Returns `(0, result)` when ready or `(1, 0)` while pending.
+/// Poll a pending-call cap.
+///
+/// Returns `(0, result, returned_cap)` when ready, where `returned_cap` is 0
+/// when the reply did not delegate a capability. Returns `(1, 0, 0)` while pending.
 #[inline(always)]
-pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64) {
-    unsafe { svc3_x1(24, call, 0, 0) }
+pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64, u64) {
+    unsafe { svc3_x2(24, call, 0, 0) }
 }
 
 /// Close an endpoint IPC capability. Returns status code.
 #[inline(always)]
 pub unsafe fn ipc_close(cap: u64) -> u64 {
     unsafe { svc3(25, cap, 0, 0) }
+}
+
+/// Complete a call and return a delegated connection cap to the original caller.
+#[inline(always)]
+pub unsafe fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights) -> u64 {
+    unsafe { svc3(26, reply, endpoint, rights.bits() as u64) }
 }
