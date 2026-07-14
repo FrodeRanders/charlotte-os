@@ -50,6 +50,7 @@ pub fn run_self_tests() {
     el0_ipc::test_el0_endpoint_ipc_blocking_receive();
     el0_ipc::test_el0_endpoint_ipc_cross_address_space();
     el0_ipc::test_el0_endpoint_ipc_memory_move();
+    el0_ipc::test_el0_endpoint_ipc_memory_cancel();
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();

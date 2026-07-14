@@ -48,7 +48,8 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     reply-token single use, teardown, blocking endpoint receive, and
     same-address-space syscall dispatch. They also cover kernel-internal
     moved and lent memory IPC plus a real EL0 two-domain memory IPC
-    smoke test for move, read-borrow, and write-borrow.
+    smoke test for move, read-borrow, write-borrow, and queued
+    moved/borrowed-memory cancellation.
 
 This is intentionally not the full Xous-style model yet. The first
 version does not include a userspace name service, arbitrary
@@ -91,6 +92,12 @@ Current evidence:
     writable receiver mapping, normal reply revokes the receiver's
     borrowed cap, and write-borrowed mutations become visible to the
     owner after reply.
+-   The current tree also adds an EL0 queued-cancellation smoke test:
+    the caller queues moved-memory and write-borrow calls, closes both
+    pending-call caps before the server receives, observes that the
+    moved-from cap remains consumed and the write borrow is revoked back
+    to the owner, and the server observes `NoMessage` for both cancelled
+    requests.
 
 ------------------------------------------------------------------------
 

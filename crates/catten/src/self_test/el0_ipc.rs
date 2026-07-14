@@ -17,13 +17,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
     linear::{
         MemoryMapping,
         PageType,
         VAddr,
     },
-    ADDRESS_SPACE_TABLE,
-    KERNEL_AS,
 };
 
 #[cfg(target_arch = "aarch64")]
@@ -34,6 +34,8 @@ core::arch::global_asm!(include_str!("el0_ipc_block.asm"));
 core::arch::global_asm!(include_str!("el0_ipc_cross_as.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_memory.asm"));
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory_cancel.asm"));
 
 #[cfg(target_arch = "aarch64")]
 const IPC_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -87,6 +89,18 @@ const IPC_MEMORY_WRITE_BORROW_INITIAL_VALUE: u32 = 0x4257_5752;
 const IPC_MEMORY_WRITE_BORROW_RETURNED_VALUE: u32 = 0x4252_5752;
 #[cfg(target_arch = "aarch64")]
 const IPC_MEMORY_STATUS_MISSING_RIGHT: u32 = 12;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_READY_SENTINEL: u32 = 0x0000_ca5e;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_SERVER_SENTINEL: u32 = 0x0000_ca51;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_CLIENT_SENTINEL: u32 = 0x0000_cad1;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_BORROW_VALUE: u32 = 0x0000_b001;
+#[cfg(target_arch = "aarch64")]
+const IPC_STATUS_NO_MESSAGE: u32 = 2;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY: u32 = 1;
 
 #[cfg(target_arch = "aarch64")]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -98,6 +112,8 @@ static mut IPC_CROSS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None
 static mut IPC_CROSS_CLIENT_ASID: crate::memory::AddressSpaceId = 0;
 #[cfg(target_arch = "aarch64")]
 static mut IPC_MEMORY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+#[cfg(target_arch = "aarch64")]
+static mut IPC_MEMORY_CANCEL_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
 #[cfg(target_arch = "aarch64")]
 unsafe extern "C" {
@@ -115,6 +131,10 @@ unsafe extern "C" {
     static __catten_el0_ipc_memory_server_end: u8;
     static __catten_el0_ipc_memory_client_start: u8;
     static __catten_el0_ipc_memory_client_end: u8;
+    static __catten_el0_ipc_memory_cancel_server_start: u8;
+    static __catten_el0_ipc_memory_cancel_server_end: u8;
+    static __catten_el0_ipc_memory_cancel_client_start: u8;
+    static __catten_el0_ipc_memory_cancel_client_end: u8;
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -178,6 +198,22 @@ fn ipc_memory_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_client_start),
         core::ptr::addr_of!(__catten_el0_ipc_memory_client_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_cancel_server_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_server_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_server_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_cancel_client_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_client_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_client_end),
     )
 }
 
@@ -469,6 +505,75 @@ pub fn test_el0_endpoint_ipc_memory_move() {
     #[cfg(not(target_arch = "aarch64"))]
     {
         logln!("Skipping EL0 memory endpoint IPC test (AArch64 only).");
+    }
+}
+
+pub fn test_el0_endpoint_ipc_memory_cancel() {
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::ipc::ConnectionRights;
+
+        logln!("Testing EL0 queued memory IPC cancellation...");
+
+        let server_asid = create_user_address_space("memory cancel server");
+        let client_asid = create_user_address_space("memory cancel client");
+
+        let endpoint = crate::ipc::endpoint_create(server_asid, 0x4d45_4d43, 1, 4)
+            .expect("EL0 IPC memory cancel: endpoint_create should succeed");
+        assert_eq!(endpoint, 1, "EL0 IPC memory cancel stub expects server endpoint cap 1",);
+        let connection = crate::ipc::connection_delegate(
+            server_asid,
+            endpoint,
+            client_asid,
+            ConnectionRights::CALL,
+        )
+        .expect("EL0 IPC memory cancel: connection_delegate should succeed");
+        assert_eq!(connection, 1, "EL0 IPC memory cancel stub expects client connection cap 1",);
+
+        map_code_page(
+            server_asid,
+            VAddr::from(IPC_MEMORY_CODE_VADDR),
+            ipc_memory_cancel_server_code(),
+        );
+        map_code_page(
+            client_asid,
+            VAddr::from(IPC_MEMORY_CODE_VADDR),
+            ipc_memory_cancel_client_code(),
+        );
+        unsafe {
+            core::arch::asm!(
+                "dsb ishst",
+                "ic ialluis",
+                "dsb ish",
+                "isb",
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+
+        let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
+        map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
+        unsafe {
+            IPC_MEMORY_CANCEL_RESULT_FRAME = Some(result_frame);
+        }
+
+        let entry: extern "C" fn() =
+            unsafe { core::mem::transmute::<usize, extern "C" fn()>(IPC_MEMORY_CODE_VADDR) };
+        let server_tid = spawn_thread(server_asid as crate::memory::AddressSpaceId, entry);
+        let client_tid = spawn_thread(client_asid as crate::memory::AddressSpaceId, entry);
+        logln!(
+            "[EL0 IPC memory cancel] server tid={} asid={} client tid={} asid={}",
+            server_tid,
+            server_asid,
+            client_tid,
+            client_asid
+        );
+
+        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_cancel);
+        logln!("[EL0 IPC memory cancel] verifier tid={}; assertion deferred.", vtid);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        logln!("Skipping EL0 memory IPC cancellation test (AArch64 only).");
     }
 }
 
@@ -933,6 +1038,116 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
         assert!(
             spins < 60_000_000,
             "[EL0 IPC memory] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
+             client={:#x})",
+            ready,
+            server_done,
+            client_done
+        );
+        yield_lp();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
+    use crate::cpu::scheduler::yield_lp;
+
+    let frame = unsafe { IPC_MEMORY_CANCEL_RESULT_FRAME }
+        .expect("EL0 IPC memory cancel: result frame not initialized");
+    let base: *mut u8 = frame.into();
+    let result = base as *const u32;
+    let mut spins: u64 = 0;
+    loop {
+        let ready = unsafe { core::ptr::read_volatile(result) };
+        let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
+        let client_done = unsafe { core::ptr::read_volatile(result.add(2)) };
+        if ready == IPC_MEMORY_CANCEL_READY_SENTINEL
+            && server_done == IPC_MEMORY_CANCEL_SERVER_SENTINEL
+            && client_done == IPC_MEMORY_CANCEL_CLIENT_SENTINEL
+        {
+            let move_alloc_cap = unsafe { core::ptr::read_volatile(result.add(3)) };
+            let move_map = unsafe { core::ptr::read_volatile(result.add(4)) };
+            let move_unmap = unsafe { core::ptr::read_volatile(result.add(5)) };
+            let move_call_cap = unsafe { core::ptr::read_volatile(result.add(6)) };
+            let move_pending_close = unsafe { core::ptr::read_volatile(result.add(7)) };
+            let moved_from_map = unsafe { core::ptr::read_volatile(result.add(8)) };
+            let borrow_alloc_cap = unsafe { core::ptr::read_volatile(result.add(9)) };
+            let borrow_map = unsafe { core::ptr::read_volatile(result.add(10)) };
+            let borrow_unmap = unsafe { core::ptr::read_volatile(result.add(11)) };
+            let borrow_call_cap = unsafe { core::ptr::read_volatile(result.add(12)) };
+            let borrow_pending_close = unsafe { core::ptr::read_volatile(result.add(13)) };
+            let borrow_owner_remap = unsafe { core::ptr::read_volatile(result.add(14)) };
+            let borrow_owner_value = unsafe { core::ptr::read_volatile(result.add(15)) };
+            let borrow_owner_unmap = unsafe { core::ptr::read_volatile(result.add(16)) };
+            let borrow_owner_close = unsafe { core::ptr::read_volatile(result.add(17)) };
+            let server_first_recv = unsafe { core::ptr::read_volatile(result.add(18)) };
+            let server_second_recv = unsafe { core::ptr::read_volatile(result.add(19)) };
+
+            assert_ne!(move_alloc_cap, 0, "EL0 IPC memory cancel: move allocation returned no cap",);
+            assert_eq!(move_map, 0, "EL0 IPC memory cancel: move seed map failed");
+            assert_eq!(move_unmap, 0, "EL0 IPC memory cancel: move seed unmap failed");
+            assert_ne!(
+                move_call_cap, 0,
+                "EL0 IPC memory cancel: call_move returned no pending-call cap",
+            );
+            assert_eq!(
+                move_pending_close, 0,
+                "EL0 IPC memory cancel: closing queued moved-memory call failed",
+            );
+            assert_eq!(
+                moved_from_map, IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY,
+                "EL0 IPC memory cancel: moved-from cap should remain consumed",
+            );
+
+            assert_ne!(
+                borrow_alloc_cap, 0,
+                "EL0 IPC memory cancel: borrow allocation returned no cap",
+            );
+            assert_eq!(borrow_map, 0, "EL0 IPC memory cancel: borrow seed map failed");
+            assert_eq!(borrow_unmap, 0, "EL0 IPC memory cancel: borrow seed unmap failed");
+            assert_ne!(
+                borrow_call_cap, 0,
+                "EL0 IPC memory cancel: borrow_write returned no pending-call cap",
+            );
+            assert_eq!(
+                borrow_pending_close, 0,
+                "EL0 IPC memory cancel: closing queued borrow call failed",
+            );
+            assert_eq!(
+                borrow_owner_remap, 0,
+                "EL0 IPC memory cancel: cancelled borrow was not revoked to owner",
+            );
+            assert_eq!(
+                borrow_owner_value, IPC_MEMORY_CANCEL_BORROW_VALUE,
+                "EL0 IPC memory cancel: borrow owner payload changed unexpectedly",
+            );
+            assert_eq!(borrow_owner_unmap, 0, "EL0 IPC memory cancel: borrow owner unmap failed",);
+            assert_eq!(borrow_owner_close, 0, "EL0 IPC memory cancel: borrow owner close failed",);
+
+            assert_eq!(
+                server_first_recv, IPC_STATUS_NO_MESSAGE,
+                "EL0 IPC memory cancel: server received cancelled moved-memory call",
+            );
+            assert_eq!(
+                server_second_recv, IPC_STATUS_NO_MESSAGE,
+                "EL0 IPC memory cancel: server received cancelled borrow call",
+            );
+
+            logln!(
+                "[EL0 IPC memory cancel] SUCCESS: cancelled move call cap {}, borrow call cap {}, \
+                 server recv statuses {}/{}.",
+                move_call_cap,
+                borrow_call_cap,
+                server_first_recv,
+                server_second_recv
+            );
+            loop {
+                yield_lp();
+            }
+        }
+        spins += 1;
+        assert!(
+            spins < 40_000_000,
+            "[EL0 IPC memory cancel] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
              client={:#x})",
             ready,
             server_done,
