@@ -46,6 +46,7 @@ pub fn run_self_tests() {
     shard::test_shard_mailbox();
     el0::test_el0_syscall_round_trip();
     el0_ipc::test_el0_endpoint_ipc();
+    el0_ipc::test_el0_endpoint_ipc_blocking_receive();
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();
