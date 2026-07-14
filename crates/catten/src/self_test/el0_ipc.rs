@@ -36,6 +36,8 @@ core::arch::global_asm!(include_str!("el0_ipc_cross_as.asm"));
 core::arch::global_asm!(include_str!("el0_ipc_memory.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_memory_cancel.asm"));
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory_copy.asm"));
 
 #[cfg(target_arch = "aarch64")]
 const IPC_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -107,6 +109,16 @@ const IPC_STATUS_NO_MESSAGE: u32 = 2;
 const IPC_STATUS_UNKNOWN_CAPABILITY: u32 = 4;
 #[cfg(target_arch = "aarch64")]
 const IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY: u32 = 1;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_COPY_READY_SENTINEL: u32 = 0x0000_c05e;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_COPY_SERVER_SENTINEL: u32 = 0x0000_c051;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_COPY_CLIENT_SENTINEL: u32 = 0x0000_c0d1;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_COPY_INITIAL_VALUE: u32 = 0x0000_c091;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_COPY_SERVER_VALUE: u32 = 0x0000_c092;
 
 #[cfg(target_arch = "aarch64")]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -120,6 +132,8 @@ static mut IPC_CROSS_CLIENT_ASID: crate::memory::AddressSpaceId = 0;
 static mut IPC_MEMORY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
 static mut IPC_MEMORY_CANCEL_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+#[cfg(target_arch = "aarch64")]
+static mut IPC_MEMORY_COPY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
 #[cfg(target_arch = "aarch64")]
 unsafe extern "C" {
@@ -141,6 +155,10 @@ unsafe extern "C" {
     static __catten_el0_ipc_memory_cancel_server_end: u8;
     static __catten_el0_ipc_memory_cancel_client_start: u8;
     static __catten_el0_ipc_memory_cancel_client_end: u8;
+    static __catten_el0_ipc_memory_copy_server_start: u8;
+    static __catten_el0_ipc_memory_copy_server_end: u8;
+    static __catten_el0_ipc_memory_copy_client_start: u8;
+    static __catten_el0_ipc_memory_copy_client_end: u8;
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -220,6 +238,22 @@ fn ipc_memory_cancel_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_client_start),
         core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_client_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_copy_server_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_copy_server_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_copy_server_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_copy_client_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_copy_client_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_copy_client_end),
     )
 }
 
@@ -580,6 +614,75 @@ pub fn test_el0_endpoint_ipc_memory_cancel() {
     #[cfg(not(target_arch = "aarch64"))]
     {
         logln!("Skipping EL0 memory IPC cancellation test (AArch64 only).");
+    }
+}
+
+pub fn test_el0_endpoint_ipc_memory_copy() {
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::ipc::ConnectionRights;
+
+        logln!("Testing EL0 copied memory IPC...");
+
+        let server_asid = create_user_address_space("memory copy server");
+        let client_asid = create_user_address_space("memory copy client");
+
+        let endpoint = crate::ipc::endpoint_create(server_asid, 0x4d45_434f, 1, 4)
+            .expect("EL0 IPC memory copy: endpoint_create should succeed");
+        assert_eq!(endpoint, 1, "EL0 IPC memory copy stub expects server endpoint cap 1");
+        let connection = crate::ipc::connection_delegate(
+            server_asid,
+            endpoint,
+            client_asid,
+            ConnectionRights::CALL,
+        )
+        .expect("EL0 IPC memory copy: connection_delegate should succeed");
+        assert_eq!(connection, 1, "EL0 IPC memory copy stub expects client connection cap 1");
+
+        map_code_page(
+            server_asid,
+            VAddr::from(IPC_MEMORY_CODE_VADDR),
+            ipc_memory_copy_server_code(),
+        );
+        map_code_page(
+            client_asid,
+            VAddr::from(IPC_MEMORY_CODE_VADDR),
+            ipc_memory_copy_client_code(),
+        );
+        unsafe {
+            core::arch::asm!(
+                "dsb ishst",
+                "ic ialluis",
+                "dsb ish",
+                "isb",
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+
+        let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
+        map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
+        unsafe {
+            IPC_MEMORY_COPY_RESULT_FRAME = Some(result_frame);
+        }
+
+        let entry: extern "C" fn() =
+            unsafe { core::mem::transmute::<usize, extern "C" fn()>(IPC_MEMORY_CODE_VADDR) };
+        let server_tid = spawn_thread(server_asid as crate::memory::AddressSpaceId, entry);
+        let client_tid = spawn_thread(client_asid as crate::memory::AddressSpaceId, entry);
+        logln!(
+            "[EL0 IPC memory copy] server tid={} asid={} client tid={} asid={}",
+            server_tid,
+            server_asid,
+            client_tid,
+            client_asid
+        );
+
+        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_copy);
+        logln!("[EL0 IPC memory copy] verifier tid={}; assertion deferred.", vtid);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        logln!("Skipping EL0 memory IPC copy test (AArch64 only).");
     }
 }
 
@@ -1237,6 +1340,144 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
         assert!(
             spins < 40_000_000,
             "[EL0 IPC memory cancel] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
+             client={:#x})",
+            ready,
+            server_done,
+            client_done
+        );
+        yield_lp();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
+    use crate::cpu::scheduler::yield_lp;
+
+    let frame = unsafe { IPC_MEMORY_COPY_RESULT_FRAME }
+        .expect("EL0 IPC memory copy: result frame not initialized");
+    let base: *mut u8 = frame.into();
+    let result = base as *const u32;
+    let mut spins: u64 = 0;
+    loop {
+        let ready = unsafe { core::ptr::read_volatile(result) };
+        let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
+        let client_done = unsafe { core::ptr::read_volatile(result.add(2)) };
+        if ready == IPC_MEMORY_COPY_READY_SENTINEL
+            && server_done == IPC_MEMORY_COPY_SERVER_SENTINEL
+            && client_done == IPC_MEMORY_COPY_CLIENT_SENTINEL
+        {
+            let client_alloc_cap = unsafe { core::ptr::read_volatile(result.add(3)) };
+            let client_seed_map = unsafe { core::ptr::read_volatile(result.add(4)) };
+            let client_seed_unmap = unsafe { core::ptr::read_volatile(result.add(5)) };
+            let client_call_cap = unsafe { core::ptr::read_volatile(result.add(6)) };
+            let client_original_map = unsafe { core::ptr::read_volatile(result.add(7)) };
+            let client_original_value = unsafe { core::ptr::read_volatile(result.add(8)) };
+            let client_original_unmap = unsafe { core::ptr::read_volatile(result.add(9)) };
+            let server_recv = unsafe { core::ptr::read_volatile(result.add(12)) };
+            let server_opcode = unsafe { core::ptr::read_volatile(result.add(13)) };
+            let server_arg0 = unsafe { core::ptr::read_volatile(result.add(14)) };
+            let server_reply = unsafe { core::ptr::read_volatile(result.add(15)) };
+            let server_memory = unsafe { core::ptr::read_volatile(result.add(16)) };
+            let server_map = unsafe { core::ptr::read_volatile(result.add(17)) };
+            let server_value = unsafe { core::ptr::read_volatile(result.add(18)) };
+            let server_unmap = unsafe { core::ptr::read_volatile(result.add(19)) };
+            let server_close = unsafe { core::ptr::read_volatile(result.add(20)) };
+            let server_reply_status = unsafe { core::ptr::read_volatile(result.add(21)) };
+            let client_poll = unsafe { core::ptr::read_volatile(result.add(22)) };
+            let client_poll_result = unsafe { core::ptr::read_volatile(result.add(23)) };
+            let client_poll_cap = unsafe { core::ptr::read_volatile(result.add(24)) };
+            let client_poll_memory = unsafe { core::ptr::read_volatile(result.add(25)) };
+            let client_after_map = unsafe { core::ptr::read_volatile(result.add(26)) };
+            let client_after_value = unsafe { core::ptr::read_volatile(result.add(27)) };
+            let client_after_unmap = unsafe { core::ptr::read_volatile(result.add(28)) };
+            let client_close = unsafe { core::ptr::read_volatile(result.add(29)) };
+
+            assert_ne!(
+                client_alloc_cap, 0,
+                "EL0 IPC memory copy: allocation returned no cap",
+            );
+            assert_eq!(client_seed_map, 0, "EL0 IPC memory copy: seed map failed");
+            assert_eq!(client_seed_unmap, 0, "EL0 IPC memory copy: seed unmap failed");
+            assert_ne!(
+                client_call_cap, 0,
+                "EL0 IPC memory copy: call_copy returned no pending-call cap",
+            );
+            assert_eq!(
+                client_original_map, 0,
+                "EL0 IPC memory copy: source cap was not immediately mappable",
+            );
+            assert_eq!(
+                client_original_value, IPC_MEMORY_COPY_INITIAL_VALUE,
+                "EL0 IPC memory copy: source payload changed before server reply",
+            );
+            assert_eq!(
+                client_original_unmap, 0,
+                "EL0 IPC memory copy: source unmap failed",
+            );
+
+            assert_eq!(server_recv, 0, "EL0 IPC memory copy: server recv failed");
+            assert_eq!(server_opcode, 0x90, "EL0 IPC memory copy: opcode mismatch");
+            assert_eq!(server_arg0, 0xc9, "EL0 IPC memory copy: arg mismatch");
+            assert_ne!(server_reply, 0, "EL0 IPC memory copy: missing reply token");
+            assert_ne!(server_memory, 0, "EL0 IPC memory copy: missing copied memory cap");
+            assert_eq!(server_map, 0, "EL0 IPC memory copy: server map failed");
+            assert_eq!(
+                server_value, IPC_MEMORY_COPY_INITIAL_VALUE,
+                "EL0 IPC memory copy: server copied payload mismatch",
+            );
+            assert_eq!(server_unmap, 0, "EL0 IPC memory copy: server unmap failed");
+            assert_eq!(server_close, 0, "EL0 IPC memory copy: server close failed");
+            assert_eq!(
+                server_reply_status, 0,
+                "EL0 IPC memory copy: scalar reply failed",
+            );
+
+            assert_eq!(client_poll, 0, "EL0 IPC memory copy: reply poll failed");
+            assert_eq!(
+                client_poll_result, 0xc0,
+                "EL0 IPC memory copy: reply result mismatch",
+            );
+            assert_eq!(
+                client_poll_cap, 0,
+                "EL0 IPC memory copy: reply returned unexpected connection cap",
+            );
+            assert_eq!(
+                client_poll_memory, 0,
+                "EL0 IPC memory copy: reply returned unexpected memory cap",
+            );
+            assert_eq!(
+                client_after_map, 0,
+                "EL0 IPC memory copy: source remap after reply failed",
+            );
+            assert_eq!(
+                client_after_value, IPC_MEMORY_COPY_INITIAL_VALUE,
+                "EL0 IPC memory copy: server write to copy mutated source",
+            );
+            assert_eq!(
+                client_after_unmap, 0,
+                "EL0 IPC memory copy: source final unmap failed",
+            );
+            assert_eq!(
+                client_close, 0,
+                "EL0 IPC memory copy: source close failed",
+            );
+
+            logln!(
+                "[EL0 IPC memory copy] SUCCESS: source cap {}, copied server cap {}, payload \
+                 stayed {:#x} while server wrote {:#x}.",
+                client_alloc_cap,
+                server_memory,
+                client_after_value,
+                IPC_MEMORY_COPY_SERVER_VALUE
+            );
+            loop {
+                yield_lp();
+            }
+        }
+        spins += 1;
+        assert!(
+            spins < 40_000_000,
+            "[EL0 IPC memory copy] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
              client={:#x})",
             ready,
             server_done,

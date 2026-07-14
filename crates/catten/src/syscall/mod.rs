@@ -55,9 +55,6 @@ pub struct TrapFrame {
     pub asid: AddressSpaceId,
 }
 
-/// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 36;
-
 /// Syscall numbers.
 pub mod call_no {
     pub const LOG: u16 = 0;
@@ -134,6 +131,9 @@ pub mod call_no {
     /// Call with copied memory cap x4. Returns pending-call cap.
     pub const IPC_SCALAR_CALL_COPY: u16 = 38;
 }
+
+/// The upper bound on the SVC immediate we will try to dispatch.
+pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_COPY;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
