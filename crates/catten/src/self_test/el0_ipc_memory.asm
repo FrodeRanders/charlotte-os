@@ -56,6 +56,74 @@ __catten_el0_ipc_memory_server_start:
     svc #34
     str w0, [x9, #96]
 
+    // Receive a reply-bound read borrow. Writable map must fail; read-only map
+    // must succeed until the reply revokes the borrowed cap.
+    mov x1, x19
+    svc #27
+    str w0, [x9, #200]
+    str w1, [x9, #204]
+    str w2, [x9, #208]
+    str w3, [x9, #212]
+    str w7, [x9, #216]
+    mov x20, x3
+    mov x21, x7
+
+    mov x1, x21
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #220]
+
+    mov x1, x21
+    mov x2, x8
+    movz x3, #0
+    svc #29
+    str w0, [x9, #224]
+
+    ldr w10, [x8]
+    str w10, [x9, #228]
+
+    mov x1, x21
+    svc #30
+    str w0, [x9, #232]
+
+    mov x1, x20
+    movz x2, #0x1357
+    svc #23
+    str w0, [x9, #236]
+
+    // Receive a reply-bound write borrow and update it before replying.
+    mov x1, x19
+    svc #27
+    str w0, [x9, #240]
+    str w1, [x9, #244]
+    str w2, [x9, #248]
+    str w3, [x9, #252]
+    str w7, [x9, #256]
+    mov x20, x3
+    mov x21, x7
+
+    mov x1, x21
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #260]
+
+    ldr w10, [x8]
+    str w10, [x9, #264]
+    movz w10, #0x5752
+    movk w10, #0x4252, lsl #16
+    str w10, [x8]
+
+    mov x1, x21
+    svc #30
+    str w0, [x9, #268]
+
+    mov x1, x20
+    movz x2, #0x2469
+    svc #23
+    str w0, [x9, #272]
+
     dmb ish
     movz w10, #0x6d51
     str w10, [x9, #4]
@@ -146,6 +214,113 @@ __catten_el0_ipc_memory_client_start:
     mov x1, x22
     svc #31
     str w0, [x9, #60]
+
+    // Read-borrow a separate memory object. The server may read but not write,
+    // and a normal reply must revoke the server's borrowed cap.
+    movz x1, #1
+    svc #28
+    str w0, [x9, #100]
+    mov x23, x0
+
+    mov x1, x23
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #104]
+
+    movz w10, #0x5244
+    movk w10, #0x4252, lsl #16
+    str w10, [x8]
+
+    mov x1, x23
+    svc #30
+    str w0, [x9, #108]
+
+    mov x1, x19
+    movz x2, #0x45
+    movz x3, #0xbc
+    mov x4, x23
+    svc #35
+    str w0, [x9, #112]
+    mov x24, x0
+
+5:
+    mov x1, x24
+    svc #24
+    cbnz x0, 5b
+    str w0, [x9, #116]
+    str w1, [x9, #120]
+    str w2, [x9, #124]
+    str w3, [x9, #128]
+
+    mov x1, x23
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #132]
+
+    mov x1, x23
+    svc #30
+    str w0, [x9, #136]
+
+    mov x1, x23
+    svc #31
+    str w0, [x9, #140]
+
+    // Write-borrow another memory object. The server updates it and the client
+    // observes the change after reply-bound revocation.
+    movz x1, #1
+    svc #28
+    str w0, [x9, #144]
+    mov x25, x0
+
+    mov x1, x25
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #148]
+
+    movz w10, #0x5752
+    movk w10, #0x4257, lsl #16
+    str w10, [x8]
+
+    mov x1, x25
+    svc #30
+    str w0, [x9, #152]
+
+    mov x1, x19
+    movz x2, #0x46
+    movz x3, #0xcd
+    mov x4, x25
+    svc #36
+    str w0, [x9, #156]
+    mov x26, x0
+
+6:
+    mov x1, x26
+    svc #24
+    cbnz x0, 6b
+    str w0, [x9, #160]
+    str w1, [x9, #164]
+    str w2, [x9, #168]
+    str w3, [x9, #172]
+
+    mov x1, x25
+    mov x2, x8
+    movz x3, #0
+    svc #29
+    str w0, [x9, #176]
+
+    ldr w10, [x8]
+    str w10, [x9, #180]
+
+    mov x1, x25
+    svc #30
+    str w0, [x9, #184]
+
+    mov x1, x25
+    svc #31
+    str w0, [x9, #188]
 
     dmb ish
     movz w10, #0xc6d1

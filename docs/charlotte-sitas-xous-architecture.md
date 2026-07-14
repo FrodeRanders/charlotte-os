@@ -47,8 +47,8 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     queue backpressure, invalid-cap/type failures, scalar call/reply,
     reply-token single use, teardown, blocking endpoint receive, and
     same-address-space syscall dispatch. They also cover kernel-internal
-    moved and lent memory IPC plus a real EL0 two-domain moved-memory
-    call/reply smoke test.
+    moved and lent memory IPC plus a real EL0 two-domain memory IPC
+    smoke test for move, read-borrow, and write-borrow.
 
 This is intentionally not the full Xous-style model yet. The first
 version does not include a userspace name service, arbitrary
@@ -81,11 +81,16 @@ Current evidence:
     passing the other's ASID or LP.
 -   `b13fb76` exposed first-class memory objects and memory IPC
     move/borrow operations through the syscall ABI.
--   The current tree adds a real EL0 two-address-space memory IPC smoke
-    test: the client allocates, maps, writes, and moves a memory object
-    to a server; the sender's moved-from cap no longer maps; the server
-    maps and updates the object; and `IPC_REPLY_MOVE` returns the object
-    to the caller.
+-   `9af956f` added a real EL0 two-address-space memory IPC smoke test:
+    the client allocates, maps, writes, and moves a memory object to a
+    server; the sender's moved-from cap no longer maps; the server maps
+    and updates the object; and `IPC_REPLY_MOVE` returns the object to
+    the caller.
+-   The current tree extends that EL0 memory IPC smoke test to cover
+    reply-bound `BorrowRead` and `BorrowWrite`: read-borrow denies a
+    writable receiver mapping, normal reply revokes the receiver's
+    borrowed cap, and write-borrowed mutations become visible to the
+    owner after reply.
 
 ------------------------------------------------------------------------
 

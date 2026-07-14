@@ -79,6 +79,14 @@ const IPC_MEMORY_CLIENT_SENTINEL: u32 = 0x0000_c6d1;
 const IPC_MEMORY_INITIAL_VALUE: u32 = 0x4d45_4d31;
 #[cfg(target_arch = "aarch64")]
 const IPC_MEMORY_RETURNED_VALUE: u32 = 0x4d45_4d32;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_READ_BORROW_VALUE: u32 = 0x4252_5244;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_WRITE_BORROW_INITIAL_VALUE: u32 = 0x4257_5752;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_WRITE_BORROW_RETURNED_VALUE: u32 = 0x4252_5752;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_STATUS_MISSING_RIGHT: u32 = 12;
 
 #[cfg(target_arch = "aarch64")]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -700,6 +708,56 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
             let server_read_value = unsafe { core::ptr::read_volatile(result.add(22)) };
             let server_unmap = unsafe { core::ptr::read_volatile(result.add(23)) };
             let server_reply_move = unsafe { core::ptr::read_volatile(result.add(24)) };
+            let client_read_borrow_cap = unsafe { core::ptr::read_volatile(result.add(25)) };
+            let client_read_borrow_map = unsafe { core::ptr::read_volatile(result.add(26)) };
+            let client_read_borrow_unmap = unsafe { core::ptr::read_volatile(result.add(27)) };
+            let client_read_borrow_call = unsafe { core::ptr::read_volatile(result.add(28)) };
+            let client_read_borrow_poll = unsafe { core::ptr::read_volatile(result.add(29)) };
+            let client_read_borrow_result = unsafe { core::ptr::read_volatile(result.add(30)) };
+            let client_read_borrow_cap_reply = unsafe { core::ptr::read_volatile(result.add(31)) };
+            let client_read_borrow_memory_reply =
+                unsafe { core::ptr::read_volatile(result.add(32)) };
+            let client_read_borrow_owner_map = unsafe { core::ptr::read_volatile(result.add(33)) };
+            let client_read_borrow_owner_unmap =
+                unsafe { core::ptr::read_volatile(result.add(34)) };
+            let client_read_borrow_close = unsafe { core::ptr::read_volatile(result.add(35)) };
+            let client_write_borrow_cap = unsafe { core::ptr::read_volatile(result.add(36)) };
+            let client_write_borrow_map = unsafe { core::ptr::read_volatile(result.add(37)) };
+            let client_write_borrow_unmap = unsafe { core::ptr::read_volatile(result.add(38)) };
+            let client_write_borrow_call = unsafe { core::ptr::read_volatile(result.add(39)) };
+            let client_write_borrow_poll = unsafe { core::ptr::read_volatile(result.add(40)) };
+            let client_write_borrow_result = unsafe { core::ptr::read_volatile(result.add(41)) };
+            let client_write_borrow_cap_reply = unsafe { core::ptr::read_volatile(result.add(42)) };
+            let client_write_borrow_memory_reply =
+                unsafe { core::ptr::read_volatile(result.add(43)) };
+            let client_write_borrow_returned_map =
+                unsafe { core::ptr::read_volatile(result.add(44)) };
+            let client_write_borrow_returned_value =
+                unsafe { core::ptr::read_volatile(result.add(45)) };
+            let client_write_borrow_returned_unmap =
+                unsafe { core::ptr::read_volatile(result.add(46)) };
+            let client_write_borrow_close = unsafe { core::ptr::read_volatile(result.add(47)) };
+            let server_read_borrow_recv = unsafe { core::ptr::read_volatile(result.add(50)) };
+            let server_read_borrow_opcode = unsafe { core::ptr::read_volatile(result.add(51)) };
+            let server_read_borrow_arg0 = unsafe { core::ptr::read_volatile(result.add(52)) };
+            let server_read_borrow_reply = unsafe { core::ptr::read_volatile(result.add(53)) };
+            let server_read_borrow_memory = unsafe { core::ptr::read_volatile(result.add(54)) };
+            let server_read_borrow_write_map = unsafe { core::ptr::read_volatile(result.add(55)) };
+            let server_read_borrow_map = unsafe { core::ptr::read_volatile(result.add(56)) };
+            let server_read_borrow_value = unsafe { core::ptr::read_volatile(result.add(57)) };
+            let server_read_borrow_unmap = unsafe { core::ptr::read_volatile(result.add(58)) };
+            let server_read_borrow_reply_status =
+                unsafe { core::ptr::read_volatile(result.add(59)) };
+            let server_write_borrow_recv = unsafe { core::ptr::read_volatile(result.add(60)) };
+            let server_write_borrow_opcode = unsafe { core::ptr::read_volatile(result.add(61)) };
+            let server_write_borrow_arg0 = unsafe { core::ptr::read_volatile(result.add(62)) };
+            let server_write_borrow_reply = unsafe { core::ptr::read_volatile(result.add(63)) };
+            let server_write_borrow_memory = unsafe { core::ptr::read_volatile(result.add(64)) };
+            let server_write_borrow_map = unsafe { core::ptr::read_volatile(result.add(65)) };
+            let server_write_borrow_value = unsafe { core::ptr::read_volatile(result.add(66)) };
+            let server_write_borrow_unmap = unsafe { core::ptr::read_volatile(result.add(67)) };
+            let server_write_borrow_reply_status =
+                unsafe { core::ptr::read_volatile(result.add(68)) };
 
             assert_ne!(client_alloc_cap, 0, "EL0 IPC memory: allocation returned no cap");
             assert_eq!(client_map, 0, "EL0 IPC memory: client initial map failed");
@@ -736,13 +794,136 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
             assert_eq!(client_returned_unmap, 0, "EL0 IPC memory: returned unmap failed",);
             assert_eq!(client_close, 0, "EL0 IPC memory: returned close failed");
 
+            assert_ne!(
+                client_read_borrow_cap, 0,
+                "EL0 IPC memory: read-borrow allocation returned no cap",
+            );
+            assert_eq!(client_read_borrow_map, 0, "EL0 IPC memory: read-borrow seed map failed");
+            assert_eq!(
+                client_read_borrow_unmap, 0,
+                "EL0 IPC memory: read-borrow seed unmap failed",
+            );
+            assert_ne!(
+                client_read_borrow_call, 0,
+                "EL0 IPC memory: borrow_read returned no pending-call cap",
+            );
+            assert_eq!(
+                server_read_borrow_recv, 0,
+                "EL0 IPC memory: server read-borrow recv failed",
+            );
+            assert_eq!(server_read_borrow_opcode, 0x45, "EL0 IPC memory: read-borrow opcode");
+            assert_eq!(server_read_borrow_arg0, 0xbc, "EL0 IPC memory: read-borrow arg");
+            assert_ne!(server_read_borrow_reply, 0, "EL0 IPC memory: read-borrow reply");
+            assert_ne!(server_read_borrow_memory, 0, "EL0 IPC memory: read-borrow memory");
+            assert_eq!(
+                server_read_borrow_write_map, IPC_MEMORY_STATUS_MISSING_RIGHT,
+                "EL0 IPC memory: read-borrow must not map writable",
+            );
+            assert_eq!(server_read_borrow_map, 0, "EL0 IPC memory: read-borrow map failed");
+            assert_eq!(
+                server_read_borrow_value, IPC_MEMORY_READ_BORROW_VALUE,
+                "EL0 IPC memory: read-borrow payload mismatch",
+            );
+            assert_eq!(server_read_borrow_unmap, 0, "EL0 IPC memory: read-borrow unmap failed",);
+            assert_eq!(
+                server_read_borrow_reply_status, 0,
+                "EL0 IPC memory: read-borrow reply failed",
+            );
+            assert_eq!(client_read_borrow_poll, 0, "EL0 IPC memory: read-borrow poll failed",);
+            assert_eq!(
+                client_read_borrow_result, 0x1357,
+                "EL0 IPC memory: read-borrow reply result mismatch",
+            );
+            assert_eq!(
+                client_read_borrow_cap_reply, 0,
+                "EL0 IPC memory: read-borrow returned unexpected IPC cap",
+            );
+            assert_eq!(
+                client_read_borrow_memory_reply, 0,
+                "EL0 IPC memory: read-borrow returned unexpected memory cap",
+            );
+            assert_eq!(
+                client_read_borrow_owner_map, 0,
+                "EL0 IPC memory: read-borrow owner remap after reply failed",
+            );
+            assert_eq!(
+                client_read_borrow_owner_unmap, 0,
+                "EL0 IPC memory: read-borrow owner unmap failed",
+            );
+            assert_eq!(
+                client_read_borrow_close, 0,
+                "EL0 IPC memory: read-borrow owner close failed",
+            );
+
+            assert_ne!(
+                client_write_borrow_cap, 0,
+                "EL0 IPC memory: write-borrow allocation returned no cap",
+            );
+            assert_eq!(client_write_borrow_map, 0, "EL0 IPC memory: write-borrow seed map failed");
+            assert_eq!(
+                client_write_borrow_unmap, 0,
+                "EL0 IPC memory: write-borrow seed unmap failed",
+            );
+            assert_ne!(
+                client_write_borrow_call, 0,
+                "EL0 IPC memory: borrow_write returned no pending-call cap",
+            );
+            assert_eq!(
+                server_write_borrow_recv, 0,
+                "EL0 IPC memory: server write-borrow recv failed",
+            );
+            assert_eq!(server_write_borrow_opcode, 0x46, "EL0 IPC memory: write-borrow opcode",);
+            assert_eq!(server_write_borrow_arg0, 0xcd, "EL0 IPC memory: write-borrow arg");
+            assert_ne!(server_write_borrow_reply, 0, "EL0 IPC memory: write-borrow reply");
+            assert_ne!(server_write_borrow_memory, 0, "EL0 IPC memory: write-borrow memory");
+            assert_eq!(server_write_borrow_map, 0, "EL0 IPC memory: write-borrow map failed");
+            assert_eq!(
+                server_write_borrow_value, IPC_MEMORY_WRITE_BORROW_INITIAL_VALUE,
+                "EL0 IPC memory: write-borrow payload mismatch",
+            );
+            assert_eq!(server_write_borrow_unmap, 0, "EL0 IPC memory: write-borrow unmap failed",);
+            assert_eq!(
+                server_write_borrow_reply_status, 0,
+                "EL0 IPC memory: write-borrow reply failed",
+            );
+            assert_eq!(client_write_borrow_poll, 0, "EL0 IPC memory: write-borrow poll failed",);
+            assert_eq!(
+                client_write_borrow_result, 0x2469,
+                "EL0 IPC memory: write-borrow reply result mismatch",
+            );
+            assert_eq!(
+                client_write_borrow_cap_reply, 0,
+                "EL0 IPC memory: write-borrow returned unexpected IPC cap",
+            );
+            assert_eq!(
+                client_write_borrow_memory_reply, 0,
+                "EL0 IPC memory: write-borrow returned unexpected memory cap",
+            );
+            assert_eq!(
+                client_write_borrow_returned_map, 0,
+                "EL0 IPC memory: write-borrow owner remap failed",
+            );
+            assert_eq!(
+                client_write_borrow_returned_value, IPC_MEMORY_WRITE_BORROW_RETURNED_VALUE,
+                "EL0 IPC memory: write-borrow returned payload mismatch",
+            );
+            assert_eq!(
+                client_write_borrow_returned_unmap, 0,
+                "EL0 IPC memory: write-borrow owner unmap failed",
+            );
+            assert_eq!(
+                client_write_borrow_close, 0,
+                "EL0 IPC memory: write-borrow owner close failed",
+            );
+
             logln!(
-                "[EL0 IPC memory] SUCCESS: moved memory cap {} to server cap {}, returned cap {}, \
-                 payload {:#x}.",
+                "[EL0 IPC memory] SUCCESS: moved cap {} to server cap {}, returned cap {}, \
+                 borrow-read {:#x}, borrow-write {:#x}.",
                 client_alloc_cap,
                 server_memory,
                 client_returned_memory,
-                client_returned_value
+                server_read_borrow_value,
+                client_write_borrow_returned_value
             );
             loop {
                 yield_lp();
