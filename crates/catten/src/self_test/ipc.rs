@@ -1,13 +1,41 @@
 //! Self-tests for endpoint IPC.
 
 use crate::{
+    cpu::isa::{
+        interface::memory::{
+            address::PhysicalAddress,
+            AddressSpaceInterface,
+        },
+        memory::paging::AddressSpace,
+    },
     ipc::{
         self,
         ConnectionRights,
         IpcError,
     },
     logln,
+    memory::{
+        close_user_address_space,
+        object,
+        AddressSpaceId,
+        VAddr,
+        ADDRESS_SPACE_TABLE,
+        KERNEL_AS,
+    },
 };
+
+fn create_ipc_memory_test_address_space(label: &str) -> AddressSpaceId {
+    let user_as = {
+        let _kas = KERNEL_AS.lock();
+        let mut as_ = AddressSpace::get_current();
+        #[cfg(target_arch = "aarch64")]
+        as_.set_ttbr0(0);
+        as_
+    };
+    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    logln!("[ipc memory] {} AS asid={}", label, asid);
+    asid
+}
 
 pub fn test_endpoint_ipc() {
     logln!("Testing endpoint IPC subsystem...");
@@ -133,6 +161,113 @@ pub fn test_endpoint_ipc() {
         Err(IpcError::WrongType),
         "endpoint cap must not be usable as a connection"
     );
+
+    let memory_server = create_ipc_memory_test_address_space("server");
+    let memory_client = create_ipc_memory_test_address_space("client");
+    let memory_endpoint = ipc::endpoint_create(memory_server, 0x4d45_4d49, 1, 4)
+        .expect("memory endpoint_create should return endpoint cap");
+    let memory_connection = ipc::connection_delegate(
+        memory_server,
+        memory_endpoint,
+        memory_client,
+        ConnectionRights::SEND | ConnectionRights::CALL,
+    )
+    .expect("memory connection_delegate should return client connection cap");
+
+    let moved_send = object::allocate(memory_client, 1).expect("memory IPC allocation failed");
+    object::map(memory_client, moved_send, VAddr::from(0x40000usize), true)
+        .expect("memory IPC client send map failed");
+    let client_send_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x40000usize))
+        .expect("memory IPC client translation failed");
+    unsafe {
+        client_send_frame.into_hhdm_mut::<u64>().write_volatile(0x4d45_4d49_5345_4e44);
+    }
+    object::unmap(memory_client, moved_send).expect("memory IPC client send unmap failed");
+    ipc::scalar_send_with_memory_move(memory_client, memory_connection, 44, 0x11, moved_send)
+        .expect("memory IPC send move should enqueue");
+    assert_eq!(
+        object::info(memory_client, moved_send),
+        Err(object::MemoryObjectError::UnknownCapability)
+    );
+    let moved_message =
+        ipc::receive(memory_server, memory_endpoint).expect("memory IPC server receive failed");
+    let server_moved_cap = moved_message.memory.expect("memory IPC send should carry cap");
+    assert_eq!(moved_message.reply, None);
+    object::map(memory_server, server_moved_cap, VAddr::from(0x50000usize), false)
+        .expect("memory IPC server send map failed");
+    let server_send_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("memory IPC server AS missing")
+        .translate_address(VAddr::from(0x50000usize))
+        .expect("memory IPC server translation failed");
+    unsafe {
+        assert_eq!(server_send_frame.into_hhdm_mut::<u64>().read_volatile(), 0x4d45_4d49_5345_4e44);
+    }
+    object::unmap(memory_server, server_moved_cap).expect("memory IPC server send unmap failed");
+    object::close_cap(memory_server, server_moved_cap)
+        .expect("memory IPC server send close failed");
+
+    let moved_call = object::allocate(memory_client, 1).expect("memory IPC call allocation failed");
+    object::map(memory_client, moved_call, VAddr::from(0x60000usize), true)
+        .expect("memory IPC client call map failed");
+    let client_call_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x60000usize))
+        .expect("memory IPC client call translation failed");
+    unsafe {
+        client_call_frame.into_hhdm_mut::<u64>().write_volatile(0x4d45_4d49_4341_4c4c);
+    }
+    object::unmap(memory_client, moved_call).expect("memory IPC client call unmap failed");
+    let memory_call =
+        ipc::scalar_call_with_memory_move(memory_client, memory_connection, 45, 0x22, moved_call)
+            .expect("memory IPC call move should enqueue");
+    let call_message = ipc::receive(memory_server, memory_endpoint)
+        .expect("memory IPC server call receive failed");
+    let reply = call_message.reply.expect("memory IPC call should carry reply cap");
+    let server_call_cap = call_message.memory.expect("memory IPC call should carry memory cap");
+    object::map(memory_server, server_call_cap, VAddr::from(0x70000usize), true)
+        .expect("memory IPC server call map failed");
+    let server_call_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("memory IPC server AS missing")
+        .translate_address(VAddr::from(0x70000usize))
+        .expect("memory IPC server call translation failed");
+    unsafe {
+        assert_eq!(server_call_frame.into_hhdm_mut::<u64>().read_volatile(), 0x4d45_4d49_4341_4c4c);
+        server_call_frame.into_hhdm_mut::<u64>().write_volatile(0x4d45_4d49_444f_4e45);
+    }
+    object::unmap(memory_server, server_call_cap).expect("memory IPC server call unmap failed");
+    ipc::reply_with_memory_move(memory_server, reply, server_call_cap, 123)
+        .expect("memory IPC reply move should complete");
+    let reply_value = ipc::poll_reply(memory_client, memory_call)
+        .expect("memory IPC poll reply should succeed")
+        .expect("memory IPC reply should be ready");
+    assert_eq!(reply_value.result, 123);
+    assert_eq!(reply_value.cap, None);
+    let returned_memory = reply_value.memory.expect("memory IPC reply should return memory");
+    object::map(memory_client, returned_memory, VAddr::from(0x80000usize), false)
+        .expect("memory IPC client returned map failed");
+    let returned_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x80000usize))
+        .expect("memory IPC returned translation failed");
+    unsafe {
+        assert_eq!(returned_frame.into_hhdm_mut::<u64>().read_volatile(), 0x4d45_4d49_444f_4e45);
+    }
+    object::unmap(memory_client, returned_memory).expect("memory IPC client returned unmap failed");
+    object::close_cap(memory_client, returned_memory).expect("memory IPC returned close failed");
+    close_user_address_space(memory_client).expect("memory IPC client AS close failed");
+    close_user_address_space(memory_server).expect("memory IPC server AS close failed");
 
     ipc::close_address_space(client);
     ipc::close_address_space(server);

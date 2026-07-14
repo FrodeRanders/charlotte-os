@@ -26,7 +26,10 @@ use crate::{
         Observable,
         Observer,
     },
-    memory::AddressSpaceId,
+    memory::{
+        object::MemoryObjectCap,
+        AddressSpaceId,
+    },
 };
 
 pub type CapabilityId = u64;
@@ -47,6 +50,7 @@ pub enum IpcError {
     NoMessage,
     ReplyAlreadyUsed,
     Pending,
+    MemoryTransferFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,12 +97,14 @@ pub struct ScalarMessage {
     pub opcode: u32,
     pub arg0: u64,
     pub reply: Option<CapabilityId>,
+    pub memory: Option<MemoryObjectCap>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplyValue {
     pub result: i64,
     pub cap: Option<CapabilityId>,
+    pub memory: Option<MemoryObjectCap>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,6 +153,7 @@ struct QueuedMessage {
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
+    memory: Option<MemoryObjectCap>,
 }
 
 #[derive(Debug)]
@@ -333,6 +340,42 @@ pub fn scalar_send(
     Ok(())
 }
 
+pub fn scalar_send_with_memory_move(
+    sender: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(sender, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::SEND) {
+        return Err(IpcError::PermissionDenied);
+    }
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = crate::memory::object::move_to(sender, memory_cap, server)
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+    let observers = enqueue_scalar_with_memory(
+        &mut ipc,
+        endpoint_id,
+        sender,
+        opcode,
+        arg0,
+        None,
+        Some(server_memory_cap),
+    )?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
+}
+
 pub fn scalar_call(
     caller: AddressSpaceId,
     connection_cap: CapabilityId,
@@ -393,6 +436,68 @@ pub fn scalar_call(
     Ok(call_cap)
 }
 
+pub fn scalar_call_with_memory_move(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = crate::memory::object::move_to(caller, memory_cap, server)
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+
+    let call = ipc.alloc_call();
+    ipc.pending_calls.insert(
+        call,
+        PendingCall {
+            caller,
+            result: None,
+        },
+    );
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
+        call,
+    });
+
+    let token = ipc.alloc_reply();
+    ipc.reply_tokens.insert(
+        token,
+        ReplyToken {
+            server,
+            call,
+            consumed: false,
+        },
+    );
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
+        token,
+    });
+
+    let observers = enqueue_scalar_with_memory(
+        &mut ipc,
+        endpoint_id,
+        caller,
+        opcode,
+        arg0,
+        Some(token_cap),
+        Some(server_memory_cap),
+    )?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(call_cap)
+}
+
 fn enqueue_scalar(
     ipc: &mut IpcRegistry,
     endpoint_id: EndpointId,
@@ -400,6 +505,18 @@ fn enqueue_scalar(
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
+) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+    enqueue_scalar_with_memory(ipc, endpoint_id, sender, opcode, arg0, reply, None)
+}
+
+fn enqueue_scalar_with_memory(
+    ipc: &mut IpcRegistry,
+    endpoint_id: EndpointId,
+    sender: AddressSpaceId,
+    opcode: u32,
+    arg0: u64,
+    reply: Option<CapabilityId>,
+    memory: Option<MemoryObjectCap>,
 ) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
@@ -413,8 +530,23 @@ fn enqueue_scalar(
         opcode,
         arg0,
         reply,
+        memory,
     });
     Ok(drain_observers(&endpoint.observers))
+}
+
+fn reserve_endpoint_queue(
+    ipc: &IpcRegistry,
+    endpoint_id: EndpointId,
+) -> Result<AddressSpaceId, IpcError> {
+    let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.closed {
+        return Err(IpcError::EndpointClosed);
+    }
+    if endpoint.queue.len() >= endpoint.capacity {
+        return Err(IpcError::QueueFull);
+    }
+    Ok(endpoint.owner)
 }
 
 pub fn receive(
@@ -436,6 +568,7 @@ pub fn receive(
         opcode: message.opcode,
         arg0: message.arg0,
         reply: message.reply,
+        memory: message.memory,
     })
 }
 
@@ -517,7 +650,7 @@ impl Observable for EndpointObservable {
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
-    complete_reply(&mut ipc, server, reply_cap, result, None)
+    complete_reply(&mut ipc, server, reply_cap, result, None, None)
 }
 
 pub fn reply_with_connection(
@@ -546,7 +679,18 @@ pub fn reply_with_connection(
         reply_cap,
         result,
         Some((endpoint, rights.intersection(endpoint_rights))),
+        None,
     )
+}
+
+pub fn reply_with_memory_move(
+    server: AddressSpaceId,
+    reply_cap: CapabilityId,
+    memory_cap: MemoryObjectCap,
+    result: i64,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))
 }
 
 fn complete_reply(
@@ -555,6 +699,7 @@ fn complete_reply(
     reply_cap: CapabilityId,
     result: i64,
     returned_connection: Option<(EndpointId, ConnectionRights)>,
+    returned_memory: Option<MemoryObjectCap>,
 ) -> Result<(), IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
@@ -577,11 +722,20 @@ fn complete_reply(
             rights: endpoint_rights,
         })
     });
+    let returned_memory_cap = if let Some(memory_cap) = returned_memory {
+        Some(
+            crate::memory::object::move_to(server, memory_cap, caller)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+        )
+    } else {
+        None
+    };
     ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
     call.result = Some(ReplyValue {
         result,
         cap: returned_cap,
+        memory: returned_memory_cap,
     });
     let _ = ipc.remove_cap(server, reply_cap);
     Ok(())
@@ -613,19 +767,24 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             endpoint,
             ..
         } => {
-            let queued_replies = if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
+            let queued = if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
                 if endpoint.owner != asid {
                     Vec::new()
                 } else {
                     endpoint.closed = true;
                     observers.extend(drain_observers(&endpoint.observers));
-                    endpoint.queue.drain(..).filter_map(|message| message.reply).collect()
+                    endpoint.queue.drain(..).collect()
                 }
             } else {
                 Vec::new()
             };
-            for reply_cap in queued_replies {
-                consume_reply_cap(&mut ipc, asid, reply_cap, REPLY_ENDPOINT_CLOSED);
+            for message in queued {
+                if let Some(reply_cap) = message.reply {
+                    consume_reply_cap(&mut ipc, asid, reply_cap, REPLY_ENDPOINT_CLOSED);
+                }
+                if let Some(memory_cap) = message.memory {
+                    let _ = crate::memory::object::close_cap(asid, memory_cap);
+                }
             }
         }
         Capability::PendingCall {
@@ -642,6 +801,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     call.result = Some(ReplyValue {
                         result: REPLY_CANCELLED,
                         cap: None,
+                        memory: None,
                     });
                 }
             }
@@ -698,6 +858,7 @@ fn consume_reply_cap(
             call.result = Some(ReplyValue {
                 result,
                 cap: None,
+                memory: None,
             });
         }
     }
