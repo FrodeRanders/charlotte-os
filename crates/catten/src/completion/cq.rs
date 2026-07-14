@@ -40,7 +40,10 @@ use crate::{
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct CqEntry {
-    /// The capability this completion is for.
+    /// Correlation cookie: the [`CompletionCap`] for capability-backed
+    /// operations, or the submitter-chosen `user_data` token for
+    /// capability-free (detached) operations. Which convention applies is
+    /// part of the submitting protocol, not of the ring.
     pub cap: u64,
     /// The result: `>= 0` = Ok(bytes), `< 0` = Err(-code), `i64::MIN` = Cancelled.
     pub result: i64,
@@ -145,6 +148,15 @@ impl CompletionQueueRing {
     /// the write is skipped and the overflow counter is incremented. The caller
     /// is responsible for retaining the entry and retrying later.
     pub fn write(&mut self, cap: CompletionCap, result: OpResult) -> bool {
+        self.write_cookie(cap as u64, result)
+    }
+
+    /// Like [`write`](Self::write) but carries an opaque 64-bit cookie in the
+    /// entry's first field instead of a capability index. For capability-backed
+    /// operations the cookie is the [`CompletionCap`]; for capability-free
+    /// (detached) operations it is the submitter-chosen `user_data` correlation
+    /// token.
+    pub fn write_cookie(&mut self, cookie: u64, result: OpResult) -> bool {
         let result_code = op_result_to_i64(result);
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
@@ -158,7 +170,7 @@ impl CompletionQueueRing {
 
         let entry_ptr = self.entry_ptr(h as usize);
         unsafe {
-            core::ptr::write_volatile(&mut (*entry_ptr).cap, cap as u64);
+            core::ptr::write_volatile(&mut (*entry_ptr).cap, cookie);
             core::ptr::write_volatile(&mut (*entry_ptr).result, result_code);
         }
         fence(Ordering::Release);

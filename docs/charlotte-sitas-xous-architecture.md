@@ -211,12 +211,28 @@ Current evidence:
     index; and the effective terminal result (forced `Cancelled` when a
     cancel was pending) is what reaches both the capability and the CQ
     ring, with idempotent re-completion no longer able to post duplicate
-    CQ entries. Self-tests assert the state transitions, cancellation
+    CQ entries.     Self-tests assert the state transitions, cancellation
     idempotence, slot-reuse-versus-operation-identity distinction, and
     ring/capability result agreement. Remaining Phase 6 work: per-shard
     CQ partitioning, a capability-free submission path keyed on
     `OperationId`, CQ batching, and migrating `sitas-charlotte` from
     busy polling to `CQ_WAIT`.
+-   The second Phase 6 slice adds the capability-free submission path
+    (§8.4): `submit_detached` returns an `OperationId` without
+    consuming a capability-table slot, the submitter's `user_data`
+    correlation cookie is what the CQ entry carries on completion, and
+    `cancel_detached` forces the effective result to `Cancelled`.
+    Detached operations share the submission-backpressure budget with
+    capability-backed ones and use the same non-lossy backlog; the CQ
+    entry's first field is now formally an opaque cookie (capability
+    index or user data by protocol convention). A completed detached
+    operation is reclaimed immediately — there is no post-terminal
+    record, so double completion and post-completion cancellation are
+    rejected. Self-tests cover delivery, cancellation, budget sharing,
+    reclamation, and refusal without an attached CQ. Remaining Phase 6
+    work: per-shard CQ partitioning, the richer §8.2 completion record
+    (status/flags/returned capability), CQ batching, and migrating
+    `sitas-charlotte` from busy polling to `CQ_WAIT`.
 
 ------------------------------------------------------------------------
 
@@ -375,16 +391,16 @@ Their responsibilities include:
 
 Everything else should be expressible as compositions.
 
-  Facility            Capabilities   Endpoints   Memory Objects
-  ------------------ -------------- ----------- ----------------
-  Completion Queue         ✓             ✓      
-  Reply Token              ✓             ✓      
-  Socket                   ✓             ✓             ✓
-  Pipe                     ✓             ✓             ✓
-  Userspace Driver         ✓             ✓             ✓
-  Network Stack            ✓             ✓             ✓
-  Filesystem Read          ✓             ✓             ✓
-  DMA Mapping              ✓                           ✓
+ | Facility          | Capabilities | Endpoints | Memory Objects |
+ |-------------------|--------------|-----------|----------------|
+ | Completion Queue  | ✓           | ✓        |                |
+ | Reply Token       | ✓           | ✓        |                |
+ | Socket            | ✓           | ✓        | ✓             |
+ | Pipe              | ✓           | ✓        | ✓             |
+ | Userspace Driver  | ✓           | ✓        | ✓             |
+ | Network Stack     | ✓           | ✓        | ✓             |
+ | Filesystem Read   | ✓           | ✓        | ✓             |
+ | DMA Mapping       | ✓           |           | ✓             |
 
 This gives the architecture an explicit design rule:
 
@@ -426,8 +442,7 @@ Sitas contributes an execution discipline:
 > interaction occurs through bounded typed messages carrying owned
 > values.
 
-Its main value for CharlotteOS is not its Unix reactor implementation.
-Its value is:
+Its main value for CharlotteOS is:
 
 -   one executor per shard;
 -   cooperative task scheduling;

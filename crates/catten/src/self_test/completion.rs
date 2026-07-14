@@ -162,3 +162,81 @@ pub fn test_completion_caps() {
 
     logln!("Completion-capability subsystem tests passed.");
 }
+
+/// Exercises the capability-free (detached) submission path: operations
+/// identified only by [`OperationId`], correlated by user data, and delivered
+/// exclusively through the CQ ring (architecture doc §8.4).
+pub fn test_detached_operations() {
+    logln!("Testing capability-free (detached) completion path...");
+
+    // Detached submission requires a CQ delivery channel.
+    let no_cq_asid = 0xde7ac4_00;
+    completion::open_address_space(no_cq_asid, 2);
+    assert_eq!(
+        completion::submit_detached(no_cq_asid, OpCode::Nop, 0x1111),
+        Err(SubmitError::NoCompletionQueue),
+        "detached submit without a CQ ring must be refused"
+    );
+    completion::close_address_space(no_cq_asid);
+
+    let asid = 0xde7ac4_01;
+    completion::open_address_space_with_cq(asid, 3, 8);
+    let ring_ptr = completion::cq_ring_of(asid).expect("CQ ring must exist");
+
+    // Happy path: user_data comes back as the CQ cookie, no capability slot
+    // is consumed.
+    let op_a = completion::submit_detached(asid, OpCode::Nop, 0xaaaa_0001).unwrap();
+    let op_b = completion::submit_detached(asid, OpCode::Nop, 0xaaaa_0002).unwrap();
+    assert_ne!(op_a, op_b, "operation ids must be distinct");
+
+    completion::complete_detached(asid, op_a, OpResult::Ok(7)).unwrap();
+    let entry = unsafe { &mut *ring_ptr }.read().expect("detached completion must post");
+    assert_eq!(entry.cap, 0xaaaa_0001, "CQ cookie must be the submitter's user_data");
+    assert_eq!(entry.result, 7);
+
+    // A completed detached operation no longer exists.
+    assert_eq!(
+        completion::complete_detached(asid, op_a, OpResult::Ok(8)),
+        Err(completion::CapError::UnknownCap),
+        "double completion of a detached operation must be rejected"
+    );
+    assert_eq!(
+        completion::cancel_detached(asid, op_a),
+        Err(completion::CapError::UnknownCap),
+        "cancelling a reclaimed detached operation must be rejected"
+    );
+
+    // Cancellation forces the effective result.
+    assert_eq!(completion::cancel_detached(asid, op_b).unwrap(), CancelState::CancelRequested);
+    completion::complete_detached(asid, op_b, OpResult::Ok(9)).unwrap();
+    let entry = unsafe { &mut *ring_ptr }.read().expect("cancelled detached must post");
+    assert_eq!(entry.cap, 0xaaaa_0002);
+    assert_eq!(
+        crate::completion::cq::i64_to_op_result(entry.result),
+        OpResult::Cancelled,
+        "a cancel-pending detached operation must complete as Cancelled"
+    );
+
+    // Detached operations share the submission-backpressure budget with
+    // capability-backed ones (capacity 3).
+    let _c1 = completion::submit(asid, OpCode::Nop, None).unwrap();
+    let _d1 = completion::submit_detached(asid, OpCode::Nop, 1).unwrap();
+    let _d2 = completion::submit_detached(asid, OpCode::Nop, 2).unwrap();
+    assert_eq!(
+        completion::submit_detached(asid, OpCode::Nop, 3),
+        Err(SubmitError::WouldBlock),
+        "detached submissions must respect the shared capacity"
+    );
+    assert_eq!(
+        completion::submit(asid, OpCode::Nop, None),
+        Err(SubmitError::WouldBlock),
+        "capability-backed submissions must see detached load"
+    );
+
+    // Completing a detached operation frees budget again.
+    completion::complete_detached(asid, _d1, OpResult::Ok(0)).unwrap();
+    let _d3 = completion::submit_detached(asid, OpCode::Nop, 4).unwrap();
+
+    completion::close_address_space(asid);
+    logln!("Capability-free (detached) completion tests passed.");
+}

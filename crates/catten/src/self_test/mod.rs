@@ -41,6 +41,7 @@ pub fn run_self_tests() {
     memory::allocator::test_allocator();
     memory::object::test_memory_objects();
     completion::test_completion_caps();
+    completion::test_detached_operations();
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();

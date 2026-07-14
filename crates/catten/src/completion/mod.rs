@@ -175,6 +175,9 @@ pub enum SubmitError {
     WouldBlock,
     /// No capability table is open for this address space.
     UnknownAddressSpace,
+    /// A capability-free ([`submit_detached`]) submission needs a completion
+    /// queue to deliver its result, but none is attached to this address space.
+    NoCompletionQueue,
 }
 
 /// Reason an operation on an existing capability failed.
@@ -346,17 +349,32 @@ impl Observable for Completion {
     }
 }
 
+/// A capability-free operation (architecture doc §8.4): tracked only by its
+/// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
+/// on completion. There is no post-terminal record — a detached operation
+/// that has completed no longer exists in the kernel.
+struct DetachedOp {
+    /// Submitter-chosen correlation token, posted as the CQ entry's cookie.
+    user_data: u64,
+    /// Reduced lifecycle: `InFlight → CancelPending`; completion removes the
+    /// record, so the terminal states of [`OpState`] have no analogue here.
+    cancel_pending: bool,
+}
+
 struct AsCompletions {
     table: crate::klib::collections::id_table::IdTable<Arc<Completion>>,
     capacity: usize,
     live: usize,
+    /// Live capability-free operations, keyed by their stable operation id.
+    /// These count toward `capacity` exactly like capability-backed ones.
+    detached: BTreeMap<OperationId, DetachedOp>,
     /// Optional per-AS completion-queue ring (zero-syscall drain path).
     /// The allocation backing the ring is kept alive by `_cq_buf`.
     cq_ring: Option<*mut crate::completion::cq::CompletionQueueRing>,
-    /// CQ entries that could not fit in the shared ring yet. This preserves the
-    /// non-lossy completion contract: a full userspace ring delays delivery but
-    /// does not discard terminal completions.
-    pending_cq: VecDeque<(CompletionCap, OpResult)>,
+    /// CQ entries (cookie, result) that could not fit in the shared ring yet.
+    /// This preserves the non-lossy completion contract: a full userspace ring
+    /// delays delivery but does not discard terminal completions.
+    pending_cq: VecDeque<(u64, OpResult)>,
     /// Threads blocked waiting for this address space's CQ to become readable.
     cq_observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
@@ -385,6 +403,7 @@ pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
             table: crate::klib::collections::id_table::IdTable::new(),
             capacity,
             live: 0,
+            detached: BTreeMap::new(),
             cq_ring: None,
             pending_cq: VecDeque::new(),
             cq_observers: ConcurrentQueue::unbounded(),
@@ -409,6 +428,7 @@ pub fn open_address_space_with_cq(
             table: crate::klib::collections::id_table::IdTable::new(),
             capacity: cap_table_capacity,
             live: 0,
+            detached: BTreeMap::new(),
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
             cq_observers: ConcurrentQueue::unbounded(),
@@ -435,6 +455,7 @@ pub fn open_address_space_with_cq_phys(
             table: crate::klib::collections::id_table::IdTable::new(),
             capacity: cap_table_capacity,
             live: 0,
+            detached: BTreeMap::new(),
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
             cq_observers: ConcurrentQueue::unbounded(),
@@ -549,7 +570,7 @@ pub fn complete(
             flush_pending_cq(as_completions);
             if let Some(ring_ptr) = as_completions.cq_ring {
                 if !unsafe { &mut *ring_ptr }.write(cap, effective.clone()) {
-                    as_completions.pending_cq.push_back((cap, effective));
+                    as_completions.pending_cq.push_back((cap as u64, effective));
                 }
             }
         }
@@ -561,12 +582,92 @@ pub fn complete(
     Ok(())
 }
 
+/// Starts a capability-free operation (architecture doc §8.4): the common
+/// path for high-rate operations whose only consumer is the CQ ring.
+///
+/// No capability-table slot is allocated; the operation is identified by the
+/// returned [`OperationId`] (for cancellation) and correlated by the caller's
+/// `user_data`, which is posted as the CQ entry cookie on completion. The
+/// operation counts toward the same submission-backpressure capacity as
+/// capability-backed ones. Requires an attached CQ ring, since that is the
+/// only delivery channel.
+pub fn submit_detached(
+    asid: AddressSpaceId,
+    _op: OpCode,
+    user_data: u64,
+) -> Result<OperationId, SubmitError> {
+    let mut registry = COMPLETIONS.write();
+    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+    if as_completions.cq_ring.is_none() {
+        return Err(SubmitError::NoCompletionQueue);
+    }
+    if as_completions.live >= as_completions.capacity {
+        return Err(SubmitError::WouldBlock);
+    }
+    let operation = alloc_operation_id();
+    as_completions.detached.insert(
+        operation,
+        DetachedOp {
+            user_data,
+            cancel_pending: false,
+        },
+    );
+    as_completions.live += 1;
+    Ok(operation)
+}
+
+/// Completes a capability-free operation: posts `(user_data, result)` to the
+/// CQ ring (or the non-lossy backlog), reclaims the operation record, and
+/// wakes CQ waiters. The effective result is forced to
+/// [`OpResult::Cancelled`] when a cancel was pending. After this call the
+/// operation id no longer names anything.
+pub fn complete_detached(
+    asid: AddressSpaceId,
+    operation: OperationId,
+    result: OpResult,
+) -> Result<(), CapError> {
+    {
+        let mut registry = COMPLETIONS.write();
+        let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+        let detached = as_completions.detached.remove(&operation).ok_or(CapError::UnknownCap)?;
+        let effective = if detached.cancel_pending {
+            OpResult::Cancelled
+        } else {
+            result
+        };
+        flush_pending_cq(as_completions);
+        if let Some(ring_ptr) = as_completions.cq_ring {
+            if !unsafe { &mut *ring_ptr }.write_cookie(detached.user_data, effective.clone()) {
+                as_completions.pending_cq.push_back((detached.user_data, effective));
+            }
+        }
+        as_completions.live = as_completions.live.saturating_sub(1);
+    }
+    signal_cq(asid);
+    Ok(())
+}
+
+/// Requests cancellation of a capability-free operation. A completed detached
+/// operation no longer exists, so cancelling it reports
+/// [`CapError::UnknownCap`] rather than `AlreadyComplete` — there is no
+/// post-terminal record to inspect.
+pub fn cancel_detached(
+    asid: AddressSpaceId,
+    operation: OperationId,
+) -> Result<CancelState, CapError> {
+    let mut registry = COMPLETIONS.write();
+    let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+    let detached = as_completions.detached.get_mut(&operation).ok_or(CapError::UnknownCap)?;
+    detached.cancel_pending = true;
+    Ok(CancelState::CancelRequested)
+}
+
 fn flush_pending_cq(as_completions: &mut AsCompletions) {
     let Some(ring_ptr) = as_completions.cq_ring else {
         return;
     };
-    while let Some((cap, result)) = as_completions.pending_cq.front().cloned() {
-        if unsafe { &mut *ring_ptr }.write(cap, result) {
+    while let Some((cookie, result)) = as_completions.pending_cq.front().cloned() {
+        if unsafe { &mut *ring_ptr }.write_cookie(cookie, result) {
             as_completions.pending_cq.pop_front();
         } else {
             break;
