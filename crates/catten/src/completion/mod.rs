@@ -63,8 +63,23 @@ use crate::{
 ///
 /// This is the kernel realization of the ABI's `Handle` — the value that would
 /// cross the syscall boundary. It is an index into the owning address space's
-/// capability table.
+/// capability table. Slot indices are **reused** after [`close`]; see
+/// [`OperationId`] for the stable identity of one operation.
 pub type CompletionCap = usize;
+
+/// The stable identity of one submitted operation (architecture doc §8.2).
+///
+/// Unlike [`CompletionCap`] (a reusable table index), an operation id is
+/// allocated monotonically and never reused, so completion records remain
+/// unambiguous even after capability slots are recycled. This is the
+/// identity a capability-free submission path keys on.
+pub type OperationId = u64;
+
+static NEXT_OPERATION_ID: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(1);
+
+fn alloc_operation_id() -> OperationId {
+    NEXT_OPERATION_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
+}
 
 /// The operation an async syscall performs. Only enough variants to exercise the
 /// buffer-ownership contract are modelled in this prototype.
@@ -110,6 +125,49 @@ pub enum CancelState {
     CancelRequested,
 }
 
+/// The lifecycle state of a submitted operation (architecture doc §12.1).
+///
+/// A [`Completion`] object exists only after a successful [`submit`] — i.e.
+/// after the `Created → Submitted → Accepted` transitions have already
+/// succeeded — so the modelled states begin at `InFlight`:
+///
+/// ```text
+/// InFlight ──cancel──▶ CancelPending
+///    │                     │
+/// complete              complete (forced Cancelled)
+///    ▼                     ▼
+/// Completed ◀─────────────┘
+///    │
+///  take (drain result + buffer)
+///    ▼
+/// Observed
+/// ```
+///
+/// `Completed` and `Observed` are the terminal, reclaimable states. This
+/// replaces the previous scattered `cancelling`/`drained` booleans with named
+/// states and explicit transitions (architecture doc §18.2).
+enum OpState {
+    /// Submitted, no terminal result yet.
+    InFlight,
+    /// Cancellation requested while in flight; the terminal result will be
+    /// forced to [`OpResult::Cancelled`].
+    CancelPending,
+    /// A terminal result has been posted but not yet drained.
+    Completed(OpResult),
+    /// The terminal result has been drained by [`Completion::take`].
+    Observed,
+}
+
+/// The externally observable lifecycle state of an operation, for inspection
+/// and testing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpStateKind {
+    InFlight,
+    CancelPending,
+    Completed,
+    Observed,
+}
+
 /// Reason a [`submit`] was refused.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SubmitError {
@@ -132,12 +190,9 @@ pub enum CapError {
 
 struct CompletionInner {
     buffer: Option<Vec<u8>>,
-    result: Option<OpResult>,
-    cancelling: bool,
-    /// Set when take() consumes the result. A cap is reclaimable iff
-    /// `result.is_some()` (terminal result posted) OR `drained` (result
-    /// already consumed by a prior take()).
-    drained: bool,
+    /// The operation's lifecycle state; all transitions are made under the
+    /// mutex through the methods below (see [`OpState`]).
+    state: OpState,
     /// Keeps the exit-observer (if any) alive for as long as the capability
     /// exists. `observe_thread_exit` stores only a `Weak`, so the strong `Arc`
     /// must live somewhere; it lives here, so the observer can still fire when
@@ -172,6 +227,8 @@ impl Observer for CompletionExitObserver {
 /// here (via [`wait`]), and [`Completion::complete`] notifies them — the exact
 /// pattern `TimerEvent` uses for `sleep`.
 pub struct Completion {
+    /// Stable, never-reused identity of this operation (see [`OperationId`]).
+    operation: OperationId,
     inner: Mutex<CompletionInner>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
 }
@@ -179,52 +236,61 @@ pub struct Completion {
 impl Completion {
     fn new(buffer: Option<Vec<u8>>) -> Arc<Self> {
         Arc::new(Self {
+            operation: alloc_operation_id(),
             inner: Mutex::new(CompletionInner {
                 buffer,
-                result: None,
-                cancelling: false,
-                drained: false,
+                state: OpState::InFlight,
                 exit_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
         })
     }
 
+    fn operation_id(&self) -> OperationId {
+        self.operation
+    }
+
     fn set_exit_observer(&self, observer: Arc<CompletionExitObserver>) {
         self.inner.lock().exit_observer = Some(observer);
     }
 
-    fn is_reclaimable(&self) -> bool {
-        let inner = self.inner.lock();
-        inner.result.is_some() || inner.drained
+    fn state_kind(&self) -> OpStateKind {
+        match self.inner.lock().state {
+            OpState::InFlight => OpStateKind::InFlight,
+            OpState::CancelPending => OpStateKind::CancelPending,
+            OpState::Completed(_) => OpStateKind::Completed,
+            OpState::Observed => OpStateKind::Observed,
+        }
     }
 
-    fn is_complete(&self) -> bool {
-        self.inner.lock().result.is_some()
+    /// A terminal result has been posted (whether or not it has been drained).
+    fn is_terminal(&self) -> bool {
+        matches!(self.inner.lock().state, OpState::Completed(_) | OpState::Observed)
+    }
+
+    fn is_reclaimable(&self) -> bool {
+        self.is_terminal()
     }
 
     fn holds_buffer(&self) -> bool {
         self.inner.lock().buffer.is_some()
     }
 
-    /// Kernel-side hook: the operation finished. Records the terminal result
-    /// (forced to [`OpResult::Cancelled`] if a cancel was requested) and wakes
-    /// every awaiting observer. Idempotent: a second call is a no-op.
-    fn complete(&self, result: OpResult) {
-        {
-            let mut inner = self.inner.lock();
-            if inner.result.is_some() {
-                return;
-            }
-            inner.result = Some(
-                if inner.cancelling {
-                    OpResult::Cancelled
-                } else {
-                    result
-                },
-            );
-        }
-        self.signal();
+    /// Kernel-side transition: the operation finished. Moves `InFlight` or
+    /// `CancelPending` to `Completed`, forcing the result to
+    /// [`OpResult::Cancelled`] when a cancel was requested. Returns the
+    /// effective terminal result on the first call, or `None` if the operation
+    /// was already terminal (idempotent). Does **not** signal observers; the
+    /// caller wakes waiters after publishing the CQ entry.
+    fn complete(&self, result: OpResult) -> Option<OpResult> {
+        let mut inner = self.inner.lock();
+        let effective = match inner.state {
+            OpState::InFlight => result,
+            OpState::CancelPending => OpResult::Cancelled,
+            OpState::Completed(_) | OpState::Observed => return None,
+        };
+        inner.state = OpState::Completed(effective.clone());
+        Some(effective)
     }
 
     fn signal(&self) {
@@ -235,31 +301,39 @@ impl Completion {
         }
     }
 
-    /// Drains the terminal result and returns the buffer to the caller. Returns
-    /// `None` while the operation is still in flight. Sets the `drained` flag
-    /// so the cap remains reclaimable after the result is consumed.
+    /// Drains the terminal result and returns the buffer to the caller,
+    /// transitioning `Completed → Observed`. Returns `None` while in flight or
+    /// once already drained.
     fn take(&self) -> Option<Completed> {
         let mut inner = self.inner.lock();
-        let result = inner.result.take();
-        if result.is_some() {
-            inner.drained = true;
+        match core::mem::replace(&mut inner.state, OpState::Observed) {
+            OpState::Completed(result) => {
+                let buffer = inner.buffer.take();
+                Some(Completed {
+                    result,
+                    buffer,
+                })
+            }
+            // Restore the prior state: nothing was drained.
+            other => {
+                inner.state = other;
+                None
+            }
         }
-        result.map(|r| Completed {
-            result: r,
-            buffer: inner.buffer.take(),
-        })
     }
 
-    /// Requests cancellation. If already complete, reports it; otherwise marks
-    /// the operation cancelling. The buffer is deliberately retained until a
+    /// Requests cancellation. Transitions `InFlight → CancelPending`; if already
+    /// terminal, reports it. The buffer is deliberately retained until a
     /// terminal completion is posted (deferred reclaim).
     fn cancel(&self) -> CancelState {
         let mut inner = self.inner.lock();
-        if inner.result.is_some() {
-            CancelState::AlreadyComplete
-        } else {
-            inner.cancelling = true;
-            CancelState::CancelRequested
+        match inner.state {
+            OpState::InFlight => {
+                inner.state = OpState::CancelPending;
+                CancelState::CancelRequested
+            }
+            OpState::CancelPending => CancelState::CancelRequested,
+            OpState::Completed(_) | OpState::Observed => CancelState::AlreadyComplete,
         }
     }
 }
@@ -445,14 +519,25 @@ pub fn submit_worker(
 }
 
 /// Kernel-side completion hook: the worker/driver executing `cap`'s operation
-/// finished. Posts the terminal result, wakes any awaiting thread, and writes an
-/// entry to the AS's CQ ring if one is attached.
+/// finished. Transitions the operation to `Completed`, publishes the entry to
+/// the AS's CQ ring (if attached), and wakes awaiting threads.
+///
+/// The **effective** terminal result — [`OpResult::Cancelled`] when a cancel
+/// was pending — is what reaches both the capability and the CQ ring, so the
+/// two views can never disagree. Idempotent: a second completion neither
+/// changes the result nor posts a duplicate CQ entry.
 pub fn complete(
     asid: AddressSpaceId,
     cap: CompletionCap,
     result: OpResult,
 ) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
+
+    // Transition first so the CQ entry carries the effective terminal result.
+    let Some(effective) = completion.complete(result) else {
+        // Already terminal: idempotent no-op, no duplicate CQ entry.
+        return Ok(());
+    };
 
     // Publish the completion entry to the shared CQ ring *before* waking any
     // waiter. A userspace consumer that blocks in `wait` and then drains the
@@ -463,15 +548,15 @@ pub fn complete(
         if let Some(as_completions) = registry.get_mut(&asid) {
             flush_pending_cq(as_completions);
             if let Some(ring_ptr) = as_completions.cq_ring {
-                if !unsafe { &mut *ring_ptr }.write(cap, result.clone()) {
-                    as_completions.pending_cq.push_back((cap, result.clone()));
+                if !unsafe { &mut *ring_ptr }.write(cap, effective.clone()) {
+                    as_completions.pending_cq.push_back((cap, effective));
                 }
             }
         }
     }
 
     signal_cq(asid);
-    completion.complete(result);
+    completion.signal();
 
     Ok(())
 }
@@ -533,7 +618,7 @@ pub fn poll(asid: AddressSpaceId, cap: CompletionCap) -> Result<Option<Completed
 /// between the fast-path check and `block_thread`.
 pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
-    if completion.is_complete() {
+    if completion.is_terminal() {
         return Ok(());
     }
 
@@ -547,7 +632,7 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
 
     // Lost-wake guard: if the operation completed after our fast-path check but
     // before (or during) registration, make the thread runnable again.
-    if completion.is_complete() {
+    if completion.is_terminal() {
         let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
     }
 
@@ -594,6 +679,16 @@ pub fn observe(
 /// (i.e. it has not yet been handed back). Demonstrates deferred reclaim.
 pub fn holds_buffer(asid: AddressSpaceId, cap: CompletionCap) -> Result<bool, CapError> {
     Ok(completion_of(asid, cap)?.holds_buffer())
+}
+
+/// Returns the stable [`OperationId`] of the operation named by `cap`.
+pub fn operation_id(asid: AddressSpaceId, cap: CompletionCap) -> Result<OperationId, CapError> {
+    Ok(completion_of(asid, cap)?.operation_id())
+}
+
+/// Inspection: the current lifecycle state of the operation named by `cap`.
+pub fn state_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<OpStateKind, CapError> {
+    Ok(completion_of(asid, cap)?.state_kind())
 }
 
 /// Polls the CQ ring for `asid` and returns the number of pending entries.

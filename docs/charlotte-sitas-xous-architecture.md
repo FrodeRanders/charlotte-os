@@ -202,6 +202,21 @@ Current evidence:
     attachment, copied-name delivery and verification, sender-ownership
     retention under copy, and reclamation of both attachments when a
     queued combined call is cancelled.
+-   The first Phase 6 slice normalizes the operation model: completion
+    lifecycle state is now an explicit named state machine
+    (`InFlight → CancelPending → Completed → Observed`, §12.1/§18.2)
+    replacing the previous scattered `cancelling`/`drained` booleans;
+    every submission is assigned a monotonically allocated, never-reused
+    `OperationId` (§8.2) distinct from the reusable capability slot
+    index; and the effective terminal result (forced `Cancelled` when a
+    cancel was pending) is what reaches both the capability and the CQ
+    ring, with idempotent re-completion no longer able to post duplicate
+    CQ entries. Self-tests assert the state transitions, cancellation
+    idempotence, slot-reuse-versus-operation-identity distinction, and
+    ring/capability result agreement. Remaining Phase 6 work: per-shard
+    CQ partitioning, a capability-free submission path keyed on
+    `OperationId`, CQ batching, and migrating `sitas-charlotte` from
+    busy polling to `CQ_WAIT`.
 
 ------------------------------------------------------------------------
 

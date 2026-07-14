@@ -18,6 +18,7 @@ use crate::{
         CancelState,
         OpCode,
         OpResult,
+        OpStateKind,
         SubmitError,
     },
     logln,
@@ -32,35 +33,66 @@ pub fn test_completion_caps() {
     // --- submit transfers buffer ownership to the kernel ---------------------
     let cap = completion::submit(asid, OpCode::Read, Some(alloc::vec![0u8; 4])).unwrap();
     assert!(completion::holds_buffer(asid, cap).unwrap());
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::InFlight);
 
     // --- complete posts the result, hands the buffer back on poll -----------
     completion::complete(asid, cap, OpResult::Ok(4)).unwrap();
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::Completed);
     // Buffer stays with the kernel until poll() drains it.
     assert!(completion::holds_buffer(asid, cap).unwrap());
+
+    // A second completion is an idempotent no-op and must not change the result.
+    completion::complete(asid, cap, OpResult::Err(9)).unwrap();
 
     let done = completion::poll(asid, cap).unwrap().expect("must be complete");
     assert!(!completion::holds_buffer(asid, cap).unwrap());
     assert!(matches!(done.result, OpResult::Ok(4)));
     assert_eq!(done.buffer.as_deref(), Some(&[0u8; 4][..]));
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::Observed);
+
+    // Draining twice yields nothing; the observed state is stable.
+    assert!(completion::poll(asid, cap).unwrap().is_none());
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::Observed);
+    // Completing an observed operation is rejected as a no-op.
+    completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::Observed);
+    // Cancelling an observed operation reports AlreadyComplete.
+    assert_eq!(completion::cancel(asid, cap).unwrap(), CancelState::AlreadyComplete);
+
+    let first_operation = completion::operation_id(asid, cap).unwrap();
 
     // --- close frees the slot ------------------------------------------------
     completion::close(asid, cap).unwrap();
     assert!(completion::poll(asid, cap).is_err());
 
-    // --- close rejects in-flight caps (must complete or be drained first) ----
-    let cap_inflight = completion::submit(asid, OpCode::Nop, None).unwrap();
-    assert!(completion::close(asid, cap_inflight).is_err()); // NotComplete
-    completion::complete(asid, cap_inflight, OpResult::Ok(0)).unwrap();
-    completion::close(asid, cap_inflight).unwrap(); // now it works
+    // --- operation ids are stable identity across capability-slot reuse ------
+    let cap_reused = completion::submit(asid, OpCode::Nop, None).unwrap();
+    assert_eq!(cap_reused, cap, "IdTable should reuse the freed capability slot");
+    assert_ne!(
+        completion::operation_id(asid, cap_reused).unwrap(),
+        first_operation,
+        "a reused capability slot must name a fresh operation id"
+    );
 
-    // --- cancel retains the buffer until the terminal completion -------------
+    // --- close rejects in-flight caps (must complete or be drained first) ----
+    assert!(completion::close(asid, cap_reused).is_err()); // NotComplete
+    completion::complete(asid, cap_reused, OpResult::Ok(0)).unwrap();
+    completion::close(asid, cap_reused).unwrap(); // now it works
+
+    // --- cancel: InFlight -> CancelPending -> Completed(Cancelled) -----------
     let cap2 = completion::submit(asid, OpCode::Write, Some(alloc::vec![1u8, 2, 3])).unwrap();
+    assert_eq!(completion::cancel(asid, cap2).unwrap(), CancelState::CancelRequested);
+    assert_eq!(completion::state_of(asid, cap2).unwrap(), OpStateKind::CancelPending);
+    // Cancellation is idempotent while pending.
     assert_eq!(completion::cancel(asid, cap2).unwrap(), CancelState::CancelRequested);
     // Deferred reclaim: the kernel still owns the buffer while cancellation is
     // in flight — it may still touch it until the terminal completion.
     assert!(completion::holds_buffer(asid, cap2).unwrap());
+    // A cancel-pending operation is not reclaimable yet.
+    assert!(completion::close(asid, cap2).is_err());
 
     completion::complete(asid, cap2, OpResult::Ok(3)).unwrap();
+    assert_eq!(completion::state_of(asid, cap2).unwrap(), OpStateKind::Completed);
     let done = completion::poll(asid, cap2).unwrap().expect("must be complete");
     assert!(matches!(done.result, OpResult::Cancelled));
     assert_eq!(done.buffer.as_deref(), Some(&[1u8, 2, 3][..]));
@@ -97,10 +129,35 @@ pub fn test_completion_caps() {
     let second = unsafe { &mut *ring_ptr }.read().expect("backlogged CQ entry must be posted");
     assert_eq!(second.cap, cap_b as u64);
 
+    // --- a duplicate completion must not post a duplicate CQ entry -----------
+    completion::complete(cq_asid, cap_a, OpResult::Ok(11)).unwrap();
+    assert_eq!(
+        completion::cq_pending(cq_asid),
+        0,
+        "idempotent re-completion must not produce a CQ entry"
+    );
+
+    // --- a cancelled operation's CQ entry carries the effective result -------
+    let cap_c = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
+    assert_eq!(completion::cancel(cq_asid, cap_c).unwrap(), CancelState::CancelRequested);
+    completion::complete(cq_asid, cap_c, OpResult::Ok(30)).unwrap();
+    let third = unsafe { &mut *ring_ptr }.read().expect("cancelled CQ entry must be posted");
+    assert_eq!(third.cap, cap_c as u64);
+    assert_eq!(
+        crate::completion::cq::i64_to_op_result(third.result),
+        OpResult::Cancelled,
+        "the CQ ring and the capability must agree on the effective result"
+    );
+
     assert!(completion::poll(cq_asid, cap_a).unwrap().is_some());
     assert!(completion::poll(cq_asid, cap_b).unwrap().is_some());
+    assert!(matches!(
+        completion::poll(cq_asid, cap_c).unwrap().expect("cancelled op must drain").result,
+        OpResult::Cancelled
+    ));
     completion::close(cq_asid, cap_a).unwrap();
     completion::close(cq_asid, cap_b).unwrap();
+    completion::close(cq_asid, cap_c).unwrap();
     completion::close_address_space(cq_asid);
 
     logln!("Completion-capability subsystem tests passed.");
