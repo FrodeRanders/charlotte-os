@@ -300,7 +300,7 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
         assert_eq!(f.regs[0], 0, "send-only delegated connection must not authorize calls");
     }
-    for cap in [delegated_call, delegated_connection, call, connection, endpoint] {
+    for cap in [delegated_connection, delegated_call, call, connection, endpoint] {
         let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::IPC_CLOSE);
         assert_eq!(f.regs[0], 0, "IPC_CLOSE should close known caps");

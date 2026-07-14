@@ -31,22 +31,33 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     connection minting, scalar send, scalar call, nonblocking receive,
     reply, reply polling, reply-time connection delegation, IPC cap
     close, and blocking receive.
--   `crates/catten-syscall` has EL0 wrappers for the same scalar
-    endpoint ABI.
+-   `crates/catten/src/memory/object.rs` implements first-class
+    page-backed memory objects with per-address-space memory
+    capabilities, map/unmap/close, move, read-lend, write-lend, and
+    address-space teardown.
+-   Syscalls `28..=36` expose memory-object allocation, mapping,
+    unmapping, close, moved-memory send/call/reply, and reply-bound
+    read/write borrows. `IPC_RECV` returns an attached memory cap in
+    `x7`; `IPC_REPLY_POLL` returns a reply-time memory cap in `x3`.
+-   `crates/catten-syscall` has EL0 wrappers for endpoint IPC,
+    memory-object operations, and memory IPC transfer operations.
 -   Boot-time self-tests cover cross-address-space delegation through
     the direct kernel API, cross-address-space EL0 client/server calls,
     reply-time connection delegation without userspace ASID parameters,
     queue backpressure, invalid-cap/type failures, scalar call/reply,
     reply-token single use, teardown, blocking endpoint receive, and
-    same-address-space syscall dispatch.
+    same-address-space syscall dispatch. They also cover kernel-internal
+    moved and lent memory IPC plus a real EL0 two-domain moved-memory
+    call/reply smoke test.
 
 This is intentionally not the full Xous-style model yet. The first
 version does not include a userspace name service, arbitrary
-target-domain delegation syscalls, blocking call scheduling,
-memory-object attachments, move/lend semantics, general capability
-attachment transfer, cancellation, or production resource accounting.
+target-domain delegation syscalls, blocking call scheduling beyond
+blocking receive, general capability attachment transfer beyond
+reply-time connection delegation and memory-object transfer,
+userspace-facing cancellation policy, or production resource accounting.
 Blocking endpoint receive exists as a first readiness integration point,
-and the smoke-test two-domain EL0 service/client flow now works through
+and the smoke-test two-domain EL0 service/client flows now work through
 kernel-delegated connection capabilities. This is still not a general
 userspace service manager, because bootstrap capability delivery,
 service naming, restart generations, and stale-connection policy remain
@@ -68,6 +79,13 @@ Current evidence:
     protection domain can call a server endpoint through a delegated
     connection capability without either userspace side knowing or
     passing the other's ASID or LP.
+-   `b13fb76` exposed first-class memory objects and memory IPC
+    move/borrow operations through the syscall ABI.
+-   The current tree adds a real EL0 two-address-space memory IPC smoke
+    test: the client allocates, maps, writes, and moves a memory object
+    to a server; the sender's moved-from cap no longer maps; the server
+    maps and updates the object; and `IPC_REPLY_MOVE` returns the object
+    to the caller.
 
 ------------------------------------------------------------------------
 

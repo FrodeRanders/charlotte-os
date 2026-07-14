@@ -17,13 +17,13 @@ use crate::logln;
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::{
-    ADDRESS_SPACE_TABLE,
-    KERNEL_AS,
     linear::{
         MemoryMapping,
         PageType,
         VAddr,
     },
+    ADDRESS_SPACE_TABLE,
+    KERNEL_AS,
 };
 
 #[cfg(target_arch = "aarch64")]
@@ -32,6 +32,8 @@ core::arch::global_asm!(include_str!("el0_ipc.asm"));
 core::arch::global_asm!(include_str!("el0_ipc_block.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_cross_as.asm"));
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory.asm"));
 
 #[cfg(target_arch = "aarch64")]
 const IPC_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -61,6 +63,22 @@ const IPC_CROSS_READY_SENTINEL: u32 = 0x0000_5e5e;
 const IPC_CROSS_SERVER_SENTINEL: u32 = 0x0000_5e51;
 #[cfg(target_arch = "aarch64")]
 const IPC_CROSS_CLIENT_SENTINEL: u32 = 0x0000_c1e1;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CODE_VADDR: usize = 0x0000_0000_0001_0000;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_RESULT_VADDR: usize = 0x0000_0000_0001_1000;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_OBJECT_VADDR: usize = 0x0000_0000_0001_2000;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_READY_SENTINEL: u32 = 0x0000_6d5e;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_SERVER_SENTINEL: u32 = 0x0000_6d51;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CLIENT_SENTINEL: u32 = 0x0000_c6d1;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_INITIAL_VALUE: u32 = 0x4d45_4d31;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_RETURNED_VALUE: u32 = 0x4d45_4d32;
 
 #[cfg(target_arch = "aarch64")]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
@@ -70,6 +88,8 @@ static mut IPC_BLOCK_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None
 static mut IPC_CROSS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
 static mut IPC_CROSS_CLIENT_ASID: crate::memory::AddressSpaceId = 0;
+#[cfg(target_arch = "aarch64")]
+static mut IPC_MEMORY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
 #[cfg(target_arch = "aarch64")]
 unsafe extern "C" {
@@ -83,6 +103,10 @@ unsafe extern "C" {
     static __catten_el0_ipc_cross_server_end: u8;
     static __catten_el0_ipc_cross_client_start: u8;
     static __catten_el0_ipc_cross_client_end: u8;
+    static __catten_el0_ipc_memory_server_start: u8;
+    static __catten_el0_ipc_memory_server_end: u8;
+    static __catten_el0_ipc_memory_client_start: u8;
+    static __catten_el0_ipc_memory_client_end: u8;
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -130,6 +154,22 @@ fn ipc_cross_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_cross_client_start),
         core::ptr::addr_of!(__catten_el0_ipc_cross_client_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_server_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_server_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_server_end),
+    )
+}
+
+#[cfg(target_arch = "aarch64")]
+fn ipc_memory_client_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_ipc_memory_client_start),
+        core::ptr::addr_of!(__catten_el0_ipc_memory_client_end),
     )
 }
 
@@ -362,6 +402,68 @@ pub fn test_el0_endpoint_ipc_cross_address_space() {
     }
 }
 
+pub fn test_el0_endpoint_ipc_memory_move() {
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::ipc::ConnectionRights;
+
+        logln!("Testing EL0 cross-address-space memory IPC...");
+
+        let server_asid = create_user_address_space("memory server");
+        let client_asid = create_user_address_space("memory client");
+
+        let endpoint = crate::ipc::endpoint_create(server_asid, 0x4d45_4d49, 1, 4)
+            .expect("EL0 IPC memory: endpoint_create should succeed");
+        assert_eq!(endpoint, 1, "EL0 IPC memory stub expects server endpoint cap 1");
+        let connection = crate::ipc::connection_delegate(
+            server_asid,
+            endpoint,
+            client_asid,
+            ConnectionRights::CALL,
+        )
+        .expect("EL0 IPC memory: connection_delegate should succeed");
+        assert_eq!(connection, 1, "EL0 IPC memory stub expects client connection cap 1");
+
+        map_code_page(server_asid, VAddr::from(IPC_MEMORY_CODE_VADDR), ipc_memory_server_code());
+        map_code_page(client_asid, VAddr::from(IPC_MEMORY_CODE_VADDR), ipc_memory_client_code());
+        unsafe {
+            core::arch::asm!(
+                "dsb ishst",
+                "ic ialluis",
+                "dsb ish",
+                "isb",
+                options(nomem, nostack, preserves_flags),
+            );
+        }
+
+        let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
+        map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
+        unsafe {
+            IPC_MEMORY_RESULT_FRAME = Some(result_frame);
+        }
+
+        let entry: extern "C" fn() =
+            unsafe { core::mem::transmute::<usize, extern "C" fn()>(IPC_MEMORY_CODE_VADDR) };
+        let server_tid = spawn_thread(server_asid as crate::memory::AddressSpaceId, entry);
+        let client_tid = spawn_thread(client_asid as crate::memory::AddressSpaceId, entry);
+        logln!(
+            "[EL0 IPC memory] server tid={} asid={} client tid={} asid={} object_vaddr={:#x}",
+            server_tid,
+            server_asid,
+            client_tid,
+            client_asid,
+            IPC_MEMORY_OBJECT_VADDR
+        );
+
+        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_move);
+        logln!("[EL0 IPC memory] verifier tid={}; assertion deferred.", vtid);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        logln!("Skipping EL0 memory endpoint IPC test (AArch64 only).");
+    }
+}
+
 #[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_endpoint_ipc() {
     use crate::cpu::scheduler::yield_lp;
@@ -550,6 +652,106 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
         assert!(
             spins < 40_000_000,
             "[EL0 IPC cross-AS] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
+             client={:#x})",
+            ready,
+            server_done,
+            client_done
+        );
+        yield_lp();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+extern "C" fn verify_el0_endpoint_ipc_memory_move() {
+    use crate::cpu::scheduler::yield_lp;
+
+    let frame =
+        unsafe { IPC_MEMORY_RESULT_FRAME }.expect("EL0 IPC memory: result frame not initialized");
+    let base: *mut u8 = frame.into();
+    let result = base as *const u32;
+    let mut spins: u64 = 0;
+    loop {
+        let ready = unsafe { core::ptr::read_volatile(result) };
+        let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
+        let client_done = unsafe { core::ptr::read_volatile(result.add(2)) };
+        if ready == IPC_MEMORY_READY_SENTINEL
+            && server_done == IPC_MEMORY_SERVER_SENTINEL
+            && client_done == IPC_MEMORY_CLIENT_SENTINEL
+        {
+            let client_alloc_cap = unsafe { core::ptr::read_volatile(result.add(3)) };
+            let client_map = unsafe { core::ptr::read_volatile(result.add(4)) };
+            let client_unmap = unsafe { core::ptr::read_volatile(result.add(5)) };
+            let client_call_cap = unsafe { core::ptr::read_volatile(result.add(6)) };
+            let client_moved_map = unsafe { core::ptr::read_volatile(result.add(7)) };
+            let client_poll = unsafe { core::ptr::read_volatile(result.add(8)) };
+            let client_poll_result = unsafe { core::ptr::read_volatile(result.add(9)) };
+            let client_poll_cap = unsafe { core::ptr::read_volatile(result.add(10)) };
+            let client_returned_memory = unsafe { core::ptr::read_volatile(result.add(11)) };
+            let client_returned_map = unsafe { core::ptr::read_volatile(result.add(12)) };
+            let client_returned_value = unsafe { core::ptr::read_volatile(result.add(13)) };
+            let client_returned_unmap = unsafe { core::ptr::read_volatile(result.add(14)) };
+            let client_close = unsafe { core::ptr::read_volatile(result.add(15)) };
+            let server_recv = unsafe { core::ptr::read_volatile(result.add(16)) };
+            let server_opcode = unsafe { core::ptr::read_volatile(result.add(17)) };
+            let server_arg0 = unsafe { core::ptr::read_volatile(result.add(18)) };
+            let server_reply = unsafe { core::ptr::read_volatile(result.add(19)) };
+            let server_memory = unsafe { core::ptr::read_volatile(result.add(20)) };
+            let server_map = unsafe { core::ptr::read_volatile(result.add(21)) };
+            let server_read_value = unsafe { core::ptr::read_volatile(result.add(22)) };
+            let server_unmap = unsafe { core::ptr::read_volatile(result.add(23)) };
+            let server_reply_move = unsafe { core::ptr::read_volatile(result.add(24)) };
+
+            assert_ne!(client_alloc_cap, 0, "EL0 IPC memory: allocation returned no cap");
+            assert_eq!(client_map, 0, "EL0 IPC memory: client initial map failed");
+            assert_eq!(client_unmap, 0, "EL0 IPC memory: client initial unmap failed");
+            assert_ne!(client_call_cap, 0, "EL0 IPC memory: call_move returned no cap");
+            assert_eq!(
+                client_moved_map, 1,
+                "EL0 IPC memory: moved-from cap should be unknown to caller",
+            );
+            assert_eq!(server_recv, 0, "EL0 IPC memory: server recv_block failed");
+            assert_eq!(server_opcode, 0x44, "EL0 IPC memory: opcode mismatch");
+            assert_eq!(server_arg0, 0xab, "EL0 IPC memory: arg mismatch");
+            assert_ne!(server_reply, 0, "EL0 IPC memory: missing reply token");
+            assert_ne!(server_memory, 0, "EL0 IPC memory: missing moved memory cap");
+            assert_eq!(server_map, 0, "EL0 IPC memory: server map failed");
+            assert_eq!(
+                server_read_value, IPC_MEMORY_INITIAL_VALUE,
+                "EL0 IPC memory: server saw wrong payload",
+            );
+            assert_eq!(server_unmap, 0, "EL0 IPC memory: server unmap failed");
+            assert_eq!(server_reply_move, 0, "EL0 IPC memory: reply_move failed");
+            assert_eq!(client_poll, 0, "EL0 IPC memory: reply poll did not complete");
+            assert_eq!(client_poll_result, 0x2468, "EL0 IPC memory: reply result mismatch");
+            assert_eq!(client_poll_cap, 0, "EL0 IPC memory: reply returned unexpected IPC cap");
+            assert_ne!(
+                client_returned_memory, 0,
+                "EL0 IPC memory: reply did not return memory cap",
+            );
+            assert_eq!(client_returned_map, 0, "EL0 IPC memory: returned map failed");
+            assert_eq!(
+                client_returned_value, IPC_MEMORY_RETURNED_VALUE,
+                "EL0 IPC memory: returned payload mismatch",
+            );
+            assert_eq!(client_returned_unmap, 0, "EL0 IPC memory: returned unmap failed",);
+            assert_eq!(client_close, 0, "EL0 IPC memory: returned close failed");
+
+            logln!(
+                "[EL0 IPC memory] SUCCESS: moved memory cap {} to server cap {}, returned cap {}, \
+                 payload {:#x}.",
+                client_alloc_cap,
+                server_memory,
+                client_returned_memory,
+                client_returned_value
+            );
+            loop {
+                yield_lp();
+            }
+        }
+        spins += 1;
+        assert!(
+            spins < 60_000_000,
+            "[EL0 IPC memory] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
              client={:#x})",
             ready,
             server_done,

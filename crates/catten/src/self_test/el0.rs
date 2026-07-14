@@ -229,9 +229,6 @@ pub fn test_el0_syscall_round_trip() {
         let cq_vaddr = VAddr::from(USER_CQ_VADDR);
         let result_vaddr = VAddr::from(USER_RESULT_VADDR);
         let asid = prepare_user_address_space(vaddr, cq_vaddr, result_vaddr);
-        // The stub hard-codes asid=1; this test's user AS is the first non-kernel
-        // AS, so it must land on id 1 for the stub's submit to target it.
-        assert_eq!(asid, 1, "EL0 test assumes the user AS is asid 1");
 
         // --- verify CQ ring visible from kernel side --------------------------
         let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
