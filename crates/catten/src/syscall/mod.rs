@@ -124,14 +124,12 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 // ---- individual syscall implementations ------------------------------------
 
 fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
-    if frame.asid != crate::memory::KERNEL_ASID {
-        // Real EL0 syscall: asid was captured from the thread at entry.
-        frame.asid
-    } else {
-        // Synthetic self-test frame (asid defaults to KERNEL_ASID): the test
-        // passes the ASID explicitly in x0.
-        frame.regs[0] as crate::memory::AddressSpaceId
-    }
+    assert_ne!(
+        frame.asid,
+        crate::memory::KERNEL_ASID,
+        "address-space-scoped syscalls require a non-kernel caller ASID"
+    );
+    frame.asid
 }
 
 fn sys_log(frame: &mut TrapFrame) {

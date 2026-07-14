@@ -12,9 +12,6 @@ pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 /// Bytes available in the canonical launch input buffer.
 pub const INPUT_CAPACITY: usize = 4096;
 
-/// Preserved for consumers that still need to inspect the kernel-assigned ASID.
-pub const ASID_OFFSET: usize = 16;
-
 /// Number of 32-bit launch argument words at [`ARGS_OFFSET`].
 pub const ARGC_OFFSET: usize = 24;
 
@@ -45,11 +42,6 @@ pub fn write<T: Copy>(offset: usize, value: T) {
     unsafe {
         core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value);
     }
-}
-
-/// Kernel-assigned address-space id for the current user image.
-pub fn asid() -> usize {
-    unsafe { read::<usize>(ASID_OFFSET) }
 }
 
 /// Pointer to the canonical output/status area at the start of the config page.

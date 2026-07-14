@@ -62,7 +62,7 @@ const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 /// the syscall return-value contract:
 ///
 /// ```asm
-///     mov   x0, #1                 // asid = 1 (this test's only user AS)
+///     mov   x0, #0                 // unused by the ASID authority path
 ///     mov   x1, #0                 // OpCode::Nop
 ///     svc   #1                     // COMPLETION_SUBMIT -> kernel returns cap in x0
 ///     movz  x2, #0x2000
@@ -82,7 +82,7 @@ const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 /// copied verbatim from `llvm-objdump -d`.
 #[cfg(target_arch = "aarch64")]
 const USER_THREAD_CODE: &[u8] = &[
-    0x20, 0x00, 0x80, 0xd2, // mov  x0, #1
+    0x00, 0x00, 0x80, 0xd2, // mov  x0, #0
     0x01, 0x00, 0x80, 0xd2, // mov  x1, #0
     0x21, 0x00, 0x00, 0xd4, // svc  #1
     0x02, 0x00, 0x84, 0xd2, // mov  x2, #0x2000
@@ -246,9 +246,8 @@ pub fn test_el0_syscall_round_trip() {
         assert_eq!(head, 1, "kernel must see head == 1 after one completion");
 
         // Free this cap so the freed id (0) is what the user thread's own
-        // COMPLETION_SUBMIT will be assigned. Because the input asid is 1, a
-        // returned cap of 0 proves the kernel actually wrote x0 on the way out
-        // (the old handler discarded the cap, leaving x0 == asid == 1).
+        // COMPLETION_SUBMIT will be assigned. A returned cap of 0 proves the
+        // kernel actually wrote x0 on the way out.
         completion::close(asid, cap).unwrap();
 
         // Spawn the EL0 user thread. The completion table + phys-mapped CQ that

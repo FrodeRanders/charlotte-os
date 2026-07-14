@@ -720,11 +720,11 @@ shard, exercise `ShardedKv`, and report success from EL0.
 
 The review also exposed the line between "executable spike" and "OS ABI":
 
-1. **Caller identity is not yet authority.** Several EL0 syscalls accept an
-   ASID in `x0` and operate on that address space's completion table or spawn
-   into that address space. For a real ABI, the kernel must derive the caller's
-   address space from the running thread/trap context. User-supplied ASIDs are
-   acceptable only for kernel-side self-tests and bootstrapping diagnostics.
+1. **Caller identity is kernel authority.** EL0 syscalls must not accept an
+   ASID parameter. CharlotteOS derives the caller's address space from the
+   running thread/trap context and treats `TrapFrame.asid` as the sole authority
+   for address-space-scoped operations. Userspace launch metadata therefore
+   carries application arguments and buffers, not address-space identity.
 2. **CQ delivery must become non-lossy.** The CQ ring currently increments an
    overflow counter when full. The model requires the opposite contract:
    completions are either delivered, retained in a kernel backlog, or explicit

@@ -9,24 +9,26 @@
 #![no_main]
 
 use core::panic::PanicInfo;
+
 use sitas_charlotte::CharlotteReactor;
 
 const RESULT_PAGE: *mut u64 = 0x0000_0000_0001_2000usize as *mut u64;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    // Create a reactor bound to the user AS (asid=1) on LP 0.
-    let reactor = CharlotteReactor::new(1, 0);
+    // Create a reactor on LP 0. The kernel derives ASID from the running
+    // thread, so the legacy constructor's ASID slot is intentionally unused.
+    let reactor = CharlotteReactor::new(0, 0);
 
     // Submit a NOP operation. The kernel completes it because the test
     // pre-populates the AS with a CQ ring and a capability table.
     //
-    // Syscall #1 (COMPLETION_SUBMIT): x0=asid, x1=op_code (0=Nop), x2=buf, x3=len
+    // Syscall #1 (COMPLETION_SUBMIT): x0 is unused, x1=op_code (0=Nop), x2=buf, x3=len.
     unsafe {
         #[allow(unsafe_op_in_unsafe_fn)]
         core::arch::asm!(
             "svc #1",
-            in("x0") 1u64,
+            in("x0") 0u64,
             in("x1") 0u64,
             in("x2") 0u64,
             in("x3") 0u64,

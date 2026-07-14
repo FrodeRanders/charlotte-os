@@ -50,8 +50,6 @@ const SITAS_HEAP_PAGES: usize = 13;
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
 #[cfg(target_arch = "aarch64")]
-const CONFIG_ASID_OFFSET: usize = 16;
-#[cfg(target_arch = "aarch64")]
 const CONFIG_ARGC_OFFSET: usize = 24;
 
 /// Offset of `_start` within the raw binary. The linker script places the
@@ -211,12 +209,10 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // catten-rt reads runtime metadata from the config page. `basic_kv`
-        // uses Args([]) and Input<0>; crt0 therefore enters cmain without
-        // consuming a launch input stream.
+        // `basic_kv` uses Args([]) and Input<0>; crt0 therefore enters cmain
+        // without consuming a launch input stream. ASID stays kernel-private.
         let config_base: *mut u8 = config_frame.into();
         unsafe {
-            core::ptr::write_volatile(config_base.add(CONFIG_ASID_OFFSET) as *mut usize, asid);
             core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 0);
         }
 

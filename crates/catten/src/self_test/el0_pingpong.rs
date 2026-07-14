@@ -82,13 +82,12 @@ fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
 /// Ping stub (LP0).
 ///
 /// ```asm
-///     ldr  w20, [result+16]     // asid
-///     mov x0,x20; mov x1,#0; svc #1   // SUBMIT(Nop)
+///     mov x0,#0; mov x1,#0; svc #1   // SUBMIT(Nop)
 ///     mov x19, x0
-///     mov x0,x20; mov x1,#1; svc #13  // MAILBOX_OPEN_SEND(LP1)
+///     mov x0,#0; mov x1,#1; svc #13  // MAILBOX_OPEN_SEND(LP1)
 ///     mov x18, x0
-///     mov x0,x20; mov x1,x18; mov x2,x19; svc #15  // MAILBOX_SEND_CAP cap→LP1
-///     mov x0,x20; mov x1,x19; movz x2,#60000; svc #11  // WAIT_TIMEOUT 60000ms
+///     mov x0,#0; mov x1,x18; mov x2,x19; svc #15  // MAILBOX_SEND_CAP cap→LP1
+///     mov x0,#0; mov x1,x19; movz x2,#60000; svc #11  // WAIT_TIMEOUT 60000ms
 ///     cbz x0, drain          // if success: drain; otherwise write 0xDEAD
 ///     // ... write 0xDEAD, exit ...
 /// drain:
@@ -107,20 +106,19 @@ fn ping_code() -> &'static [u8] {
 /// Pong stub (LP1).
 ///
 /// ```asm
-///     ldr w20, [result+16]     // asid
-///     mov x0,x20; svc #14      // MAILBOX_OPEN_RECV
+///     mov x0,#0; svc #14       // MAILBOX_OPEN_RECV
 ///     mov x18, x0
-/// spin: mov x0,x20; mov x1,x18; svc #16; cbnz x1, spin  // MAILBOX_RECV_CAP
+/// spin: mov x0,#0; mov x1,x18; svc #16; cbnz x1, spin  // MAILBOX_RECV_CAP
 ///     mov x19, x0              // cap from Ping
-///     mov x0,x20; mov x1,#1; movz x2,#0x6000; movk x2,#0x1; mov x3,#32; svc #1 // SUBMIT(Read,buf)
+///     mov x0,#0; mov x1,#1; movz x2,#0x6000; movk x2,#0x1; mov x3,#32; svc #1 // SUBMIT(Read,buf)
 ///     mov x21, x0
-///     mov x0,x20; mov x1,x21; svc #4  // WAIT
+///     mov x0,#0; mov x1,x21; svc #4  // WAIT
 ///     poll CQ head; read entry[0].result
 ///     ldr w12, [buf]            // verify buffer contains 0xFEED_F00D
-///     mov x0,x20; mov x1,x19; mov x2,#99; svc #2  // COMPLETE(peer,99)
+///     mov x0,#0; mov x1,x19; mov x2,#99; svc #2  // COMPLETE(peer,99)
 ///     result[5..7] = cap, read_result, buffer_val
 ///     dmb ish
-///     result[4] = sentinel      // last; overwrites the bootstrap asid slot
+///     result[4] = sentinel      // last
 ///     svc #8
 /// ```
 #[cfg(target_arch = "aarch64")]
@@ -209,11 +207,6 @@ pub fn test_el0_ping_pong() {
         let _buf_frame = pp_map_data_page(asid, VAddr::from(PP_BUF_VADDR));
         unsafe {
             PP_RESULT_FRAME = Some(result_frame);
-        }
-
-        let result_base: *mut u8 = result_frame.into();
-        unsafe {
-            core::ptr::write_volatile((result_base as *mut u32).add(4), asid as u32);
         }
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);

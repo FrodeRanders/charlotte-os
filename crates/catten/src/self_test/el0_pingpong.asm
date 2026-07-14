@@ -10,24 +10,23 @@ __catten_el0_ping_start:
     // result page = 0x15000
     movz x9, #0x5000
     movk x9, #0x1, lsl #16
-    ldr w20, [x9, #16]
 
-    mov x0, x20
+    mov x0, #0
     mov x1, #0
     svc #1
     mov x19, x0
 
-    mov x0, x20
+    mov x0, #0
     mov x1, #1
     svc #13
     mov x18, x0
 
-    mov x0, x20
+    mov x0, #0
     mov x1, x18
     mov x2, x19
     svc #15
 
-    mov x0, x20
+    mov x0, #0
     mov x1, x19
     movz x2, #60000
     svc #11
@@ -63,21 +62,20 @@ __catten_el0_pong_start:
     // result page = 0x15000
     movz x9, #0x5000
     movk x9, #0x1, lsl #16
-    ldr w20, [x9, #16]
 
-    mov x0, x20
+    mov x0, #0
     svc #14
     mov x18, x0
 
 1:
-    mov x0, x20
+    mov x0, #0
     mov x1, x18
     svc #16
     cbnz x1, 1b
 
     mov x19, x0
 
-    mov x0, x20
+    mov x0, #0
     mov x1, #1
     movz x2, #0x6000
     movk x2, #0x1, lsl #16
@@ -85,7 +83,7 @@ __catten_el0_pong_start:
     svc #1
     mov x21, x0
 
-    mov x0, x20
+    mov x0, #0
     mov x1, x21
     svc #4
 
@@ -102,7 +100,7 @@ __catten_el0_pong_start:
     movk x9, #0x1, lsl #16
     ldr w12, [x9]
 
-    mov x0, x20
+    mov x0, #0
     mov x1, x19
     mov x2, #99
     svc #2
