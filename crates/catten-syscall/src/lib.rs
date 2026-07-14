@@ -62,6 +62,12 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             15 => asm!("svc #15", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             17 => asm!("svc #17", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            18 => asm!("svc #18", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            19 => asm!("svc #19", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            20 => asm!("svc #20", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            21 => asm!("svc #21", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            23 => asm!("svc #23", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            25 => asm!("svc #25", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -71,7 +77,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
 /// Like [`svc3`] but also captures the x1 return value (for syscalls that
 /// return a secondary value in x1, e.g. MAILBOX_RECV_CAP, WAIT_TIMEOUT).
 #[inline(always)]
-unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64) {
+unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
     let ret: u64;
     let x1_out: u64;
     unsafe {
@@ -79,10 +85,56 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64) {
             10 => asm!("svc #10", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
     (ret, x1_out)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpcMessage {
+    pub status: u64,
+    pub opcode: u32,
+    pub arg0: u64,
+    pub reply: u64,
+    pub sender: u64,
+    pub interface: u64,
+    pub version: u32,
+}
+
+/// Receive a scalar endpoint IPC message from `endpoint`.
+#[inline(always)]
+unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    unsafe {
+        asm!(
+            "svc #22",
+            lateout("x0") status,
+            inlateout("x1") endpoint => opcode,
+            lateout("x2") arg0,
+            lateout("x3") reply,
+            lateout("x4") sender,
+            lateout("x5") interface,
+            lateout("x6") version,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        interface,
+        version: version as u32,
+    }
 }
 
 // ---- public syscall wrappers ------------------------------------------------
@@ -203,4 +255,52 @@ pub unsafe fn mailbox_recv(cap: u64) -> (u64, u64) {
 #[inline(always)]
 pub unsafe fn mailbox_close(cap: u64) -> u64 {
     unsafe { svc3(17, cap, 0, 0) }
+}
+
+/// Create an endpoint owned by the caller. Returns endpoint cap, or 0 on error.
+#[inline(always)]
+pub unsafe fn ipc_endpoint_create(interface: u64, version: u32, capacity: usize) -> u64 {
+    unsafe { svc3(18, interface, version as u64, capacity as u64) }
+}
+
+/// Mint a same-address-space connection from an endpoint cap.
+#[inline(always)]
+pub unsafe fn ipc_connect(endpoint: u64, rights: u32) -> u64 {
+    unsafe { svc3(19, endpoint, rights as u64, 0) }
+}
+
+/// Send a scalar message through a connection. Returns status code.
+#[inline(always)]
+pub unsafe fn ipc_scalar_send(connection: u64, opcode: u32, arg0: u64) -> u64 {
+    unsafe { svc3(20, connection, opcode as u64, arg0) }
+}
+
+/// Call through a connection. Returns pending-call cap, or 0 on error.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
+    unsafe { svc3(21, connection, opcode as u64, arg0) }
+}
+
+/// Receive a scalar endpoint IPC message.
+#[inline(always)]
+pub unsafe fn ipc_recv(endpoint: u64) -> IpcMessage {
+    unsafe { svc_ipc_recv(endpoint) }
+}
+
+/// Complete a call using a reply-token cap. Returns status code.
+#[inline(always)]
+pub unsafe fn ipc_reply(reply: u64, result: i64) -> u64 {
+    unsafe { svc3(23, reply, result as u64, 0) }
+}
+
+/// Poll a pending-call cap. Returns `(0, result)` when ready or `(1, 0)` while pending.
+#[inline(always)]
+pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64) {
+    unsafe { svc3_x1(24, call, 0, 0) }
+}
+
+/// Close an endpoint IPC capability. Returns status code.
+#[inline(always)]
+pub unsafe fn ipc_close(cap: u64) -> u64 {
+    unsafe { svc3(25, cap, 0, 0) }
 }

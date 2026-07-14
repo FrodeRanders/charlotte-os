@@ -28,6 +28,7 @@ pub mod demo;
 pub mod device_management;
 pub mod environment;
 pub mod init;
+pub mod ipc;
 pub mod klib;
 pub mod log;
 pub mod memory;

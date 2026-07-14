@@ -152,6 +152,74 @@ pub fn test_syscall_dispatch() {
     }
     syscall::close_mailbox_address_space(asid);
 
+    // Endpoint IPC scalar call path.
+    let endpoint = {
+        let mut f = synthetic_trap_frame_in(asid, 0, 0x5445_5354, 1, 4);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_ENDPOINT_CREATE);
+        assert_ne!(f.regs[0], 0, "IPC_ENDPOINT_CREATE should return endpoint cap");
+        f.regs[0]
+    };
+    let connection = {
+        let rights = crate::ipc::ConnectionRights::SEND | crate::ipc::ConnectionRights::CALL;
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, rights.bits() as u64, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_CONNECT);
+        assert_ne!(f.regs[0], 0, "IPC_CONNECT should return connection cap");
+        f.regs[0]
+    };
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, connection, 11, 0xaa55);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_SEND);
+        assert_eq!(f.regs[0], 0, "IPC_SCALAR_SEND should succeed");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
+        assert_eq!(f.regs[0], 0, "IPC_RECV should return sent message");
+        assert_eq!(f.regs[1], 11);
+        assert_eq!(f.regs[2], 0xaa55);
+        assert_eq!(f.regs[3], 0, "send message should not include reply token");
+        assert_eq!(f.regs[4], asid as u64);
+        assert_eq!(f.regs[5], 0x5445_5354);
+        assert_eq!(f.regs[6], 1);
+    }
+    let call = {
+        let mut f = synthetic_trap_frame_in(asid, 0, connection, 12, 0xbb66);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
+        assert_ne!(f.regs[0], 0, "IPC_SCALAR_CALL should return pending-call cap");
+        f.regs[0]
+    };
+    let reply = {
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
+        assert_eq!(f.regs[0], 0, "IPC_RECV should return call message");
+        assert_eq!(f.regs[1], 12);
+        assert_eq!(f.regs[2], 0xbb66);
+        assert_ne!(f.regs[3], 0, "call message should include reply token");
+        f.regs[3]
+    };
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, call, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
+        assert_eq!(f.regs[0], 1, "IPC_REPLY_POLL should report pending call");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, reply, 77, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY should succeed");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(asid, 0, call, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY_POLL should report ready call");
+        assert_eq!(f.regs[1] as i64, 77);
+    }
+    for cap in [call, connection, endpoint] {
+        let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_CLOSE);
+        assert_eq!(f.regs[0], 0, "IPC_CLOSE should close known caps");
+    }
+    crate::ipc::close_address_space(asid);
+
     completion::close_address_space(asid);
     logln!("Syscall dispatch subsystem tests passed.");
 }

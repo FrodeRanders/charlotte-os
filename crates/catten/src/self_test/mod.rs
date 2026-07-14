@@ -12,6 +12,7 @@ pub mod el0;
 pub mod el0_demo;
 pub mod el0_pingpong;
 pub mod el0_sitas;
+pub mod ipc;
 pub mod ipi;
 pub mod memory;
 pub mod shard;
@@ -37,6 +38,7 @@ pub fn run_self_tests() {
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
     completion::test_completion_caps();
+    ipc::test_endpoint_ipc();
     syscall::test_syscall_dispatch();
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();

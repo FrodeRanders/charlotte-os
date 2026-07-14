@@ -7,12 +7,10 @@
 //! the exception class.
 //!
 //! At this prototype stage the syscalls mirror the completion-capability ABI
-//! operations in [`crate::completion`], making only what already compiles
-//! callable from a (future) user thread. The real user-register-to-semantic
-//! mapping (which registers carry the buffer pointer, how buffer ownership
-//! crosses the EL boundary, etc.) depends on the shared-memory CQ/SQ ring or a
-//! copy-based IPC channel — neither exists yet. This module wires the dispatch
-//! path itself, which is the prerequisite for everything else.
+//! operations in [`crate::completion`] and the experimental endpoint IPC in
+//! [`crate::ipc`]. Completion queues remain the kernel/device-operation ABI;
+//! endpoint IPC is the cross-address-space service ABI and starts with scalar
+//! messages plus reply tokens.
 //!
 //! ## Syscall number convention
 //!
@@ -30,6 +28,7 @@ use crate::{
             ops::get_lp_id,
         },
     },
+    ipc,
     memory::AddressSpaceId,
 };
 
@@ -53,7 +52,7 @@ pub struct TrapFrame {
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = 17;
+pub const MAX_SYSCALL: u16 = 25;
 
 /// Syscall numbers.
 pub mod call_no {
@@ -85,6 +84,23 @@ pub mod call_no {
     pub const MAILBOX_RECV_CAP: u16 = 16;
     /// Close mailbox capability `x1`. Returns status in `x0`.
     pub const MAILBOX_CLOSE: u16 = 17;
+    /// Create an endpoint owned by the caller. x1=interface, x2=version,
+    /// x3=queue capacity. Returns endpoint cap in x0, or 0 on failure.
+    pub const IPC_ENDPOINT_CREATE: u16 = 18;
+    /// Mint a same-address-space connection from endpoint cap x1 with rights x2.
+    pub const IPC_CONNECT: u16 = 19;
+    /// Send scalar message through connection x1. x2=opcode, x3=arg0.
+    pub const IPC_SCALAR_SEND: u16 = 20;
+    /// Call through connection x1. x2=opcode, x3=arg0. Returns pending-call cap.
+    pub const IPC_SCALAR_CALL: u16 = 21;
+    /// Receive from endpoint x1. Returns status in x0 and message fields in x1+.
+    pub const IPC_RECV: u16 = 22;
+    /// Reply via reply-token x1 with signed result x2.
+    pub const IPC_REPLY: u16 = 23;
+    /// Poll pending-call x1. Returns 0+result when ready, 1 when pending.
+    pub const IPC_REPLY_POLL: u16 = 24;
+    /// Close an endpoint IPC cap x1.
+    pub const IPC_CLOSE: u16 = 25;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -117,6 +133,14 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::MAILBOX_SEND_CAP => sys_mailbox_send_cap(frame),
         call_no::MAILBOX_RECV_CAP => sys_mailbox_recv_cap(frame),
         call_no::MAILBOX_CLOSE => sys_mailbox_close(frame),
+        call_no::IPC_ENDPOINT_CREATE => sys_ipc_endpoint_create(frame),
+        call_no::IPC_CONNECT => sys_ipc_connect(frame),
+        call_no::IPC_SCALAR_SEND => sys_ipc_scalar_send(frame),
+        call_no::IPC_SCALAR_CALL => sys_ipc_scalar_call(frame),
+        call_no::IPC_RECV => sys_ipc_recv(frame),
+        call_no::IPC_REPLY => sys_ipc_reply(frame),
+        call_no::IPC_REPLY_POLL => sys_ipc_reply_poll(frame),
+        call_no::IPC_CLOSE => sys_ipc_close(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -450,6 +474,113 @@ fn sys_mailbox_close(frame: &mut TrapFrame) {
     frame.regs[0] = match tables.get_mut(&asid).and_then(|caps| caps.endpoints.remove(&cap)) {
         Some(_) => 0,
         None => 1,
+    };
+}
+
+fn ipc_status(error: ipc::IpcError) -> u64 {
+    match error {
+        ipc::IpcError::QueueFull => 1,
+        ipc::IpcError::NoMessage => 2,
+        ipc::IpcError::Pending => 3,
+        ipc::IpcError::UnknownCapability => 4,
+        ipc::IpcError::WrongType => 5,
+        ipc::IpcError::PermissionDenied => 6,
+        ipc::IpcError::EndpointClosed => 7,
+        ipc::IpcError::ReplyAlreadyUsed => 8,
+    }
+}
+
+fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let interface = frame.regs[1];
+    let version = frame.regs[2] as u32;
+    let capacity = frame.regs[3] as usize;
+    frame.regs[0] = ipc::endpoint_create(asid, interface, version, capacity).unwrap_or(0);
+}
+
+fn sys_ipc_connect(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    let rights = ipc::ConnectionRights::from_bits(frame.regs[2] as u32);
+    frame.regs[0] = ipc::connection_mint(asid, endpoint, rights).unwrap_or(0);
+}
+
+fn sys_ipc_scalar_send(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    frame.regs[0] = match ipc::scalar_send(asid, connection, opcode, arg0) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_scalar_call(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    frame.regs[0] = ipc::scalar_call(asid, connection, opcode, arg0).unwrap_or(0);
+}
+
+fn sys_ipc_recv(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    match ipc::receive(asid, endpoint) {
+        Ok(message) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = message.opcode as u64;
+            frame.regs[2] = message.arg0;
+            frame.regs[3] = message.reply.unwrap_or(0);
+            frame.regs[4] = message.sender as u64;
+            frame.regs[5] = message.interface;
+            frame.regs[6] = message.version as u64;
+        }
+        Err(error) => {
+            frame.regs[0] = ipc_status(error);
+            for reg in &mut frame.regs[1..=6] {
+                *reg = 0;
+            }
+        }
+    }
+}
+
+fn sys_ipc_reply(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let reply = frame.regs[1];
+    let result = frame.regs[2] as i64;
+    frame.regs[0] = match ipc::reply(asid, reply, result) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_reply_poll(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let call = frame.regs[1];
+    match ipc::poll_reply(asid, call) {
+        Ok(Some(result)) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = result as u64;
+        }
+        Ok(None) => {
+            frame.regs[0] = 1;
+            frame.regs[1] = 0;
+        }
+        Err(error) => {
+            frame.regs[0] = ipc_status(error);
+            frame.regs[1] = 0;
+        }
+    }
+}
+
+fn sys_ipc_close(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = match ipc::close_cap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
     };
 }
 
