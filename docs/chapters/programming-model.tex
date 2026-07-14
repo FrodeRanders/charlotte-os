@@ -85,4 +85,87 @@ attaches a ring to a capability table; \texttt{complete()} writes to it.
         upstream. Never silently drop messages.
 \end{itemize}
 
+\section{Working at the sitas--CharlotteOS boundary}
+
+The most useful mental model is that sitas is the userspace runtime and
+CharlotteOS is the substrate that makes sitas's assumptions native. sitas code
+should think in shards, owned messages, futures, and completion handles.
+CharlotteOS code should think in LPs, pinned threads, kernel-owned capability
+tables, and wakeable events. The two vocabularies describe the same shape at
+different privilege levels.
+
+\subsection{For userspace developers}
+
+Treat a CharlotteOS userspace program as a small \texttt{no\_std} process with
+a \texttt{crt0} supplied by \texttt{catten-rt}. The program provides
+\texttt{cmain(args, input)} and uses \texttt{catten\_rt::entry!(cmain)}; it
+does not define \texttt{\_start}, an allocator, or a panic handler. The type
+\texttt{Input<N>} is the declaration of how many bytes the runtime should read
+before entering \texttt{cmain}. If the program does not need launch input, use
+\texttt{Input<0>}. Command-like values belong in \texttt{Args}; kernel
+identity does not.
+
+In particular, do not model ASID as a userspace value. A userspace program
+cannot and should not name an address space. The kernel derives caller identity
+from the running thread at trap entry. Completion capabilities, mailbox
+capabilities, and returned handles are the values userspace is allowed to
+hold; ASID is not.
+
+When writing sitas-on-CharlotteOS code, keep the sitas model intact:
+\begin{itemize}
+    \item A sitas shard is an LP-affine CharlotteOS user thread.
+    \item \texttt{sitas-charlotte::CharlotteReactor::new(lp\_id)} binds a
+        reactor to the calling shard's LP. It does not take ASID.
+    \item Async operations return kernel-owned completion capabilities. A
+        completion capability is opaque; wait for it, poll it, close it, or
+        pass it through a typed channel when the ABI permits that.
+    \item Cross-shard work is an owned message. Prefer sitas channels and
+        futures over shared mutable state.
+    \item Backpressure is normal. Bounded queues and capability tables are part
+        of the contract, not exceptional conditions to paper over.
+\end{itemize}
+
+The current \texttt{basic\_kv} image is the reference smoke test. It enters via
+\texttt{crt0}, uses \texttt{Args([])} and \texttt{Input<0>}, constructs a
+Charlotte reactor for LP0, starts a one-shard \texttt{ShardedKv}, writes three
+keys, reads one back, and reports \texttt{total\_len == 3} through the
+configured output page. If this stops working, either the userspace launch
+contract, the syscall ABI, the loader mapping, or the sitas runtime boundary has
+regressed.
+
+\subsection{For kernel developers}
+
+The kernel side must preserve the authority and ownership boundaries that make
+the userspace model sound:
+\begin{itemize}
+    \item \textbf{Caller identity is kernel authority.} Syscalls must derive the
+        caller's address space from \texttt{TrapFrame.asid}; never accept ASID,
+        page-table roots, or equivalent authority from userspace registers or
+        config pages.
+    \item \textbf{Handles are capabilities.} Completion and mailbox ids are
+        scoped to the caller's address space. Validate them in the per-AS table
+        before acting.
+    \item \textbf{Completions must be non-lossy.} A CQ overflow counter is
+        useful diagnostics, but a terminal completion must either be delivered,
+        retained in a kernel backlog, or prevented by submission backpressure.
+    \item \textbf{Buffers have one owner.} While an async operation owns a user
+        buffer, userspace must not mutate or free it. Cancellation still ends in
+        a terminal completion so ownership can return or be deliberately leaked
+        during teardown.
+    \item \textbf{Placement is real.} A sitas shard maps to an LP-pinned user
+        thread. \texttt{SPAWN\_THREAD} takes an entry virtual address and target
+        LP; the address space comes from the caller.
+    \item \textbf{Do not smuggle shared kernel state into userspace.} Shared
+        pages such as the CQ ring are data queues with a narrow layout, not
+        references to kernel objects.
+\end{itemize}
+
+The present loader is still a flat-image self-test harness. It maps the
+compiled user image, config page, CQ page, input page, and heap at fixed
+addresses. That is good enough for \texttt{basic\_kv}, but it is not yet a
+general userspace ABI. The next loader should be ELF/segment-aware, zero BSS by
+contract, honor per-segment permissions, and avoid depending on RWX mixed
+code/data pages. Until then, treat every larger sitas binary as both a runtime
+test and a loader-permission test.
+
 \endinput

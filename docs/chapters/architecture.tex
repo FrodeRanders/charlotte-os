@@ -67,9 +67,11 @@ pluggable \texttt{LpScheduler} instances. The only current implementation is
 
 Key operations:
 \begin{itemize}
-    \item \texttt{spawn\_thread(asid, entry)} --- creates a Thread, adds it to
-        the master table, submits it to the scheduler. Returns a
-        \texttt{ThreadId}.
+    \item \texttt{spawn\_thread(asid, entry)} --- kernel-internal constructor
+        that creates a Thread, adds it to the master table, and submits it to
+        the scheduler. Returns a \texttt{ThreadId}. Userspace thread-spawn
+        syscalls do not supply \texttt{asid}; the dispatcher derives it from
+        the calling trap frame.
     \item \texttt{block\_thread(tid, \&event)} --- registers the thread's
         \texttt{Waker} on the observable, marks the thread Blocked, removes it
         from the run queue. The thread saves its context on the subsequent
@@ -114,6 +116,8 @@ A per-address-space \texttt{IdTable<Arc<Completion>>} maps a small integer
 in-flight or completed operation. The table is bounded (submission
 backpressure: \texttt{submit} returns \texttt{WouldBlock} when full).
 \texttt{Completion} is \texttt{Observable}: a waiting thread's \texttt{Waker}
-is registered on it via \texttt{completion::wait(asid, cap)}.
+is registered on it via \texttt{completion::wait(asid, cap)} inside the
+kernel. For real userspace syscalls, that \texttt{asid} is derived from the
+running thread's trap frame rather than supplied by userspace.
 
 \endinput

@@ -10,7 +10,7 @@ x86-64.
 
 \subsection{submit --- start an async operation}
 
-\texttt{submit(asid, op\_code, buffer) -> Result<CompletionCap, SubmitError>}.
+\texttt{submit(op\_code, buffer) -> Result<CompletionCap, SubmitError>}.
 Returns immediately with a \texttt{CompletionCap} naming the in-flight
 operation. Ownership of the \texttt{buffer} (an owned \texttt{Vec<u8>})
 transfers to the kernel for the operation's duration. Returns
@@ -19,21 +19,21 @@ transfers to the kernel for the operation's duration. Returns
 
 \subsection{wait --- the reactor's only sleep}
 
-\texttt{wait(asid, cap) -> Result<(), CapError>}. Blocks the calling thread
+\texttt{wait(cap) -> Result<(), CapError>}. Blocks the calling thread
 until the specified capability reaches terminal completion. Internally
 registers the thread's \texttt{Waker} as an observer of the
 \texttt{Completion} (which is \texttt{Observable}) and yields.
 
 \subsection{poll --- non-blocking check}
 
-\texttt{poll(asid, cap) -> Result<Option<Completed>, CapError>}. Returns
+\texttt{poll(cap) -> Result<Option<Completed>, CapError>}. Returns
 \texttt{Ok(None)} while in flight; returns \texttt{Ok(Some(Completed \{ 
 result, buffer \}))} when terminal. The buffer ownership returns to the
 caller. Idempotent after completion (returns \texttt{None} once drained).
 
 \subsection{cancel --- drop-as-cancellation}
 
-\texttt{cancel(asid, cap) -> CancelState}. Requests cancellation of an
+\texttt{cancel(cap) -> CancelState}. Requests cancellation of an
 in-flight operation. If the operation is still in flight, returns
 \texttt{CancelRequested}: the kernel retains any transferred buffer until
 it posts a terminal \texttt{Cancelled} completion (deferred reclaim,
@@ -42,16 +42,23 @@ completed, returns \texttt{AlreadyComplete}.
 
 \subsection{close --- release a slot}
 
-\texttt{close(asid, cap) -> Result<(), CapError>}. Frees a capability-table
+\texttt{close(cap) -> Result<(), CapError>}. Frees a capability-table
 slot after its terminal completion was posted or its result was consumed by
 \texttt{poll}. Fails with \texttt{NotComplete} if the operation is still in
 flight.
 
+The caller's address space is never a userspace parameter. On AArch64 the SVC
+path captures the running thread's address-space id in \texttt{TrapFrame.asid};
+all address-space-scoped operations use that kernel-derived identity. Register
+\texttt{x0} is return-only for the typed wrappers; syscall arguments begin in
+\texttt{x1}. This is a security boundary, not a convenience convention:
+userspace must not be able to name another address space by passing an id.
+
 \section{The exit-observer completion path}
 
 The ABI's intended completion mechanism is declarative: \textbf{the worker
-thread exiting IS the completion event}. \texttt{submit\_worker(asid,
-worker\_entry, result)} spawns a worker thread and registers the returned
+thread exiting IS the completion event}. \texttt{submit\_worker(worker\_entry,
+result)} spawns a worker thread in the caller's address space and registers the returned
 capability as the worker's exit-observer. The worker performs its work and
 returns; the thread's \texttt{Thread::Drop} fires the exit-observer, which
 calls \texttt{complete()} and wakes any waiter. The worker never references

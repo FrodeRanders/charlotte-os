@@ -5,10 +5,12 @@ the async-syscall ABI and the sitas reactor operate on top of.
 
 \section{Thread lifecycle}
 
-A thread is created with \texttt{spawn\_thread(asid, entry\_point)}. The
-\texttt{asid} determines whether it is a kernel thread (\texttt{asid == 0},
-runs at EL1 / ring 0) or a user thread (\texttt{asid > 0}, drops to EL0 via
-\texttt{user\_trampoline}).
+A thread is created inside the kernel with
+\texttt{spawn\_thread(asid, entry\_point)}. The \texttt{asid} determines
+whether it is a kernel thread (\texttt{asid == 0}, runs at EL1 / ring 0) or a
+user thread (\texttt{asid > 0}, drops to EL0 via \texttt{user\_trampoline}).
+When userspace asks to spawn a thread, the syscall provides the entry point and
+placement; the caller's \texttt{asid} is taken from the trap frame.
 
 \subsection{Entry} The trampoline unmasks interrupts, calls the entry function,
 then calls \texttt{abort()} when the entry returns. \texttt{abort()} removes
