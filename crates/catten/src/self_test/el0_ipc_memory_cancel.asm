@@ -34,6 +34,57 @@ __catten_el0_ipc_memory_cancel_server_start:
     str w0, [x9, #76]
 
     dmb ish
+    movz w10, #0xca52
+    str w10, [x9, #80]
+
+    // Receive a write-borrow call, map and update it, then wait for the client
+    // to cancel the already-delivered pending call.
+    mov x1, x19
+    svc #27
+    str w0, [x9, #88]
+    str w1, [x9, #92]
+    str w3, [x9, #96]
+    str w7, [x9, #100]
+    mov x20, x3
+    mov x21, x7
+
+    movz x8, #0x2000
+    movk x8, #0x1, lsl #16
+    mov x1, x21
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #104]
+
+    ldr w10, [x8]
+    str w10, [x9, #108]
+    movz w10, #0xd002
+    str w10, [x8]
+
+    dmb ish
+    movz w10, #0xca53
+    str w10, [x9, #84]
+
+5:
+    ldr w10, [x9, #120]
+    movz w11, #0xca54
+    cmp w10, w11
+    b.ne 5b
+    dmb ish
+
+    // Cancellation should revoke the server's borrowed cap and reply token.
+    mov x1, x21
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #112]
+
+    mov x1, x20
+    movz x2, #0xdead
+    svc #23
+    str w0, [x9, #116]
+
+    dmb ish
     movz w10, #0xca51
     str w10, [x9, #4]
 2:
@@ -150,6 +201,73 @@ __catten_el0_ipc_memory_cancel_client_start:
     dmb ish
     movz w10, #0xcad1
     str w10, [x9, #8]
+
+6:
+    ldr w10, [x9, #80]
+    movz w11, #0xca52
+    cmp w10, w11
+    b.ne 6b
+    dmb ish
+
+    // Deliver a write-borrow call, wait until the server has mapped and
+    // updated it, then cancel the pending call.
+    movz x1, #1
+    svc #28
+    str w0, [x9, #124]
+    mov x24, x0
+
+    mov x1, x24
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #128]
+
+    movz w10, #0xd001
+    str w10, [x8]
+
+    mov x1, x24
+    svc #30
+    str w0, [x9, #132]
+
+    mov x1, x19
+    movz x2, #0x72
+    movz x3, #0xc0
+    mov x4, x24
+    svc #36
+    str w0, [x9, #136]
+    mov x25, x0
+
+7:
+    ldr w10, [x9, #84]
+    movz w11, #0xca53
+    cmp w10, w11
+    b.ne 7b
+    dmb ish
+
+    mov x1, x25
+    svc #25
+    str w0, [x9, #140]
+
+    mov x1, x24
+    mov x2, x8
+    movz x3, #1
+    svc #29
+    str w0, [x9, #144]
+
+    ldr w10, [x8]
+    str w10, [x9, #148]
+
+    mov x1, x24
+    svc #30
+    str w0, [x9, #152]
+
+    mov x1, x24
+    svc #31
+    str w0, [x9, #156]
+
+    dmb ish
+    movz w10, #0xca54
+    str w10, [x9, #120]
 4:
     nop
     b 4b

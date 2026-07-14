@@ -98,7 +98,13 @@ const IPC_MEMORY_CANCEL_CLIENT_SENTINEL: u32 = 0x0000_cad1;
 #[cfg(target_arch = "aarch64")]
 const IPC_MEMORY_CANCEL_BORROW_VALUE: u32 = 0x0000_b001;
 #[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_DELIVERED_INITIAL_VALUE: u32 = 0x0000_d001;
+#[cfg(target_arch = "aarch64")]
+const IPC_MEMORY_CANCEL_DELIVERED_RETURNED_VALUE: u32 = 0x0000_d002;
+#[cfg(target_arch = "aarch64")]
 const IPC_STATUS_NO_MESSAGE: u32 = 2;
+#[cfg(target_arch = "aarch64")]
+const IPC_STATUS_UNKNOWN_CAPABILITY: u32 = 4;
 #[cfg(target_arch = "aarch64")]
 const IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY: u32 = 1;
 
@@ -1081,6 +1087,25 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
             let borrow_owner_close = unsafe { core::ptr::read_volatile(result.add(17)) };
             let server_first_recv = unsafe { core::ptr::read_volatile(result.add(18)) };
             let server_second_recv = unsafe { core::ptr::read_volatile(result.add(19)) };
+            let server_delivered_recv = unsafe { core::ptr::read_volatile(result.add(22)) };
+            let server_delivered_opcode = unsafe { core::ptr::read_volatile(result.add(23)) };
+            let server_delivered_reply = unsafe { core::ptr::read_volatile(result.add(24)) };
+            let server_delivered_memory = unsafe { core::ptr::read_volatile(result.add(25)) };
+            let server_delivered_map = unsafe { core::ptr::read_volatile(result.add(26)) };
+            let server_delivered_value = unsafe { core::ptr::read_volatile(result.add(27)) };
+            let server_delivered_revoked_map =
+                unsafe { core::ptr::read_volatile(result.add(28)) };
+            let server_delivered_reply_after_cancel =
+                unsafe { core::ptr::read_volatile(result.add(29)) };
+            let delivered_alloc_cap = unsafe { core::ptr::read_volatile(result.add(31)) };
+            let delivered_map = unsafe { core::ptr::read_volatile(result.add(32)) };
+            let delivered_unmap = unsafe { core::ptr::read_volatile(result.add(33)) };
+            let delivered_call_cap = unsafe { core::ptr::read_volatile(result.add(34)) };
+            let delivered_pending_close = unsafe { core::ptr::read_volatile(result.add(35)) };
+            let delivered_owner_remap = unsafe { core::ptr::read_volatile(result.add(36)) };
+            let delivered_owner_value = unsafe { core::ptr::read_volatile(result.add(37)) };
+            let delivered_owner_unmap = unsafe { core::ptr::read_volatile(result.add(38)) };
+            let delivered_owner_close = unsafe { core::ptr::read_volatile(result.add(39)) };
 
             assert_ne!(move_alloc_cap, 0, "EL0 IPC memory cancel: move allocation returned no cap",);
             assert_eq!(move_map, 0, "EL0 IPC memory cancel: move seed map failed");
@@ -1132,11 +1157,75 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
                 "EL0 IPC memory cancel: server received cancelled borrow call",
             );
 
+            assert_ne!(
+                delivered_alloc_cap, 0,
+                "EL0 IPC memory cancel: delivered allocation returned no cap",
+            );
+            assert_eq!(delivered_map, 0, "EL0 IPC memory cancel: delivered seed map failed");
+            assert_eq!(delivered_unmap, 0, "EL0 IPC memory cancel: delivered seed unmap failed");
+            assert_ne!(
+                delivered_call_cap, 0,
+                "EL0 IPC memory cancel: delivered borrow returned no pending-call cap",
+            );
+            assert_eq!(
+                server_delivered_recv, 0,
+                "EL0 IPC memory cancel: server delivered recv failed",
+            );
+            assert_eq!(
+                server_delivered_opcode, 0x72,
+                "EL0 IPC memory cancel: delivered opcode mismatch",
+            );
+            assert_ne!(
+                server_delivered_reply, 0,
+                "EL0 IPC memory cancel: delivered call had no reply token",
+            );
+            assert_ne!(
+                server_delivered_memory, 0,
+                "EL0 IPC memory cancel: delivered call had no memory cap",
+            );
+            assert_eq!(
+                server_delivered_map, 0,
+                "EL0 IPC memory cancel: server delivered map failed",
+            );
+            assert_eq!(
+                server_delivered_value, IPC_MEMORY_CANCEL_DELIVERED_INITIAL_VALUE,
+                "EL0 IPC memory cancel: server delivered payload mismatch",
+            );
+            assert_eq!(
+                delivered_pending_close, 0,
+                "EL0 IPC memory cancel: closing delivered pending call failed",
+            );
+            assert_eq!(
+                delivered_owner_remap, 0,
+                "EL0 IPC memory cancel: delivered owner remap after cancel failed",
+            );
+            assert_eq!(
+                delivered_owner_value, IPC_MEMORY_CANCEL_DELIVERED_RETURNED_VALUE,
+                "EL0 IPC memory cancel: delivered owner did not see server write",
+            );
+            assert_eq!(
+                delivered_owner_unmap, 0,
+                "EL0 IPC memory cancel: delivered owner unmap failed",
+            );
+            assert_eq!(
+                delivered_owner_close, 0,
+                "EL0 IPC memory cancel: delivered owner close failed",
+            );
+            assert_eq!(
+                server_delivered_revoked_map, IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY,
+                "EL0 IPC memory cancel: cancellation did not revoke server memory cap",
+            );
+            assert_eq!(
+                server_delivered_reply_after_cancel, IPC_STATUS_UNKNOWN_CAPABILITY,
+                "EL0 IPC memory cancel: cancellation did not revoke server reply token",
+            );
+
             logln!(
-                "[EL0 IPC memory cancel] SUCCESS: cancelled move call cap {}, borrow call cap {}, \
-                 server recv statuses {}/{}.",
+                "[EL0 IPC memory cancel] SUCCESS: cancelled queued move cap {}, queued borrow cap \
+                 {}, delivered borrow cap {}; server recv statuses {}/{}.",
                 move_call_cap,
                 borrow_call_cap,
+                delivered_call_cap,
                 server_first_recv,
                 server_second_recv
             );
