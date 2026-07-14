@@ -38,6 +38,7 @@ pub fn run_self_tests() {
     memory::pmem::test_pmem();
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
+    memory::object::test_memory_objects();
     completion::test_completion_caps();
     ipc::test_endpoint_ipc();
     syscall::test_syscall_dispatch();

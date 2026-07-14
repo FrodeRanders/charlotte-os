@@ -1,0 +1,92 @@
+use crate::{
+    cpu::isa::{
+        interface::memory::{
+            address::PhysicalAddress,
+            AddressSpaceInterface,
+        },
+        memory::paging::AddressSpace,
+    },
+    logln,
+    memory::{
+        linear::VAddr,
+        object::{
+            self,
+            MemoryObjectError,
+        },
+        ADDRESS_SPACE_TABLE,
+        KERNEL_AS,
+    },
+};
+
+fn create_memory_object_test_address_space(label: &str) -> usize {
+    let user_as = {
+        let _kas = KERNEL_AS.lock();
+        let mut as_ = AddressSpace::get_current();
+        #[cfg(target_arch = "aarch64")]
+        as_.set_ttbr0(0);
+        as_
+    };
+    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    logln!("[memory object] {} AS asid={}", label, asid);
+    asid
+}
+
+pub fn test_memory_objects() {
+    logln!("Testing first-class memory objects...");
+
+    let owner = create_memory_object_test_address_space("owner");
+    let target = create_memory_object_test_address_space("target");
+
+    let cap = object::allocate(owner, 2).expect("memory object: allocation failed");
+    let initial = object::info(owner, cap).expect("memory object: missing owner cap");
+    assert_eq!(initial.owner, owner);
+    assert_eq!(initial.pages, 2);
+    assert!(!initial.mapped);
+
+    let owner_base = VAddr::from(0x33000usize);
+    object::map(owner, cap, owner_base, true).expect("memory object: owner map failed");
+    let mapped = object::info(owner, cap).expect("memory object: missing mapped cap");
+    assert!(mapped.mapped);
+    let first_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(owner)
+        .expect("memory object: owner AS missing")
+        .translate_address(owner_base)
+        .expect("memory object: owner translation failed");
+    unsafe {
+        let ptr = first_frame.into_hhdm_mut::<u64>();
+        assert_eq!(ptr.read_volatile(), 0);
+        ptr.write_volatile(0x4d45_4d4f_424a_4543);
+    }
+    assert_eq!(object::move_to(owner, cap, target), Err(MemoryObjectError::AlreadyMapped));
+
+    object::unmap(owner, cap).expect("memory object: owner unmap failed");
+    let target_cap = object::move_to(owner, cap, target).expect("memory object: move failed");
+    assert_eq!(object::info(owner, cap), Err(MemoryObjectError::UnknownCapability));
+    let target_info = object::info(target, target_cap).expect("memory object: target cap missing");
+    assert_eq!(target_info.owner, target);
+    assert!(!target_info.mapped);
+
+    let target_base = VAddr::from(0x44000usize);
+    object::map(target, target_cap, target_base, true).expect("memory object: target map failed");
+    let target_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(target)
+        .expect("memory object: target AS missing")
+        .translate_address(target_base)
+        .expect("memory object: target translation failed");
+    unsafe {
+        let ptr = target_frame.into_hhdm_mut::<u64>();
+        assert_eq!(ptr.read_volatile(), 0x4d45_4d4f_424a_4543);
+    }
+    object::unmap(target, target_cap).expect("memory object: target unmap failed");
+    object::close_cap(target, target_cap).expect("memory object: close failed");
+
+    {
+        let mut address_spaces = ADDRESS_SPACE_TABLE.lock();
+        address_spaces.remove_element(target).expect("memory object: failed to remove target AS");
+        address_spaces.remove_element(owner).expect("memory object: failed to remove owner AS");
+    }
+
+    logln!("First-class memory object tests passed.");
+}

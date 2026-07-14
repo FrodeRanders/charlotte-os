@@ -3,18 +3,36 @@
 pub mod descriptor;
 pub mod walker;
 
-use core::arch::asm;
-use core::ptr::NonNull;
+use core::{
+    arch::asm,
+    ptr::NonNull,
+};
 
 use descriptor::Descriptor;
 
 use super::MemoryInterfaceImpl;
-use crate::cpu::isa::aarch64::memory::address::paddr::PAddr;
-use crate::cpu::isa::aarch64::memory::address::vaddr::VAddr;
-use crate::cpu::isa::interface::memory::address::Address;
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
-use crate::klib::size::{gibibytes, kibibytes, mebibytes};
+use crate::{
+    cpu::isa::{
+        aarch64::memory::address::{
+            paddr::PAddr,
+            vaddr::VAddr,
+        },
+        interface::memory::{
+            address::{
+                Address,
+                VirtualAddress,
+            },
+            AddressSpaceInterface,
+            MemoryInterface,
+            MemoryMapping,
+        },
+    },
+    klib::size::{
+        gibibytes,
+        kibibytes,
+        mebibytes,
+    },
+};
 
 /// Hardware Address Space Identifier. On AArch64 the ASID is held in the top
 /// bits of `TTBR0_EL1`/`TTBR1_EL1` and tags TLB entries. It is 8 or 16 bits
@@ -89,12 +107,10 @@ impl AddressSpace {
         for phys in (start..end).step_by(PAGE_SIZE) {
             let frame = PAddr::from(phys as u64);
             // The HHDM alias of this physical page is where drivers expect it.
-            let hhdm_vaddr =
-                VAddr::from_ptr(unsafe { frame.into_hhdm_ptr::<u8>() });
+            let hhdm_vaddr = VAddr::from_ptr(unsafe { frame.into_hhdm_ptr::<u8>() });
             let mut walker = walker::Walker::new(self, hhdm_vaddr);
             match walker.map_mmio_page(frame, true) {
-                Ok(())
-                | Err(<MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped) => {}
+                Ok(()) | Err(<MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped) => {}
                 Err(e) => return Err(e),
             }
         }
@@ -186,6 +202,19 @@ impl AddressSpaceInterface for AddressSpace {
         )
     }
 
+    fn map_existing_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = walker::Walker::new(self, mapping.vaddr);
+        walker.map_existing_page(
+            mapping.paddr,
+            mapping.page_type.is_writable(),
+            mapping.page_type.is_user_accessible(),
+            mapping.page_type.is_no_execute(),
+        )
+    }
+
     fn unmap_page(
         &mut self,
         vaddr: VAddr,
@@ -268,8 +297,13 @@ impl AddressSpaceInterface for AddressSpace {
         match walker.walk() {
             Ok(_) => Ok(true),
             Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
-                self.is_mapped_large_page(vaddr)
-                    .and_then(|large| if large { Ok(true) } else { self.is_mapped_huge_page(vaddr) })
+                self.is_mapped_large_page(vaddr).and_then(|large| {
+                    if large {
+                        Ok(true)
+                    } else {
+                        self.is_mapped_huge_page(vaddr)
+                    }
+                })
             }
             Err(e) => Err(e),
         }

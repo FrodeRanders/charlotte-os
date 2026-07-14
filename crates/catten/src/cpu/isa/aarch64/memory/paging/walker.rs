@@ -17,13 +17,33 @@
 
 use core::ptr::NonNull;
 
-use super::{is_table_unused, AddressSpace, PageTable, PAGE_SIZE};
-use super::descriptor::{Descriptor, MAIR_IDX_DEVICE, MAIR_IDX_NORMAL};
-use crate::cpu::isa::aarch64::memory::address::paddr::PAddr;
-use crate::cpu::isa::aarch64::memory::address::vaddr::VAddr;
-use crate::cpu::isa::aarch64::memory::tlb;
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface};
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
+use super::{
+    descriptor::{
+        Descriptor,
+        MAIR_IDX_DEVICE,
+        MAIR_IDX_NORMAL,
+    },
+    is_table_unused,
+    AddressSpace,
+    PageTable,
+    PAGE_SIZE,
+};
+use crate::{
+    cpu::isa::{
+        aarch64::memory::{
+            address::{
+                paddr::PAddr,
+                vaddr::VAddr,
+            },
+            tlb,
+        },
+        interface::memory::{
+            AddressSpaceInterface,
+            MemoryInterface,
+        },
+    },
+    memory::PHYSICAL_FRAME_ALLOCATOR,
+};
 
 type WalkerError = <super::super::MemoryInterfaceImpl as MemoryInterface>::Error;
 type WalkerResult<T> = Result<T, WalkerError>;
@@ -206,7 +226,31 @@ impl<'vas> Walker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> WalkerResult<()> {
-        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, MAIR_IDX_NORMAL, true)
+        self.map_page_with_attrs(
+            frame,
+            writable,
+            user_accessible,
+            no_execute,
+            MAIR_IDX_NORMAL,
+            true,
+        )
+    }
+
+    pub fn map_existing_page(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+    ) -> WalkerResult<()> {
+        self.map_page_with_attrs(
+            frame,
+            writable,
+            user_accessible,
+            no_execute,
+            MAIR_IDX_NORMAL,
+            false,
+        )
     }
 
     /// Map a single 4 KiB page of strongly-ordered device memory (MMIO). Unlike

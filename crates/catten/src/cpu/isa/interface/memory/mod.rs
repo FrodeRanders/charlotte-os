@@ -1,11 +1,11 @@
 pub mod address;
 
 use crate::cpu::isa::memory::{
-    MemoryInterfaceImpl,
     address::{
         paddr::PAddr,
         vaddr::VAddr,
     },
+    MemoryInterfaceImpl,
 };
 pub use crate::memory::linear::{
     MemoryMapping,
@@ -47,6 +47,12 @@ pub trait AddressSpaceInterface {
         &mut self,
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    fn map_existing_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        self.map_page(mapping)
+    }
     fn unmap_page(
         &mut self,
         vaddr: VAddr,

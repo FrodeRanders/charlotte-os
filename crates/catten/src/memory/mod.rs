@@ -2,6 +2,7 @@
 
 pub mod allocators;
 pub mod linear;
+pub mod object;
 pub mod physical;
 
 pub use linear::VAddr;
