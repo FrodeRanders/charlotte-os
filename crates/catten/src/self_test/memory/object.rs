@@ -36,6 +36,8 @@ pub fn test_memory_objects() {
 
     let owner = create_memory_object_test_address_space("owner");
     let target = create_memory_object_test_address_space("target");
+    let reader = create_memory_object_test_address_space("reader");
+    let writer = create_memory_object_test_address_space("writer");
 
     let cap = object::allocate(owner, 2).expect("memory object: allocation failed");
     let initial = object::info(owner, cap).expect("memory object: missing owner cap");
@@ -82,8 +84,61 @@ pub fn test_memory_objects() {
     object::unmap(target, target_cap).expect("memory object: target unmap failed");
     object::close_cap(target, target_cap).expect("memory object: close failed");
 
+    let lend_cap = object::allocate(owner, 1).expect("memory object: lend allocation failed");
+    let lend_base = VAddr::from(0x55000usize);
+    object::map(owner, lend_cap, lend_base, false).expect("memory object: owner read map failed");
+    let reader_cap =
+        object::lend_read(owner, lend_cap, reader).expect("memory object: read lend failed");
+    assert_eq!(
+        object::map(reader, reader_cap, VAddr::from(0x66000usize), true),
+        Err(MemoryObjectError::MissingRight)
+    );
+    object::map(reader, reader_cap, VAddr::from(0x66000usize), false)
+        .expect("memory object: reader read map failed");
+    assert_eq!(object::lend_write(owner, lend_cap, writer), Err(MemoryObjectError::LendingActive));
+    assert_eq!(object::close_cap(reader, reader_cap), Err(MemoryObjectError::LendingActive));
+    object::revoke_lend(owner, lend_cap, reader, reader_cap)
+        .expect("memory object: read revoke failed");
+    assert_eq!(object::info(reader, reader_cap), Err(MemoryObjectError::UnknownCapability));
+    object::unmap(owner, lend_cap).expect("memory object: owner read unmap failed");
+
+    let writer_cap =
+        object::lend_write(owner, lend_cap, writer).expect("memory object: write lend failed");
+    assert_eq!(
+        object::map(owner, lend_cap, VAddr::from(0x77000usize), false),
+        Err(MemoryObjectError::LendingActive)
+    );
+    object::map(writer, writer_cap, VAddr::from(0x88000usize), true)
+        .expect("memory object: writer map failed");
+    let writer_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(writer)
+        .expect("memory object: writer AS missing")
+        .translate_address(VAddr::from(0x88000usize))
+        .expect("memory object: writer translation failed");
+    unsafe {
+        writer_frame.into_hhdm_mut::<u64>().write_volatile(0x5749_5445_4c45_4e44);
+    }
+    object::revoke_lend(owner, lend_cap, writer, writer_cap)
+        .expect("memory object: write revoke failed");
+    object::map(owner, lend_cap, lend_base, true)
+        .expect("memory object: owner remap after revoke failed");
+    let owner_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(owner)
+        .expect("memory object: owner AS missing")
+        .translate_address(lend_base)
+        .expect("memory object: owner translation after revoke failed");
+    unsafe {
+        assert_eq!(owner_frame.into_hhdm_mut::<u64>().read_volatile(), 0x5749_5445_4c45_4e44);
+    }
+    object::unmap(owner, lend_cap).expect("memory object: owner final unmap failed");
+    object::close_cap(owner, lend_cap).expect("memory object: lend close failed");
+
     {
         let mut address_spaces = ADDRESS_SPACE_TABLE.lock();
+        address_spaces.remove_element(writer).expect("memory object: failed to remove writer AS");
+        address_spaces.remove_element(reader).expect("memory object: failed to remove reader AS");
         address_spaces.remove_element(target).expect("memory object: failed to remove target AS");
         address_spaces.remove_element(owner).expect("memory object: failed to remove owner AS");
     }
