@@ -135,6 +135,37 @@ pub fn test_memory_objects() {
     object::unmap(owner, lend_cap).expect("memory object: owner final unmap failed");
     object::close_cap(owner, lend_cap).expect("memory object: lend close failed");
 
+    let borrower_cleanup_cap =
+        object::allocate(owner, 1).expect("memory object: borrower cleanup allocation failed");
+    let borrower_cleanup_lend = object::lend_write(owner, borrower_cleanup_cap, writer)
+        .expect("memory object: borrower cleanup lend failed");
+    object::map(writer, borrower_cleanup_lend, VAddr::from(0x99000usize), true)
+        .expect("memory object: borrower cleanup map failed");
+    object::close_address_space(writer);
+    assert_eq!(
+        object::info(writer, borrower_cleanup_lend),
+        Err(MemoryObjectError::UnknownCapability)
+    );
+    let cleanup_info = object::info(owner, borrower_cleanup_cap)
+        .expect("memory object: borrower cleanup owner cap missing");
+    assert!(!cleanup_info.lent);
+    object::map(owner, borrower_cleanup_cap, VAddr::from(0xaa000usize), true)
+        .expect("memory object: owner remap after borrower close failed");
+    object::unmap(owner, borrower_cleanup_cap).expect("memory object: owner cleanup unmap failed");
+    object::close_cap(owner, borrower_cleanup_cap)
+        .expect("memory object: borrower cleanup close failed");
+
+    let owner_cleanup_cap =
+        object::allocate(owner, 1).expect("memory object: owner cleanup allocation failed");
+    let owner_cleanup_lend = object::lend_read(owner, owner_cleanup_cap, reader)
+        .expect("memory object: owner cleanup lend failed");
+    object::map(reader, owner_cleanup_lend, VAddr::from(0xbb000usize), false)
+        .expect("memory object: owner cleanup reader map failed");
+    object::close_address_space(owner);
+    assert_eq!(object::info(reader, owner_cleanup_lend), Err(MemoryObjectError::UnknownCapability));
+    object::close_address_space(reader);
+    object::close_address_space(target);
+
     {
         let mut address_spaces = ADDRESS_SPACE_TABLE.lock();
         address_spaces.remove_element(writer).expect("memory object: failed to remove writer AS");

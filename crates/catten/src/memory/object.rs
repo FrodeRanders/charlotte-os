@@ -584,6 +584,69 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
     Ok(())
 }
 
+pub fn close_address_space(asid: AddressSpaceId) {
+    let mut frames_to_free = Vec::new();
+    {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let owned_objects = registry
+            .objects
+            .iter()
+            .filter_map(|(object_id, object)| {
+                if object.owner == asid {
+                    Some(*object_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        for object_id in owned_objects {
+            if let Some(object) = registry.objects.remove(&object_id) {
+                for (mapped_asid, mapping) in object.mappings {
+                    let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
+                }
+                remove_caps_for_object(&mut registry, object_id);
+                frames_to_free.extend(object.frames);
+            }
+        }
+
+        for object in registry.objects.values_mut() {
+            if let Some(mapping) = object.mappings.remove(&asid) {
+                let _ = unmap_pages(asid, mapping.base, object.frames.len());
+            }
+            match &mut object.lend_state {
+                LendState::None => {}
+                LendState::Read {
+                    borrowers,
+                } => {
+                    borrowers.remove(&asid);
+                    if borrowers.is_empty() {
+                        object.lend_state = LendState::None;
+                    }
+                }
+                LendState::Write {
+                    borrower,
+                    ..
+                } if *borrower == asid => {
+                    object.lend_state = LendState::None;
+                }
+                LendState::Write {
+                    ..
+                } => {}
+            }
+        }
+
+        registry.caps.remove(&asid);
+    }
+
+    if !frames_to_free.is_empty() {
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        for frame in frames_to_free {
+            let _ = allocator.deallocate_frame(frame);
+        }
+    }
+}
+
 fn check_map_lend_state(
     object: &MemoryObject,
     asid: AddressSpaceId,
@@ -625,4 +688,32 @@ fn validate_address_space(asid: AddressSpaceId) -> Result<(), MemoryObjectError>
         .get(asid)
         .map(|_| ())
         .map_err(|_| MemoryObjectError::AddressSpaceMissing)
+}
+
+fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: MemoryObjectId) {
+    for caps in registry.caps.values_mut() {
+        let caps_to_remove = caps
+            .caps
+            .iter()
+            .filter_map(|(cap_id, cap)| {
+                if cap.object == object_id {
+                    Some(*cap_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        for cap_id in caps_to_remove {
+            caps.caps.remove(&cap_id);
+        }
+    }
+}
+
+fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), MemoryObjectError> {
+    let mut table = ADDRESS_SPACE_TABLE.lock();
+    let address_space = table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
+    for index in 0..pages {
+        let _ = address_space.unmap_page(base + (index * PAGE_SIZE));
+    }
+    Ok(())
 }
