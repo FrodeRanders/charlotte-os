@@ -289,6 +289,145 @@ pub fn test_endpoint_ipc() {
     }
     object::unmap(memory_client, returned_memory).expect("memory IPC client returned unmap failed");
     object::close_cap(memory_client, returned_memory).expect("memory IPC returned close failed");
+
+    let read_borrow =
+        object::allocate(memory_client, 1).expect("memory IPC read borrow allocation failed");
+    object::map(memory_client, read_borrow, VAddr::from(0x90000usize), true)
+        .expect("memory IPC read borrow client map failed");
+    let read_borrow_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x90000usize))
+        .expect("memory IPC read borrow translation failed");
+    unsafe {
+        read_borrow_frame.into_hhdm_mut::<u64>().write_volatile(0x5245_4144_424f_5252);
+    }
+    object::unmap(memory_client, read_borrow).expect("memory IPC read borrow client unmap failed");
+    let read_borrow_call = ipc::scalar_call_with_memory_borrow_read(
+        memory_client,
+        memory_connection,
+        46,
+        0x33,
+        read_borrow,
+    )
+    .expect("memory IPC read borrow should enqueue");
+    let read_borrow_message = ipc::receive(memory_server, memory_endpoint)
+        .expect("memory IPC read borrow receive failed");
+    let read_borrow_reply = read_borrow_message.reply.expect("read borrow should carry reply");
+    let server_read_borrow = read_borrow_message.memory.expect("read borrow should carry memory");
+    assert_eq!(
+        object::map(memory_server, server_read_borrow, VAddr::from(0xa0000usize), true),
+        Err(object::MemoryObjectError::MissingRight),
+        "read-borrowed memory must not map writable"
+    );
+    object::map(memory_server, server_read_borrow, VAddr::from(0xa0000usize), false)
+        .expect("memory IPC read borrow server map failed");
+    let server_read_borrow_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("memory IPC server AS missing")
+        .translate_address(VAddr::from(0xa0000usize))
+        .expect("memory IPC server read borrow translation failed");
+    unsafe {
+        assert_eq!(
+            server_read_borrow_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x5245_4144_424f_5252
+        );
+    }
+    ipc::reply(memory_server, read_borrow_reply, 124)
+        .expect("memory IPC read borrow reply should revoke");
+    assert_eq!(
+        object::info(memory_server, server_read_borrow),
+        Err(object::MemoryObjectError::UnknownCapability),
+        "reply should revoke server read-borrow cap"
+    );
+    assert_eq!(
+        ipc::poll_reply(memory_client, read_borrow_call)
+            .expect("read borrow poll should succeed")
+            .expect("read borrow reply should be ready")
+            .result,
+        124
+    );
+    object::map(memory_client, read_borrow, VAddr::from(0xb0000usize), true)
+        .expect("memory IPC read borrow owner remap failed");
+    object::unmap(memory_client, read_borrow).expect("memory IPC read borrow owner unmap failed");
+    object::close_cap(memory_client, read_borrow).expect("memory IPC read borrow close failed");
+
+    let write_borrow =
+        object::allocate(memory_client, 1).expect("memory IPC write borrow allocation failed");
+    object::map(memory_client, write_borrow, VAddr::from(0xc0000usize), true)
+        .expect("memory IPC write borrow client map failed");
+    let write_borrow_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0xc0000usize))
+        .expect("memory IPC write borrow translation failed");
+    unsafe {
+        write_borrow_frame.into_hhdm_mut::<u64>().write_volatile(0x5752_4954_424f_5252);
+    }
+    object::unmap(memory_client, write_borrow)
+        .expect("memory IPC write borrow client unmap failed");
+    let write_borrow_call = ipc::scalar_call_with_memory_borrow_write(
+        memory_client,
+        memory_connection,
+        47,
+        0x44,
+        write_borrow,
+    )
+    .expect("memory IPC write borrow should enqueue");
+    let write_borrow_message = ipc::receive(memory_server, memory_endpoint)
+        .expect("memory IPC write borrow receive failed");
+    let write_borrow_reply = write_borrow_message.reply.expect("write borrow should carry reply");
+    let server_write_borrow =
+        write_borrow_message.memory.expect("write borrow should carry memory");
+    object::map(memory_server, server_write_borrow, VAddr::from(0xd0000usize), true)
+        .expect("memory IPC write borrow server map failed");
+    let server_write_borrow_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("memory IPC server AS missing")
+        .translate_address(VAddr::from(0xd0000usize))
+        .expect("memory IPC server write borrow translation failed");
+    unsafe {
+        assert_eq!(
+            server_write_borrow_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x5752_4954_424f_5252
+        );
+        server_write_borrow_frame.into_hhdm_mut::<u64>().write_volatile(0x5752_4954_444f_4e45);
+    }
+    ipc::reply(memory_server, write_borrow_reply, 125)
+        .expect("memory IPC write borrow reply should revoke");
+    assert_eq!(
+        object::info(memory_server, server_write_borrow),
+        Err(object::MemoryObjectError::UnknownCapability),
+        "reply should revoke server write-borrow cap"
+    );
+    assert_eq!(
+        ipc::poll_reply(memory_client, write_borrow_call)
+            .expect("write borrow poll should succeed")
+            .expect("write borrow reply should be ready")
+            .result,
+        125
+    );
+    object::map(memory_client, write_borrow, VAddr::from(0xe0000usize), false)
+        .expect("memory IPC write borrow owner remap failed");
+    let write_borrow_returned = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0xe0000usize))
+        .expect("memory IPC returned write borrow translation failed");
+    unsafe {
+        assert_eq!(
+            write_borrow_returned.into_hhdm_mut::<u64>().read_volatile(),
+            0x5752_4954_444f_4e45
+        );
+    }
+    object::unmap(memory_client, write_borrow).expect("memory IPC write borrow owner unmap failed");
+    object::close_cap(memory_client, write_borrow).expect("memory IPC write borrow close failed");
+
     close_user_address_space(memory_client).expect("memory IPC client AS close failed");
     close_user_address_space(memory_server).expect("memory IPC server AS close failed");
 

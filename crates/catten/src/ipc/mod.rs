@@ -156,6 +156,14 @@ struct QueuedMessage {
     memory: Option<MemoryObjectCap>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MemoryBorrow {
+    owner: AddressSpaceId,
+    owner_cap: MemoryObjectCap,
+    borrower: AddressSpaceId,
+    borrower_cap: MemoryObjectCap,
+}
+
 #[derive(Debug)]
 struct Endpoint {
     owner: AddressSpaceId,
@@ -172,6 +180,7 @@ struct ReplyToken {
     server: AddressSpaceId,
     call: PendingCallId,
     consumed: bool,
+    borrow: Option<MemoryBorrow>,
 }
 
 #[derive(Debug)]
@@ -424,6 +433,7 @@ pub fn scalar_call(
             server,
             call,
             consumed: false,
+            borrow: None,
         },
     );
     let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
@@ -478,6 +488,100 @@ pub fn scalar_call_with_memory_move(
             server,
             call,
             consumed: false,
+            borrow: None,
+        },
+    );
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
+        token,
+    });
+
+    let observers = enqueue_scalar_with_memory(
+        &mut ipc,
+        endpoint_id,
+        caller,
+        opcode,
+        arg0,
+        Some(token_cap),
+        Some(server_memory_cap),
+    )?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(call_cap)
+}
+
+pub fn scalar_call_with_memory_borrow_read(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    scalar_call_with_memory_borrow(caller, connection_cap, opcode, arg0, memory_cap, false)
+}
+
+pub fn scalar_call_with_memory_borrow_write(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    scalar_call_with_memory_borrow(caller, connection_cap, opcode, arg0, memory_cap, true)
+}
+
+fn scalar_call_with_memory_borrow(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+    writable: bool,
+) -> Result<CapabilityId, IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = if writable {
+        crate::memory::object::lend_write(caller, memory_cap, server)
+    } else {
+        crate::memory::object::lend_read(caller, memory_cap, server)
+    }
+    .map_err(|_| IpcError::MemoryTransferFailed)?;
+
+    let call = ipc.alloc_call();
+    ipc.pending_calls.insert(
+        call,
+        PendingCall {
+            caller,
+            result: None,
+        },
+    );
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
+        call,
+    });
+
+    let token = ipc.alloc_reply();
+    ipc.reply_tokens.insert(
+        token,
+        ReplyToken {
+            server,
+            call,
+            consumed: false,
+            borrow: Some(MemoryBorrow {
+                owner: caller,
+                owner_cap: memory_cap,
+                borrower: server,
+                borrower_cap: server_memory_cap,
+            }),
         },
     );
     let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
@@ -714,6 +818,7 @@ fn complete_reply(
     if token.consumed {
         return Err(IpcError::ReplyAlreadyUsed);
     }
+    let borrow = token.borrow;
     let call_id = token.call;
     let caller = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.caller;
     let returned_memory_cap = if let Some(memory_cap) = returned_memory {
@@ -724,6 +829,9 @@ fn complete_reply(
     } else {
         None
     };
+    if let Some(borrow) = borrow {
+        revoke_memory_borrow(borrow).map_err(|_| IpcError::MemoryTransferFailed)?;
+    }
     let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
         ipc.as_caps(caller).insert(Capability::Connection {
             endpoint,
@@ -807,6 +915,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             token,
         } => {
             if let Some(token) = ipc.reply_tokens.remove(&token) {
+                if let Some(borrow) = token.borrow {
+                    let _ = revoke_memory_borrow(borrow);
+                }
                 if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
                     call.result = Some(ReplyValue {
                         result: REPLY_CANCELLED,
@@ -864,6 +975,9 @@ fn consume_reply_cap(
         _ => return,
     };
     if let Some(token) = ipc.reply_tokens.remove(&token) {
+        if let Some(borrow) = token.borrow {
+            let _ = revoke_memory_borrow(borrow);
+        }
         if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
             call.result = Some(ReplyValue {
                 result,
@@ -880,15 +994,22 @@ fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
         .iter()
         .filter_map(|(token_id, token)| {
             if token.call == call {
-                Some((*token_id, token.server, reply_cap_for_token(ipc, token.server, *token_id)))
+                Some((
+                    *token_id,
+                    token.server,
+                    token.borrow,
+                    reply_cap_for_token(ipc, token.server, *token_id),
+                ))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
-    for (token, server, reply_cap) in tokens {
+    for (token, server, borrow, reply_cap) in tokens {
         if let Some(reply_cap) = reply_cap {
-            cancel_queued_message_with_reply(ipc, server, reply_cap);
+            cancel_queued_message_with_reply(ipc, server, reply_cap, borrow);
+        } else if let Some(borrow) = borrow {
+            let _ = revoke_memory_borrow(borrow);
         }
         ipc.reply_tokens.remove(&token);
         ipc.remove_matching_caps(
@@ -924,6 +1045,7 @@ fn cancel_queued_message_with_reply(
     ipc: &mut IpcRegistry,
     server: AddressSpaceId,
     reply_cap: CapabilityId,
+    borrow: Option<MemoryBorrow>,
 ) {
     for endpoint in ipc.endpoints.values_mut() {
         if endpoint.owner != server {
@@ -933,11 +1055,27 @@ fn cancel_queued_message_with_reply(
             endpoint.queue.iter().position(|message| message.reply == Some(reply_cap))
         {
             if let Some(message) = endpoint.queue.remove(index) {
-                if let Some(memory_cap) = message.memory {
+                if let Some(borrow) = borrow {
+                    let _ = revoke_memory_borrow(borrow);
+                } else if let Some(memory_cap) = message.memory {
                     let _ = crate::memory::object::close_cap(server, memory_cap);
                 }
             }
             return;
         }
     }
+    if let Some(borrow) = borrow {
+        let _ = revoke_memory_borrow(borrow);
+    }
+}
+
+fn revoke_memory_borrow(
+    borrow: MemoryBorrow,
+) -> Result<(), crate::memory::object::MemoryObjectError> {
+    crate::memory::object::revoke_lend(
+        borrow.owner,
+        borrow.owner_cap,
+        borrow.borrower,
+        borrow.borrower_cap,
+    )
 }
