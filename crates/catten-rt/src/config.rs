@@ -46,3 +46,13 @@ pub fn write<T: Copy>(offset: usize, value: T) {
         core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value);
     }
 }
+
+/// Kernel-assigned address-space id for the current user image.
+pub fn asid() -> usize {
+    unsafe { read::<usize>(ASID_OFFSET) }
+}
+
+/// Pointer to the canonical output/status area at the start of the config page.
+pub fn output_ptr<T>() -> *mut T {
+    (CONFIG_VADDR + OUTPUT_OFFSET) as *mut T
+}

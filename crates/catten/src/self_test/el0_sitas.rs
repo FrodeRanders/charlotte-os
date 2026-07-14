@@ -53,8 +53,6 @@ const PAGE_SIZE: usize = 4096;
 const CONFIG_ASID_OFFSET: usize = 16;
 #[cfg(target_arch = "aarch64")]
 const CONFIG_ARGC_OFFSET: usize = 24;
-#[cfg(target_arch = "aarch64")]
-const CONFIG_ARGS_OFFSET: usize = 32;
 
 /// Offset of `_start` within the raw binary. The linker script places the
 /// image at VA 0x20000 but keeps `_start` first, so raw offset 0 maps to the
@@ -213,15 +211,13 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // catten-rt reads launch metadata from the config page. `basic_kv` uses
-        // Args([asid, lp_id]) and Input<0>; crt0 therefore enters cmain without
+        // catten-rt reads runtime metadata from the config page. `basic_kv`
+        // uses Args([]) and Input<0>; crt0 therefore enters cmain without
         // consuming a launch input stream.
         let config_base: *mut u8 = config_frame.into();
         unsafe {
             core::ptr::write_volatile(config_base.add(CONFIG_ASID_OFFSET) as *mut usize, asid);
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 2);
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET) as *mut u32, asid as u32);
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGS_OFFSET + 4) as *mut u32, 0);
+            core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 0);
         }
 
         // Spawn the EL0 thread.  The entry point is at offset ENTRY_OFFSET within
