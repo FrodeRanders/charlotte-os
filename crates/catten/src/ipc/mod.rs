@@ -716,12 +716,6 @@ fn complete_reply(
     }
     let call_id = token.call;
     let caller = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.caller;
-    let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
-        ipc.as_caps(caller).insert(Capability::Connection {
-            endpoint,
-            rights: endpoint_rights,
-        })
-    });
     let returned_memory_cap = if let Some(memory_cap) = returned_memory {
         Some(
             crate::memory::object::move_to(server, memory_cap, caller)
@@ -730,6 +724,12 @@ fn complete_reply(
     } else {
         None
     };
+    let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
+        ipc.as_caps(caller).insert(Capability::Connection {
+            endpoint,
+            rights: endpoint_rights,
+        })
+    });
     ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
     call.result = Some(ReplyValue {
@@ -790,8 +790,18 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         Capability::PendingCall {
             call,
         } => {
-            ipc.pending_calls.remove(&call);
-            remove_reply_tokens_for_call(&mut ipc, call);
+            if let Some(pending) = ipc.pending_calls.remove(&call) {
+                if let Some(reply) = pending.result {
+                    if let Some(returned_cap) = reply.cap {
+                        let _ = ipc.remove_cap(asid, returned_cap);
+                    }
+                    if let Some(memory_cap) = reply.memory {
+                        let _ = crate::memory::object::close_cap(asid, memory_cap);
+                    }
+                } else {
+                    cancel_queued_call(&mut ipc, call);
+                }
+            }
         }
         Capability::ReplyToken {
             token,
@@ -864,19 +874,22 @@ fn consume_reply_cap(
     }
 }
 
-fn remove_reply_tokens_for_call(ipc: &mut IpcRegistry, call: PendingCallId) {
+fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
     let tokens = ipc
         .reply_tokens
         .iter()
         .filter_map(|(token_id, token)| {
             if token.call == call {
-                Some((*token_id, token.server))
+                Some((*token_id, token.server, reply_cap_for_token(ipc, token.server, *token_id)))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
-    for (token, server) in tokens {
+    for (token, server, reply_cap) in tokens {
+        if let Some(reply_cap) = reply_cap {
+            cancel_queued_message_with_reply(ipc, server, reply_cap);
+        }
         ipc.reply_tokens.remove(&token);
         ipc.remove_matching_caps(
             server,
@@ -884,5 +897,47 @@ fn remove_reply_tokens_for_call(ipc: &mut IpcRegistry, call: PendingCallId) {
                 token,
             },
         );
+    }
+}
+
+fn reply_cap_for_token(
+    ipc: &IpcRegistry,
+    server: AddressSpaceId,
+    token: ReplyTokenId,
+) -> Option<CapabilityId> {
+    ipc.caps.get(&server).and_then(|caps| {
+        caps.caps.iter().find_map(|(cap_id, cap)| {
+            if *cap
+                == (Capability::ReplyToken {
+                    token,
+                })
+            {
+                Some(*cap_id)
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn cancel_queued_message_with_reply(
+    ipc: &mut IpcRegistry,
+    server: AddressSpaceId,
+    reply_cap: CapabilityId,
+) {
+    for endpoint in ipc.endpoints.values_mut() {
+        if endpoint.owner != server {
+            continue;
+        }
+        if let Some(index) =
+            endpoint.queue.iter().position(|message| message.reply == Some(reply_cap))
+        {
+            if let Some(message) = endpoint.queue.remove(index) {
+                if let Some(memory_cap) = message.memory {
+                    let _ = crate::memory::object::close_cap(server, memory_cap);
+                }
+            }
+            return;
+        }
     }
 }

@@ -174,6 +174,29 @@ pub fn test_endpoint_ipc() {
     )
     .expect("memory connection_delegate should return client connection cap");
 
+    let cancelled_moved_call =
+        object::allocate(memory_client, 1).expect("memory IPC cancel allocation failed");
+    let cancelled_pending = ipc::scalar_call_with_memory_move(
+        memory_client,
+        memory_connection,
+        43,
+        0x10,
+        cancelled_moved_call,
+    )
+    .expect("memory IPC cancellable call move should enqueue");
+    ipc::close_cap(memory_client, cancelled_pending)
+        .expect("memory IPC queued pending call close should succeed");
+    assert_eq!(
+        ipc::receive(memory_server, memory_endpoint),
+        Err(IpcError::NoMessage),
+        "closing an undelivered memory call should remove the queued request"
+    );
+    assert_eq!(
+        object::info(memory_client, cancelled_moved_call),
+        Err(object::MemoryObjectError::UnknownCapability),
+        "closing an undelivered moved-memory call consumes the moved object"
+    );
+
     let moved_send = object::allocate(memory_client, 1).expect("memory IPC allocation failed");
     object::map(memory_client, moved_send, VAddr::from(0x40000usize), true)
         .expect("memory IPC client send map failed");
