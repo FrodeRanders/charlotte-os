@@ -224,14 +224,9 @@ impl LocalIntCtlrIfce for GicV3 {
     /// reduces to `(1 << lp_id)`, but the full encoding works for any
     /// cluster/socket layout.
     ///
-    /// NOTE: on this development host (QEMU GICv3 emulation), cross-core SGI
-    /// delivery does not work regardless of encoding (IRM broadcast also
-    /// fails). Self-targeted SGIs and per-core timer IRQs work on all LPs.
-    /// The encoding below is correct per the Arm GICv3 specification and is
-    /// expected to work on real hardware or a fixed QEMU. The upstream GIC
-    /// spec defines the current encoding and should produce the correct SGI
-    /// values — the issue is confirmed to be with the emulator, not with the
-    /// encoding.
+    /// Cross-core SGI delivery is exercised by the SMP2 boot gate: kernel
+    /// ShardMailbox fan-out, EL0 cross-LP completion, and EL0 ping-pong all
+    /// require LP0 <-> LP1 wakeups to be delivered through this path.
     fn send_unicast_ipi(
         target_lp: LpId,
         target_vector: InterruptVectorNum,

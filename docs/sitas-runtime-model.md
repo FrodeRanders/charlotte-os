@@ -725,10 +725,11 @@ The review also exposed the line between "executable spike" and "OS ABI":
    running thread/trap context and treats `TrapFrame.asid` as the sole authority
    for address-space-scoped operations. Userspace launch metadata therefore
    carries application arguments and buffers, not address-space identity.
-2. **CQ delivery must become non-lossy.** The CQ ring currently increments an
-   overflow counter when full. The model requires the opposite contract:
-   completions are either delivered, retained in a kernel backlog, or explicit
-   backpressure is returned before submission. A terminal completion must never
+2. **CQ delivery must remain non-lossy.** CharlotteOS now retains CQ entries
+   that do not fit in the shared userspace ring in a per-address-space kernel
+   backlog and retries delivery when the CQ is queried or another completion is
+   posted. The ring `overflow` field is therefore pressure telemetry, not a
+   lost-completion count. Keep this invariant: a terminal completion must never
    be silently lost from the userspace-visible completion path.
 3. **Polling must return ownership/result data.** A syscall-level poll that
    drains a completion but discards the result violates the completion-capability

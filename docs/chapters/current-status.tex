@@ -14,14 +14,18 @@
         with a user thread.)
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
-        integrated with AS.
+        integrated with AS, non-lossy CQ overflow backlog.
     \item \textbf{Syscall dispatch:} AArch64 SVC handler for completion
         operations, thread exit, LP-pinned spawn, CQ wait, and mailbox
         capability operations. The caller's address space is taken from
         \texttt{TrapFrame.asid}, never from a userspace ASID parameter. x86-64
         SYSCALL trampoline exists, connected to the dispatch table.
     \item \textbf{IPI:} bounded per-LP queues, backpressure, typed closure
-        dispatch, both architectures unstubbed.
+        dispatch, both architectures unstubbed. Cross-core SGI delivery works
+        on QEMU AArch64 GICv3 with \texttt{-smp 2}; the boot gate exercises
+        kernel \texttt{ShardMailbox} fan-out, EL0 cross-LP completion, and EL0
+        ping-pong over mailbox endpoint capabilities on both the default
+        accelerator path and explicit TCG.
     \item \textbf{ShardLocal<T> / ShardMailbox<M>:} implemented and tested
         in-kernel.
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
@@ -47,14 +51,6 @@
         per-segment page permissions and zero-filled BSS. It is still a
         fixed-address self-test harness for config, CQ, input, and heap pages,
         not a general process loader with argv/env/auxv-style setup.
-    \item \textbf{Multi-LP cross-core IPI:} QEMU GICv3 SGI delivery does not
-        work cross-core on this host (both HVF and TCG tested). Self-targeted
-        SGIs and per-core timers work on all LPs. Kernel SGI encoding is
-        correct; issue is confirmed in QEMU 11.0.2's GICv3 model.
-    \item \textbf{CQ completion delivery:} the CQ ring is mapped into user
-        address spaces and consumed by the sitas backend, but overflow handling
-        still needs the non-lossy backlog/backpressure behavior required for a
-        production ABI.
 \end{itemize}
 
 \section{Repositories and branches}

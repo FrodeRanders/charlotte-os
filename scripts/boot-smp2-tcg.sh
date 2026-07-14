@@ -41,4 +41,6 @@ wait $QPID 2>/dev/null || true
 echo "=== QEMU version info ==="
 qemu-system-aarch64 --version 2>&1 | head -1
 echo "=== TCG RESULT ==="
-cat -v /tmp/catten-smp2-tcg.log 2>/dev/null | sed 's/\^\[\[[0-9;]*[A-Za-z]//g' | tr -d '\r' | grep -aE "MPIDR|SGIDBG|xLP.*RECEIVED|xLP.*timed|panic" | head -20
+LC_ALL=C tr -d '\r' < /tmp/catten-smp2-tcg.log 2>/dev/null \
+    | grep -aE "MPIDR|Testing Complete|xLP.*received|xLP.*timed|EL0 xLP.*SUCCESS|PP.*SUCCESS|sitas.*SUCCESS|panic|ABORT" \
+    | head -40

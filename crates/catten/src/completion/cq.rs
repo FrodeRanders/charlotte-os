@@ -12,7 +12,7 @@
 //! 0x000   4     head (kernel writes, userspace reads)
 //! 0x004   4     tail (userspace writes, kernel reads)
 //! 0x008   4     capacity (N entries, immutable after init)
-//! 0x00C   4     overflow (count of entries dropped when full)
+//! 0x00C   4     overflow (count of producer writes that found the ring full)
 //! 0x010   N*16  entry array
 //! ```
 //!
