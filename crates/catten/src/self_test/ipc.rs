@@ -431,6 +431,132 @@ pub fn test_endpoint_ipc() {
     close_user_address_space(memory_client).expect("memory IPC client AS close failed");
     close_user_address_space(memory_server).expect("memory IPC server AS close failed");
 
+    let teardown_server = create_ipc_memory_test_address_space("teardown server");
+    let teardown_client = create_ipc_memory_test_address_space("teardown client");
+    let teardown_endpoint = ipc::endpoint_create(teardown_server, 0x4d45_4d54, 1, 4)
+        .expect("memory IPC teardown endpoint_create failed");
+    let teardown_connection = ipc::connection_delegate(
+        teardown_server,
+        teardown_endpoint,
+        teardown_client,
+        ConnectionRights::CALL,
+    )
+    .expect("memory IPC teardown connection_delegate failed");
+
+    let teardown_moved =
+        object::allocate(teardown_client, 1).expect("memory IPC teardown move allocation failed");
+    let teardown_call = ipc::scalar_call_with_memory_move(
+        teardown_client,
+        teardown_connection,
+        48,
+        0x55,
+        teardown_moved,
+    )
+    .expect("memory IPC teardown moved call failed");
+    close_user_address_space(teardown_server).expect("memory IPC teardown server AS close failed");
+    let teardown_reply = ipc::poll_reply(teardown_client, teardown_call)
+        .expect("memory IPC teardown moved poll failed")
+        .expect("memory IPC teardown moved call should complete");
+    assert_eq!(
+        teardown_reply.result,
+        ipc::REPLY_ENDPOINT_CLOSED,
+        "server teardown must complete queued moved-memory calls as endpoint-closed"
+    );
+    assert_eq!(teardown_reply.memory, None);
+    assert_eq!(
+        object::info(teardown_client, teardown_moved),
+        Err(object::MemoryObjectError::UnknownCapability),
+        "server teardown must not resurrect moved-from memory caps"
+    );
+    assert_eq!(
+        ipc::scalar_call(teardown_client, teardown_connection, 49, 0x56),
+        Err(IpcError::EndpointClosed),
+        "connection to torn-down endpoint must report endpoint closed"
+    );
+    close_user_address_space(teardown_client).expect("memory IPC teardown client AS close failed");
+
+    let death_server = create_ipc_memory_test_address_space("death server");
+    let death_client = create_ipc_memory_test_address_space("death client");
+    let death_endpoint = ipc::endpoint_create(death_server, 0x4d45_4454, 1, 4)
+        .expect("memory IPC death endpoint_create failed");
+    let death_connection = ipc::connection_delegate(
+        death_server,
+        death_endpoint,
+        death_client,
+        ConnectionRights::CALL,
+    )
+    .expect("memory IPC death connection_delegate failed");
+
+    let death_borrow =
+        object::allocate(death_client, 1).expect("memory IPC death borrow allocation failed");
+    object::map(death_client, death_borrow, VAddr::from(0xf0000usize), true)
+        .expect("memory IPC death client seed map failed");
+    let death_seed_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(death_client)
+        .expect("memory IPC death client AS missing")
+        .translate_address(VAddr::from(0xf0000usize))
+        .expect("memory IPC death seed translation failed");
+    unsafe {
+        death_seed_frame.into_hhdm_mut::<u64>().write_volatile(0x4445_4154_4849_4e49);
+    }
+    object::unmap(death_client, death_borrow).expect("memory IPC death client seed unmap failed");
+    let death_call = ipc::scalar_call_with_memory_borrow_write(
+        death_client,
+        death_connection,
+        50,
+        0x57,
+        death_borrow,
+    )
+    .expect("memory IPC death write borrow call failed");
+    let death_message =
+        ipc::receive(death_server, death_endpoint).expect("memory IPC death receive failed");
+    let death_server_borrow =
+        death_message.memory.expect("memory IPC death call should carry memory");
+    object::map(death_server, death_server_borrow, VAddr::from(0x100000usize), true)
+        .expect("memory IPC death server borrow map failed");
+    let death_server_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(death_server)
+        .expect("memory IPC death server AS missing")
+        .translate_address(VAddr::from(0x100000usize))
+        .expect("memory IPC death server translation failed");
+    unsafe {
+        assert_eq!(
+            death_server_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x4445_4154_4849_4e49
+        );
+        death_server_frame.into_hhdm_mut::<u64>().write_volatile(0x4445_4154_4844_4f4e);
+    }
+    close_user_address_space(death_server).expect("memory IPC death server AS close failed");
+    let death_reply = ipc::poll_reply(death_client, death_call)
+        .expect("memory IPC death poll failed")
+        .expect("memory IPC death delivered call should complete");
+    assert_eq!(
+        death_reply.result,
+        ipc::REPLY_CANCELLED,
+        "server death must cancel delivered calls with outstanding reply tokens"
+    );
+    object::map(death_client, death_borrow, VAddr::from(0x110000usize), true)
+        .expect("memory IPC death owner remap after server death failed");
+    let death_owner_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(death_client)
+        .expect("memory IPC death client AS missing")
+        .translate_address(VAddr::from(0x110000usize))
+        .expect("memory IPC death owner translation failed");
+    unsafe {
+        assert_eq!(
+            death_owner_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x4445_4154_4844_4f4e
+        );
+    }
+    object::unmap(death_client, death_borrow)
+        .expect("memory IPC death owner unmap after server death failed");
+    object::close_cap(death_client, death_borrow)
+        .expect("memory IPC death owner close after server death failed");
+    close_user_address_space(death_client).expect("memory IPC death client AS close failed");
+
     ipc::close_address_space(client);
     ipc::close_address_space(server);
     logln!("Endpoint IPC subsystem tests passed.");

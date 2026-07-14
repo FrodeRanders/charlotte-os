@@ -49,8 +49,9 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     same-address-space syscall dispatch. They also cover kernel-internal
     moved and lent memory IPC plus a real EL0 two-domain memory IPC
     smoke test for move, read-borrow, write-borrow, queued
-    moved/borrowed-memory cancellation, and delivered borrowed-memory
-    cancellation.
+    moved/borrowed-memory cancellation, delivered borrowed-memory
+    cancellation, and server teardown with queued or delivered
+    memory-bearing calls.
 
 This is intentionally not the full Xous-style model yet. The first
 version does not include a userspace name service, arbitrary
@@ -103,6 +104,11 @@ Current evidence:
     caller closes the pending-call cap; the owner regains mapping
     authority while the server's borrowed memory cap and reply token are
     revoked.
+-   Kernel-internal adversarial tests cover server teardown for
+    memory-bearing calls: queued moved-memory calls complete as
+    `EndpointClosed` without reviving the moved-from cap, and delivered
+    write-borrow calls complete as `Cancelled` while revoking the server
+    borrow and preserving the server's last write for the owner.
 
 ------------------------------------------------------------------------
 
