@@ -25,7 +25,10 @@
 //! ```
 #![no_std]
 
-use core::arch::asm;
+use core::{
+    arch::asm,
+    ops::BitOr,
+};
 
 // ---- op codes --------------------------------------------------------------
 
@@ -36,6 +39,55 @@ pub enum OpCode {
     Nop = 0,
     Read = 1,
     Write = 2,
+}
+
+// ---- endpoint IPC constants -----------------------------------------------
+
+pub type IpcStatusCode = u64;
+
+pub mod ipc_status {
+    use super::IpcStatusCode;
+
+    pub const OK: IpcStatusCode = 0;
+    pub const QUEUE_FULL: IpcStatusCode = 1;
+    pub const NO_MESSAGE: IpcStatusCode = 2;
+    pub const PENDING: IpcStatusCode = 3;
+    pub const UNKNOWN_CAPABILITY: IpcStatusCode = 4;
+    pub const WRONG_TYPE: IpcStatusCode = 5;
+    pub const PERMISSION_DENIED: IpcStatusCode = 6;
+    pub const ENDPOINT_CLOSED: IpcStatusCode = 7;
+    pub const REPLY_ALREADY_USED: IpcStatusCode = 8;
+}
+
+pub const IPC_REPLY_CANCELLED: i64 = -3;
+pub const IPC_REPLY_ENDPOINT_CLOSED: i64 = -7;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpcRights(u32);
+
+impl IpcRights {
+    pub const ALL: Self =
+        Self(Self::SEND.0 | Self::CALL.0 | Self::RECEIVE.0 | Self::MINT_CONNECTION.0);
+    pub const CALL: Self = Self(1 << 1);
+    pub const MINT_CONNECTION: Self = Self(1 << 3);
+    pub const RECEIVE: Self = Self(1 << 2);
+    pub const SEND: Self = Self(1 << 0);
+
+    pub const fn from_bits(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+}
+
+impl BitOr for IpcRights {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
 }
 
 // ---- raw svc primitives ----------------------------------------------------
@@ -94,13 +146,19 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpcMessage {
-    pub status: u64,
+    pub status: IpcStatusCode,
     pub opcode: u32,
     pub arg0: u64,
     pub reply: u64,
     pub sender: u64,
     pub interface: u64,
     pub version: u32,
+}
+
+impl IpcMessage {
+    pub const fn is_ok(self) -> bool {
+        self.status == ipc_status::OK
+    }
 }
 
 /// Receive a scalar endpoint IPC message from `endpoint`.
@@ -265,8 +323,8 @@ pub unsafe fn ipc_endpoint_create(interface: u64, version: u32, capacity: usize)
 
 /// Mint a same-address-space connection from an endpoint cap.
 #[inline(always)]
-pub unsafe fn ipc_connect(endpoint: u64, rights: u32) -> u64 {
-    unsafe { svc3(19, endpoint, rights as u64, 0) }
+pub unsafe fn ipc_connect(endpoint: u64, rights: IpcRights) -> u64 {
+    unsafe { svc3(19, endpoint, rights.bits() as u64, 0) }
 }
 
 /// Send a scalar message through a connection. Returns status code.
