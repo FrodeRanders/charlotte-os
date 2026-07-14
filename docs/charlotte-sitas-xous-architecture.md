@@ -47,8 +47,8 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     queue backpressure, invalid-cap/type failures, scalar call/reply,
     reply-token single use, teardown, blocking endpoint receive, and
     same-address-space syscall dispatch. They also cover kernel-internal
-    moved and lent memory IPC plus a real EL0 two-domain memory IPC
-    smoke test for move, read-borrow, write-borrow, queued
+    copied, moved, and lent memory IPC plus a real EL0 two-domain memory
+    IPC smoke test for move, read-borrow, write-borrow, queued
     moved/borrowed-memory cancellation, delivered borrowed-memory
     cancellation, and server teardown with queued or delivered
     memory-bearing calls.
@@ -109,6 +109,10 @@ Current evidence:
     `EndpointClosed` without reviving the moved-from cap, and delivered
     write-borrow calls complete as `Cancelled` while revoking the server
     borrow and preserving the server's last write for the owner.
+-   The current tree adds `Copy` memory IPC at the kernel/syscall layer:
+    the receiver gets a new memory object containing a byte copy, while
+    the sender keeps its original cap and receiver writes do not mutate
+    the original.
 
 ------------------------------------------------------------------------
 

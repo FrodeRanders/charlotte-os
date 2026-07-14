@@ -24,15 +24,15 @@ use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
         lp::{
-            ops::get_lp_id,
             LpId,
+            ops::get_lp_id,
         },
     },
     ipc,
     memory::{
-        object,
         AddressSpaceId,
         VAddr,
+        object,
     },
 };
 
@@ -129,6 +129,10 @@ pub mod call_no {
     pub const IPC_SCALAR_CALL_BORROW_READ: u16 = 35;
     /// Call with writable borrowed memory cap x4.
     pub const IPC_SCALAR_CALL_BORROW_WRITE: u16 = 36;
+    /// Send scalar message with copied memory cap x4.
+    pub const IPC_SCALAR_SEND_COPY: u16 = 37;
+    /// Call with copied memory cap x4. Returns pending-call cap.
+    pub const IPC_SCALAR_CALL_COPY: u16 = 38;
 }
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
@@ -180,6 +184,8 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_REPLY_MOVE => sys_ipc_reply_move(frame),
         call_no::IPC_SCALAR_CALL_BORROW_READ => sys_ipc_scalar_call_borrow_read(frame),
         call_no::IPC_SCALAR_CALL_BORROW_WRITE => sys_ipc_scalar_call_borrow_write(frame),
+        call_no::IPC_SCALAR_SEND_COPY => sys_ipc_scalar_send_copy(frame),
+        call_no::IPC_SCALAR_CALL_COPY => sys_ipc_scalar_call_copy(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -307,8 +313,8 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     use crate::cpu::scheduler::{
         system_scheduler::SYSTEM_SCHEDULER,
         threads::{
-            Thread,
             MASTER_THREAD_TABLE,
+            Thread,
         },
     };
     let asid = caller_asid(frame);
@@ -769,6 +775,29 @@ fn sys_ipc_scalar_call_borrow_write(frame: &mut TrapFrame) {
             .unwrap_or(0);
 }
 
+fn sys_ipc_scalar_send_copy(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] = match ipc::scalar_send_with_memory_copy(asid, connection, opcode, arg0, memory)
+    {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
+}
+
+fn sys_ipc_scalar_call_copy(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let memory = frame.regs[4];
+    frame.regs[0] =
+        ipc::scalar_call_with_memory_copy(asid, connection, opcode, arg0, memory).unwrap_or(0);
+}
+
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     use alloc::sync::{
         Arc,
@@ -785,8 +814,8 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             time::duration::ExtDuration,
         },
         timers::{
-            TimerEvent,
             TIMER_QUEUES,
+            TimerEvent,
         },
     };
 

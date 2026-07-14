@@ -27,8 +27,8 @@ use crate::{
         Observer,
     },
     memory::{
-        object::MemoryObjectCap,
         AddressSpaceId,
+        object::MemoryObjectCap,
     },
 };
 
@@ -385,6 +385,42 @@ pub fn scalar_send_with_memory_move(
     Ok(())
 }
 
+pub fn scalar_send_with_memory_copy(
+    sender: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(sender, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::SEND) {
+        return Err(IpcError::PermissionDenied);
+    }
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = crate::memory::object::copy_to(sender, memory_cap, server)
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+    let observers = enqueue_scalar_with_memory(
+        &mut ipc,
+        endpoint_id,
+        sender,
+        opcode,
+        arg0,
+        None,
+        Some(server_memory_cap),
+    )?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
+}
+
 pub fn scalar_call(
     caller: AddressSpaceId,
     connection_cap: CapabilityId,
@@ -467,6 +503,69 @@ pub fn scalar_call_with_memory_move(
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
     let server_memory_cap = crate::memory::object::move_to(caller, memory_cap, server)
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+
+    let call = ipc.alloc_call();
+    ipc.pending_calls.insert(
+        call,
+        PendingCall {
+            caller,
+            result: None,
+        },
+    );
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
+        call,
+    });
+
+    let token = ipc.alloc_reply();
+    ipc.reply_tokens.insert(
+        token,
+        ReplyToken {
+            server,
+            call,
+            consumed: false,
+            borrow: None,
+        },
+    );
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
+        token,
+    });
+
+    let observers = enqueue_scalar_with_memory(
+        &mut ipc,
+        endpoint_id,
+        caller,
+        opcode,
+        arg0,
+        Some(token_cap),
+        Some(server_memory_cap),
+    )?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(call_cap)
+}
+
+pub fn scalar_call_with_memory_copy(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    memory_cap: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let server_memory_cap = crate::memory::object::copy_to(caller, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
 
     let call = ipc.alloc_call();

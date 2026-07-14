@@ -164,6 +164,8 @@ unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
             33 => asm!("svc #33", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             35 => asm!("svc #35", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             36 => asm!("svc #36", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            37 => asm!("svc #37", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            38 => asm!("svc #38", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -582,4 +584,21 @@ pub unsafe fn ipc_scalar_call_borrow_write(
     memory: u64,
 ) -> u64 {
     unsafe { svc4(36, connection, opcode as u64, arg0, memory) }
+}
+
+/// Send a scalar message with a copied memory object.
+#[inline(always)]
+pub unsafe fn ipc_scalar_send_copy(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    memory: u64,
+) -> IpcStatusCode {
+    unsafe { svc4(37, connection, opcode as u64, arg0, memory) }
+}
+
+/// Call through a connection with a copied memory object.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+    unsafe { svc4(38, connection, opcode as u64, arg0, memory) }
 }

@@ -12,19 +12,19 @@ use alloc::{
 
 use crate::{
     cpu::isa::interface::memory::{
-        address::Address,
         AddressSpaceInterface,
+        address::Address,
     },
     memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceId,
+        PHYSICAL_FRAME_ALLOCATOR,
         linear::{
             MemoryMapping,
             PageType,
             VAddr,
         },
         physical::PAddr,
-        AddressSpaceId,
-        ADDRESS_SPACE_TABLE,
-        PHYSICAL_FRAME_ALLOCATOR,
     },
 };
 
@@ -370,6 +370,80 @@ pub fn move_to(
     let target_cap = registry.caps_for_mut(target).insert(MemoryCap {
         object: cap_entry.object,
         rights: cap_entry.rights,
+    });
+    Ok(target_cap)
+}
+
+pub fn copy_to(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+) -> Result<MemoryObjectCap, MemoryObjectError> {
+    if owner == target {
+        return Err(MemoryObjectError::WrongOwner);
+    }
+    validate_address_space(target)?;
+
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(owner, cap)?;
+    if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
+        return Err(MemoryObjectError::MissingRight);
+    }
+
+    let source_frames = {
+        let object =
+            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        if object.owner != owner {
+            return Err(MemoryObjectError::WrongOwner);
+        }
+        if matches!(object.lend_state, LendState::Write { .. }) {
+            return Err(MemoryObjectError::LendingActive);
+        }
+        if object.mappings.values().any(|mapping| mapping.writable) {
+            return Err(MemoryObjectError::AlreadyMapped);
+        }
+        object.frames.clone()
+    };
+
+    let mut copied_frames = Vec::new();
+    {
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        for source in source_frames {
+            match allocator.allocate_frame() {
+                Ok(frame) => {
+                    let source_ptr: *const u8 = source.into();
+                    let target_ptr: *mut u8 = frame.into();
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(source_ptr, target_ptr, PAGE_SIZE);
+                    }
+                    copied_frames.push(frame);
+                }
+                Err(_) => {
+                    for frame in copied_frames.drain(..) {
+                        allocator
+                            .deallocate_frame(frame)
+                            .map_err(|_| MemoryObjectError::FrameFreeFailed)?;
+                    }
+                    return Err(MemoryObjectError::FrameAllocFailed);
+                }
+            }
+        }
+    }
+
+    let object_id = registry.next_object;
+    registry.next_object += 1;
+    registry.objects.insert(
+        object_id,
+        MemoryObject {
+            owner: target,
+            frames: copied_frames,
+            mappings: BTreeMap::new(),
+            lend_state: LendState::None,
+        },
+    );
+    let target_cap = registry.caps_for_mut(target).insert(MemoryCap {
+        object: object_id,
+        rights: MemoryObjectRights::ALL,
     });
     Ok(target_cap)
 }

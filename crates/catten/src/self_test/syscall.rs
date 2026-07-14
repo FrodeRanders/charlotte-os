@@ -12,8 +12,8 @@ use crate::{
     cpu::{
         isa::{
             interface::memory::{
-                address::PhysicalAddress,
                 AddressSpaceInterface,
+                address::PhysicalAddress,
             },
             lp::LpId,
             memory::paging::AddressSpace,
@@ -22,15 +22,15 @@ use crate::{
     },
     logln,
     memory::{
-        close_user_address_space,
-        VAddr,
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
+        VAddr,
+        close_user_address_space,
     },
     syscall::{
         self,
-        call_no,
         TrapFrame,
+        call_no,
     },
 };
 
@@ -432,6 +432,114 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::MEMORY_CLOSE);
         assert_eq!(f.regs[0], 0, "MEMORY_CLOSE should close returned memory");
     }
+
+    let copy_cap = {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, 1, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_ALLOC);
+        assert_ne!(f.regs[0], 0, "copy MEMORY_ALLOC should return cap");
+        f.regs[0]
+    };
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_cap, 0x70000, 1);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_MAP);
+        assert_eq!(f.regs[0], 0, "copy MEMORY_MAP should map original");
+    }
+    let copy_seed_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_owner)
+        .expect("syscall memory owner AS missing")
+        .translate_address(VAddr::from(0x70000usize))
+        .expect("syscall memory copy seed translation failed");
+    unsafe {
+        copy_seed_frame.into_hhdm_mut::<u64>().write_volatile(0x5359_5343_434f_5059);
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_UNMAP);
+        assert_eq!(f.regs[0], 0, "copy MEMORY_UNMAP should unmap original");
+    }
+    let copy_call = {
+        let mut f =
+            synthetic_trap_frame4_in(memory_owner, 0, memory_connection, 52, 0x5678, copy_cap);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL_COPY);
+        assert_ne!(f.regs[0], 0, "IPC_SCALAR_CALL_COPY should return pending-call cap");
+        f.regs[0]
+    };
+    let (copy_reply, server_copy_cap) = {
+        let mut f = synthetic_trap_frame_in(memory_server, 0, memory_endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
+        assert_eq!(f.regs[0], 0, "IPC_RECV should receive copied memory call");
+        assert_eq!(f.regs[1], 52);
+        assert_ne!(f.regs[3], 0, "copied memory call should include reply token");
+        assert_ne!(f.regs[7], 0, "copied memory call should include memory cap");
+        (f.regs[3], f.regs[7])
+    };
+    {
+        let mut f = synthetic_trap_frame_in(memory_server, 0, server_copy_cap, 0x80000, 1);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_MAP);
+        assert_eq!(f.regs[0], 0, "server MEMORY_MAP should map copied memory");
+    }
+    let server_copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("syscall memory server AS missing")
+        .translate_address(VAddr::from(0x80000usize))
+        .expect("syscall memory copy server translation failed");
+    unsafe {
+        assert_eq!(server_copy_frame.into_hhdm_mut::<u64>().read_volatile(), 0x5359_5343_434f_5059);
+        server_copy_frame.into_hhdm_mut::<u64>().write_volatile(0x5359_5343_434f_5032);
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_server, 0, server_copy_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_UNMAP);
+        assert_eq!(f.regs[0], 0, "server MEMORY_UNMAP should unmap copied memory");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_server, 0, server_copy_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_CLOSE);
+        assert_eq!(f.regs[0], 0, "server MEMORY_CLOSE should close copied memory");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_server, 0, copy_reply, 89, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY should complete copied memory call");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_call, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_REPLY_POLL);
+        assert_eq!(f.regs[0], 0, "IPC_REPLY_POLL should report copy reply ready");
+        assert_eq!(f.regs[1] as i64, 89);
+        assert_eq!(f.regs[2], 0, "copy reply should not return a connection cap");
+        assert_eq!(f.regs[3], 0, "copy reply should not return a memory cap");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_cap, 0x90000, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_MAP);
+        assert_eq!(f.regs[0], 0, "owner MEMORY_MAP should still map original after copy");
+    }
+    let copy_original_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_owner)
+        .expect("syscall memory owner AS missing")
+        .translate_address(VAddr::from(0x90000usize))
+        .expect("syscall memory copy original translation failed");
+    unsafe {
+        assert_eq!(
+            copy_original_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x5359_5343_434f_5059
+        );
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_UNMAP);
+        assert_eq!(f.regs[0], 0, "owner MEMORY_UNMAP should unmap original copy source");
+    }
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, copy_cap, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_CLOSE);
+        assert_eq!(f.regs[0], 0, "owner MEMORY_CLOSE should close original copy source");
+    }
+
     close_user_address_space(memory_owner).expect("syscall memory owner AS close failed");
     close_user_address_space(memory_server).expect("syscall memory server AS close failed");
 

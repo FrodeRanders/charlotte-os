@@ -3,8 +3,8 @@
 use crate::{
     cpu::isa::{
         interface::memory::{
-            address::PhysicalAddress,
             AddressSpaceInterface,
+            address::PhysicalAddress,
         },
         memory::paging::AddressSpace,
     },
@@ -15,12 +15,12 @@ use crate::{
     },
     logln,
     memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceId,
+        KERNEL_AS,
+        VAddr,
         close_user_address_space,
         object,
-        AddressSpaceId,
-        VAddr,
-        ADDRESS_SPACE_TABLE,
-        KERNEL_AS,
     },
 };
 
@@ -234,6 +234,73 @@ pub fn test_endpoint_ipc() {
     object::unmap(memory_server, server_moved_cap).expect("memory IPC server send unmap failed");
     object::close_cap(memory_server, server_moved_cap)
         .expect("memory IPC server send close failed");
+
+    let copied_send =
+        object::allocate(memory_client, 1).expect("memory IPC copy allocation failed");
+    object::map(memory_client, copied_send, VAddr::from(0x51000usize), true)
+        .expect("memory IPC client copy map failed");
+    let client_copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x51000usize))
+        .expect("memory IPC client copy translation failed");
+    unsafe {
+        client_copy_frame.into_hhdm_mut::<u64>().write_volatile(0x4d45_4d49_434f_5059);
+    }
+    object::unmap(memory_client, copied_send).expect("memory IPC client copy unmap failed");
+    ipc::scalar_send_with_memory_copy(memory_client, memory_connection, 45, 0x12, copied_send)
+        .expect("memory IPC send copy should enqueue");
+    object::map(memory_client, copied_send, VAddr::from(0x52000usize), false)
+        .expect("memory IPC original copy remap failed");
+    let original_copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x52000usize))
+        .expect("memory IPC original copy translation failed");
+    unsafe {
+        assert_eq!(
+            original_copy_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x4d45_4d49_434f_5059
+        );
+    }
+    object::unmap(memory_client, copied_send).expect("memory IPC original copy unmap failed");
+    let copied_message =
+        ipc::receive(memory_server, memory_endpoint).expect("memory IPC copy receive failed");
+    let server_copy_cap = copied_message.memory.expect("memory IPC copy should carry cap");
+    assert_eq!(copied_message.reply, None);
+    object::map(memory_server, server_copy_cap, VAddr::from(0x53000usize), true)
+        .expect("memory IPC server copy map failed");
+    let server_copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_server)
+        .expect("memory IPC server AS missing")
+        .translate_address(VAddr::from(0x53000usize))
+        .expect("memory IPC server copy translation failed");
+    unsafe {
+        assert_eq!(server_copy_frame.into_hhdm_mut::<u64>().read_volatile(), 0x4d45_4d49_434f_5059);
+        server_copy_frame.into_hhdm_mut::<u64>().write_volatile(0x4d45_4d49_434f_5032);
+    }
+    object::unmap(memory_server, server_copy_cap).expect("memory IPC server copy unmap failed");
+    object::close_cap(memory_server, server_copy_cap).expect("memory IPC server copy close failed");
+    object::map(memory_client, copied_send, VAddr::from(0x54000usize), false)
+        .expect("memory IPC original copy remap after receiver write failed");
+    let original_after_copy_frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(memory_client)
+        .expect("memory IPC client AS missing")
+        .translate_address(VAddr::from(0x54000usize))
+        .expect("memory IPC original after copy translation failed");
+    unsafe {
+        assert_eq!(
+            original_after_copy_frame.into_hhdm_mut::<u64>().read_volatile(),
+            0x4d45_4d49_434f_5059,
+            "receiver writes to a copied memory object must not modify the sender original"
+        );
+    }
+    object::unmap(memory_client, copied_send).expect("memory IPC original copy final unmap failed");
+    object::close_cap(memory_client, copied_send).expect("memory IPC original copy close failed");
 
     let moved_call = object::allocate(memory_client, 1).expect("memory IPC call allocation failed");
     object::map(memory_client, moved_call, VAddr::from(0x60000usize), true)
@@ -546,10 +613,7 @@ pub fn test_endpoint_ipc() {
         .translate_address(VAddr::from(0x110000usize))
         .expect("memory IPC death owner translation failed");
     unsafe {
-        assert_eq!(
-            death_owner_frame.into_hhdm_mut::<u64>().read_volatile(),
-            0x4445_4154_4844_4f4e
-        );
+        assert_eq!(death_owner_frame.into_hhdm_mut::<u64>().read_volatile(), 0x4445_4154_4844_4f4e);
     }
     object::unmap(death_client, death_borrow)
         .expect("memory IPC death owner unmap after server death failed");
