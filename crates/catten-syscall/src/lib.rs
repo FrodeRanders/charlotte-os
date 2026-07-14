@@ -210,6 +210,40 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     }
 }
 
+/// Block until an endpoint IPC message is readable, then receive it.
+#[inline(always)]
+unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    unsafe {
+        asm!(
+            "svc #27",
+            lateout("x0") status,
+            inlateout("x1") endpoint => opcode,
+            lateout("x2") arg0,
+            lateout("x3") reply,
+            lateout("x4") sender,
+            lateout("x5") interface,
+            lateout("x6") version,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        interface,
+        version: version as u32,
+    }
+}
+
 // ---- public syscall wrappers ------------------------------------------------
 
 /// Submit an async operation.  Returns a completion capability.
@@ -229,31 +263,41 @@ pub unsafe fn submit_read(buf_ptr: usize, buf_len: usize) -> u64 {
 /// Post a terminal result for a completion capability.
 #[inline(always)]
 pub unsafe fn complete(cap: u64, result_code: i64) {
-    unsafe { svc3(2, cap, result_code as u64, 0); }
+    unsafe {
+        svc3(2, cap, result_code as u64, 0);
+    }
 }
 
 /// Non-blocking check: drain the completion if it is terminal.
 #[inline(always)]
 pub unsafe fn poll(cap: u64) {
-    unsafe { svc3(3, cap, 0, 0); }
+    unsafe {
+        svc3(3, cap, 0, 0);
+    }
 }
 
 /// Block until the given capability reaches a terminal completion.
 #[inline(always)]
 pub unsafe fn wait(cap: u64) {
-    unsafe { svc3(4, cap, 0, 0); }
+    unsafe {
+        svc3(4, cap, 0, 0);
+    }
 }
 
 /// Request cancellation of an in-flight capability.
 #[inline(always)]
 pub unsafe fn cancel(cap: u64) {
-    unsafe { svc3(5, cap, 0, 0); }
+    unsafe {
+        svc3(5, cap, 0, 0);
+    }
 }
 
 /// Release a completed/drained capability slot.
 #[inline(always)]
 pub unsafe fn close(cap: u64) {
-    unsafe { svc3(6, cap, 0, 0); }
+    unsafe {
+        svc3(6, cap, 0, 0);
+    }
 }
 
 /// Spawn a new EL0 thread pinned to `target_lp`, starting at `entry_vaddr`.
@@ -266,8 +310,12 @@ pub unsafe fn spawn_thread(entry_vaddr: usize, target_lp: u32) -> u64 {
 /// Terminate the calling EL0 thread.  Never returns.
 #[inline(always)]
 pub unsafe fn thread_exit() -> ! {
-    unsafe { svc3(8, 0, 0, 0); }
-    loop { core::hint::spin_loop(); }
+    unsafe {
+        svc3(8, 0, 0, 0);
+    }
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 /// Send a 64-bit message to the target LP's global mailbox.
@@ -358,6 +406,12 @@ pub unsafe fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
 #[inline(always)]
 pub unsafe fn ipc_recv(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv(endpoint) }
+}
+
+/// Block until a scalar endpoint IPC message is readable, then receive it.
+#[inline(always)]
+pub unsafe fn ipc_recv_block(endpoint: u64) -> IpcMessage {
+    unsafe { svc_ipc_recv_block(endpoint) }
 }
 
 /// Complete a call using a reply-token cap. Returns status code.

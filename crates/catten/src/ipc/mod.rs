@@ -10,16 +10,24 @@ use alloc::{
         BTreeMap,
         VecDeque,
     },
+    sync::Weak,
     vec::Vec,
 };
 use core::ops::BitOr;
 
+use concurrent_queue::ConcurrentQueue;
 use spin::{
     LazyLock,
     RwLock,
 };
 
-use crate::memory::AddressSpaceId;
+use crate::{
+    klib::observer::{
+        Observable,
+        Observer,
+    },
+    memory::AddressSpaceId,
+};
 
 pub type CapabilityId = u64;
 type EndpointId = u64;
@@ -148,6 +156,7 @@ struct Endpoint {
     version: u32,
     capacity: usize,
     queue: VecDeque<QueuedMessage>,
+    observers: ConcurrentQueue<Weak<dyn Observer>>,
     closed: bool,
 }
 
@@ -258,6 +267,7 @@ pub fn endpoint_create(
             version,
             capacity,
             queue: VecDeque::new(),
+            observers: ConcurrentQueue::unbounded(),
             closed: false,
         },
     );
@@ -317,7 +327,10 @@ pub fn scalar_send(
         return Err(IpcError::PermissionDenied);
     }
 
-    enqueue_scalar(&mut ipc, endpoint_id, sender, opcode, arg0, None)
+    let observers = enqueue_scalar(&mut ipc, endpoint_id, sender, opcode, arg0, None)?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
 }
 
 pub fn scalar_call(
@@ -374,7 +387,9 @@ pub fn scalar_call(
         token,
     });
 
-    enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    let observers = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    drop(ipc);
+    signal_observers(observers);
     Ok(call_cap)
 }
 
@@ -385,7 +400,7 @@ fn enqueue_scalar(
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
-) -> Result<(), IpcError> {
+) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
@@ -399,7 +414,7 @@ fn enqueue_scalar(
         arg0,
         reply,
     });
-    Ok(())
+    Ok(drain_observers(&endpoint.observers))
 }
 
 pub fn receive(
@@ -407,16 +422,7 @@ pub fn receive(
     endpoint_cap: CapabilityId,
 ) -> Result<ScalarMessage, IpcError> {
     let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(receiver, endpoint_cap)? {
-        Capability::Endpoint {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::RECEIVE) {
-        return Err(IpcError::PermissionDenied);
-    }
+    let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
 
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
@@ -431,6 +437,82 @@ pub fn receive(
         arg0: message.arg0,
         reply: message.reply,
     })
+}
+
+pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Result<(), IpcError> {
+    let endpoint_id = {
+        let ipc = IPC.read();
+        receive_endpoint_id(&ipc, receiver, endpoint_cap)?
+    };
+    if endpoint_is_readable_or_closed(endpoint_id)? {
+        return Ok(());
+    }
+
+    let tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_tid()
+        .ok_or(IpcError::NoMessage)?;
+    let observable = EndpointObservable {
+        endpoint: endpoint_id,
+    };
+    crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .write()
+        .block_thread(tid, &observable)
+        .map_err(|_| IpcError::NoMessage)?;
+
+    // Lost-wake guard: if a sender enqueued after the fast-path check but
+    // before observer registration completed, re-admit the thread immediately.
+    if endpoint_is_readable_or_closed(endpoint_id)? {
+        let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .write()
+            .submit_ready_thread(tid);
+    }
+
+    crate::cpu::scheduler::yield_lp();
+    Ok(())
+}
+
+fn receive_endpoint_id(
+    ipc: &IpcRegistry,
+    receiver: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+) -> Result<EndpointId, IpcError> {
+    let (endpoint_id, rights) = match ipc.cap(receiver, endpoint_cap)? {
+        Capability::Endpoint {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::RECEIVE) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.closed {
+        return Err(IpcError::EndpointClosed);
+    }
+    Ok(endpoint_id)
+}
+
+fn endpoint_is_readable_or_closed(endpoint_id: EndpointId) -> Result<bool, IpcError> {
+    let ipc = IPC.read();
+    let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    Ok(endpoint.closed || !endpoint.queue.is_empty())
+}
+
+struct EndpointObservable {
+    endpoint: EndpointId,
+}
+
+impl Observable for EndpointObservable {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        let ipc = IPC.read();
+        if let Some(endpoint) = ipc.endpoints.get(&self.endpoint) {
+            let _ = endpoint.observers.push(observer);
+        }
+    }
 }
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {
@@ -525,6 +607,7 @@ pub fn poll_reply(
 
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
+    let mut observers = Vec::new();
     match ipc.remove_cap(asid, cap)? {
         Capability::Endpoint {
             endpoint,
@@ -535,6 +618,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     Vec::new()
                 } else {
                     endpoint.closed = true;
+                    observers.extend(drain_observers(&endpoint.observers));
                     endpoint.queue.drain(..).filter_map(|message| message.reply).collect()
                 }
             } else {
@@ -566,7 +650,21 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             ..
         } => {}
     }
+    drop(ipc);
+    signal_observers(observers);
     Ok(())
+}
+
+fn drain_observers(queue: &ConcurrentQueue<Weak<dyn Observer>>) -> Vec<Weak<dyn Observer>> {
+    queue.try_iter().collect()
+}
+
+fn signal_observers(observers: Vec<Weak<dyn Observer>>) {
+    for observer in observers {
+        if let Some(observer) = observer.upgrade() {
+            observer.notify();
+        }
+    }
 }
 
 pub fn close_address_space(asid: AddressSpaceId) {

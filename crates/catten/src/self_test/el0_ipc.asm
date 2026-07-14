@@ -32,9 +32,9 @@ __catten_el0_ipc_start:
     svc #20
     str w0, [x9, #12]
 
-    // receive the send message from endpoint.
+    // block-receive the send message from endpoint.
     mov x1, x19
-    svc #22
+    svc #27
     str w0, [x9, #16]
     str w1, [x9, #20]
     str w2, [x9, #24]
@@ -47,9 +47,9 @@ __catten_el0_ipc_start:
     str w0, [x9, #28]
     mov x21, x0
 
-    // receive the call message and keep its reply token.
+    // block-receive the call message and keep its reply token.
     mov x1, x19
-    svc #22
+    svc #27
     str w0, [x9, #32]
     str w1, [x9, #36]
     str w2, [x9, #40]

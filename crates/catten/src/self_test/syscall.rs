@@ -250,6 +250,13 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 0, "delegated connection should authorize send");
     }
     {
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV_BLOCK);
+        assert_eq!(f.regs[0], 0, "IPC_RECV_BLOCK should receive queued message");
+        assert_eq!(f.regs[1], 14);
+        assert_eq!(f.regs[2], 0xdd88);
+    }
+    {
         let mut f = synthetic_trap_frame_in(asid, 0, delegated_connection, 15, 0xee99);
         syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
         assert_eq!(f.regs[0], 0, "send-only delegated connection must not authorize calls");
