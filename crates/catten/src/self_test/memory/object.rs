@@ -8,6 +8,7 @@ use crate::{
     },
     logln,
     memory::{
+        close_user_address_space,
         linear::VAddr,
         object::{
             self,
@@ -166,13 +167,10 @@ pub fn test_memory_objects() {
     object::close_address_space(reader);
     object::close_address_space(target);
 
-    {
-        let mut address_spaces = ADDRESS_SPACE_TABLE.lock();
-        address_spaces.remove_element(writer).expect("memory object: failed to remove writer AS");
-        address_spaces.remove_element(reader).expect("memory object: failed to remove reader AS");
-        address_spaces.remove_element(target).expect("memory object: failed to remove target AS");
-        address_spaces.remove_element(owner).expect("memory object: failed to remove owner AS");
-    }
+    close_user_address_space(writer).expect("memory object: failed to close writer AS");
+    close_user_address_space(reader).expect("memory object: failed to close reader AS");
+    close_user_address_space(target).expect("memory object: failed to close target AS");
+    close_user_address_space(owner).expect("memory object: failed to close owner AS");
 
     logln!("First-class memory object tests passed.");
 }

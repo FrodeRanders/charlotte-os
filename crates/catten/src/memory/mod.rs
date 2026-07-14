@@ -56,6 +56,34 @@ pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> = LazyLock::n
     debug_assert_eq!(kernel_id, KERNEL_ASID, "kernel AS must occupy id 0");
     Mutex::new(table)
 });
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressSpaceCloseError {
+    KernelAddressSpace,
+    AddressSpaceMissing,
+}
+
+/// Tear down kernel-owned resources attached to a user address space, then
+/// remove the address space table entry.
+///
+/// Callers must first ensure no threads in `asid` can keep running. This helper
+/// owns capability/resource cleanup and the page-table object lifetime; it is
+/// not a process scheduler.
+pub fn close_user_address_space(asid: AddressSpaceId) -> Result<(), AddressSpaceCloseError> {
+    if asid == KERNEL_ASID {
+        return Err(AddressSpaceCloseError::KernelAddressSpace);
+    }
+
+    object::close_address_space(asid);
+    crate::ipc::close_address_space(asid);
+    crate::completion::close_address_space(asid);
+    crate::syscall::close_mailbox_address_space(asid);
+
+    ADDRESS_SPACE_TABLE
+        .lock()
+        .remove_element(asid)
+        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)
+}
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the
 /// kernel virtual memory map at which point this address should be updated to reflect the new
