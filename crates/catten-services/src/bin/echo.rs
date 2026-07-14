@@ -1,0 +1,107 @@
+//! The reference echo service.
+//!
+//! Creates its own endpoint, registers it with the name service through the
+//! bootstrap connection (attaching a re-delegable connection at call time),
+//! then serves echo calls until asked to shut down.
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
+use catten_rt::{
+    Args,
+    Input,
+    config,
+};
+use catten_services::{
+    echo,
+    ns,
+    wait_reply,
+};
+use catten_syscall::{
+    IpcRights,
+    ipc_endpoint_create,
+    ipc_recv_block,
+    ipc_reply,
+    ipc_scalar_call_connection,
+    ipc_status,
+    thread_exit,
+};
+
+const REPLY_SPINS: u64 = 50_000_000;
+
+fn cmain(_args: Args, _input: Input<0>) -> ! {
+    config::write::<u32>(0, 1); // stage: started
+    let ns_connection = match config::bootstrap_cap() {
+        Some(cap) => cap,
+        None => unsafe { thread_exit() },
+    };
+    config::write::<u32>(0, 2); // stage: bootstrap connection received
+
+    let endpoint = unsafe { ipc_endpoint_create(echo::INTERFACE, echo::VERSION, 8) };
+    if endpoint == 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(0, 3); // stage: endpoint created
+
+    let register = unsafe {
+        ipc_scalar_call_connection(
+            ns_connection,
+            ns::OP_REGISTER,
+            echo::NAME,
+            endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        )
+    };
+    if register == 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(0, 4); // stage: register call sent
+    let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
+    if generation < 1 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(4, generation as u32);
+    config::write::<u32>(0, 5); // stage: registered, serving
+
+    let mut served: u32 = 0;
+
+    loop {
+        let message = unsafe { ipc_recv_block(endpoint) };
+        if message.status == ipc_status::ENDPOINT_CLOSED {
+            unsafe { thread_exit() };
+        }
+        if !message.is_ok() {
+            continue;
+        }
+
+        match message.opcode {
+            echo::OP_ECHO => {
+                served += 1;
+                config::write::<u32>(8, served);
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, message.arg0 as i64);
+                    }
+                }
+            }
+            echo::OP_SHUTDOWN => {
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, 0);
+                    }
+                }
+                unsafe { thread_exit() };
+            }
+            _ => {
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, -1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+catten_rt::entry!(cmain);

@@ -11,9 +11,9 @@ __catten_el0_ipc_memory_copy_server_start:
     movz x9, #0x1000
     movk x9, #0x1, lsl #16
 
-    // x8 = memory-object mapping VA at 0x0001_2000.
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    // x28 = memory-object mapping VA at 0x0001_2000.
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
 
     // The kernel pre-seeds endpoint cap 1 into the server AS.
     movz x19, #1
@@ -32,15 +32,15 @@ __catten_el0_ipc_memory_copy_server_start:
     mov x21, x7
 
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #68]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #72]
     movz w10, #0xc092
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x21
     svc #30
@@ -69,9 +69,9 @@ __catten_el0_ipc_memory_copy_client_start:
     movz x9, #0x1000
     movk x9, #0x1, lsl #16
 
-    // x8 = memory-object mapping VA at 0x0001_2000.
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    // x28 = memory-object mapping VA at 0x0001_2000.
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
 
 2:
     ldr w10, [x9]
@@ -86,13 +86,13 @@ __catten_el0_ipc_memory_copy_client_start:
     mov x20, x0
 
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #16]
 
     movz w10, #0xc091
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x20
     svc #30
@@ -110,12 +110,12 @@ __catten_el0_ipc_memory_copy_client_start:
 
     // The source remains owned and mappable immediately after call-copy.
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #28]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #32]
 
     mov x1, x20
@@ -133,12 +133,12 @@ __catten_el0_ipc_memory_copy_client_start:
 
     // Server wrote to its copy. The client original must remain unchanged.
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #104]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #108]
 
     mov x1, x20

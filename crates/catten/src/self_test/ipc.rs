@@ -625,3 +625,199 @@ pub fn test_endpoint_ipc() {
     ipc::close_address_space(server);
     logln!("Endpoint IPC subsystem tests passed.");
 }
+
+/// Exercises call-time connection attachment and re-delegation: the
+/// name-service authority pattern from Phase 3.
+///
+/// A "service" domain owns an endpoint and hands a re-delegable connection to
+/// a "name service" domain by attaching it to a call. The name service later
+/// returns attenuated connections to a "client" domain at reply time, minted
+/// from the connection it holds rather than from an endpoint it owns.
+pub fn test_endpoint_ipc_connection_attach() {
+    logln!("Testing endpoint IPC connection attachment and re-delegation...");
+
+    let nameservice = 0x6100;
+    let service = 0x6200;
+    let client = 0x6300;
+
+    let ns_endpoint = ipc::endpoint_create(nameservice, 0x4e53_5643, 1, 4)
+        .expect("name-service endpoint_create failed");
+    let service_ns_conn = ipc::connection_delegate(
+        nameservice,
+        ns_endpoint,
+        service,
+        ConnectionRights::CALL,
+    )
+    .expect("service bootstrap connection delegation failed");
+    let client_ns_conn = ipc::connection_delegate(
+        nameservice,
+        ns_endpoint,
+        client,
+        ConnectionRights::CALL,
+    )
+    .expect("client bootstrap connection delegation failed");
+
+    let service_endpoint = ipc::endpoint_create(service, 0x4543_484f, 1, 4)
+        .expect("service endpoint_create failed");
+
+    // Attaching a cap without MINT_CONNECTION must fail.
+    let weak_conn = ipc::connection_mint(service, service_endpoint, ConnectionRights::SEND)
+        .expect("weak connection mint failed");
+    assert_eq!(
+        ipc::scalar_call_with_connection(
+            service,
+            service_ns_conn,
+            1,
+            0x1111,
+            weak_conn,
+            ConnectionRights::SEND,
+        ),
+        Err(IpcError::PermissionDenied),
+        "attaching a non-mintable connection must be denied"
+    );
+    ipc::close_cap(service, weak_conn).expect("weak connection close failed");
+
+    // Attaching a wrong-type cap must fail.
+    let bogus_call = ipc::scalar_call(service, service_ns_conn, 2, 0)
+        .expect("bogus scalar_call failed");
+    assert_eq!(
+        ipc::scalar_call_with_connection(
+            service,
+            service_ns_conn,
+            1,
+            0x1111,
+            bogus_call,
+            ConnectionRights::SEND,
+        ),
+        Err(IpcError::WrongType),
+        "attaching a pending-call cap must be rejected"
+    );
+    let bogus_message =
+        ipc::receive(nameservice, ns_endpoint).expect("bogus registration receive failed");
+    assert_eq!(bogus_message.opcode, 2);
+    assert_eq!(bogus_message.connection, None);
+    ipc::close_cap(service, bogus_call).expect("bogus pending call close failed");
+
+    // REGISTER: attach a re-delegable connection to the service endpoint.
+    let register_call = ipc::scalar_call_with_connection(
+        service,
+        service_ns_conn,
+        1,
+        0x6563_686f, // "echo"
+        service_endpoint,
+        ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
+    )
+    .expect("register call with connection failed");
+    let register_message =
+        ipc::receive(nameservice, ns_endpoint).expect("register receive failed");
+    assert_eq!(register_message.opcode, 1);
+    assert_eq!(register_message.arg0, 0x6563_686f);
+    let stored_conn = register_message
+        .connection
+        .expect("register message should carry attached connection cap");
+    let register_reply = register_message.reply.expect("register should carry reply token");
+    ipc::reply(nameservice, register_reply, 1).expect("register reply failed");
+    let register_value = ipc::poll_reply(service, register_call)
+        .expect("register poll failed")
+        .expect("register reply should be ready");
+    assert_eq!(register_value.result, 1, "registration should report generation 1");
+
+    // LOOKUP: reply with a connection minted from the stored connection cap.
+    let lookup_call = ipc::scalar_call(client, client_ns_conn, 3, 0x6563_686f)
+        .expect("lookup call failed");
+    let lookup_message = ipc::receive(nameservice, ns_endpoint).expect("lookup receive failed");
+    assert_eq!(lookup_message.opcode, 3);
+    let lookup_reply = lookup_message.reply.expect("lookup should carry reply token");
+    ipc::reply_with_connection(
+        nameservice,
+        lookup_reply,
+        stored_conn,
+        ConnectionRights::SEND | ConnectionRights::CALL,
+        1,
+    )
+    .expect("lookup reply with re-delegated connection failed");
+    let lookup_value = ipc::poll_reply(client, lookup_call)
+        .expect("lookup poll failed")
+        .expect("lookup reply should be ready");
+    assert_eq!(lookup_value.result, 1);
+    let client_service_conn =
+        lookup_value.cap.expect("lookup should return delegated service connection");
+
+    // The delegated connection reaches the real service endpoint...
+    let echo_call = ipc::scalar_call(client, client_service_conn, 7, 0xbeef)
+        .expect("client call through re-delegated connection failed");
+    let echo_message =
+        ipc::receive(service, service_endpoint).expect("service receive failed");
+    assert_eq!(echo_message.opcode, 7);
+    assert_eq!(echo_message.arg0, 0xbeef);
+    ipc::reply(service, echo_message.reply.expect("echo should carry reply"), 0xbeef)
+        .expect("echo reply failed");
+    assert_eq!(
+        ipc::poll_reply(client, echo_call)
+            .expect("echo poll failed")
+            .expect("echo reply should be ready")
+            .result,
+        0xbeef
+    );
+
+    // ...but must not be re-delegable or receivable itself (attenuation).
+    assert_eq!(
+        ipc::connection_mint(client, client_service_conn, ConnectionRights::SEND),
+        Err(IpcError::PermissionDenied),
+        "attenuated connection must not mint further connections"
+    );
+    assert_eq!(
+        ipc::receive(client, client_service_conn),
+        Err(IpcError::WrongType),
+        "delegated connection must not be usable for receive"
+    );
+
+    // Cancelling a queued connection-bearing call must remove the queued
+    // message so the receiver never observes it.
+    let cancelled = ipc::scalar_call_with_connection(
+        service,
+        service_ns_conn,
+        1,
+        0x6c6f_67, // "log"
+        service_endpoint,
+        ConnectionRights::SEND | ConnectionRights::MINT_CONNECTION,
+    )
+    .expect("cancellable register call failed");
+    ipc::close_cap(service, cancelled).expect("cancellable register close failed");
+    assert_eq!(
+        ipc::receive(nameservice, ns_endpoint),
+        Err(IpcError::NoMessage),
+        "cancelled connection-bearing call must not be delivered"
+    );
+
+    // Closing an endpoint with queued connection-bearing calls must complete
+    // them as endpoint-closed.
+    let doomed_call = ipc::scalar_call_with_connection(
+        service,
+        service_ns_conn,
+        1,
+        0x74_696d, // "tim"
+        service_endpoint,
+        ConnectionRights::SEND | ConnectionRights::MINT_CONNECTION,
+    )
+    .expect("doomed register call failed");
+    ipc::close_cap(nameservice, ns_endpoint).expect("name-service endpoint close failed");
+    let doomed_value = ipc::poll_reply(service, doomed_call)
+        .expect("doomed poll failed")
+        .expect("endpoint close should complete queued register call");
+    assert_eq!(doomed_value.result, ipc::REPLY_ENDPOINT_CLOSED);
+
+    // Stale service connections fail deterministically after the service
+    // endpoint closes (restart semantics).
+    ipc::close_cap(service, service_endpoint).expect("service endpoint close failed");
+    assert_eq!(
+        ipc::scalar_call(client, client_service_conn, 8, 0),
+        Err(IpcError::EndpointClosed),
+        "connection to restarted service must report endpoint closed"
+    );
+
+    ipc::close_address_space(client);
+    ipc::close_address_space(service);
+    ipc::close_address_space(nameservice);
+    logln!("Endpoint IPC connection attachment tests passed.");
+}

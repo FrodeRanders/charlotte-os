@@ -11,9 +11,9 @@ __catten_el0_ipc_memory_server_start:
     movz x9, #0x1000
     movk x9, #0x1, lsl #16
 
-    // x8 = memory-object mapping VA at 0x0001_2000.
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    // x28 = memory-object mapping VA at 0x0001_2000.
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
 
     // The kernel pre-seeds endpoint cap 1 into the server AS.
     movz x19, #1
@@ -34,16 +34,16 @@ __catten_el0_ipc_memory_server_start:
 
     // Map the moved memory object writable and update its payload.
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #84]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #88]
     movz w10, #0x4d32
     movk w10, #0x4d45, lsl #16
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x21
     svc #30
@@ -69,18 +69,18 @@ __catten_el0_ipc_memory_server_start:
     mov x21, x7
 
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #220]
 
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #224]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #228]
 
     mov x1, x21
@@ -104,16 +104,16 @@ __catten_el0_ipc_memory_server_start:
     mov x21, x7
 
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #260]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #264]
     movz w10, #0x5752
     movk w10, #0x4252, lsl #16
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x21
     svc #30
@@ -138,9 +138,9 @@ __catten_el0_ipc_memory_client_start:
     movz x9, #0x1000
     movk x9, #0x1, lsl #16
 
-    // x8 = memory-object mapping VA at 0x0001_2000.
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    // x28 = memory-object mapping VA at 0x0001_2000.
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
 
 2:
     ldr w10, [x9]
@@ -157,14 +157,14 @@ __catten_el0_ipc_memory_client_start:
 
     // Map it writable and seed the payload.
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #16]
 
     movz w10, #0x4d31
     movk w10, #0x4d45, lsl #16
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x20
     svc #30
@@ -182,7 +182,7 @@ __catten_el0_ipc_memory_client_start:
 
     // The moved-from cap must no longer authorize mapping in the caller.
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #28]
@@ -199,12 +199,12 @@ __catten_el0_ipc_memory_client_start:
 
     // Map the returned memory object read-only and verify the server's update.
     mov x1, x22
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #48]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #52]
 
     mov x1, x22
@@ -223,14 +223,14 @@ __catten_el0_ipc_memory_client_start:
     mov x23, x0
 
     mov x1, x23
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #104]
 
     movz w10, #0x5244
     movk w10, #0x4252, lsl #16
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x23
     svc #30
@@ -254,7 +254,7 @@ __catten_el0_ipc_memory_client_start:
     str w3, [x9, #128]
 
     mov x1, x23
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #132]
@@ -275,14 +275,14 @@ __catten_el0_ipc_memory_client_start:
     mov x25, x0
 
     mov x1, x25
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #148]
 
     movz w10, #0x5752
     movk w10, #0x4257, lsl #16
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x25
     svc #30
@@ -306,12 +306,12 @@ __catten_el0_ipc_memory_client_start:
     str w3, [x9, #172]
 
     mov x1, x25
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #176]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #180]
 
     mov x1, x25

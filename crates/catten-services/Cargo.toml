@@ -1,0 +1,43 @@
+[package]
+name = "catten-services"
+version = "0.1.0"
+edition = "2024"
+description = "Reference EL0 service programs: name service, echo service, client"
+
+[lib]
+name = "catten_services"
+path = "src/lib.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "ns"
+path = "src/bin/ns.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "echo"
+path = "src/bin/echo.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
+test = false
+bench = false
+
+[dependencies]
+catten-rt = { path = "../catten-rt" }
+catten-syscall = { path = "../catten-syscall" }
+
+[profile.dev]
+panic = "abort"
+opt-level = "s"
+lto = true
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

@@ -48,18 +48,18 @@ __catten_el0_ipc_memory_cancel_server_start:
     mov x20, x3
     mov x21, x7
 
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #104]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #108]
     movz w10, #0xd002
-    str w10, [x8]
+    str w10, [x28]
 
     dmb ish
     movz w10, #0xca53
@@ -74,7 +74,7 @@ __catten_el0_ipc_memory_cancel_server_start:
 
     // Cancellation should revoke the server's borrowed cap and reply token.
     mov x1, x21
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #112]
@@ -98,9 +98,9 @@ __catten_el0_ipc_memory_cancel_client_start:
     movz x9, #0x1000
     movk x9, #0x1, lsl #16
 
-    // x8 = memory-object mapping VA at 0x0001_2000.
-    movz x8, #0x2000
-    movk x8, #0x1, lsl #16
+    // x28 = memory-object mapping VA at 0x0001_2000.
+    movz x28, #0x2000
+    movk x28, #0x1, lsl #16
 
 3:
     ldr w10, [x9]
@@ -117,13 +117,13 @@ __catten_el0_ipc_memory_cancel_client_start:
     mov x20, x0
 
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #16]
 
     movz w10, #0xc001
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x20
     svc #30
@@ -143,7 +143,7 @@ __catten_el0_ipc_memory_cancel_client_start:
     str w0, [x9, #28]
 
     mov x1, x20
-    mov x2, x8
+    mov x2, x28
     movz x3, #0
     svc #29
     str w0, [x9, #32]
@@ -157,13 +157,13 @@ __catten_el0_ipc_memory_cancel_client_start:
     mov x22, x0
 
     mov x1, x22
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #40]
 
     movz w10, #0xb001
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x22
     svc #30
@@ -182,12 +182,12 @@ __catten_el0_ipc_memory_cancel_client_start:
     str w0, [x9, #52]
 
     mov x1, x22
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #56]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #60]
 
     mov x1, x22
@@ -217,13 +217,13 @@ __catten_el0_ipc_memory_cancel_client_start:
     mov x24, x0
 
     mov x1, x24
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #128]
 
     movz w10, #0xd001
-    str w10, [x8]
+    str w10, [x28]
 
     mov x1, x24
     svc #30
@@ -249,12 +249,12 @@ __catten_el0_ipc_memory_cancel_client_start:
     str w0, [x9, #140]
 
     mov x1, x24
-    mov x2, x8
+    mov x2, x28
     movz x3, #1
     svc #29
     str w0, [x9, #144]
 
-    ldr w10, [x8]
+    ldr w10, [x28]
     str w10, [x9, #148]
 
     mov x1, x24

@@ -6,6 +6,14 @@ build-catten-docs arch="x86_64" profile="debug" features="":
     cargo doc --package catten --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else if arch == "aarch64" { "target_specs/aarch64-unknown-none-catten.json" } else if arch == "riscv64" { "target_specs/riscv64gc-unknown-none-catten.json" } else { arch + "-unknown-none" } }} {{ if profile == "release" { "--release" } else { "" } }} {{ if features !=
     "" {"--features " + features} else {""} }} --no-deps --open
 
+# Rebuild the reference EL0 service ELFs (name service, echo, client) and
+# refresh the copies embedded in the kernel self-tests.
+build-el0-services:
+    cd crates/catten-services && cargo build -p catten-services --release --target aarch64-unknown-none.json -Z build-std=core,alloc
+    cp crates/catten-services/target/aarch64-unknown-none/release/ns crates/catten/src/self_test/ns.elf
+    cp crates/catten-services/target/aarch64-unknown-none/release/echo crates/catten/src/self_test/echo.elf
+    cp crates/catten-services/target/aarch64-unknown-none/release/client crates/catten/src/self_test/client.elf
+
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"
 create-image arch="x86_64" profile="debug" features="": (build-catten arch profile features)

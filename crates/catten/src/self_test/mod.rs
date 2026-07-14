@@ -12,6 +12,7 @@ pub mod el0;
 pub mod el0_demo;
 pub mod el0_ipc;
 pub mod el0_pingpong;
+pub mod el0_service;
 pub mod el0_sitas;
 pub mod ipc;
 pub mod ipi;
@@ -41,6 +42,7 @@ pub fn run_self_tests() {
     memory::object::test_memory_objects();
     completion::test_completion_caps();
     ipc::test_endpoint_ipc();
+    ipc::test_endpoint_ipc_connection_attach();
     syscall::test_syscall_dispatch();
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();
@@ -55,6 +57,7 @@ pub fn run_self_tests() {
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();
+    el0_service::test_el0_service();
     cq::test_cq_ring();
     cq_completion::test_cq_ring_in_completion();
     logln!("Testing Complete. All Tests Passed!");

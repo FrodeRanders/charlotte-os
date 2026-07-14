@@ -130,10 +130,15 @@ pub mod call_no {
     pub const IPC_SCALAR_SEND_COPY: u16 = 37;
     /// Call with copied memory cap x4. Returns pending-call cap.
     pub const IPC_SCALAR_CALL_COPY: u16 = 38;
+    /// Call carrying a delegated connection. x1=connection, x2=opcode,
+    /// x3=arg0, x4=mintable endpoint/connection cap, x5=delegated rights.
+    /// Returns pending-call cap in x0. The receiver observes the minted
+    /// connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
+    pub const IPC_SCALAR_CALL_CONNECTION: u16 = 39;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_COPY;
+pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_CONNECTION;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -186,6 +191,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_SCALAR_CALL_BORROW_WRITE => sys_ipc_scalar_call_borrow_write(frame),
         call_no::IPC_SCALAR_SEND_COPY => sys_ipc_scalar_send_copy(frame),
         call_no::IPC_SCALAR_CALL_COPY => sys_ipc_scalar_call_copy(frame),
+        call_no::IPC_SCALAR_CALL_CONNECTION => sys_ipc_scalar_call_connection(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -202,10 +208,17 @@ fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
 }
 
 fn sys_log(frame: &mut TrapFrame) {
-    let _ptr = frame.regs[0] as *const u8;
-    let _len = frame.regs[1] as usize;
+    let a = frame.regs[1];
+    let b = frame.regs[2];
     let lp = frame.lp_id;
-    crate::early_logln!("[EL0 SYSCALL] LOG from userspace on LP {}", lp);
+    let asid = frame.asid;
+    crate::early_logln!(
+        "[EL0 LOG] lp={} asid={} a={:#x} b={:#x}",
+        lp,
+        asid,
+        a,
+        b
+    );
 }
 
 fn sys_completion_submit(frame: &mut TrapFrame) {
@@ -641,10 +654,11 @@ fn recv_into_frame(frame: &mut TrapFrame, asid: AddressSpaceId, endpoint: u64) {
             frame.regs[5] = message.interface;
             frame.regs[6] = message.version as u64;
             frame.regs[7] = message.memory.unwrap_or(0);
+            frame.regs[8] = message.connection.unwrap_or(0);
         }
         Err(error) => {
             frame.regs[0] = ipc_status(error);
-            for reg in &mut frame.regs[1..=7] {
+            for reg in &mut frame.regs[1..=8] {
                 *reg = 0;
             }
         }
@@ -656,7 +670,7 @@ fn sys_ipc_recv_block(frame: &mut TrapFrame) {
     let endpoint = frame.regs[1];
     if let Err(error) = ipc::wait_readable(asid, endpoint) {
         frame.regs[0] = ipc_status(error);
-        for reg in &mut frame.regs[1..=7] {
+        for reg in &mut frame.regs[1..=8] {
             *reg = 0;
         }
         return;
@@ -713,10 +727,23 @@ fn sys_ipc_reply_connection(frame: &mut TrapFrame) {
     let reply = frame.regs[1];
     let endpoint = frame.regs[2];
     let rights = ipc::ConnectionRights::from_bits(frame.regs[3] as u32);
-    frame.regs[0] = match ipc::reply_with_connection(asid, reply, endpoint, rights, 0) {
+    let result = frame.regs[4] as i64;
+    frame.regs[0] = match ipc::reply_with_connection(asid, reply, endpoint, rights, result) {
         Ok(()) => 0,
         Err(error) => ipc_status(error),
     };
+}
+
+fn sys_ipc_scalar_call_connection(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let delegate = frame.regs[4];
+    let rights = ipc::ConnectionRights::from_bits(frame.regs[5] as u32);
+    frame.regs[0] =
+        ipc::scalar_call_with_connection(asid, connection, opcode, arg0, delegate, rights)
+            .unwrap_or(0);
 }
 
 fn sys_ipc_scalar_send_move(frame: &mut TrapFrame) {

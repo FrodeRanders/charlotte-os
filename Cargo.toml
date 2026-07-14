@@ -5,7 +5,7 @@ members = ["crates/*"]
 # crates which do not yet build. Exclude it from the workspace so root-level
 # `cargo build`/`check` and rust-analyzer do not attempt it. Build it directly
 # with `--manifest-path crates/catten-user/Cargo.toml` once sitas compiles.
-exclude = ["crates/catten-user"]
+exclude = ["crates/catten-user", "crates/catten-services"]
 resolver = "3"
 
 [profile.dev]

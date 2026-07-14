@@ -39,6 +39,35 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     unmapping, close, moved-memory send/call/reply, and reply-bound
     read/write borrows. `IPC_RECV` returns an attached memory cap in
     `x7`; `IPC_REPLY_POLL` returns a reply-time memory cap in `x3`.
+-   Syscall `39` (`IPC_SCALAR_CALL_CONNECTION`) implements call-time
+    connection delegation: the caller attaches an attenuated connection
+    minted from its own endpoint cap (or from a re-delegable connection
+    cap bearing `MINT_CONNECTION`); the receiver observes the minted
+    connection cap in `x8` of `IPC_RECV`/`IPC_RECV_BLOCK`.
+    `IPC_REPLY_CONNECTION` now accepts re-delegable connection caps as
+    its minting source and carries an explicit reply result, so a
+    service can return connections to endpoints it does not own.
+    Cancellation and endpoint teardown reclaim queued attached
+    connections, and pending calls track a `ResultObserved` state so
+    closing an observed pending-call cap no longer revokes returned
+    capabilities.
+-   `crates/catten/src/service/` contains the first Phase 3 supervisor
+    slice: a generalized EL0 ELF loader (`loader.rs`), the config-page
+    bootstrap-capability contract (`bootstrap.rs`, mirrored by
+    `catten_rt::config::bootstrap_cap`), and domain spawn /
+    exit-observation / teardown supervision (`supervisor.rs`). The
+    supervisor creates the name-service registry endpoint inside the
+    new domain before it runs and delegates bootstrap connections
+    strictly downward; no userspace code ever names an ASID or LP.
+-   `crates/catten-services` provides the reference EL0 service
+    programs built as real ET_EXEC ELFs: a userspace name service
+    (packed u64 names → re-delegable connection plus instance
+    generation; re-registration bumps the generation and closes the
+    previous instance's connection; LOOKUP replies with attenuated
+    `SEND|CALL` connections), an echo service that creates its own
+    endpoint and registers itself by name, and a client that
+    bootstraps, looks up, and calls purely through delegated
+    capabilities.
 -   `crates/catten-syscall` has EL0 wrappers for endpoint IPC,
     memory-object operations, and memory IPC transfer operations.
 -   Boot-time self-tests cover cross-address-space delegation through
@@ -51,7 +80,16 @@ CharlotteOS now has the first kernel-side slice of this architecture:
     IPC smoke tests for copy, move, read-borrow, write-borrow, queued
     moved/borrowed-memory cancellation, and delivered borrowed-memory
     cancellation. They also cover server teardown with queued or
-    delivered memory-bearing calls.
+    delivered memory-bearing calls. Phase 3 adds kernel-level
+    connection-attachment tests (non-mintable attachment denied,
+    wrong-type attachment denied, rights attenuation on re-delegation,
+    cancellation of queued connection-bearing calls, endpoint close
+    completing queued register calls, stale connections failing
+    `EndpointClosed`) and an end-to-end EL0 test (`el0_service.rs`)
+    that spawns three isolated EL0 domains from the reference ELFs and
+    verifies bootstrap delivery, registration, lookup, call, voluntary
+    shutdown, domain teardown, stale-connection failure, restart, and
+    generation-2 re-lookup against the live EL0 name service.
 
 This is intentionally not the full Xous-style model yet. The first
 version does not include a userspace name service, arbitrary
@@ -60,11 +98,20 @@ blocking receive, general capability attachment transfer beyond
 reply-time connection delegation and memory-object transfer,
 userspace-facing cancellation policy, or production resource accounting.
 Blocking endpoint receive exists as a first readiness integration point,
-and the smoke-test two-domain EL0 service/client flows now work through
-kernel-delegated connection capabilities. This is still not a general
-userspace service manager, because bootstrap capability delivery,
-service naming, restart generations, and stale-connection policy remain
-unimplemented.
+and the smoke-test two-domain EL0 client/server flows now work through
+kernel-delegated connection capabilities.
+Phase 3 has since filled the service-management gap at smoke-test
+fidelity: a userspace (EL0) name service now exists, bootstrap
+capability delivery follows a documented config-page contract, service
+instances carry generations that increment on restart, and stale
+connections fail deterministically with `EndpointClosed`. Still
+unimplemented: memory-object-carried (long) service names, policy
+gating on lookup beyond connection delegation, automated restart
+policy in the supervisor, a general process loader contract (stack and
+guard pages, argument/environment blocks, declared heaps), and
+production resource accounting. Names are interim 8-byte packed
+scalars, and the reference service ELFs are prebuilt and embedded in
+the kernel image rather than loaded from storage.
 Completion queues remain separate and should continue to be used for
 kernel/device operation completion rather than as universal IPC
 endpoints.
@@ -113,6 +160,25 @@ Current evidence:
     EL0 SVC layers: the receiver gets a new memory object containing a
     byte copy, while the sender keeps its original cap and receiver
     writes do not mutate the original.
+-   The current tree implements Phase 3: syscall 39 call-time
+    connection delegation with re-delegation and rights attenuation,
+    `crates/catten/src/service/` (loader, bootstrap contract,
+    supervisor), the `crates/catten-services` reference EL0 programs
+    (name service, echo, client), and the `el0_service` boot-time test.
+    The test spawns three isolated EL0 protection domains and verifies
+    the complete flow — bootstrap capability delivery, REGISTER with
+    attached re-delegable connection, LOOKUP returning an attenuated
+    connection plus generation, echo call, voluntary shutdown, domain
+    teardown, stale connection failing `EndpointClosed`, restart, and
+    generation-2 re-lookup — against the live EL0 name service.
+    Architectural findings: (a) call-time connection attachment plus
+    connection re-delegation are the only two kernel mechanisms the
+    name service needed — naming stayed entirely in userspace; (b) the
+    receive ABI had to widen to `x8`, which required moving smoke-stub
+    state out of `x8` and demonstrates why hand-written stubs should
+    migrate to `catten-syscall` wrappers; (c) pending calls needed an
+    explicit `ResultObserved` state so a caller can close a completed
+    call cap without losing capabilities it received in the reply.
 
 ------------------------------------------------------------------------
 
@@ -2185,10 +2251,17 @@ Current status:
 
 -   Criterion 1 has smoke-test evidence in `a97d9e4`: two separate EL0
     protection domains communicate through a bounded endpoint using
-    delegated local caps only. This proves the kernel/EL0 authority
-    shape, but it is not yet a general service-manager flow because
-    bootstrap capability delivery, service naming, restart generation,
-    and stale-connection policy remain future work.
+    delegated local caps only. Phase 3 strengthens this into a
+    service-manager flow: the `el0_service` boot test exercises
+    bootstrap capability delivery, userspace service naming, restart
+    generations, and deterministic stale-connection failure across
+    three isolated EL0 domains and a supervised restart.
+-   Criterion 9's connection-invalidation half has smoke-test evidence
+    for a generic service (echo): restarting the service domain
+    invalidates stale connections (`EndpointClosed`) and the userspace
+    name service reports a new instance generation. The driver-specific
+    half (device reset, outstanding-operation reconciliation) remains
+    future work for Phase 8.
 
 ------------------------------------------------------------------------
 

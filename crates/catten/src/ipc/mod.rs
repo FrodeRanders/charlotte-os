@@ -98,6 +98,7 @@ pub struct ScalarMessage {
     pub arg0: u64,
     pub reply: Option<CapabilityId>,
     pub memory: Option<MemoryObjectCap>,
+    pub connection: Option<CapabilityId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +155,7 @@ struct QueuedMessage {
     arg0: u64,
     reply: Option<CapabilityId>,
     memory: Option<MemoryObjectCap>,
+    connection: Option<CapabilityId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +189,11 @@ struct ReplyToken {
 struct PendingCall {
     caller: AddressSpaceId,
     result: Option<ReplyValue>,
+    /// Set once the caller has seen the result through `poll_reply`. From
+    /// that point the returned connection/memory capabilities belong to the
+    /// caller, and closing the pending-call cap no longer revokes them
+    /// (state `ResultObserved` in the operation state machine).
+    observed: bool,
 }
 
 #[derive(Debug)]
@@ -308,21 +315,40 @@ pub fn connection_delegate(
     rights: ConnectionRights,
 ) -> Result<CapabilityId, IpcError> {
     let mut ipc = IPC.write();
-    let (endpoint, endpoint_rights) = match ipc.cap(owner, endpoint_cap)? {
+    let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
+    Ok(ipc.as_caps(target).insert(Capability::Connection {
+        endpoint,
+        rights: granted,
+    }))
+}
+
+/// Resolves a capability usable as a connection-minting source.
+///
+/// Both endpoint caps and connection caps qualify, provided they carry
+/// `MINT_CONNECTION`. Connection caps allow re-delegation with rights
+/// attenuation: the minted rights are the intersection of the requested
+/// rights and the source cap's rights.
+fn mintable_endpoint(
+    ipc: &IpcRegistry,
+    asid: AddressSpaceId,
+    cap: CapabilityId,
+    requested: ConnectionRights,
+) -> Result<(EndpointId, ConnectionRights), IpcError> {
+    let (endpoint, source_rights) = match ipc.cap(asid, cap)? {
         Capability::Endpoint {
+            endpoint,
+            rights,
+        }
+        | Capability::Connection {
             endpoint,
             rights,
         } => (endpoint, rights),
         _ => return Err(IpcError::WrongType),
     };
-    if !endpoint_rights.contains(ConnectionRights::MINT_CONNECTION) {
+    if !source_rights.contains(ConnectionRights::MINT_CONNECTION) {
         return Err(IpcError::PermissionDenied);
     }
-    let granted = rights.intersection(endpoint_rights);
-    Ok(ipc.as_caps(target).insert(Capability::Connection {
-        endpoint,
-        rights: granted,
-    }))
+    Ok((endpoint, requested.intersection(source_rights)))
 }
 
 pub fn scalar_send(
@@ -456,6 +482,7 @@ pub fn scalar_call(
         PendingCall {
             caller,
             result: None,
+            observed: false,
         },
     );
     let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
@@ -476,7 +503,86 @@ pub fn scalar_call(
         token,
     });
 
-    let observers = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    let observers =
+        enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(call_cap)
+}
+
+/// Scalar call carrying a delegated connection capability.
+///
+/// The caller attaches a connection to an endpoint it controls (either an
+/// endpoint cap or a re-delegable connection cap bearing `MINT_CONNECTION`).
+/// The kernel mints the attenuated connection into the receiving domain's
+/// capability table and delivers its id together with the message. This is
+/// the primitive that lets a service hand its endpoint authority to a name
+/// or policy service without either side naming address spaces.
+pub fn scalar_call_with_connection(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    delegate_cap: CapabilityId,
+    delegate_rights: ConnectionRights,
+) -> Result<CapabilityId, IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let (delegated_endpoint, granted) =
+        mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?;
+
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let attached_cap = ipc.as_caps(server).insert(Capability::Connection {
+        endpoint: delegated_endpoint,
+        rights: granted,
+    });
+
+    let call = ipc.alloc_call();
+    ipc.pending_calls.insert(
+        call,
+        PendingCall {
+            caller,
+            result: None,
+            observed: false,
+        },
+    );
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
+        call,
+    });
+
+    let token = ipc.alloc_reply();
+    ipc.reply_tokens.insert(
+        token,
+        ReplyToken {
+            server,
+            call,
+            consumed: false,
+            borrow: None,
+        },
+    );
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
+        token,
+    });
+
+    let observers = enqueue_message(
+        &mut ipc,
+        endpoint_id,
+        caller,
+        opcode,
+        arg0,
+        Some(token_cap),
+        None,
+        Some(attached_cap),
+    )?;
     drop(ipc);
     signal_observers(observers);
     Ok(call_cap)
@@ -511,6 +617,7 @@ pub fn scalar_call_with_memory_move(
         PendingCall {
             caller,
             result: None,
+            observed: false,
         },
     );
     let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
@@ -574,6 +681,7 @@ pub fn scalar_call_with_memory_copy(
         PendingCall {
             caller,
             result: None,
+            observed: false,
         },
     );
     let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
@@ -662,6 +770,7 @@ fn scalar_call_with_memory_borrow(
         PendingCall {
             caller,
             result: None,
+            observed: false,
         },
     );
     let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
@@ -709,7 +818,7 @@ fn enqueue_scalar(
     arg0: u64,
     reply: Option<CapabilityId>,
 ) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
-    enqueue_scalar_with_memory(ipc, endpoint_id, sender, opcode, arg0, reply, None)
+    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, None, None)
 }
 
 fn enqueue_scalar_with_memory(
@@ -720,6 +829,20 @@ fn enqueue_scalar_with_memory(
     arg0: u64,
     reply: Option<CapabilityId>,
     memory: Option<MemoryObjectCap>,
+) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, memory, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enqueue_message(
+    ipc: &mut IpcRegistry,
+    endpoint_id: EndpointId,
+    sender: AddressSpaceId,
+    opcode: u32,
+    arg0: u64,
+    reply: Option<CapabilityId>,
+    memory: Option<MemoryObjectCap>,
+    connection: Option<CapabilityId>,
 ) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
@@ -734,6 +857,7 @@ fn enqueue_scalar_with_memory(
         arg0,
         reply,
         memory,
+        connection,
     });
     Ok(drain_observers(&endpoint.observers))
 }
@@ -772,6 +896,7 @@ pub fn receive(
         arg0: message.arg0,
         reply: message.reply,
         memory: message.memory,
+        connection: message.connection,
     })
 }
 
@@ -864,26 +989,8 @@ pub fn reply_with_connection(
     result: i64,
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
-    let (endpoint, endpoint_rights) = match ipc.cap(server, endpoint_cap)? {
-        Capability::Endpoint {
-            endpoint,
-            rights,
-        } => {
-            if !rights.contains(ConnectionRights::MINT_CONNECTION) {
-                return Err(IpcError::PermissionDenied);
-            }
-            (endpoint, rights)
-        }
-        _ => return Err(IpcError::WrongType),
-    };
-    complete_reply(
-        &mut ipc,
-        server,
-        reply_cap,
-        result,
-        Some((endpoint, rights.intersection(endpoint_rights))),
-        None,
-    )
+    let (endpoint, granted) = mintable_endpoint(&ipc, server, endpoint_cap, rights)?;
+    complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)
 }
 
 pub fn reply_with_memory_move(
@@ -952,16 +1059,21 @@ pub fn poll_reply(
     caller: AddressSpaceId,
     call_cap: CapabilityId,
 ) -> Result<Option<ReplyValue>, IpcError> {
-    let ipc = IPC.read();
+    let mut ipc = IPC.write();
     let call_id = match ipc.cap(caller, call_cap)? {
         Capability::PendingCall {
             call,
         } => call,
         _ => return Err(IpcError::WrongType),
     };
-    let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
+    let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
     if call.caller != caller {
         return Err(IpcError::PermissionDenied);
+    }
+    if call.result.is_some() {
+        // Once the caller has observed the result, any returned capabilities
+        // are its own; closing the pending-call cap must not revoke them.
+        call.observed = true;
     }
     Ok(call.result)
 }
@@ -992,6 +1104,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                 if let Some(memory_cap) = message.memory {
                     let _ = crate::memory::object::close_cap(asid, memory_cap);
                 }
+                if let Some(connection_cap) = message.connection {
+                    let _ = ipc.remove_cap(asid, connection_cap);
+                }
             }
         }
         Capability::PendingCall {
@@ -999,11 +1114,16 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         } => {
             if let Some(pending) = ipc.pending_calls.remove(&call) {
                 if let Some(reply) = pending.result {
-                    if let Some(returned_cap) = reply.cap {
-                        let _ = ipc.remove_cap(asid, returned_cap);
-                    }
-                    if let Some(memory_cap) = reply.memory {
-                        let _ = crate::memory::object::close_cap(asid, memory_cap);
+                    // Revoke undelivered results only. Once the caller has
+                    // observed the reply, the returned capabilities are its
+                    // property and survive the pending-call close.
+                    if !pending.observed {
+                        if let Some(returned_cap) = reply.cap {
+                            let _ = ipc.remove_cap(asid, returned_cap);
+                        }
+                        if let Some(memory_cap) = reply.memory {
+                            let _ = crate::memory::object::close_cap(asid, memory_cap);
+                        }
                     }
                 } else {
                     cancel_queued_call(&mut ipc, call);
@@ -1158,6 +1278,11 @@ fn cancel_queued_message_with_reply(
                     let _ = revoke_memory_borrow(borrow);
                 } else if let Some(memory_cap) = message.memory {
                     let _ = crate::memory::object::close_cap(server, memory_cap);
+                }
+                if let Some(connection_cap) = message.connection {
+                    if let Some(caps) = ipc.caps.get_mut(&server) {
+                        caps.caps.remove(&connection_cap);
+                    }
                 }
             }
             return;

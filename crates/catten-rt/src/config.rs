@@ -18,9 +18,24 @@ pub const ARGC_OFFSET: usize = 24;
 /// Launch argument words start here.
 pub const ARGS_OFFSET: usize = 32;
 
+/// The bootstrap capability slot.
+///
+/// The supervisor writes one initial capability id here before the domain
+/// starts (architecture doc §16.7). Its type (endpoint vs. connection) is
+/// determined by the program's role, not encoded in the slot. A value of 0
+/// means "no bootstrap capability was delivered".
+pub const BOOTSTRAP_CAP_OFFSET: usize = 16;
+
 /// Output/status words are intentionally kept at the beginning of the page so
 /// existing kernel verifiers can poll `config[0]` as a sentinel.
 pub const OUTPUT_OFFSET: usize = 0;
+
+/// Read the bootstrap capability id delivered by the supervisor, or `None`
+/// when no capability was delivered.
+pub fn bootstrap_cap() -> Option<u64> {
+    let cap = unsafe { read::<u64>(BOOTSTRAP_CAP_OFFSET) };
+    if cap == 0 { None } else { Some(cap) }
+}
 
 /// Read a value of type `T` from `offset` bytes into the config page.
 ///

@@ -121,6 +121,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
     let ret: u64;
     unsafe {
         match imm {
+            0 => asm!("svc #0", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             1 => asm!("svc #1", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             2 => asm!("svc #2", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             3 => asm!("svc #3", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
@@ -160,12 +161,25 @@ unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
     let ret: u64;
     unsafe {
         match imm {
+            26 => asm!("svc #26", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             32 => asm!("svc #32", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             33 => asm!("svc #33", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             35 => asm!("svc #35", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             36 => asm!("svc #36", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             37 => asm!("svc #37", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             38 => asm!("svc #38", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            _ => core::hint::unreachable_unchecked(),
+        }
+    }
+    ret
+}
+
+#[inline(always)]
+unsafe fn svc5(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        match imm {
+            39 => asm!("svc #39", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -229,6 +243,7 @@ pub struct IpcMessage {
     pub interface: u64,
     pub version: u32,
     pub memory: u64,
+    pub connection: u64,
 }
 
 impl IpcMessage {
@@ -248,6 +263,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     let interface: u64;
     let version: u64;
     let memory: u64;
+    let connection: u64;
     unsafe {
         asm!(
             "svc #22",
@@ -259,6 +275,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
             lateout("x5") interface,
             lateout("x6") version,
             lateout("x7") memory,
+            lateout("x8") connection,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -271,6 +288,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
         interface,
         version: version as u32,
         memory,
+        connection,
     }
 }
 
@@ -285,6 +303,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
     let interface: u64;
     let version: u64;
     let memory: u64;
+    let connection: u64;
     unsafe {
         asm!(
             "svc #27",
@@ -296,6 +315,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
             lateout("x5") interface,
             lateout("x6") version,
             lateout("x7") memory,
+            lateout("x8") connection,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -308,10 +328,19 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
         interface,
         version: version as u32,
         memory,
+        connection,
     }
 }
 
 // ---- public syscall wrappers ------------------------------------------------
+
+/// Emit a kernel debug log line with two arbitrary values (smoke debugging).
+#[inline(always)]
+pub unsafe fn el0_log(a: u64, b: u64) {
+    unsafe {
+        svc3(0, a, b, 0);
+    }
+}
 
 /// Submit an async operation.  Returns a completion capability.
 #[inline(always)]
@@ -513,8 +542,8 @@ pub unsafe fn ipc_close(cap: u64) -> u64 {
 
 /// Complete a call and return a delegated connection cap to the original caller.
 #[inline(always)]
-pub unsafe fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights) -> u64 {
-    unsafe { svc3(26, reply, endpoint, rights.bits() as u64) }
+pub unsafe fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights, result: i64) -> u64 {
+    unsafe { svc4(26, reply, endpoint, rights.bits() as u64, result as u64) }
 }
 
 /// Allocate a first-class memory object owned by the caller.
@@ -601,4 +630,21 @@ pub unsafe fn ipc_scalar_send_copy(
 #[inline(always)]
 pub unsafe fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
     unsafe { svc4(38, connection, opcode as u64, arg0, memory) }
+}
+
+/// Call through a connection carrying a delegated connection capability.
+///
+/// `delegate` must be an endpoint cap or a re-delegable connection cap owned
+/// by the caller and bearing `MINT_CONNECTION`. The receiver observes the
+/// minted connection cap in the `connection` field of the received message.
+/// Returns the pending-call cap, or 0 on error.
+#[inline(always)]
+pub unsafe fn ipc_scalar_call_connection(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    delegate: u64,
+    rights: IpcRights,
+) -> u64 {
+    unsafe { svc5(39, connection, opcode as u64, arg0, delegate, rights.bits() as u64) }
 }
