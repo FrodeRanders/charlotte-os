@@ -475,6 +475,33 @@ Current evidence:
     makes the late heavyweight tests take minutes of wall clock — a
     2-way guest validates the same behaviour in a fraction of the time
     (the macOS boot script gained an SMP argument for this).
+-   The sitas-side executor proper (the outstanding Phase 7 userspace
+    half) now exists in the sitas repository (`sitas-core`, commits
+    `5db65ae` and `d2b7b44`). `ShardExecutor` implements the §7 loop as a
+    minimal no_std per-shard futures executor: poll ready tasks within a
+    **budget** (a fairness yield point), then block in one
+    `ReactorBackend::wait`; drained events wake the tasks registered for
+    the returned handles, and each task's `core::task::Waker` marks the
+    task ready *and* wakes the reactor, so a cross-shard wake releases a
+    blocked wait and re-polls exactly the affected task (wakes coalesce).
+    Inter-shard channels are waker-integrated (`recv().await` registers
+    the task waker; `try_send`/`close` invoke it, with `close` resolving
+    to `None` for clean shutdown), and a new `ShardParker` seam
+    (CharlotteOS: `CQ_WAIT_TIMEOUT`/`CQ_WAKE`) lets plain requester
+    threads park instead of spin — **`kv::spin_recv` and the KV shard's
+    busy-poll loop are retired**; nothing in the CharlotteOS sitas path
+    spins any more. `ShardedKv` runs each shard's message loop as a task
+    on its own executor over a per-shard reactor
+    (`ShardRuntime::shard_reactor`). Host tests cover budgeted polling,
+    cross-task wakeup re-queueing, and drained-event wakeup;
+    boot-validated at EL0 (the `el0_sitas` test passes with
+    `TaskWaker<CharlWaker>` visible in the image). Interim robustness
+    note: while all shards share the one process-wide CQ, a wake can be
+    consumed by a peer waiter, so executor idle waits and parker parks
+    are bounded by a short interval (a stolen wake costs at most one
+    interval, never a stall). Remaining Phase 7 work: per-shard CQ ring
+    mapping (a loader-contract extension) so each shard waits on its own
+    queue and wakes are targeted.
 
 
 
@@ -2553,14 +2580,17 @@ Current status:
     bootstrap capability delivery, userspace service naming, restart
     generations, and deterministic stale-connection failure across
     three isolated EL0 domains and a supervised restart.
--   Criterion 5's kernel half has self-test evidence: one blocking CQ
-    wait is released by kernel completions, explicit cross-thread
-    wakes, and CQ-bound endpoint readiness (`test_cq_wait_wake`). At
-    EL0, the reference echo service serves its entire protocol —
-    including shutdown and restart — from one `CQ_WAIT` with endpoint
-    readiness bound to its default queue. The remaining gap to the full
-    criterion is the sitas executor integration (task wakeup from the
-    drained events).
+-   Criterion 5 is met. Its kernel half has self-test evidence: one
+    blocking CQ wait is released by kernel completions, explicit
+    cross-thread wakes, and CQ-bound endpoint readiness
+    (`test_cq_wait_wake`). At EL0, the reference echo service serves its
+    entire protocol — including shutdown and restart — from one `CQ_WAIT`
+    with endpoint readiness bound to its default queue, and the sitas
+    `ShardExecutor` (sitas repo) now performs task wakeup from the
+    drained events: a KV shard blocks in its reactor's single wait and
+    is re-polled by waker-integrated channel sends (`el0_sitas`). The
+    remaining refinement is per-shard CQ ring mapping so multi-shard
+    processes wait on distinct queues with targeted wakes.
 -   Criterion 9 is met: its connection-invalidation half has smoke-test
     evidence for a generic service (echo) — restarting the service domain
     invalidates stale connections (`EndpointClosed`) and the userspace
