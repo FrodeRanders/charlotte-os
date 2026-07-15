@@ -211,7 +211,7 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
-            42 => asm!("svc #42", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
+            42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -449,26 +449,27 @@ pub unsafe fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
     unsafe { svc3_x1(11, cap, timeout_ms, 0) }
 }
 
-/// Block until the calling LP's CQ ring has at least `min_complete` pending
-/// entries.  Returns the current pending count.
+/// Block until CQ `cq` of the caller has at least `min_complete` pending
+/// entries or an explicit wake is posted to it.  Returns the pending count.
 #[inline(always)]
-pub unsafe fn cq_wait(min_complete: u64) -> u64 {
-    unsafe { svc3(12, min_complete, 0, 0) }
+pub unsafe fn cq_wait(min_complete: u64, cq: u32) -> u64 {
+    unsafe { svc3(12, min_complete, cq as u64, 0) }
 }
 
-/// Post an explicit wake to the caller's CQ waiters, so a peer shard blocked
-/// in [`cq_wait`]/[`cq_wait_timeout`] returns even without a completion.
+/// Post an explicit wake to CQ `cq`'s waiters, so a peer shard blocked in
+/// [`cq_wait`]/[`cq_wait_timeout`] on that queue returns even without a
+/// completion.
 #[inline(always)]
-pub unsafe fn cq_wake() -> u64 {
-    unsafe { svc3(41, 0, 0, 0) }
+pub unsafe fn cq_wake(cq: u32) -> u64 {
+    unsafe { svc3(41, cq as u64, 0, 0) }
 }
 
-/// Block until the caller's CQ has at least `min_complete` entries, an
-/// explicit wake is posted, or `timeout_ms` elapses. Returns
+/// Block until CQ `cq` of the caller has at least `min_complete` entries, an
+/// explicit wake is posted to it, or `timeout_ms` elapses. Returns
 /// `(pending, timed_out)` where `timed_out` is 1 if the deadline fired first.
 #[inline(always)]
-pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64) -> (u64, u64) {
-    unsafe { svc3_x1(42, min_complete, timeout_ms, 0) }
+pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
+    unsafe { svc3_x1(42, min_complete, timeout_ms, cq as u64) }
 }
 
 /// Open a sender capability targeting LP `target_lp`.  Returns the cap.

@@ -349,6 +349,15 @@ impl Observable for Completion {
     }
 }
 
+/// Identifies one completion queue within an address space (architecture doc
+/// §8.1: one CQ per shard). Queue 0 ([`DEFAULT_CQ`]) always exists when any
+/// CQ is attached and is the destination for capability-backed completions
+/// and for callers that do not select a queue.
+pub type CqId = u32;
+
+/// The default completion queue of an address space.
+pub const DEFAULT_CQ: CqId = 0;
+
 /// A capability-free operation (architecture doc §8.4): tracked only by its
 /// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
 /// on completion. There is no post-terminal record — a detached operation
@@ -356,9 +365,32 @@ impl Observable for Completion {
 struct DetachedOp {
     /// Submitter-chosen correlation token, posted as the CQ entry's cookie.
     user_data: u64,
+    /// The queue this operation's completion is delivered to.
+    cq: CqId,
     /// Reduced lifecycle: `InFlight → CancelPending`; completion removes the
     /// record, so the terminal states of [`OpState`] have no analogue here.
     cancel_pending: bool,
+}
+
+/// One completion queue: the shared ring plus its non-lossy backlog, pending
+/// wake, and blocked waiters. An address space owns one per shard.
+struct CqState {
+    /// The shared ring (zero-syscall drain path). The allocation backing a
+    /// heap-backed ring is kept alive by `_buf`.
+    ring: *mut crate::completion::cq::CompletionQueueRing,
+    /// Entries (cookie, result) that could not fit in the shared ring yet.
+    /// This preserves the non-lossy completion contract: a full userspace
+    /// ring delays delivery but does not discard terminal completions.
+    backlog: VecDeque<(u64, OpResult)>,
+    /// An explicit cross-thread wake was posted ([`wake`]) and has not yet
+    /// been consumed by a waiter on this queue. Consume-on-wait semantics
+    /// close the lost-wake race: a wake posted between a waiter's ring check
+    /// and its blocking is still observed by the guard re-check.
+    wake_pending: bool,
+    /// Threads blocked waiting for this queue to become readable.
+    observers: ConcurrentQueue<Weak<dyn Observer>>,
+    #[allow(dead_code)]
+    _buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
 }
 
 struct AsCompletions {
@@ -368,22 +400,8 @@ struct AsCompletions {
     /// Live capability-free operations, keyed by their stable operation id.
     /// These count toward `capacity` exactly like capability-backed ones.
     detached: BTreeMap<OperationId, DetachedOp>,
-    /// Optional per-AS completion-queue ring (zero-syscall drain path).
-    /// The allocation backing the ring is kept alive by `_cq_buf`.
-    cq_ring: Option<*mut crate::completion::cq::CompletionQueueRing>,
-    /// CQ entries (cookie, result) that could not fit in the shared ring yet.
-    /// This preserves the non-lossy completion contract: a full userspace ring
-    /// delays delivery but does not discard terminal completions.
-    pending_cq: VecDeque<(u64, OpResult)>,
-    /// An explicit cross-thread wake was posted ([`wake`]) and has not yet been
-    /// consumed by a CQ waiter. Consume-on-wait semantics close the lost-wake
-    /// race: a wake posted between a waiter's ring check and its blocking is
-    /// still observed by the guard re-check.
-    wake_pending: bool,
-    /// Threads blocked waiting for this address space's CQ to become readable.
-    cq_observers: ConcurrentQueue<Weak<dyn Observer>>,
-    #[allow(dead_code)]
-    _cq_buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
+    /// The address space's completion queues, keyed by [`CqId`].
+    cqs: BTreeMap<CqId, CqState>,
 }
 
 // AsCompletions stores raw pointers to CQ rings allocated from the kernel heap;
@@ -399,53 +417,36 @@ unsafe impl Sync for AsCompletions {}
 static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
+fn empty_as(capacity: usize) -> AsCompletions {
+    AsCompletions {
+        table: crate::klib::collections::id_table::IdTable::new(),
+        capacity,
+        live: 0,
+        detached: BTreeMap::new(),
+        cqs: BTreeMap::new(),
+    }
+}
+
 /// Opens a bounded capability table for an address space. `capacity` bounds the
 /// number of concurrently in-flight capabilities (submission backpressure).
 pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
-    COMPLETIONS.write().insert(
-        asid,
-        AsCompletions {
-            table: crate::klib::collections::id_table::IdTable::new(),
-            capacity,
-            live: 0,
-            detached: BTreeMap::new(),
-            cq_ring: None,
-            pending_cq: VecDeque::new(),
-            wake_pending: false,
-            cq_observers: ConcurrentQueue::unbounded(),
-            _cq_buf: None,
-        },
-    );
+    COMPLETIONS.write().insert(asid, empty_as(capacity));
 }
 
-/// Like [`open_address_space`] but also allocates and attaches a per-AS
-/// completion-queue ring. The ring is a single 4 KiB page with `cq_entries`
-/// entry slots, accessible from the kernel via the raw pointer stored in the
-/// registry.
+/// Like [`open_address_space`] but also allocates and attaches the default
+/// completion-queue ring ([`DEFAULT_CQ`]). The ring is a single 4 KiB page
+/// with `cq_entries` entry slots, accessible from the kernel via the raw
+/// pointer stored in the registry.
 pub fn open_address_space_with_cq(
     asid: AddressSpaceId,
     cap_table_capacity: usize,
     cq_entries: u32,
 ) {
-    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries);
-    COMPLETIONS.write().insert(
-        asid,
-        AsCompletions {
-            table: crate::klib::collections::id_table::IdTable::new(),
-            capacity: cap_table_capacity,
-            live: 0,
-            detached: BTreeMap::new(),
-            cq_ring: Some(ring_ptr),
-            pending_cq: VecDeque::new(),
-            wake_pending: false,
-            cq_observers: ConcurrentQueue::unbounded(),
-            _cq_buf: Some(alloc::boxed::Box::new(buf)),
-        },
-    );
+    COMPLETIONS.write().insert(asid, empty_as(cap_table_capacity));
+    open_cq(asid, DEFAULT_CQ, cq_entries);
 }
 
-/// Returns a raw pointer to the CQ ring for `asid`, or `None`.
-/// Like [`open_address_space_with_cq`] but initialises the ring on a
+/// Like [`open_address_space_with_cq`] but initialises the default ring on a
 /// pre-allocated physical frame (for mappings where the same frame must also
 /// appear in a user page table).
 pub fn open_address_space_with_cq_phys(
@@ -454,28 +455,62 @@ pub fn open_address_space_with_cq_phys(
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
 ) {
-    let ring_ptr =
-        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) };
-    COMPLETIONS.write().insert(
-        asid,
-        AsCompletions {
-            table: crate::klib::collections::id_table::IdTable::new(),
-            capacity: cap_table_capacity,
-            live: 0,
-            detached: BTreeMap::new(),
-            cq_ring: Some(ring_ptr),
-            pending_cq: VecDeque::new(),
-            wake_pending: false,
-            cq_observers: ConcurrentQueue::unbounded(),
-            _cq_buf: None,
-        },
-    );
+    COMPLETIONS.write().insert(asid, empty_as(cap_table_capacity));
+    open_cq_phys(asid, DEFAULT_CQ, ring_frame, cq_entries);
 }
 
-/// Returns a raw pointer to the CQ ring for `asid`, or `None`.
-pub fn cq_ring_of(asid: AddressSpaceId) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
+/// Attaches an additional heap-backed completion queue to an address space —
+/// one per shard in the per-shard-CQ model (§8.1). Replaces any existing
+/// queue with the same id.
+pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
+    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries);
+    let mut registry = COMPLETIONS.write();
+    if let Some(as_completions) = registry.get_mut(&asid) {
+        as_completions.cqs.insert(
+            cq,
+            CqState {
+                ring: ring_ptr,
+                backlog: VecDeque::new(),
+                wake_pending: false,
+                observers: ConcurrentQueue::unbounded(),
+                _buf: Some(alloc::boxed::Box::new(buf)),
+            },
+        );
+    }
+}
+
+/// Attaches an additional completion queue whose ring lives on a
+/// pre-allocated physical frame (mappable into the user address space).
+pub fn open_cq_phys(
+    asid: AddressSpaceId,
+    cq: CqId,
+    ring_frame: crate::memory::physical::PAddr,
+    cq_entries: u32,
+) {
+    let ring_ptr =
+        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) };
+    let mut registry = COMPLETIONS.write();
+    if let Some(as_completions) = registry.get_mut(&asid) {
+        as_completions.cqs.insert(
+            cq,
+            CqState {
+                ring: ring_ptr,
+                backlog: VecDeque::new(),
+                wake_pending: false,
+                observers: ConcurrentQueue::unbounded(),
+                _buf: None,
+            },
+        );
+    }
+}
+
+/// Returns a raw pointer to a CQ ring of `asid`, or `None`.
+pub fn cq_ring_of(
+    asid: AddressSpaceId,
+    cq: CqId,
+) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
     let registry = COMPLETIONS.read();
-    registry.get(&asid).and_then(|c| c.cq_ring)
+    registry.get(&asid).and_then(|c| c.cqs.get(&cq)).map(|state| state.ring)
 }
 
 /// Closes an address space's capability table and frees its CQ ring (if any).
@@ -571,23 +606,33 @@ pub fn complete(
     // Publish the completion entry to the shared CQ ring *before* waking any
     // waiter. A userspace consumer that blocks in `wait` and then drains the
     // ring the moment it is woken must observe the entry, so the ring write has
-    // to happen-before the wake, not after it.
+    // to happen-before the wake, not after it. Capability-backed completions
+    // are delivered to the default queue.
     {
         let mut registry = COMPLETIONS.write();
         if let Some(as_completions) = registry.get_mut(&asid) {
-            flush_pending_cq(as_completions);
-            if let Some(ring_ptr) = as_completions.cq_ring {
-                if !unsafe { &mut *ring_ptr }.write(cap, effective.clone()) {
-                    as_completions.pending_cq.push_back((cap as u64, effective));
-                }
+            if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
+                post_to_cq(cq_state, cap as u64, effective);
             }
         }
     }
 
-    signal_cq(asid);
+    signal_cq(asid, DEFAULT_CQ);
     completion.signal();
 
     Ok(())
+}
+
+/// Posts one entry to a queue's ring, spilling to its non-lossy backlog when
+/// the ring is full. Any backlog is flushed (batched) first so ordering is
+/// preserved.
+fn post_to_cq(cq_state: &mut CqState, cookie: u64, result: OpResult) {
+    flush_backlog(cq_state);
+    if !cq_state.backlog.is_empty()
+        || !unsafe { &mut *cq_state.ring }.write_cookie(cookie, result.clone())
+    {
+        cq_state.backlog.push_back((cookie, result));
+    }
 }
 
 /// Starts a capability-free operation (architecture doc §8.4): the common
@@ -595,18 +640,20 @@ pub fn complete(
 ///
 /// No capability-table slot is allocated; the operation is identified by the
 /// returned [`OperationId`] (for cancellation) and correlated by the caller's
-/// `user_data`, which is posted as the CQ entry cookie on completion. The
-/// operation counts toward the same submission-backpressure capacity as
-/// capability-backed ones. Requires an attached CQ ring, since that is the
-/// only delivery channel.
+/// `user_data`, which is posted as the CQ entry cookie on completion to the
+/// selected queue `cq` (per-shard delivery, §8.1). The operation counts
+/// toward the same submission-backpressure capacity as capability-backed
+/// ones. Requires the selected queue to exist, since it is the only delivery
+/// channel.
 pub fn submit_detached(
     asid: AddressSpaceId,
+    cq: CqId,
     _op: OpCode,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-    if as_completions.cq_ring.is_none() {
+    if !as_completions.cqs.contains_key(&cq) {
         return Err(SubmitError::NoCompletionQueue);
     }
     if as_completions.live >= as_completions.capacity {
@@ -617,6 +664,7 @@ pub fn submit_detached(
         operation,
         DetachedOp {
             user_data,
+            cq,
             cancel_pending: false,
         },
     );
@@ -625,8 +673,8 @@ pub fn submit_detached(
 }
 
 /// Completes a capability-free operation: posts `(user_data, result)` to the
-/// CQ ring (or the non-lossy backlog), reclaims the operation record, and
-/// wakes CQ waiters. The effective result is forced to
+/// operation's queue (or its non-lossy backlog), reclaims the operation
+/// record, and wakes that queue's waiters. The effective result is forced to
 /// [`OpResult::Cancelled`] when a cancel was pending. After this call the
 /// operation id no longer names anything.
 pub fn complete_detached(
@@ -634,7 +682,7 @@ pub fn complete_detached(
     operation: OperationId,
     result: OpResult,
 ) -> Result<(), CapError> {
-    {
+    let cq = {
         let mut registry = COMPLETIONS.write();
         let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
         let detached = as_completions.detached.remove(&operation).ok_or(CapError::UnknownCap)?;
@@ -643,15 +691,13 @@ pub fn complete_detached(
         } else {
             result
         };
-        flush_pending_cq(as_completions);
-        if let Some(ring_ptr) = as_completions.cq_ring {
-            if !unsafe { &mut *ring_ptr }.write_cookie(detached.user_data, effective.clone()) {
-                as_completions.pending_cq.push_back((detached.user_data, effective));
-            }
+        if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
+            post_to_cq(cq_state, detached.user_data, effective);
         }
         as_completions.live = as_completions.live.saturating_sub(1);
-    }
-    signal_cq(asid);
+        detached.cq
+    };
+    signal_cq(asid, cq);
     Ok(())
 }
 
@@ -670,26 +716,27 @@ pub fn cancel_detached(
     Ok(CancelState::CancelRequested)
 }
 
-fn flush_pending_cq(as_completions: &mut AsCompletions) {
-    let Some(ring_ptr) = as_completions.cq_ring else {
+/// Batched backlog flush: writes as many retained entries as fit with one
+/// ring head update, preserving order.
+fn flush_backlog(cq_state: &mut CqState) {
+    if cq_state.backlog.is_empty() {
         return;
-    };
-    while let Some((cookie, result)) = as_completions.pending_cq.front().cloned() {
-        if unsafe { &mut *ring_ptr }.write_cookie(cookie, result) {
-            as_completions.pending_cq.pop_front();
-        } else {
-            break;
-        }
+    }
+    let entries = cq_state.backlog.make_contiguous();
+    let written = unsafe { &mut *cq_state.ring }.write_batch(entries.iter());
+    drop(entries);
+    for _ in 0..written {
+        cq_state.backlog.pop_front();
     }
 }
 
-fn signal_cq(asid: AddressSpaceId) {
+fn signal_cq(asid: AddressSpaceId, cq: CqId) {
     let observers = {
         let registry = COMPLETIONS.read();
-        let Some(as_completions) = registry.get(&asid) else {
+        let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) else {
             return;
         };
-        as_completions.cq_observers.try_iter().collect::<Vec<_>>()
+        cq_state.observers.try_iter().collect::<Vec<_>>()
     };
     for observer in observers {
         if let Some(observer) = observer.upgrade() {
@@ -700,13 +747,14 @@ fn signal_cq(asid: AddressSpaceId) {
 
 struct CqObservable {
     asid: AddressSpaceId,
+    cq: CqId,
 }
 
 impl Observable for CqObservable {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
         let registry = COMPLETIONS.read();
-        if let Some(as_completions) = registry.get(&self.asid) {
-            let _ = as_completions.cq_observers.push(observer);
+        if let Some(cq_state) = registry.get(&self.asid).and_then(|c| c.cqs.get(&self.cq)) {
+            let _ = cq_state.observers.push(observer);
         }
     }
 }
@@ -800,79 +848,83 @@ pub fn state_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<OpStateKind,
     Ok(completion_of(asid, cap)?.state_kind())
 }
 
-/// Polls the CQ ring for `asid` and returns the number of pending entries.
-/// Returns 0 if no CQ ring is attached.
-pub fn cq_pending(asid: AddressSpaceId) -> u32 {
+/// Polls a CQ ring of `asid` and returns the number of pending entries
+/// (flushing the non-lossy backlog first). Returns 0 if the queue does not
+/// exist.
+pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
     let mut registry = COMPLETIONS.write();
-    match registry.get_mut(&asid) {
-        Some(as_completions) => {
-            flush_pending_cq(as_completions);
-            match as_completions.cq_ring {
-                Some(ring_ptr) => unsafe { &*ring_ptr }.pending(),
-                None => 0,
-            }
+    match registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+        Some(cq_state) => {
+            flush_backlog(cq_state);
+            unsafe { &*cq_state.ring }.pending()
         }
         None => 0,
     }
 }
 
-/// Posts an explicit wake to `asid`'s CQ waiters (architecture doc §7.3/§9.4):
-/// a thread blocked in [`wait_on_cq`]/[`wait_on_cq_timeout`] returns even
-/// though no completion entry was posted. Used by userspace reactors so a
-/// peer shard can interrupt a blocking CQ wait (for example when new internal
-/// work is queued). Wakes are consume-on-wait and coalesce: any number of
-/// wakes before the next wait release exactly one waiter pass.
-pub fn wake(asid: AddressSpaceId) {
+/// Posts an explicit wake to the waiters of one queue (architecture doc
+/// §7.3/§9.4): a thread blocked in [`wait_on_cq`]/[`wait_on_cq_timeout`] on
+/// that queue returns even though no completion entry was posted. Used by
+/// userspace reactors so a peer shard can interrupt a blocking CQ wait (for
+/// example when new internal work is queued). Wakes are consume-on-wait and
+/// coalesce: any number of wakes before the next wait release exactly one
+/// waiter pass.
+pub fn wake(asid: AddressSpaceId, cq: CqId) {
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(as_completions) = registry.get_mut(&asid) {
-            as_completions.wake_pending = true;
+        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+            cq_state.wake_pending = true;
         }
     }
-    signal_cq(asid);
+    signal_cq(asid, cq);
 }
 
 /// Consumes a pending wake, if any.
-fn take_wake(asid: AddressSpaceId) -> bool {
+fn take_wake(asid: AddressSpaceId, cq: CqId) -> bool {
     let mut registry = COMPLETIONS.write();
-    match registry.get_mut(&asid) {
-        Some(as_completions) => core::mem::take(&mut as_completions.wake_pending),
+    match registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+        Some(cq_state) => core::mem::take(&mut cq_state.wake_pending),
         None => false,
     }
 }
 
 /// Non-consuming check for a pending wake (lost-wake guard re-check).
-fn peek_wake(asid: AddressSpaceId) -> bool {
+fn peek_wake(asid: AddressSpaceId, cq: CqId) -> bool {
     let registry = COMPLETIONS.read();
-    registry.get(&asid).map(|c| c.wake_pending).unwrap_or(false)
+    registry
+        .get(&asid)
+        .and_then(|c| c.cqs.get(&cq))
+        .map(|state| state.wake_pending)
+        .unwrap_or(false)
 }
 
-/// Blocks the calling thread until the CQ ring for `asid` has at least
-/// `min_complete` pending entries **or** an explicit [`wake`] is posted. This
-/// is the kernel-internal implementation of the `CQ_WAIT` syscall (§4.2): the
-/// reactor blocks on CQ readiness, and `complete()` writes entries to the
-/// ring/backlog before waking waiters.
-pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
+/// Blocks the calling thread until queue `cq` of `asid` has at least
+/// `min_complete` pending entries **or** an explicit [`wake`] is posted to
+/// that queue. This is the kernel-internal implementation of the `CQ_WAIT`
+/// syscall (§4.2): the reactor blocks on CQ readiness, and `complete()`
+/// writes entries to the ring/backlog before waking waiters.
+pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, min_complete: u32) {
     let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
         return;
     };
-    let cq = CqObservable {
+    let observable = CqObservable {
         asid,
+        cq,
     };
 
     loop {
-        if take_wake(asid) || cq_pending(asid) >= min_complete {
+        if take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
             return;
         }
 
-        if SYSTEM_SCHEDULER.write().block_thread(tid, &cq).is_err() {
+        if SYSTEM_SCHEDULER.write().block_thread(tid, &observable).is_err() {
             return;
         }
 
         // Lost-wake guard: if the CQ became readable (or a wake was posted)
         // while the waker was being registered, re-admit the thread before
         // yielding.
-        if peek_wake(asid) || cq_pending(asid) >= min_complete {
+        if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
             let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
         }
 
@@ -883,7 +935,12 @@ pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
 /// Like [`wait_on_cq`] but also returns when `timeout_ms` elapses. Returns
 /// whether the CQ readiness/wake condition was met (`true`) or the deadline
 /// fired first (`false`).
-pub fn wait_on_cq_timeout(asid: AddressSpaceId, min_complete: u32, timeout_ms: u64) -> bool {
+pub fn wait_on_cq_timeout(
+    asid: AddressSpaceId,
+    cq: CqId,
+    min_complete: u32,
+    timeout_ms: u64,
+) -> bool {
     use crate::{
         klib::time::duration::ExtDuration,
         timers::{
@@ -905,14 +962,15 @@ pub fn wait_on_cq_timeout(asid: AddressSpaceId, min_complete: u32, timeout_ms: u
         return false;
     };
 
-    if take_wake(asid) || cq_pending(asid) >= min_complete {
+    if take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
         return true;
     }
 
-    let cq = CqObservable {
+    let observable = CqObservable {
         asid,
+        cq,
     };
-    if SYSTEM_SCHEDULER.write().block_thread(tid, &cq).is_err() {
+    if SYSTEM_SCHEDULER.write().block_thread(tid, &observable).is_err() {
         return false;
     }
 
@@ -931,7 +989,7 @@ pub fn wait_on_cq_timeout(asid: AddressSpaceId, min_complete: u32, timeout_ms: u
     unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
 
     // Lost-wake guard.
-    if peek_wake(asid) || cq_pending(asid) >= min_complete {
+    if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
         let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
     }
 
@@ -939,5 +997,5 @@ pub fn wait_on_cq_timeout(asid: AddressSpaceId, min_complete: u32, timeout_ms: u
 
     // Report whether the condition (rather than the deadline) released us,
     // consuming a wake if one was posted.
-    take_wake(asid) || cq_pending(asid) >= min_complete
+    take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete
 }

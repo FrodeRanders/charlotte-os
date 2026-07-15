@@ -24,21 +24,21 @@ pub fn test_cq_ring_in_completion() {
     let cap = completion::submit(asid, OpCode::Read, Some(alloc::vec![0u8; 4])).unwrap();
 
     // Before complete, the ring should be empty.
-    assert_eq!(completion::cq_pending(asid), 0);
+    assert_eq!(completion::cq_pending(asid, 0), 0);
 
     // Complete: signals the observer AND writes to the CQ ring.
     completion::complete(asid, cap, OpResult::Ok(4)).unwrap();
 
     // Now the ring must show one pending entry.
-    assert_eq!(completion::cq_pending(asid), 1);
+    assert_eq!(completion::cq_pending(asid, 0), 1);
 
     // Drain the ring entry and verify it.
-    let ring_ptr = completion::cq_ring_of(asid).expect("CQ ring must exist");
+    let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
     let entry = unsafe { &mut *ring_ptr }.read().expect("first entry must be present");
     assert_eq!(entry.cap, cap as u64);
     assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(4)));
 
-    assert_eq!(completion::cq_pending(asid), 0);
+    assert_eq!(completion::cq_pending(asid, 0), 0);
 
     // --- multiple completions → ordered entries -------------------------------
     let c1 = completion::submit(asid, OpCode::Nop, None).unwrap();
@@ -49,9 +49,9 @@ pub fn test_cq_ring_in_completion() {
     completion::complete(asid, c2, OpResult::Cancelled).unwrap();
     completion::complete(asid, c3, OpResult::Err(2)).unwrap();
 
-    assert_eq!(completion::cq_pending(asid), 3);
+    assert_eq!(completion::cq_pending(asid, 0), 3);
 
-    let ring = unsafe { &mut *completion::cq_ring_of(asid).unwrap() };
+    let ring = unsafe { &mut *completion::cq_ring_of(asid, 0).unwrap() };
     let e1 = ring.read().unwrap();
     assert_eq!(e1.cap, c1 as u64);
     assert_eq!(e1.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(1)));

@@ -114,7 +114,7 @@ pub fn test_completion_caps() {
     completion::complete(cq_asid, cap_a, OpResult::Ok(10)).unwrap();
     completion::complete(cq_asid, cap_b, OpResult::Ok(20)).unwrap();
 
-    let ring_ptr = completion::cq_ring_of(cq_asid).expect("CQ ring must exist");
+    let ring_ptr = completion::cq_ring_of(cq_asid, 0).expect("CQ ring must exist");
     assert_eq!(unsafe { &*ring_ptr }.pending(), 1, "small CQ should hold the first entry");
     assert_eq!(unsafe { &*ring_ptr }.overflow, 1, "second entry should hit a full ring");
 
@@ -122,7 +122,7 @@ pub fn test_completion_caps() {
     assert_eq!(first.cap, cap_a as u64);
 
     assert_eq!(
-        completion::cq_pending(cq_asid),
+        completion::cq_pending(cq_asid, 0),
         1,
         "cq_pending should flush the retained backlog entry"
     );
@@ -132,7 +132,7 @@ pub fn test_completion_caps() {
     // --- a duplicate completion must not post a duplicate CQ entry -----------
     completion::complete(cq_asid, cap_a, OpResult::Ok(11)).unwrap();
     assert_eq!(
-        completion::cq_pending(cq_asid),
+        completion::cq_pending(cq_asid, 0),
         0,
         "idempotent re-completion must not produce a CQ entry"
     );
@@ -173,7 +173,7 @@ pub fn test_detached_operations() {
     let no_cq_asid = 0xde7ac4_00;
     completion::open_address_space(no_cq_asid, 2);
     assert_eq!(
-        completion::submit_detached(no_cq_asid, OpCode::Nop, 0x1111),
+        completion::submit_detached(no_cq_asid, 0, OpCode::Nop, 0x1111),
         Err(SubmitError::NoCompletionQueue),
         "detached submit without a CQ ring must be refused"
     );
@@ -181,12 +181,12 @@ pub fn test_detached_operations() {
 
     let asid = 0xde7ac4_01;
     completion::open_address_space_with_cq(asid, 3, 8);
-    let ring_ptr = completion::cq_ring_of(asid).expect("CQ ring must exist");
+    let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
 
     // Happy path: user_data comes back as the CQ cookie, no capability slot
     // is consumed.
-    let op_a = completion::submit_detached(asid, OpCode::Nop, 0xaaaa_0001).unwrap();
-    let op_b = completion::submit_detached(asid, OpCode::Nop, 0xaaaa_0002).unwrap();
+    let op_a = completion::submit_detached(asid, 0, OpCode::Nop, 0xaaaa_0001).unwrap();
+    let op_b = completion::submit_detached(asid, 0, OpCode::Nop, 0xaaaa_0002).unwrap();
     assert_ne!(op_a, op_b, "operation ids must be distinct");
 
     completion::complete_detached(asid, op_a, OpResult::Ok(7)).unwrap();
@@ -220,10 +220,10 @@ pub fn test_detached_operations() {
     // Detached operations share the submission-backpressure budget with
     // capability-backed ones (capacity 3).
     let _c1 = completion::submit(asid, OpCode::Nop, None).unwrap();
-    let _d1 = completion::submit_detached(asid, OpCode::Nop, 1).unwrap();
-    let _d2 = completion::submit_detached(asid, OpCode::Nop, 2).unwrap();
+    let _d1 = completion::submit_detached(asid, 0, OpCode::Nop, 1).unwrap();
+    let _d2 = completion::submit_detached(asid, 0, OpCode::Nop, 2).unwrap();
     assert_eq!(
-        completion::submit_detached(asid, OpCode::Nop, 3),
+        completion::submit_detached(asid, 0, OpCode::Nop, 3),
         Err(SubmitError::WouldBlock),
         "detached submissions must respect the shared capacity"
     );
@@ -235,7 +235,37 @@ pub fn test_detached_operations() {
 
     // Completing a detached operation frees budget again.
     completion::complete_detached(asid, _d1, OpResult::Ok(0)).unwrap();
-    let _d3 = completion::submit_detached(asid, OpCode::Nop, 4).unwrap();
+    let _d3 = completion::submit_detached(asid, 0, OpCode::Nop, 4).unwrap();
+
+    // --- per-shard routing: a second queue receives its own traffic ----------
+    completion::complete_detached(asid, _d2, OpResult::Ok(0)).unwrap();
+    completion::complete_detached(asid, _d3, OpResult::Ok(0)).unwrap();
+    while unsafe { &mut *ring_ptr }.read().is_some() {}
+
+    completion::open_cq(asid, 1, 8);
+    let ring1 = completion::cq_ring_of(asid, 1).expect("CQ 1 ring must exist");
+    let routed = completion::submit_detached(asid, 1, OpCode::Nop, 0xbbbb_0001).unwrap();
+    completion::complete_detached(asid, routed, OpResult::Ok(41)).unwrap();
+    assert_eq!(
+        completion::cq_pending(asid, 1),
+        1,
+        "a detached completion must route to its selected queue"
+    );
+    assert_eq!(
+        completion::cq_pending(asid, 0),
+        0,
+        "the default queue must not observe another queue's traffic"
+    );
+    let entry = unsafe { &mut *ring1 }.read().expect("CQ 1 entry must be present");
+    assert_eq!(entry.cap, 0xbbbb_0001);
+    assert_eq!(entry.result, 41);
+
+    // Submitting to a queue that does not exist is refused.
+    assert_eq!(
+        completion::submit_detached(asid, 7, OpCode::Nop, 5),
+        Err(SubmitError::NoCompletionQueue),
+        "detached submit to a nonexistent queue must be refused"
+    );
 
     completion::close_address_space(asid);
     logln!("Capability-free (detached) completion tests passed.");

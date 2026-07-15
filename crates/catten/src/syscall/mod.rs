@@ -73,7 +73,8 @@ pub mod call_no {
     pub const MAILBOX_RECV: u16 = 10;
     /// Block on a completion with a timeout (milliseconds in x2).
     pub const COMPLETION_WAIT_TIMEOUT: u16 = 11;
-    /// Block until the caller's CQ ring has at least `x1` pending entries.
+    /// Block until CQ `x2` of the caller has at least `x1` pending entries or
+    /// an explicit wake is posted to it.
     pub const CQ_WAIT: u16 = 12;
     /// Open a sender capability targeting LP `x1`. Returns cap in `x0`.
     pub const MAILBOX_OPEN_SEND: u16 = 13;
@@ -141,12 +142,13 @@ pub mod call_no {
     /// cap in x0. The receiver observes the copied memory cap in x7 and the
     /// minted connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
     pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 = 40;
-    /// Post an explicit wake to the caller's CQ waiters (cross-shard reactor
-    /// wake). Returns 0.
+    /// Post an explicit wake to CQ `x1`'s waiters (cross-shard reactor wake).
+    /// Returns 0.
     pub const CQ_WAKE: u16 = 41;
-    /// Block until the caller's CQ has at least x1 entries, an explicit wake is
-    /// posted, or x2 milliseconds elapse. Returns the pending entry count in x0
-    /// and 1 in x1 if the deadline fired first, 0 otherwise.
+    /// Block until CQ `x3` of the caller has at least `x1` entries, an
+    /// explicit wake is posted to it, or `x2` milliseconds elapse. Returns the
+    /// pending entry count in x0 and 1 in x1 if the deadline fired first, 0
+    /// otherwise.
     pub const CQ_WAIT_TIMEOUT: u16 = 42;
 }
 
@@ -949,13 +951,15 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
 fn sys_cq_wait(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let min_complete = frame.regs[1].max(1) as u32;
-    crate::completion::wait_on_cq(asid, min_complete);
-    frame.regs[0] = crate::completion::cq_pending(asid) as u64;
+    let cq = frame.regs[2] as u32;
+    crate::completion::wait_on_cq(asid, cq, min_complete);
+    frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
 }
 
 fn sys_cq_wake(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    crate::completion::wake(asid);
+    let cq = frame.regs[1] as u32;
+    crate::completion::wake(asid, cq);
     frame.regs[0] = 0;
 }
 
@@ -963,7 +967,9 @@ fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let min_complete = frame.regs[1].max(1) as u32;
     let timeout_ms = frame.regs[2];
-    let condition_met = crate::completion::wait_on_cq_timeout(asid, min_complete, timeout_ms);
-    frame.regs[0] = crate::completion::cq_pending(asid) as u64;
+    let cq = frame.regs[3] as u32;
+    let condition_met =
+        crate::completion::wait_on_cq_timeout(asid, cq, min_complete, timeout_ms);
+    frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
     frame.regs[1] = if condition_met { 0 } else { 1 };
 }

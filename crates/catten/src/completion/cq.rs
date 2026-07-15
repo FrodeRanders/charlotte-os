@@ -178,6 +178,41 @@ impl CompletionQueueRing {
         true
     }
 
+    /// Kernel (producer) side, batched: write as many `(cookie, result)`
+    /// entries as fit, publishing them with a **single** release fence and
+    /// head update (CQ batching, architecture doc Phase 6). Returns how many
+    /// entries were written; the caller retains the rest.
+    pub fn write_batch<'a, I>(&mut self, entries: I) -> usize
+    where
+        I: Iterator<Item = &'a (u64, OpResult)>,
+    {
+        let h = unsafe { core::ptr::read_volatile(&self.head) };
+        let t = unsafe { core::ptr::read_volatile(&self.tail) };
+        let pending = if h >= t {
+            h - t
+        } else {
+            h + self.capacity - t
+        };
+        let free = (self.capacity - 1 - pending) as usize;
+
+        let mut written = 0usize;
+        for (cookie, result) in entries.take(free) {
+            let slot = ((h as usize) + written) % self.capacity as usize;
+            let entry_ptr = self.entry_ptr(slot);
+            unsafe {
+                core::ptr::write_volatile(&mut (*entry_ptr).cap, *cookie);
+                core::ptr::write_volatile(&mut (*entry_ptr).result, op_result_to_i64(result.clone()));
+            }
+            written += 1;
+        }
+        if written > 0 {
+            fence(Ordering::Release);
+            let next = ((h as usize + written) % self.capacity as usize) as u32;
+            unsafe { core::ptr::write_volatile(&mut self.head, next) };
+        }
+        written
+    }
+
     /// Consumer side: drain one completion entry. Returns `None` when empty.
     pub fn read(&mut self) -> Option<CqEntry> {
         let h = unsafe { core::ptr::read_volatile(&self.head) };

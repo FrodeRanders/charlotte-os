@@ -252,6 +252,22 @@ Current evidence:
     address space), so a wake releases every blocked shard of the
     process rather than one target LP. Remaining Phase 6 work: per-shard
     CQ partitioning, the richer §8.2 completion record, and CQ batching.
+-   The fourth Phase 6 slice partitions completion queues per shard
+    (§8.1) and batches backlog delivery. An address space now owns a set
+    of queues keyed by `CqId` (queue 0 is the default and the
+    destination for capability-backed completions); each queue has its
+    own ring, non-lossy backlog, pending wake, and blocked waiters.
+    `submit_detached` selects a delivery queue, `open_cq`/`open_cq_phys`
+    attach additional per-shard rings, and the `CQ_WAIT`/`CQ_WAKE`/
+    `CQ_WAIT_TIMEOUT` syscalls take a queue id (0 preserves the previous
+    behaviour, which the sitas reactor uses until per-shard rings are
+    mapped into user space). Backlog flushes are now batched: retained
+    entries are published with a single ring head update. Self-tests
+    cover queue routing isolation, refusal of unknown queues, and a
+    blocked wait on a second queue being released by a wake targeted at
+    that queue. Remaining Phase 6 work: the richer §8.2 completion
+    record and mapping per-shard rings into userspace (a loader-contract
+    extension) so sitas shards can each wait on their own queue.
 
 ------------------------------------------------------------------------
 
