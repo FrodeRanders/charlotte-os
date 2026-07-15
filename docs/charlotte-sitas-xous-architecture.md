@@ -228,11 +228,30 @@ Current evidence:
     index or user data by protocol convention). A completed detached
     operation is reclaimed immediately — there is no post-terminal
     record, so double completion and post-completion cancellation are
-    rejected. Self-tests cover delivery, cancellation, budget sharing,
+    rejected.     Self-tests cover delivery, cancellation, budget sharing,
     reclamation, and refusal without an attached CQ. Remaining Phase 6
     work: per-shard CQ partitioning, the richer §8.2 completion record
     (status/flags/returned capability), CQ batching, and migrating
     `sitas-charlotte` from busy polling to `CQ_WAIT`.
+-   The third Phase 6 slice retires the last busy-poll. The kernel CQ
+    wait is now wake-aware and timed: `wake` posts a consume-on-wait
+    cross-thread wake (§7.3/§9.4), `wait_on_cq` returns on either a
+    completion or a wake, and `wait_on_cq_timeout` adds a deadline
+    (syscalls `CQ_WAKE` = 41 and `CQ_WAIT_TIMEOUT` = 42, plus
+    `catten-syscall` wrappers). `sitas-charlotte`'s `CharlotteReactor`
+    was migrated off its `core::hint::spin_loop` busy poll: its `wait`
+    now drains the ring and then blocks in `CQ_WAIT`/`CQ_WAIT_TIMEOUT`,
+    its `ReactorWaker::wake` posts `CQ_WAKE`, and `sleep` blocks on a
+    timed CQ wait rather than spinning. Kernel self-test
+    `test_cq_wait_wake` proves a thread blocked in `wait_on_cq` is
+    released both by a posted completion and by an explicit wake with no
+    entry. `basic_kv`'s data path uses `spin_recv` on shard channels
+    rather than the reactor, so the migration is verified for
+    no-regression by the existing `el0_sitas` smoke test. Until the CQ
+    is partitioned per shard, the wake is process-wide (one ring per
+    address space), so a wake releases every blocked shard of the
+    process rather than one target LP. Remaining Phase 6 work: per-shard
+    CQ partitioning, the richer §8.2 completion record, and CQ batching.
 
 ------------------------------------------------------------------------
 

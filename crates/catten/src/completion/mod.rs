@@ -375,6 +375,11 @@ struct AsCompletions {
     /// This preserves the non-lossy completion contract: a full userspace ring
     /// delays delivery but does not discard terminal completions.
     pending_cq: VecDeque<(u64, OpResult)>,
+    /// An explicit cross-thread wake was posted ([`wake`]) and has not yet been
+    /// consumed by a CQ waiter. Consume-on-wait semantics close the lost-wake
+    /// race: a wake posted between a waiter's ring check and its blocking is
+    /// still observed by the guard re-check.
+    wake_pending: bool,
     /// Threads blocked waiting for this address space's CQ to become readable.
     cq_observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
@@ -406,6 +411,7 @@ pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
             detached: BTreeMap::new(),
             cq_ring: None,
             pending_cq: VecDeque::new(),
+            wake_pending: false,
             cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: None,
         },
@@ -431,6 +437,7 @@ pub fn open_address_space_with_cq(
             detached: BTreeMap::new(),
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
+            wake_pending: false,
             cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: Some(alloc::boxed::Box::new(buf)),
         },
@@ -458,6 +465,7 @@ pub fn open_address_space_with_cq_phys(
             detached: BTreeMap::new(),
             cq_ring: Some(ring_ptr),
             pending_cq: VecDeque::new(),
+            wake_pending: false,
             cq_observers: ConcurrentQueue::unbounded(),
             _cq_buf: None,
         },
@@ -808,10 +816,42 @@ pub fn cq_pending(asid: AddressSpaceId) -> u32 {
     }
 }
 
+/// Posts an explicit wake to `asid`'s CQ waiters (architecture doc §7.3/§9.4):
+/// a thread blocked in [`wait_on_cq`]/[`wait_on_cq_timeout`] returns even
+/// though no completion entry was posted. Used by userspace reactors so a
+/// peer shard can interrupt a blocking CQ wait (for example when new internal
+/// work is queued). Wakes are consume-on-wait and coalesce: any number of
+/// wakes before the next wait release exactly one waiter pass.
+pub fn wake(asid: AddressSpaceId) {
+    {
+        let mut registry = COMPLETIONS.write();
+        if let Some(as_completions) = registry.get_mut(&asid) {
+            as_completions.wake_pending = true;
+        }
+    }
+    signal_cq(asid);
+}
+
+/// Consumes a pending wake, if any.
+fn take_wake(asid: AddressSpaceId) -> bool {
+    let mut registry = COMPLETIONS.write();
+    match registry.get_mut(&asid) {
+        Some(as_completions) => core::mem::take(&mut as_completions.wake_pending),
+        None => false,
+    }
+}
+
+/// Non-consuming check for a pending wake (lost-wake guard re-check).
+fn peek_wake(asid: AddressSpaceId) -> bool {
+    let registry = COMPLETIONS.read();
+    registry.get(&asid).map(|c| c.wake_pending).unwrap_or(false)
+}
+
 /// Blocks the calling thread until the CQ ring for `asid` has at least
-/// `min_complete` pending entries. This is the kernel-internal implementation
-/// of the `wait` syscall (§4.2): the reactor blocks on CQ readiness, and
-/// `complete()` writes entries to the ring/backlog before waking waiters.
+/// `min_complete` pending entries **or** an explicit [`wake`] is posted. This
+/// is the kernel-internal implementation of the `CQ_WAIT` syscall (§4.2): the
+/// reactor blocks on CQ readiness, and `complete()` writes entries to the
+/// ring/backlog before waking waiters.
 pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
     let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
         return;
@@ -821,7 +861,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
     };
 
     loop {
-        if cq_pending(asid) >= min_complete {
+        if take_wake(asid) || cq_pending(asid) >= min_complete {
             return;
         }
 
@@ -829,12 +869,75 @@ pub fn wait_on_cq(asid: AddressSpaceId, min_complete: u32) {
             return;
         }
 
-        // Lost-wake guard: if the CQ became readable while the waker was being
-        // registered, re-admit the thread before yielding.
-        if cq_pending(asid) >= min_complete {
+        // Lost-wake guard: if the CQ became readable (or a wake was posted)
+        // while the waker was being registered, re-admit the thread before
+        // yielding.
+        if peek_wake(asid) || cq_pending(asid) >= min_complete {
             let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
         }
 
         yield_lp();
     }
+}
+
+/// Like [`wait_on_cq`] but also returns when `timeout_ms` elapses. Returns
+/// whether the CQ readiness/wake condition was met (`true`) or the deadline
+/// fired first (`false`).
+pub fn wait_on_cq_timeout(asid: AddressSpaceId, min_complete: u32, timeout_ms: u64) -> bool {
+    use crate::{
+        klib::time::duration::ExtDuration,
+        timers::{
+            TIMER_QUEUES,
+            TimerEvent,
+        },
+    };
+
+    struct CqTimeoutWake {
+        tid: crate::cpu::scheduler::threads::ThreadId,
+    }
+    impl Observer for CqTimeoutWake {
+        fn notify(self: Arc<Self>) {
+            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(self.tid);
+        }
+    }
+
+    let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
+        return false;
+    };
+
+    if take_wake(asid) || cq_pending(asid) >= min_complete {
+        return true;
+    }
+
+    let cq = CqObservable {
+        asid,
+    };
+    if SYSTEM_SCHEDULER.write().block_thread(tid, &cq).is_err() {
+        return false;
+    }
+
+    // Arm a timer that also wakes this thread (timeout path). The observer
+    // must outlive the sleep, so keep the strong Arc on this stack frame.
+    let timeout_obs = Arc::new(CqTimeoutWake {
+        tid,
+    });
+    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    crate::klib::observer::Observable::register_observer(
+        &timer_event,
+        Arc::downgrade(&timeout_obs) as Weak<dyn Observer>,
+    );
+    // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
+    // any threads run.
+    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+
+    // Lost-wake guard.
+    if peek_wake(asid) || cq_pending(asid) >= min_complete {
+        let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
+    }
+
+    yield_lp();
+
+    // Report whether the condition (rather than the deadline) released us,
+    // consuming a wake if one was posted.
+    take_wake(asid) || cq_pending(asid) >= min_complete
 }

@@ -141,10 +141,17 @@ pub mod call_no {
     /// cap in x0. The receiver observes the copied memory cap in x7 and the
     /// minted connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
     pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 = 40;
+    /// Post an explicit wake to the caller's CQ waiters (cross-shard reactor
+    /// wake). Returns 0.
+    pub const CQ_WAKE: u16 = 41;
+    /// Block until the caller's CQ has at least x1 entries, an explicit wake is
+    /// posted, or x2 milliseconds elapse. Returns the pending entry count in x0
+    /// and 1 in x1 if the deadline fired first, 0 otherwise.
+    pub const CQ_WAIT_TIMEOUT: u16 = 42;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::IPC_SCALAR_CALL_CONNECTION_COPY;
+pub const MAX_SYSCALL: u16 = call_no::CQ_WAIT_TIMEOUT;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -199,6 +206,8 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_SCALAR_CALL_COPY => sys_ipc_scalar_call_copy(frame),
         call_no::IPC_SCALAR_CALL_CONNECTION => sys_ipc_scalar_call_connection(frame),
         call_no::IPC_SCALAR_CALL_CONNECTION_COPY => sys_ipc_scalar_call_connection_copy(frame),
+        call_no::CQ_WAKE => sys_cq_wake(frame),
+        call_no::CQ_WAIT_TIMEOUT => sys_cq_wait_timeout(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -942,4 +951,19 @@ fn sys_cq_wait(frame: &mut TrapFrame) {
     let min_complete = frame.regs[1].max(1) as u32;
     crate::completion::wait_on_cq(asid, min_complete);
     frame.regs[0] = crate::completion::cq_pending(asid) as u64;
+}
+
+fn sys_cq_wake(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    crate::completion::wake(asid);
+    frame.regs[0] = 0;
+}
+
+fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let min_complete = frame.regs[1].max(1) as u32;
+    let timeout_ms = frame.regs[2];
+    let condition_met = crate::completion::wait_on_cq_timeout(asid, min_complete, timeout_ms);
+    frame.regs[0] = crate::completion::cq_pending(asid) as u64;
+    frame.regs[1] = if condition_met { 0 } else { 1 };
 }

@@ -150,6 +150,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             30 => asm!("svc #30", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             31 => asm!("svc #31", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             34 => asm!("svc #34", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            41 => asm!("svc #41", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -210,6 +211,7 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            42 => asm!("svc #42", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -452,6 +454,21 @@ pub unsafe fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
 #[inline(always)]
 pub unsafe fn cq_wait(min_complete: u64) -> u64 {
     unsafe { svc3(12, min_complete, 0, 0) }
+}
+
+/// Post an explicit wake to the caller's CQ waiters, so a peer shard blocked
+/// in [`cq_wait`]/[`cq_wait_timeout`] returns even without a completion.
+#[inline(always)]
+pub unsafe fn cq_wake() -> u64 {
+    unsafe { svc3(41, 0, 0, 0) }
+}
+
+/// Block until the caller's CQ has at least `min_complete` entries, an
+/// explicit wake is posted, or `timeout_ms` elapses. Returns
+/// `(pending, timed_out)` where `timed_out` is 1 if the deadline fired first.
+#[inline(always)]
+pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64) -> (u64, u64) {
+    unsafe { svc3_x1(42, min_complete, timeout_ms, 0) }
 }
 
 /// Open a sender capability targeting LP `target_lp`.  Returns the cap.
