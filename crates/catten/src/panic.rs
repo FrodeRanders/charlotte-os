@@ -15,7 +15,7 @@ use crate::cpu::isa::lp::ops::await_interrupt;
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     crate::early_logln!(
-        "***\nA kernel panic has occurred with the following cause:\n{}\n***",
+        "***\nKernel panic:\n{}\n***",
         info
     );
     await_interrupt!();
