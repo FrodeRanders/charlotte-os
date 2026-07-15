@@ -147,10 +147,11 @@ extern "C" fn verify_el0_uart() {
         base as *const u32
     };
 
-    // --- Phase A: the console client completes lookup → writes. ---
+    // --- Phase A: the console client completes lookup → writes → issues a
+    // deferred read (stage 5) that only a device interrupt can complete. ---
     {
         let mut spins: u64 = 0;
-        while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
+        while unsafe { core::ptr::read_volatile(client_cfg.add(3)) } < 5 {
             spins += 1;
             if spins % 2_000_000 == 0 {
                 let driver_stage = unsafe { core::ptr::read_volatile(driver_cfg) };
@@ -163,7 +164,7 @@ extern "C" fn verify_el0_uart() {
                     client_stage
                 );
             }
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for console client");
+            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for console client writes");
             yield_lp();
         }
     }
@@ -176,25 +177,50 @@ extern "C" fn verify_el0_uart() {
         driver_served
     );
 
-    // --- Phase B: the driver's delegated interrupt authority is live. ---
-    // Software-pend the real PL011 SPI through the GIC; it is routed to the
-    // driver's completion queue, which releases its unified wait and drives
-    // an acknowledgement from EL0.
-    crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+    // --- Phase B: drive the delegated interrupt. Wait until the driver has
+    // actually retained the deferred read (its READ_ARMED marker), then
+    // software-pend the real PL011 SPI through the GIC exactly once. The wake
+    // is coalesced and not lost even if the driver has not yet re-entered its
+    // wait, so a single pend suffices; a rare re-pend guards against a dropped
+    // delivery without storming the scheduler with wakes. ---
     {
         let mut spins: u64 = 0;
-        while unsafe { core::ptr::read_volatile(driver_cfg.add(2)) } < 1 {
+        while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
             spins += 1;
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for driver IRQ acknowledgement");
+            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for driver to arm the deferred read");
             yield_lp();
         }
     }
+    crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+    {
+        let mut spins: u64 = 0;
+        while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
+            spins += 1;
+            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for interrupt-driven deferred read");
+            // Rare safety-net re-pend if the first delivery did not land.
+            if spins % 20_000_000 == 0 {
+                crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+            }
+            yield_lp();
+        }
+    }
+
     let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(2)) };
     assert!(irq_count >= 1, "[uart] driver must have acknowledged a device interrupt");
+    // The deferred read result encodes the driver's interrupt count in bits
+    // 8.., so a nonzero high half proves the reply was interrupt-driven.
+    let read_result = unsafe { core::ptr::read_volatile(client_cfg.add(10)) };
+    assert!(
+        read_result >> 8 >= 1,
+        "[uart] deferred read must have been completed by a device interrupt (got {:#x})",
+        read_result
+    );
 
     logln!(
         "[uart] SUCCESS: userspace driver mapped delegated MMIO, served console writes through \
-         PL011 registers from EL0, and acknowledged a delegated device interrupt."
+         PL011 registers from EL0, and completed a deferred read driven by a delegated device \
+         interrupt (result {:#x}).",
+        read_result
     );
     loop {
         yield_lp();

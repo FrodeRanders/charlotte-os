@@ -104,17 +104,36 @@ pub mod console {
     /// Reply 0, release the device (unmap MMIO, mask/unroute the interrupt),
     /// then exit the protection domain.
     pub const OP_SHUTDOWN: u32 = 3;
+    /// Request a device-driven read. The driver does **not** reply
+    /// immediately: it retains the reply token and returns to its wait loop,
+    /// so the caller's shard is free to run other work (architecture doc
+    /// §7.2, deferred replies). When the next device interrupt arrives, the
+    /// driver reads the receive register and completes the retained reply,
+    /// so the reply is genuinely driven by the hardware interrupt. Reply
+    /// result = the byte read (0..=255) in the low bits with the driver's
+    /// interrupt count in bits 8.. so the caller can confirm the reply was
+    /// interrupt-driven. A second concurrent request replies -1 (busy).
+    pub const OP_READ_DEFERRED: u32 = 4;
 }
 
 /// PL011 UART register offsets (ARM PrimeCell PL011), for the reference
 /// userspace driver.
 pub mod pl011 {
-    /// Data register: writing transmits the low byte.
+    /// Data register: writing transmits the low byte; reading returns a
+    /// received byte in the low 8 bits.
     pub const DR: usize = 0x000;
     /// Flag register.
     pub const FR: usize = 0x018;
+    /// FR bit 4: receive FIFO empty.
+    pub const FR_RXFE: u32 = 1 << 4;
     /// FR bit 5: transmit FIFO full.
     pub const FR_TXFF: u32 = 1 << 5;
+    /// Interrupt mask set/clear register.
+    pub const IMSC: usize = 0x038;
+    /// IMSC bit 4: receive interrupt.
+    pub const IMSC_RXIM: u32 = 1 << 4;
+    /// Interrupt clear register.
+    pub const ICR: usize = 0x044;
 }
 
 /// Stage a memory-carried name: allocate a one-page memory object, write

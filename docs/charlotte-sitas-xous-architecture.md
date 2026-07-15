@@ -392,6 +392,38 @@ Current evidence:
     the boot on a macOS host using `hdiutil`/`diskutil` in place of
     `losetup`/`parted`/`mkfs.fat` and the rustup `llvm-ar` for the
     flanterm C library.
+-   The third Phase 8 slice adds **interrupt-driven deferred read
+    replies** (§7.2): the console protocol gains `OP_READ_DEFERRED`, on
+    which the driver does *not* reply — it retains the reply token,
+    returns to its single `CQ_WAIT`, and completes the retained reply
+    only when the next device interrupt arrives, reading the PL011
+    receive register (a real EL0 MMIO read; the reply encodes the byte in
+    bits 0..8 and the driver's interrupt count above, so the caller can
+    verify the reply was interrupt-driven). The driver also unmasks the
+    PL011 receive interrupt (`IMSC.RXIM`) and clears it on service
+    (`ICR`), and publishes a READ_ARMED config marker while a token is
+    retained. The console client issues the deferred read after its
+    writes; the verifier waits for READ_ARMED, software-pends the real
+    PL011 SPI **once**, and asserts the read completed with a nonzero
+    interrupt count. Boot-validated in QEMU (deferred-read result
+    `0x100`: RX empty, completed by interrupt #1). Architectural
+    findings: (a) the reply token *is* the natural deferred-completion
+    object — the driver needed no new kernel mechanism to hold a request
+    across an interrupt, exactly as §7.2 intends; (b) wake discipline
+    matters: an earlier version of the verifier software-pended the SPI
+    in a tight loop, and the resulting storm of `completion::wake` →
+    `submit_ready_thread` calls hit the pre-existing scheduler race in
+    which waking an already-runnable thread panics
+    (`ThreadAlreadyAssignedToLp`) — the same non-idempotent-wake
+    fragility that the post-boot `cross_lp_demo` trips as
+    `AlreadyBlocked` (`sleep`'s block/yield window versus a same-LP
+    timer fire). Coalesced single wakes (§9.4) avoid it; making
+    scheduler wakes idempotent is filed as follow-up kernel-concurrency
+    work (Phase 10 territory), since the unified shard wait
+    legitimately aggregates multiple wake sources onto one thread.
+    Remaining Phase 8 work: driver restart with device reset and
+    outstanding-operation reconciliation (success criterion 9's driver
+    half).
 
 
 ------------------------------------------------------------------------

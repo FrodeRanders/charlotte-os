@@ -60,6 +60,7 @@ const UART_MMIO_VADDR: usize = 0x0000_0000_0040_0000;
 
 /// Config-page output words (driver domain).
 const STAGE_OFFSET: usize = 0; // u32 progress marker
+const READ_ARMED_OFFSET: usize = 4; // u32 set to 1 while a deferred read is retained
 const IRQ_COUNT_OFFSET: usize = 8; // u32 interrupts acknowledged
 const SERVED_OFFSET: usize = 12; // u32 write requests served
 
@@ -73,6 +74,19 @@ unsafe fn uart_put(byte: u8) {
     }
     unsafe {
         core::ptr::write_volatile(dr, byte as u32);
+    }
+}
+
+/// Read one byte from the receive FIFO, or `None` if it is empty. A real
+/// device read (MMIO) from EL0.
+#[inline]
+unsafe fn uart_get() -> Option<u8> {
+    let fr = (UART_MMIO_VADDR + pl011::FR) as *const u32;
+    let dr = (UART_MMIO_VADDR + pl011::DR) as *const u32;
+    if unsafe { core::ptr::read_volatile(fr) } & pl011::FR_RXFE != 0 {
+        None
+    } else {
+        Some((unsafe { core::ptr::read_volatile(dr) } & 0xff) as u8)
     }
 }
 
@@ -130,10 +144,21 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     if unsafe { device_irq_bind_cq(irq_cap, 0) } != 0 {
         unsafe { thread_exit() };
     }
+    // Unmask the PL011 receive interrupt so real received data raises the
+    // delegated interrupt (the self-test drives it via a software-pended SPI).
+    unsafe {
+        core::ptr::write_volatile(
+            (UART_MMIO_VADDR + pl011::IMSC) as *mut u32,
+            pl011::IMSC_RXIM,
+        );
+    }
     config::write::<u32>(STAGE_OFFSET, 5); // serving
 
     let mut irq_count: u32 = 0;
     let mut served: u32 = 0;
+    // A retained reply token for an in-flight deferred read (0 = none), and the
+    // read result to hand back once a device interrupt completes it.
+    let mut pending_read: u64 = 0;
 
     loop {
         // Block on the single wait point.
@@ -147,6 +172,24 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
             config::write::<u32>(IRQ_COUNT_OFFSET, irq_count);
+
+            // A device interrupt completes any retained deferred read: read
+            // the receive register (real EL0 MMIO) and reply. Encoding: byte
+            // in bits 0..8, interrupt count in bits 8.. so the caller can see
+            // the reply was interrupt-driven.
+            if pending_read != 0 {
+                let byte = unsafe { uart_get() }.unwrap_or(0) as i64;
+                let result = byte | ((irq_count as i64) << 8);
+                unsafe {
+                    ipc_reply(pending_read, result);
+                    core::ptr::write_volatile(
+                        (UART_MMIO_VADDR + pl011::ICR) as *mut u32,
+                        pl011::IMSC_RXIM,
+                    );
+                }
+                pending_read = 0;
+                config::write::<u32>(READ_ARMED_OFFSET, 0);
+            }
         }
 
         // Drain every ready console request.
@@ -180,6 +223,22 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                         unsafe {
                             ipc_reply(message.reply, irq_count as i64);
                         }
+                    }
+                }
+                console::OP_READ_DEFERRED => {
+                    // Retain the reply token instead of replying now; a device
+                    // interrupt completes it (architecture doc §7.2). Only one
+                    // outstanding read is supported. Publishing READ_ARMED lets
+                    // the test drive the interrupt only once the token is held.
+                    if message.reply == 0 {
+                        // No reply authority: nothing to defer.
+                    } else if pending_read != 0 {
+                        unsafe {
+                            ipc_reply(message.reply, -1);
+                        }
+                    } else {
+                        pending_read = message.reply;
+                        config::write::<u32>(READ_ARMED_OFFSET, 1);
                     }
                 }
                 console::OP_SHUTDOWN => {
