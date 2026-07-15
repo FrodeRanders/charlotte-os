@@ -375,6 +375,24 @@ Current evidence:
     replies, driver restart with device reset and outstanding-operation
     reconciliation (success criterion 9's driver half), and moving the
     interrupt-context wake to a deferred lock-free path.
+-   Both Phase 8 slices are boot-validated in QEMU (`-M
+    virt,gic-version=3`): `test_device_capabilities` and `test_el0_uart`
+    print their SUCCESS lines and the run reaches "Testing Complete. All
+    Tests Passed!". Two findings surfaced only at run time. (a)
+    `enable_spi`/`disable_spi` touch the GIC distributor MMIO, but the
+    mapping installed by `GicV3::init_lp` lives in the boot kernel
+    address space; an SPI configuration call from a self-test thread
+    running under a different active translation regime faulted, so the
+    GIC layer now maps the distributor into the *current* address space
+    (idempotently) before each SPI access. (b) The interrupt-context wake
+    did not deadlock in practice — the driver shard is blocked in
+    `CQ_WAIT` (not holding the completions lock) when its interrupt fires
+    — but the `try_lock` degradation path remains the documented
+    durable-design gap. A `scripts/qemu-boot-macos.sh` helper reproduces
+    the boot on a macOS host using `hdiutil`/`diskutil` in place of
+    `losetup`/`parted`/`mkfs.fat` and the rustup `llvm-ar` for the
+    flanterm C library.
+
 
 ------------------------------------------------------------------------
 
