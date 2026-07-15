@@ -175,6 +175,12 @@ struct Endpoint {
     queue: VecDeque<QueuedMessage>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
     closed: bool,
+    /// When bound, endpoint readiness is delivered to this completion queue
+    /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
+    /// a notification, not a completion). Posted on the empty→nonempty queue
+    /// transition and on closure, so a shard can block on one CQ wait for
+    /// both kernel completions and endpoint work (§7, Phase 7).
+    notify_cq: Option<crate::completion::CqId>,
 }
 
 #[derive(Debug)]
@@ -292,12 +298,42 @@ pub fn endpoint_create(
             queue: VecDeque::new(),
             observers: ConcurrentQueue::unbounded(),
             closed: false,
+            notify_cq: None,
         },
     );
     Ok(ipc.as_caps(owner).insert(Capability::Endpoint {
         endpoint,
         rights: ConnectionRights::ALL,
     }))
+}
+
+/// Binds an endpoint's readiness to one of the owner's completion queues.
+///
+/// After binding, the kernel posts a coalesced wake to that queue whenever
+/// the endpoint's message queue transitions from empty to nonempty, and when
+/// the endpoint closes. This lets a shard block on a single CQ wait for both
+/// kernel/device completions and endpoint work (architecture doc §7,
+/// Phase 7); readiness is a notification to inspect the endpoint, not a
+/// completion record (§16.3).
+pub fn endpoint_bind_cq(
+    owner: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+    cq: crate::completion::CqId,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    let endpoint_id = match ipc.cap(owner, endpoint_cap)? {
+        Capability::Endpoint {
+            endpoint,
+            ..
+        } => endpoint,
+        _ => return Err(IpcError::WrongType),
+    };
+    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.owner != owner {
+        return Err(IpcError::PermissionDenied);
+    }
+    endpoint.notify_cq = Some(cq);
+    Ok(())
 }
 
 pub fn connection_mint(
@@ -369,9 +405,9 @@ pub fn scalar_send(
         return Err(IpcError::PermissionDenied);
     }
 
-    let observers = enqueue_scalar(&mut ipc, endpoint_id, sender, opcode, arg0, None)?;
+    let delivery = enqueue_scalar(&mut ipc, endpoint_id, sender, opcode, arg0, None)?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(())
 }
 
@@ -397,7 +433,7 @@ pub fn scalar_send_with_memory_move(
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
     let server_memory_cap = crate::memory::object::move_to(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let observers = enqueue_scalar_with_memory(
+    let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         sender,
@@ -407,7 +443,7 @@ pub fn scalar_send_with_memory_move(
         Some(server_memory_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(())
 }
 
@@ -433,7 +469,7 @@ pub fn scalar_send_with_memory_copy(
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
     let server_memory_cap = crate::memory::object::copy_to(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let observers = enqueue_scalar_with_memory(
+    let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         sender,
@@ -443,7 +479,7 @@ pub fn scalar_send_with_memory_copy(
         Some(server_memory_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(())
 }
 
@@ -503,10 +539,10 @@ pub fn scalar_call(
         token,
     });
 
-    let observers =
+    let delivery =
         enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(call_cap)
 }
 
@@ -629,7 +665,7 @@ fn scalar_call_with_connection_impl(
         token,
     });
 
-    let observers = enqueue_message(
+    let delivery = enqueue_message(
         &mut ipc,
         endpoint_id,
         caller,
@@ -640,7 +676,7 @@ fn scalar_call_with_connection_impl(
         Some(attached_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(call_cap)
 }
 
@@ -694,7 +730,7 @@ pub fn scalar_call_with_memory_move(
         token,
     });
 
-    let observers = enqueue_scalar_with_memory(
+    let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
@@ -704,7 +740,7 @@ pub fn scalar_call_with_memory_move(
         Some(server_memory_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(call_cap)
 }
 
@@ -758,7 +794,7 @@ pub fn scalar_call_with_memory_copy(
         token,
     });
 
-    let observers = enqueue_scalar_with_memory(
+    let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
@@ -768,7 +804,7 @@ pub fn scalar_call_with_memory_copy(
         Some(server_memory_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(call_cap)
 }
 
@@ -852,7 +888,7 @@ fn scalar_call_with_memory_borrow(
         token,
     });
 
-    let observers = enqueue_scalar_with_memory(
+    let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
@@ -862,8 +898,23 @@ fn scalar_call_with_memory_borrow(
         Some(server_memory_cap),
     )?;
     drop(ipc);
-    signal_observers(observers);
+    deliver(delivery);
     Ok(call_cap)
+}
+
+/// What must be signalled after an enqueue, once the IPC lock is dropped:
+/// blocked endpoint receivers, plus (for CQ-bound endpoints) a coalesced
+/// readiness wake on the owner's completion queue.
+struct Delivery {
+    observers: Vec<Weak<dyn Observer>>,
+    cq_wake: Option<(AddressSpaceId, crate::completion::CqId)>,
+}
+
+fn deliver(delivery: Delivery) {
+    if let Some((asid, cq)) = delivery.cq_wake {
+        crate::completion::wake(asid, cq);
+    }
+    signal_observers(delivery.observers);
 }
 
 fn enqueue_scalar(
@@ -873,7 +924,7 @@ fn enqueue_scalar(
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
-) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+) -> Result<Delivery, IpcError> {
     enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, None, None)
 }
 
@@ -885,7 +936,7 @@ fn enqueue_scalar_with_memory(
     arg0: u64,
     reply: Option<CapabilityId>,
     memory: Option<MemoryObjectCap>,
-) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+) -> Result<Delivery, IpcError> {
     enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, memory, None)
 }
 
@@ -899,7 +950,7 @@ fn enqueue_message(
     reply: Option<CapabilityId>,
     memory: Option<MemoryObjectCap>,
     connection: Option<CapabilityId>,
-) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+) -> Result<Delivery, IpcError> {
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
@@ -907,6 +958,7 @@ fn enqueue_message(
     if endpoint.queue.len() >= endpoint.capacity {
         return Err(IpcError::QueueFull);
     }
+    let was_empty = endpoint.queue.is_empty();
     endpoint.queue.push_back(QueuedMessage {
         sender,
         opcode,
@@ -915,7 +967,17 @@ fn enqueue_message(
         memory,
         connection,
     });
-    Ok(drain_observers(&endpoint.observers))
+    // Coalesced readiness (§9.4): only the empty→nonempty transition posts a
+    // CQ wake; further messages are observed when the receiver drains.
+    let cq_wake = if was_empty {
+        endpoint.notify_cq.map(|cq| (endpoint.owner, cq))
+    } else {
+        None
+    };
+    Ok(Delivery {
+        observers: drain_observers(&endpoint.observers),
+        cq_wake,
+    })
 }
 
 fn reserve_endpoint_queue(
@@ -1137,6 +1199,7 @@ pub fn poll_reply(
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
     let mut observers = Vec::new();
+    let mut cq_wake = None;
     match ipc.remove_cap(asid, cap)? {
         Capability::Endpoint {
             endpoint,
@@ -1148,6 +1211,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                 } else {
                     endpoint.closed = true;
                     observers.extend(drain_observers(&endpoint.observers));
+                    // A CQ-bound endpoint reports its closure as a readiness
+                    // wake so a reactor blocked on one CQ wait observes it.
+                    cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
                     endpoint.queue.drain(..).collect()
                 }
             } else {
@@ -1207,6 +1273,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         } => {}
     }
     drop(ipc);
+    if let Some((owner, cq)) = cq_wake {
+        crate::completion::wake(owner, cq);
+    }
     signal_observers(observers);
     Ok(())
 }

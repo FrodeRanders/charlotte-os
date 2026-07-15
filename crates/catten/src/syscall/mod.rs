@@ -150,10 +150,14 @@ pub mod call_no {
     /// pending entry count in x0 and 1 in x1 if the deadline fired first, 0
     /// otherwise.
     pub const CQ_WAIT_TIMEOUT: u16 = 42;
+    /// Bind endpoint `x1`'s readiness to the caller's CQ `x2`: the kernel
+    /// posts a coalesced wake to that queue on the endpoint's
+    /// empty-to-nonempty transition and on closure. Returns status in x0.
+    pub const IPC_ENDPOINT_BIND_CQ: u16 = 43;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::CQ_WAIT_TIMEOUT;
+pub const MAX_SYSCALL: u16 = call_no::IPC_ENDPOINT_BIND_CQ;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -210,6 +214,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::IPC_SCALAR_CALL_CONNECTION_COPY => sys_ipc_scalar_call_connection_copy(frame),
         call_no::CQ_WAKE => sys_cq_wake(frame),
         call_no::CQ_WAIT_TIMEOUT => sys_cq_wait_timeout(frame),
+        call_no::IPC_ENDPOINT_BIND_CQ => sys_ipc_endpoint_bind_cq(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -972,4 +977,14 @@ fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
         crate::completion::wait_on_cq_timeout(asid, cq, min_complete, timeout_ms);
     frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
     frame.regs[1] = if condition_met { 0 } else { 1 };
+}
+
+fn sys_ipc_endpoint_bind_cq(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    let cq = frame.regs[2] as u32;
+    frame.regs[0] = match ipc::endpoint_bind_cq(asid, endpoint, cq) {
+        Ok(()) => 0,
+        Err(error) => ipc_status(error),
+    };
 }

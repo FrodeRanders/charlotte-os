@@ -151,6 +151,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             31 => asm!("svc #31", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             34 => asm!("svc #34", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             41 => asm!("svc #41", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            43 => asm!("svc #43", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -470,6 +471,15 @@ pub unsafe fn cq_wake(cq: u32) -> u64 {
 #[inline(always)]
 pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
     unsafe { svc3_x1(42, min_complete, timeout_ms, cq as u64) }
+}
+
+/// Bind an endpoint's readiness to the caller's CQ `cq`: the kernel posts a
+/// coalesced wake to that queue when the endpoint's message queue becomes
+/// nonempty and when the endpoint closes, so one [`cq_wait`] covers both
+/// completions and endpoint work. Returns an IPC status code.
+#[inline(always)]
+pub unsafe fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
+    unsafe { svc3(43, endpoint, cq as u64, 0) }
 }
 
 /// Open a sender capability targeting LP `target_lp`.  Returns the cap.

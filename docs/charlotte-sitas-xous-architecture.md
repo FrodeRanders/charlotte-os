@@ -268,6 +268,21 @@ Current evidence:
     that queue. Remaining Phase 6 work: the richer §8.2 completion
     record and mapping per-shard rings into userspace (a loader-contract
     extension) so sitas shards can each wait on their own queue.
+-   The first Phase 7 slice unifies the shard wait at the kernel:
+    `IPC_ENDPOINT_BIND_CQ` (syscall 43) binds an endpoint's readiness to
+    one of the owner's completion queues. The kernel posts a coalesced
+    wake to that queue on the endpoint's empty→nonempty transition and
+    on closure (readiness is a notification to inspect the endpoint,
+    not a completion record — §16.3; wakes coalesce per §9.4). A shard
+    can therefore block on one `CQ_WAIT` and be released by kernel
+    completions, explicit peer wakes, and endpoint messages alike; a
+    release with an empty ring means "drain your endpoints". Self-test
+    evidence: a thread blocked in `wait_on_cq` is released by a posted
+    completion, an explicit wake, a per-queue wake on a second shard
+    queue, and an incoming IPC message on a CQ-bound endpoint, which it
+    then receives (success criterion 5's kernel mechanism). Remaining
+    Phase 7 work is userspace: a sitas executor loop that drains the CQ
+    and ready endpoints, wakes tasks, and re-arms the single wait.
 
 ------------------------------------------------------------------------
 
@@ -2344,6 +2359,11 @@ Current status:
     bootstrap capability delivery, userspace service naming, restart
     generations, and deterministic stale-connection failure across
     three isolated EL0 domains and a supervised restart.
+-   Criterion 5's kernel half has self-test evidence: one blocking CQ
+    wait is released by kernel completions, explicit cross-thread
+    wakes, and CQ-bound endpoint readiness (`test_cq_wait_wake`). The
+    userspace half — a sitas executor that drains both sources from
+    that single wait — remains Phase 7 work.
 -   Criterion 9's connection-invalidation half has smoke-test evidence
     for a generic service (echo): restarting the service domain
     invalidates stale connections (`EndpointClosed`) and the userspace
