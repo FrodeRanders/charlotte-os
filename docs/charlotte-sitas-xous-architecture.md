@@ -343,6 +343,38 @@ Current evidence:
     discipline avoids a same-core deadlock by degrading to "no wake this
     delivery" under contention, but a durable design should hand the
     wake to a deferred, lock-free path.
+-   The second Phase 8 slice adds the reference **userspace UART driver**
+    — the first complete userspace driver (architecture doc §10) — and
+    proves the delegated-authority model end to end at EL0. The
+    config-page contract is extended with two device-capability slots
+    (`MMIO_CAP_OFFSET`, `IRQ_CAP_OFFSET`, mirrored in `catten-rt`), and a
+    new supervisor entry point `spawn_driver_with_name_service` grants a
+    driver domain exactly a `DriverGrant { mmio_phys_base, mmio_pages,
+    intid }` — an MMIO region and an interrupt minted kernel-side — plus a
+    bootstrap connection to the name service, and nothing else (§10.1).
+    The `catten-services` crate gains a console protocol
+    (`charlotte-protocol-console` v1: `OP_WRITE`/`OP_STATUS`/
+    `OP_SHUTDOWN`), the `uart` driver program, and a `cclient` console
+    client. The driver maps its delegated PL011 register window into its
+    own address space as EL0 device memory (`device_mmio_map`),
+    registers a console endpoint by name, binds both endpoint readiness
+    and its interrupt to the default completion queue, and serves from
+    one `CQ_WAIT` (the unified shard wait of §7): each `OP_WRITE`
+    transmits a byte through the PL011 transmit FIFO with a **direct EL0
+    MMIO write**, and each device interrupt is acknowledged and re-armed
+    with `device_irq_ack`. The end-to-end self-test `test_el0_uart`
+    spawns the name service, the driver (granted the real QEMU `virt`
+    PL011 at `0x0900_0000` and its SPI, INTID 33), and the console
+    client from real ELFs; it verifies the client looks the driver up by
+    name and writes a message that the driver transmits through the
+    device registers from EL0, then software-pends the real PL011 SPI
+    through the GIC and observes the driver acknowledge a delegated
+    device interrupt from EL0. This is the EL0 half of success
+    criterion 8: a userspace driver runs with only delegated MMIO and IRQ
+    authority. Outstanding: interrupt-driven receive with deferred read
+    replies, driver restart with device reset and outstanding-operation
+    reconciliation (success criterion 9's driver half), and moving the
+    interrupt-context wake to a deferred lock-free path.
 
 ------------------------------------------------------------------------
 
@@ -2438,9 +2470,15 @@ Current status:
     region and an interrupt source as capabilities, map the region into
     its own address space as user Device memory, and be released from one
     `wait_on_cq` by a real GICv3 software-pended SPI routed through the
-    live interrupt path. The remaining gap to the full criterion is the
-    EL0 UART driver program running with only these delegated grants
-    (the next Phase 8 slice).
+    live interrupt path. The EL0 half is now demonstrated by
+    `test_el0_uart`: the reference `uart` userspace driver runs in an
+    isolated EL0 domain with only a delegated PL011 MMIO region and its
+    interrupt (plus a name-service bootstrap connection), maps the
+    register window, serves a console client's writes through the PL011
+    registers with direct EL0 MMIO writes, and acknowledges a delegated
+    device interrupt from EL0 — satisfying the criterion. The remaining
+    driver-lifecycle work (device reset and outstanding-operation
+    reconciliation on restart) belongs to criterion 9.
 
 ------------------------------------------------------------------------
 

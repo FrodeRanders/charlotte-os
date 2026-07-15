@@ -81,6 +81,42 @@ pub mod echo {
     pub const OP_SHUTDOWN: u32 = 2;
 }
 
+/// Console-driver protocol (`charlotte-protocol-console` v1).
+///
+/// The reference userspace UART driver serves this interface. It is the
+/// control/data plane a client uses to reach a device the driver owns
+/// through delegated MMIO and interrupt capabilities (architecture doc
+/// §10, Phase 8).
+pub mod console {
+    /// Interface id: "CONS".
+    pub const INTERFACE: u64 = super::name(b"CONS");
+    pub const VERSION: u32 = 1;
+    /// The registered short service name.
+    pub const NAME: u64 = super::name(b"uart");
+
+    /// Write one byte (`arg0`'s low 8 bits) to the console device's transmit
+    /// FIFO. Reply result = 0 on success.
+    pub const OP_WRITE: u32 = 1;
+    /// Query the driver. Reply result = the number of device interrupts the
+    /// driver has observed and acknowledged (proves the delegated interrupt
+    /// path is live).
+    pub const OP_STATUS: u32 = 2;
+    /// Reply 0, release the device (unmap MMIO, mask/unroute the interrupt),
+    /// then exit the protection domain.
+    pub const OP_SHUTDOWN: u32 = 3;
+}
+
+/// PL011 UART register offsets (ARM PrimeCell PL011), for the reference
+/// userspace driver.
+pub mod pl011 {
+    /// Data register: writing transmits the low byte.
+    pub const DR: usize = 0x000;
+    /// Flag register.
+    pub const FR: usize = 0x018;
+    /// FR bit 5: transmit FIFO full.
+    pub const FR_TXFF: u32 = 1 << 5;
+}
+
 /// Stage a memory-carried name: allocate a one-page memory object, write
 /// `name` at offset 0, and return the memory cap (unmapped, ready to attach
 /// to a copied-memory call).

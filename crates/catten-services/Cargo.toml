@@ -28,6 +28,18 @@ path = "src/bin/client.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "uart"
+path = "src/bin/uart.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "cclient"
+path = "src/bin/cclient.rs"
+test = false
+bench = false
+
 [dependencies]
 catten-rt = { path = "../catten-rt" }
 catten-syscall = { path = "../catten-syscall" }

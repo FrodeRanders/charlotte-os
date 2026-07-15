@@ -26,6 +26,28 @@ pub const ARGS_OFFSET: usize = 32;
 /// means "no bootstrap capability was delivered".
 pub const BOOTSTRAP_CAP_OFFSET: usize = 16;
 
+/// The delegated MMIO-region device capability slot (architecture doc §10.1,
+/// Phase 8). A driver domain receives exactly the register windows its
+/// manager grants here; 0 means "no MMIO region was delivered". Placed well
+/// past the launch-argument region so it never collides with `argv`.
+pub const MMIO_CAP_OFFSET: usize = 2048;
+
+/// The delegated interrupt device capability slot (architecture doc §10.1).
+/// 0 means "no interrupt was delivered".
+pub const IRQ_CAP_OFFSET: usize = 2056;
+
+/// Read the delegated MMIO-region capability, or `None` if none was granted.
+pub fn mmio_cap() -> Option<u64> {
+    let cap = unsafe { read::<u64>(MMIO_CAP_OFFSET) };
+    if cap == 0 { None } else { Some(cap) }
+}
+
+/// Read the delegated interrupt capability, or `None` if none was granted.
+pub fn irq_cap() -> Option<u64> {
+    let cap = unsafe { read::<u64>(IRQ_CAP_OFFSET) };
+    if cap == 0 { None } else { Some(cap) }
+}
+
 /// Output/status words are intentionally kept at the beginning of the page so
 /// existing kernel verifiers can poll `config[0]` as a sentinel.
 pub const OUTPUT_OFFSET: usize = 0;

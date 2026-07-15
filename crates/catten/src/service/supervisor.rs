@@ -104,6 +104,52 @@ pub fn spawn_with_name_service(
     start_domain(loaded)
 }
 
+/// The device authority a driver manager grants to a driver protection
+/// domain (architecture doc §10.1). Deliberately narrow: exactly the MMIO
+/// window and interrupt the driver needs, nothing more.
+pub struct DriverGrant {
+    /// Physical base of the device register window (page-aligned).
+    pub mmio_phys_base: usize,
+    /// Number of pages in the register window.
+    pub mmio_pages: usize,
+    /// The device interrupt id (a GIC SPI, INTID >= 32).
+    pub intid: u32,
+}
+
+/// Load and start a userspace driver domain (architecture doc Phase 8).
+///
+/// Like [`spawn_with_name_service`] the driver receives a bootstrap
+/// connection to the name service, but it additionally receives delegated
+/// device capabilities — an MMIO region and an interrupt — minted kernel-side
+/// and delivered through the config-page contract. The driver never names a
+/// physical address or interrupt vector; it only maps and binds the
+/// capabilities it is handed.
+pub fn spawn_driver_with_name_service(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    grant: DriverGrant,
+) -> ServiceDomain {
+    let loaded = loader::load_domain(image);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        rights,
+    )
+    .expect("[supervisor] driver bootstrap connection delegation failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    bootstrap::write_argc(loaded.config_frame, 0);
+
+    let mmio = crate::device::grant_mmio(loaded.asid, grant.mmio_phys_base, grant.mmio_pages)
+        .expect("[supervisor] MMIO region grant failed");
+    let irq = crate::device::grant_interrupt(loaded.asid, grant.intid)
+        .expect("[supervisor] interrupt grant failed");
+    bootstrap::write_mmio_cap(loaded.config_frame, mmio);
+    bootstrap::write_irq_cap(loaded.config_frame, irq);
+    start_domain(loaded)
+}
+
 /// Returns true once the domain's initial thread has exited and been reaped
 /// from the master thread table.
 pub fn domain_exited(domain: &ServiceDomain) -> bool {
