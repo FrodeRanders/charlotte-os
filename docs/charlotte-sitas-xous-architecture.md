@@ -454,8 +454,27 @@ Current evidence:
     (authority delegation, EL0 MMIO, IRQ→CQ delivery, deferred replies,
     supervised restart with device reset) is demonstrated end to end
     without networking. Remaining Phase 8/9 work moves to the virtio-net
-    driver and network service (Phase 9), plus moving the
-    interrupt-context wake to a deferred lock-free path (Phase 10).
+    driver and network service (Phase 9).
+-   A Phase 10 slice makes **device interrupt delivery lock-free**,
+    closing the documented §10.2 durable-design risk: the interrupt
+    handler previously called `completion::wake` (which takes the
+    completions and scheduler locks) directly in interrupt context, so an
+    interrupt taken while the interrupted thread on the same core held
+    either lock could self-deadlock. Routing and the coalescing counters
+    now live in per-INTID atomics; `deliver_interrupt` reads the route
+    atomically, masks the source with MMIO only, bumps the counters, and
+    pushes the packed `(asid, cq)` onto a lock-free queue. The actual
+    `completion::wake` is performed by `drain_deferred_wakes` from thread
+    context — on every cooperative `yield_lp` and in each LP idle loop —
+    so the interrupt path never takes a lock. Wakes coalesce (§9.4) and
+    none are lost (event state is published before the wake and
+    re-checked by the waiter's fast path). Boot-validated in QEMU with
+    the full suite (device, UART incl. restart, echo restart, cross-LP
+    demo), zero panics. Validation finding: under TCG on an 8-way SMP
+    guest, round-robin over the many lingering per-test verifier threads
+    makes the late heavyweight tests take minutes of wall clock — a
+    2-way guest validates the same behaviour in a fraction of the time
+    (the macOS boot script gained an SMP argument for this).
 
 
 
