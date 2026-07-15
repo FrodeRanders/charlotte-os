@@ -313,6 +313,21 @@ pub fn record_acked_intid(intid: u32) {
 /// this are SGIs (0-15) and PPIs (16-31) handled at the redistributor.
 pub const FIRST_SPI: u32 = 32;
 
+/// Ensure the distributor MMIO is mapped in the *currently active* address
+/// space before an SPI configuration access. Limine does not HHDM-map MMIO
+/// (base revision 3+), and the mapping installed by [`GicV3::init_lp`] lives
+/// in the kernel address space captured at boot; a later caller (a kernel
+/// self-test thread, a driver-management path) may be running under a
+/// different active translation regime. Mapping into `get_current()` writes
+/// the alias into the live translation tables and is idempotent (an already
+/// mapped page is treated as success).
+fn ensure_distributor_mapped() {
+    use crate::cpu::isa::aarch64::memory::paging::AddressSpace;
+    use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+    let mut current = AddressSpace::get_current();
+    let _ = current.map_mmio_region(GICD_BASE, 0x1_0000);
+}
+
 /// Enable a Shared Peripheral Interrupt at the distributor and route it to
 /// `target_lp`: assign it to Group 1 (non-secure), give it a runnable
 /// priority, program affinity routing, and set its enable bit. This is the
@@ -321,6 +336,7 @@ pub const FIRST_SPI: u32 = 32;
 /// been mapped (done by [`GicV3::init_lp`]).
 pub fn enable_spi(intid: u32, target_lp: LpId) {
     debug_assert!(intid >= FIRST_SPI, "enable_spi called with a non-SPI INTID");
+    ensure_distributor_mapped();
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
@@ -350,7 +366,6 @@ pub fn disable_spi(intid: u32) {
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
     }
 }
-
 /// Set a Shared Peripheral Interrupt pending in software (distributor
 /// `GICD_ISPENDR`). Used by self-tests to exercise the device IRQ delivery
 /// path without a real peripheral.
