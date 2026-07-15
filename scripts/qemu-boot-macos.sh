@@ -17,6 +17,7 @@ IMG="$KDIR/charlotte-aarch64.img"
 LOG="$KDIR/boot.log"
 FW=/opt/homebrew/share/qemu/edk2-aarch64-code.fd
 TIMEOUT="${1:-60}"
+SMP="${2:-8}"
 
 echo "== building kernel =="
 cargo build --package catten --target target_specs/aarch64-unknown-none-catten.json
@@ -37,7 +38,7 @@ hdiutil detach "$DEV" >/dev/null
 
 echo "== booting (${TIMEOUT}s cap) =="
 qemu-system-aarch64 \
-  -M virt,gic-version=3 -cpu cortex-a710 -smp 8 -m 512M \
+  -M virt,gic-version=3 -cpu cortex-a710 -smp "$SMP" -m 512M \
   -bios "$FW" \
   -drive file="$IMG",format=raw,if=none,id=hd0 \
   -device virtio-blk-device,drive=hd0 \
