@@ -152,6 +152,10 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             34 => asm!("svc #34", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             41 => asm!("svc #41", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             43 => asm!("svc #43", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            44 => asm!("svc #44", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            45 => asm!("svc #45", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            46 => asm!("svc #46", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            48 => asm!("svc #48", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -213,6 +217,7 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
+            47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -480,6 +485,62 @@ pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u
 #[inline(always)]
 pub unsafe fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
     unsafe { svc3(43, endpoint, cq as u64, 0) }
+}
+
+// ---- device capabilities (userspace drivers) -------------------------------
+
+pub type DeviceStatusCode = u64;
+
+pub mod device_status {
+    use super::DeviceStatusCode;
+
+    pub const OK: DeviceStatusCode = 0;
+    pub const UNKNOWN_CAPABILITY: DeviceStatusCode = 1;
+    pub const WRONG_TYPE: DeviceStatusCode = 2;
+    pub const ALREADY_MAPPED: DeviceStatusCode = 3;
+    pub const NOT_MAPPED: DeviceStatusCode = 4;
+    pub const MAP_FAILED: DeviceStatusCode = 5;
+    pub const NOT_BOUND: DeviceStatusCode = 6;
+    pub const ALREADY_BOUND: DeviceStatusCode = 7;
+    pub const NOT_PAGE_ALIGNED: DeviceStatusCode = 8;
+    pub const INVALID_INTERRUPT: DeviceStatusCode = 9;
+}
+
+/// Map an MMIO region capability into the caller's address space at
+/// `base_vaddr` as device memory. Returns a device status code.
+#[inline(always)]
+pub unsafe fn device_mmio_map(cap: u64, base_vaddr: usize, writable: bool) -> DeviceStatusCode {
+    unsafe { svc3(44, cap, base_vaddr as u64, writable as u64) }
+}
+
+/// Unmap an MMIO region capability from the caller. Returns a device status code.
+#[inline(always)]
+pub unsafe fn device_mmio_unmap(cap: u64) -> DeviceStatusCode {
+    unsafe { svc3(45, cap, 0, 0) }
+}
+
+/// Bind an interrupt capability to the caller's CQ `cq` and arm the source.
+/// Delivered interrupts post a coalesced readiness wake to that queue, so one
+/// [`cq_wait`] covers device interrupts, completions, and endpoint work.
+/// Returns a device status code.
+#[inline(always)]
+pub unsafe fn device_irq_bind_cq(cap: u64, cq: u32) -> DeviceStatusCode {
+    unsafe { svc3(46, cap, cq as u64, 0) }
+}
+
+/// Acknowledge an interrupt capability: clear its pending count and re-arm the
+/// source. Returns `(status, consumed)` where `consumed` is the number of
+/// coalesced interrupts observed since the last acknowledgement.
+#[inline(always)]
+pub unsafe fn device_irq_ack(cap: u64) -> (DeviceStatusCode, u64) {
+    unsafe { svc3_x1(47, cap, 0, 0) }
+}
+
+/// Close a device capability (unmap an MMIO region or mask and unroute an
+/// interrupt). Returns a device status code.
+#[inline(always)]
+pub unsafe fn device_close(cap: u64) -> DeviceStatusCode {
+    unsafe { svc3(48, cap, 0, 0) }
 }
 
 /// Open a sender capability targeting LP `target_lp`.  Returns the cap.

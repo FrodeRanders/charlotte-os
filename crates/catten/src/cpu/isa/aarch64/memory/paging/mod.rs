@@ -116,6 +116,22 @@ impl AddressSpace {
         }
         Ok(())
     }
+
+    /// Map one 4 KiB page of device (MMIO) memory into this address space at
+    /// `vaddr`, user-accessible, so a delegated EL0 driver domain can reach a
+    /// device's registers directly (architecture doc Phase 8). The frame is
+    /// mapped Device-nGnRnE, execute-never, and is not zeroed. Unlike
+    /// [`map_mmio_region`](Self::map_mmio_region) the mapping is placed at a
+    /// caller-chosen user virtual address rather than the kernel HHDM alias.
+    pub fn map_user_mmio_page(
+        &mut self,
+        vaddr: VAddr,
+        frame: PAddr,
+        writable: bool,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = walker::Walker::new(self, vaddr);
+        walker.map_user_mmio_page(frame, writable)
+    }
 }
 
 impl AddressSpaceInterface for AddressSpace {

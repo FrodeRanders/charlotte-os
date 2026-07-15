@@ -47,6 +47,16 @@ const GICR_SGI_OFFSET: usize = 0x1_0000;
 // Distributor register offsets.
 const GICD_CTLR: usize = 0x0000;
 const GICD_IGROUPR: usize = 0x0080;
+// Per-INTID banked distributor registers for Shared Peripheral Interrupts
+// (INTID >= 32). Each is an array indexed by `intid / 32` (one bit per INTID),
+// except IPRIORITYR (one byte per INTID) and IROUTER (one 64-bit word per
+// INTID, only for SPIs).
+const GICD_ISENABLER: usize = 0x0100;
+const GICD_ICENABLER: usize = 0x0180;
+const GICD_ISPENDR: usize = 0x0200;
+const GICD_ICPENDR: usize = 0x0280;
+const GICD_IPRIORITYR: usize = 0x0400;
+const GICD_IROUTER: usize = 0x6000;
 
 // GICD_CTLR bits (when using affinity routing, ARE_NS).
 const GICD_CTLR_ARE_NS: u32 = 1 << 4;
@@ -88,6 +98,18 @@ unsafe fn mmio_read32(base: usize, offset: usize) -> u32 {
 #[inline(always)]
 unsafe fn mmio_write32(base: usize, offset: usize, value: u32) {
     let ptr = unsafe { PAddr::from(base as u64).into_hhdm_mut::<u32>().byte_add(offset) };
+    unsafe { core::ptr::write_volatile(ptr, value) }
+}
+
+#[inline(always)]
+unsafe fn mmio_write64(base: usize, offset: usize, value: u64) {
+    let ptr = unsafe { PAddr::from(base as u64).into_hhdm_mut::<u64>().byte_add(offset) };
+    unsafe { core::ptr::write_volatile(ptr, value) }
+}
+
+#[inline(always)]
+unsafe fn mmio_write8(base: usize, offset: usize, value: u8) {
+    let ptr = unsafe { PAddr::from(base as u64).into_hhdm_mut::<u8>().byte_add(offset) };
     unsafe { core::ptr::write_volatile(ptr, value) }
 }
 
@@ -285,4 +307,69 @@ pub(crate) static ACKED_INTID: LazyLock<PerLp<u32>> = LazyLock::new(|| PerLp::ne
 /// `signal_eoi` can complete it.
 pub fn record_acked_intid(intid: u32) {
     *ACKED_INTID.get_mut() = intid;
+}
+
+/// The lowest INTID that is a Shared Peripheral Interrupt (SPI). INTIDs below
+/// this are SGIs (0-15) and PPIs (16-31) handled at the redistributor.
+pub const FIRST_SPI: u32 = 32;
+
+/// Enable a Shared Peripheral Interrupt at the distributor and route it to
+/// `target_lp`: assign it to Group 1 (non-secure), give it a runnable
+/// priority, program affinity routing, and set its enable bit. This is the
+/// distributor-side counterpart of [`GicV3::enable_private_int`] for device
+/// interrupts (architecture doc §10.2). Requires the distributor MMIO to have
+/// been mapped (done by [`GicV3::init_lp`]).
+pub fn enable_spi(intid: u32, target_lp: LpId) {
+    debug_assert!(intid >= FIRST_SPI, "enable_spi called with a non-SPI INTID");
+    let word = (intid / 32) as usize;
+    let bit = intid % 32;
+    unsafe {
+        // Group 1 non-secure.
+        let mut group = mmio_read32(GICD_BASE, GICD_IGROUPR + word * 4);
+        group |= 1 << bit;
+        mmio_write32(GICD_BASE, GICD_IGROUPR + word * 4, group);
+        // Runnable priority (numerically below the PMR threshold).
+        mmio_write8(GICD_BASE, GICD_IPRIORITYR + intid as usize, DEFAULT_PRIORITY);
+        // Affinity routing (ARE_NS): deliver to a specific PE. For the QEMU
+        // `virt` layout Aff0 is the LP id and the higher affinities are 0.
+        mmio_write64(GICD_BASE, GICD_IROUTER + intid as usize * 8, (target_lp as u64) & 0xff);
+        // Ensure the routing/config writes are observable before enabling.
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+        mmio_write32(GICD_BASE, GICD_ISENABLER + word * 4, 1 << bit);
+    }
+}
+
+/// Disable (mask) a Shared Peripheral Interrupt at the distributor. Used to
+/// mask a device interrupt after delivery until the owning driver acknowledges
+/// it, so a level-triggered source does not storm the CPU.
+pub fn disable_spi(intid: u32) {
+    let word = (intid / 32) as usize;
+    let bit = intid % 32;
+    unsafe {
+        mmio_write32(GICD_BASE, GICD_ICENABLER + word * 4, 1 << bit);
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+    }
+}
+
+/// Set a Shared Peripheral Interrupt pending in software (distributor
+/// `GICD_ISPENDR`). Used by self-tests to exercise the device IRQ delivery
+/// path without a real peripheral.
+pub fn set_spi_pending(intid: u32) {
+    let word = (intid / 32) as usize;
+    let bit = intid % 32;
+    unsafe {
+        mmio_write32(GICD_BASE, GICD_ISPENDR + word * 4, 1 << bit);
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+    }
+}
+
+/// Clear a Shared Peripheral Interrupt's pending state (distributor
+/// `GICD_ICPENDR`).
+pub fn clear_spi_pending(intid: u32) {
+    let word = (intid / 32) as usize;
+    let bit = intid % 32;
+    unsafe {
+        mmio_write32(GICD_BASE, GICD_ICPENDR + word * 4, 1 << bit);
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+    }
 }

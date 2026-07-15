@@ -261,6 +261,17 @@ impl<'vas> Walker<'vas> {
         self.map_page_with_attrs(frame, writable, false, true, MAIR_IDX_DEVICE, false)
     }
 
+    /// Map a single 4 KiB page of device memory (MMIO) so that it is reachable
+    /// from EL0 — the userspace-driver path (architecture doc §10). Like
+    /// [`map_mmio_page`](Self::map_mmio_page) it uses the Device-nGnRnE memory
+    /// attribute, forces execute-never, and does not zero the register block,
+    /// but it sets the user-accessible bit so a delegated driver domain can
+    /// touch the device registers directly under its own page table and
+    /// capability grant.
+    pub fn map_user_mmio_page(&mut self, frame: PAddr, writable: bool) -> WalkerResult<()> {
+        self.map_page_with_attrs(frame, writable, true, true, MAIR_IDX_DEVICE, false)
+    }
+
     fn map_page_with_attrs(
         &mut self,
         frame: PAddr,

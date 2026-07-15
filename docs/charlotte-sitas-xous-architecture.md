@@ -299,6 +299,50 @@ Current evidence:
     sitas executor proper (task wakeup and budgeted polling), per-shard
     ring mapping for multi-shard services, and replacing
     `kv::spin_recv`'s channel busy-wait with the wake path.
+-   The first Phase 8 slice builds the kernel device-capability
+    mechanism — the substrate a userspace driver needs (architecture doc
+    §10) — reusing the Phase 7 notification machinery. A new
+    `crates/catten/src/device/` subsystem adds two first-class object
+    types as derived facilities on the three primitives: **MmioRegion**
+    (a page-granular device register window) and **Interrupt** (a routed
+    interrupt source). MMIO regions map into an EL0 driver domain through
+    a new user-accessible Device-nGnRnE page path
+    (`Walker::map_user_mmio_page` /
+    `AddressSpace::map_user_mmio_page`, execute-never, non-zeroed).
+    Interrupt readiness is delivered exactly like endpoint readiness
+    (§16.3): the AArch64 IRQ dispatcher's previously-unhandled SPI arm
+    now calls `device::deliver_interrupt`, which masks the source at the
+    GICv3 distributor (new `enable_spi`/`disable_spi`/`set_spi_pending`/
+    `clear_spi_pending` with Group-1 config and `GICD_IROUTER` affinity
+    routing), marks the interrupt object pending, and posts a **coalesced
+    wake** to the owning driver's completion queue — so a driver shard
+    blocked in one `CQ_WAIT` wakes for device interrupts, completions,
+    and endpoint messages alike (§9.4, unified shard wait of §7). The
+    interrupt-context path uses `try_lock` throughout and never blocks.
+    Grants are minted only kernel-side (the supervisor), never through a
+    syscall, so a driver receives only its delegated MMIO and IRQ
+    authority (§10.1). Syscalls `44..=48` (`DEVICE_MMIO_MAP`,
+    `DEVICE_MMIO_UNMAP`, `DEVICE_IRQ_BIND_CQ`, `DEVICE_IRQ_ACK`,
+    `DEVICE_CLOSE`) plus `catten-syscall` wrappers expose the driver-side
+    operations; `close_user_address_space` reclaims device caps
+    (unmapping regions, masking and unrouting interrupts) on teardown.
+    Kernel self-test `test_device_capabilities` proves the capability
+    model (unknown-cap, wrong-type, unbound-ack, unmapped-unmap
+    rejections; double-map and double-bind rejections), maps and unmaps
+    an MMIO region in a real address space, and releases a thread blocked
+    in one `wait_on_cq` **both** through the deterministic kernel
+    delivery path and through a real GICv3 software-pended SPI routed by
+    the live interrupt path, verifying pending/ack/re-arm state across
+    rounds. This is the kernel half of success criterion 8. Outstanding
+    (next slice): the EL0 UART driver service itself — supervisor device
+    grants delivered through the bootstrap contract, a console endpoint
+    protocol, deferred read replies, and an end-to-end EL0 test with
+    driver restart and device reset (success criteria 8 and 9). Known
+    prototype risk: `deliver_interrupt` calls `completion::wake` (which
+    takes the completions lock) from interrupt context; the `try_lock`
+    discipline avoids a same-core deadlock by degrading to "no wake this
+    delivery" under contention, but a durable design should hand the
+    wake to a deferred, lock-free path.
 
 ------------------------------------------------------------------------
 
@@ -2389,6 +2433,14 @@ Current status:
     name service reports a new instance generation. The driver-specific
     half (device reset, outstanding-operation reconciliation) remains
     future work for Phase 8.
+-   Criterion 8's kernel half has self-test evidence
+    (`test_device_capabilities`): a driver domain can be granted an MMIO
+    region and an interrupt source as capabilities, map the region into
+    its own address space as user Device memory, and be released from one
+    `wait_on_cq` by a real GICv3 software-pended SPI routed through the
+    live interrupt path. The remaining gap to the full criterion is the
+    EL0 UART driver program running with only these delegated grants
+    (the next Phase 8 slice).
 
 ------------------------------------------------------------------------
 

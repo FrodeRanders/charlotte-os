@@ -25,6 +25,7 @@ pub mod completion;
 pub mod cpu;
 pub mod deferred_work_manager;
 pub mod demo;
+pub mod device;
 pub mod device_management;
 pub mod environment;
 pub mod init;

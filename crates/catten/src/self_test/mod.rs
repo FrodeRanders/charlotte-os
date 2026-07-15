@@ -9,6 +9,7 @@ pub mod completion;
 pub mod cq;
 pub mod cq_completion;
 pub mod cq_wait;
+pub mod device;
 pub mod el0;
 pub mod el0_demo;
 pub mod el0_ipc;
@@ -64,5 +65,6 @@ pub fn run_self_tests() {
     cq::test_cq_ring();
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
+    device::test_device_capabilities();
     logln!("Testing Complete. All Tests Passed!");
 }

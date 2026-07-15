@@ -154,10 +154,28 @@ pub mod call_no {
     /// posts a coalesced wake to that queue on the endpoint's
     /// empty-to-nonempty transition and on closure. Returns status in x0.
     pub const IPC_ENDPOINT_BIND_CQ: u16 = 43;
+    /// Map MMIO region capability `x1` into the caller's address space at user
+    /// virtual address `x2`; `x3`=1 writable, 0 read-only. Returns a device
+    /// status code in x0.
+    pub const DEVICE_MMIO_MAP: u16 = 44;
+    /// Unmap MMIO region capability `x1` from the caller. Returns a device
+    /// status code in x0.
+    pub const DEVICE_MMIO_UNMAP: u16 = 45;
+    /// Bind interrupt capability `x1` to the caller's CQ `x2` and arm the
+    /// source. Delivered interrupts post a coalesced readiness wake to that
+    /// queue. Returns a device status code in x0.
+    pub const DEVICE_IRQ_BIND_CQ: u16 = 46;
+    /// Acknowledge interrupt capability `x1`: clear its pending count and
+    /// re-arm the source. Returns a device status code in x0 and the number
+    /// of coalesced interrupts consumed in x1.
+    pub const DEVICE_IRQ_ACK: u16 = 47;
+    /// Close device capability `x1` (unmap an MMIO region or mask and unroute
+    /// an interrupt). Returns a device status code in x0.
+    pub const DEVICE_CLOSE: u16 = 48;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::IPC_ENDPOINT_BIND_CQ;
+pub const MAX_SYSCALL: u16 = call_no::DEVICE_CLOSE;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -215,6 +233,11 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::CQ_WAKE => sys_cq_wake(frame),
         call_no::CQ_WAIT_TIMEOUT => sys_cq_wait_timeout(frame),
         call_no::IPC_ENDPOINT_BIND_CQ => sys_ipc_endpoint_bind_cq(frame),
+        call_no::DEVICE_MMIO_MAP => sys_device_mmio_map(frame),
+        call_no::DEVICE_MMIO_UNMAP => sys_device_mmio_unmap(frame),
+        call_no::DEVICE_IRQ_BIND_CQ => sys_device_irq_bind_cq(frame),
+        call_no::DEVICE_IRQ_ACK => sys_device_irq_ack(frame),
+        call_no::DEVICE_CLOSE => sys_device_close(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -986,5 +1009,74 @@ fn sys_ipc_endpoint_bind_cq(frame: &mut TrapFrame) {
     frame.regs[0] = match ipc::endpoint_bind_cq(asid, endpoint, cq) {
         Ok(()) => 0,
         Err(error) => ipc_status(error),
+    };
+}
+
+fn device_status(error: crate::device::DeviceError) -> u64 {
+    use crate::device::DeviceError;
+    match error {
+        DeviceError::UnknownCapability => 1,
+        DeviceError::WrongType => 2,
+        DeviceError::AlreadyMapped => 3,
+        DeviceError::NotMapped => 4,
+        DeviceError::MapFailed => 5,
+        DeviceError::NotBound => 6,
+        DeviceError::AlreadyBound => 7,
+        DeviceError::NotPageAligned => 8,
+        DeviceError::InvalidInterrupt => 9,
+    }
+}
+
+fn sys_device_mmio_map(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    let base = VAddr::from(frame.regs[2] as usize);
+    let writable = frame.regs[3] != 0;
+    frame.regs[0] = match crate::device::mmio_map(asid, cap, base, writable) {
+        Ok(()) => 0,
+        Err(error) => device_status(error),
+    };
+}
+
+fn sys_device_mmio_unmap(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = match crate::device::mmio_unmap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => device_status(error),
+    };
+}
+
+fn sys_device_irq_bind_cq(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    let cq = frame.regs[2] as u32;
+    frame.regs[0] = match crate::device::interrupt_bind_cq(asid, cap, cq) {
+        Ok(()) => 0,
+        Err(error) => device_status(error),
+    };
+}
+
+fn sys_device_irq_ack(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    match crate::device::interrupt_ack(asid, cap) {
+        Ok(consumed) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = consumed as u64;
+        }
+        Err(error) => {
+            frame.regs[0] = device_status(error);
+            frame.regs[1] = 0;
+        }
+    }
+}
+
+fn sys_device_close(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = match crate::device::close_cap(asid, cap) {
+        Ok(()) => 0,
+        Err(error) => device_status(error),
     };
 }

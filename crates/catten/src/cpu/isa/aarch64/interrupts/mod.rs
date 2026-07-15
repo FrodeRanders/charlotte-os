@@ -205,8 +205,13 @@ pub extern "C" fn irq_dispatcher() {
             crate::cpu::multiprocessor::ipi::drain_local_ipi_queue();
         }
         _ => {
-            // Other INTIDs (SPIs from devices) will be routed once the external
-            // interrupt controller path is wired up.
+            // Shared Peripheral Interrupts (INTID >= 32) from devices are
+            // routed to the owning userspace driver domain: the device
+            // capability layer masks the source, marks its interrupt object
+            // pending, and posts a coalesced readiness wake to the driver's
+            // completion queue (architecture doc §10.2, Phase 8). An
+            // unclaimed INTID is simply acknowledged below.
+            let _ = crate::device::deliver_interrupt(intid);
         }
     }
     gic::end_of_int(intid);
