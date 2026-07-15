@@ -159,16 +159,23 @@ impl LpScheduler for RoundRobin {
         // NOT be re-queued or marked Ready — it is Blocked and will be
         // re-admitted only when its waker fires. The idle thread is likewise
         // never re-queued: it is the fallback, not a normal run-queue member.
-        let previous_blocked = if let Some(handle) = previous_handle {
+        //
+        // Re-queue the outgoing thread only while it is still `Running`: that
+        // is the ordinary preemption case. If its state is already `Ready`, a
+        // waker re-admitted it concurrently (for example a sleep timer or CQ
+        // wake firing in the window between `block_thread` and this context
+        // switch) and it is already in a run queue — re-queueing it here would
+        // double-enqueue the thread and corrupt its state machine.
+        let previous_running = if let Some(handle) = previous_handle {
             matches!(
                 MASTER_THREAD_TABLE.read().get(handle.0),
-                Ok(t) if matches!(t.state, ThreadState::Blocked(_))
+                Ok(t) if matches!(t.state, ThreadState::Running(_))
             )
         } else {
             false
         };
         let previous_is_idle = matches!(previous_handle, Some(h) if h.0 == self.idle_tid);
-        let requeue_previous = previous_handle.is_some() && !previous_blocked && !previous_is_idle;
+        let requeue_previous = previous_running && !previous_is_idle;
 
         if requeue_previous {
             self.run_queue.push_back(unsafe { previous_handle.unwrap_unchecked() });
@@ -206,9 +213,15 @@ impl LpScheduler for RoundRobin {
             Err(_) => return Err(Error::InvalidThread),
         };
         match thread.state {
-            ThreadState::Running(_) | ThreadState::Ready(_) => {
-                Err(Error::ThreadAlreadyAssignedToLp)
-            }
+            // Already runnable. A wake that aggregates several sources onto one
+            // thread (the unified shard wait of architecture doc §7: CQ
+            // completions, endpoint readiness, device interrupts, and explicit
+            // peer wakes all target the same blocked thread) can fire more than
+            // once before the thread next parks. Re-admitting an
+            // already-runnable thread is therefore a benign no-op, not an error
+            // — it must not double-enqueue it and must not panic.
+            ThreadState::Running(_) => Ok(()),
+            ThreadState::Ready(_) => Ok(()),
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
                 thread.state = ThreadState::Ready(self.lp_id);
                 self.run_queue.push_back(ThreadHandle(tid));
