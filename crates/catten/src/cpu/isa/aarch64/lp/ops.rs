@@ -400,6 +400,12 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
 /// each iteration so the quantum timer and IPIs can wake the LP.
 pub extern "C" fn lp_idle_loop() {
     loop {
+        // Drain deferred device-interrupt wakes (see `yield_lp`) so a driver
+        // shard blocked in `CQ_WAIT` is released even when its LP has nothing
+        // else to run. A resulting wake makes the driver runnable and marks a
+        // context switch pending, honoured by the IRQ-tail `cond_yield_lp`
+        // after the `wfi` returns on the next interrupt.
+        crate::device::drain_deferred_wakes();
         unsafe {
             core::arch::asm!(
                 "msr daifclr, 0b1111",

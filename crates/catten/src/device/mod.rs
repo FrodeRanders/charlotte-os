@@ -30,7 +30,13 @@
 //! endpoints, so there is no user-facing grant syscall.
 
 use alloc::collections::BTreeMap;
+use core::sync::atomic::{
+    AtomicU32,
+    AtomicU64,
+    Ordering,
+};
 
+use concurrent_queue::ConcurrentQueue;
 use spin::{
     LazyLock,
     Mutex,
@@ -90,7 +96,10 @@ struct MmioRegion {
     mapped: Option<VAddr>,
 }
 
-/// An interrupt source granted to a driver domain.
+/// An interrupt source granted to a driver domain. Delivery-side state
+/// (pending/lifetime counters, the INTID→queue route) lives in the lock-free
+/// tables below so interrupt context never takes a lock; this object holds
+/// only the management-side state.
 #[derive(Debug, Clone, Copy)]
 struct InterruptObject {
     intid: u32,
@@ -98,10 +107,6 @@ struct InterruptObject {
     cq: Option<CqId>,
     /// The LP the source is routed to (set at bind time).
     target_lp: LpId,
-    /// Interrupts delivered since the last [`interrupt_ack`] (coalescible).
-    pending: u32,
-    /// Lifetime interrupt count, for inspection.
-    count: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -132,23 +137,50 @@ impl AsDeviceCaps {
     }
 }
 
-/// The routing entry consulted from interrupt context to steer a delivered
-/// INTID to the owning driver's completion queue. Kept small and `Copy` so
-/// the IRQ path can copy it out under a short `try_lock`.
-#[derive(Debug, Clone, Copy)]
-struct IrqRoute {
-    asid: AddressSpaceId,
-    cap: DeviceCap,
-    cq: CqId,
-}
-
 static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
-/// Global INTID → owning-driver route table. Separate from [`DEVICES`] so the
-/// interrupt path can look up a route with a short, independent `try_lock`.
-static ROUTES: LazyLock<Mutex<BTreeMap<u32, IrqRoute>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+// ---- lock-free interrupt delivery state -------------------------------------
+//
+// Interrupt context must never block on a kernel lock: the interrupted thread
+// on the same core may hold it (architecture doc §10.2 durable-design note).
+// The delivery path therefore works exclusively on this lock-free state:
+//
+// - `ROUTE_TABLE[intid]` packs the owning `(asid, cq)` of a bound interrupt
+//   (0 = unrouted; a driver address space id is never 0, so a present route
+//   is always nonzero). Written by bind/close in thread context, read
+//   atomically by `deliver_interrupt`.
+// - `IRQ_PENDING`/`IRQ_COUNT` are the per-INTID coalescing counters.
+// - `DEFERRED_WAKES` carries the packed `(asid, cq)` of each delivery out of
+//   interrupt context; [`drain_deferred_wakes`] performs the actual
+//   `completion::wake` (which takes locks and may wake threads) from thread
+//   context — the idle loop and cooperative yield both drain it.
+
+/// One more than the highest INTID a driver interrupt may use.
+const MAX_ROUTED_INTID: usize = 256;
+
+static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] =
+    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] =
+    [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
+static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] =
+    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+
+/// Deferred `(asid, cq)` wakes queued by interrupt context, delivered by
+/// [`drain_deferred_wakes`] from thread context. Wakes coalesce (§9.4), so
+/// the bound capacity only needs to cover the number of distinct driver
+/// queues with generous headroom.
+static DEFERRED_WAKES: LazyLock<ConcurrentQueue<u64>> =
+    LazyLock::new(|| ConcurrentQueue::bounded(MAX_ROUTED_INTID));
+
+fn pack_route(asid: AddressSpaceId, cq: CqId) -> u64 {
+    debug_assert!(asid != 0 && asid <= u32::MAX as usize, "driver asid must pack into 32 bits");
+    ((asid as u64) << 32) | cq as u64
+}
+
+fn unpack_route(packed: u64) -> (AddressSpaceId, CqId) {
+    ((packed >> 32) as AddressSpaceId, (packed & 0xffff_ffff) as CqId)
+}
 
 // ---- arch glue -------------------------------------------------------------
 
@@ -238,8 +270,6 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
         intid,
         cq: None,
         target_lp: 0,
-        pending: 0,
-        count: 0,
     })))
 }
 
@@ -308,9 +338,9 @@ pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceErro
 
 /// Bind an interrupt capability to one of the caller's completion queues and
 /// arm the source. After binding, each delivered interrupt masks the source,
-/// marks the object pending, and posts a coalesced wake to `cq` so the driver
-/// shard — blocked in a single `CQ_WAIT` — becomes runnable (architecture doc
-/// §10.2, unified shard wait of §7).
+/// counts it, and (from thread context) posts a coalesced wake to `cq` so the
+/// driver shard — blocked in a single `CQ_WAIT` — becomes runnable
+/// (architecture doc §10.2, unified shard wait of §7).
 pub fn interrupt_bind_cq(
     asid: AddressSpaceId,
     cap: DeviceCap,
@@ -327,16 +357,17 @@ pub fn interrupt_bind_cq(
         if irq.cq.is_some() {
             return Err(DeviceError::AlreadyBound);
         }
+        if irq.intid as usize >= MAX_ROUTED_INTID {
+            return Err(DeviceError::InvalidInterrupt);
+        }
         irq.cq = Some(cq);
         irq.target_lp = target_lp;
-        irq.pending = 0;
         intid = irq.intid;
     }
-    ROUTES.lock().insert(intid, IrqRoute {
-        asid,
-        cap,
-        cq,
-    });
+    // Publish the route and reset the coalescing counter before arming, so a
+    // delivery that races the enable observes a consistent route.
+    IRQ_PENDING[intid as usize].store(0, Ordering::Release);
+    ROUTE_TABLE[intid as usize].store(pack_route(asid, cq), Ordering::Release);
     arch_enable_irq(intid, target_lp);
     Ok(())
 }
@@ -345,18 +376,18 @@ pub fn interrupt_bind_cq(
 /// (unmask) the source so the next interrupt can be delivered. Returns the
 /// number of coalesced interrupts consumed since the last acknowledgement.
 pub fn interrupt_ack(asid: AddressSpaceId, cap: DeviceCap) -> Result<u32, DeviceError> {
-    let mut devices = DEVICES.lock();
-    let object = lookup_mut(&mut devices, asid, cap)?;
-    let DeviceObject::Interrupt(irq) = object else {
-        return Err(DeviceError::WrongType);
+    let (intid, target_lp) = {
+        let mut devices = DEVICES.lock();
+        let object = lookup_mut(&mut devices, asid, cap)?;
+        let DeviceObject::Interrupt(irq) = object else {
+            return Err(DeviceError::WrongType);
+        };
+        if irq.cq.is_none() {
+            return Err(DeviceError::NotBound);
+        }
+        (irq.intid, irq.target_lp)
     };
-    if irq.cq.is_none() {
-        return Err(DeviceError::NotBound);
-    }
-    let consumed = core::mem::take(&mut irq.pending);
-    let intid = irq.intid;
-    let target_lp = irq.target_lp;
-    drop(devices);
+    let consumed = IRQ_PENDING[intid as usize].swap(0, Ordering::AcqRel);
     // Re-arm the source (it was masked on delivery).
     arch_enable_irq(intid, target_lp);
     Ok(consumed)
@@ -370,7 +401,16 @@ pub fn interrupt_status(asid: AddressSpaceId, cap: DeviceCap) -> Result<(u32, u6
     let DeviceObject::Interrupt(irq) = object else {
         return Err(DeviceError::WrongType);
     };
-    Ok((irq.pending, irq.count))
+    let intid = irq.intid as usize;
+    Ok((IRQ_PENDING[intid].load(Ordering::Acquire), IRQ_COUNT[intid].load(Ordering::Acquire)))
+}
+
+/// Mask an interrupt source and remove its route. Idempotent.
+fn unroute_interrupt(intid: u32) {
+    if (intid as usize) < MAX_ROUTED_INTID {
+        ROUTE_TABLE[intid as usize].store(0, Ordering::Release);
+    }
+    arch_disable_irq(intid);
 }
 
 // ---- teardown --------------------------------------------------------------
@@ -394,10 +434,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
                 }
             }
         }
-        DeviceObject::Interrupt(irq) => {
-            arch_disable_irq(irq.intid);
-            ROUTES.lock().remove(&irq.intid);
-        }
+        DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
     }
     let mut devices = DEVICES.lock();
     devices
@@ -414,7 +451,13 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
 /// authority is reclaimed when a driver domain is torn down (architecture
 /// doc §13, success criterion 9).
 pub fn interrupt_route_owner(intid: u32) -> Option<AddressSpaceId> {
-    ROUTES.lock().get(&intid).map(|route| route.asid)
+    if intid as usize >= MAX_ROUTED_INTID {
+        return None;
+    }
+    match ROUTE_TABLE[intid as usize].load(Ordering::Acquire) {
+        0 => None,
+        packed => Some(unpack_route(packed).0),
+    }
 }
 
 /// Reclaim every device capability owned by `asid` on address-space teardown:
@@ -437,10 +480,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
                     }
                 }
             }
-            DeviceObject::Interrupt(irq) => {
-                arch_disable_irq(irq.intid);
-                ROUTES.lock().remove(&irq.intid);
-            }
+            DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
         }
     }
 }
@@ -450,40 +490,48 @@ pub fn close_address_space(asid: AddressSpaceId) {
 /// Steer a delivered INTID to its owning driver domain. Called from the
 /// architecture IRQ dispatcher for INTIDs not claimed by the kernel itself.
 ///
-/// Runs in interrupt context, so it uses `try_lock` throughout and never
-/// blocks: if a lock is momentarily held it simply masks the source and
-/// returns; the driver observes progress on the next delivery. It masks the
-/// source (so a level-triggered device does not storm the CPU until the
-/// driver acknowledges), marks the interrupt object pending, and posts a
-/// coalesced readiness wake to the driver's completion queue.
+/// Runs in interrupt context and is **entirely lock-free**: it reads the
+/// route atomically, masks the source with MMIO only (so a level-triggered
+/// device does not storm the CPU until the driver acknowledges), bumps the
+/// coalescing counters atomically, and queues a deferred wake. The actual
+/// `completion::wake` — which takes locks and may make threads runnable — is
+/// performed later by [`drain_deferred_wakes`] from thread context, so the
+/// interrupted thread can never be holding a lock this path needs
+/// (architecture doc §10.2 durable-design requirement).
 ///
-/// Returns `true` if the INTID was claimed by a bound driver interrupt object.
+/// Returns `true` if the INTID was claimed by a bound driver interrupt.
 pub fn deliver_interrupt(intid: u32) -> bool {
-    let route = match ROUTES.try_lock() {
-        Some(routes) => match routes.get(&intid) {
-            Some(route) => *route,
-            None => return false,
-        },
-        None => return false,
-    };
+    if intid as usize >= MAX_ROUTED_INTID {
+        return false;
+    }
+    let packed = ROUTE_TABLE[intid as usize].load(Ordering::Acquire);
+    if packed == 0 {
+        return false;
+    }
 
-    // Mask and de-pend the source until the driver acknowledges.
+    // Mask and de-pend the source (MMIO only) until the driver acknowledges.
     arch_disable_irq(intid);
     arch_clear_irq_pending(intid);
 
-    // Mark the interrupt object pending (best-effort under try_lock).
-    if let Some(mut devices) = DEVICES.try_lock() {
-        if let Some(DeviceObject::Interrupt(irq)) =
-            devices.get_mut(&route.asid).and_then(|caps| caps.caps.get_mut(&route.cap))
-        {
-            irq.pending = irq.pending.saturating_add(1);
-            irq.count = irq.count.saturating_add(1);
-        }
-    }
+    IRQ_PENDING[intid as usize].fetch_add(1, Ordering::AcqRel);
+    IRQ_COUNT[intid as usize].fetch_add(1, Ordering::AcqRel);
 
-    // Coalesced readiness notification to the driver's completion queue.
-    crate::completion::wake(route.asid, route.cq);
+    // Hand the coalesced readiness wake to thread context. A full queue means
+    // an equivalent wake is already pending delivery, so dropping is safe.
+    let _ = DEFERRED_WAKES.push(packed);
     true
+}
+
+/// Deliver any wakes queued by [`deliver_interrupt`]. Must be called from
+/// thread context (it calls `completion::wake`, which takes locks and may
+/// make threads runnable); the idle loop and cooperative `yield_lp` both call
+/// it, so a driver blocked in `CQ_WAIT` is released promptly once its LP has
+/// nothing else to run.
+pub fn drain_deferred_wakes() {
+    while let Ok(packed) = DEFERRED_WAKES.pop() {
+        let (asid, cq) = unpack_route(packed);
+        crate::completion::wake(asid, cq);
+    }
 }
 
 // ---- helpers ---------------------------------------------------------------

@@ -59,6 +59,12 @@ pub fn current_thread_asid() -> Option<AddressSpaceId> {
 /// of the ISR at which point all ISRs with the sole exception of double fault and other ISA
 /// specific analogues call `cond_yield_lp` to carry out pending context switches.
 pub fn yield_lp() {
+    // Deliver any device-interrupt wakes queued from interrupt context
+    // (architecture doc §10.2): the interrupt path is lock-free and defers the
+    // actual `completion::wake` to thread context. Draining here — on every
+    // cooperative yield across every LP — makes a driver blocked in `CQ_WAIT`
+    // runnable promptly without the interrupt handler ever taking a lock.
+    crate::device::drain_deferred_wakes();
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     crate::cpu::isa::lp::ops::cond_yield_lp();
 }
