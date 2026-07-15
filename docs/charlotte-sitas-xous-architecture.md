@@ -412,18 +412,51 @@ Current evidence:
     across an interrupt, exactly as §7.2 intends; (b) wake discipline
     matters: an earlier version of the verifier software-pended the SPI
     in a tight loop, and the resulting storm of `completion::wake` →
-    `submit_ready_thread` calls hit the pre-existing scheduler race in
-    which waking an already-runnable thread panics
-    (`ThreadAlreadyAssignedToLp`) — the same non-idempotent-wake
-    fragility that the post-boot `cross_lp_demo` trips as
-    `AlreadyBlocked` (`sleep`'s block/yield window versus a same-LP
-    timer fire). Coalesced single wakes (§9.4) avoid it; making
-    scheduler wakes idempotent is filed as follow-up kernel-concurrency
-    work (Phase 10 territory), since the unified shard wait
-    legitimately aggregates multiple wake sources onto one thread.
-    Remaining Phase 8 work: driver restart with device reset and
-    outstanding-operation reconciliation (success criterion 9's driver
-    half).
+    `submit_ready_thread` calls hit a scheduler race in which waking an
+    already-runnable thread panicked (`ThreadAlreadyAssignedToLp`) — the
+    same non-idempotent-wake fragility that the post-boot `cross_lp_demo`
+    tripped as `AlreadyBlocked` (`sleep`'s block/yield window versus a
+    same-LP timer fire). This was then fixed at the source (see the
+    scheduler slice below) rather than only avoided.
+-   A scheduler slice makes wakes **idempotent**, which the unified shard
+    wait requires: `submit_ready_thread`/`add_thread` treat re-admitting
+    an already-`Ready`/`Running` thread as a benign no-op (the event
+    state — `wake_pending`, ring entries, endpoint queues — is posted
+    before the wake and re-checked by the waiter, so no wake is lost),
+    a late wake for an exited thread returns `InvalidThread` instead of
+    panicking, and `RoundRobin::next` re-queues the outgoing thread only
+    while it is still `Running` (so a thread woken in the
+    `block_thread`→context-switch window is not double-enqueued). This
+    removes both the `ThreadAlreadyAssignedToLp` and the long-standing
+    `cross_lp_demo` `AlreadyBlocked` panics; boot-validated in QEMU with
+    the demo running to completion (all 8 receivers) alongside the Phase 8
+    tests, zero panics.
+-   The fourth Phase 8 slice completes **success criterion 9's driver
+    half**: driver restart with device reset and outstanding-operation
+    reconciliation (§13). The console protocol gains `OP_CRASH` — an
+    uncooperative driver exit that releases neither its device
+    capabilities nor any retained reply, modelling a crash — and
+    `device::interrupt_route_owner` reports which domain currently owns an
+    interrupt route. The `test_el0_uart` verifier (a second console
+    client via the direct kernel API) leaves a deferred read outstanding,
+    crashes the driver, and verifies teardown (a) reclaims the delegated
+    device authority — the interrupt route is unrouted
+    (`interrupt_route_owner → None`) and the MMIO mapping is torn down
+    with the address space (device reset); (b) reconciles the outstanding
+    operation — the orphaned deferred read completes as `Cancelled`
+    rather than hanging, because the retained reply token is reclaimed on
+    teardown; and (c) invalidates stale connections — calls on the dead
+    instance fail `EndpointClosed`. A restarted generation-2 instance then
+    registers under the same name with freshly minted device grants,
+    serves a console write, and owns the interrupt route again.
+    Boot-validated in QEMU. With this slice, success criteria 8 and the
+    driver half of 9 are met; the general userspace-driver model
+    (authority delegation, EL0 MMIO, IRQ→CQ delivery, deferred replies,
+    supervised restart with device reset) is demonstrated end to end
+    without networking. Remaining Phase 8/9 work moves to the virtio-net
+    driver and network service (Phase 9), plus moving the
+    interrupt-context wake to a deferred lock-free path (Phase 10).
+
 
 
 ------------------------------------------------------------------------
@@ -2509,26 +2542,29 @@ Current status:
     readiness bound to its default queue. The remaining gap to the full
     criterion is the sitas executor integration (task wakeup from the
     drained events).
--   Criterion 9's connection-invalidation half has smoke-test evidence
-    for a generic service (echo): restarting the service domain
+-   Criterion 9 is met: its connection-invalidation half has smoke-test
+    evidence for a generic service (echo) — restarting the service domain
     invalidates stale connections (`EndpointClosed`) and the userspace
-    name service reports a new instance generation. The driver-specific
-    half (device reset, outstanding-operation reconciliation) remains
-    future work for Phase 8.
--   Criterion 8's kernel half has self-test evidence
+    name service reports a new instance generation — and its
+    driver-specific half is demonstrated by `test_el0_uart`: an
+    uncooperative driver crash is followed by teardown that resets the
+    device (unroutes the interrupt, unmaps the MMIO), reconciles the
+    outstanding deferred read (`Cancelled` rather than hung), and fails
+    stale connections `EndpointClosed`, after which a restarted
+    generation-2 instance serves with freshly minted device grants.
+-   Criterion 8 is met. Its kernel half has self-test evidence
     (`test_device_capabilities`): a driver domain can be granted an MMIO
     region and an interrupt source as capabilities, map the region into
     its own address space as user Device memory, and be released from one
     `wait_on_cq` by a real GICv3 software-pended SPI routed through the
-    live interrupt path. The EL0 half is now demonstrated by
+    live interrupt path. The EL0 half is demonstrated by
     `test_el0_uart`: the reference `uart` userspace driver runs in an
     isolated EL0 domain with only a delegated PL011 MMIO region and its
     interrupt (plus a name-service bootstrap connection), maps the
     register window, serves a console client's writes through the PL011
-    registers with direct EL0 MMIO writes, and acknowledges a delegated
-    device interrupt from EL0 — satisfying the criterion. The remaining
-    driver-lifecycle work (device reset and outstanding-operation
-    reconciliation on restart) belongs to criterion 9.
+    registers with direct EL0 MMIO writes, completes an interrupt-driven
+    deferred read (§7.2), and acknowledges a delegated device interrupt
+    from EL0.
 
 ------------------------------------------------------------------------
 
