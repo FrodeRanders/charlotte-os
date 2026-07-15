@@ -24,7 +24,11 @@
 
 #[cfg(target_arch = "aarch64")]
 use crate::{
-    ipc::ConnectionRights,
+    ipc::{
+        self,
+        ConnectionRights,
+        IpcError,
+    },
     memory::physical::PAddr,
     service::supervisor::{
         self,
@@ -72,13 +76,29 @@ static mut TEST_STATE: Option<TestState> = None;
 
 #[cfg(target_arch = "aarch64")]
 struct TestState {
-    #[allow(dead_code)]
     name_service: NameServiceHandle,
-    #[allow(dead_code)]
-    driver: ServiceDomain,
+    driver: Option<ServiceDomain>,
     driver_config: PAddr,
     client_config: PAddr,
 }
+
+/// The kernel verifier acts as a console client through the direct kernel
+/// API under this pseudo address-space id (it exists only in the IPC
+/// capability registry).
+#[cfg(target_arch = "aarch64")]
+const KCLIENT_ASID: usize = 0x7200;
+
+/// Console protocol opcodes mirrored from `catten-services`.
+#[cfg(target_arch = "aarch64")]
+const NAME_UART: u64 = packed_name(b"uart");
+#[cfg(target_arch = "aarch64")]
+const OP_LOOKUP: u32 = 2;
+#[cfg(target_arch = "aarch64")]
+const OP_WRITE: u32 = 1;
+#[cfg(target_arch = "aarch64")]
+const OP_READ_DEFERRED: u32 = 4;
+#[cfg(target_arch = "aarch64")]
+const OP_CRASH: u32 = 5;
 
 pub fn test_el0_uart() {
     #[cfg(target_arch = "aarch64")]
@@ -116,7 +136,7 @@ pub fn test_el0_uart() {
         unsafe {
             TEST_STATE = Some(TestState {
                 name_service,
-                driver,
+                driver: Some(driver),
                 driver_config,
                 client_config,
             });
@@ -217,12 +237,167 @@ extern "C" fn verify_el0_uart() {
     );
 
     logln!(
-        "[uart] SUCCESS: userspace driver mapped delegated MMIO, served console writes through \
-         PL011 registers from EL0, and completed a deferred read driven by a delegated device \
-         interrupt (result {:#x}).",
+        "[uart] deferred read completed by a delegated device interrupt (result {:#x})",
         read_result
+    );
+
+    // --- Phase C: driver restart with device reset and outstanding-operation
+    // reconciliation (success criterion 9's driver half). The verifier acts as
+    // a second console client through the direct kernel API, leaves a deferred
+    // read outstanding, crashes the driver (uncooperative exit that releases
+    // nothing), and verifies that teardown reclaims the device authority,
+    // reconciles the outstanding call, and that a restarted instance serves a
+    // fresh generation. ---
+    let state = unsafe { TEST_STATE.as_mut() }.expect("[uart] test state missing");
+    let ns_asid = state.name_service.domain.asid;
+    let ns_endpoint = state.name_service.endpoint_cap;
+    let driver_asid =
+        state.driver.as_ref().expect("[uart] driver domain handle missing").asid;
+
+    let kclient_conn =
+        ipc::connection_delegate(ns_asid, ns_endpoint, KCLIENT_ASID, ConnectionRights::CALL)
+            .expect("[uart] verifier bootstrap connection failed");
+    let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_UART)
+        .expect("[uart] verifier lookup call failed");
+    let reply = wait_reply(lookup, "generation-1 uart lookup reply");
+    assert_eq!(reply.result, 1, "[uart] first uart instance must be generation 1");
+    let stale_conn = reply.cap.expect("[uart] lookup should return console connection");
+    logln!("[uart] verifier got generation-1 console connection");
+
+    // Leave a deferred read outstanding in the driver.
+    let orphan_read = ipc::scalar_call(KCLIENT_ASID, stale_conn, OP_READ_DEFERRED, 0)
+        .expect("[uart] verifier deferred-read call failed");
+    {
+        let mut spins: u64 = 0;
+        while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
+            spins += 1;
+            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for verifier read to arm");
+            yield_lp();
+        }
+    }
+    assert_eq!(
+        crate::device::interrupt_route_owner(PL011_INTID),
+        Some(driver_asid),
+        "[uart] live driver must own the PL011 interrupt route"
+    );
+
+    // Crash the driver: uncooperative exit, nothing released.
+    ipc::scalar_send(KCLIENT_ASID, stale_conn, OP_CRASH, 0)
+        .expect("[uart] crash send failed");
+    let driver1 = state.driver.take().expect("[uart] driver domain handle missing");
+    supervisor::wait_domain_exit(&driver1, MAX_SPINS);
+    logln!("[uart] driver crashed (uncooperative exit) with a deferred read outstanding");
+    // Tear down promptly: `domain_exited` is true only once the thread has
+    // been reaped (and thus switched away from), and reusable thread ids make
+    // any delay here race-prone under this test's heavy thread churn.
+    supervisor::teardown_domain(driver1);
+
+    // Device reset: teardown must have reclaimed the interrupt route (and the
+    // MMIO mapping with the address space).
+    assert_eq!(
+        crate::device::interrupt_route_owner(PL011_INTID),
+        None,
+        "[uart] teardown must unroute the crashed driver's interrupt"
+    );
+    // Outstanding-operation reconciliation: the retained reply token was
+    // reclaimed on teardown, so the orphaned deferred read completes as
+    // Cancelled instead of hanging.
+    let orphan = wait_reply(orphan_read, "orphaned deferred-read reconciliation");
+    assert_eq!(
+        orphan.result,
+        ipc::REPLY_CANCELLED,
+        "[uart] orphaned deferred read must be cancelled on driver teardown"
+    );
+    // Stale connections to the dead instance fail deterministically.
+    assert_eq!(
+        ipc::scalar_call(KCLIENT_ASID, stale_conn, OP_WRITE, b'X' as u64),
+        Err(IpcError::EndpointClosed),
+        "[uart] stale console connection must fail EndpointClosed"
+    );
+    logln!(
+        "[uart] teardown reclaimed device authority, cancelled the outstanding read, and stale \
+         connections fail EndpointClosed"
+    );
+
+    // Restart: a fresh instance with freshly minted device grants.
+    let driver2 = supervisor::spawn_driver_with_name_service(
+        UART_ELF,
+        &state.name_service,
+        ConnectionRights::CALL,
+        DriverGrant {
+            mmio_phys_base: PL011_BASE,
+            mmio_pages: 1,
+            intid: PL011_INTID,
+        },
+    );
+    let driver2_asid = driver2.asid;
+    logln!("[uart] driver restarted (asid={}) with fresh device grants", driver2_asid);
+
+    // Re-lookup until the restarted instance registers with generation 2.
+    let mut fresh_conn = 0u64;
+    {
+        let mut spins: u64 = 0;
+        loop {
+            let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_UART)
+                .expect("[uart] verifier re-lookup call failed");
+            let reply = wait_reply(lookup, "post-restart uart lookup reply");
+            if reply.result == 2 {
+                fresh_conn = reply.cap.expect("[uart] re-lookup should return connection");
+                break;
+            }
+            if let Some(cap) = reply.cap {
+                let _ = ipc::close_cap(KCLIENT_ASID, cap);
+            }
+            spins += 1;
+            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for generation-2 registration");
+            yield_lp();
+        }
+    }
+    let write = ipc::scalar_call(KCLIENT_ASID, fresh_conn, OP_WRITE, b'2' as u64)
+        .expect("[uart] generation-2 write call failed");
+    let reply = wait_reply(write, "generation-2 console write reply");
+    assert_eq!(reply.result, 0, "[uart] generation-2 console write must succeed");
+    assert_eq!(
+        crate::device::interrupt_route_owner(PL011_INTID),
+        Some(driver2_asid),
+        "[uart] restarted driver must own the PL011 interrupt route"
+    );
+
+    state.driver = Some(driver2);
+    ipc::close_address_space(KCLIENT_ASID);
+
+    logln!(
+        "[uart] SUCCESS: userspace driver served console writes and an interrupt-driven deferred \
+         read from EL0; after an uncooperative driver exit, teardown reclaimed the delegated MMIO \
+         and interrupt, cancelled the outstanding deferred read, invalidated stale connections, \
+         and a restarted generation-2 instance serves with fresh device grants."
     );
     loop {
         yield_lp();
     }
+}
+
+/// Poll a pending call created through the direct kernel API until it
+/// completes, then close the pending-call cap.
+#[cfg(target_arch = "aarch64")]
+fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
+    use crate::cpu::scheduler::yield_lp;
+
+    let mut value = None;
+    let mut spins: u64 = 0;
+    loop {
+        match ipc::poll_reply(KCLIENT_ASID, call) {
+            Ok(Some(reply)) => {
+                value = Some(reply);
+                break;
+            }
+            Ok(None) => {}
+            Err(error) => panic!("[uart] poll_reply failed for {}: {:?}", what, error),
+        }
+        spins += 1;
+        assert!(spins < MAX_SPINS, "[uart] FAILED waiting for {}", what);
+        yield_lp();
+    }
+    ipc::close_cap(KCLIENT_ASID, call).expect("[uart] pending-call close failed");
+    value.expect("[uart] reply value missing")
 }

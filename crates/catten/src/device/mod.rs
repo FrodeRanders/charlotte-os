@@ -407,6 +407,16 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
         .ok_or(DeviceError::UnknownCapability)
 }
 
+/// Inspection: the owning address space of the interrupt route for `intid`,
+/// if any. A driver's route is installed by [`interrupt_bind_cq`] and removed
+/// on [`close_cap`] or [`close_address_space`], so this reports whether a
+/// live driver currently owns the interrupt — used to verify that device
+/// authority is reclaimed when a driver domain is torn down (architecture
+/// doc §13, success criterion 9).
+pub fn interrupt_route_owner(intid: u32) -> Option<AddressSpaceId> {
+    ROUTES.lock().get(&intid).map(|route| route.asid)
+}
+
 /// Reclaim every device capability owned by `asid` on address-space teardown:
 /// unmap MMIO regions, mask and unroute interrupt sources. Called from
 /// `close_user_address_space`.

@@ -114,6 +114,14 @@ pub mod console {
     /// interrupt count in bits 8.. so the caller can confirm the reply was
     /// interrupt-driven. A second concurrent request replies -1 (busy).
     pub const OP_READ_DEFERRED: u32 = 4;
+    /// Uncooperative exit (fault injection): the driver terminates its
+    /// protection domain **without** releasing its device capabilities or
+    /// completing any retained reply — modelling a crashed driver. The
+    /// service manager must then reclaim the device authority (unmap MMIO,
+    /// mask/unroute the interrupt) and reconcile the outstanding operation on
+    /// teardown (architecture doc §13, success criterion 9). Sent, not
+    /// called: there is no reply.
+    pub const OP_CRASH: u32 = 5;
 }
 
 /// PL011 UART register offsets (ARM PrimeCell PL011), for the reference

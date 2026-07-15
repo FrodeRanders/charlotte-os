@@ -253,6 +253,13 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                         thread_exit();
                     }
                 }
+                console::OP_CRASH => {
+                    // Model a crashed driver: exit without releasing device
+                    // capabilities or completing the retained deferred read.
+                    // The service manager must reclaim the device authority and
+                    // reconcile the outstanding operation on teardown.
+                    unsafe { thread_exit() };
+                }
                 _ => {
                     if message.reply != 0 {
                         unsafe {
