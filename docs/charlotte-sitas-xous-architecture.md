@@ -283,6 +283,22 @@ Current evidence:
     then receives (success criterion 5's kernel mechanism). Remaining
     Phase 7 work is userspace: a sitas executor loop that drains the CQ
     and ready endpoints, wakes tasks, and re-arms the single wait.
+-   The second Phase 7 slice demonstrates the unified wait in a real
+    EL0 service. The service loader now maps a CQ ring page at the
+    canonical `0x11000` into every service domain and opens the
+    kernel-side default queue, so services can use the completion
+    syscalls, detached operations, timed waits, and readiness binding.
+    The reference echo service was converted from blocking receive to
+    the §7 event-loop skeleton: it binds its endpoint to queue 0, blocks
+    on one `CQ_WAIT`, and drains every ready message (`IPC_RECV` until
+    `NoMessage`) before re-arming — the existing end-to-end service
+    test (lookup, calls, shutdown, restart, generation bump) passes
+    unchanged over the event-driven server. The memory-name scratch
+    address moved above the image (`0x100000`) to make room for the CQ
+    page in the fixed layout. Outstanding: porting this loop into the
+    sitas executor proper (task wakeup and budgeted polling), per-shard
+    ring mapping for multi-shard services, and replacing
+    `kv::spin_recv`'s channel busy-wait with the wake path.
 
 ------------------------------------------------------------------------
 
@@ -2361,9 +2377,12 @@ Current status:
     three isolated EL0 domains and a supervised restart.
 -   Criterion 5's kernel half has self-test evidence: one blocking CQ
     wait is released by kernel completions, explicit cross-thread
-    wakes, and CQ-bound endpoint readiness (`test_cq_wait_wake`). The
-    userspace half — a sitas executor that drains both sources from
-    that single wait — remains Phase 7 work.
+    wakes, and CQ-bound endpoint readiness (`test_cq_wait_wake`). At
+    EL0, the reference echo service serves its entire protocol —
+    including shutdown and restart — from one `CQ_WAIT` with endpoint
+    readiness bound to its default queue. The remaining gap to the full
+    criterion is the sitas executor integration (task wakeup from the
+    drained events).
 -   Criterion 9's connection-invalidation half has smoke-test evidence
     for a generic service (echo): restarting the service domain
     invalidates stale connections (`EndpointClosed`) and the userspace

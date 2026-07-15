@@ -22,9 +22,10 @@ pub const fn name(bytes: &[u8]) -> u64 {
 
 /// The scratch virtual address services use to stage a memory-carried name.
 ///
-/// One free page between the config page (`0x10000`) and the launch input
-/// buffer (`0x12000`) in the standard `catten-rt` address-space layout.
-pub const NAME_SCRATCH_VADDR: usize = 0x0000_0000_0001_1000;
+/// Chosen above the program image (linked at `0x20000`, well under 1 MiB) and
+/// away from the fixed runtime pages: config (`0x10000`), CQ ring
+/// (`0x11000`), launch input (`0x12000`), and heap (`0x13000..0x20000`).
+pub const NAME_SCRATCH_VADDR: usize = 0x0000_0000_0010_0000;
 
 /// Maximum memory-carried name length (fits one page with room to spare).
 pub const MAX_NAME_LEN: usize = 256;

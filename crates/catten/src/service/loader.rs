@@ -28,12 +28,19 @@ use crate::{
 
 /// The canonical config-page virtual address (`catten-rt` contract).
 pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
+/// Canonical completion-queue ring virtual address (default queue 0).
+pub const CQ_VADDR: usize = 0x0000_0000_0001_1000;
 /// Canonical launch input buffer virtual address.
 pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 /// Canonical user heap base (`catten-rt`'s allocator arena).
 pub const HEAP_VADDR: usize = 0x0000_0000_0001_3000;
 /// Number of heap pages backing the `catten-rt` allocator arena (0xd000).
 pub const HEAP_PAGES: usize = 13;
+
+/// Completion capability-table capacity granted to a service domain.
+pub const COMPLETION_CAPACITY: usize = 16;
+/// Entry slots in a service domain's default CQ ring.
+pub const CQ_ENTRIES: u32 = 32;
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -275,16 +282,27 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
 }
 
 /// Create an address space, load `image`, and map the standard `catten-rt`
-/// runtime pages (config, input, heap). The domain is not started.
+/// runtime pages (config, CQ ring, input, heap). The default completion
+/// queue is opened kernel-side on the mapped ring frame, so the domain can
+/// use the completion syscalls and the unified `CQ_WAIT` shard wait
+/// (endpoint readiness binding, timed waits, detached operations). The
+/// domain is not started.
 pub fn load_domain(image: &[u8]) -> LoadedDomain {
     let asid = create_user_address_space();
     let entry_vaddr = load_user_elf(asid, image);
 
     let config_frame = map_user_data_page(asid, CONFIG_VADDR);
+    let cq_frame = map_user_data_page(asid, CQ_VADDR);
     let _input_frame = map_user_data_page(asid, INPUT_VADDR);
     for i in 0..HEAP_PAGES {
         let _ = map_user_data_page(asid, HEAP_VADDR + i * PAGE_SIZE);
     }
+    crate::completion::open_address_space_with_cq_phys(
+        asid,
+        COMPLETION_CAPACITY,
+        cq_frame,
+        CQ_ENTRIES,
+    );
 
     LoadedDomain {
         asid,

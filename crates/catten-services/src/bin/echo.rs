@@ -2,7 +2,11 @@
 //!
 //! Creates its own endpoint, registers it with the name service through the
 //! bootstrap connection (attaching a re-delegable connection at call time),
-//! then serves echo calls until asked to shut down.
+//! then serves echo calls **event-driven**: the endpoint's readiness is
+//! bound to the domain's default completion queue, and the service blocks on
+//! one `CQ_WAIT` — the unified shard wait of the architecture doc §7 — then
+//! drains every ready message before waiting again. The same wait would also
+//! deliver kernel/device completions and explicit peer wakes.
 #![no_std]
 #![no_main]
 
@@ -21,8 +25,10 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_wait,
+    ipc_endpoint_bind_cq,
     ipc_endpoint_create,
-    ipc_recv_block,
+    ipc_recv,
     ipc_reply,
     ipc_scalar_call_connection,
     ipc_scalar_call_connection_copy,
@@ -94,41 +100,61 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
         unsafe { thread_exit() };
     }
     config::write::<u32>(12, named_generation as u32);
-    config::write::<u32>(0, 6); // stage: registered under both names, serving
+
+    // Unified shard wait (§7): bind the endpoint's readiness to the default
+    // completion queue, then block on one CQ_WAIT and drain every ready
+    // message before waiting again.
+    if unsafe { ipc_endpoint_bind_cq(endpoint, 0) } != 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(0, 6); // stage: registered and event-driven, serving
 
     let mut served: u32 = 0;
 
     loop {
-        let message = unsafe { ipc_recv_block(endpoint) };
-        if message.status == ipc_status::ENDPOINT_CLOSED {
-            unsafe { thread_exit() };
-        }
-        if !message.is_ok() {
-            continue;
+        // 1. Block on the single wait point. Releases on endpoint readiness,
+        //    kernel completions, or explicit peer wakes alike.
+        unsafe {
+            cq_wait(1, 0);
         }
 
-        match message.opcode {
-            echo::OP_ECHO => {
-                served += 1;
-                config::write::<u32>(8, served);
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, message.arg0 as i64);
-                    }
-                }
+        // 2. Drain every ready endpoint message. (A full executor would also
+        //    drain CQ ring entries and wake tasks here.)
+        loop {
+            let message = unsafe { ipc_recv(endpoint) };
+            if message.status == ipc_status::NO_MESSAGE {
+                break;
             }
-            echo::OP_SHUTDOWN => {
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, 0);
-                    }
-                }
+            if message.status == ipc_status::ENDPOINT_CLOSED {
                 unsafe { thread_exit() };
             }
-            _ => {
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, -1);
+            if !message.is_ok() {
+                break;
+            }
+
+            match message.opcode {
+                echo::OP_ECHO => {
+                    served += 1;
+                    config::write::<u32>(8, served);
+                    if message.reply != 0 {
+                        unsafe {
+                            ipc_reply(message.reply, message.arg0 as i64);
+                        }
+                    }
+                }
+                echo::OP_SHUTDOWN => {
+                    if message.reply != 0 {
+                        unsafe {
+                            ipc_reply(message.reply, 0);
+                        }
+                    }
+                    unsafe { thread_exit() };
+                }
+                _ => {
+                    if message.reply != 0 {
+                        unsafe {
+                            ipc_reply(message.reply, -1);
+                        }
                     }
                 }
             }
