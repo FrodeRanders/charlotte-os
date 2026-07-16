@@ -26,22 +26,22 @@ pub fn test_cq_ring() {
     assert!(!ring.is_full());
 
     // --- write 3 entries, verify pending count ---------------------------------
-    ring.write(1, OpResult::Ok(4));
-    ring.write(2, OpResult::Ok(100));
-    ring.write(3, OpResult::Cancelled);
+    ring.write(0,1,0,4);
+    ring.write(0,2,0,100);
+    ring.write(0,3,2,0);
     assert_eq!(ring.pending(), 3);
 
     // --- read back in insertion order ------------------------------------------
     let e0 = ring.read().expect("first entry must be present");
-    assert_eq!(e0.cap, 1);
+    assert_eq!(e0.cookie, 1);
     assert_eq!(e0.result, op_result_to_i64(OpResult::Ok(4)));
 
     let e1 = ring.read().expect("second entry must be present");
-    assert_eq!(e1.cap, 2);
+    assert_eq!(e1.cookie, 2);
     assert_eq!(e1.result, op_result_to_i64(OpResult::Ok(100)));
 
     let e2 = ring.read().expect("third entry must be present");
-    assert_eq!(e2.cap, 3);
+    assert_eq!(e2.cookie, 3);
     assert_eq!(e2.result, op_result_to_i64(OpResult::Cancelled));
 
     assert_eq!(ring.pending(), 0);
@@ -50,12 +50,12 @@ pub fn test_cq_ring() {
     // --- fill the ring to capacity - 1, then overflow --------------------------
     let cap = ring.capacity as usize;
     for i in 0..cap - 1 {
-        assert!(ring.write((i + 100) as usize, OpResult::Ok(i as i64)));
+        assert!(ring.write(0,(i+100) as u64,0,i as i64));
     }
     assert!(ring.is_full());
 
     // Overflow: write one more, it must be dropped and overflow counter bumped.
-    let dropped = !ring.write(999, OpResult::Ok(42));
+    let dropped = !ring.write(0,999,0,42);
     assert!(dropped, "write to full ring must return false");
     assert_eq!(ring.overflow, 1);
 
@@ -74,9 +74,9 @@ pub fn test_cq_ring() {
         (ring2_buf, ring2_ptr) = cq::CompletionQueueRing::new_page(8);
     }
     let ring2 = unsafe { &mut *ring2_ptr };
-    ring2.write(1, OpResult::Err(5));
+    ring2.write(0,1,1,-5);
     let e = ring2.read().unwrap();
-    assert_eq!(cq::i64_to_op_result(e.result), OpResult::Err(5));
+    assert_eq!(cq::fields_to_op_result(e.status, e.result), OpResult::Err(5));
     drop(ring2_buf);
 
     logln!("Completion-queue ring tests passed.");

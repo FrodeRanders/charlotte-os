@@ -1,267 +1,132 @@
 //! # Completion Queue Ring Buffer (shared-memory, io_uring-style)
-//!
-//! A single-producer (kernel), single-consumer (userspace) ring for zero-syscall
-//! completion delivery. The producer advances the head; the consumer advances
-//! the tail. When head == tail the queue is empty; when `(head + 1) % capacity
-//! == tail` the queue is full.
-//!
-//! ## Layout (single 4 KiB page)
-//!
-//! ```text
-//! offset  size  field
-//! 0x000   4     head (kernel writes, userspace reads)
-//! 0x004   4     tail (userspace writes, kernel reads)
-//! 0x008   4     capacity (N entries, immutable after init)
-//! 0x00C   4     overflow (count of producer writes that found the ring full)
-//! 0x010   N*16  entry array
-//! ```
-//!
-//! Each entry is 16 bytes: `cap: u64, result: i64`.
-//!
-//! The ring is allocated from the kernel heap (`alloc::vec!`) and is
-//! simultaneously accessible via HHDM (kernel) and, once mapped, a user virtual
-//! address. For the self-test we drain from the kernel side; in production the
-//! consumer runs in userspace.
+//! §8.2 richer completion record — 32-byte entries.
+//! Field order: operation: u64, cookie: u64, status: u32, flags: u32, result: i64.
 
-use core::sync::atomic::{
-    Ordering,
-    fence,
-};
+use core::sync::atomic::{Ordering, fence};
+use crate::completion::{CompletionCap, OpResult, OperationId};
+use crate::cpu::isa::interface::memory::address::PhysicalAddress;
+use crate::memory::physical::PAddr;
 
-use crate::{
-    completion::{
-        CompletionCap,
-        OpResult,
-    },
-    memory::physical::PAddr,
-};
-
-/// One completion entry in the ring (16 bytes).
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[repr(C)] #[derive(Debug, Clone, Copy)]
 pub struct CqEntry {
-    /// Correlation cookie: the [`CompletionCap`] for capability-backed
-    /// operations, or the submitter-chosen `user_data` token for
-    /// capability-free (detached) operations. Which convention applies is
-    /// part of the submitting protocol, not of the ring.
-    pub cap: u64,
-    /// The result: `>= 0` = Ok(bytes), `< 0` = Err(-code), `i64::MIN` = Cancelled.
+    pub operation: u64,
+    pub cookie: u64,
+    pub status: u32,
+    pub flags: u32,
     pub result: i64,
 }
 
-/// In-memory representation of the ring header + entry array.
-///
-/// Allocated as a boxed slice on the heap. Both the kernel (HHDM) and a
-/// mapped user page reference the same physical memory.
+pub fn op_result_to_fields(r: &OpResult) -> (u32, i64) {
+    match r {
+        OpResult::Ok(n) => (0, *n),
+        OpResult::Err(code) => (1, -(*code as i64)),
+        OpResult::Cancelled => (2, 0),
+    }
+}
+
+pub fn fields_to_op_result(status: u32, result: i64) -> OpResult {
+    match status { 0 => OpResult::Ok(result), 1 => OpResult::Err((-result) as i32), _ => OpResult::Cancelled }
+}
+
+/// Legacy helpers retained for existing callers.
+pub fn op_result_to_i64(r: OpResult) -> i64 { let (_, v) = op_result_to_fields(&r); v }
+pub fn i64_to_op_result(r: i64) -> OpResult {
+    if r == i64::MIN { OpResult::Cancelled } else if r >= 0 { OpResult::Ok(r) } else { OpResult::Err((-r) as i32) }
+}
+
 #[repr(C)]
 pub struct CompletionQueueRing {
-    /// Producer index. Advanced by the kernel after writing an entry.
-    pub head: u32,
-    /// Consumer index. Advanced by userspace after reading an entry.
-    pub tail: u32,
-    /// Fixed number of entry slots.
-    pub capacity: u32,
-    /// Cumulative count of producer writes that found the shared ring full.
-    /// `completion::complete()` retains those entries in a kernel backlog and
-    /// retries later, so this is pressure telemetry, not a drop count.
-    pub overflow: u32,
-    /// Entry array. `capacity` entries, indexed modulo.
+    pub head: u32, pub tail: u32, pub capacity: u32, pub overflow: u32,
     pub entries: [CqEntry; 0],
 }
 
 impl CompletionQueueRing {
-    /// Returns a `(Vec<u8>, &mut Self)` where the Vec owns the allocation and
-    /// the reference points into it. `num_entries` is the requested number of
-    /// slots; the actual capacity may be rounded down to fit in a page.
-    ///
-    /// The returned buffer is page-aligned and one 4 KiB page in size.
     pub fn new_page(num_entries: u32) -> (alloc::vec::Vec<u8>, *mut Self) {
-        let page_size = 4096;
-        let header_size = core::mem::size_of::<u32>() * 4;
-        let max_entries = ((page_size - header_size) / core::mem::size_of::<CqEntry>()) as u32;
-        let capacity = num_entries.min(max_entries);
-
-        let mut buf = alloc::vec![0u8; page_size];
+        let ps: usize = 4096; let hs = 16usize;
+        let max = ((ps - hs) / core::mem::size_of::<CqEntry>()) as u32;
+        let cap = num_entries.min(max);
+        let mut buf = alloc::vec![0u8; ps];
         let ptr = buf.as_mut_ptr() as *mut Self;
-
-        unsafe {
-            (*ptr).head = 0;
-            (*ptr).tail = 0;
-            (*ptr).capacity = capacity;
-            (*ptr).overflow = 0;
-        }
-
+        unsafe { (*ptr).head = 0; (*ptr).tail = 0; (*ptr).capacity = cap; (*ptr).overflow = 0; }
         (buf, ptr)
     }
-
-    /// Initializes a `CompletionQueueRing` on a pre-allocated physical frame.
-    /// The frame must be at least one 4 KiB page. The ring is accessed through
-    /// the HHDM window; the caller is responsible for mapping the same physical
-    /// frame into the target address space for userspace access.
-    ///
-    /// # Safety
-    ///
-    /// `frame` must be a valid, 4 KiB-aligned physical address that is not used
-    /// for any other purpose while this ring is alive.
     pub unsafe fn init_at_phys(frame: PAddr, num_entries: u32) -> *mut Self {
-        let page_size = 4096;
-        let header_size = core::mem::size_of::<u32>() * 4;
-        let max_entries = ((page_size - header_size) / core::mem::size_of::<CqEntry>()) as u32;
-        let capacity = num_entries.min(max_entries);
-
+        let ps: usize = 4096; let hs = 16usize;
+        let max = ((ps - hs) / core::mem::size_of::<CqEntry>()) as u32;
+        let cap = num_entries.min(max);
         let ptr: *mut Self = frame.into();
-
-        // Zero the entire page first (clean HHDM memory).
-        let byte_ptr: *mut u8 = frame.into();
-        unsafe {
-            for i in 0..page_size {
-                byte_ptr.add(i).write_volatile(0);
-            }
-
-            (*ptr).head = 0;
-            (*ptr).tail = 0;
-            (*ptr).capacity = capacity;
-            (*ptr).overflow = 0;
-        }
-
+        for i in 0..ps { unsafe { (crate::memory::physical::PAddr::from(frame).into_hhdm_mut::<u8>()).add(i).write_volatile(0); } }
+        unsafe { (*ptr).head = 0; (*ptr).tail = 0; (*ptr).capacity = cap; (*ptr).overflow = 0; }
         ptr
     }
-
-    /// Returns the number of pending (un-consumed) entries.
     pub fn pending(&self) -> u32 {
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        if h >= t {
-            h - t
-        } else {
-            h + self.capacity - t
-        }
+        if h >= t { h - t } else { h + self.capacity - t }
     }
-
-    /// Whether the ring is full.
     pub fn is_full(&self) -> bool {
-        let next = (unsafe { core::ptr::read_volatile(&self.head) } + 1) % self.capacity;
-        next == unsafe { core::ptr::read_volatile(&self.tail) }
+        let n = (unsafe { core::ptr::read_volatile(&self.head) } + 1) % self.capacity;
+        n == unsafe { core::ptr::read_volatile(&self.tail) }
     }
-
-    /// Kernel (producer) side: write one completion entry. If the ring is full,
-    /// the write is skipped and the overflow counter is incremented. The caller
-    /// is responsible for retaining the entry and retrying later.
-    pub fn write(&mut self, cap: CompletionCap, result: OpResult) -> bool {
-        self.write_cookie(cap as u64, result)
-    }
-
-    /// Like [`write`](Self::write) but carries an opaque 64-bit cookie in the
-    /// entry's first field instead of a capability index. For capability-backed
-    /// operations the cookie is the [`CompletionCap`]; for capability-free
-    /// (detached) operations it is the submitter-chosen `user_data` correlation
-    /// token.
-    pub fn write_cookie(&mut self, cookie: u64, result: OpResult) -> bool {
-        let result_code = op_result_to_i64(result);
+    pub fn write(&mut self, op: u64, cookie: u64, status: u32, result: i64) -> bool {
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
         let next = (h + 1) % self.capacity;
-        if next == t {
-            // Ring is full. The completion layer keeps the entry in its
-            // per-address-space backlog and retries on a later completion.
-            self.overflow = self.overflow.wrapping_add(1);
-            return false;
-        }
-
-        let entry_ptr = self.entry_ptr(h as usize);
+        if next == t { self.overflow = self.overflow.wrapping_add(1); return false; }
+        let e = self.entry_ptr(h as usize);
         unsafe {
-            core::ptr::write_volatile(&mut (*entry_ptr).cap, cookie);
-            core::ptr::write_volatile(&mut (*entry_ptr).result, result_code);
+            core::ptr::write_volatile(&mut (*e).operation, op);
+            core::ptr::write_volatile(&mut (*e).cookie, cookie);
+            core::ptr::write_volatile(&mut (*e).status, status);
+            core::ptr::write_volatile(&mut (*e).flags, 0u32);
+            core::ptr::write_volatile(&mut (*e).result, result);
         }
         fence(Ordering::Release);
-        unsafe { core::ptr::write_volatile(&mut self.head, next) };
+        unsafe { core::ptr::write_volatile(&mut self.head, next); }
         true
     }
-
-    /// Kernel (producer) side, batched: write as many `(cookie, result)`
-    /// entries as fit, publishing them with a **single** release fence and
-    /// head update (CQ batching, architecture doc Phase 6). Returns how many
-    /// entries were written; the caller retains the rest.
     pub fn write_batch<'a, I>(&mut self, entries: I) -> usize
-    where
-        I: Iterator<Item = &'a (u64, OpResult)>,
-    {
+    where I: Iterator<Item = &'a (u64, u64, u32, i64)> {
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        let pending = if h >= t {
-            h - t
-        } else {
-            h + self.capacity - t
-        };
+        let pending = if h >= t { h - t } else { h + self.capacity - t };
         let free = (self.capacity - 1 - pending) as usize;
-
-        let mut written = 0usize;
-        for (cookie, result) in entries.take(free) {
+        let mut written: usize = 0;
+        for (op, cookie, status, result) in entries.take(free) {
             let slot = ((h as usize) + written) % self.capacity as usize;
-            let entry_ptr = self.entry_ptr(slot);
+            let e = self.entry_ptr(slot);
             unsafe {
-                core::ptr::write_volatile(&mut (*entry_ptr).cap, *cookie);
-                core::ptr::write_volatile(&mut (*entry_ptr).result, op_result_to_i64(result.clone()));
+                core::ptr::write_volatile(&mut (*e).operation, *op);
+                core::ptr::write_volatile(&mut (*e).cookie, *cookie);
+                core::ptr::write_volatile(&mut (*e).status, *status);
+                core::ptr::write_volatile(&mut (*e).flags, 0u32);
+                core::ptr::write_volatile(&mut (*e).result, *result);
             }
             written += 1;
         }
         if written > 0 {
             fence(Ordering::Release);
             let next = ((h as usize + written) % self.capacity as usize) as u32;
-            unsafe { core::ptr::write_volatile(&mut self.head, next) };
+            unsafe { core::ptr::write_volatile(&mut self.head, next); }
         }
         written
     }
-
-    /// Consumer side: drain one completion entry. Returns `None` when empty.
     pub fn read(&mut self) -> Option<CqEntry> {
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
-        if h == t {
-            return None;
-        }
-
-        let entry_ptr = self.entry_ptr(t as usize);
+        if h == t { return None; }
+        let e = self.entry_ptr(t as usize);
         fence(Ordering::Acquire);
-        let cap = unsafe { core::ptr::read_volatile(&(*entry_ptr).cap) };
-        let result = unsafe { core::ptr::read_volatile(&(*entry_ptr).result) };
-        let next = (t + 1) % self.capacity;
-        unsafe { core::ptr::write_volatile(&mut self.tail, next) };
-        Some(CqEntry {
-            cap,
-            result,
-        })
+        let op = unsafe { core::ptr::read_volatile(&(*e).operation) };
+        let cookie = unsafe { core::ptr::read_volatile(&(*e).cookie) };
+        let status = unsafe { core::ptr::read_volatile(&(*e).status) };
+        let r = unsafe { core::ptr::read_volatile(&(*e).result) };
+        unsafe { core::ptr::write_volatile(&mut self.tail, (t + 1) % self.capacity); }
+        Some(CqEntry { operation: op, cookie, status, flags: 0, result: r })
     }
-
     fn entry_ptr(&self, idx: usize) -> *mut CqEntry {
         let base = self as *const Self as *mut u8;
-        let entries_offset = core::mem::offset_of!(Self, entries);
-        let entry_size = core::mem::size_of::<CqEntry>();
-        unsafe { base.add(entries_offset).add(idx * entry_size) as *mut CqEntry }
+        let off = core::mem::offset_of!(Self, entries);
+        unsafe { base.add(off).add(idx * core::mem::size_of::<CqEntry>()) as *mut CqEntry }
     }
-}
-
-pub fn op_result_to_i64(r: OpResult) -> i64 {
-    match r {
-        OpResult::Ok(n) => n,
-        OpResult::Err(code) => -(code as i64),
-        OpResult::Cancelled => i64::MIN,
-    }
-}
-
-pub fn i64_to_op_result(r: i64) -> OpResult {
-    if r == i64::MIN {
-        OpResult::Cancelled
-    } else if r >= 0 {
-        OpResult::Ok(r)
-    } else {
-        OpResult::Err((-r) as i32)
-    }
-}
-
-#[cfg(test)]
-#[allow(unused_imports)]
-mod tests {
-    // Tests are in self_test/completion_cq.rs (boot-time); kept here as
-    // documentation of the expected contract.
 }

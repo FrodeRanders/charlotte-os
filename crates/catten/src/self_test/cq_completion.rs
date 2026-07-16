@@ -35,7 +35,7 @@ pub fn test_cq_ring_in_completion() {
     // Drain the ring entry and verify it.
     let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
     let entry = unsafe { &mut *ring_ptr }.read().expect("first entry must be present");
-    assert_eq!(entry.cap, cap as u64);
+    assert_eq!(entry.cookie, cap as u64);
     assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(4)));
 
     assert_eq!(completion::cq_pending(asid, 0), 0);
@@ -53,15 +53,15 @@ pub fn test_cq_ring_in_completion() {
 
     let ring = unsafe { &mut *completion::cq_ring_of(asid, 0).unwrap() };
     let e1 = ring.read().unwrap();
-    assert_eq!(e1.cap, c1 as u64);
+    assert_eq!(e1.cookie, c1 as u64);
     assert_eq!(e1.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(1)));
 
     let e2 = ring.read().unwrap();
-    assert_eq!(e2.cap, c2 as u64);
+    assert_eq!(e2.cookie, c2 as u64);
     assert_eq!(e2.result, crate::completion::cq::op_result_to_i64(OpResult::Cancelled));
 
     let e3 = ring.read().unwrap();
-    assert_eq!(e3.cap, c3 as u64);
+    assert_eq!(e3.cookie, c3 as u64);
     assert_eq!(e3.result, crate::completion::cq::op_result_to_i64(OpResult::Err(2)));
 
     // Clean up — closes the AS and frees the CQ ring allocation.

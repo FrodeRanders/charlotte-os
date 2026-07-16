@@ -381,7 +381,7 @@ struct CqState {
     /// Entries (cookie, result) that could not fit in the shared ring yet.
     /// This preserves the non-lossy completion contract: a full userspace
     /// ring delays delivery but does not discard terminal completions.
-    backlog: VecDeque<(u64, OpResult)>,
+    backlog: VecDeque<(u64, u64, u32, i64)>,
     /// An explicit cross-thread wake was posted ([`wake`]) and has not yet
     /// been consumed by a waiter on this queue. Consume-on-wait semantics
     /// close the lost-wake race: a wake posted between a waiter's ring check
@@ -612,7 +612,8 @@ pub fn complete(
         let mut registry = COMPLETIONS.write();
         if let Some(as_completions) = registry.get_mut(&asid) {
             if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
-                post_to_cq(cq_state, cap as u64, effective);
+                let op = completion.operation_id();
+                post_to_cq(cq_state, op, cap as u64, &effective);
             }
         }
     }
@@ -626,12 +627,13 @@ pub fn complete(
 /// Posts one entry to a queue's ring, spilling to its non-lossy backlog when
 /// the ring is full. Any backlog is flushed (batched) first so ordering is
 /// preserved.
-fn post_to_cq(cq_state: &mut CqState, cookie: u64, result: OpResult) {
+fn post_to_cq(cq_state: &mut CqState, operation: u64, cookie: u64, result: &OpResult) {
+    let (status, val) = crate::completion::cq::op_result_to_fields(result);
     flush_backlog(cq_state);
     if !cq_state.backlog.is_empty()
-        || !unsafe { &mut *cq_state.ring }.write_cookie(cookie, result.clone())
+        || !unsafe { &mut *cq_state.ring }.write(operation, cookie, status, val)
     {
-        cq_state.backlog.push_back((cookie, result));
+        cq_state.backlog.push_back((operation, cookie, status, val));
     }
 }
 
@@ -692,7 +694,7 @@ pub fn complete_detached(
             result
         };
         if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
-            post_to_cq(cq_state, detached.user_data, effective);
+            post_to_cq(cq_state, operation, detached.user_data, &effective);
         }
         as_completions.live = as_completions.live.saturating_sub(1);
         detached.cq

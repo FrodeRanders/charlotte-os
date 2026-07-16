@@ -119,7 +119,7 @@ pub fn test_completion_caps() {
     assert_eq!(unsafe { &*ring_ptr }.overflow, 1, "second entry should hit a full ring");
 
     let first = unsafe { &mut *ring_ptr }.read().expect("first CQ entry must be present");
-    assert_eq!(first.cap, cap_a as u64);
+    assert_eq!(first.cookie, cap_a as u64);
 
     assert_eq!(
         completion::cq_pending(cq_asid, 0),
@@ -127,7 +127,7 @@ pub fn test_completion_caps() {
         "cq_pending should flush the retained backlog entry"
     );
     let second = unsafe { &mut *ring_ptr }.read().expect("backlogged CQ entry must be posted");
-    assert_eq!(second.cap, cap_b as u64);
+    assert_eq!(second.cookie, cap_b as u64);
 
     // --- a duplicate completion must not post a duplicate CQ entry -----------
     completion::complete(cq_asid, cap_a, OpResult::Ok(11)).unwrap();
@@ -142,9 +142,9 @@ pub fn test_completion_caps() {
     assert_eq!(completion::cancel(cq_asid, cap_c).unwrap(), CancelState::CancelRequested);
     completion::complete(cq_asid, cap_c, OpResult::Ok(30)).unwrap();
     let third = unsafe { &mut *ring_ptr }.read().expect("cancelled CQ entry must be posted");
-    assert_eq!(third.cap, cap_c as u64);
+    assert_eq!(third.cookie, cap_c as u64);
     assert_eq!(
-        crate::completion::cq::i64_to_op_result(third.result),
+        crate::completion::cq::fields_to_op_result(third.status, third.result),
         OpResult::Cancelled,
         "the CQ ring and the capability must agree on the effective result"
     );
@@ -191,7 +191,7 @@ pub fn test_detached_operations() {
 
     completion::complete_detached(asid, op_a, OpResult::Ok(7)).unwrap();
     let entry = unsafe { &mut *ring_ptr }.read().expect("detached completion must post");
-    assert_eq!(entry.cap, 0xaaaa_0001, "CQ cookie must be the submitter's user_data");
+    assert_eq!(entry.cookie, 0xaaaa_0001, "CQ cookie must be the submitter's user_data");
     assert_eq!(entry.result, 7);
 
     // A completed detached operation no longer exists.
@@ -210,9 +210,9 @@ pub fn test_detached_operations() {
     assert_eq!(completion::cancel_detached(asid, op_b).unwrap(), CancelState::CancelRequested);
     completion::complete_detached(asid, op_b, OpResult::Ok(9)).unwrap();
     let entry = unsafe { &mut *ring_ptr }.read().expect("cancelled detached must post");
-    assert_eq!(entry.cap, 0xaaaa_0002);
+    assert_eq!(entry.cookie, 0xaaaa_0002);
     assert_eq!(
-        crate::completion::cq::i64_to_op_result(entry.result),
+        crate::completion::cq::fields_to_op_result(entry.status, entry.result),
         OpResult::Cancelled,
         "a cancel-pending detached operation must complete as Cancelled"
     );
@@ -257,7 +257,7 @@ pub fn test_detached_operations() {
         "the default queue must not observe another queue's traffic"
     );
     let entry = unsafe { &mut *ring1 }.read().expect("CQ 1 entry must be present");
-    assert_eq!(entry.cap, 0xbbbb_0001);
+    assert_eq!(entry.cookie, 0xbbbb_0001);
     assert_eq!(entry.result, 41);
 
     // Submitting to a queue that does not exist is refused.
