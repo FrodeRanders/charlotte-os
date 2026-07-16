@@ -146,19 +146,40 @@ pub mod pl011 {
 
 /// Network-driver protocol (`charlotte-protocol-net` v1).
 ///
-/// The reference userspace virtio-net driver serves this interface.
+/// The reference userspace virtio-net driver serves this interface. Its
+/// only job is Ethernet frame transport (§6 of the networking architecture
+/// doc): it knows nothing about IP, TCP, or sockets. Higher-level services
+/// (Reliable Message Layer, RPC, TCP/IP compatibility) consume raw frames
+/// through this endpoint.
 pub mod net {
     /// Interface id: "NET ".
     pub const INTERFACE: u64 = super::name(b"NET ");
     pub const VERSION: u32 = 1;
     /// The registered short service name.
     pub const NAME: u64 = super::name(b"net0");
+
     /// Query the driver. Reply result encodes: bits 0..7 = link status
-    /// (1 = up), bits 8..55 = MAC address bytes 0..5 (network order = MSB
-    /// first), bits 56..63 = 0 (reserved).
+    /// (1 = up), bits 8..55 = MAC address bytes 0..5 (network order), bits
+    /// 56..63 = 0.
     pub const OP_STATUS: u32 = 1;
+
+    /// Transmit a raw Ethernet frame. The call attaches a **moved** memory
+    /// object holding the frame; the driver transfers ownership of that
+    /// buffer to the device and replies when the frame has been handed off
+    /// to the TX virtqueue (not when it has been sent on the wire — that is
+    /// an IRQ-driven completion). Reply result = 0 on success.
+    pub const OP_SEND: u32 = 2;
+
+    /// Request a deferred frame receive. The driver does **not** reply
+    /// immediately: it retains the reply token until a frame arrives from
+    /// the device, at which point it replies with a **copied** memory object
+    /// holding the received frame. The caller owns the returned buffer; the
+    /// driver's RX ring is recycled internally. Reply result = 0 on
+    /// success. A second concurrent request replies -1 (busy).
+    pub const OP_RECV: u32 = 3;
+
     /// Reply 0, release the device, then exit.
-    pub const OP_SHUTDOWN: u32 = 2;
+    pub const OP_SHUTDOWN: u32 = 4;
 }
 
 /// Virtio-net device MMIO offsets (virtio legacy transport, common config
@@ -188,6 +209,38 @@ pub mod virtio {
     // Device-specific config (net).
     pub const NET_MAC: usize = 0x00; // 6 bytes r/o
     pub const NET_STATUS: usize = 0x06; // u16 r/o, bit 0 = link up
+
+    // Virtqueue descriptor ring (per queue).
+    /// Size of one virtqueue descriptor.
+    pub const DESC_SIZE: usize = 16;
+    /// Descriptor field offsets within the 16-byte struct.
+    pub const DESC_ADDR_LO: usize = 0; // u32 (guest physical lo)
+    pub const DESC_LENGTH: usize = 8; // u32
+    pub const DESC_FLAGS: usize = 12; // u16
+    pub const DESC_NEXT: usize = 14; // u16
+
+    pub const VRING_DESC_F_NEXT: u16 = 1;
+    pub const VRING_DESC_F_WRITE: u16 = 2;
+
+    /// Available ring layout (after descriptor table).
+    pub const AVAIL_FLAGS: usize = 0; // u16
+    pub const AVAIL_IDX: usize = 2; // u16
+    pub const AVAIL_RING: usize = 4; // u16[queue_size]
+    // AVAIL_USED_EVENT at ring[queue_size] (u16) — ignored for now.
+
+    /// Used ring layout (separate page from avail ring).
+    pub const USED_FLAGS: usize = 0; // u16
+    pub const USED_IDX: usize = 2; // u16
+    pub const USED_RING: usize = 4; // UsedElem[queue_size]
+
+    pub const VIRTQ_RX: u16 = 0;
+    pub const VIRTQ_TX: u16 = 1;
+
+    /// Small queue size for the smoke test.
+    pub const QUEUE_COUNT: u16 = 32;
+
+    // Feature bits (simplified; we negotiate none for now).
+    // pub const FEATURE_MAC: u32 = 1 << 5;
 }
 
 /// Stage a memory-carried name: allocate a one-page memory object, write
