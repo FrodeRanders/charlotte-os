@@ -213,10 +213,10 @@ Current evidence:
     ring, with idempotent re-completion no longer able to post duplicate
     CQ entries.     Self-tests assert the state transitions, cancellation
     idempotence, slot-reuse-versus-operation-identity distinction, and
-    ring/capability result agreement. Remaining Phase 6 work: per-shard
-    CQ partitioning, a capability-free submission path keyed on
-    `OperationId`, CQ batching, and migrating `sitas-charlotte` from
-    busy polling to `CQ_WAIT`.
+    ring/capability result agreement. (All items since completed by
+    subsequent Phase 6 slices: detached submission, CQ batching,
+    per-shard CQ partitioning, and CQ_WAIT migration are each
+    committed and boot-validated.)
 -   The second Phase 6 slice adds the capability-free submission path
     (§8.4): `submit_detached` returns an `OperationId` without
     consuming a capability-table slot, the submitter's `user_data`
@@ -229,10 +229,10 @@ Current evidence:
     operation is reclaimed immediately — there is no post-terminal
     record, so double completion and post-completion cancellation are
     rejected.     Self-tests cover delivery, cancellation, budget sharing,
-    reclamation, and refusal without an attached CQ. Remaining Phase 6
-    work: per-shard CQ partitioning, the richer §8.2 completion record
-    (status/flags/returned capability), CQ batching, and migrating
-    `sitas-charlotte` from busy polling to `CQ_WAIT`.
+    reclamation, and refusal without an attached CQ. (All items since
+    completed: per-shard CQ partitioning and CQ batching in Phase 6,
+    §8.2 record widening in the cleanup phase, CQ_WAIT migration in
+    the third Phase 6 slice.)
 -   The third Phase 6 slice retires the last busy-poll. The kernel CQ
     wait is now wake-aware and timed: `wake` posts a consume-on-wait
     cross-thread wake (§7.3/§9.4), `wait_on_cq` returns on either a
@@ -250,8 +250,9 @@ Current evidence:
     no-regression by the existing `el0_sitas` smoke test. Until the CQ
     is partitioned per shard, the wake is process-wide (one ring per
     address space), so a wake releases every blocked shard of the
-    process rather than one target LP. Remaining Phase 6 work: per-shard
-    CQ partitioning, the richer §8.2 completion record, and CQ batching.
+    process rather than one target LP. (All items since completed:
+    per-shard CQ partitioning and CQ batching in the fourth Phase 6
+    slice, §8.2 record widening in the cleanup phase.)
 -   The fourth Phase 6 slice partitions completion queues per shard
     (§8.1) and batches backlog delivery. An address space now owns a set
     of queues keyed by `CqId` (queue 0 is the default and the
@@ -265,9 +266,8 @@ Current evidence:
     entries are published with a single ring head update. Self-tests
     cover queue routing isolation, refusal of unknown queues, and a
     blocked wait on a second queue being released by a wake targeted at
-    that queue. Remaining Phase 6 work: the richer §8.2 completion
-    record and mapping per-shard rings into userspace (a loader-contract
-    extension) so sitas shards can each wait on their own queue.
+    that queue. (Both items since completed: §8.2 record widening and
+    per-shard ring mapping are committed and boot-validated.)
 -   The first Phase 7 slice unifies the shard wait at the kernel:
     `IPC_ENDPOINT_BIND_CQ` (syscall 43) binds an endpoint's readiness to
     one of the owner's completion queues. The kernel posts a coalesced
@@ -295,10 +295,11 @@ Current evidence:
     test (lookup, calls, shutdown, restart, generation bump) passes
     unchanged over the event-driven server. The memory-name scratch
     address moved above the image (`0x100000`) to make room for the CQ
-    page in the fixed layout. Outstanding: porting this loop into the
-    sitas executor proper (task wakeup and budgeted polling), per-shard
-    ring mapping for multi-shard services, and replacing
-    `kv::spin_recv`'s channel busy-wait with the wake path.
+    page in the fixed layout. (All items since completed: the
+    sitas `ShardExecutor` implements the §7 loop with task wakeup
+    and budgeted polling; per-shard ring mapping is committed via
+    a loader-contract extension; `kv::spin_recv` was retired behind
+    the `ShardParker` seam over `CQ_WAIT`/`CQ_WAKE`.)
 -   The first Phase 8 slice builds the kernel device-capability
     mechanism — the substrate a userspace driver needs (architecture doc
     §10) — reusing the Phase 7 notification machinery. A new
@@ -337,7 +338,8 @@ Current evidence:
     (next slice): the EL0 UART driver service itself — supervisor device
     grants delivered through the bootstrap contract, a console endpoint
     protocol, deferred read replies, and an end-to-end EL0 test with
-    driver restart and device reset (success criteria 8 and 9). Known
+    driver restart and device reset (since completed as part of
+    Phase 8 slices 3-4). Known
     prototype risk: `deliver_interrupt` calls `completion::wake` (which
     takes the completions lock) from interrupt context; the `try_lock`
     discipline avoids a same-core deadlock by degrading to "no wake this
@@ -371,10 +373,9 @@ Current evidence:
     through the GIC and observes the driver acknowledge a delegated
     device interrupt from EL0. This is the EL0 half of success
     criterion 8: a userspace driver runs with only delegated MMIO and IRQ
-    authority. Outstanding: interrupt-driven receive with deferred read
-    replies, driver restart with device reset and outstanding-operation
-    reconciliation (success criterion 9's driver half), and moving the
-    interrupt-context wake to a deferred lock-free path.
+    authority. (All items since completed: deferred reads in Phase 8
+    slice 3, driver restart/reset/reconciliation in slice 4, and the
+    lock-free interrupt-context wake in Phase 10.)
 -   Both Phase 8 slices are boot-validated in QEMU (`-M
     virt,gic-version=3`): `test_device_capabilities` and `test_el0_uart`
     print their SUCCESS lines and the run reaches "Testing Complete. All
