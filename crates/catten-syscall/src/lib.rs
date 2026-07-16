@@ -156,6 +156,7 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             45 => asm!("svc #45", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             46 => asm!("svc #46", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             48 => asm!("svc #48", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            49 => asm!("svc #49", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -669,6 +670,13 @@ pub unsafe fn memory_unmap(cap: u64) -> MemoryStatusCode {
 #[inline(always)]
 pub unsafe fn memory_close(cap: u64) -> MemoryStatusCode {
     unsafe { svc3(31, cap, 0, 0) }
+}
+
+/// Return the physical base address of the first frame of memory object
+/// `cap`, or 0 on error. The caller must own the cap.
+#[inline(always)]
+pub unsafe fn memory_get_phys(cap: u64) -> u64 {
+    unsafe { svc3(49, cap, 0, 0) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.

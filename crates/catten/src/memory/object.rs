@@ -791,3 +791,19 @@ fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), Me
     }
     Ok(())
 }
+
+/// Return the physical base address of the first frame of memory object
+/// `cap` owned by `asid`. Returns 0 on any error.
+pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
+    let registry = MEMORY_OBJECTS.lock();
+    let Ok(cap_entry) = registry.lookup(asid, cap) else { return 0 };
+    let object = registry.objects.get(&cap_entry.object);
+    match object {
+        Some(obj) if obj.owner == asid => {
+            obj.frames.first().copied()
+                .map(|paddr| <PAddr as Into<u64>>::into(paddr))
+                .unwrap_or(0)
+        }
+        _ => 0,
+    }
+}

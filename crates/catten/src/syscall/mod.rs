@@ -172,10 +172,14 @@ pub mod call_no {
     /// Close device capability `x1` (unmap an MMIO region or mask and unroute
     /// an interrupt). Returns a device status code in x0.
     pub const DEVICE_CLOSE: u16 = 48;
+    /// Return the physical base address (PAddr) of the first frame of memory
+    /// object `x1` in `x0`, or 0 on error. The caller must own the cap and
+    /// the object must not be lent.
+    pub const MEMORY_GET_PHYS: u16 = 49;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::DEVICE_CLOSE;
+pub const MAX_SYSCALL: u16 = call_no::MEMORY_GET_PHYS;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -238,6 +242,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::DEVICE_IRQ_BIND_CQ => sys_device_irq_bind_cq(frame),
         call_no::DEVICE_IRQ_ACK => sys_device_irq_ack(frame),
         call_no::DEVICE_CLOSE => sys_device_close(frame),
+        call_no::MEMORY_GET_PHYS => sys_memory_get_phys(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -647,6 +652,12 @@ fn sys_memory_close(frame: &mut TrapFrame) {
         Ok(()) => 0,
         Err(error) => memory_status(error),
     };
+}
+
+fn sys_memory_get_phys(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = object::get_phys(asid, cap);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
