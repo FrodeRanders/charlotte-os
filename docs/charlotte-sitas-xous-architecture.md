@@ -454,7 +454,12 @@ Current evidence:
     driver half of 9 are met; the general userspace-driver model
     (authority delegation, EL0 MMIO, IRQ→CQ delivery, deferred replies,
     supervised restart with device reset) is demonstrated end to end
-    without networking. Remaining Phase 8/9 work moves to the virtio-net
+    without networking. The protocol crates (charlotte-protocol-net,
+    charlotte-protocol-msg) are extracted; the reliable message layer,
+    RPC layer, and TCP/IP compatibility service are designed but not
+    yet built as services. Remaining Phase 9 work: runtime-validate the
+    virtio-net driver (blocked on TCG scheduling; KVM resolves this),
+    build the network-service stack above the driver.
     driver and network service (Phase 9).
 -   A Phase 10 slice makes **device interrupt delivery lock-free**,
     closing the documented §10.2 durable-design risk: the interrupt
