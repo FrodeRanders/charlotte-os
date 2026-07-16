@@ -54,6 +54,8 @@ bench = false
 
 [dependencies]
 catten-rt = { path = "../catten-rt" }
+charlotte-protocol-net = { path = "../charlotte-protocol-net" }
+charlotte-protocol-msg = { path = "../charlotte-protocol-msg" }
 catten-syscall = { path = "../catten-syscall" }
 
 [profile.dev]

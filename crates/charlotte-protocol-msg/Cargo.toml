@@ -1,0 +1,8 @@
+[package]
+name = "charlotte-protocol-msg"
+version = "0.1.0"
+edition = "2024"
+description = "Reliable message-layer protocol (sequenced, acked, retransmitted)"
+
+[dependencies]
+charlotte-protocol-net = { path = "../charlotte-protocol-net" }
