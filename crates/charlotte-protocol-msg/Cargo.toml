@@ -6,3 +6,6 @@ description = "Reliable message-layer protocol (sequenced, acked, retransmitted)
 
 [dependencies]
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }
+[lib]
+test = false
+doctest = false

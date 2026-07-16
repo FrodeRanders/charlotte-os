@@ -5,3 +5,6 @@ edition = "2024"
 description = "NIC driver protocol (Ethernet frame transport)"
 
 [dependencies]
+[lib]
+test = false
+doctest = false
