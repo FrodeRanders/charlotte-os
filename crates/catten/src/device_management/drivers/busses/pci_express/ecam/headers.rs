@@ -134,6 +134,14 @@ impl CfgEndpointHeader {
             None
         }
     }
+
+    pub fn bar(&self, index: usize) -> u32 {
+        self.bars[index]
+    }
+
+    pub fn interrupt_line(&self) -> u8 {
+        self.interrupt_line
+    }
 }
 
 /// The configuration space header for a PCIe device, which can be either a bridge or an endpoint

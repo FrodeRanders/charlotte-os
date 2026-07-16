@@ -560,3 +560,56 @@ impl PcieFunction {
         }
     }
 }
+
+/// Scan the PCI topology for the first virtio-net device and return its
+/// BAR0 physical base address and its interrupt line (for delegation to an
+/// EL0 driver domain, Phase 9).
+pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
+    for group in &topology.segments {
+        // Walk the bus hierarchy starting at the root bus of each segment.
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
+            for dev in &bus.devices {
+                let ep = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Endpoint(ep) => ep,
+                        _ => continue,
+                    },
+                    PcieDevice::MultiFunc(mfd) => {
+                        match mfd.functions.first().and_then(|f| {
+                            if let PcieFunction::Endpoint(ep) = f {
+                                Some(ep)
+                            } else {
+                                None
+                            }
+                        }) {
+                            Some(ep) => ep,
+                            None => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                if ep.identifier.vendor_id != 0x1af4 {
+                    continue;
+                }
+                if ep.identifier.device_id < 0x1000 || ep.identifier.device_id > 0x107f {
+                    continue;
+                }
+                let cfg = ep.cfg_ptr.lock();
+                let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                let bar0 = header.bar(0);
+                let irq = header.interrupt_line();
+                drop(cfg);
+                let phys_base = (bar0 & 0xffff_fff0) as u64;
+                if phys_base != 0 {
+                    return Some((phys_base, irq));
+                }
+            }
+            // Push bridge child buses to continue the tree walk.
+            for dev in &bus.devices {
+                let _ = dev; // PcieDevice::... => PcieFunction::Bridge(child_bus)
+            }
+        }
+    }
+    None
+}
