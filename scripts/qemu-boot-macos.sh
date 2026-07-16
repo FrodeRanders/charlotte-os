@@ -39,6 +39,7 @@ hdiutil detach "$DEV" >/dev/null
 echo "== booting (${TIMEOUT}s cap) =="
 qemu-system-aarch64 \
   -M virt,gic-version=3 -cpu cortex-a710 -smp "$SMP" -m 512M \
+  -device virtio-net-pci,netdev=net0 -netdev user,id=net0 \
   -bios "$FW" \
   -drive file="$IMG",format=raw,if=none,id=hd0 \
   -device virtio-blk-device,drive=hd0 \
