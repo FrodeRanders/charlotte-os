@@ -42,6 +42,18 @@ pub const COMPLETION_CAPACITY: usize = 16;
 /// Entry slots in a service domain's default CQ ring.
 pub const CQ_ENTRIES: u32 = 32;
 
+/// Base virtual address of the per-shard completion-queue ring array. Each
+/// shard of a multi-shard service waits on its own ring (queue id `i + 1`)
+/// mapped at `SHARD_CQ_VADDR_BASE + i * PAGE_SIZE`, so a wake targeted at one
+/// shard never releases another (no cross-shard wake stealing). Placed well
+/// above the fixed runtime pages and the linked image. Queue 0 remains the
+/// process-wide default ring at [`CQ_VADDR`].
+pub const SHARD_CQ_VADDR_BASE: usize = 0x0000_0000_0080_0000;
+/// Number of per-shard completion-queue rings mapped into each domain (queue
+/// ids `1..=SHARD_CQ_COUNT`). Bounds the shard count a service can place on
+/// dedicated rings before falling back to the shared default queue.
+pub const SHARD_CQ_COUNT: usize = 4;
+
 pub const PAGE_SIZE: usize = 4096;
 
 const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
@@ -303,6 +315,18 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
         cq_frame,
         CQ_ENTRIES,
     );
+
+    // Per-shard rings: one mapped page + kernel-side queue per shard (queue
+    // id `i + 1`, id 0 remaining the process-wide default). Shards of a
+    // multi-shard service wait on their own ring, so a wake targeted at one
+    // never releases another.
+    for i in 0..SHARD_CQ_COUNT {
+        let frame = map_user_data_page(asid, SHARD_CQ_VADDR_BASE + i * PAGE_SIZE);
+        crate::completion::open_cq_phys(asid, (i as u32) + 1, frame, CQ_ENTRIES);
+    }
+
+    // Publish the layout so user-space runtimes can find their shard's ring.
+    crate::service::bootstrap::write_shard_cq_layout(config_frame, SHARD_CQ_VADDR_BASE, SHARD_CQ_COUNT);
 
     LoadedDomain {
         asid,

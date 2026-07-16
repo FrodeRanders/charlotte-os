@@ -33,6 +33,16 @@ pub const MMIO_CAP_OFFSET: usize = 2048;
 /// Must match `catten_rt::config::IRQ_CAP_OFFSET`.
 pub const IRQ_CAP_OFFSET: usize = 2056;
 
+/// Byte offset of the per-shard CQ ring base virtual address.
+///
+/// Must match `catten_rt::config::SHARD_CQ_BASE_OFFSET`.
+pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
+
+/// Byte offset of the per-shard CQ ring count.
+///
+/// Must match `catten_rt::config::SHARD_CQ_COUNT_OFFSET`.
+pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
+
 /// Write the bootstrap capability id into a domain's config page.
 pub fn write_bootstrap_cap(config_frame: PAddr, cap: u64) {
     let base: *mut u8 = config_frame.into();
@@ -56,6 +66,18 @@ pub fn write_irq_cap(config_frame: PAddr, cap: u64) {
     let base: *mut u8 = config_frame.into();
     unsafe {
         core::ptr::write_volatile(base.add(IRQ_CAP_OFFSET) as *mut u64, cap);
+    }
+}
+
+/// Write the per-shard CQ ring layout (base virtual address and count) into a
+/// domain's config page, so a user-space runtime can place each shard's
+/// executor on its own completion queue (queue id `i + 1`, ring at
+/// `base + i * 4096`).
+pub fn write_shard_cq_layout(config_frame: PAddr, base_vaddr: usize, count: usize) {
+    let base: *mut u8 = config_frame.into();
+    unsafe {
+        core::ptr::write_volatile(base.add(SHARD_CQ_BASE_OFFSET) as *mut u64, base_vaddr as u64);
+        core::ptr::write_volatile(base.add(SHARD_CQ_COUNT_OFFSET) as *mut u64, count as u64);
     }
 }
 

@@ -48,6 +48,26 @@ pub fn irq_cap() -> Option<u64> {
     if cap == 0 { None } else { Some(cap) }
 }
 
+/// The per-shard CQ ring base virtual address slot.
+pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
+
+/// The per-shard CQ ring count slot.
+pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
+
+/// Base virtual address of the per-shard completion-queue ring array (queue
+/// id `i + 1`, ring at `base + i * 4096`), or `None` if the loader mapped no
+/// per-shard rings. A shard executor waits on its own ring so a wake targeted
+/// at one shard never releases another.
+pub fn shard_cq_base() -> Option<usize> {
+    let base = unsafe { read::<u64>(SHARD_CQ_BASE_OFFSET) } as usize;
+    if base == 0 { None } else { Some(base) }
+}
+
+/// Number of per-shard completion-queue rings the loader mapped.
+pub fn shard_cq_count() -> usize {
+    unsafe { read::<u64>(SHARD_CQ_COUNT_OFFSET) as usize }
+}
+
 /// Output/status words are intentionally kept at the beginning of the page so
 /// existing kernel verifiers can poll `config[0]` as a sentinel.
 pub const OUTPUT_OFFSET: usize = 0;
