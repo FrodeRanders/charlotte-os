@@ -40,6 +40,18 @@ path = "src/bin/cclient.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "net"
+path = "src/bin/net.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nclient"
+path = "src/bin/nclient.rs"
+test = false
+bench = false
+
 [dependencies]
 catten-rt = { path = "../catten-rt" }
 catten-syscall = { path = "../catten-syscall" }

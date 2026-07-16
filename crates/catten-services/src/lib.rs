@@ -144,6 +144,52 @@ pub mod pl011 {
     pub const ICR: usize = 0x044;
 }
 
+/// Network-driver protocol (`charlotte-protocol-net` v1).
+///
+/// The reference userspace virtio-net driver serves this interface.
+pub mod net {
+    /// Interface id: "NET ".
+    pub const INTERFACE: u64 = super::name(b"NET ");
+    pub const VERSION: u32 = 1;
+    /// The registered short service name.
+    pub const NAME: u64 = super::name(b"net0");
+    /// Query the driver. Reply result encodes: bits 0..7 = link status
+    /// (1 = up), bits 8..55 = MAC address bytes 0..5 (network order = MSB
+    /// first), bits 56..63 = 0 (reserved).
+    pub const OP_STATUS: u32 = 1;
+    /// Reply 0, release the device, then exit.
+    pub const OP_SHUTDOWN: u32 = 2;
+}
+
+/// Virtio-net device MMIO offsets (virtio legacy transport, common config
+/// at BAR0 offset 0 on the transitional device QEMU exposes).
+pub mod virtio {
+    /// Offset within BAR0 of the common config (legacy layout).
+    pub const COMMON_CFG_OFFSET: usize = 0x000;
+    /// Device-specific config offset (legacy: immediate after common config).
+    pub const DEVICE_CFG_OFFSET: usize = 0x014;
+
+    // Common config registers relative to COMMON_CFG_OFFSET.
+    pub const DEVICE_FEATURES: usize = 0x00; // u32 r/o
+    pub const GUEST_FEATURES: usize = 0x04; // u32 w/o
+    pub const QUEUE_ADDRESS: usize = 0x08; // u32 w/o  (PFN)
+    pub const QUEUE_SIZE: usize = 0x0c; // u16 w/o
+    pub const QUEUE_SELECT: usize = 0x0e; // u16 w/o
+    pub const QUEUE_NOTIFY: usize = 0x10; // u16 w/o
+    pub const DEVICE_STATUS: usize = 0x12; // u8  r/w
+    pub const ISR_STATUS: usize = 0x13; // u8  r/o
+
+    // Device status bits.
+    pub const STATUS_ACKNOWLEDGE: u8 = 1;
+    pub const STATUS_DRIVER: u8 = 2;
+    pub const STATUS_DRIVER_OK: u8 = 4;
+    pub const STATUS_FEATURES_OK: u8 = 8;
+
+    // Device-specific config (net).
+    pub const NET_MAC: usize = 0x00; // 6 bytes r/o
+    pub const NET_STATUS: usize = 0x06; // u16 r/o, bit 0 = link up
+}
+
 /// Stage a memory-carried name: allocate a one-page memory object, write
 /// `name` at offset 0, and return the memory cap (unmapped, ready to attach
 /// to a copied-memory call).

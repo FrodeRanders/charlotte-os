@@ -13,6 +13,7 @@ pub mod device;
 pub mod el0;
 pub mod el0_demo;
 pub mod el0_ipc;
+pub mod el0_net;
 pub mod el0_pingpong;
 pub mod el0_service;
 pub mod el0_sitas;
@@ -67,6 +68,7 @@ pub fn run_self_tests() {
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
     device::test_device_capabilities();
+    el0_net::test_el0_net();
     el0_uart::test_el0_uart();
     logln!("Testing Complete. All Tests Passed!");
 }
