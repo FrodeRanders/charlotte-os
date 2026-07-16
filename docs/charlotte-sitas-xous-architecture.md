@@ -495,13 +495,15 @@ Current evidence:
     (`ShardRuntime::shard_reactor`). Host tests cover budgeted polling,
     cross-task wakeup re-queueing, and drained-event wakeup;
     boot-validated at EL0 (the `el0_sitas` test passes with
-    `TaskWaker<CharlWaker>` visible in the image). Interim robustness
-    note: while all shards share the one process-wide CQ, a wake can be
-    consumed by a peer waiter, so executor idle waits and parker parks
-    are bounded by a short interval (a stolen wake costs at most one
-    interval, never a stall). Remaining Phase 7 work: per-shard CQ ring
-    mapping (a loader-contract extension) so each shard waits on its own
-    queue and wakes are targeted.
+    `TaskWaker<CharlWaker>` visible in the image). Per-shard CQ ring
+    mapping is now in place (a loader-contract extension): the kernel maps
+    `SHARD_CQ_COUNT` (4) additional CQ ring pages per domain and opens a
+    kernel queue per shard (`CqId = shard + 1`), and the sitas reactor /
+    waker / parker target each shard's own queue so a cross-shard wake
+    never steals another shard's slot. The basic_kv test runs with 2
+    shards, exercising the per-shard rings. Remaining Phase 7 work: none
+    — the sitas executor proper (futures wakeup, budgeted polling, and
+    per-shard rings) is done and boot-validated.
 
 
 
@@ -2588,9 +2590,12 @@ Current status:
     with endpoint readiness bound to its default queue, and the sitas
     `ShardExecutor` (sitas repo) now performs task wakeup from the
     drained events: a KV shard blocks in its reactor's single wait and
-    is re-polled by waker-integrated channel sends (`el0_sitas`). The
-    remaining refinement is per-shard CQ ring mapping so multi-shard
-    processes wait on distinct queues with targeted wakes.
+    is     re-polled by waker-integrated channel sends (`el0_sitas`). Per-shard
+    CQ ring mapping is in place: the loader maps `SHARD_CQ_COUNT` (4)
+    additional CQ ring pages per domain and opens a kernel queue per shard
+    (CqId `i + 1`), and the sitas reactor/waker target the shard's own
+    queue so a wake never steals another shard's slot. Criterion 5 is
+    fully met and boot-validated.
 -   Criterion 9 is met: its connection-invalidation half has smoke-test
     evidence for a generic service (echo) — restarting the service domain
     invalidates stale connections (`EndpointClosed`) and the userspace
