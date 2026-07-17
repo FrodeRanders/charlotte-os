@@ -56,12 +56,15 @@ if $HEADLESS; then
 else
   # Graphical mode: keep the window open for interactive terminal use.
   # Serial output captured to log file for debugging.
+  # NOTE: with smp > 1, EDK2's ramfb driver fails to initialise the
+  # framebuffer (zero dimensions), so the flanterm terminal falls back
+  # to serial-only.  Limit to 1 CPU for graphical use.
   QEMU_OPTS+=(
     -device ramfb
-    -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0
     -serial file:"$LOG" -monitor none
   )
   echo "== graphical mode: QEMU window with flanterm. Press Ctrl-C to stop. =="
+  echo "== NOTE: ramfb works with smp=1 only (firmware limitation). =="
   echo "== serial log → $LOG =="
   qemu-system-aarch64 "${QEMU_OPTS[@]}" 2>/dev/null &
   QPID=$!
