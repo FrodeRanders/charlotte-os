@@ -1,0 +1,14 @@
+[package]
+name = "charlotte-smoltcp"
+version = "0.1.0"
+edition = "2024"
+description = "smoltcp TCP/IP stack adapter for CharlotteOS"
+
+[dependencies]
+smoltcp = { version = "0.13", default-features = false, features = [
+    "alloc", "log", "medium-ethernet",
+    "proto-ipv4", "proto-ipv6",
+    "socket-raw", "socket-udp", "socket-tcp",
+] }
+catten-syscall = { path = "../catten-syscall" }
+charlotte-protocol-net = { path = "../charlotte-protocol-net" }
