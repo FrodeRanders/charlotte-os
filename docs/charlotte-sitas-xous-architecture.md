@@ -65,39 +65,6 @@ is in the repository history and earlier revisions of this document.
 
 All code from Phases 1–8 and 10 is committed, boot-validated, and
 pushed to both the CharlotteOS and sitas repositories.
--   The sitas-side executor proper (the outstanding Phase 7 userspace
-    half) now exists in the sitas repository (`sitas-core`, commits
-    `5db65ae` and `d2b7b44`). `ShardExecutor` implements the §7 loop as a
-    minimal no_std per-shard futures executor: poll ready tasks within a
-    **budget** (a fairness yield point), then block in one
-    `ReactorBackend::wait`; drained events wake the tasks registered for
-    the returned handles, and each task's `core::task::Waker` marks the
-    task ready *and* wakes the reactor, so a cross-shard wake releases a
-    blocked wait and re-polls exactly the affected task (wakes coalesce).
-    Inter-shard channels are waker-integrated (`recv().await` registers
-    the task waker; `try_send`/`close` invoke it, with `close` resolving
-    to `None` for clean shutdown), and a new `ShardParker` seam
-    (CharlotteOS: `CQ_WAIT_TIMEOUT`/`CQ_WAKE`) lets plain requester
-    threads park instead of spin — **`kv::spin_recv` and the KV shard's
-    busy-poll loop are retired**; nothing in the CharlotteOS sitas path
-    spins any more. `ShardedKv` runs each shard's message loop as a task
-    on its own executor over a per-shard reactor
-    (`ShardRuntime::shard_reactor`). Host tests cover budgeted polling,
-    cross-task wakeup re-queueing, and drained-event wakeup;
-    boot-validated at EL0 (the `el0_sitas` test passes with
-    `TaskWaker<CharlWaker>` visible in the image). Per-shard CQ ring
-    mapping is now in place (a loader-contract extension): the kernel maps
-    `SHARD_CQ_COUNT` (4) additional CQ ring pages per domain and opens a
-    kernel queue per shard (`CqId = shard + 1`), and the sitas reactor /
-    waker / parker target each shard's own queue so a cross-shard wake
-    never steals another shard's slot. The basic_kv test runs with 2
-    shards, exercising the per-shard rings. Remaining Phase 7 work: none
-    — the sitas executor proper (futures wakeup, budgeted polling, and
-    per-shard rings) is done and boot-validated.
-
-
-
-------------------------------------------------------------------------
 
 ## 1. Executive conclusion
 
