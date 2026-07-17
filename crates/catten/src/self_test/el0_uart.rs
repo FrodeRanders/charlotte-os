@@ -334,7 +334,8 @@ extern "C" fn verify_el0_uart() {
     logln!("[uart] driver restarted (asid={}) with fresh device grants", driver2_asid);
 
     // Re-lookup until the restarted instance registers with generation 2.
-    let mut fresh_conn;
+    #[allow(unused_assignments)]
+    let mut fresh_conn = 0u64;
     {
         let mut spins: u64 = 0;
         loop {
@@ -383,7 +384,8 @@ extern "C" fn verify_el0_uart() {
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
     use crate::cpu::scheduler::yield_lp;
 
-    let mut value;
+    #[allow(unused_assignments)]
+    let mut value = None;
     let mut spins: u64 = 0;
     loop {
         match ipc::poll_reply(KCLIENT_ASID, call) {
