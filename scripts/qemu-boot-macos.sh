@@ -37,8 +37,9 @@ diskutil unmount "$VOL" >/dev/null
 hdiutil detach "$DEV" >/dev/null
 
 echo "== booting (${TIMEOUT}s cap) =="
+# For HVF (fast): add -accel hvf -cpu host (but EL0 MMIO traps fail)
 qemu-system-aarch64 \
-  -M virt,gic-version=3 -cpu cortex-a710 -smp "$SMP" -m 512M \
+  -M virt,gic-version=3 -smp "$SMP" -m 512M \
   -device virtio-net-pci,netdev=net0 -netdev user,id=net0 \
   -bios "$FW" \
   -drive file="$IMG",format=raw,if=none,id=hd0 \
