@@ -96,7 +96,14 @@ impl SystemScheduler {
     /// Submit a thread to a specific LP, pinning it there. Used by
     /// `ShardRuntime::spawn_shard` to bind a sitas shard to a core.
     pub fn submit_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
-        let sched = &self.lp_schedulers[&target_lp];
+        let sched = match self.lp_schedulers.get(&target_lp) {
+            Some(s) => s,
+            None => {
+                let n = self.lp_schedulers.len();
+                logln!("submit_to_lp: LP {target_lp} not found (lp_schedulers has {n} entries)");
+                return Err(Error::InvalidThread);
+            }
+        };
         let mut sched_guard = sched.lock();
         let was_idle = sched_guard.is_idle();
         sched_guard.add_thread(tid).expect("Error adding thread to target LP");

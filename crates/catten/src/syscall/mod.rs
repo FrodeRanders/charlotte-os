@@ -21,6 +21,7 @@
 use alloc::collections::BTreeMap;
 
 use crate::{
+    logln,
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
         lp::{
@@ -415,7 +416,15 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     SYSTEM_SCHEDULER
         .read()
         .submit_to_lp(tid, target_lp)
-        .expect("SPAWN_THREAD: failed to pin shard thread to target LP");
+        .unwrap_or_else(|_| {
+            let lpc = crate::cpu::multiprocessor::get_lp_count();
+            logln!(
+                "SPAWN_THREAD: target LP {target_lp} does not exist (lp_count={lpc}); falling back to least-loaded LP"
+            );
+            SYSTEM_SCHEDULER.read().submit_ready_thread(tid)
+                .map(|_| ())
+                .expect("SPAWN_THREAD: submit_ready_thread fallback failed")
+        });
     // Return the thread id in x0.
     frame.regs[0] = tid as u64;
 }
