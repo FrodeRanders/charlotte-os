@@ -138,9 +138,13 @@ fn test_insufficient_rights() {
 
     // CALL must succeed on full-rights connection.
     let call = ipc::scalar_call(ASV_A, conn_full, 4, 0).unwrap();
-    // Drain the queued message so the endpoint isn't polluted.
-    let msg = ipc::receive(ASV_A, endpoint).unwrap();
-    ipc::reply(ASV_A, msg.reply.unwrap(), 0).unwrap();
+    // Drain the queued messages: two SENDs (no reply token) then the CALL.
+    for _ in 0..2 {
+        let m = ipc::receive(ASV_A, endpoint).unwrap();
+        assert!(m.reply.is_none(), "SEND messages carry no reply token");
+    }
+    let last = ipc::receive(ASV_A, endpoint).unwrap();
+    ipc::reply(ASV_A, last.reply.unwrap(), 0).unwrap();
     ipc::close_cap(ASV_A, call).unwrap();
 
     ipc::close_cap(ASV_A, conn).unwrap();
