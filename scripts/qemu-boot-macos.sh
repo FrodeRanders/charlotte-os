@@ -48,20 +48,24 @@ QEMU_OPTS=(
 
 if $HEADLESS; then
   QEMU_OPTS+=(-nographic -serial mon:stdio)
+  qemu-system-aarch64 "${QEMU_OPTS[@]}" >"$LOG" 2>&1 &
+  QPID=$!
+  sleep "$TIMEOUT"
+  kill "$QPID" 2>/dev/null || true
+  wait "$QPID" 2>/dev/null || true
 else
-  # Graphical mode: framebuffer for flanterm + USB keyboard for input.
-  # QEMU opens a window showing the flanterm-rendered kernel log.
+  # Graphical mode: keep the window open for interactive terminal use.
+  # Serial output captured to log file for debugging.
   QEMU_OPTS+=(
     -device ramfb
     -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0
-    -serial mon:stdio
+    -serial file:"$LOG" -monitor none
   )
-  echo "== graphical mode: flanterm framebuffer on QEMU window =="
+  echo "== graphical mode: QEMU window with flanterm. Press Ctrl-C to stop. =="
+  echo "== serial log → $LOG =="
+  qemu-system-aarch64 "${QEMU_OPTS[@]}" 2>/dev/null &
+  QPID=$!
+  # Don't kill — let the user interact with the terminal.
+  wait "$QPID" 2>/dev/null || true
 fi
-
-qemu-system-aarch64 "${QEMU_OPTS[@]}" >"$LOG" 2>&1 &
-QPID=$!
-sleep "$TIMEOUT"
-kill "$QPID" 2>/dev/null || true
-wait "$QPID" 2>/dev/null || true
 echo "== log at $LOG =="
