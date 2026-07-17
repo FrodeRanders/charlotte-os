@@ -6,7 +6,7 @@ The architecture described in \texttt{charlotte-sitas-xous-architecture.md} is
 substantially implemented and boot-validated on QEMU (\texttt{-M
 virt,gic-version=3}, Apple Silicon HVF or TCG).
 
-\begin{longtable}{|c|p{7cm}|c|}
+\begin{longtable}{|c|p{9cm}|c|}
 \hline
 \textbf{Phase} & \textbf{Description} & \textbf{Status} \\
 \hline
@@ -44,18 +44,18 @@ virt,gic-version=3}, Apple Silicon HVF or TCG).
 \section{Success criteria}
 
 \begin{itemize}
-    \item[1.] \checkmark Two EL0 domains communicate through a bounded endpoint
+    \item[1.] Two EL0 domains communicate through a bounded endpoint
         without ASID/LP.
-    \item[2.] \checkmark Deferred async call while a shard continues other tasks.
-    \item[3.] \checkmark Moved memory object --- sender locked out until return.
-    \item[4.] \checkmark Lending enforced by mappings, including death cleanup.
-    \item[5.] \checkmark Single \texttt{CQ\_WAIT} for endpoint + completions +
+    \item[2.] Deferred async call while a shard continues other tasks.
+    \item[3.] Moved memory object --- sender locked out until return.
+    \item[4.] Lending enforced by mappings, including death cleanup.
+    \item[5.] Single \texttt{CQ\_WAIT} for endpoint + completions +
         device interrupts.
-    \item[6.] \checkmark Terminal CQ results survive ring overflow (non-lossy
+    \item[6.] Terminal CQ results survive ring overflow (non-lossy
         backlog).
-    \item[7.] \checkmark Coalesced remote shard wakes (idempotent scheduler fix).
-    \item[8.] \checkmark Userspace UART driver with only delegated MMIO + IRQ.
-    \item[9.] \checkmark Restart invalidates stale connections + device reset +
+    \item[7.] Coalesced remote shard wakes (idempotent scheduler fix).
+    \item[8.] Userspace UART driver with only delegated MMIO + IRQ.
+    \item[9.] Restart invalidates stale connections + device reset +
         op reconciliation.
     \item[10.] \textasciitilde{} Virtio-net data path with batched packet
         buffers (driver compiles, runtime validation pending).
