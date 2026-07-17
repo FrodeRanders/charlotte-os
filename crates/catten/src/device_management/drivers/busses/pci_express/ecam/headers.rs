@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#[allow(dead_code)]
 use core::mem::ManuallyDrop;
 
 use crate::device_management::drivers::busses::pci_express::{
@@ -87,6 +89,7 @@ pub struct CfgBridgeHeader {
     bridge_control: u16,
 }
 
+#[allow(dead_code)]
 impl CfgBridgeHeader {
     pub fn get_secondary_bus_num(&self) -> u8 {
         self.secondary_bus_num

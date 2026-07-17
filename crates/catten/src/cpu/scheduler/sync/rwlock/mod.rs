@@ -88,7 +88,7 @@ unsafe impl RawRwLock for RwLockCore {
 
     fn lock_exclusive(&self) {
         while self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_err() {
-            SYSTEM_SCHEDULER.write().block_thread(
+            let _ = SYSTEM_SCHEDULER.write().block_thread(
                 get_thread_id()
                     .expect("Attempted to lock a blocking lock from outside thread context!"),
                 &self.waitlist_exclusive,
@@ -115,7 +115,7 @@ unsafe impl RawRwLock for RwLockCore {
     fn lock_shared(&self) {
         while self
             .raw_lock
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |x| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |x| {
                 if x >= 0 {
                     Some(x + 1)
                 } else {
@@ -124,7 +124,7 @@ unsafe impl RawRwLock for RwLockCore {
             })
             .is_err()
         {
-            SYSTEM_SCHEDULER.write().block_thread(
+            let _ = SYSTEM_SCHEDULER.write().block_thread(
                 get_thread_id()
                     .expect("Attempted to lock a blocking lock from outside thread context!"),
                 &self.waitlist_shared,
@@ -134,7 +134,7 @@ unsafe impl RawRwLock for RwLockCore {
 
     fn try_lock_shared(&self) -> bool {
         self.raw_lock
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |x| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |x| {
                 if x >= 0 {
                     Some(x + 1)
                 } else {
@@ -147,7 +147,7 @@ unsafe impl RawRwLock for RwLockCore {
     unsafe fn unlock_shared(&self) {
         if self
             .raw_lock
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |x| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |x| {
                 if x > 0 {
                     Some(x - 1)
                 } else {

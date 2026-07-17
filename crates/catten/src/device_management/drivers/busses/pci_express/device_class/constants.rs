@@ -1,4 +1,3 @@
-use core::fmt::Display;
 
 pub mod vendor_id {
     pub type PciVendorId = u16;

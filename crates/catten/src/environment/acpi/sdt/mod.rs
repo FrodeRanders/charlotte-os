@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! ACPI System Description Tables (SDTs)
 
 pub mod fadt;

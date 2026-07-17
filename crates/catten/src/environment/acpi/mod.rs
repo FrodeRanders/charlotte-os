@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! The Advanced Configuration and Power Interface (ACPI) Subsystem
 //!
 //! The Advanced Configuration and Power Interface (ACPI) is an open industry specification that

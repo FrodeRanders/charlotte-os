@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 const FLAGS_POLARITY_MASK: u16 = 0b11;
 const FLAGS_POLARITY_SHIFT: u16 = 0;
 const FLAGS_TRIGGER_MASK: u16 = 0b11;

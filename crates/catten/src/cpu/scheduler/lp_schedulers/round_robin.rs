@@ -118,7 +118,7 @@ impl RoundRobin {
         {
             return;
         }
-        let mut timer_event = TimerEvent::from(self.quantum);
+        let timer_event = TimerEvent::from(self.quantum);
         timer_event.register_observer(
             Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
         );

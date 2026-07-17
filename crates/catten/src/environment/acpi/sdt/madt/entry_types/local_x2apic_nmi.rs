@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::environment::acpi::sdt::madt::{
     entry_types::MadtEntryType,
     interrupt_flags::InterruptFlags,

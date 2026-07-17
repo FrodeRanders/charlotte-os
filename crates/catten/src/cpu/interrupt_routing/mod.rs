@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # The Interrupt Routing Manager
 //!
 //! The interrupt routing manager is responsible for the following:
@@ -80,8 +81,8 @@ pub struct InterruptTarget {
 impl InterruptRoutingManager {
     pub fn try_register_interrupt(
         &mut self,
-        input: InterruptInput,
-        handler: InterruptHandler,
+        _input: InterruptInput,
+        _handler: InterruptHandler,
     ) -> Result<InterruptTarget, Error> {
         todo!(
             "Set the appropriate routing entries in the external interrupt controller, \

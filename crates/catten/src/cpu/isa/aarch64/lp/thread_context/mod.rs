@@ -171,7 +171,7 @@ impl ThreadContext {
             x27: 0,
             x28: 0,
             x29: 0,
-            x30: kernel_thread_trampoline as usize as u64,
+            x30: kernel_thread_trampoline as *const () as usize as u64,
         };
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
@@ -250,7 +250,7 @@ impl ThreadContext {
             x27: 0,
             x28: 0,
             x29: 0,
-            x30: user_trampoline as usize as u64,
+            x30: user_trampoline as *const () as usize as u64,
         };
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {

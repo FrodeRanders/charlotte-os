@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use alloc::vec::Vec;
 use core::ptr::read_unaligned;
 

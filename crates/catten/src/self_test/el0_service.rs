@@ -1,3 +1,4 @@
+#![allow(unused_assignments)]
 //! Self-test: Phase 3 userspace name service and service manager.
 //!
 //! Spawns three isolated EL0 protection domains from Rust-compiled ELFs:
@@ -156,6 +157,8 @@ fn wait_reply_k2(call: u64, what: &str) -> ipc::ReplyValue {
 }
 
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
+        #[allow(unused_assignments)]
+    #[allow(unused_assignments)]
     let mut value = None;
     spin_until(
         || match ipc::poll_reply(KCLIENT_ASID, call) {
@@ -274,6 +277,8 @@ extern "C" fn verify_el0_service() {
     logln!("[service] echo service restarted (asid={})", echo2_asid);
 
     // Re-lookup until the restarted instance registers with generation 2.
+    #[allow(unused_assignments)]
+    #[allow(unused_assignments)]
     let mut fresh_conn = 0u64;
     spin_until(
         || {

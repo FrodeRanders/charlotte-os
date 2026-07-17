@@ -334,6 +334,7 @@ const MAX_BAR_NUM: usize = 6;
 const MAX_EXT_BARS: usize = 3;
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 union BarIoAddrs {
     pub bar32: [Option<VAddr>; MAX_BAR_NUM],
     pub bar64: [Option<VAddr>; MAX_EXT_BARS],

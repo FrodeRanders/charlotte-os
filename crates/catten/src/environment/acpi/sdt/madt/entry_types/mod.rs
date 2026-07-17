@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod interrupt_source_override;
 mod ioapic;
 mod local_x2apic_nmi;

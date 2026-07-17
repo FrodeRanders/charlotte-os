@@ -3,7 +3,7 @@
 //! Field order: operation: u64, cookie: u64, status: u32, flags: u32, result: i64.
 
 use core::sync::atomic::{Ordering, fence};
-use crate::completion::{CompletionCap, OpResult, OperationId};
+use crate::completion::OpResult;
 use crate::cpu::isa::interface::memory::address::PhysicalAddress;
 use crate::memory::physical::PAddr;
 

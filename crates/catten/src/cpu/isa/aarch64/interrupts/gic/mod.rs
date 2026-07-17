@@ -63,7 +63,6 @@ const GICD_CTLR_ARE_NS: u32 = 1 << 4;
 const GICD_CTLR_ENABLE_GRP1_NS: u32 = 1 << 1;
 
 // Redistributor (RD_base frame) register offsets.
-const GICR_CTLR: usize = 0x0000;
 const GICR_WAKER: usize = 0x0014;
 // GICR_WAKER bits.
 const GICR_WAKER_PROCESSOR_SLEEP: u32 = 1 << 1;
@@ -193,7 +192,7 @@ impl GicV3 {
     /// Map the GIC distributor and this core's redistributor MMIO frames into
     /// the kernel address space via the HHDM as Device memory.
     fn map_mmio() {
-        use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+        
         use crate::memory::KERNEL_AS;
         let mut kas = KERNEL_AS.lock();
         // Distributor: a single 64 KiB frame.

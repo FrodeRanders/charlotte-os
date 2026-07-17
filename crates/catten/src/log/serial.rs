@@ -54,10 +54,7 @@ pub static SERIAL: Mutex<Pl011> = Mutex::new(Pl011);
 /// call more than once (subsequent calls are no-ops). Until it has run, output
 /// is silently dropped rather than faulting on the unmapped MMIO page.
 pub fn init() {
-    use crate::{
-        cpu::isa::interface::memory::AddressSpaceInterface,
-        memory::KERNEL_AS,
-    };
+    use crate::memory::KERNEL_AS;
     KERNEL_AS
         .lock()
         .map_mmio_region(PL011_BASE, 0x1000)

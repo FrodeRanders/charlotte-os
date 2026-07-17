@@ -68,7 +68,7 @@ pub fn test_cq_ring() {
     assert_eq!(ring.pending(), 0);
 
     // --- verify error encoding round-trips -------------------------------------
-    let mut ring2_buf;
+    let ring2_buf;
     let ring2_ptr;
     {
         (ring2_buf, ring2_ptr) = cq::CompletionQueueRing::new_page(8);

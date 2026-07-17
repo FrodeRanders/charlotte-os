@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # Multiple APIC Description Table (MADT)
 
 mod entry_types;
