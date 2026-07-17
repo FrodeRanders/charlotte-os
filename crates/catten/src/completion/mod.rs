@@ -726,7 +726,7 @@ fn flush_backlog(cq_state: &mut CqState) {
     }
     let entries = cq_state.backlog.make_contiguous();
     let written = unsafe { &mut *cq_state.ring }.write_batch(entries.iter());
-    drop(entries);
+    let _ = entries;
     for _ in 0..written {
         cq_state.backlog.pop_front();
     }
