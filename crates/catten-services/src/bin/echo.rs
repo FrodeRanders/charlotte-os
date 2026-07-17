@@ -175,7 +175,13 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                         }
                         if message.reply != 0 {
                             unsafe {
-                                ipc_reply_move(message.reply, state_cap, served as i64);
+                                // Encode the endpoint cap in the reply's result
+                                // so the supervisor can delegate it to the
+                                // replacement service.  Upper 48 bits carry
+                                // the endpoint cap id; lower 16 bits carry
+                                // the served counter.
+                                let packed = (endpoint << 16) | (served as u64 & 0xffff);
+                                ipc_reply_move(message.reply, state_cap, packed as i64);
                             }
                         }
                     } else if message.reply != 0 {

@@ -201,14 +201,18 @@ pub fn teardown_domain(domain: ServiceDomain) {
 /// Load and start a replacement service domain, handing it the old
 /// instance's state and endpoint (§live-service-upgrade design).
 ///
-/// State memory objects owned by the supervisor (`grant.state_caps`) are
-/// moved to the new domain.  The old `endpoint_cap` (if nonzero) is
-/// delegated to the new domain so it can re-register under the same name.
-/// The old domain must already be exited and torn down (or about to be).
+/// State memory objects are moved from the supervisor (via KERNEL\_ASID) to
+/// the new domain.  `old_asid` is the old service's address space, still
+/// live at this point; `old_endpoint_cap` is its endpoint cap.  The
+/// supervisor delegates a connection from that endpoint to the new domain
+/// before the old domain is torn down, and writes both the state caps and
+/// the old endpoint cap to the config page so the replacement service can
+/// inspect them.
 pub fn spawn_upgrade(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
+    old_asid: AddressSpaceId,
     grant: UpgradeGrant,
 ) -> ServiceDomain {
     let loaded = loader::load_domain(image);
@@ -222,8 +226,7 @@ pub fn spawn_upgrade(
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_argc(loaded.config_frame, 0);
 
-    // Move state caps from the supervisor's ASID (0) to the new domain.
-    // Any nonzero state cap goes to the new service.
+    // Move state caps from KERNEL_ASID to the new domain.
     let state_count = grant.state_caps.len() as u32;
     let first_state = if state_count > 0 { grant.state_caps[0] } else { 0 };
     for cap in &grant.state_caps {
@@ -231,22 +234,19 @@ pub fn spawn_upgrade(
             crate::memory::KERNEL_ASID, *cap, loaded.asid,
         );
     }
-    // Delegate the old endpoint cap (if one was handed over).
-    let ep = if grant.endpoint_cap != 0 {
-        // The supervisor created the endpoint in the old service's AS and
-        // now delegates it to the new one.  Because the old domain's caps
-        // were reclaimed on teardown, the supervisor holds the endpoint
-        // through the IPC registry (it minted the endpoint during
-        // spawn_name_service).  Delegation from KERNEL_ASID is the direct
-        // kernel-API path.
-        ipc::connection_mint(crate::memory::KERNEL_ASID, grant.endpoint_cap, ConnectionRights::ALL)
-            .ok()
-            .or(Some(0))
+    // Delegate a connection from the old endpoint to the new domain while
+    // the old domain is still alive.
+    let delegated_ep = if grant.endpoint_cap != 0 {
+        ipc::connection_delegate(
+            old_asid, grant.endpoint_cap, loaded.asid,
+            ConnectionRights::SEND | ConnectionRights::CALL,
+        )
+        .ok()
     } else {
         None
     };
     bootstrap::write_handoff_state(
-        loaded.config_frame, state_count, first_state, ep.unwrap_or(0),
+        loaded.config_frame, state_count, first_state, delegated_ep.unwrap_or(0),
     );
     start_domain(loaded)
 }

@@ -329,16 +329,21 @@ extern "C" fn verify_el0_service() {
         logln!("[service] handoff served={}", served);
         assert!(served >= 1);
     }
-    // tear down gen-2
+    // Spawn the replacement (generation 3) BEFORE tearing down gen-2,
+    // so the old domain's caps are still valid for endpoint delegation.
     let e2 = state.echo.take().unwrap();
+    let old_asid = e2.asid;
+    let ep_cap = (hr.result as u64) >> 16;
+    let e3 = supervisor::spawn_upgrade(ECHO_ELF, &state.name_service,
+        ConnectionRights::CALL, old_asid,
+        supervisor::UpgradeGrant { state_caps: alloc::vec![sc], endpoint_cap: ep_cap });
+    // Now wait for the old service to exit and tear it down.
     supervisor::wait_domain_exit(&e2, MAX_SPINS);
     for _ in 0..1_000 { yield_lp(); }
     supervisor::teardown_domain(e2);
     assert_eq!(ipc::scalar_call(KCLIENT2_ASID, g2, OP_ECHO, 5), Err(IpcError::EndpointClosed));
-    // spawn gen-3 with state
-    let e3 = supervisor::spawn_upgrade(ECHO_ELF, &state.name_service,
-        ConnectionRights::CALL,
-        supervisor::UpgradeGrant { state_caps: alloc::vec![sc], endpoint_cap: 0 });
+
+    logln!("[service] generation-3 echo spawned with handoff state (ep_cap={:#x})", ep_cap);
     let mut f3 = 0u64;
     spin_until(|| { let l = ipc::scalar_call(KCLIENT2_ASID, ns2, OP_LOOKUP, NAME_ECHO)
         .expect("gen-3 lup"); let r = wait_reply_k2(l, "gen-3 lup reply");
