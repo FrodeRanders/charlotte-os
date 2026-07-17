@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Build the aarch64 kernel and boot it headless in QEMU on macOS, capturing
-# serial output. Uses macOS disk tooling (hdiutil/diskutil) in place of
-# losetup/parted/mkfs.fat. Requires the rustup llvm-ar for the flanterm C lib.
+# Build the aarch64 kernel and boot it in QEMU on macOS.
+# Usage: qemu-boot-macos.sh [timeout_s] [smp_count] [--headless]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,7 +16,9 @@ IMG="$KDIR/charlotte-aarch64.img"
 LOG="$KDIR/boot.log"
 FW=/opt/homebrew/share/qemu/edk2-aarch64-code.fd
 TIMEOUT="${1:-60}"
-SMP="${2:-8}"
+SMP="${2:-2}"
+HEADLESS=false
+if [[ "${3:-}" == "--headless" ]]; then HEADLESS=true; fi
 
 echo "== building kernel =="
 cargo build --package catten --target target_specs/aarch64-unknown-none-catten.json
@@ -36,15 +37,27 @@ sync
 diskutil unmount "$VOL" >/dev/null
 hdiutil detach "$DEV" >/dev/null
 
-echo "== booting (${TIMEOUT}s cap) =="
-# For HVF (fast): add -accel hvf -cpu host (but EL0 MMIO traps fail)
-qemu-system-aarch64 \
-  -M virt,gic-version=3 -smp "$SMP" -m 512M \
-  -device virtio-net-pci,netdev=net0 -netdev user,id=net0 \
-  -bios "$FW" \
-  -drive file="$IMG",format=raw,if=none,id=hd0 \
-  -device virtio-blk-device,drive=hd0 \
-  -nographic -serial mon:stdio >"$LOG" 2>&1 &
+echo "== booting (${TIMEOUT}s cap, smp=${SMP}, headless=${HEADLESS}) =="
+# HVF is required on QEMU 11.0.2 macOS — TCG serial output is broken.
+# -device ramfb provides the framebuffer for flanterm.
+# -device usb-kbd provides keyboard input for interactive terminal use.
+QEMU_OPTS=(
+  -M virt,gic-version=3 -accel hvf -cpu host -smp "$SMP" -m 512M
+  -bios "$FW"
+  -drive file="$IMG",format=raw,if=none,id=hd0
+  -device virtio-blk-device,drive=hd0
+  -device ramfb
+  -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0
+  -serial mon:stdio
+)
+if $HEADLESS; then
+  QEMU_OPTS+=(-nographic)
+else
+  # Without -nographic, QEMU opens a window showing the flanterm framebuffer.
+  echo "== graphical mode: flanterm framebuffer on QEMU window =="
+fi
+
+qemu-system-aarch64 "${QEMU_OPTS[@]}" >"$LOG" 2>&1 &
 QPID=$!
 sleep "$TIMEOUT"
 kill "$QPID" 2>/dev/null || true
