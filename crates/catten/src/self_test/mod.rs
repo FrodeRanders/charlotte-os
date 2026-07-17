@@ -5,6 +5,7 @@
 //! some tests in this module. In software engineering terminology the tests in this module should
 //! be whitebox integration tests that can be run after Catten initializes itself.
 
+pub mod adversarial;
 pub mod completion;
 pub mod cq;
 pub mod cq_completion;
@@ -49,6 +50,7 @@ pub fn run_self_tests() {
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();
+    adversarial::test_adversarial_ipc();
     syscall::test_syscall_dispatch();
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();
