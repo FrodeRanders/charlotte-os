@@ -6,6 +6,9 @@
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
 #![cfg(target_arch = "aarch64")]
 
+#[cfg(target_arch = "aarch64")]
+const ECHO_UPGRADE_ELF: &[u8] = include_bytes!("../self_test/echo.elf");
+
 use alloc::vec::Vec;
 use crate::{
     cpu::scheduler::{
@@ -33,6 +36,7 @@ use crate::{
 };
 
 /// A running EL0 service protection domain.
+#[derive(Copy, Clone)]
 pub struct ServiceDomain {
     pub asid: AddressSpaceId,
     pub tid: ThreadId,
@@ -42,12 +46,19 @@ pub struct ServiceDomain {
 /// A running name-service domain plus the supervisor's handle to its
 /// registry endpoint, used to delegate bootstrap connections to other
 /// domains.
+#[derive(Copy, Clone)]
 pub struct NameServiceHandle {
     pub domain: ServiceDomain,
     /// The registry endpoint capability *in the name service's table*.
     /// The supervisor created it, so it may delegate connections from it.
     pub endpoint_cap: CapabilityId,
 }
+
+/// The live name-service handle, populated by `spawn_name_service` so
+/// the SPAWN_UPGRADE syscall handler can delegate bootstrap connections
+/// without needing access to the test harness.
+pub(crate) static LIVE_NS: spin::LazyLock<spin::Mutex<Option<NameServiceHandle>>> =
+    spin::LazyLock::new(|| spin::Mutex::new(None));
 
 fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
@@ -79,10 +90,13 @@ pub fn spawn_name_service(
     bootstrap::write_bootstrap_cap(loaded.config_frame, endpoint_cap);
     bootstrap::write_argc(loaded.config_frame, 0);
     let domain = start_domain(loaded);
-    NameServiceHandle {
+    let handle = NameServiceHandle {
         domain,
         endpoint_cap,
-    }
+    };
+    // Store for the SPAWN_UPGRADE syscall handler.
+    *LIVE_NS.lock() = Some(handle);
+    handle
 }
 
 /// Load and start a service or client domain, delivering a connection to
@@ -249,4 +263,13 @@ pub fn spawn_upgrade(
         loaded.config_frame, state_count, first_state, delegated_ep.unwrap_or(0),
     );
     start_domain(loaded)
+}
+
+/// Return the embedded ELF image for a given upgrade selector.
+/// 0 = echo service.  Returns None for unknown selectors.
+pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
+    match selector {
+        0 => Some(ECHO_UPGRADE_ELF),
+        _ => None,
+    }
 }

@@ -176,10 +176,17 @@ pub mod call_no {
     /// object `x1` in `x0`, or 0 on error. The caller must own the cap and
     /// the object must not be lent.
     pub const MEMORY_GET_PHYS: u16 = 49;
+    /// Request the supervisor to spawn a replacement domain for a live
+    /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF
+    /// selector (0 = echo service ELF), x3 = state memory cap (0 if none),
+    /// x4 = old endpoint cap (in the old service's cap table — the
+    /// supervisor finds the owner ASID).  Returns the new generation in x0,
+    /// or 0 on failure.
+    pub const SPAWN_UPGRADE: u16 = 50;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::MEMORY_GET_PHYS;
+pub const MAX_SYSCALL: u16 = call_no::SPAWN_UPGRADE;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -243,6 +250,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::DEVICE_IRQ_ACK => sys_device_irq_ack(frame),
         call_no::DEVICE_CLOSE => sys_device_close(frame),
         call_no::MEMORY_GET_PHYS => sys_memory_get_phys(frame),
+        call_no::SPAWN_UPGRADE => sys_spawn_upgrade(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -1090,4 +1098,53 @@ fn sys_device_close(frame: &mut TrapFrame) {
         Ok(()) => 0,
         Err(error) => device_status(error),
     };
+}
+
+fn sys_spawn_upgrade(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    let elf_selector = frame.regs[2];
+    let state_cap = frame.regs[3];
+    let _endpoint_cap = frame.regs[4];
+
+    let elf = match crate::service::supervisor::elf_for_selector(elf_selector) {
+        Some(image) => image,
+        None => { frame.regs[0] = 0; return; }
+    };
+
+    let loaded = crate::service::loader::load_domain(elf);
+    let ns_guard = crate::service::supervisor::LIVE_NS.lock();
+    let ns_handle = match ns_guard.as_ref() {
+        Some(h) => h,
+        None => { frame.regs[0] = 0; return; }
+    };
+
+    // Delegate a bootstrap connection from the name service to the new domain.
+    let bootstrap_conn = match crate::ipc::connection_delegate(
+        ns_handle.domain.asid,
+        ns_handle.endpoint_cap,
+        loaded.asid,
+        crate::ipc::ConnectionRights::CALL,
+    ) {
+        Ok(cap) => cap,
+        Err(_) => { frame.regs[0] = 0; return; }
+    };
+    crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
+    crate::service::bootstrap::write_argc(loaded.config_frame, 0);
+
+    // Move the state cap from the caller to the new domain.
+    if state_cap != 0 {
+        let _ = crate::memory::object::move_to(caller_asid, state_cap, loaded.asid);
+        crate::service::bootstrap::write_handoff_state(
+            loaded.config_frame, 1, state_cap, 0,
+        );
+    }
+
+    // Start the replacement domain.
+    let entry_vaddr = loaded.entry_vaddr;
+    let entry: extern "C" fn() =
+        unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
+    crate::cpu::scheduler::spawn_thread(loaded.asid, entry);
+
+    // Report the new domain's ASID as evidence.
+    frame.regs[0] = loaded.asid as u64;
 }
