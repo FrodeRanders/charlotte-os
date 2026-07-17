@@ -62,6 +62,40 @@ pub mod ns {
     pub const ERR_INVALID: i64 = -2;
     /// Unknown opcode.
     pub const ERR_BAD_OPCODE: i64 = -3;
+    /// Access denied: the caller's access key did not match the service's
+    /// registered key (policy gating).
+    pub const ERR_ACCESS_DENIED: i64 = -4;
+
+    /// Register under a short name with an access key.  `arg0` = packed
+    /// name; the call must attach a re-delegable connection.  If a
+    /// memory object is attached, its first 8 bytes are the access key
+    /// (0 = public, no gating).  Reply = new generation.
+    pub const OP_REGISTER_KEYED: u32 = 5;
+    /// Look up a short-named service with an access key.  `arg0` = packed
+    /// name.  If a memory object is attached, its first 8 bytes are the
+    /// access key; the stored registration's key must match (or be 0 for
+    /// a public service).  Reply = generation + attenuated connection.
+    pub const OP_LOOKUP_KEYED: u32 = 6;
+
+    /// Read a u64 access key from a memory object, or 0 if none.
+    /// Consumes (unmaps and closes) the memory cap on success.
+    pub unsafe fn read_access_key(memory_cap: u64) -> u64 {
+        if memory_cap == 0 {
+            return 0;
+        }
+        if unsafe { catten_syscall::memory_map(memory_cap, super::NAME_SCRATCH_VADDR, false) } != 0 {
+            unsafe { catten_syscall::memory_close(memory_cap) };
+            return 0;
+        }
+        let key = unsafe {
+            core::ptr::read_volatile(super::NAME_SCRATCH_VADDR as *const u64)
+        };
+        unsafe {
+            catten_syscall::memory_unmap(memory_cap);
+            catten_syscall::memory_close(memory_cap);
+        }
+        key
+    }
 }
 
 /// Echo-service protocol (`charlotte-protocol-echo` v1).

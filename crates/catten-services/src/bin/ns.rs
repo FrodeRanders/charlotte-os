@@ -49,6 +49,10 @@ use catten_syscall::{
 struct Registration {
     connection: u64,
     generation: i64,
+    /// Access key for policy gating: 0 = public (anyone may look up),
+    /// non-zero = private (caller must present a matching key via
+    /// OP_LOOKUP_KEYED).
+    access_key: u64,
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
@@ -95,7 +99,7 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     Some(key)
 }
 
-fn register(registry: &mut Registry, key: Vec<u8>, connection: u64) -> i64 {
+fn register(registry: &mut Registry, key: Vec<u8>, connection: u64, access_key: u64) -> i64 {
     let generation = match registry.get(&key) {
         Some(previous) => {
             unsafe {
@@ -110,21 +114,30 @@ fn register(registry: &mut Registry, key: Vec<u8>, connection: u64) -> i64 {
         Registration {
             connection,
             generation,
+            access_key,
         },
     );
     generation
 }
 
-fn reply_lookup(registry: &Registry, key: &[u8], reply: u64) {
+fn reply_lookup(registry: &Registry, key: &[u8], reply: u64, caller_key: u64) {
     match registry.get(key) {
-        Some(registration) => unsafe {
-            ipc_reply_connection(
-                reply,
-                registration.connection,
-                IpcRights::SEND | IpcRights::CALL,
-                registration.generation,
-            );
-        },
+        Some(registration) => {
+            // Access check: a registration with access_key=0 is public.
+            // A non-zero key must match the caller's presented key.
+            if registration.access_key != 0 && registration.access_key != caller_key {
+                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+                return;
+            }
+            unsafe {
+                ipc_reply_connection(
+                    reply,
+                    registration.connection,
+                    IpcRights::SEND | IpcRights::CALL,
+                    registration.generation,
+                );
+            }
+        }
         None => unsafe {
             ipc_reply(reply, ns::ERR_NOT_FOUND);
         },
@@ -159,7 +172,20 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 let result = if message.connection == 0 {
                     ns::ERR_INVALID
                 } else {
-                    register(&mut registry, scalar_key(message.arg0), message.connection)
+                    register(&mut registry, scalar_key(message.arg0), message.connection, 0)
+                };
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+            }
+            ns::OP_REGISTER_KEYED => {
+                let access_key = unsafe { ns::read_access_key(message.memory) };
+                let result = if message.connection == 0 {
+                    ns::ERR_INVALID
+                } else {
+                    register(&mut registry, scalar_key(message.arg0), message.connection, access_key)
                 };
                 if message.reply != 0 {
                     unsafe {
@@ -171,7 +197,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 let key = read_named_key(&message);
                 let result = match (key, message.connection) {
                     (Some(key), connection) if connection != 0 => {
-                        register(&mut registry, key, connection)
+                        register(&mut registry, key, connection, 0)
                     }
                     (_, connection) => {
                         if connection != 0 {
@@ -192,7 +218,14 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 if message.reply == 0 {
                     continue;
                 }
-                reply_lookup(&registry, &scalar_key(message.arg0), message.reply);
+                reply_lookup(&registry, &scalar_key(message.arg0), message.reply, 0);
+            }
+            ns::OP_LOOKUP_KEYED => {
+                if message.reply == 0 {
+                    continue;
+                }
+                let caller_key = unsafe { ns::read_access_key(message.memory) };
+                reply_lookup(&registry, &scalar_key(message.arg0), message.reply, caller_key);
             }
             ns::OP_LOOKUP_NAMED => {
                 let key = read_named_key(&message);
@@ -200,7 +233,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                     continue;
                 }
                 match key {
-                    Some(key) => reply_lookup(&registry, &key, message.reply),
+                    Some(key) => reply_lookup(&registry, &key, message.reply, 0),
                     None => unsafe {
                         ipc_reply(message.reply, ns::ERR_INVALID);
                     },

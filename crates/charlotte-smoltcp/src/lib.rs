@@ -35,7 +35,8 @@ use catten_syscall::{
     ipc_status,
 };
 
-use smoltcp::phy::{Device, RxToken, TxToken};
+use smoltcp::phy::{Device, DeviceCapabilities, RxToken, TxToken};
+use smoltcp::time::Instant;
 
 /// Scratch virtual address for mapping received frames into.
 const RX_SCRATCH: usize = 0x0000_0000_00c0_0000;
