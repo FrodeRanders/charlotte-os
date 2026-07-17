@@ -19,6 +19,10 @@ devicetree = ["dep:flat_device_tree"]
 display = ["dep:flanterm_bindings"]
 yield_trace = []
 virtio_gpu = ["display"]
+# Apple HVF cannot emulate MMIO from EL0 or ECAM reads with missing ISS
+# syndrome info (hvf_handle_exception: isv assertion). This skips the PCI
+# topology probe and the EL0 virtio-net test. Use on macOS with -accel hvf.
+hvf_compat = []
 qemu = ["virtio_gpu"]
 
 [dependencies]

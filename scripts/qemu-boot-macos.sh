@@ -20,8 +20,8 @@ SMP="${2:-2}"
 HEADLESS=false
 if [[ "${3:-}" == "--headless" ]]; then HEADLESS=true; fi
 
-echo "== building kernel =="
-cargo build --package catten --target target_specs/aarch64-unknown-none-catten.json
+echo "== building kernel (hvf_compat) =="
+cargo build --package catten --features hvf_compat --target target_specs/aarch64-unknown-none-catten.json
 
 echo "== creating $IMG =="
 rm -f "$IMG"

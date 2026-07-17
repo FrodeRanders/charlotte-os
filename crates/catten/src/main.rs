@@ -123,9 +123,14 @@ pub extern "C" fn bsp_main() -> ! {
         }
     }
     mask_interrupts!();
-    logln!("Spawning initial kernel thread to probe device topology...");
-    let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
-    logln!("Initial thread spawned with ID = {thread_id}.");
+    #[cfg(not(feature = "hvf_compat"))]
+    {
+        logln!("Spawning initial kernel thread to probe device topology...");
+        let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
+        logln!("Initial thread spawned with ID = {thread_id}.");
+    }
+    #[cfg(feature = "hvf_compat")]
+    logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
     // Spawn the async-syscall demonstration (submit -> async worker -> complete
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.

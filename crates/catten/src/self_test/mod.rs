@@ -70,7 +70,10 @@ pub fn run_self_tests() {
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
     device::test_device_capabilities();
+    #[cfg(not(feature = "hvf_compat"))]
     el0_net::test_el0_net();
+    #[cfg(feature = "hvf_compat")]
+    logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
     el0_uart::test_el0_uart();
     logln!("Testing Complete. All Tests Passed!");
 }
