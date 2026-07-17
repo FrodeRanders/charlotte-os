@@ -75,3 +75,10 @@ lto = true
 panic = "abort"
 opt-level = "s"
 lto = true
+
+
+[[bin]]
+name = "servicemgr"
+path = "src/bin/servicemgr.rs"
+test = false
+bench = false
