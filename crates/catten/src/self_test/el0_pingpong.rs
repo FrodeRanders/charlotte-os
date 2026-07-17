@@ -267,6 +267,7 @@ extern "C" fn verify_ping_pong() {
         // Both threads write to the same result page at different offsets.
         // Ping writes at [0..2]; Pong at [4..7].
         if s0 == PING_SENTINEL && s1 == PONG_SENTINEL {
+            core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
             let ping_cap = unsafe { core::ptr::read_volatile(result.add(1)) };
             let ping_result_raw = unsafe { core::ptr::read_volatile(result.add(2)) } as i32;
             let pong_cap = unsafe { core::ptr::read_volatile(result.add(5)) };

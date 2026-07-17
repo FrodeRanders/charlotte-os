@@ -93,7 +93,8 @@ __catten_el0_pong_start:
 2:
     ldr w10, [x9]
     cbz w10, 2b
-    ldr w11, [x9, #24]
+    dmb ishld
+    ldr w11, [x9, #40]
 
     // buffer page = 0x16000
     movz x9, #0x6000
