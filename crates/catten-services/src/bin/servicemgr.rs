@@ -94,7 +94,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
-    let ep = unsafe { ipc_endpoint_create(0x5356434d, 1, 8) };
+    let ep = unsafe { ipc_endpoint_create(0x5356434d, 1, 8) }; // "SVCM"
     if ep == 0 { unsafe { thread_exit() }; }
     let reg = unsafe {
         ipc_scalar_call_connection(
