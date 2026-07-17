@@ -30,10 +30,15 @@ use catten_syscall::{
     ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
+    ipc_reply_move,
     ipc_scalar_call_connection,
     ipc_scalar_call_connection_copy,
     ipc_status,
+    memory_alloc,
     memory_close,
+    memory_get_phys,
+    memory_map,
+    memory_unmap,
     thread_exit,
 };
 
@@ -147,6 +152,34 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                         unsafe {
                             ipc_reply(message.reply, 0);
                         }
+                    }
+                    unsafe { thread_exit() };
+                }
+                echo::OP_HANDOFF => {
+                    // Serialise state: allocate a page, write served count,
+                    // move it to the caller (the supervisor).  Reply with
+                    // the moved memory cap so the supervisor can hand it
+                    // to the replacement service.
+                    let state_cap = unsafe { memory_alloc(1) };
+                    if state_cap != 0 {
+                        // Use HEAP_VADDR + high offset as scratch (above the
+                        // long-name scratch at 0x100000).
+                        const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
+                        if unsafe { memory_map(state_cap, STATE_VADDR, true) } == 0 {
+                            unsafe {
+                                core::ptr::write_volatile(
+                                    STATE_VADDR as *mut u32, served,
+                                );
+                                memory_unmap(state_cap);
+                            }
+                        }
+                        if message.reply != 0 {
+                            unsafe {
+                                ipc_reply_move(message.reply, state_cap, served as i64);
+                            }
+                        }
+                    } else if message.reply != 0 {
+                        unsafe { ipc_reply(message.reply, -1) };
                     }
                     unsafe { thread_exit() };
                 }

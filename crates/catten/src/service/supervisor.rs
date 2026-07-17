@@ -6,6 +6,7 @@
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
 #![cfg(target_arch = "aarch64")]
 
+use alloc::vec::Vec;
 use crate::{
     cpu::scheduler::{
         spawn_thread,
@@ -116,6 +117,21 @@ pub struct DriverGrant {
     pub intid: u32,
 }
 
+/// The state and authority a supervisor passes from an old service instance
+/// to its replacement during a live upgrade (live-service-upgrade design
+/// doc). The old service serialised its state into memory objects and
+/// handed its endpoint to the supervisor; the supervisor delivers both to
+/// the new domain via the config-page contract.
+pub struct UpgradeGrant {
+    /// Memory objects the old service moved to the supervisor's AS,
+    /// holding the serialised state the new service should resume from.
+    pub state_caps: Vec<crate::memory::object::MemoryObjectCap>,
+    /// The old service's endpoint capability, so the new service can
+    /// re-register it under the same name. 0 if the new service should
+    /// create its own endpoint.
+    pub endpoint_cap: CapabilityId,
+}
+
 /// Load and start a userspace driver domain (architecture doc Phase 8).
 ///
 /// Like [`spawn_with_name_service`] the driver receives a bootstrap
@@ -180,4 +196,57 @@ pub fn teardown_domain(domain: ServiceDomain) {
         "[supervisor] refusing to tear down a domain whose thread still runs"
     );
     close_user_address_space(domain.asid).expect("[supervisor] address-space close failed");
+}
+
+/// Load and start a replacement service domain, handing it the old
+/// instance's state and endpoint (§live-service-upgrade design).
+///
+/// State memory objects owned by the supervisor (`grant.state_caps`) are
+/// moved to the new domain.  The old `endpoint_cap` (if nonzero) is
+/// delegated to the new domain so it can re-register under the same name.
+/// The old domain must already be exited and torn down (or about to be).
+pub fn spawn_upgrade(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    grant: UpgradeGrant,
+) -> ServiceDomain {
+    let loaded = loader::load_domain(image);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        rights,
+    )
+    .expect("[supervisor] upgrade bootstrap connection delegation failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    bootstrap::write_argc(loaded.config_frame, 0);
+
+    // Move state caps from the supervisor's ASID (0) to the new domain.
+    // Any nonzero state cap goes to the new service.
+    let state_count = grant.state_caps.len() as u32;
+    let first_state = if state_count > 0 { grant.state_caps[0] } else { 0 };
+    for cap in &grant.state_caps {
+        let _ = crate::memory::object::move_to(
+            crate::memory::KERNEL_ASID, *cap, loaded.asid,
+        );
+    }
+    // Delegate the old endpoint cap (if one was handed over).
+    let ep = if grant.endpoint_cap != 0 {
+        // The supervisor created the endpoint in the old service's AS and
+        // now delegates it to the new one.  Because the old domain's caps
+        // were reclaimed on teardown, the supervisor holds the endpoint
+        // through the IPC registry (it minted the endpoint during
+        // spawn_name_service).  Delegation from KERNEL_ASID is the direct
+        // kernel-API path.
+        ipc::connection_mint(crate::memory::KERNEL_ASID, grant.endpoint_cap, ConnectionRights::ALL)
+            .ok()
+            .or(Some(0))
+    } else {
+        None
+    };
+    bootstrap::write_handoff_state(
+        loaded.config_frame, state_count, first_state, ep.unwrap_or(0),
+    );
+    start_domain(loaded)
 }

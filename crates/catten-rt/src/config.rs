@@ -68,6 +68,32 @@ pub fn shard_cq_count() -> usize {
     unsafe { read::<u64>(SHARD_CQ_COUNT_OFFSET) as usize }
 }
 
+/// Byte offset of the handoff state count (u32) — how many memory-object
+/// caps the supervisor delivered from the previous instance.
+pub const HANDOFF_COUNT_OFFSET: usize = 2080;
+
+/// Byte offset of the first handoff state capability id (u64).
+pub const HANDOFF_STATE_OFFSET: usize = 2084;
+
+/// Byte offset of the old endpoint capability id (u64) — the previous
+/// instance's endpoint, delivered so the new instance can re-register it.
+pub const HANDOFF_ENDPOINT_OFFSET: usize = 2092;
+
+/// How many handoff memory-object state caps the supervisor delivered.
+pub fn handoff_count() -> u32 {
+    unsafe { read::<u32>(HANDOFF_COUNT_OFFSET) }
+}
+
+/// The first handoff state memory-object cap, or 0 if none.
+pub fn handoff_state_cap() -> u64 {
+    unsafe { read::<u64>(HANDOFF_STATE_OFFSET) }
+}
+
+/// The old endpoint capability (for re-registration), or 0 if none.
+pub fn handoff_endpoint_cap() -> u64 {
+    unsafe { read::<u64>(HANDOFF_ENDPOINT_OFFSET) }
+}
+
 /// Output/status words are intentionally kept at the beginning of the page so
 /// existing kernel verifiers can poll `config[0]` as a sentinel.
 pub const OUTPUT_OFFSET: usize = 0;

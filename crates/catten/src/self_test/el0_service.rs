@@ -71,6 +71,8 @@ const CLIENT_SENTINEL: u32 = 0xC0DE;
 /// capability registry.
 #[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = 0x7100;
+const KCLIENT2_ASID: usize = 0x7200;
+const OP_HANDOFF: u32 = 3;
 
 #[cfg(target_arch = "aarch64")]
 const MAX_SPINS: u64 = 80_000_000;
@@ -142,6 +144,17 @@ fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
 /// Poll a pending call created through the direct kernel API until the EL0
 /// server replies.
 #[cfg(target_arch = "aarch64")]
+fn wait_reply_k2(call: u64, what: &str) -> ipc::ReplyValue {
+    let mut val = None;
+    spin_until(|| match ipc::poll_reply(KCLIENT2_ASID, call) {
+        Ok(Some(reply)) => { val = Some(reply); true }
+        Ok(None) => false,
+        Err(e) => panic!("[srv] K2 fail {}: {:?}", what, e),
+    }, what);
+    ipc::close_cap(KCLIENT2_ASID, call).expect("K2 close");
+    val.expect("K2 reply")
+}
+
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
     let mut value = None;
     spin_until(
@@ -286,6 +299,55 @@ extern "C" fn verify_el0_service() {
     assert_eq!(reply.result, 0xfeed, "[service] generation-2 echo mismatch");
 
     state.echo = Some(echo2);
+
+    // --- live handoff (Phase D) ---
+    let ns2 = ipc::connection_delegate(state.name_service.domain.asid,
+        state.name_service.endpoint_cap, KCLIENT2_ASID, ConnectionRights::CALL)
+        .expect("[service] K2 bootstrap failed");
+    let l2 = ipc::scalar_call(KCLIENT2_ASID, ns2, OP_LOOKUP, NAME_ECHO)
+        .expect("[service] K2 lookup failed");
+    let r2 = wait_reply_k2(l2, "K2 gen-2 lookup");
+    assert_eq!(r2.result, 2); let g2 = r2.cap.expect("gen-2 conn");
+    let ho = ipc::scalar_call(KCLIENT2_ASID, g2, OP_HANDOFF, KCLIENT2_ASID as u64)
+        .expect("[service] handoff failed");
+    let hr = wait_reply_k2(ho, "handoff reply");
+    let sc = hr.memory.expect("state cap");
+    // verify state
+    {
+        let sv = crate::memory::VAddr::from(0x0000_0000_00b0_0000usize);
+        crate::memory::object::map(KCLIENT2_ASID, sc, sv, false)
+            .expect("[service] state map failed");
+        let served: u32 = unsafe { core::ptr::read_volatile(
+            <crate::memory::VAddr as Into<usize>>::into(sv) as *const u32) };
+        crate::memory::object::unmap(KCLIENT2_ASID, sc)
+            .expect("[service] state unmap failed");
+        logln!("[service] handoff served={}", served);
+        assert!(served >= 1);
+    }
+    // tear down gen-2
+    let e2 = state.echo.take().unwrap();
+    supervisor::wait_domain_exit(&e2, MAX_SPINS);
+    for _ in 0..1_000 { yield_lp(); }
+    supervisor::teardown_domain(e2);
+    assert_eq!(ipc::scalar_call(KCLIENT2_ASID, g2, OP_ECHO, 5), Err(IpcError::EndpointClosed));
+    // spawn gen-3 with state
+    let e3 = supervisor::spawn_upgrade(ECHO_ELF, &state.name_service,
+        ConnectionRights::CALL,
+        supervisor::UpgradeGrant { state_caps: alloc::vec![sc], endpoint_cap: 0 });
+    let mut f3 = 0u64;
+    spin_until(|| { let l = ipc::scalar_call(KCLIENT2_ASID, ns2, OP_LOOKUP, NAME_ECHO)
+        .expect("gen-3 lup"); let r = wait_reply_k2(l, "gen-3 lup reply");
+        if r.result == 3 { f3 = r.cap.expect("gen-3 conn"); true }
+        else { if let Some(c)=r.cap {let _=ipc::close_cap(KCLIENT2_ASID,c);} false } },
+        "gen-3 regist");
+    let c3 = ipc::scalar_call(KCLIENT2_ASID, f3, OP_ECHO, 0x99)
+        .expect("gen-3 call");
+    let r3 = wait_reply_k2(c3, "gen-3 echo");
+    assert_eq!(r3.result, 0x99, "gen-3 mismatch");
+    state.echo = Some(e3);
+    ipc::close_address_space(KCLIENT2_ASID);
+    logln!("[service] live handoff verified");
+
     ipc::close_address_space(KCLIENT_ASID);
     logln!(
         "[service] SUCCESS: bootstrap delivery, name lookup, stale-connection failure, and \

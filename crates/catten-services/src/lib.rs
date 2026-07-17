@@ -79,6 +79,13 @@ pub mod echo {
     pub const OP_ECHO: u32 = 1;
     /// Reply 0, then the service exits its protection domain.
     pub const OP_SHUTDOWN: u32 = 2;
+    /// Handoff: the service serialises its state into a memory object,
+    /// moves it to the caller (the supervisor), and replies with the
+    /// memory cap.  It then exits — the supervisor transfers the state
+    /// to a new instance that resumes under the same name with a bumped
+    /// generation (live-service-upgrade design).  The caller's ASID is
+    /// passed in `arg0` so the service knows where to `move_to`.
+    pub const OP_HANDOFF: u32 = 3;
 }
 
 /// Console-driver protocol (`charlotte-protocol-console` v1).

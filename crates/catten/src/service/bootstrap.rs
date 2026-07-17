@@ -43,6 +43,13 @@ pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 /// Must match `catten_rt::config::SHARD_CQ_COUNT_OFFSET`.
 pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 
+/// Must match `catten_rt::config::HANDOFF_COUNT_OFFSET`.
+pub const HANDOFF_COUNT_OFFSET: usize = 2080;
+/// Must match `catten_rt::config::HANDOFF_STATE_OFFSET`.
+pub const HANDOFF_STATE_OFFSET: usize = 2084;
+/// Must match `catten_rt::config::HANDOFF_ENDPOINT_OFFSET`.
+pub const HANDOFF_ENDPOINT_OFFSET: usize = 2092;
+
 /// Write the bootstrap capability id into a domain's config page.
 pub fn write_bootstrap_cap(config_frame: PAddr, cap: u64) {
     let base: *mut u8 = config_frame.into();
@@ -78,6 +85,23 @@ pub fn write_shard_cq_layout(config_frame: PAddr, base_vaddr: usize, count: usiz
     unsafe {
         core::ptr::write_volatile(base.add(SHARD_CQ_BASE_OFFSET) as *mut u64, base_vaddr as u64);
         core::ptr::write_volatile(base.add(SHARD_CQ_COUNT_OFFSET) as *mut u64, count as u64);
+    }
+}
+
+/// Write the handoff state (state-cap count, first state cap, old endpoint
+/// cap) into a domain's config page so a replacement service can pick up
+/// the previous instance's state and endpoint.
+pub fn write_handoff_state(
+    config_frame: PAddr,
+    state_count: u32,
+    state_cap: u64,
+    endpoint_cap: u64,
+) {
+    let base: *mut u8 = config_frame.into();
+    unsafe {
+        core::ptr::write_volatile(base.add(HANDOFF_COUNT_OFFSET) as *mut u32, state_count);
+        core::ptr::write_volatile(base.add(HANDOFF_STATE_OFFSET) as *mut u64, state_cap);
+        core::ptr::write_volatile(base.add(HANDOFF_ENDPOINT_OFFSET) as *mut u64, endpoint_cap);
     }
 }
 
