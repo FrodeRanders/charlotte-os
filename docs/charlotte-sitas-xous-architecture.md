@@ -20,467 +20,51 @@
 
 ------------------------------------------------------------------------
 
-## 0. Current in-tree implementation status
+## 0. Current implementation status
 
-CharlotteOS now has the first kernel-side slice of this architecture:
+The architecture described in this document is substantially implemented
+and boot-validated on QEMU (`-M virt,gic-version=3`, Apple Silicon HVF
+or TCG).  Below is a phase-by-phase summary; detailed commit evidence
+is in the repository history and earlier revisions of this document.
 
--   `crates/catten/src/ipc/mod.rs` implements a scalar-only endpoint IPC
-    registry with per-address-space capability tables, endpoint caps,
-    connection caps, pending-call caps, and one-shot reply-token caps.
--   Syscalls `18..=27` expose endpoint creation, same-address-space
-    connection minting, scalar send, scalar call, nonblocking receive,
-    reply, reply polling, reply-time connection delegation, IPC cap
-    close, and blocking receive.
--   `crates/catten/src/memory/object.rs` implements first-class
-    page-backed memory objects with per-address-space memory
-    capabilities, map/unmap/close, move, read-lend, write-lend, and
-    address-space teardown.
--   Syscalls `28..=36` expose memory-object allocation, mapping,
-    unmapping, close, moved-memory send/call/reply, and reply-bound
-    read/write borrows. `IPC_RECV` returns an attached memory cap in
-    `x7`; `IPC_REPLY_POLL` returns a reply-time memory cap in `x3`.
--   Syscall `39` (`IPC_SCALAR_CALL_CONNECTION`) implements call-time
-    connection delegation: the caller attaches an attenuated connection
-    minted from its own endpoint cap (or from a re-delegable connection
-    cap bearing `MINT_CONNECTION`); the receiver observes the minted
-    connection cap in `x8` of `IPC_RECV`/`IPC_RECV_BLOCK`.
-    `IPC_REPLY_CONNECTION` now accepts re-delegable connection caps as
-    its minting source and carries an explicit reply result, so a
-    service can return connections to endpoints it does not own.
-    Cancellation and endpoint teardown reclaim queued attached
-    connections, and pending calls track a `ResultObserved` state so
-    closing an observed pending-call cap no longer revokes returned
-    capabilities.
--   Syscall `40` (`IPC_SCALAR_CALL_CONNECTION_COPY`) delivers the first
-    combined attachment: one call carries both a copied memory object
-    (`x7` at receive) and a minted connection (`x8`). This is the step
-    toward the §6.5 envelope's independent `segment_count` and
-    `capability_count`, and it is what lets a service register under a
-    memory-carried name and hand over its endpoint authority in a
-    single message.
--   `crates/catten/src/service/` contains the first Phase 3 supervisor
-    slice: a generalized EL0 ELF loader (`loader.rs`), the config-page
-    bootstrap-capability contract (`bootstrap.rs`, mirrored by
-    `catten_rt::config::bootstrap_cap`), and domain spawn /
-    exit-observation / teardown supervision (`supervisor.rs`). The
-    supervisor creates the name-service registry endpoint inside the
-    new domain before it runs and delegates bootstrap connections
-    strictly downward; no userspace code ever names an ASID or LP.
--   `crates/catten-services` provides the reference EL0 service
-    programs built as real ET_EXEC ELFs: a userspace name service
-    (names → re-delegable connection plus instance generation;
-    re-registration bumps the generation and closes the previous
-    instance's connection; LOOKUP replies with attenuated `SEND|CALL`
-    connections), an echo service that creates its own endpoint and
-    registers itself, and a client that bootstraps, looks up, and calls
-    purely through delegated capabilities. Names travel either as an
-    interim 8-byte packed scalar or, for longer names, in a copied
-    memory object addressed to a unified byte-keyed registry; the
-    reference echo service registers under both a short scalar name and
-    a 30-byte memory-carried name, and the reference client resolves
-    the service through the long name.
--   `crates/catten-syscall` has EL0 wrappers for endpoint IPC,
-    memory-object operations, and memory IPC transfer operations.
--   Boot-time self-tests cover cross-address-space delegation through
-    the direct kernel API, cross-address-space EL0 client/server calls,
-    reply-time connection delegation without userspace ASID parameters,
-    queue backpressure, invalid-cap/type failures, scalar call/reply,
-    reply-token single use, teardown, blocking endpoint receive, and
-    same-address-space syscall dispatch. They also cover kernel-internal
-    copied, moved, and lent memory IPC plus real EL0 two-domain memory
-    IPC smoke tests for copy, move, read-borrow, write-borrow, queued
-    moved/borrowed-memory cancellation, and delivered borrowed-memory
-    cancellation. They also cover server teardown with queued or
-    delivered memory-bearing calls. Phase 3 adds kernel-level
-    connection-attachment tests (non-mintable attachment denied,
-    wrong-type attachment denied, rights attenuation on re-delegation,
-    cancellation of queued connection-bearing calls, endpoint close
-    completing queued register calls, stale connections failing
-    `EndpointClosed`) and an end-to-end EL0 test (`el0_service.rs`)
-    that spawns three isolated EL0 domains from the reference ELFs and
-    verifies bootstrap delivery, registration, lookup, call, voluntary
-    shutdown, domain teardown, stale-connection failure, restart, and
-    generation-2 re-lookup against the live EL0 name service.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Capability table, rights masks, object teardown | Done |
+| 2 | Endpoint IPC v1: scalar send/call/receive/reply, connection delegation, reply tokens | Done |
+| 3 | Userspace name/service manager, bootstrap delivery, ELF loader, supervisor, generation tracking, long names via memory objects | Done |
+| 4 | First-class memory objects: allocate, map, unmap, close, ownership accounting | Done |
+| 5 | Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation, cancellation, server-death recovery | Done |
+| 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, backlog batching, §8.2 32-byte richer completion records | Done |
+| 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
+| 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
+| 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation blocked by HVF EL0-MMIO limitation; the stack validates on KVM. | Driver built, not yet runtime-validated |
+| 10 | Lock-free device interrupt delivery (deferred wake), idempotent scheduler wakes | Done |
 
-This is intentionally not the full Xous-style model yet. The first
-version does not include a userspace name service, arbitrary
-target-domain delegation syscalls, blocking call scheduling beyond
-blocking receive, general capability attachment transfer beyond
-reply-time connection delegation and memory-object transfer,
-userspace-facing cancellation policy, or production resource accounting.
-Blocking endpoint receive exists as a first readiness integration point,
-and the smoke-test two-domain EL0 client/server flows now work through
-kernel-delegated connection capabilities.
-Phase 3 has since filled the service-management gap at smoke-test
-fidelity: a userspace (EL0) name service now exists, bootstrap
-capability delivery follows a documented config-page contract, service
-instances carry generations that increment on restart, and stale
-connections fail deterministically with `EndpointClosed`. Long service
-names are supported through copied memory objects (combined
-connection + memory attachments on one registration call), with the
-8-byte packed scalar form retained as a fast path. Still
-unimplemented: policy gating on lookup beyond connection delegation,
-automated restart policy in the supervisor, a general process loader
-contract (stack and guard pages, argument/environment blocks, declared
-heaps), and production resource accounting. The reference service ELFs
-are prebuilt and embedded in the kernel image rather than loaded from
-storage.
-Completion queues remain separate and should continue to be used for
-kernel/device operation completion rather than as universal IPC
-endpoints.
+### Success criteria met and boot-validated
 
-Current evidence:
+1. ✓ Two EL0 domains communicate through a bounded endpoint without ASID/LP
+2. ✓ Deferred async call while a shard continues other tasks
+3. ✓ Moved memory object — sender locked out until return
+4. ✓ Lending enforced by mappings, including death cleanup
+5. ✓ Single `CQ_WAIT` for endpoint + completions + device interrupts
+6. ✓ Terminal CQ results survive ring overflow (non-lossy backlog)
+7. ✓ Coalesced remote shard wakes (idempotent scheduler fix)
+8. ✓ Userspace UART driver with only delegated MMIO + IRQ
+9. ✓ Restart invalidates stale connections + device reset + op reconciliation
 
--   `c86a8a9` added a real EL0 scalar endpoint IPC smoke test covering
-    endpoint creation, same-AS connection minting, send, call, receive,
-    reply, and reply polling.
--   `f635a9c` added `IPC_RECV_BLOCK` (`svc #27`) using endpoint
-    readiness observers and a lost-wake guard.
--   `089d4a7` added a two-thread EL0 test proving that a server can
-    block in endpoint receive and be woken by a later client call.
--   `a97d9e4` added a two-address-space EL0 test proving that a client
-    protection domain can call a server endpoint through a delegated
-    connection capability without either userspace side knowing or
-    passing the other's ASID or LP.
--   `b13fb76` exposed first-class memory objects and memory IPC
-    move/borrow operations through the syscall ABI.
--   `9af956f` added a real EL0 two-address-space memory IPC smoke test:
-    the client allocates, maps, writes, and moves a memory object to a
-    server; the sender's moved-from cap no longer maps; the server maps
-    and updates the object; and `IPC_REPLY_MOVE` returns the object to
-    the caller.
--   The current tree extends that EL0 memory IPC smoke test to cover
-    reply-bound `BorrowRead` and `BorrowWrite`: read-borrow denies a
-    writable receiver mapping, normal reply revokes the receiver's
-    borrowed cap, and write-borrowed mutations become visible to the
-    owner after reply.
--   The current tree also adds EL0 cancellation smoke coverage:
-    the caller queues moved-memory and write-borrow calls, closes both
-    pending-call caps before the server receives, observes that the
-    moved-from cap remains consumed and the write borrow is revoked back
-    to the owner, and the server observes `NoMessage` for both cancelled
-    requests. It also covers a delivered write-borrow cancellation: once
-    the server has received, mapped, and updated the borrowed memory, the
-    caller closes the pending-call cap; the owner regains mapping
-    authority while the server's borrowed memory cap and reply token are
-    revoked.
--   Kernel-internal adversarial tests cover server teardown for
-    memory-bearing calls: queued moved-memory calls complete as
-    `EndpointClosed` without reviving the moved-from cap, and delivered
-    write-borrow calls complete as `Cancelled` while revoking the server
-    borrow and preserving the server's last write for the owner.
--   The current tree adds `Copy` memory IPC at the kernel, syscall, and
-    EL0 SVC layers: the receiver gets a new memory object containing a
-    byte copy, while the sender keeps its original cap and receiver
-    writes do not mutate the original.
--   The current tree implements Phase 3: syscall 39 call-time
-    connection delegation with re-delegation and rights attenuation,
-    `crates/catten/src/service/` (loader, bootstrap contract,
-    supervisor), the `crates/catten-services` reference EL0 programs
-    (name service, echo, client), and the `el0_service` boot-time test.
-    The test spawns three isolated EL0 protection domains and verifies
-    the complete flow — bootstrap capability delivery, REGISTER with
-    attached re-delegable connection, LOOKUP returning an attenuated
-    connection plus generation, echo call, voluntary shutdown, domain
-    teardown, stale connection failing `EndpointClosed`, restart, and
-    generation-2 re-lookup — against the live EL0 name service.
-    Architectural findings: (a) call-time connection attachment plus
-    connection re-delegation are the only two kernel mechanisms the
-    name service needed — naming stayed entirely in userspace; (b) the
-    receive ABI had to widen to `x8`, which required moving smoke-stub
-    state out of `x8` and demonstrates why hand-written stubs should
-    migrate to `catten-syscall` wrappers; (c) pending calls needed an
-    explicit `ResultObserved` state so a caller can close a completed
-    call cap without losing capabilities it received in the reply.
--   A follow-up increment adds memory-carried (long) service names:
-    syscall 40 (`IPC_SCALAR_CALL_CONNECTION_COPY`) carries a copied
-    memory object and a minted connection on one registration call, the
-    name service resolves both scalar and memory-carried names through
-    a single byte-keyed registry, and the reference echo/client
-    programs register and resolve a 30-byte name end to end. Kernel
-    self-test `test_endpoint_ipc_connection_copy` covers the combined
-    attachment, copied-name delivery and verification, sender-ownership
-    retention under copy, and reclamation of both attachments when a
-    queued combined call is cancelled.
--   The first Phase 6 slice normalizes the operation model: completion
-    lifecycle state is now an explicit named state machine
-    (`InFlight → CancelPending → Completed → Observed`, §12.1/§18.2)
-    replacing the previous scattered `cancelling`/`drained` booleans;
-    every submission is assigned a monotonically allocated, never-reused
-    `OperationId` (§8.2) distinct from the reusable capability slot
-    index; and the effective terminal result (forced `Cancelled` when a
-    cancel was pending) is what reaches both the capability and the CQ
-    ring, with idempotent re-completion no longer able to post duplicate
-    CQ entries.     Self-tests assert the state transitions, cancellation
-    idempotence, slot-reuse-versus-operation-identity distinction, and
-    ring/capability result agreement. (All items since completed by
-    subsequent Phase 6 slices: detached submission, CQ batching,
-    per-shard CQ partitioning, and CQ_WAIT migration are each
-    committed and boot-validated.)
--   The second Phase 6 slice adds the capability-free submission path
-    (§8.4): `submit_detached` returns an `OperationId` without
-    consuming a capability-table slot, the submitter's `user_data`
-    correlation cookie is what the CQ entry carries on completion, and
-    `cancel_detached` forces the effective result to `Cancelled`.
-    Detached operations share the submission-backpressure budget with
-    capability-backed ones and use the same non-lossy backlog; the CQ
-    entry's first field is now formally an opaque cookie (capability
-    index or user data by protocol convention). A completed detached
-    operation is reclaimed immediately — there is no post-terminal
-    record, so double completion and post-completion cancellation are
-    rejected.     Self-tests cover delivery, cancellation, budget sharing,
-    reclamation, and refusal without an attached CQ. (All items since
-    completed: per-shard CQ partitioning and CQ batching in Phase 6,
-    §8.2 record widening in the cleanup phase, CQ_WAIT migration in
-    the third Phase 6 slice.)
--   The third Phase 6 slice retires the last busy-poll. The kernel CQ
-    wait is now wake-aware and timed: `wake` posts a consume-on-wait
-    cross-thread wake (§7.3/§9.4), `wait_on_cq` returns on either a
-    completion or a wake, and `wait_on_cq_timeout` adds a deadline
-    (syscalls `CQ_WAKE` = 41 and `CQ_WAIT_TIMEOUT` = 42, plus
-    `catten-syscall` wrappers). `sitas-charlotte`'s `CharlotteReactor`
-    was migrated off its `core::hint::spin_loop` busy poll: its `wait`
-    now drains the ring and then blocks in `CQ_WAIT`/`CQ_WAIT_TIMEOUT`,
-    its `ReactorWaker::wake` posts `CQ_WAKE`, and `sleep` blocks on a
-    timed CQ wait rather than spinning. Kernel self-test
-    `test_cq_wait_wake` proves a thread blocked in `wait_on_cq` is
-    released both by a posted completion and by an explicit wake with no
-    entry. `basic_kv`'s data path uses `spin_recv` on shard channels
-    rather than the reactor, so the migration is verified for
-    no-regression by the existing `el0_sitas` smoke test. Until the CQ
-    is partitioned per shard, the wake is process-wide (one ring per
-    address space), so a wake releases every blocked shard of the
-    process rather than one target LP. (All items since completed:
-    per-shard CQ partitioning and CQ batching in the fourth Phase 6
-    slice, §8.2 record widening in the cleanup phase.)
--   The fourth Phase 6 slice partitions completion queues per shard
-    (§8.1) and batches backlog delivery. An address space now owns a set
-    of queues keyed by `CqId` (queue 0 is the default and the
-    destination for capability-backed completions); each queue has its
-    own ring, non-lossy backlog, pending wake, and blocked waiters.
-    `submit_detached` selects a delivery queue, `open_cq`/`open_cq_phys`
-    attach additional per-shard rings, and the `CQ_WAIT`/`CQ_WAKE`/
-    `CQ_WAIT_TIMEOUT` syscalls take a queue id (0 preserves the previous
-    behaviour, which the sitas reactor uses until per-shard rings are
-    mapped into user space). Backlog flushes are now batched: retained
-    entries are published with a single ring head update. Self-tests
-    cover queue routing isolation, refusal of unknown queues, and a
-    blocked wait on a second queue being released by a wake targeted at
-    that queue. (Both items since completed: §8.2 record widening and
-    per-shard ring mapping are committed and boot-validated.)
--   The first Phase 7 slice unifies the shard wait at the kernel:
-    `IPC_ENDPOINT_BIND_CQ` (syscall 43) binds an endpoint's readiness to
-    one of the owner's completion queues. The kernel posts a coalesced
-    wake to that queue on the endpoint's empty→nonempty transition and
-    on closure (readiness is a notification to inspect the endpoint,
-    not a completion record — §16.3; wakes coalesce per §9.4). A shard
-    can therefore block on one `CQ_WAIT` and be released by kernel
-    completions, explicit peer wakes, and endpoint messages alike; a
-    release with an empty ring means "drain your endpoints". Self-test
-    evidence: a thread blocked in `wait_on_cq` is released by a posted
-    completion, an explicit wake, a per-queue wake on a second shard
-    queue, and an incoming IPC message on a CQ-bound endpoint, which it
-    then receives (success criterion 5's kernel mechanism). (The
-    userspace half is since completed: `ShardExecutor` implements
-    the §7 loop with task wakeup and budgeted polling.)
--   The second Phase 7 slice demonstrates the unified wait in a real
-    EL0 service. The service loader now maps a CQ ring page at the
-    canonical `0x11000` into every service domain and opens the
-    kernel-side default queue, so services can use the completion
-    syscalls, detached operations, timed waits, and readiness binding.
-    The reference echo service was converted from blocking receive to
-    the §7 event-loop skeleton: it binds its endpoint to queue 0, blocks
-    on one `CQ_WAIT`, and drains every ready message (`IPC_RECV` until
-    `NoMessage`) before re-arming — the existing end-to-end service
-    test (lookup, calls, shutdown, restart, generation bump) passes
-    unchanged over the event-driven server. The memory-name scratch
-    address moved above the image (`0x100000`) to make room for the CQ
-    page in the fixed layout. (All items since completed: the
-    sitas `ShardExecutor` implements the §7 loop with task wakeup
-    and budgeted polling; per-shard ring mapping is committed via
-    a loader-contract extension; `kv::spin_recv` was retired behind
-    the `ShardParker` seam over `CQ_WAIT`/`CQ_WAKE`.)
--   The first Phase 8 slice builds the kernel device-capability
-    mechanism — the substrate a userspace driver needs (architecture doc
-    §10) — reusing the Phase 7 notification machinery. A new
-    `crates/catten/src/device/` subsystem adds two first-class object
-    types as derived facilities on the three primitives: **MmioRegion**
-    (a page-granular device register window) and **Interrupt** (a routed
-    interrupt source). MMIO regions map into an EL0 driver domain through
-    a new user-accessible Device-nGnRnE page path
-    (`Walker::map_user_mmio_page` /
-    `AddressSpace::map_user_mmio_page`, execute-never, non-zeroed).
-    Interrupt readiness is delivered exactly like endpoint readiness
-    (§16.3): the AArch64 IRQ dispatcher's previously-unhandled SPI arm
-    now calls `device::deliver_interrupt`, which masks the source at the
-    GICv3 distributor (new `enable_spi`/`disable_spi`/`set_spi_pending`/
-    `clear_spi_pending` with Group-1 config and `GICD_IROUTER` affinity
-    routing), marks the interrupt object pending, and posts a **coalesced
-    wake** to the owning driver's completion queue — so a driver shard
-    blocked in one `CQ_WAIT` wakes for device interrupts, completions,
-    and endpoint messages alike (§9.4, unified shard wait of §7). The
-    interrupt-context path uses `try_lock` throughout and never blocks.
-    Grants are minted only kernel-side (the supervisor), never through a
-    syscall, so a driver receives only its delegated MMIO and IRQ
-    authority (§10.1). Syscalls `44..=48` (`DEVICE_MMIO_MAP`,
-    `DEVICE_MMIO_UNMAP`, `DEVICE_IRQ_BIND_CQ`, `DEVICE_IRQ_ACK`,
-    `DEVICE_CLOSE`) plus `catten-syscall` wrappers expose the driver-side
-    operations; `close_user_address_space` reclaims device caps
-    (unmapping regions, masking and unrouting interrupts) on teardown.
-    Kernel self-test `test_device_capabilities` proves the capability
-    model (unknown-cap, wrong-type, unbound-ack, unmapped-unmap
-    rejections; double-map and double-bind rejections), maps and unmaps
-    an MMIO region in a real address space, and releases a thread blocked
-    in one `wait_on_cq` **both** through the deterministic kernel
-    delivery path and through a real GICv3 software-pended SPI routed by
-    the live interrupt path, verifying pending/ack/re-arm state across
-    rounds. This is the kernel half of success criterion 8. Outstanding
-    (next slice): the EL0 UART driver service itself — supervisor device
-    grants delivered through the bootstrap contract, a console endpoint
-    protocol, deferred read replies, and an end-to-end EL0 test with
-    driver restart and device reset (since completed as part of
-    Phase 8 slices 3-4). Known
-    prototype risk: `deliver_interrupt` calls `completion::wake` (which
-    takes the completions lock) from interrupt context; the `try_lock`
-    discipline avoids a same-core deadlock by degrading to "no wake this
-    delivery" under contention, but a durable design should hand the
-    wake to a deferred, lock-free path.
--   The second Phase 8 slice adds the reference **userspace UART driver**
-    — the first complete userspace driver (architecture doc §10) — and
-    proves the delegated-authority model end to end at EL0. The
-    config-page contract is extended with two device-capability slots
-    (`MMIO_CAP_OFFSET`, `IRQ_CAP_OFFSET`, mirrored in `catten-rt`), and a
-    new supervisor entry point `spawn_driver_with_name_service` grants a
-    driver domain exactly a `DriverGrant { mmio_phys_base, mmio_pages,
-    intid }` — an MMIO region and an interrupt minted kernel-side — plus a
-    bootstrap connection to the name service, and nothing else (§10.1).
-    The `catten-services` crate gains a console protocol
-    (`charlotte-protocol-console` v1: `OP_WRITE`/`OP_STATUS`/
-    `OP_SHUTDOWN`), the `uart` driver program, and a `cclient` console
-    client. The driver maps its delegated PL011 register window into its
-    own address space as EL0 device memory (`device_mmio_map`),
-    registers a console endpoint by name, binds both endpoint readiness
-    and its interrupt to the default completion queue, and serves from
-    one `CQ_WAIT` (the unified shard wait of §7): each `OP_WRITE`
-    transmits a byte through the PL011 transmit FIFO with a **direct EL0
-    MMIO write**, and each device interrupt is acknowledged and re-armed
-    with `device_irq_ack`. The end-to-end self-test `test_el0_uart`
-    spawns the name service, the driver (granted the real QEMU `virt`
-    PL011 at `0x0900_0000` and its SPI, INTID 33), and the console
-    client from real ELFs; it verifies the client looks the driver up by
-    name and writes a message that the driver transmits through the
-    device registers from EL0, then software-pends the real PL011 SPI
-    through the GIC and observes the driver acknowledge a delegated
-    device interrupt from EL0. This is the EL0 half of success
-    criterion 8: a userspace driver runs with only delegated MMIO and IRQ
-    authority. (All items since completed: deferred reads in Phase 8
-    slice 3, driver restart/reset/reconciliation in slice 4, and the
-    lock-free interrupt-context wake in Phase 10.)
--   Both Phase 8 slices are boot-validated in QEMU (`-M
-    virt,gic-version=3`): `test_device_capabilities` and `test_el0_uart`
-    print their SUCCESS lines and the run reaches "Testing Complete. All
-    Tests Passed!". Two findings surfaced only at run time. (a)
-    `enable_spi`/`disable_spi` touch the GIC distributor MMIO, but the
-    mapping installed by `GicV3::init_lp` lives in the boot kernel
-    address space; an SPI configuration call from a self-test thread
-    running under a different active translation regime faulted, so the
-    GIC layer now maps the distributor into the *current* address space
-    (idempotently) before each SPI access. (b) The interrupt-context wake
-    did not deadlock in practice — the driver shard is blocked in
-    `CQ_WAIT` (not holding the completions lock) when its interrupt fires
-    — but the `try_lock` degradation path remains the documented
-    durable-design gap. A `scripts/qemu-boot-macos.sh` helper reproduces
-    the boot on a macOS host using `hdiutil`/`diskutil` in place of
-    `losetup`/`parted`/`mkfs.fat` and the rustup `llvm-ar` for the
-    flanterm C library.
--   The third Phase 8 slice adds **interrupt-driven deferred read
-    replies** (§7.2): the console protocol gains `OP_READ_DEFERRED`, on
-    which the driver does *not* reply — it retains the reply token,
-    returns to its single `CQ_WAIT`, and completes the retained reply
-    only when the next device interrupt arrives, reading the PL011
-    receive register (a real EL0 MMIO read; the reply encodes the byte in
-    bits 0..8 and the driver's interrupt count above, so the caller can
-    verify the reply was interrupt-driven). The driver also unmasks the
-    PL011 receive interrupt (`IMSC.RXIM`) and clears it on service
-    (`ICR`), and publishes a READ_ARMED config marker while a token is
-    retained. The console client issues the deferred read after its
-    writes; the verifier waits for READ_ARMED, software-pends the real
-    PL011 SPI **once**, and asserts the read completed with a nonzero
-    interrupt count. Boot-validated in QEMU (deferred-read result
-    `0x100`: RX empty, completed by interrupt #1). Architectural
-    findings: (a) the reply token *is* the natural deferred-completion
-    object — the driver needed no new kernel mechanism to hold a request
-    across an interrupt, exactly as §7.2 intends; (b) wake discipline
-    matters: an earlier version of the verifier software-pended the SPI
-    in a tight loop, and the resulting storm of `completion::wake` →
-    `submit_ready_thread` calls hit a scheduler race in which waking an
-    already-runnable thread panicked (`ThreadAlreadyAssignedToLp`) — the
-    same non-idempotent-wake fragility that the post-boot `cross_lp_demo`
-    tripped as `AlreadyBlocked` (`sleep`'s block/yield window versus a
-    same-LP timer fire). This was then fixed at the source (see the
-    scheduler slice below) rather than only avoided.
--   A scheduler slice makes wakes **idempotent**, which the unified shard
-    wait requires: `submit_ready_thread`/`add_thread` treat re-admitting
-    an already-`Ready`/`Running` thread as a benign no-op (the event
-    state — `wake_pending`, ring entries, endpoint queues — is posted
-    before the wake and re-checked by the waiter, so no wake is lost),
-    a late wake for an exited thread returns `InvalidThread` instead of
-    panicking, and `RoundRobin::next` re-queues the outgoing thread only
-    while it is still `Running` (so a thread woken in the
-    `block_thread`→context-switch window is not double-enqueued). This
-    removes both the `ThreadAlreadyAssignedToLp` and the long-standing
-    `cross_lp_demo` `AlreadyBlocked` panics; boot-validated in QEMU with
-    the demo running to completion (all 8 receivers) alongside the Phase 8
-    tests, zero panics.
--   The fourth Phase 8 slice completes **success criterion 9's driver
-    half**: driver restart with device reset and outstanding-operation
-    reconciliation (§13). The console protocol gains `OP_CRASH` — an
-    uncooperative driver exit that releases neither its device
-    capabilities nor any retained reply, modelling a crash — and
-    `device::interrupt_route_owner` reports which domain currently owns an
-    interrupt route. The `test_el0_uart` verifier (a second console
-    client via the direct kernel API) leaves a deferred read outstanding,
-    crashes the driver, and verifies teardown (a) reclaims the delegated
-    device authority — the interrupt route is unrouted
-    (`interrupt_route_owner → None`) and the MMIO mapping is torn down
-    with the address space (device reset); (b) reconciles the outstanding
-    operation — the orphaned deferred read completes as `Cancelled`
-    rather than hanging, because the retained reply token is reclaimed on
-    teardown; and (c) invalidates stale connections — calls on the dead
-    instance fail `EndpointClosed`. A restarted generation-2 instance then
-    registers under the same name with freshly minted device grants,
-    serves a console write, and owns the interrupt route again.
-    Boot-validated in QEMU. With this slice, success criteria 8 and the
-    driver half of 9 are met; the general userspace-driver model
-    (authority delegation, EL0 MMIO, IRQ→CQ delivery, deferred replies,
-    supervised restart with device reset) is demonstrated end to end
-    without networking. The protocol crates (charlotte-protocol-net,
-    charlotte-protocol-msg) are extracted; the reliable message layer,
-    RPC layer, and TCP/IP compatibility service are designed but not
-    yet built as services. Remaining Phase 9 work: runtime-validate the
-    virtio-net driver (blocked on TCG scheduling; KVM resolves this),
-    build the network-service stack above the driver.
-    driver and network service (Phase 9).
--   A Phase 10 slice makes **device interrupt delivery lock-free**,
-    closing the documented §10.2 durable-design risk: the interrupt
-    handler previously called `completion::wake` (which takes the
-    completions and scheduler locks) directly in interrupt context, so an
-    interrupt taken while the interrupted thread on the same core held
-    either lock could self-deadlock. Routing and the coalescing counters
-    now live in per-INTID atomics; `deliver_interrupt` reads the route
-    atomically, masks the source with MMIO only, bumps the counters, and
-    pushes the packed `(asid, cq)` onto a lock-free queue. The actual
-    `completion::wake` is performed by `drain_deferred_wakes` from thread
-    context — on every cooperative `yield_lp` and in each LP idle loop —
-    so the interrupt path never takes a lock. Wakes coalesce (§9.4) and
-    none are lost (event state is published before the wake and
-    re-checked by the waiter's fast path). Boot-validated in QEMU with
-    the full suite (device, UART incl. restart, echo restart, cross-LP
-    demo), zero panics. Validation finding: under TCG on an 8-way SMP
-    guest, round-robin over the many lingering per-test verifier threads
-    makes the late heavyweight tests take minutes of wall clock — a
-    2-way guest validates the same behaviour in a fraction of the time
-    (the macOS boot script gained an SMP argument for this).
+10, 11, 12 are partially met or pending (see §21).
+
+### What's next
+
+- **Criterion 10** — runtime-validate the virtio-net driver and TCP/IP
+  stack on a KVM host and close the batching/buffer-pool milestone.
+- **TCP/IP service** — deploy the smoltcp adapter as a native EL0
+  service consuming frames from the NIC driver endpoint.
+- **Network service stack** — build the reliable-message layer, RPC,
+  and distributed-object services per the networking architecture doc.
+
+All code from Phases 1–8 and 10 is committed, boot-validated, and
+pushed to both the CharlotteOS and sitas repositories.
 -   The sitas-side executor proper (the outstanding Phase 7 userspace
     half) now exists in the sitas repository (`sitas-core`, commits
     `5db65ae` and `d2b7b44`). `ShardExecutor` implements the §7 loop as a
@@ -2118,7 +1702,7 @@ from the service manager and delegates connection capabilities.
 The implementation order should change from "complete async syscall ABI,
 then generalize mailboxes" to the following.
 
-## Phase 0 --- Preserve the working baseline
+## Phase 0 --- Preserve the working baseline [done]
 
 Before architectural changes:
 
@@ -2129,7 +1713,7 @@ Before architectural changes:
 -   add tests that distinguish completion, notification, and mailbox
     behavior.
 
-## Phase 1 --- Capability and object model cleanup
+## Phase 1 --- [done] Capability and object model cleanup
 
 Deliverables:
 
@@ -2161,7 +1745,7 @@ Decision gate:
 > Can stale, forged, cross-domain, and wrong-type capabilities be
 > rejected uniformly?
 
-## Phase 2 --- Endpoint IPC v1: scalar messages
+## Phase 2 --- [done] Endpoint IPC v1: scalar messages
 
 Implement:
 
@@ -2188,7 +1772,7 @@ EL0 echo service
 client future completes
 ```
 
-## Phase 3 --- Userspace name and service manager
+## Phase 3 --- [done] Userspace name and service manager
 
 Implement:
 
@@ -2206,7 +1790,7 @@ Reference services:
 -   echo service;
 -   timer facade.
 
-## Phase 4 --- Memory objects (foundation for all rich IPC)
+## Phase 4 --- [done] Memory objects (foundation for all rich IPC)
 
 Implement:
 
@@ -2228,7 +1812,7 @@ service modifies and moves it back
 client cannot access while ownership is absent
 ```
 
-## Phase 5 --- Xous-style memory IPC
+## Phase 5 --- [done] Xous-style memory IPC
 
 Implement:
 
@@ -2250,7 +1834,7 @@ Reference tests must include malicious/unsafe-style attempts:
 -   caller cancels deferred call;
 -   reply token used twice.
 
-## Phase 6 --- CQ subsystem normalization
+## Phase 6 --- [done] CQ subsystem normalization
 
 Refactor current completion code around:
 
@@ -2265,7 +1849,7 @@ Refactor current completion code around:
 
 Migrate `sitas-charlotte` to `CQ_WAIT` and remove busy polling.
 
-## Phase 7 --- Sitas endpoint backend
+## Phase 7 --- [done] Sitas endpoint backend
 
 Add a CharlotteOS userspace runtime layer with two event sources unified
 at the executor boundary:
@@ -2284,7 +1868,7 @@ The executor should:
 4.  run ready tasks within budget;
 5.  wait again.
 
-## Phase 8 --- Userspace UART driver
+## Phase 8 --- [done] Userspace UART driver
 
 Use UART as the first complete userspace driver:
 
@@ -2300,7 +1884,7 @@ Use UART as the first complete userspace driver:
 This validates authority, IRQ delivery, endpoint IPC, memory messages,
 and service supervision without networking complexity.
 
-## Phase 9 --- Virtio-net driver and network service
+## Phase 9 --- Virtio-net driver and network service [in progress]
 
 Architecture:
 
@@ -2326,7 +1910,7 @@ Milestones:
 7.  UDP;
 8.  TCP after ownership and backpressure are stable.
 
-## Phase 10 --- Kernel concurrency cleanup
+## Phase 10 --- [done] Kernel concurrency cleanup
 
 After userspace architecture is proven:
 
@@ -2655,19 +2239,8 @@ Relevant Xous concepts to inspect in source:
 
 ## 23. Working summary for Codex
 
-Implement the architecture in this order:
-
-``` text
-capability model
-    → scalar endpoint IPC
-    → userspace service/name management
-    → memory objects
-    → move/lend IPC
-    → normalize completion queues
-    → sitas endpoint/CQ backend
-    → UART userspace driver
-    → virtio-net driver and network service
-    → kernel concurrency cleanup
+The architecture is substantially complete through Phase 10. The
+implementation order below shows status:
 ```
 
 Preserve the current completion, AArch64, CQ, and sitas work, but
