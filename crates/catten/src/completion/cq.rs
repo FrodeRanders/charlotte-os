@@ -12,6 +12,11 @@ pub struct CqEntry {
     pub operation: u64,
     pub cookie: u64,
     pub status: u32,
+    /// Bit 0: reserved for `returned_capability_present` (§8.2). When set,
+    /// the consumer should read a `returned_capability: u64` from the
+    /// following 8 bytes (the logical entry is then 40 bytes rather than
+    /// 32). Not yet wired — capabilities are currently returned through
+    /// the IPC reply path.
     pub flags: u32,
     pub result: i64,
 }

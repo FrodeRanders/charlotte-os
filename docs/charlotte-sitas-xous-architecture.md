@@ -280,9 +280,9 @@ Current evidence:
     evidence: a thread blocked in `wait_on_cq` is released by a posted
     completion, an explicit wake, a per-queue wake on a second shard
     queue, and an incoming IPC message on a CQ-bound endpoint, which it
-    then receives (success criterion 5's kernel mechanism). Remaining
-    Phase 7 work is userspace: a sitas executor loop that drains the CQ
-    and ready endpoints, wakes tasks, and re-arms the single wait.
+    then receives (success criterion 5's kernel mechanism). (The
+    userspace half is since completed: `ShardExecutor` implements
+    the §7 loop with task wakeup and budgeted polling.)
 -   The second Phase 7 slice demonstrates the unified wait in a real
     EL0 service. The service loader now maps a CQ ring page at the
     canonical `0x11000` into every service domain and opens the
@@ -752,7 +752,8 @@ Its most valuable ideas are:
 -   drivers and system services can live outside the kernel.
 
 CharlotteOS currently has strong completion machinery and an emerging
-mailbox model, but it does not yet have a sufficiently explicit, durable
+mailbox model. The endpoint IPC model (Phase 2) has since replaced
+    mailboxes, providing a sufficiently explicit, durable
 **userspace server and memory-message IPC architecture**. That is the
 principal gap Xous helps expose.
 
@@ -2175,7 +2176,7 @@ Implement:
 -   endpoint wait/readiness integration;
 -   explicit queue-full behavior.
 
-Do not yet add rich memory messages.
+(Rich memory-message IPC was added in Phase 5.)
 
 Reference test:
 
