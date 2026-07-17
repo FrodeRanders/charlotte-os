@@ -65,11 +65,13 @@ impl CompletionQueueRing {
         ptr
     }
     pub fn pending(&self) -> u32 {
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
         let h = unsafe { core::ptr::read_volatile(&self.head) };
         let t = unsafe { core::ptr::read_volatile(&self.tail) };
         if h >= t { h - t } else { h + self.capacity - t }
     }
     pub fn is_full(&self) -> bool {
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
         let n = (unsafe { core::ptr::read_volatile(&self.head) } + 1) % self.capacity;
         n == unsafe { core::ptr::read_volatile(&self.tail) }
     }

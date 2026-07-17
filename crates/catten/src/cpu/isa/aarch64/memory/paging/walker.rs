@@ -307,6 +307,8 @@ impl<'vas> Walker<'vas> {
             );
             if zero_frame {
                 core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            }
+            if !no_execute && mair_index != MAIR_IDX_DEVICE {
                 unsafe {
                     core::arch::asm!(
                         "dsb ishst",
