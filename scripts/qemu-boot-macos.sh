@@ -39,21 +39,23 @@ hdiutil detach "$DEV" >/dev/null
 
 echo "== booting (${TIMEOUT}s cap, smp=${SMP}, headless=${HEADLESS}) =="
 # HVF is required on QEMU 11.0.2 macOS — TCG serial output is broken.
-# -device ramfb provides the framebuffer for flanterm.
-# -device usb-kbd provides keyboard input for interactive terminal use.
 QEMU_OPTS=(
   -M virt,gic-version=3 -accel hvf -cpu host -smp "$SMP" -m 512M
   -bios "$FW"
   -drive file="$IMG",format=raw,if=none,id=hd0
   -device virtio-blk-device,drive=hd0
-  -device ramfb
-  -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0
-  -serial mon:stdio
 )
+
 if $HEADLESS; then
-  QEMU_OPTS+=(-nographic)
+  QEMU_OPTS+=(-nographic -serial mon:stdio)
 else
-  # Without -nographic, QEMU opens a window showing the flanterm framebuffer.
+  # Graphical mode: framebuffer for flanterm + USB keyboard for input.
+  # QEMU opens a window showing the flanterm-rendered kernel log.
+  QEMU_OPTS+=(
+    -device ramfb
+    -device qemu-xhci,id=xhci -device usb-kbd,bus=xhci.0
+    -serial mon:stdio
+  )
   echo "== graphical mode: flanterm framebuffer on QEMU window =="
 fi
 
