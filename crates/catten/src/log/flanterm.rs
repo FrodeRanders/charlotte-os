@@ -57,20 +57,18 @@ pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| Mutex::ne
 /// address), or if `flanterm` itself fails to initialise.
 fn init_console() -> FlantermConsole {
     let Some(fb_res) = FRAMEBUFFER_REQUEST.response() else {
-        return FlantermConsole {
-            ctx: None,
-        };
+        crate::early_logln!("flanterm: no Limine framebuffer response");
+        return FlantermConsole { ctx: None };
     };
     let Some(fb) = fb_res.framebuffers().first() else {
-        return FlantermConsole {
-            ctx: None,
-        };
+        crate::early_logln!("flanterm: framebuffer response has no framebuffers");
+        return FlantermConsole { ctx: None };
     };
     if fb.address().is_null() || fb.width == 0 || fb.height == 0 || fb.pitch == 0 {
-        return FlantermConsole {
-            ctx: None,
-        };
+        crate::early_logln!("flanterm: no usable framebuffer (null or zero dimensions)");
+        return FlantermConsole { ctx: None };
     }
+    crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
     let ctx_mut = unsafe {
         flanterm_fb_init(
             Some(malloc),
@@ -102,10 +100,12 @@ fn init_console() -> FlantermConsole {
         )
     };
     if ctx_mut.is_null() {
+        crate::early_logln!("flanterm: flanterm_fb_init returned null");
         return FlantermConsole {
             ctx: None,
         };
     }
+    crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
     FlantermConsole {
         ctx: Some(unsafe { Box::from_raw(ctx_mut) }),
     }
