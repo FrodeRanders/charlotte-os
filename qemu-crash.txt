@@ -1,0 +1,718 @@
+-------------------------------------
+Translated Report (Full Report Below)
+-------------------------------------
+Process:             qemu-system-aarch64 [49762]
+Path:                /opt/homebrew/*/qemu-system-aarch64
+Identifier:          qemu-system-aarch64
+Version:             ???
+Code Type:           ARM-64 (Native)
+Role:                Foreground
+Parent Process:      bash [49705]
+Coalition:           com.apple.Terminal [1108]
+Responsible Process: Terminal [1458]
+User ID:             501
+
+Date/Time:           2026-07-17 16:38:31.7645 +0200
+Launch Time:         2026-07-17 16:38:25.9161 +0200
+Hardware Model:      Mac14,7
+OS Version:          macOS 26.5.2 (25F84)
+Release Type:        User
+
+Crash Reporter Key:  FFDDAAB8-1952-F6DE-4D9C-DA53F9CA6AF3
+Incident Identifier: F084FE03-AE83-441F-A65D-98423478F58A
+
+Time Awake Since Boot: 480000 seconds
+
+System Integrity Protection: enabled
+
+Triggered by Thread: 5  */HVF
+
+Exception Type:    EXC_CRASH (SIGABRT)
+Exception Codes:   0x0000000000000000, 0x0000000000000000
+
+Termination Reason:  Namespace SIGNAL, Code 6, Abort trap: 6
+Terminating Process: qemu-system-aarch64 [49762]
+
+
+Thread 0::  Dispatch queue: com.apple.main-thread
+0   libsystem_kernel.dylib        	       0x18adc5c34 mach_msg2_trap + 8
+1   libsystem_kernel.dylib        	       0x18add8574 mach_msg2_internal + 76
+2   libsystem_kernel.dylib        	       0x18adce9c0 mach_msg_overwrite + 480
+3   libsystem_kernel.dylib        	       0x18adc5fc0 mach_msg + 24
+4   CoreFoundation                	       0x18aec70d8 __CFRunLoopServiceMachPort + 160
+5   CoreFoundation                	       0x18aec59c4 __CFRunLoopRun + 1188
+6   CoreFoundation                	       0x18af981c4 _CFRunLoopRunSpecificWithOptions + 532
+7   HIToolbox                     	       0x197cab560 RunCurrentEventLoopInMode + 320
+8   HIToolbox                     	       0x197cae8bc ReceiveNextEventCommon + 488
+9   HIToolbox                     	       0x197e3814c _BlockUntilNextEventMatchingListInMode + 48
+10  AppKit                        	       0x18f9a035c _DPSBlockUntilNextEventMatchingListInMode + 228
+11  AppKit                        	       0x18f2f4084 _DPSNextEvent + 576
+12  AppKit                        	       0x18fe898b0 -[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:] + 688
+13  AppKit                        	       0x18fe895bc -[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:] + 72
+14  AppKit                        	       0x18f2e713c -[NSApplication run] + 368
+15  qemu-system-aarch64           	       0x102a6e124 cocoa_main + 24
+16  qemu-system-aarch64           	       0x1029b0718 main + 100
+17  dyld                          	       0x18aa4be00 start + 6992
+
+Thread 1:: call_rcu
+0   libsystem_kernel.dylib        	       0x18adc950c __psynch_cvwait + 8
+1   libsystem_pthread.dylib       	       0x18ae0a128 _pthread_cond_wait + 980
+2   qemu-system-aarch64           	       0x102a4ea5c qemu_event_wait + 48
+3   qemu-system-aarch64           	       0x102a561bc call_rcu_thread + 76
+4   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+5   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+6   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 2:: signalfd_compat
+0   libsystem_kernel.dylib        	       0x18add1808 __sigwait + 8
+1   libsystem_pthread.dylib       	       0x18ae0a418 sigwait + 40
+2   qemu-system-aarch64           	       0x102a4b678 sigwait_compat + 52
+3   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+4   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+5   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 3:: com.apple.virtualization.thread.virtual-clock
+0   libsystem_kernel.dylib        	       0x18adc950c __psynch_cvwait + 8
+1   libsystem_pthread.dylib       	       0x18ae0a154 _pthread_cond_wait + 1024
+2   Hypervisor                    	       0x233396cd4 HvCore::VirtualClock::thread_body() + 312
+3   Hypervisor                    	       0x233396b38 void* std::__1::__thread_proxy[abi:fqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (HvCore::VirtualClock::*)(), HvCore::VirtualClock*>>(void*) + 88
+4   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+5   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 4:: */HVF
+0   Hypervisor                    	       0x233388e78 hv_trap + 8
+1   Hypervisor                    	       0x2333857f8 Hv::Vcpu::run() + 348
+2   qemu-system-aarch64           	       0x1026bb790 hvf_arch_vcpu_exec + 264
+3   qemu-system-aarch64           	       0x1022dc4c4 hvf_cpu_thread_fn + 264
+4   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+5   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+6   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 5 Crashed:: */HVF
+0   libsystem_kernel.dylib        	       0x18adce5e8 __pthread_kill + 8
+1   libsystem_pthread.dylib       	       0x18ae098d8 pthread_kill + 296
+2   libsystem_c.dylib             	       0x18ad10644 abort + 148
+3   libsystem_c.dylib             	       0x18ad0f8a0 __assert_rtn + 284
+4   qemu-system-aarch64           	       0x102aa5698 hvf_arch_vcpu_exec.cold.10 + 40
+5   qemu-system-aarch64           	       0x1026bcda0 hvf_arch_vcpu_exec + 5912
+6   qemu-system-aarch64           	       0x1022dc4c4 hvf_cpu_thread_fn + 264
+7   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+8   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+9   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 6:: worker
+0   libsystem_kernel.dylib        	       0x18adc950c __psynch_cvwait + 8
+1   libsystem_pthread.dylib       	       0x18ae0a128 _pthread_cond_wait + 980
+2   qemu-system-aarch64           	       0x102a4da84 qemu_cond_timedwait_ts + 84
+3   qemu-system-aarch64           	       0x102a4d948 qemu_cond_timedwait_impl + 92
+4   qemu-system-aarch64           	       0x102a6030c worker_thread + 188
+5   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+6   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+7   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 7:
+
+Thread 8:
+
+Thread 9:
+
+Thread 10:
+
+Thread 11:: com.apple.NSEventThread
+0   libsystem_kernel.dylib        	       0x18adc5c34 mach_msg2_trap + 8
+1   libsystem_kernel.dylib        	       0x18add8574 mach_msg2_internal + 76
+2   libsystem_kernel.dylib        	       0x18adce9c0 mach_msg_overwrite + 480
+3   libsystem_kernel.dylib        	       0x18adc5fc0 mach_msg + 24
+4   CoreFoundation                	       0x18aec70d8 __CFRunLoopServiceMachPort + 160
+5   CoreFoundation                	       0x18aec59c4 __CFRunLoopRun + 1188
+6   CoreFoundation                	       0x18af981c4 _CFRunLoopRunSpecificWithOptions + 532
+7   AppKit                        	       0x18f415c7c _NSEventThread + 184
+8   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+9   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+Thread 12:: qemu_main
+0   libsystem_kernel.dylib        	       0x18add0e80 __select + 8
+1   libglib-2.0.0.dylib           	       0x1051c3818 g_poll + 540
+2   qemu-system-aarch64           	       0x102a5db5c main_loop_wait + 336
+3   qemu-system-aarch64           	       0x102552174 qemu_main_loop + 716
+4   qemu-system-aarch64           	       0x1029b076c qemu_default_main + 36
+5   qemu-system-aarch64           	       0x102a4df84 qemu_thread_start + 116
+6   libsystem_pthread.dylib       	       0x18ae09c58 _pthread_start + 136
+7   libsystem_pthread.dylib       	       0x18ae04c1c thread_start + 8
+
+
+Thread 5 crashed with ARM Thread State (64-bit):
+    x0: 0x0000000000000000   x1: 0x0000000000000000   x2: 0x0000000000000000   x3: 0x0000000000000000
+    x4: 0x0000000000000000   x5: 0x000000000000002e   x6: 0x0000000000000000   x7: 0x0000000000000000
+    x8: 0xcc51940d515909b6   x9: 0xcc51940c3cbc39b6  x10: 0x0000000000000002  x11: 0x00000000fffffffd
+   x12: 0x0000000000000000  x13: 0x0000000000000000  x14: 0x0000000000000000  x15: 0x0000000000000000
+   x16: 0x0000000000000148  x17: 0x00000001f864f088  x18: 0x0000000000000000  x19: 0x0000000000000006
+   x20: 0x0000000000001213  x21: 0x000000016de530e0  x22: 0x0000000105de4000  x23: 0x0000000102babb9f
+   x24: 0x00000001f4552000  x25: 0x0000000092000006  x26: 0x000000003f008010  x27: 0x0000000000000000
+   x28: 0x0000000103cc69cc   fp: 0x000000016de52da0   lr: 0x000000018ae098d8
+    sp: 0x000000016de52d80   pc: 0x000000018adce5e8 cpsr: 0x40001000
+   far: 0x0000000000000000  esr: 0x56000080 (Syscall)
+
+Binary Images:
+       0x102264000 -        0x102ceffff qemu-system-aarch64 (*) <ae4d4937-bd59-3b53-94bc-73d29512dbeb> /opt/homebrew/*/qemu-system-aarch64
+       0x104ab8000 -        0x10500ffff libcapstone.5.dylib (*) <1ad08626-5b02-3fd1-abea-125f69bcf778> /opt/homebrew/*/libcapstone.5.dylib
+       0x1043ec000 -        0x10458bfff libgnutls.30.dylib (*) <4fcd3a41-997d-3ca6-a729-05c55ef661c4> /opt/homebrew/*/libgnutls.30.dylib
+       0x1040c8000 -        0x10413ffff libpixman-1.0.dylib (*) <daa5a3b7-2d11-36af-945d-a4fb1667be43> /opt/homebrew/*/libpixman-1.0.dylib
+       0x104060000 -        0x104083fff libpng16.16.dylib (*) <68cbdb4a-d121-3925-a2ab-fa1a7598b757> /opt/homebrew/*/libpng16.16.dylib
+       0x1041dc000 -        0x10423bfff libjpeg.8.3.2.dylib (*) <233ce9ad-1aca-349a-ad3d-2af310c97ed4> /opt/homebrew/*/libjpeg.8.3.2.dylib
+       0x104040000 -        0x104047fff libsnappy.1.2.2.dylib (*) <987fdc3c-aa25-3422-820e-a23b806caed6> /opt/homebrew/*/libsnappy.1.2.2.dylib
+       0x104164000 -        0x10417bfff liblzo2.2.dylib (*) <d7f6d4ef-d1f3-38db-9cff-92fd4b3ad173> /opt/homebrew/*/liblzo2.2.dylib
+       0x104094000 -        0x10409bfff libfdt.1.dylib (*) <75f2158f-511f-3564-bb88-5f711c497202> /opt/homebrew/*/libfdt.1.dylib
+       0x10481c000 -        0x104953fff libgio-2.0.0.dylib (*) <8e2c5ebd-8fa5-3e12-814a-863a3188c47c> /opt/homebrew/*/libgio-2.0.0.dylib
+       0x1042bc000 -        0x1042f7fff libgobject-2.0.0.dylib (*) <f8353e74-ffb6-3bb9-b186-ee30c3afb763> /opt/homebrew/*/libgobject-2.0.0.dylib
+       0x105184000 -        0x10527ffff libglib-2.0.0.dylib (*) <31e21c05-0fe3-3331-a56f-9e819e39cc0c> /opt/homebrew/*/libglib-2.0.0.dylib
+       0x1046cc000 -        0x104753fff libzstd.1.5.7.dylib (*) <1ce1197a-4a2b-3036-984e-95599210332b> /opt/homebrew/*/libzstd.1.5.7.dylib
+       0x104254000 -        0x10426bfff libslirp.0.dylib (*) <00b8d0a6-bd10-3f58-8ffd-ed70cd57ff81> /opt/homebrew/*/libslirp.0.dylib
+       0x1040a8000 -        0x1040abfff libvdeplug.3.dylib (*) <efae6530-dbbc-3268-a4c2-cc8ff0f7e26b> /opt/homebrew/*/libvdeplug.3.dylib
+       0x10462c000 -        0x104667fff libncursesw.6.dylib (*) <31b2cd1e-1df5-33a3-beb6-5f6711631e10> /opt/homebrew/*/libncursesw.6.dylib
+       0x104188000 -        0x10418bfff libgmodule-2.0.0.dylib (*) <f11971ca-41be-33ef-ae68-e50c5af91fb1> /opt/homebrew/*/libgmodule-2.0.0.dylib
+       0x104280000 -        0x104297fff libusb-1.0.0.dylib (*) <0fd95c30-6469-3c52-83ca-1059f9591751> /opt/homebrew/*/libusb-1.0.0.dylib
+       0x104a0c000 -        0x104a6bfff libssh.4.11.0.dylib (*) <67d17072-b9fa-39d1-8f39-c0e0c1ae1620> /opt/homebrew/*/libssh.4.11.0.dylib
+       0x104324000 -        0x10434bfff libintl.8.dylib (*) <9ef58f71-571d-352e-bb98-6e9754d6b30b> /opt/homebrew/*/libintl.8.dylib
+       0x105460000 -        0x10556bfff libp11-kit.0.dylib (*) <bbcb7edc-89e1-36f0-b239-28703839f7fe> /opt/homebrew/*/libp11-kit.0.dylib
+       0x104684000 -        0x1046b3fff libidn2.0.dylib (*) <dd8858f3-a24f-3811-89ce-4f3122eebd98> /opt/homebrew/*/libidn2.0.dylib
+       0x1057dc000 -        0x1059abfff libunistring.5.dylib (*) <e452d061-846d-33a1-bdbc-6c6d9f84a452> /opt/homebrew/*/libunistring.5.dylib
+       0x1041b8000 -        0x1041c3fff libtasn1.6.dylib (*) <730920e9-b3be-35b8-a93a-9800d053eb5a> /opt/homebrew/*/libtasn1.6.dylib
+       0x1047bc000 -        0x1047f3fff libhogweed.7.0.dylib (*) <7233e708-68b9-3151-9acc-107b37037b7e> /opt/homebrew/*/libhogweed.7.0.dylib
+       0x105328000 -        0x10535ffff libnettle.9.0.dylib (*) <51a58770-db7e-3f63-9d2b-99b53fcd56ba> /opt/homebrew/*/libnettle.9.0.dylib
+       0x1053ec000 -        0x105443fff libgmp.10.dylib (*) <90556aa3-2210-35a5-8beb-0f6610a44116> /opt/homebrew/*/libgmp.10.dylib
+       0x10567c000 -        0x1056f3fff libpcre2-8.0.dylib (*) <ac59ae27-0884-3df1-baf1-38015aa7768b> /opt/homebrew/*/libpcre2-8.0.dylib
+       0x105e6c000 -        0x1061abfff libcrypto.3.dylib (*) <536fff50-1802-319a-af00-2b227b1855de> /opt/homebrew/*/libcrypto.3.dylib
+       0x104808000 -        0x104813fff libobjc-trampolines.dylib (*) <ca58aa96-b997-3a6d-9132-19d49be4b3e9> /usr/lib/libobjc-trampolines.dylib
+       0x138fe4000 -        0x1397e7fff com.apple.AGXMetalG14G (351.2) <778bcac4-b8f0-3f79-8cb0-d1472444fa68> /System/Library/Extensions/AGXMetalG14G.bundle/Contents/MacOS/AGXMetalG14G
+       0x18adc5000 -        0x18ae022af libsystem_kernel.dylib (*) <fca53b98-3d6a-38b2-a0ec-df0f7e05f171> /usr/lib/system/libsystem_kernel.dylib
+       0x18ae49000 -        0x18b3a731f com.apple.CoreFoundation (6.9) <4bbd0da8-c600-3f3a-a38b-6664652fa04a> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+       0x197bee000 -        0x197ee911f com.apple.HIToolbox (2.1.1) <8716490e-acc2-3688-8c2f-5ca42b4c9da9> /System/Library/Frameworks/Carbon.framework/Versions/A/Frameworks/HIToolbox.framework/Versions/A/HIToolbox
+       0x18f2bb000 -        0x1909ddf9f com.apple.AppKit (6.9) <c92cc156-d767-322b-b79b-433f56e72561> /System/Library/Frameworks/AppKit.framework/Versions/C/AppKit
+       0x18aa2c000 -        0x18aad2217 dyld (*) <f924bdd3-4365-3466-9580-8b1b3fa8f857> /usr/lib/dyld
+               0x0 - 0xffffffffffffffff ??? (*) <00000000-0000-0000-0000-000000000000> ???
+       0x18ae03000 -        0x18ae0fb3b libsystem_pthread.dylib (*) <4f33683c-18c8-39a1-800b-2e3bd43bcc13> /usr/lib/system/libsystem_pthread.dylib
+       0x23337c000 -        0x2333f4dad com.apple.Hypervisor (1.0) <5ace59ba-c865-3f3a-8a7f-f90eedf9b6a6> /System/Library/Frameworks/Hypervisor.framework/Versions/A/Hypervisor
+       0x18ac98000 -        0x18ad18d9f libsystem_c.dylib (*) <694b7881-1bf3-3d0f-8f19-b50ae4e8ef8a> /usr/lib/system/libsystem_c.dylib
+
+External Modification Summary:
+  Calls made by other processes targeting this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by this process:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+  Calls made by all processes on this machine:
+    task_for_pid: 0
+    thread_create: 0
+    thread_set_state: 0
+
+VM Region Summary:
+ReadOnly portion of Libraries: Total=1.8G resident=0K(0%) swapped_out_or_unallocated=1.8G(100%)
+Writable regions: Total=888.0M written=1009K(0%) resident=1009K(0%) swapped_out=0K(0%) unallocated=887.0M(100%)
+
+                                VIRTUAL   REGION 
+REGION TYPE                        SIZE    COUNT (non-coalesced) 
+===========                     =======  ======= 
+Accelerate framework               128K        1 
+Activity Tracing                   256K        1 
+AttributeGraph Data               1024K        1 
+CG raster data                    1888K        2 
+ColorSync                           48K        3 
+CoreAnimation                      688K       35 
+CoreGraphics                        48K        3 
+CoreUI image data                  544K        4 
+Foundation                          16K        1 
+Kernel Alloc Once                   32K        1 
+MALLOC                           159.8M       32 
+MALLOC guard page                 4080K        4 
+Memory Tag 22                     64.0M        1 
+Memory Tag 28                       64K        4 
+STACK GUARD                       56.2M       13 
+Stack                             14.4M       13 
+VM_ALLOCATE                       6800K       28 
+__AUTH                            5961K      625 
+__AUTH_CONST                      88.6M     1012 
+__CTF                               824        1 
+__DATA                            35.8M      985 
+__DATA_CONST                      51.0M     1047 
+__DATA_DIRTY                      8303K      866 
+__FONT_DATA                        2352        1 
+__LINKEDIT                       582.9M       32 
+__OBJC_RO                         79.1M        1 
+__OBJC_RW                         2598K        1 
+__TEXT                             1.2G     1069 
+__TPRO_CONST                       128K        2 
+dyld private memory                128K        1 
+mapped file                      417.2M       31 
+page table in kernel              1009K        1 
+shared memory                    640.9M       22 
+===========                     =======  ======= 
+TOTAL                              3.4G     5844 
+
+
+-----------
+Full Report
+-----------
+
+{"app_name":"qemu-system-aarch64","timestamp":"2026-07-17 16:38:32.00 +0200","app_version":"","slice_uuid":"ae4d4937-bd59-3b53-94bc-73d29512dbeb","build_version":"","platform":1,"share_with_app_devs":0,"is_first_party":1,"bug_type":"309","os_version":"macOS 26.5.2 (25F84)","roots_installed":0,"incident_id":"F084FE03-AE83-441F-A65D-98423478F58A","name":"qemu-system-aarch64"}
+{
+  "uptime" : 480000,
+  "procRole" : "Foreground",
+  "version" : 2,
+  "userID" : 501,
+  "deployVersion" : 210,
+  "modelCode" : "Mac14,7",
+  "coalitionID" : 1108,
+  "osVersion" : {
+    "train" : "macOS 26.5.2",
+    "build" : "25F84",
+    "releaseType" : "User"
+  },
+  "captureTime" : "2026-07-17 16:38:31.7645 +0200",
+  "codeSigningMonitor" : 2,
+  "incident" : "F084FE03-AE83-441F-A65D-98423478F58A",
+  "pid" : 49762,
+  "translated" : false,
+  "cpuType" : "ARM-64",
+  "procLaunch" : "2026-07-17 16:38:25.9161 +0200",
+  "procStartAbsTime" : 11624296325306,
+  "procExitAbsTime" : 11624436592826,
+  "procName" : "qemu-system-aarch64",
+  "procPath" : "\/opt\/homebrew\/*\/qemu-system-aarch64",
+  "parentProc" : "bash",
+  "parentPid" : 49705,
+  "coalitionName" : "com.apple.Terminal",
+  "crashReporterKey" : "FFDDAAB8-1952-F6DE-4D9C-DA53F9CA6AF3",
+  "appleIntelligenceStatus" : {"state":"unavailable","reasons":["selectedLanguageDoesNotMatchSelectedSiriLanguageInfo(system: en-GB, siri: sv)","selectedLanguageDoesNotMatchSelectedSiriLanguage"]},
+  "developerMode" : 1,
+  "bootProgressRegister" : "0x2f000000",
+  "responsiblePid" : 1458,
+  "responsibleProc" : "Terminal",
+  "codeSigningID" : "qemu-system-aarch64-55554944ae4d4937bd593b5394bc73d29512dbeb",
+  "codeSigningTeamID" : "",
+  "codeSigningFlags" : 570425857,
+  "codeSigningValidationCategory" : 10,
+  "codeSigningTrustLevel" : 4294967295,
+  "codeSigningAuxiliaryInfo" : 0,
+  "instructionByteStream" : {"beforePC":"fyMD1f17v6n9AwCRCuD\/l78DAJH9e8Go\/w9f1sADX9YQKYDSARAA1A==","atPC":"AwEAVH8jA9X9e7+p\/QMAkf\/f\/5e\/AwCR\/XvBqP8PX9bAA1\/WcAqA0g=="},
+  "bootSessionUUID" : "C1ADDF7D-3F29-4B94-BD44-ADF8B7FBD4E2",
+  "sip" : "enabled",
+  "exception" : {"codes":"0x0000000000000000, 0x0000000000000000","rawCodes":[0,0],"type":"EXC_CRASH","signal":"SIGABRT"},
+  "termination" : {"flags":0,"code":6,"namespace":"SIGNAL","indicator":"Abort trap: 6","byProc":"qemu-system-aarch64","byPid":49762},
+  "extMods" : {"caller":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"system":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"targeted":{"thread_create":0,"thread_set_state":0,"task_for_pid":0},"warnings":0},
+  "faultingThread" : 5,
+  "threads" : [{"id":3194055,"threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":89124866359296},{"value":0},{"value":89124866359296},{"value":2},{"value":4294967295},{"value":0},{"value":17179869184},{"value":0},{"value":2},{"value":0},{"value":0},{"value":20751},{"value":3298534884096},{"value":18446744073709551569},{"value":8462333848},{"value":0},{"value":4294967295},{"value":2},{"value":89124866359296},{"value":0},{"value":89124866359296},{"value":21592279046},{"value":6135846440},{"value":8589934592},{"value":18446744073709550527},{"value":4412409862}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624740724},"cpsr":{"value":4096},"fp":{"value":6135846288},"sp":{"value":6135846208},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624664628},"far":{"value":0}},"queue":"com.apple.main-thread","frames":[{"imageOffset":3124,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":31},{"imageOffset":79220,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":31},{"imageOffset":39360,"symbol":"mach_msg_overwrite","symbolLocation":480,"imageIndex":31},{"imageOffset":4032,"symbol":"mach_msg","symbolLocation":24,"imageIndex":31},{"imageOffset":516312,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":160,"imageIndex":32},{"imageOffset":510404,"symbol":"__CFRunLoopRun","symbolLocation":1188,"imageIndex":32},{"imageOffset":1372612,"symbol":"_CFRunLoopRunSpecificWithOptions","symbolLocation":532,"imageIndex":32},{"imageOffset":775520,"symbol":"RunCurrentEventLoopInMode","symbolLocation":320,"imageIndex":33},{"imageOffset":788668,"symbol":"ReceiveNextEventCommon","symbolLocation":488,"imageIndex":33},{"imageOffset":2400588,"symbol":"_BlockUntilNextEventMatchingListInMode","symbolLocation":48,"imageIndex":33},{"imageOffset":7230300,"symbol":"_DPSBlockUntilNextEventMatchingListInMode","symbolLocation":228,"imageIndex":34},{"imageOffset":233604,"symbol":"_DPSNextEvent","symbolLocation":576,"imageIndex":34},{"imageOffset":12380336,"symbol":"-[NSApplication(NSEventRouting) _nextEventMatchingEventMask:untilDate:inMode:dequeue:]","symbolLocation":688,"imageIndex":34},{"imageOffset":12379580,"symbol":"-[NSApplication(NSEventRouting) nextEventMatchingMask:untilDate:inMode:dequeue:]","symbolLocation":72,"imageIndex":34},{"imageOffset":180540,"symbol":"-[NSApplication run]","symbolLocation":368,"imageIndex":34},{"imageOffset":8429860,"symbol":"cocoa_main","symbolLocation":24,"imageIndex":0},{"imageOffset":7653144,"symbol":"main","symbolLocation":100,"imageIndex":0},{"imageOffset":130560,"symbol":"start","symbolLocation":6992,"imageIndex":35}]},{"id":3194057,"name":"call_rcu","threadState":{"x":[{"value":260},{"value":0},{"value":2304},{"value":0},{"value":0},{"value":160},{"value":0},{"value":0},{"value":6136409752},{"value":0},{"value":0},{"value":2},{"value":2},{"value":0},{"value":0},{"value":0},{"value":305},{"value":8462331968},{"value":0},{"value":4358517160,"symbolLocation":0,"symbol":"rcu_call_ready_event"},{"value":4358517224,"symbolLocation":64,"symbol":"rcu_call_ready_event"},{"value":6136410336},{"value":0},{"value":0},{"value":2304},{"value":2305},{"value":2560},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624944424},"cpsr":{"value":1610616832},"fp":{"value":6136409872},"sp":{"value":6136409728},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624679180},"far":{"value":0}},"frames":[{"imageOffset":17676,"symbol":"__psynch_cvwait","symbolLocation":8,"imageIndex":31},{"imageOffset":28968,"symbol":"_pthread_cond_wait","symbolLocation":980,"imageIndex":37},{"imageOffset":8301148,"symbol":"qemu_event_wait","symbolLocation":48,"imageIndex":0},{"imageOffset":8331708,"symbol":"call_rcu_thread","symbolLocation":76,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194058,"name":"signalfd_compat","threadState":{"x":[{"value":4},{"value":0},{"value":96},{"value":18446726483666796544},{"value":45143949424},{"value":15},{"value":32758232798683999},{"value":0},{"value":6136983776},{"value":3},{"value":17},{"value":0},{"value":87969528973918},{"value":70368752993280},{"value":428032},{"value":11},{"value":330},{"value":8462332160},{"value":0},{"value":6136983244},{"value":45143949392},{"value":4339316292,"symbolLocation":0,"symbol":"sigwait_compat"},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624945176},"cpsr":{"value":536875008},"fp":{"value":6136983216},"sp":{"value":6136983200},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624712712},"far":{"value":0}},"frames":[{"imageOffset":51208,"symbol":"__sigwait","symbolLocation":8,"imageIndex":31},{"imageOffset":29720,"symbol":"sigwait","symbolLocation":40,"imageIndex":37},{"imageOffset":8287864,"symbol":"sigwait_compat","symbolLocation":52,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194059,"name":"com.apple.virtualization.thread.virtual-clock","threadState":{"x":[{"value":260},{"value":0},{"value":0},{"value":0},{"value":0},{"value":160},{"value":3600},{"value":0},{"value":1},{"value":0},{"value":0},{"value":2},{"value":2},{"value":0},{"value":0},{"value":0},{"value":305},{"value":8462331968},{"value":0},{"value":45150110224},{"value":45150110176},{"value":1},{"value":0},{"value":3600},{"value":0},{"value":1},{"value":256},{"value":11254874112,"symbolLocation":176,"symbol":"Arm::HypervisorCapabilities::get_capabilities()::hypervisor_capabilities"},{"value":18446744072709551616}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624944468},"cpsr":{"value":2684358656},"fp":{"value":6137556736},"sp":{"value":6137556592},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624679180},"far":{"value":0}},"frames":[{"imageOffset":17676,"symbol":"__psynch_cvwait","symbolLocation":8,"imageIndex":31},{"imageOffset":29012,"symbol":"_pthread_cond_wait","symbolLocation":1024,"imageIndex":37},{"imageOffset":109780,"symbol":"HvCore::VirtualClock::thread_body()","symbolLocation":312,"imageIndex":38},{"imageOffset":109368,"symbol":"void* std::__1::__thread_proxy[abi:fqe210106]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, void (HvCore::VirtualClock::*)(), HvCore::VirtualClock*>>(void*)","symbolLocation":88,"imageIndex":38},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194060,"name":"*\/HVF","threadState":{"x":[{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":456297325633280},{"value":456297325633282},{"value":0},{"value":0},{"value":0},{"value":451899279121152},{"value":18446744073709551611},{"value":4389313136},{"value":0},{"value":4389363952},{"value":45153894608},{"value":0},{"value":4389364248},{"value":65538},{"value":45153988608},{"value":2476277830},{"value":4340758926},{"value":4340131361},{"value":4358695372,"symbolLocation":0,"symbol":"trace_events_enabled_count"}],"flavor":"ARM_THREAD_STATE64","lr":{"value":9449265144},"cpsr":{"value":2147487744},"fp":{"value":6138130000},"sp":{"value":6138129968},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":9449279096},"far":{"value":0}},"frames":[{"imageOffset":52856,"symbol":"hv_trap","symbolLocation":8,"imageIndex":38},{"imageOffset":38904,"symbol":"Hv::Vcpu::run()","symbolLocation":348,"imageIndex":38},{"imageOffset":4552592,"symbol":"hvf_arch_vcpu_exec","symbolLocation":264,"imageIndex":0},{"imageOffset":492740,"symbol":"hvf_cpu_thread_fn","symbolLocation":264,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"triggered":true,"id":3194061,"name":"*\/HVF","threadState":{"x":[{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":46},{"value":0},{"value":0},{"value":14722711441771137462},{"value":14722711437130348982},{"value":2},{"value":4294967293},{"value":0},{"value":0},{"value":0},{"value":0},{"value":328},{"value":8462332040},{"value":0},{"value":6},{"value":4627},{"value":6138704096},{"value":4393418752},{"value":4340759455},{"value":8394186752,"symbolLocation":8,"symbol":"_OBJC_PROTOCOL_$_OS_dispatch_source_memorypressure"},{"value":2449473542},{"value":1056997392},{"value":0},{"value":4358695372,"symbolLocation":0,"symbol":"trace_events_enabled_count"}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624942296},"cpsr":{"value":1073745920},"fp":{"value":6138703264},"sp":{"value":6138703232},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624699880,"matchesCrashFrame":1},"far":{"value":0}},"frames":[{"imageOffset":38376,"symbol":"__pthread_kill","symbolLocation":8,"imageIndex":31},{"imageOffset":26840,"symbol":"pthread_kill","symbolLocation":296,"imageIndex":37},{"imageOffset":493124,"symbol":"abort","symbolLocation":148,"imageIndex":39},{"imageOffset":489632,"symbol":"__assert_rtn","symbolLocation":284,"imageIndex":39},{"imageOffset":8656536,"symbol":"hvf_arch_vcpu_exec.cold.10","symbolLocation":40,"imageIndex":0},{"imageOffset":4558240,"symbol":"hvf_arch_vcpu_exec","symbolLocation":5912,"imageIndex":0},{"imageOffset":492740,"symbol":"hvf_cpu_thread_fn","symbolLocation":264,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194062,"name":"worker","threadState":{"x":[{"value":260},{"value":0},{"value":134912},{"value":0},{"value":0},{"value":160},{"value":10},{"value":0},{"value":6139276792},{"value":0},{"value":0},{"value":2},{"value":2},{"value":0},{"value":0},{"value":0},{"value":305},{"value":8462331968},{"value":0},{"value":4389340848},{"value":4389340976},{"value":6139277536},{"value":0},{"value":10},{"value":134912},{"value":134913},{"value":135168},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624944424},"cpsr":{"value":1610616832},"fp":{"value":6139276912},"sp":{"value":6139276768},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624679180},"far":{"value":0}},"frames":[{"imageOffset":17676,"symbol":"__psynch_cvwait","symbolLocation":8,"imageIndex":31},{"imageOffset":28968,"symbol":"_pthread_cond_wait","symbolLocation":980,"imageIndex":37},{"imageOffset":8297092,"symbol":"qemu_cond_timedwait_ts","symbolLocation":84,"imageIndex":0},{"imageOffset":8296776,"symbol":"qemu_cond_timedwait_impl","symbolLocation":92,"imageIndex":0},{"imageOffset":8373004,"symbol":"worker_thread","symbolLocation":188,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194063,"frames":[],"threadState":{"x":[{"value":6139850752},{"value":8707},{"value":6139314176},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":4096},"fp":{"value":0},"sp":{"value":6139850752},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624922632},"far":{"value":0}}},{"id":3194076,"frames":[],"threadState":{"x":[{"value":6140424192},{"value":13571},{"value":6139887616},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":4096},"fp":{"value":0},"sp":{"value":6140424192},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624922632},"far":{"value":0}}},{"id":3194079,"frames":[],"threadState":{"x":[{"value":6140997632},{"value":23555},{"value":6140461056},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":4096},"fp":{"value":0},"sp":{"value":6140997632},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624922632},"far":{"value":0}}},{"id":3194080,"frames":[],"threadState":{"x":[{"value":6142144512},{"value":51467},{"value":6141607936},{"value":0},{"value":409604},{"value":18446744073709551615},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0},{"value":0}],"flavor":"ARM_THREAD_STATE64","lr":{"value":0},"cpsr":{"value":4096},"fp":{"value":0},"sp":{"value":6142144512},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624922632},"far":{"value":0}}},{"id":3194081,"name":"com.apple.NSEventThread","threadState":{"x":[{"value":268451845},{"value":21592279046},{"value":8589934592},{"value":103366977912832},{"value":0},{"value":103366977912832},{"value":2},{"value":4294967295},{"value":0},{"value":17179869184},{"value":0},{"value":2},{"value":0},{"value":0},{"value":24067},{"value":0},{"value":18446744073709551569},{"value":8462333848},{"value":0},{"value":4294967295},{"value":2},{"value":103366977912832},{"value":0},{"value":103366977912832},{"value":21592279046},{"value":6142713992},{"value":8589934592},{"value":18446744073709550527},{"value":4412409862}],"flavor":"ARM_THREAD_STATE64","lr":{"value":6624740724},"cpsr":{"value":4096},"fp":{"value":6142713840},"sp":{"value":6142713760},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624664628},"far":{"value":0}},"frames":[{"imageOffset":3124,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":31},{"imageOffset":79220,"symbol":"mach_msg2_internal","symbolLocation":76,"imageIndex":31},{"imageOffset":39360,"symbol":"mach_msg_overwrite","symbolLocation":480,"imageIndex":31},{"imageOffset":4032,"symbol":"mach_msg","symbolLocation":24,"imageIndex":31},{"imageOffset":516312,"symbol":"__CFRunLoopServiceMachPort","symbolLocation":160,"imageIndex":32},{"imageOffset":510404,"symbol":"__CFRunLoopRun","symbolLocation":1188,"imageIndex":32},{"imageOffset":1372612,"symbol":"_CFRunLoopRunSpecificWithOptions","symbolLocation":532,"imageIndex":32},{"imageOffset":1420412,"symbol":"_NSEventThread","symbolLocation":184,"imageIndex":34},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]},{"id":3194085,"name":"qemu_main","threadState":{"x":[{"value":4},{"value":0},{"value":6143290592},{"value":6143290464},{"value":6143290856},{"value":48},{"value":18446744072631617535},{"value":18446726482597246976},{"value":6143290856},{"value":1000},{"value":168},{"value":456297325633282},{"value":1},{"value":45140580120},{"value":9},{"value":456297325633280},{"value":93},{"value":45179732736},{"value":0},{"value":45140580128},{"value":0},{"value":6143290592},{"value":6143290464},{"value":16},{"value":6143290720},{"value":45140580096},{"value":4},{"value":45140580128},{"value":9}],"flavor":"ARM_THREAD_STATE64","lr":{"value":4380702744},"cpsr":{"value":536875008},"fp":{"value":6143290960},"sp":{"value":6143290448},"esr":{"value":1442840704,"description":"(Syscall)"},"pc":{"value":6624710272},"far":{"value":0}},"frames":[{"imageOffset":48768,"symbol":"__select","symbolLocation":8,"imageIndex":31},{"imageOffset":260120,"symbol":"g_poll","symbolLocation":540,"imageIndex":11},{"imageOffset":8362844,"symbol":"main_loop_wait","symbolLocation":336,"imageIndex":0},{"imageOffset":3072372,"symbol":"qemu_main_loop","symbolLocation":716,"imageIndex":0},{"imageOffset":7653228,"symbol":"qemu_default_main","symbolLocation":36,"imageIndex":0},{"imageOffset":8298372,"symbol":"qemu_thread_start","symbolLocation":116,"imageIndex":0},{"imageOffset":27736,"symbol":"_pthread_start","symbolLocation":136,"imageIndex":37},{"imageOffset":7196,"symbol":"thread_start","symbolLocation":8,"imageIndex":37}]}],
+  "usedImages" : [
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4331028480,
+    "size" : 11059200,
+    "uuid" : "ae4d4937-bd59-3b53-94bc-73d29512dbeb",
+    "path" : "\/opt\/homebrew\/*\/qemu-system-aarch64",
+    "name" : "qemu-system-aarch64"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4373315584,
+    "size" : 5603328,
+    "uuid" : "1ad08626-5b02-3fd1-abea-125f69bcf778",
+    "path" : "\/opt\/homebrew\/*\/libcapstone.5.dylib",
+    "name" : "libcapstone.5.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4366188544,
+    "size" : 1703936,
+    "uuid" : "4fcd3a41-997d-3ca6-a729-05c55ef661c4",
+    "path" : "\/opt\/homebrew\/*\/libgnutls.30.dylib",
+    "name" : "libgnutls.30.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4362895360,
+    "size" : 491520,
+    "uuid" : "daa5a3b7-2d11-36af-945d-a4fb1667be43",
+    "path" : "\/opt\/homebrew\/*\/libpixman-1.0.dylib",
+    "name" : "libpixman-1.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4362469376,
+    "size" : 147456,
+    "uuid" : "68cbdb4a-d121-3925-a2ab-fa1a7598b757",
+    "path" : "\/opt\/homebrew\/*\/libpng16.16.dylib",
+    "name" : "libpng16.16.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4364025856,
+    "size" : 393216,
+    "uuid" : "233ce9ad-1aca-349a-ad3d-2af310c97ed4",
+    "path" : "\/opt\/homebrew\/*\/libjpeg.8.3.2.dylib",
+    "name" : "libjpeg.8.3.2.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4362338304,
+    "size" : 32768,
+    "uuid" : "987fdc3c-aa25-3422-820e-a23b806caed6",
+    "path" : "\/opt\/homebrew\/*\/libsnappy.1.2.2.dylib",
+    "name" : "libsnappy.1.2.2.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4363534336,
+    "size" : 98304,
+    "uuid" : "d7f6d4ef-d1f3-38db-9cff-92fd4b3ad173",
+    "path" : "\/opt\/homebrew\/*\/liblzo2.2.dylib",
+    "name" : "liblzo2.2.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4362682368,
+    "size" : 32768,
+    "uuid" : "75f2158f-511f-3564-bb88-5f711c497202",
+    "path" : "\/opt\/homebrew\/*\/libfdt.1.dylib",
+    "name" : "libfdt.1.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4370579456,
+    "size" : 1277952,
+    "uuid" : "8e2c5ebd-8fa5-3e12-814a-863a3188c47c",
+    "path" : "\/opt\/homebrew\/*\/libgio-2.0.0.dylib",
+    "name" : "libgio-2.0.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4364943360,
+    "size" : 245760,
+    "uuid" : "f8353e74-ffb6-3bb9-b186-ee30c3afb763",
+    "path" : "\/opt\/homebrew\/*\/libgobject-2.0.0.dylib",
+    "name" : "libgobject-2.0.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4380442624,
+    "size" : 1032192,
+    "uuid" : "31e21c05-0fe3-3331-a56f-9e819e39cc0c",
+    "path" : "\/opt\/homebrew\/*\/libglib-2.0.0.dylib",
+    "name" : "libglib-2.0.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4369203200,
+    "size" : 557056,
+    "uuid" : "1ce1197a-4a2b-3036-984e-95599210332b",
+    "path" : "\/opt\/homebrew\/*\/libzstd.1.5.7.dylib",
+    "name" : "libzstd.1.5.7.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4364517376,
+    "size" : 98304,
+    "uuid" : "00b8d0a6-bd10-3f58-8ffd-ed70cd57ff81",
+    "path" : "\/opt\/homebrew\/*\/libslirp.0.dylib",
+    "name" : "libslirp.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4362764288,
+    "size" : 16384,
+    "uuid" : "efae6530-dbbc-3268-a4c2-cc8ff0f7e26b",
+    "path" : "\/opt\/homebrew\/*\/libvdeplug.3.dylib",
+    "name" : "libvdeplug.3.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4368547840,
+    "size" : 245760,
+    "uuid" : "31b2cd1e-1df5-33a3-beb6-5f6711631e10",
+    "path" : "\/opt\/homebrew\/*\/libncursesw.6.dylib",
+    "name" : "libncursesw.6.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4363681792,
+    "size" : 16384,
+    "uuid" : "f11971ca-41be-33ef-ae68-e50c5af91fb1",
+    "path" : "\/opt\/homebrew\/*\/libgmodule-2.0.0.dylib",
+    "name" : "libgmodule-2.0.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4364697600,
+    "size" : 98304,
+    "uuid" : "0fd95c30-6469-3c52-83ca-1059f9591751",
+    "path" : "\/opt\/homebrew\/*\/libusb-1.0.0.dylib",
+    "name" : "libusb-1.0.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4372611072,
+    "size" : 393216,
+    "uuid" : "67d17072-b9fa-39d1-8f39-c0e0c1ae1620",
+    "path" : "\/opt\/homebrew\/*\/libssh.4.11.0.dylib",
+    "name" : "libssh.4.11.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4365369344,
+    "size" : 163840,
+    "uuid" : "9ef58f71-571d-352e-bb98-6e9754d6b30b",
+    "path" : "\/opt\/homebrew\/*\/libintl.8.dylib",
+    "name" : "libintl.8.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4383440896,
+    "size" : 1097728,
+    "uuid" : "bbcb7edc-89e1-36f0-b239-28703839f7fe",
+    "path" : "\/opt\/homebrew\/*\/libp11-kit.0.dylib",
+    "name" : "libp11-kit.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4368908288,
+    "size" : 196608,
+    "uuid" : "dd8858f3-a24f-3811-89ce-4f3122eebd98",
+    "path" : "\/opt\/homebrew\/*\/libidn2.0.dylib",
+    "name" : "libidn2.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4387094528,
+    "size" : 1900544,
+    "uuid" : "e452d061-846d-33a1-bdbc-6c6d9f84a452",
+    "path" : "\/opt\/homebrew\/*\/libunistring.5.dylib",
+    "name" : "libunistring.5.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4363878400,
+    "size" : 49152,
+    "uuid" : "730920e9-b3be-35b8-a93a-9800d053eb5a",
+    "path" : "\/opt\/homebrew\/*\/libtasn1.6.dylib",
+    "name" : "libtasn1.6.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4370186240,
+    "size" : 229376,
+    "uuid" : "7233e708-68b9-3151-9acc-107b37037b7e",
+    "path" : "\/opt\/homebrew\/*\/libhogweed.7.0.dylib",
+    "name" : "libhogweed.7.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4382162944,
+    "size" : 229376,
+    "uuid" : "51a58770-db7e-3f63-9d2b-99b53fcd56ba",
+    "path" : "\/opt\/homebrew\/*\/libnettle.9.0.dylib",
+    "name" : "libnettle.9.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4382965760,
+    "size" : 360448,
+    "uuid" : "90556aa3-2210-35a5-8beb-0f6610a44116",
+    "path" : "\/opt\/homebrew\/*\/libgmp.10.dylib",
+    "name" : "libgmp.10.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4385652736,
+    "size" : 491520,
+    "uuid" : "ac59ae27-0884-3df1-baf1-38015aa7768b",
+    "path" : "\/opt\/homebrew\/*\/libpcre2-8.0.dylib",
+    "name" : "libpcre2-8.0.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64",
+    "base" : 4393975808,
+    "size" : 3407872,
+    "uuid" : "536fff50-1802-319a-af00-2b227b1855de",
+    "path" : "\/opt\/homebrew\/*\/libcrypto.3.dylib",
+    "name" : "libcrypto.3.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 4370497536,
+    "size" : 49152,
+    "uuid" : "ca58aa96-b997-3a6d-9132-19d49be4b3e9",
+    "path" : "\/usr\/lib\/libobjc-trampolines.dylib",
+    "name" : "libobjc-trampolines.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 5251153920,
+    "CFBundleShortVersionString" : "351.2",
+    "CFBundleIdentifier" : "com.apple.AGXMetalG14G",
+    "size" : 8404992,
+    "uuid" : "778bcac4-b8f0-3f79-8cb0-d1472444fa68",
+    "path" : "\/System\/Library\/Extensions\/AGXMetalG14G.bundle\/Contents\/MacOS\/AGXMetalG14G",
+    "name" : "AGXMetalG14G",
+    "CFBundleVersion" : "351.2"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6624661504,
+    "size" : 250544,
+    "uuid" : "fca53b98-3d6a-38b2-a0ec-df0f7e05f171",
+    "path" : "\/usr\/lib\/system\/libsystem_kernel.dylib",
+    "name" : "libsystem_kernel.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6625202176,
+    "CFBundleShortVersionString" : "6.9",
+    "CFBundleIdentifier" : "com.apple.CoreFoundation",
+    "size" : 5628704,
+    "uuid" : "4bbd0da8-c600-3f3a-a38b-6664652fa04a",
+    "path" : "\/System\/Library\/Frameworks\/CoreFoundation.framework\/Versions\/A\/CoreFoundation",
+    "name" : "CoreFoundation",
+    "CFBundleVersion" : "5026.5.4.1.402"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6840836096,
+    "CFBundleShortVersionString" : "2.1.1",
+    "CFBundleIdentifier" : "com.apple.HIToolbox",
+    "size" : 3125536,
+    "uuid" : "8716490e-acc2-3688-8c2f-5ca42b4c9da9",
+    "path" : "\/System\/Library\/Frameworks\/Carbon.framework\/Versions\/A\/Frameworks\/HIToolbox.framework\/Versions\/A\/HIToolbox",
+    "name" : "HIToolbox"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6696972288,
+    "CFBundleShortVersionString" : "6.9",
+    "CFBundleIdentifier" : "com.apple.AppKit",
+    "size" : 24260512,
+    "uuid" : "c92cc156-d767-322b-b79b-433f56e72561",
+    "path" : "\/System\/Library\/Frameworks\/AppKit.framework\/Versions\/C\/AppKit",
+    "name" : "AppKit",
+    "CFBundleVersion" : "2685.60.104"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6620889088,
+    "size" : 680472,
+    "uuid" : "f924bdd3-4365-3466-9580-8b1b3fa8f857",
+    "path" : "\/usr\/lib\/dyld",
+    "name" : "dyld"
+  },
+  {
+    "size" : 0,
+    "source" : "A",
+    "base" : 0,
+    "uuid" : "00000000-0000-0000-0000-000000000000"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6624915456,
+    "size" : 52028,
+    "uuid" : "4f33683c-18c8-39a1-800b-2e3bd43bcc13",
+    "path" : "\/usr\/lib\/system\/libsystem_pthread.dylib",
+    "name" : "libsystem_pthread.dylib"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 9449226240,
+    "CFBundleShortVersionString" : "1.0",
+    "CFBundleIdentifier" : "com.apple.Hypervisor",
+    "size" : 495022,
+    "uuid" : "5ace59ba-c865-3f3a-8a7f-f90eedf9b6a6",
+    "path" : "\/System\/Library\/Frameworks\/Hypervisor.framework\/Versions\/A\/Hypervisor",
+    "name" : "Hypervisor",
+    "CFBundleVersion" : "1"
+  },
+  {
+    "source" : "P",
+    "arch" : "arm64e",
+    "base" : 6623428608,
+    "size" : 527776,
+    "uuid" : "694b7881-1bf3-3d0f-8f19-b50ae4e8ef8a",
+    "path" : "\/usr\/lib\/system\/libsystem_c.dylib",
+    "name" : "libsystem_c.dylib"
+  }
+],
+  "sharedCache" : {
+  "base" : 6619758592,
+  "size" : 5990973440,
+  "uuid" : "157e6d2e-2e5c-39b1-8f2a-8866ee228bed"
+},
+  "vmSummary" : "ReadOnly portion of Libraries: Total=1.8G resident=0K(0%) swapped_out_or_unallocated=1.8G(100%)\nWritable regions: Total=888.0M written=1009K(0%) resident=1009K(0%) swapped_out=0K(0%) unallocated=887.0M(100%)\n\n                                VIRTUAL   REGION \nREGION TYPE                        SIZE    COUNT (non-coalesced) \n===========                     =======  ======= \nAccelerate framework               128K        1 \nActivity Tracing                   256K        1 \nAttributeGraph Data               1024K        1 \nCG raster data                    1888K        2 \nColorSync                           48K        3 \nCoreAnimation                      688K       35 \nCoreGraphics                        48K        3 \nCoreUI image data                  544K        4 \nFoundation                          16K        1 \nKernel Alloc Once                   32K        1 \nMALLOC                           159.8M       32 \nMALLOC guard page                 4080K        4 \nMemory Tag 22                     64.0M        1 \nMemory Tag 28                       64K        4 \nSTACK GUARD                       56.2M       13 \nStack                             14.4M       13 \nVM_ALLOCATE                       6800K       28 \n__AUTH                            5961K      625 \n__AUTH_CONST                      88.6M     1012 \n__CTF                               824        1 \n__DATA                            35.8M      985 \n__DATA_CONST                      51.0M     1047 \n__DATA_DIRTY                      8303K      866 \n__FONT_DATA                        2352        1 \n__LINKEDIT                       582.9M       32 \n__OBJC_RO                         79.1M        1 \n__OBJC_RW                         2598K        1 \n__TEXT                             1.2G     1069 \n__TPRO_CONST                       128K        2 \ndyld private memory                128K        1 \nmapped file                      417.2M       31 \npage table in kernel              1009K        1 \nshared memory                    640.9M       22 \n===========                     =======  ======= \nTOTAL                              3.4G     5844 \n",
+  "legacyInfo" : {
+  "threadTriggered" : {
+    "name" : "*\/HVF"
+  }
+},
+  "logWritingSignature" : "b3a8412f7ae40e822b4a883765e5eed430287a8c",
+  "roots_installed" : 0,
+  "bug_type" : "309",
+  "trmStatus" : 1,
+  "trialInfo" : {
+  "rollouts" : [
+    {
+      "rolloutId" : "68095e8ecb2a9d1eaa8463c9",
+      "factorPackIds" : [
+        "68bf4eacb556ea03e19aed49"
+      ],
+      "deploymentId" : 240000008
+    },
+    {
+      "rolloutId" : "67d07cd6a7affa169ae21f45",
+      "factorPackIds" : [
+
+      ],
+      "deploymentId" : 240000002
+    }
+  ],
+  "experiments" : [
+
+  ]
+}
+}
+
