@@ -38,55 +38,79 @@ and the OS disagree about what is fundamental.
 \section{What was built and verified}
 
 The collaboration produced a booting, self-testing async-first kernel on both
-AArch64 and x86-64, with a full async syscall ABI (completion capabilities, CQ
-ring, exit-observer completion), a sitas-derived shard-per-core programming
-model in the kernel (\texttt{ShardLocal<T>}, \texttt{ShardMailbox<M>}, bounded
-IPI queues), and a sitas shard-per-core executor running as a user binary on
-CharlotteOS. Everything was verified on QEMU.
+AArch64 and x86-64, with the following layered architecture:
 
-\textbf{Key deliverables:}
-
+\textbf{Kernel substrate:}
 \begin{itemize}
-    \item \textbf{Completion-capability subsystem} --- per-address-space
-        capability tables, submit / complete / poll / wait / cancel / close,
-        \texttt{submit\_worker} (exit-observer), shared-memory CQ ring for
-        zero-syscall completion delivery.
-    \item \textbf{Syscall dispatch} --- AArch64 SVC handler decodes
-        \texttt{ESR\_EL1.EC}, builds a \texttt{TrapFrame}, dispatches to a
-        typed handler table. x86-64 SYSCALL trampoline (MSR-based entry,
-        \texttt{swapgs} / \texttt{sysretq}).
-    \item \textbf{Scheduler} --- \texttt{RoundRobin} per LP, quantum timer,
-        block / yield / wake, deferred thread reaper, per-LP thread pinning
-        (\texttt{submit\_to\_lp} for sitas shard placement).
-    \item \textbf{Cross-LP IPI} --- bounded per-LP queues with first-class
-        backpressure, typed closure dispatch \\ (\texttt{IpiRpc::Closure}).
-    \item \textbf{Shard-per-core programming model} ---
-        \texttt{ShardLocal<T>} (lock-free, owner-checked), \\
-        \texttt{ShardMailbox<M>} (typed bounded queue).
-    \item \textbf{Real-EL0 user thread} --- compiled Rust binary runs at EL0,
-        calls SVC from userspace, round-trips through the kernel's dispatch
-        and returns.
-    \item \textbf{sitas integration} --- sitas executor (no\_std) +
-        sitas-charlotte ReactorBackend + \\ \texttt{ShardRuntime::spawn\_shard}
-        via SVC \#7. The sitas shard executor runs on CharlotteOS.
+    \item \textbf{Capability model} --- per-address-space capability tables with
+        rights masks.
+    \item \textbf{Endpoint IPC} --- Xous-inspired scalar messages, connection
+        delegation, memory attachments (Copy/Move/BorrowRead/BorrowWrite),
+        deferred replies, reply tokens.
+    \item \textbf{Memory objects} --- page-backed ownership transfer between
+        protection domains, enforced by the MMU.
+    \item \textbf{Completion queues} --- shared-memory ring buffer
+        (producer/consumer), non-lossy backlog, per-shard queues, \S8.2 32-byte
+        entries, CQ\_WAIT/CQ\_WAKE, CQ\_W AIT\_TIMEOUT.
+    \item \textbf{Device capabilities} --- MmioRegion and Interrupt object
+        types, user-accessible Device-nGnRnE page mapping, GICv3 SPI routing,
+        lock-free interrupt-to-CQ delivery.
 \end{itemize}
+
+\textbf{Userspace services:}
+\begin{itemize}
+    \item \textbf{Service supervision} --- ELF loader, bootstrap capability
+        delivery via config page, domain spawn/teardown.
+    \item \textbf{Name service} --- human-readable names $\rightarrow$
+        re-delegable connections with instance generations; access-key gating.
+    \item \textbf{UART driver} --- delegated MMIO + IRQ, direct EL0 MMIO writes,
+        interrupt-driven deferred reads, crash/restart reconciliation.
+    \item \textbf{Virtio-net driver} --- PCI discovery, BAR0 delegation, virtio
+        init sequence, MAC read, virtqueue setup, frame TX/RX (compiled).
+\end{itemize}
+
+\textbf{Sitas integration:}
+\begin{itemize}
+    \item \textbf{ShardExecutor} --- per-shard futures executor with budgeted
+        polling and task wakeup from drained events.
+    \item \textbf{Per-shard CQ rings} --- loader-contract extension maps one
+        ring per shard; targeted wakes prevent cross-shard stealing.
+    \item \textbf{ShardParker} --- park/unpark seam over CQ\_WAIT/CQ\_WAKE;
+        retire the \texttt{kv::spin\_recv} busy-loop.
+    \item \textbf{Waker-integrated channels} --- \texttt{recv().await} registers
+        the task waker; \texttt{try\_send/close} invoke it for clean shutdown.
+\end{itemize}
+
+\textbf{Networking:}
+\begin{itemize}
+    \item \textbf{Protocol crates} --- \texttt{charlotte-protocol-net}
+        (frame-level), \texttt{charlotte-protocol-msg} (reliable sequenced
+        delivery).
+    \item \textbf{Smoltcp adapter} --- \texttt{phy::Device} trait over the NIC
+        driver endpoint; TCP/IP service binary compiles.
+\end{itemize}
+
+\textbf{Syscall ABI:} 49 syscalls across completion, IPC, memory, device, and
+CQ operations. Caller ASID is derived from the trap frame, never a userspace
+parameter. All verified on QEMU AArch64.
 
 \section{How this document is organized}
 
 \begin{itemize}
-    \item \textbf{Chapter 2} --- Architecture: Logical Processors, Observers,
-        capability tables, the scheduler, IPIs.
+    \item \textbf{Chapter 2} --- Architecture: the three primitives, endpoint
+        IPC, service supervision, device capabilities, completion queues, sitas
+        integration, userspace drivers, networking.
     \item \textbf{Chapter 3} --- Execution model: threads, blocking, context
         switching, timers.
-    \item \textbf{Chapter 4} --- The async syscall ABI: the five operations,
-        exit-observer completions, the CQ ring, cancellation, backpressure.
+    \item \textbf{Chapter 4} --- The async syscall ABI.
     \item \textbf{Chapter 5} --- Programming model: invariants, ShardLocal,
-        ShardMailbox, guidance.
+        ShardMailbox, userspace patterns.
     \item \textbf{Chapter 6} --- Development: build, QEMU boot, self-tests, CI.
     \item \textbf{Chapter 7} --- What we learned: bugs found on hardware, root
-        causes, fixes, and key insights.
-    \item \textbf{Chapter 8} --- Current status: what is verified, known
-        limitations, repositories.
+        causes, fixes.
+    \item \textbf{Chapter 8} --- Current status: phases, success criteria,
+        verified features, repositories.
+    \item \textbf{Appendix} --- Glossary.
 \end{itemize}
 
 \section{Who this is for}

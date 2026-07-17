@@ -1,97 +1,168 @@
 \chapter{Current Status}
 
+\section{Implementation phases}
+
+The architecture described in \texttt{charlotte-sitas-xous-architecture.md} is
+substantially implemented and boot-validated on QEMU (\texttt{-M
+virt,gic-version=3}, Apple Silicon HVF or TCG).
+
+\begin{longtable}{|c|p{7cm}|c|}
+\hline
+\textbf{Phase} & \textbf{Description} & \textbf{Status} \\
+\hline
+1 & Capability table, rights masks, object teardown & Done \\
+2 & Endpoint IPC v1: scalar send/call/receive/reply, connection delegation,
+    reply tokens & Done \\
+3 & Userspace name/service manager, bootstrap delivery, ELF loader, supervisor,
+    generation tracking, long names via memory objects & Done \\
+4 & First-class memory objects: allocate, map, unmap, close, ownership
+    accounting & Done \\
+5 & Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation,
+    cancellation, server-death recovery & Done \\
+6 & CQ sub-system normalisation: operation IDs, detached submission,
+    CQ\_WAIT/CQ\_WAKE, per-shard CQ partitioning, backlog batching, \S8.2
+    32-byte richer completion records & Done \\
+7 & Sitas endpoint/CQ backend: endpoint readiness binding, unified shard
+    wait, ShardExecutor (budgeted polling, task wakeup from drained events),
+    ShardParker seam (spin free), per-shard CQ rings, kv::spin\_recv
+    retired & Done \\
+8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
+    interrupt-driven deferred reads, driver crash $\rightarrow$ device reset
+    $\rightarrow$ outstanding-op reconciliation $\rightarrow$ generation-2
+    restart & Done \\
+9 & Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init
+    sequence, MAC read, virtqueue setup, frame TX/RX (compiles),
+    MEMORY\_GET\_PHYS syscall. Protocol crates extracted. Smoltcp 0.13
+    adapter + TCP/IP service binary (compile). Runtime validation blocked by
+    HVF EL0-MMIO limitation. & Driver built, \\
+    & & pending validation \\
+10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
+    wakes & Done \\
+\hline
+\end{longtable}
+
+\section{Success criteria}
+
+\begin{itemize}
+    \item[1.] \checkmark Two EL0 domains communicate through a bounded endpoint
+        without ASID/LP.
+    \item[2.] \checkmark Deferred async call while a shard continues other tasks.
+    \item[3.] \checkmark Moved memory object --- sender locked out until return.
+    \item[4.] \checkmark Lending enforced by mappings, including death cleanup.
+    \item[5.] \checkmark Single \texttt{CQ\_WAIT} for endpoint + completions +
+        device interrupts.
+    \item[6.] \checkmark Terminal CQ results survive ring overflow (non-lossy
+        backlog).
+    \item[7.] \checkmark Coalesced remote shard wakes (idempotent scheduler fix).
+    \item[8.] \checkmark Userspace UART driver with only delegated MMIO + IRQ.
+    \item[9.] \checkmark Restart invalidates stale connections + device reset +
+        op reconciliation.
+    \item[10.] \textasciitilde{} Virtio-net data path with batched packet
+        buffers (driver compiles, runtime validation pending).
+    \item[11.] \textasciitilde{} Fixed-width stable ABI representations (CQ
+        entries are 32-byte \S8.2; not yet formally audited).
+    \item[12.] \textasciitilde{} Capability misuse and cancellation races have
+        adversarial tests (six IPC error-path tests added; not yet
+        comprehensive).
+\end{itemize}
+
 \section{Verified (boots on QEMU, zero panics)}
 
 \begin{itemize}
-    \item \textbf{AArch64:} boots, all self-tests pass, the async-syscall demo
-        succeeds with \texttt{Ok(42)} via exit-observer, real-EL0 user thread
-        executes at EL0 and dispatches syscalls. The sitas
-        \texttt{basic\_kv} user binary runs through \texttt{crt0/cmain},
-        spawns a shard via SVC \#7, and reports \texttt{total\_len == 3}.
-    \item \textbf{x86-64:} boots with \texttt{-cpu max}, all self-tests pass,
-        the async-syscall demo succeeds with \texttt{Ok(42)} via exit-observer.
-        (x86-64 ring-3 SYSCALL userspace is implemented but not yet exercised
-        with a user thread.)
-    \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
+    \item \textbf{AArch64:} boots, all self-tests pass, the full EL0 service
+        suite (name service, echo, client, UART driver, sitas executor) runs
+        through \texttt{crt0/cmain}. The sitas \texttt{basic\_kv} binary runs
+        with 2 shards on per-shard CQ rings and reports \texttt{total\_len == 3}.
+    \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
+        (x86-64 ring-3 userspace is implemented but not yet exercised with a
+        user thread.)
+    \item \textbf{Completion sub-system:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
-        integrated with AS, non-lossy CQ overflow backlog.
-    \item \textbf{Syscall dispatch:} AArch64 SVC handler for completion
-        operations, thread exit, LP-pinned spawn, CQ wait, and mailbox
-        capability operations. The caller's address space is taken from
-        \texttt{TrapFrame.asid}, never from a userspace ASID parameter. x86-64
-        SYSCALL trampoline exists, connected to the dispatch table.
-    \item \textbf{IPI:} bounded per-LP queues, backpressure, typed closure
-        dispatch, both architectures unstubbed. Cross-core SGI delivery works
-        on QEMU AArch64 GICv3 with \texttt{-smp 2}; the boot gate exercises
-        kernel \texttt{ShardMailbox} fan-out, EL0 cross-LP completion, and EL0
-        ping-pong over mailbox endpoint capabilities on both the default
-        accelerator path and explicit TCG.
-    \item \textbf{ShardLocal<T> / ShardMailbox<M>:} implemented and tested
-        in-kernel.
+        integrated with AS, non-lossy CQ overflow backlog, per-shard CQ
+        partitioning, \S8.2 32-byte entries with operation/cookie/status/result.
+    \item \textbf{Endpoint IPC:} bounded server queues, scalar messages,
+        connection delegation with rights attenuation, memory-object attachments
+        (move/lend/copy), deferred replies, reply-time connection delegation,
+        combined connection+memory attachments.
+    \item \textbf{Device capabilities:} MmioRegion and Interrupt object types,
+        user-accessible Device-nGnRnE page mapping, GICv3 SPI enable/route/mask,
+        IRQ$\rightarrow$CQ coalesced delivery (lock-free deferred wake).
+    \item \textbf{Userspace drivers:} reference UART driver (PL011) with
+        delegated MMIO + IRQ, interrupt-driven deferred reads, crash-test
+        restart with device reset and outstanding-operation reconciliation.
+    \item \textbf{Syscall dispatch:} AArch64 SVC handler dispatches 49 syscalls
+        across completion, IPC, memory, device, and CQ operations. Caller ASID
+        is derived from the trap frame, never a userspace parameter.
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
-        deferred reaper, per-LP thread pinning (\texttt{submit\_to\_lp}).
-    \item \textbf{sitas integration:} sitas-core (no\_std executor) compiles
-        for aarch64-unknown-none. sitas-charlotte (ReactorBackend +
-        ShardRuntime::spawn\_shard via SVC \#7) links against the kernel's
-        syscall ABI. The current user binary runs \texttt{basic\_kv}, creates a
-        \texttt{ShardedKv}, spawns a shard thread, and verifies the result from
-        EL0.
+        idempotent wakes (unified shard wait), deferred reaper, per-LP thread
+        pinning (\texttt{submit\_to\_lp}).
+    \item \textbf{sitas integration:} sitas-core (no\_std executor) compiles for
+        aarch64-unknown-none. sitas-charlotte (ReactorBackend + ShardRuntime)
+        links against the kernel's syscall ABI. Per-shard CQ rings are mapped
+        by the loader contract. ShardParker seam (CQ\_WAIT/CQ\_WAKE) retires
+        busy-waiting; ShardExecutor implements budgeted polling with task
+        wakeup from drained events.
+    \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net}
+        (frame-level NIC driver protocol), \texttt{charlotte-protocol-msg}
+        (reliable message layer with sequenced/acked delivery).
+    \item \textbf{Networking:} smoltcp 0.13 adapter (implements
+        \texttt{phy::Device} over the NIC-driver endpoint) and TCP/IP service
+        binary compile for aarch64-none.
     \item \textbf{CI:} GitHub Actions builds both architectures with
         \texttt{-D warnings}, QEMU boot gate.
-\end{itemize}
-
-\section{Known limitations}
-
-\begin{itemize}
-    \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists,
-        GS base and IRETQ return path remain to be wired. The EL0 test and
-        real-EL0 user thread are AArch64-only.
-    \item \textbf{General userspace loader:} the sitas smoke now uses a
-        segment-aware ELF loader for its embedded user image, including
-        per-segment page permissions and zero-filled BSS. It is still a
-        fixed-address self-test harness for config, CQ, input, and heap pages,
-        not a general process loader with argv/env/auxv-style setup.
 \end{itemize}
 
 \section{Repositories and branches}
 
 \begin{itemize}
-    \item \textbf{sitas} (\texttt{reactor-handle-seam}):
-        \texttt{ReactorBackend} trait, ABI reference model \\
-        (\texttt{charlotte\_abi.rs}), \texttt{sitas-core} no\_std crate
-        (ringbuf, ShardRuntime, ShardLocal, ShardMailbox, basic\_kv), 
-        \texttt{sitas-charlotte} crate (ReactorBackend + ShardRuntime backend,
-        with ASID kept out of the userspace API).
     \item \textbf{CharlotteOS} (\texttt{dev}): consolidated kernel ---
-        completion subsystem, syscall dispatch, bounded IPI, ShardLocal,
-        ShardMailbox, CQ ring, real-EL0 test, exit-observer completion,
-        SPAWN\_THREAD syscall, sitas user binary, developer manual (31-page
-        PDF).
+        completion sub-system, endpoint IPC, memory objects, device
+        capabilities, syscall dispatch, bounded IPI, ShardLocal, ShardMailbox,
+        CQ ring, EL0 service loader, supervisor, self-test suite (adversarial
+        IPC, device-capability, UART driver), developer manual.
+    \item \textbf{sitas} (\texttt{reactor-handle-seam}): \texttt{ReactorBackend}
+        trait, \texttt{ShardExecutor} (futures executor with budgeted polling),
+        waker-integrated channels, \texttt{ShardParker} seam, per-shard CQ
+        reactor/waker/parker targeting, \texttt{sitas-core} no\_std crate,
+        \texttt{sitas-charlotte} crate (ReactorBackend + ShardRuntime backend).
+\end{itemize}
+
+\section{Known limitations}
+
+\begin{itemize}
+    \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists; the
+        EL0 test and real-EL0 user thread are AArch64-only.
+    \item \textbf{Virtio-net runtime:} the driver and TCP/IP stack compile but
+        cannot be runtime-validated on macOS (HVF does not emulate EL0 MMIO
+        instructions). Validation requires a Linux KVM host.
+    \item \textbf{General process loader:} the ELF loader is fixed-address for
+        the reference service images, not a general loader with
+        argv/env/auxv-style setup.
+    \item \textbf{Resource accounting:} per-domain quotas are not yet
+        implemented; capability-table capacity is fixed.
 \end{itemize}
 
 \section{Build and boot}
 
-\textbf{AArch64:}
+\textbf{AArch64 (macOS, HVF):}
 \begin{verbatim}
 cargo build --package catten \
-  --target target_specs/aarch64-unknown-none-catten.json \
-  --no-default-features --features acpi
-./scripts/boot-smp1.sh
-\end{verbatim}
-
-\textbf{x86-64:}
-\begin{verbatim}
-cargo build --package catten \
-  --target target_specs/x86_64-unknown-none-catten.json \
-  --no-default-features --features acpi
-./scripts/boot-x86.sh
+  --target target_specs/aarch64-unknown-none-catten.json
+./scripts/qemu-boot-macos.sh 60 2
 \end{verbatim}
 
 \textbf{sitas user binary (requires nightly + build-std):}
 \begin{verbatim}
-cargo +nightly build --manifest-path crates/catten-user/Cargo.toml \
-  --target crates/catten-user/aarch64-unknown-none.json \
-  -Zbuild-std=core,alloc,compiler_builtins
+cd crates/catten-user && \
+cargo +nightly build --target aarch64-unknown-none.json \
+  -Zbuild-std=core,alloc
+\end{verbatim}
+
+\textbf{EL0 service programs:}
+\begin{verbatim}
+cd crates/catten-services && \
+cargo build --release --target aarch64-unknown-none.json \
+  -Zbuild-std=core,alloc
 \end{verbatim}
 
 \endinput

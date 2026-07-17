@@ -1,123 +1,204 @@
 \chapter{Architecture}
 
+CharlotteOS is built on three kernel primitives: Capabilities, Endpoints, and
+Memory Objects. Every other facility (completion queues, reply tokens, device
+drivers) composes from these.
+
+\section{The three primitives}
+
+\subsection{Capabilities}
+
+A capability is authority --- a per-address-space handle that names a kernel
+object and carries rights. An application cannot fabricate a capability; it can
+only receive one through the bootstrap contract or through IPC. Examples:
+endpoint capabilities, connection capabilities, memory-object capabilities,
+interrupt capabilities, MMIO-region capabilities.
+
+\subsection{Endpoints}
+
+An endpoint is a bounded server-side IPC receive object: it has an owning
+domain, a queue capacity, and a lifecycle. Clients communicate through
+\textbf{connection capabilities} minted from the endpoint. The kernel validates
+and enqueues messages; the server receives them. Endpoints know nothing about
+packet buffers, futures, or ownership --- they carry requests and replies.
+
+\subsection{Memory Objects}
+
+A memory object is page-backed storage with explicit ownership semantics. It can
+be mapped into a domain's address space, moved between domains (ownership
+transfer), lent for temporary read or write access, or copied. The MMU enforces
+the access rights; Rust ownership complements but does not replace kernel
+enforcement.
+
+\section{Endpoint IPC}
+
+\subsection{Scalar messages}
+
+A scalar message carries an opcode, one 64-bit argument, and optionally a reply
+token. It is suitable for control-plane operations: opcodes, handles, status
+values.
+
+\subsection{Memory-bearing messages}
+
+A message can carry one or more memory-object attachments with explicit transfer
+modes:
+
+\begin{itemize}
+    \item \textbf{Copy} --- the receiver gets a byte copy; the sender retains
+        the original.
+    \item \textbf{Move} --- ownership transfers to the receiver; the sender
+        loses access.
+    \item \textbf{BorrowRead} --- the receiver gets a temporary read-only
+        mapping, revoked on reply or cancellation.
+    \item \textbf{BorrowWrite} --- the receiver gets a temporary exclusive
+        writable mapping, revoked on reply or cancellation.
+\end{itemize}
+
+\subsection{Connection delegation}
+
+A connection capability can be delegated to another domain with attenuated
+rights. This is the mechanism by which the userspace name service returns
+service-level connections: it mints a connection with \texttt{SEND | CALL}
+rights from a re-delegable connection it received at registration time. The
+kernel mediates; the name service never sees raw endpoint identities.
+
+\subsection{Deferred replies}
+
+A server may retain a reply token and complete it later --- while continuing to
+serve other requests on the same shard. This is essential for device-driven
+operations: an interrupt completes a deferred read, the driver replies with the
+received data, and no thread is dedicated to the wait.
+
+\section{Service supervision}
+
+A \textbf{supervisor} (kernel-side) creates protection domains, loads ELF
+images, and delivers exactly one bootstrap capability per domain through a
+config-page contract. The bootstrap connection is either an endpoint (for the
+name service) or a connection to the name service (for ordinary services and
+clients). For driver domains, additional device capabilities (MMIO region,
+interrupt) are delivered through the same config page.
+
+A userspace \textbf{name service} maps human-readable names to
+re-delegable connection capabilities with instance generations. Re-registration
+bumps the generation and closes the previous instance's connection; stale client
+connections fail deterministically with \texttt{EndpointClosed}. The name
+service supports access-key gating: a registration can specify a non-zero
+access key, and lookups without the matching key are denied.
+
+\section{Device capabilities}
+
+Two first-class object types extend the capability model for userspace drivers:
+
+\begin{itemize}
+    \item \textbf{MmioRegion} --- a page-granular device register window that a
+        driver maps into its own address space as Device-nGnRnE memory
+        (user-accessible, execute-never, strongly ordered).
+    \item \textbf{Interrupt} --- a routed interrupt source whose readiness is
+        delivered to the driver's completion queue as a coalesced wake.
+\end{itemize}
+
+Grants are minted kernel-side by the supervisor and never through a syscall. A
+driver receives exactly the MMIO window and interrupt it needs, with no access
+to arbitrary physical memory or interrupt vectors.
+
+Interrupt delivery follows a lock-free path: the IRQ dispatcher reads the
+per-INTID route table atomically, masks the source via MMIO, atomically bumps
+coalescing counters, and pushes a wake onto a deferred queue. The actual
+\texttt{completion::wake} (which takes locks) is performed from thread context
+by \texttt{yield\_lp} and the LP idle loop.
+
+\section{Completion queues}
+
+A completion queue (CQ) is a shared-memory ring buffer between the kernel
+(producer) and userspace (consumer). Each entry is 32 bytes (\S8.2):
+\texttt{operation: u64, cookie: u64, status: u32, flags: u32, result: i64}.
+Entries are published with a release fence and a single head update; the
+consumer advances the tail after reading. A non-lossy kernel backlog retains
+entries when the ring is full --- terminal completions are never dropped.
+
+Each address space owns a set of queues keyed by \texttt{CqId}. Queue 0 is the
+default. Per-shard queues (one per sitas shard) enable targeted wakes, so a
+cross-shard message wakes only the target shard's executor.
+
+\texttt{CQ\_WAIT} blocks the caller until a completion entry is posted, an
+explicit \texttt{CQ\_WAKE} arrives, or a deadline elapses. The lost-wake race is
+closed by a consume-on-wake flag re-checked after waker registration.
+
+\section{Sitas integration --- the unified shard wait}
+
+A sitas \texttt{ShardExecutor} runs one shard's tasks. It polls ready tasks
+within a budget, then blocks in a single \texttt{ReactorBackend::wait} ---
+which maps to \texttt{CQ\_WAIT} on the shard's queue. Three event sources
+converge on that one wait point:
+
+\begin{itemize}
+    \item Kernel completions (CQ entries)
+    \item Endpoint readiness (coalesced wake from a CQ-bound endpoint)
+    \item Device interrupts (coalesced wake from a bound interrupt object)
+\end{itemize}
+
+When the wait returns, the executor drains CQ entries, wakes tasks whose wakers
+were registered for the returned handles, and re-enters the polling loop. Task
+wakers mark the task ready \emph{and} wake the reactor, so a cross-shard message
+injected via a waker-integrated channel releases the target shard's wait and
+re-polls exactly the affected task.
+
+\section{Userspace driver model}
+
+A driver protection domain receives a \texttt{DriverGrant} at spawn time:
+exactly the MMIO register window and interrupt it needs, delivered as
+capabilities through the config-page contract. The driver maps the MMIO region
+into its own address space as EL0 device memory, binds the interrupt to its
+completion queue, and serves protocol requests from a single \texttt{CQ\_WAIT}.
+
+The reference UART driver demonstrates the full lifecycle:
+\begin{itemize}
+    \item Direct EL0 MMIO writes to the PL011 transmit FIFO.
+    \item Interrupt-driven deferred reads: the driver retains a reply token
+        until a device interrupt arrives, then reads the receive register and
+        completes the reply.
+    \item Cooperative shutdown: unmaps the MMIO region and closes the interrupt.
+    \item Crash recovery: an uncooperative exit (the driver terminates without
+        releasing its device caps) is followed by teardown that reclaims the
+        MMIO and interrupt route, reconciles outstanding operations, and
+        invalidates stale connections. A restarted instance with fresh grants
+        resumes under a bumped generation.
+\end{itemize}
+
+\section{Networking}
+
+The networking architecture treats Ethernet as a generic frame transport. The
+NIC driver exports raw frames through \texttt{OP\_SEND} (transmit via a moved
+memory object) and \texttt{OP\_RECV} (deferred receive); it knows nothing about
+IP or TCP. Higher-level services (reliable message layer, RPC, TCP/IP
+compatibility) consume frames through the driver's endpoint.
+
+A smoltcp 0.13 adapter implements the \texttt{phy::Device} trait over the NIC
+driver endpoint: \texttt{receive()} maps to \texttt{OP\_RECV},
+\texttt{transmit()} maps to \texttt{OP\_SEND} with a memory object. The TCP/IP
+stack itself needs no modification. A TCP/IP service binary registers as
+\texttt{"tcpip"} and enters a cooperative poll loop.
+
+Protocol crates (\texttt{charlotte-protocol-net},
+\texttt{charlotte-protocol-msg}) define the wire formats for frame transport and
+reliable sequenced/acked message delivery.
+
 \section{The logical processor}
 
 A \textbf{Logical Processor} (LP) is one hardware core. The kernel shards its
-state per-LP using \texttt{PerLp<T>}: an array of \texttt{RwLock<T>}, one slot
-per LP, indexed by the LP's identity. The LP identity is stored in a
-register (\texttt{TPIDR\_EL1} on AArch64, \texttt{TSC\_AUX} on x86-64) and
-read with a single instruction --- it is always safe to call from any context,
-including interrupt handlers.
-
-LP placement is \textbf{not advisory}: an LP \emph{is} a core. When a sitas
-shard is bound to an LP it is bound to a core by construction. No
-\texttt{sched\_setaffinity} race, no cpuset surprises.
-
-\section{Per-LP state}
-
-\paragraph{PerLp<T>} A boxed slice of \texttt{RwLock<T>}, one per LP. The lock
-masks interrupts on acquire, preventing ISR self-deadlock. Used for data
-accessed from both thread context and interrupt context (timer queues, LAPIC
-registers, interrupt depth counters).
-
-\paragraph{ShardLocal<T>} (newer, sitas-inspired.) A lock-free per-LP container
-that stores its slots behind \texttt{UnsafeCell<T>} rather than
-\texttt{RwLock<T>}. Access is through a closure (\texttt{with(fn)} or
-\texttt{try\_with(fn)}) that asserts:
-\begin{itemize}
-    \item The caller is on the owning LP (panics otherwise).
-    \item The slot is not already borrowed by a re-entrant call (a per-LP
-        \texttt{AtomicBool} borrow flag, RAII-guarded).
-\end{itemize}
-The closure ensures the \texttt{\&mut T} never escapes the accessor. Use
-\texttt{PerLp<T>} when interrupt-safety or cross-LP access is needed; use
-\texttt{ShardLocal<T>} for single-LP, thread-only data (it has no spin-lock
-acquire cost).
-
-\section{The observer / waker model}
-
-CharlotteOS's event mechanism reduces to one pattern: a thread registers its
-\texttt{Waker} (an \texttt{Observer} wrapping its \texttt{ThreadId}) on an
-\texttt{Observable}. When the observable fires, it calls
-\texttt{Observer::notify()}, which submits the thread to the system scheduler
-as ready.
-
-\subsection{Observable} trait: \texttt{fn register\_observer(\&self, observer:
-Weak<dyn Observer>)}.
-
-\subsection{Observer} trait: \texttt{fn notify(self: Arc<Self>)} --- called by
-an Observable when the event occurs. The kernel's \texttt{Waker} implements
-\texttt{Observer} by calling \texttt{submit\_ready\_thread(tid)}, queueing the
-thread on the least-loaded LP.
-
-\subsection{Wiring} \texttt{sleep(50ms)} creates a \texttt{TimerEvent}
-(Observable), calls \texttt{block\_thread(tid, \&event)} to register the
-thread's \texttt{Waker} on the event and mark the thread Blocked, pushes the
-event into the per-LP timer queue, and yields. When the timer IRQ fires it
-processes the event, calls \texttt{signal()} which wakes the thread. The
-completion-capability model uses the exact same mechanism: a
-\texttt{Completion} is Observable, and \texttt{wait(cap)} blocks on it.
+state per-LP using \texttt{PerLp<T>} (lock-wrapped) or
+\texttt{ShardLocal<T>} (lock-free, closure-based). LP placement is not advisory:
+an LP \emph{is} a core.
 
 \section{The scheduler}
 
-The system scheduler (\texttt{SYSTEM\_SCHEDULER}) is a per-LP collection of
-pluggable \texttt{LpScheduler} instances. The only current implementation is
-\texttt{RoundRobin}: threads are queued in a FIFO, and a per-LP quantum timer
-(10 ms) marks a context-switch-pending flag.
+The system scheduler (\texttt{SYSTEM\_SCHEDULER}) uses pluggable
+\texttt{LpScheduler} instances. The \texttt{RoundRobin} implementation queues
+threads in a FIFO with a per-LP quantum timer. Key operations:
+\texttt{spawn\_thread}, \texttt{block\_thread}, \texttt{submit\_ready\_thread},
+\texttt{yield\_lp}, \texttt{abort}.
 
-Key operations:
-\begin{itemize}
-    \item \texttt{spawn\_thread(asid, entry)} --- kernel-internal constructor
-        that creates a Thread, adds it to the master table, and submits it to
-        the scheduler. Returns a \texttt{ThreadId}. Userspace thread-spawn
-        syscalls do not supply \texttt{asid}; the dispatcher derives it from
-        the calling trap frame.
-    \item \texttt{block\_thread(tid, \&event)} --- registers the thread's
-        \texttt{Waker} on the observable, marks the thread Blocked, removes it
-        from the run queue. The thread saves its context on the subsequent
-        \texttt{yield\_lp()} and resumes from the same point when woken.
-    \item \texttt{submit\_ready\_thread(tid)} --- re-admits a thread to the
-        least-loaded LP's run queue. Used by \texttt{Waker::notify()} and other
-        wake paths.
-    \item \texttt{yield\_lp()} --- sets the pending flag and calls
-        \texttt{cond\_yield\_lp()}, which performs the register/stack switch if
-        another thread is ready.
-\end{itemize}
-
-\texttt{abort()} removes a returning thread from the scheduler and moves it to
-\texttt{DEAD\_THREADS} (a deferred reaper list). The reaper drops the thread
-from a different thread's context (after the context switch), so the thread's
-own kernel stack (which is freed on drop) is no longer in use.
-
-\section{Inter-processor interrupts (IPIs)}
-
-The \texttt{IPI\_CMD\_QUEUES} are per-LP bounded \texttt{ConcurrentQueue}
-queues (256 entries by default). Sending a cross-LP work item pushes an RPC to
-the target LP's queue and delivers an IPI. The target's IRQ dispatcher drains
-the queue in order.
-
-\texttt{IpiRpc} carries kernel-internal RPCs (TLB shootdown, scheduler wakeup)
-and a \\ \texttt{Closure(Box<dyn FnOnce() + Send>)} variant for arbitrary
-cross-LP work dispatch --- the seed of sitas's typed \texttt{ShardMailbox<M>}.
-
-Two push paths:
-\begin{itemize}
-    \item \texttt{try\_push\_to} / \texttt{try\_send\_ipi\_rpc} --- returns
-        \texttt{Err(rpc)} on full queue (first-class backpressure).
-    \item \texttt{push\_to} / \texttt{send\_ipi\_rpc} --- non-fallible
-        force-push for must-not-drop kernel RPCs. Evicts the oldest entry if
-        full.
-\end{itemize}
-
-\section{Capability tables}
-
-A per-address-space \texttt{IdTable<Arc<Completion>>} maps a small integer
-\texttt{CompletionCap} (an index into the table) to a kernel object naming an
-in-flight or completed operation. The table is bounded (submission
-backpressure: \texttt{submit} returns \texttt{WouldBlock} when full).
-\texttt{Completion} is \texttt{Observable}: a waiting thread's \texttt{Waker}
-is registered on it via \texttt{completion::wait(asid, cap)} inside the
-kernel. For real userspace syscalls, that \texttt{asid} is derived from the
-running thread's trap frame rather than supplied by userspace.
+Wakes are idempotent: re-admitting an already-Ready/Running thread is a benign
+no-op (the unified shard wait aggregates multiple wake sources onto one thread).
 
 \endinput
