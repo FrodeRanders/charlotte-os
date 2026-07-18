@@ -248,6 +248,16 @@ impl Step for VAddr {
             None
         }
     }
+
+    fn forward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (raw, overflow) = start.raw.overflowing_add(count);
+        (VAddr { raw }, overflow)
+    }
+
+    fn backward_overflowing(start: Self, count: usize) -> (Self, bool) {
+        let (raw, overflow) = start.raw.overflowing_sub(count);
+        (VAddr { raw }, overflow)
+    }
 }
 
 impl Default for VAddr {

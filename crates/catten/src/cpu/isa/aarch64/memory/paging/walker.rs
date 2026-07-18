@@ -309,15 +309,13 @@ impl<'vas> Walker<'vas> {
                 core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
             }
             if !no_execute && mair_index != MAIR_IDX_DEVICE {
-                unsafe {
-                    core::arch::asm!(
+                core::arch::asm!(
                         "dsb ishst",
                         "ic ialluis",
                         "dsb ish",
                         "isb",
                         options(nomem, nostack, preserves_flags),
                     );
-                }
             }
         }
         tlb::inval_page(self.vaddr);
