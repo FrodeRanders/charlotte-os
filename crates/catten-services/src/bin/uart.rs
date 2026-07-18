@@ -1,4 +1,3 @@
-#![allow(unused_unsafe)]
 //! The reference userspace UART driver (architecture doc §10, Phase 8).
 //!
 //! This is the first complete userspace driver: it runs in an isolated EL0
@@ -109,25 +108,23 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     config::write::<u32>(STAGE_OFFSET, 2); // grants received
 
     // Map the delegated device register window as EL0 device memory.
-    if unsafe { device_mmio_map(mmio_cap, UART_MMIO_VADDR, true) } != 0 {
+    if device_mmio_map(mmio_cap, UART_MMIO_VADDR, true) != 0 {
         unsafe { thread_exit() };
     }
     config::write::<u32>(STAGE_OFFSET, 3); // MMIO mapped
 
     // Register the console endpoint by name.
-    let endpoint = unsafe { ipc_endpoint_create(console::INTERFACE, console::VERSION, 8) };
+    let endpoint = ipc_endpoint_create(console::INTERFACE, console::VERSION, 8);
     if endpoint == 0 {
         unsafe { thread_exit() };
     }
-    let register = unsafe {
-        ipc_scalar_call_connection(
+    let register = ipc_scalar_call_connection(
             ns_connection,
             ns::OP_REGISTER,
             console::NAME,
             endpoint,
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-    };
+        );
     if register == 0 {
         unsafe { thread_exit() };
     }
@@ -139,10 +136,10 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
 
     // Unified shard wait: route both endpoint readiness and the device
     // interrupt to the default completion queue.
-    if unsafe { ipc_endpoint_bind_cq(endpoint, 0) } != 0 {
+    if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
         unsafe { thread_exit() };
     }
-    if unsafe { device_irq_bind_cq(irq_cap, 0) } != 0 {
+    if device_irq_bind_cq(irq_cap, 0) != 0 {
         unsafe { thread_exit() };
     }
     // Unmask the PL011 receive interrupt so real received data raises the
@@ -163,13 +160,12 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
 
     loop {
         // Block on the single wait point.
-        unsafe {
-            cq_wait(1, 0);
-        }
+        cq_wait(1, 0);
+        
 
         // Drain device interrupts: acknowledge and re-arm the source,
         // counting coalesced deliveries.
-        let (status, consumed) = unsafe { device_irq_ack(irq_cap) };
+        let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
             config::write::<u32>(IRQ_COUNT_OFFSET, irq_count);
@@ -195,7 +191,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
 
         // Drain every ready console request.
         loop {
-            let message = unsafe { ipc_recv(endpoint) };
+            let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -214,16 +210,14 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                     served = served.saturating_add(1);
                     config::write::<u32>(SERVED_OFFSET, served);
                     if message.reply != 0 {
-                        unsafe {
-                            ipc_reply(message.reply, 0);
-                        }
+                        ipc_reply(message.reply, 0);
+                        
                     }
                 }
                 console::OP_STATUS => {
                     if message.reply != 0 {
-                        unsafe {
-                            ipc_reply(message.reply, irq_count as i64);
-                        }
+                        ipc_reply(message.reply, irq_count as i64);
+                        
                     }
                 }
                 console::OP_READ_DEFERRED => {
@@ -234,9 +228,8 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                     if message.reply == 0 {
                         // No reply authority: nothing to defer.
                     } else if pending_read != 0 {
-                        unsafe {
-                            ipc_reply(message.reply, -1);
-                        }
+                        ipc_reply(message.reply, -1);
+                        
                     } else {
                         pending_read = message.reply;
                         config::write::<u32>(READ_ARMED_OFFSET, 1);
@@ -244,9 +237,8 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 }
                 console::OP_SHUTDOWN => {
                     if message.reply != 0 {
-                        unsafe {
-                            ipc_reply(message.reply, 0);
-                        }
+                        ipc_reply(message.reply, 0);
+                        
                     }
                     unsafe {
                         device_mmio_unmap(mmio_cap);
@@ -263,9 +255,8 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 }
                 _ => {
                     if message.reply != 0 {
-                        unsafe {
-                            ipc_reply(message.reply, -1);
-                        }
+                        ipc_reply(message.reply, -1);
+                        
                     }
                 }
             }

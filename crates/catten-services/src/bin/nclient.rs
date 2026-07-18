@@ -1,4 +1,3 @@
-#![allow(unused_unsafe)]
 //! Net client — sends a test Ethernet frame through the virtio-net driver.
 #![no_std]
 #![no_main]
@@ -38,7 +37,7 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
 
     let mut attempts: u64 = 0;
     let net_conn = loop {
-        let l = unsafe { ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME) };
+        let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
         if l != 0 {
             let (r, cap) = unsafe { wait_reply(l, REPLY_SPINS) };
             if r >= 1 && cap != 0 { break cap; }
@@ -50,10 +49,10 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     config::write::<u32>(STAGE_OFFSET, 3);
 
     // Allocate a page for the frame, write the test payload.
-    let frame_cap = unsafe { memory_alloc(1) };
+    let frame_cap = memory_alloc(1);
     if frame_cap == 0 { unsafe { thread_exit() }; }
     let frame_vaddr: usize = 0x0000_0000_0060_0000;
-    if unsafe { memory_map(frame_cap, frame_vaddr, true) } != 0 {
+    if memory_map(frame_cap, frame_vaddr, true) != 0 {
         unsafe { thread_exit() };
     }
     unsafe {

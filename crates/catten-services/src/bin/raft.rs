@@ -1,4 +1,3 @@
-#![allow(unused_unsafe)]
 #![no_std]
 #![no_main]
 
@@ -34,9 +33,9 @@ const POLL_SPINS: u64 = 50_000;
 unsafe fn wait_reply_3(call: u64, max_spins: u64) -> Option<(i64, u64, u64)> {
     let mut spins: u64 = 0;
     loop {
-        let (status, result, conn, mem) = unsafe { ipc_reply_poll_with_memory(call) };
+        let (status, result, conn, mem) = ipc_reply_poll_with_memory(call);
         if status == 0 {
-            unsafe { ipc_close(call); }
+            ipc_close(call); 
             return Some((result as i64, conn, mem));
         }
         if status != ipc_status::PENDING {
@@ -56,12 +55,12 @@ unsafe fn wait_reply_2(call: u64, max_spins: u64) -> Option<(i64, u64)> { unsafe
 }}
 
 unsafe fn write_struct_to_mem<T>(val: &T) -> Option<u64> {
-    let cap = unsafe { memory_alloc(1) };
+    let cap = memory_alloc(1);
     if cap == 0 {
         return None;
     }
-    if unsafe { memory_map(cap, SCRATCH_VADDR, true) } != 0 {
-        unsafe { memory_close(cap); }
+    if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+        memory_close(cap); 
         return None;
     }
     let size = core::mem::size_of::<T>();
@@ -80,7 +79,7 @@ unsafe fn read_struct_from_mem<T>(cap: u64) -> Option<T> {
     if cap == 0 {
         return None;
     }
-    if unsafe { memory_map(cap, SCRATCH_VADDR, false) } != 0 {
+    if memory_map(cap, SCRATCH_VADDR, false) != 0 {
         return None;
     }
     let val: T = unsafe { core::ptr::read_volatile(SCRATCH_VADDR as *const T) };
@@ -107,7 +106,7 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
     };
     config::write::<u32>(0, 2);
 
-    let endpoint = unsafe { ipc_endpoint_create(raft::INTERFACE, raft::VERSION, 8) };
+    let endpoint = ipc_endpoint_create(raft::INTERFACE, raft::VERSION, 8);
     if endpoint == 0 {
         unsafe { thread_exit() };
     }
@@ -115,15 +114,13 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
 
     let name_u64 = catten_services::name(alloc::format!("raft-{}", node_id).as_bytes());
 
-    let register = unsafe {
-        ipc_scalar_call_connection(
+    let register = ipc_scalar_call_connection(
             ns_conn,
             ns::OP_REGISTER,
             name_u64,
             endpoint,
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-    };
+        );
     if register == 0 {
         unsafe { thread_exit() };
     }
@@ -153,15 +150,13 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
         }
 
         let peer_name = catten_services::name(alloc::format!("raft-{}", peer_id).as_bytes());
-        let lookup = unsafe {
-            ipc_scalar_call_connection(
+        let lookup = ipc_scalar_call_connection(
                 ns_conn,
                 ns::OP_LOOKUP,
                 peer_name,
                 0,
                 IpcRights::SEND | IpcRights::CALL,
-            )
-        };
+            );
 
         if lookup == 0 {
             continue;
@@ -180,7 +175,7 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
 
     config::write::<u32>(0, 5);
 
-    if unsafe { ipc_endpoint_bind_cq(endpoint, 0) } != 0 {
+    if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
         unsafe { thread_exit() };
     }
     config::write::<u32>(0, 6);
@@ -199,15 +194,15 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
     let mut served: u32 = 0;
 
     let election_timeout_ms: u64 = 150 + 100;
-    let mut election_timer: u64 = unsafe { submit_timer(election_timeout_ms) };
+    let mut election_timer: u64 = submit_timer(election_timeout_ms);
 
     loop {
-        unsafe { cq_wait(1, 0); }
+        cq_wait(1, 0); 
 
         let timer_fired = if election_timer != 0 {
-            let (status, _result) = unsafe { wait_timeout(election_timer, 0) };
+            let (status, _result) = wait_timeout(election_timer, 0);
             if status == 0 {
-                unsafe { ipc_close(election_timer); }
+                ipc_close(election_timer); 
                 true
             } else {
                 false
@@ -226,7 +221,7 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
                     NodeState::Follower => 1,
                 });
             }
-            election_timer = unsafe { submit_timer(election_timeout_ms) };
+            election_timer = submit_timer(election_timeout_ms);
         }
 
         if node.state == NodeState::Leader {
@@ -235,7 +230,7 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
         }
 
         loop {
-            let message = unsafe { ipc_recv(endpoint) };
+            let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -282,9 +277,9 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
 
                     if message.reply != 0 {
                         if let Some(mem) = unsafe { write_struct_to_mem(&resp_wire) } {
-                            unsafe { ipc_reply_move(message.reply, mem, resp.term as i64); }
+                            ipc_reply_move(message.reply, mem, resp.term as i64); 
                         } else {
-                            unsafe { ipc_reply(message.reply, if resp.vote_granted { 1 } else { 0 }); }
+                            ipc_reply(message.reply, if resp.vote_granted { 1 } else { 0 }); 
                         }
                     }
                 }
@@ -328,10 +323,10 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
                     if message.reply != 0 {
                         if let Some(mem) = unsafe { write_struct_to_mem(&resp_wire) } {
                             let packed = (resp.term << 1) as i64 | if resp.success { 1 } else { 0 };
-                            unsafe { ipc_reply_move(message.reply, mem, packed); }
+                            ipc_reply_move(message.reply, mem, packed); 
                         } else {
                             let result = if resp.success { resp.term as i64 } else { -(resp.term as i64) };
-                            unsafe { ipc_reply(message.reply, result); }
+                            ipc_reply(message.reply, result); 
                         }
                     }
                 }
@@ -371,9 +366,9 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
                     if message.reply != 0 {
                         let resp_wire = InstallSnapshotResponseWire { term: resp.term };
                         if let Some(mem) = unsafe { write_struct_to_mem(&resp_wire) } {
-                            unsafe { ipc_reply_move(message.reply, mem, resp.term as i64); }
+                            ipc_reply_move(message.reply, mem, resp.term as i64); 
                         } else {
-                            unsafe { ipc_reply(message.reply, resp.term as i64); }
+                            ipc_reply(message.reply, resp.term as i64); 
                         }
                     }
                 }
@@ -388,13 +383,13 @@ fn cmain(args: Args, _input: Input<256>) -> ! {
                         | ((node.current_term as i64) << 8)
                         | ((node.commit_index as i64) << 32);
                     if message.reply != 0 {
-                        unsafe { ipc_reply(message.reply, result); }
+                        ipc_reply(message.reply, result); 
                     }
                 }
 
                 _ => {
                     if message.reply != 0 {
-                        unsafe { ipc_reply(message.reply, -1); }
+                        ipc_reply(message.reply, -1); 
                     }
                 }
             }

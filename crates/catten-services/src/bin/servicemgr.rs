@@ -1,4 +1,3 @@
-#![allow(unused_unsafe)]
 //! The CharlotteOS service manager — orchestrates live service upgrades.
 //!
 //! Bootstraps, registers as "svcmgr", and serves OP_UPGRADE requests.
@@ -60,9 +59,9 @@ const MGR_NAME: u64 = name(b"svcmgr");
 unsafe fn spin_call(call: u64, what: &str) -> (u64, u64) {
     let mut spins: u64 = 0;
     loop {
-        let (status, result, cap) = unsafe { ipc_reply_poll(call) };
+        let (status, result, cap) = ipc_reply_poll(call);
         if status == 0 {
-            unsafe { ipc_close(call) };
+            ipc_close(call);
             return (result, cap);
         }
         spins += 1;
@@ -76,7 +75,7 @@ unsafe fn spin_call(call: u64, what: &str) -> (u64, u64) {
 unsafe fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
     let mut attempts = 0u64;
     loop {
-        let l = unsafe { ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target) };
+        let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
         if l != 0 {
             let (generation, cap) = unsafe { spin_call(l, "lookup") };
             if generation >= 1 && cap != 0 { return Some(cap); }
@@ -95,25 +94,23 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
-    let ep = unsafe { ipc_endpoint_create(0x5356434d, 1, 8) }; // "SVCM"
+    let ep = ipc_endpoint_create(0x5356434d, 1, 8); // "SVCM"
     if ep == 0 { unsafe { thread_exit() }; }
-    let reg = unsafe {
-        ipc_scalar_call_connection(
+    let reg = ipc_scalar_call_connection(
             ns_connection, ns::OP_REGISTER, MGR_NAME, ep,
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-    };
+        );
     if reg == 0 { unsafe { thread_exit() }; }
     let r = unsafe { spin_call(reg, "register") };
     if r.0 == 0 { unsafe { thread_exit() }; }
 
-    if unsafe { ipc_endpoint_bind_cq(ep, 0) } != 0 { unsafe { thread_exit() }; }
+    if ipc_endpoint_bind_cq(ep, 0) != 0 { unsafe { thread_exit() }; }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     loop {
-        unsafe { cq_wait(1, 0) };
+        cq_wait(1, 0);
         loop {
-            let m = unsafe { ipc_recv(ep) };
+            let m = ipc_recv(ep);
             if m.status == ipc_status::NO_MESSAGE { break; }
             if m.status == ipc_status::ENDPOINT_CLOSED { unsafe { thread_exit() }; }
             if !m.is_ok() { break; }
@@ -121,9 +118,9 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
             if m.opcode == 1 && m.reply != 0 {
                 let result = do_upgrade(ns_connection, m.arg0);
                 config::write::<u32>(LAST_GEN_OFFSET, result as u32);
-                unsafe { ipc_reply(m.reply, result) };
+                ipc_reply(m.reply, result);
             } else if m.reply != 0 {
-                unsafe { ipc_reply(m.reply, -1) };
+                ipc_reply(m.reply, -1);
             }
         }
     }
@@ -139,7 +136,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     // OP_HANDOFF: the target serialises state, returns (state_cap, ep_cap),
     // and exits.  We use ipc_reply_poll_with_memory to capture the moved
     // memory cap.
-    let call = unsafe { ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0) };
+    let call = ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0);
     if call == 0 { config::write::<u32>(ERROR_OFFSET, 2); return -2; }
 
     let mut state_cap: u64 = 0;
@@ -148,7 +145,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
         let mut spins: u64 = 0;
         loop {
             let (status, result, _conn, mem) =
-                unsafe { ipc_reply_poll_with_memory(call) };
+                ipc_reply_poll_with_memory(call);
             if status == 0 {
                 state_cap = mem;
                 handoff_result = result;
@@ -162,7 +159,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
             core::hint::spin_loop();
         }
     }
-    unsafe { catten_syscall::ipc_close(call) };
+    catten_syscall::ipc_close(call);
 
     if state_cap == 0 {
         config::write::<u32>(ERROR_OFFSET, 4);

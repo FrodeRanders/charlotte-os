@@ -1,4 +1,3 @@
-#![allow(unused_unsafe)]
 //! The reference client: bootstrap → name lookup → service call.
 //!
 //! Never learns kernel identifiers: it starts with one connection to the
@@ -76,12 +75,11 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
         }
         core::hint::spin_loop();
     };
-    unsafe {
-        memory_close(name_cap);
-    }
+    memory_close(name_cap);
+    
     config::write::<u32>(12, 4); // stage: connection obtained
 
-    let call = unsafe { ipc_scalar_call(echo_connection, echo::OP_ECHO, ECHO_VALUE) };
+    let call = ipc_scalar_call(echo_connection, echo::OP_ECHO, ECHO_VALUE);
     if call == 0 {
         unsafe { thread_exit() };
     }

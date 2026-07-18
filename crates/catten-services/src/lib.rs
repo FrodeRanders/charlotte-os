@@ -4,7 +4,6 @@
 //! kernel moves opaque capabilities, while interface ids, opcodes, names,
 //! generations, and lookup policy are defined here.
 #![no_std]
-#![allow(unused_unsafe)] // syscall wrappers now safe; transitional
 
 /// Pack up to 8 ASCII bytes into a u64 service name (little-endian).
 ///
@@ -84,17 +83,13 @@ pub mod ns {
         if memory_cap == 0 {
             return 0;
         }
-        if unsafe { catten_syscall::memory_map(memory_cap, super::NAME_SCRATCH_VADDR, false) } != 0 {
-            unsafe { catten_syscall::memory_close(memory_cap) };
+        if catten_syscall::memory_map(memory_cap, super::NAME_SCRATCH_VADDR, false) != 0 {
+            catten_syscall::memory_close(memory_cap);
             return 0;
         }
-        let key = unsafe {
-            core::ptr::read_volatile(super::NAME_SCRATCH_VADDR as *const u64)
-        };
-        unsafe {
-            catten_syscall::memory_unmap(memory_cap);
-            catten_syscall::memory_close(memory_cap);
-        }
+        let key = unsafe { core::ptr::read_volatile(super::NAME_SCRATCH_VADDR as *const u64) };
+        catten_syscall::memory_unmap(memory_cap);
+        catten_syscall::memory_close(memory_cap);
         key
     }
 }
@@ -298,14 +293,12 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
     if name.is_empty() || name.len() > MAX_NAME_LEN {
         return None;
     }
-    let cap = unsafe { catten_syscall::memory_alloc(1) };
+    let cap = catten_syscall::memory_alloc(1);
     if cap == 0 {
         return None;
     }
-    if unsafe { catten_syscall::memory_map(cap, NAME_SCRATCH_VADDR, true) } != 0 {
-        unsafe {
-            catten_syscall::memory_close(cap);
-        }
+    if catten_syscall::memory_map(cap, NAME_SCRATCH_VADDR, true) != 0 {
+        catten_syscall::memory_close(cap);
         return None;
     }
     unsafe {
@@ -343,26 +336,23 @@ pub mod raft {
 /// Spin-poll a pending call until it completes, returning
 /// `(result, returned_connection_cap)`.
 ///
-/// Panics (via `debug_assert`-free explicit check) after `max_spins`
+/// Exits the protection domain via [`thread_exit`] after `max_spins`
 /// iterations so a lost reply fails loudly under test rather than hanging.
 ///
 /// # Safety
-/// `call` must be a pending-call capability owned by the caller.
+/// Calls [`thread_exit`] on timeout — the caller must not hold resources
+/// that require explicit cleanup before domain teardown.
 pub unsafe fn wait_reply(call: u64, max_spins: u64) -> (i64, u64) {
     let mut spins: u64 = 0;
     loop {
-        let (status, result, cap) = unsafe { catten_syscall::ipc_reply_poll(call) };
+        let (status, result, cap) = catten_syscall::ipc_reply_poll(call);
         if status == 0 {
-            unsafe {
-                catten_syscall::ipc_close(call);
-            }
+            catten_syscall::ipc_close(call);
             return (result as i64, cap);
         }
         spins += 1;
         if spins >= max_spins {
-            unsafe {
-                catten_syscall::thread_exit();
-            }
+            unsafe { catten_syscall::thread_exit(); }
         }
         core::hint::spin_loop();
     }
