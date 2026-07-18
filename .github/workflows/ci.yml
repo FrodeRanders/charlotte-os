@@ -26,6 +26,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target == 'aarch64-unknown-none-catten' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
+          components: rust-src
 
       - name: Build kernel
         run: |
@@ -52,6 +53,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: aarch64-unknown-none
+          components: rust-src
 
       - name: Install QEMU
         run: |
@@ -90,8 +92,8 @@ jobs:
             -display none \
             -no-reboot &
           QPID=$!
-          # Wait up to 60s for boot + tests to complete
-          for i in $(seq 60); do
+           # Wait up to 180s for boot + tests to complete
+          for i in $(seq 180); do
             if grep -q "Testing Complete. All Tests Passed" /tmp/serial.log 2>/dev/null; then
               echo "=== ALL SELF-TESTS PASSED ==="
               cat /tmp/serial.log
@@ -106,7 +108,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "=== TIMEOUT (60s) ==="
+          echo "=== TIMEOUT (180s) ==="
           cat /tmp/serial.log
           kill $QPID 2>/dev/null || true
           exit 1

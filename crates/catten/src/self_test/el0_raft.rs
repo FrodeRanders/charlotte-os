@@ -68,7 +68,7 @@ fn wait_reply(call: CapabilityId, _label: &str) -> ipc::ReplyValue {
             Ok(Some(val)) => return val,
             _ => {
                 spins += 1;
-                if spins >= 1000 {
+                if spins >= 200 {
                     return ipc::ReplyValue { result: -1, cap: None, memory: None };
                 }
                 yield_lp();
