@@ -21,11 +21,11 @@ const fn packed_name(bytes: &[u8]) -> u64 {
     }
     u64::from_le_bytes(packed)
 }
-
 #[cfg(target_arch = "aarch64")]
 const NS_INTERFACE: u64 = packed_name(b"NAME");
+
 #[cfg(target_arch = "aarch64")]
-const RAFT_INTERFACE: u64 = packed_name(b"RAFT");
+const _RAFT_INTERFACE: u64 = packed_name(b"RAFT");
 
 const ARGC_OFFSET: usize = 24;
 const ARGS_OFFSET: usize = 32;
@@ -33,7 +33,6 @@ const ARGS_OFFSET: usize = 32;
 const OP_LOOKUP: u32 = 2;
 const OP_STATUS: u32 = 8;
 const NAME_R1: u64 = packed_name(b"raft-r1");
-const NAME_R2: u64 = packed_name(b"raft-r2");
 
 const VERIFIER_ASID: usize = 0x9000;
 

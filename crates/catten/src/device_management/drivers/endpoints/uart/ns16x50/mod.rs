@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub struct Ns16x50Driver {
+    #[allow(dead_code)]
     ports: Vec<Ns16x50>,
 }
 
@@ -35,6 +36,7 @@ pub enum IfceType {
 }
 
 impl IfceType {
+    #[allow(dead_code)]
     fn queue_size(&self) -> usize {
         match self {
             IfceType::Ns16550 => 0, // Original 16550 had a broken FIFO
@@ -49,6 +51,7 @@ impl IfceType {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Ns16x50 {
+    #[allow(dead_code)]
     ifce: IfceType,
     base: IoReg8,
 }
@@ -71,6 +74,7 @@ impl Ns16x50 {
         unsafe { (self.base).read() as char }
     }
 
+    #[allow(dead_code)]
     fn try_new(ifce: IfceType, base: IoReg8) -> Result<Self, Error> {
         let port = Ns16x50 {
             ifce: ifce, // Use the provided interface type

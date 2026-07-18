@@ -131,6 +131,7 @@ impl PcieTopology {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn get_cfg_space_vaddr(
         &self,
         segment_group: PcieSegmentGroupNum,
@@ -401,6 +402,7 @@ impl PcieFunction {
 
 #[derive(Debug)]
 pub struct PcieEndpoint {
+    #[allow(dead_code)]
     number: PcieFunctionNum,
     identifier: PciIdentifier,
     /* Raw pointer to this function's configuration space in the kernel's address space;

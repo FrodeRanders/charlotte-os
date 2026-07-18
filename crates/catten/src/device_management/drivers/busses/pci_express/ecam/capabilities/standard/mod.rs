@@ -2,6 +2,7 @@ use super::*;
 /// PCI local bus capability IDs which are also used with PCI Express.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(dead_code)]
 pub enum PciCapabilityId {
     Null = 0x00,
     PowerManagement = 0x01,
@@ -62,6 +63,7 @@ impl PciCapabilityIter {
         })
     }
 
+    #[allow(dead_code)]
     fn current(&self) -> *const PciCapabilityHeader {
         unsafe {
             // Safety: We got the address from the previous capability or the starting
