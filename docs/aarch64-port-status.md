@@ -33,7 +33,8 @@
 brew install qemu mtools          # one-time
 rustup component add rust-src     # one-time (build-std)
 rustup component add llvm-tools   # one-time (only needed for --display)
-./scripts/run-aarch64.sh          # headless: builds kernel, image, boots QEMU
+./scripts/run-aarch64.sh          # headless: builds kernel, image, boots QEMU (TCG)
+./scripts/run-aarch64.sh --hvf    # Apple Silicon: HVF acceleration
 ./scripts/run-aarch64.sh --display  # framebuffer window + serial
 # serial console is on stdio; press Ctrl-A X to quit
 ```

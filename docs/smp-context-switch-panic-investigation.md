@@ -64,7 +64,7 @@ Boot scripts (in `scripts/`) — **note: these `mcopy` the freshly built kernel 
 
 - `scripts/boot-smp1.sh` — 1 LP, 60 s, serial to `/tmp/charlotte-serial.log`.
 - `scripts/boot-smp2.sh` — 2 LPs, 90 s, serial to `/tmp/charlotte-smp2.log`.
-- `scripts/boot-aarch64.sh` — 4 LPs, serial to stdout.
+- `scripts/run-aarch64.sh --smp 4` — 4 LPs, serial to stdout (also `--hvf` on macOS).
 - `scripts/run-aarch64.sh [--gdb]` — builds an ESP image and boots; `--gdb` adds `-s -S`.
 
 Fast manual loop actually used for statistics (rebuild the image first!):
@@ -451,7 +451,7 @@ Primary next step: **soak the `x30` fix**.
 
 1. Run `scripts/boot-smp2.sh` in a loop (at least 20 iterations). Before the fix, this was
    roughly a 40% reproducer, so 20 clean runs would be meaningful.
-2. Run `scripts/boot-aarch64.sh` / a 4-LP equivalent repeatedly, because the original report
+2. Run `scripts/run-aarch64.sh --smp 4` / a 4-LP equivalent repeatedly, because the original report
    included `-smp 4`.
 3. If either SMP2 or SMP4 reproduces again, restore only fatal-path diagnostics, not hot-path
    scheduler logging. The useful fields were `SPSR_EL1`, `handler_sp`, `SP_EL0`, `TTBR0/1`,

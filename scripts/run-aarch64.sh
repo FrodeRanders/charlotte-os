@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
 # Build a bootable UEFI disk image for CharlotteOS / Catten and run it under
-# QEMU. This script is written to work on macOS (including Apple Silicon), where
-# the Linux-oriented `just create-image` recipe (losetup/parted/mount) cannot
-# run. It uses mtools to populate a FAT filesystem image without needing to
-# mount anything or use sudo.
+# QEMU. Works on macOS (including Apple Silicon) and Linux.
 #
-# Requirements (install via Homebrew): qemu, mtools.
-# The `display` mode additionally needs the LLVM archiver, which ships with the
-# rustup `llvm-tools` component:  rustup component add llvm-tools
+# Requirements: qemu, mtools.  On macOS install via Homebrew:
+#   brew install qemu mtools
+# For HVF acceleration on Apple Silicon, use --hvf.
+# For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--display] [--gdb]
+#   scripts/run-aarch64.sh [debug|release] [--display] [--gdb] [--hvf] [--smp N] [--timeout S]
 #
-#   --display   Build with the framebuffer console (flanterm) and boot with a
-#               ramfb display in a QEMU window, instead of the default headless
-#               serial console.
-#   --gdb       Start QEMU paused with a gdb stub on tcp::1234.
+#   debug|release  Build profile (default: debug)
+#   --display      Build with framebuffer console (flanterm), boot with ramfb
+#   --gdb          Start QEMU paused with gdb stub on tcp::1234
+#   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
+#   --smp N        Number of CPUs (default: 4)
+#   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
 #
 set -euo pipefail
 
@@ -24,13 +24,28 @@ ARCH="aarch64"
 PROFILE="debug"
 GDB=""
 DISPLAY_MODE="0"
+USE_HVF="0"
+SMP="4"
+TIMEOUT=""
 
 for arg in "$@"; do
     case "$arg" in
         debug|release) PROFILE="$arg" ;;
         --display)     DISPLAY_MODE="1" ;;
         --gdb)         GDB="-s -S" ;;
+        --hvf)         USE_HVF="1" ;;
+        --smp)         ;;  # next arg handled below
+        --timeout)     ;;  # next arg handled below
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+    esac
+done
+
+# Parse --smp and --timeout which take a following argument.
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+    case "${args[i]}" in
+        --smp)     SMP="${args[i+1]}" ;;
+        --timeout) TIMEOUT="${args[i+1]}" ;;
     esac
 done
 
@@ -43,20 +58,22 @@ IMAGE_DIR="./os-images"
 IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}.img"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTAA64.EFI"
-FIRMWARE="/opt/homebrew/share/qemu/edk2-aarch64-code.fd"
+
+# On macOS, firmware is under /opt/homebrew; on Linux it's under /usr/share.
+if [ -f "/opt/homebrew/share/qemu/edk2-aarch64-code.fd" ]; then
+    FIRMWARE="/opt/homebrew/share/qemu/edk2-aarch64-code.fd"
+else
+    FIRMWARE="/usr/share/AAVMF/AAVMF_CODE.fd"
+fi
 
 RELEASE_FLAG=""
 if [ "$PROFILE" = "release" ]; then
     RELEASE_FLAG="--release"
 fi
 
-# The C `flanterm` dependency (pulled in by the `display` feature) is compiled
-# by the `cc` crate. On macOS the default archiver is Apple's `ar`/`ranlib`,
-# which cannot build a valid archive from the ELF cross-compiled objects (it
-# silently produces an empty Mach-O archive, so the flanterm symbols go
-# missing at link time). We point the `cc` crate at the LLVM archiver from the
-# active Rust toolchain, which is ELF-aware. This is only needed for the
-# display build; the headless build has no C dependency.
+# Feature selection.
+FEATURES="acpi"
+BUILD_EXTRA=""
 if [ "$DISPLAY_MODE" = "1" ]; then
     SYSROOT="$(rustc --print sysroot)"
     HOST_TRIPLE="$(rustc -vV | awk '/^host:/ {print $2}')"
@@ -70,8 +87,11 @@ if [ "$DISPLAY_MODE" = "1" ]; then
     FEATURES="acpi,display,virtio_gpu"
     echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, display)..."
 else
-    FEATURES="acpi"
     echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, headless)..."
+fi
+
+if [ "$USE_HVF" = "1" ]; then
+    FEATURES="${FEATURES},hvf_compat"
 fi
 
 cargo build --package catten --target "$TARGET_SPEC" \
@@ -81,8 +101,6 @@ cargo build --package catten --target "$TARGET_SPEC" \
 echo ">>> Creating boot image ${IMAGE}..."
 mkdir -p "$IMAGE_DIR"
 dd if=/dev/zero of="$IMAGE" bs=1m count=128 status=none
-# Format the whole image as FAT (no partition table needed; QEMU + edk2 will
-# happily boot a FAT filesystem placed directly in the image).
 mformat -i "$IMAGE" -F ::
 mmd -i "$IMAGE" ::/EFI
 mmd -i "$IMAGE" ::/EFI/BOOT
@@ -90,36 +108,44 @@ mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FIL
 mcopy -i "$IMAGE" "$KERNEL" "::/catten"
 mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 
-# --- Run under QEMU. ---
-if [ "$DISPLAY_MODE" = "1" ]; then
-    # ramfb gives Limine a GOP framebuffer that the flanterm console draws to.
-    # A real display backend (the default cocoa window on macOS) must be present
-    # for the firmware to establish a GOP mode; with `-display none` the
-    # framebuffer comes back with zero dimensions. Note that GOP provisioning on
-    # QEMU aarch64 `virt` + edk2 can be flaky between boots; if no usable
-    # framebuffer is provided the kernel automatically falls back to the serial
-    # console, which stays attached here so logs are visible either way.
-    echo ">>> Booting under QEMU (framebuffer window + serial; Ctrl-A X to quit)..."
-    exec qemu-system-aarch64 \
-        -M virt,gic-version=3 \
-        -cpu cortex-a710 \
-        -smp 4 \
-        -m 512M \
-        -bios "$FIRMWARE" \
-        -drive file="$IMAGE",format=raw,if=virtio \
-        -device ramfb \
-        -serial stdio \
-        $GDB
+# --- QEMU options ---
+QEMU_OPTS=(
+    -M virt,gic-version=3
+    -m 512M
+    -bios "$FIRMWARE"
+    -drive file="$IMAGE",format=raw,if=virtio
+)
+
+if [ "$USE_HVF" = "1" ]; then
+    QEMU_OPTS+=(-accel hvf -cpu host)
 else
-    echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."
-    exec qemu-system-aarch64 \
-        -M virt,gic-version=3 \
-        -cpu cortex-a710 \
-        -smp 4 \
-        -m 512M \
-        -bios "$FIRMWARE" \
-        -drive file="$IMAGE",format=raw,if=virtio \
-        -serial stdio \
-        -display none \
-        $GDB
+    QEMU_OPTS+=(-cpu cortex-a710)
+fi
+
+QEMU_OPTS+=(-smp "$SMP")
+
+if [ "$DISPLAY_MODE" = "1" ]; then
+    QEMU_OPTS+=(-device ramfb -serial stdio)
+else
+    QEMU_OPTS+=(-serial stdio -display none)
+fi
+
+if [ -n "$TIMEOUT" ]; then
+    LOG="/tmp/charlotte-serial.log"
+    QEMU_OPTS+=(-serial "file:${LOG}")
+    echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
+    qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
+    QPID=$!
+    sleep "$TIMEOUT"
+    kill "$QPID" 2>/dev/null || true
+    wait "$QPID" 2>/dev/null || true
+    echo ">>> Serial log (${LOG}):"
+    cat "$LOG"
+else
+    if [ "$DISPLAY_MODE" = "1" ]; then
+        echo ">>> Booting under QEMU (framebuffer window + serial; Ctrl-A X to quit)..."
+    else
+        echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."
+    fi
+    exec qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB
 fi
