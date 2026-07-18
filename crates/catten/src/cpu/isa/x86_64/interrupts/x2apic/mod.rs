@@ -38,6 +38,7 @@ pub enum Error {
 
 /// # Interrupt Command Register Delivery Mode
 #[repr(u32)]
+#[allow(dead_code)]
 enum IcrDeliveryMode {
     Fixed = 0b000,
     Smi = 0b010,

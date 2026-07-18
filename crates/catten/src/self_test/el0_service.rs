@@ -72,7 +72,9 @@ const CLIENT_SENTINEL: u32 = 0xC0DE;
 /// capability registry.
 #[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = 0x7100;
+#[cfg(target_arch = "aarch64")]
 const KCLIENT2_ASID: usize = 0x7200;
+#[cfg(target_arch = "aarch64")]
 const OP_HANDOFF: u32 = 3;
 
 #[cfg(target_arch = "aarch64")]

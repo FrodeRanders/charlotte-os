@@ -54,8 +54,11 @@ use crate::{
 #[cfg(target_arch = "aarch64")]
 static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
+#[cfg(target_arch = "aarch64")]
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
+#[cfg(target_arch = "aarch64")]
 const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
+#[cfg(target_arch = "aarch64")]
 const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 
 /// Hand-written, position-independent AArch64 EL0 stub. Replaces the previously
