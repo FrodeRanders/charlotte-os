@@ -35,7 +35,6 @@ use crate::{
             MemoryInterfaceImpl,
         },
     },
-    logln,
     memory::{
         AddressSpaceInterface,
         KERNEL_AS,
