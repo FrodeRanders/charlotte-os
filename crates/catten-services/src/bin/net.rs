@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The reference userspace virtio-net driver (Phase 9).
 //!
 //! Ethernet frame transport (§6 of the networking architecture doc): the

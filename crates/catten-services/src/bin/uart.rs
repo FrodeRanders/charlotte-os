@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The reference userspace UART driver (architecture doc §10, Phase 8).
 //!
 //! This is the first complete userspace driver: it runs in an isolated EL0

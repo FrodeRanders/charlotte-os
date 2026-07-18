@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The reference client: bootstrap → name lookup → service call.
 //!
 //! Never learns kernel identifiers: it starts with one connection to the

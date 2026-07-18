@@ -356,31 +356,36 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
 }
 
 // ---- public syscall wrappers ------------------------------------------------
+// Most wrappers are safe: the kernel validates all capability arguments and
+// returns error codes for invalid inputs. Only operations that take raw
+// pointers, target specific LPs, or diverge must stay `unsafe`.
 
 /// Emit a kernel debug log line with two arbitrary values (smoke debugging).
 #[inline(always)]
-pub unsafe fn el0_log(a: u64, b: u64) {
-    unsafe {
-        svc3(0, a, b, 0);
-    }
+pub fn el0_log(a: u64, b: u64) {
+    unsafe { svc3(0, a, b, 0); }
 }
 
 /// Submit an async operation.  Returns a completion capability.
 #[inline(always)]
-pub unsafe fn submit(op: OpCode) -> u64 {
+pub fn submit(op: OpCode) -> u64 {
     unsafe { svc3(1, op as u64, 0, 0) }
 }
 
 /// Submit a timer operation that completes after `timeout_ms` milliseconds.
 /// Returns a completion capability that auto-completes when the timer fires.
 #[inline(always)]
-pub unsafe fn submit_timer(timeout_ms: u64) -> u64 {
+pub fn submit_timer(timeout_ms: u64) -> u64 {
     unsafe { svc3(1, OpCode::Timer as u64, 0, timeout_ms) }
 }
 
 /// Submit a Read with a user buffer.  `buf_ptr`/`buf_len` point to a
 /// writable buffer in the caller's address space that the kernel fills.
 /// Returns the capability.
+///
+/// # Safety
+/// `buf_ptr` must point to a writable buffer of at least `buf_len` bytes
+/// in the caller's address space.
 #[inline(always)]
 pub unsafe fn submit_read(buf_ptr: usize, buf_len: usize) -> u64 {
     unsafe { svc3(1, OpCode::Read as u64, buf_ptr as u64, buf_len as u64) }
@@ -388,64 +393,61 @@ pub unsafe fn submit_read(buf_ptr: usize, buf_len: usize) -> u64 {
 
 /// Post a terminal result for a completion capability.
 #[inline(always)]
-pub unsafe fn complete(cap: u64, result_code: i64) {
-    unsafe {
-        svc3(2, cap, result_code as u64, 0);
-    }
+pub fn complete(cap: u64, result_code: i64) {
+    unsafe { svc3(2, cap, result_code as u64, 0); }
 }
 
 /// Non-blocking check: drain the completion if it is terminal.
 #[inline(always)]
-pub unsafe fn poll(cap: u64) {
-    unsafe {
-        svc3(3, cap, 0, 0);
-    }
+pub fn poll(cap: u64) {
+    unsafe { svc3(3, cap, 0, 0); }
 }
 
 /// Block until the given capability reaches a terminal completion.
 #[inline(always)]
-pub unsafe fn wait(cap: u64) {
-    unsafe {
-        svc3(4, cap, 0, 0);
-    }
+pub fn wait(cap: u64) {
+    unsafe { svc3(4, cap, 0, 0); }
 }
 
 /// Request cancellation of an in-flight capability.
 #[inline(always)]
-pub unsafe fn cancel(cap: u64) {
-    unsafe {
-        svc3(5, cap, 0, 0);
-    }
+pub fn cancel(cap: u64) {
+    unsafe { svc3(5, cap, 0, 0); }
 }
 
 /// Release a completed/drained capability slot.
 #[inline(always)]
-pub unsafe fn close(cap: u64) {
-    unsafe {
-        svc3(6, cap, 0, 0);
-    }
+pub fn close(cap: u64) {
+    unsafe { svc3(6, cap, 0, 0); }
 }
 
 /// Spawn a new EL0 thread pinned to `target_lp`, starting at `entry_vaddr`.
 /// Returns the kernel-assigned thread id.
+///
+/// # Safety
+/// `entry_vaddr` must point to valid executable code in the caller's address
+/// space. `target_lp` must be a valid LP id.
 #[inline(always)]
 pub unsafe fn spawn_thread(entry_vaddr: usize, target_lp: u32) -> u64 {
     unsafe { svc3(7, entry_vaddr as u64, target_lp as u64, 0) }
 }
 
 /// Terminate the calling EL0 thread.  Never returns.
+///
+/// # Safety
+/// Divergent: must not be called while holding locks or resources that the
+/// kernel does not track on thread teardown.
 #[inline(always)]
 pub unsafe fn thread_exit() -> ! {
-    unsafe {
-        svc3(8, 0, 0, 0);
-    }
-    loop {
-        core::hint::spin_loop();
-    }
+    unsafe { svc3(8, 0, 0, 0); }
+    loop { core::hint::spin_loop(); }
 }
 
 /// Send a 64-bit message to the target LP's global mailbox.
 /// Returns 0 on success, 1 on queue-full.
+///
+/// # Safety
+/// `target_lp` must be a valid LP id.
 #[inline(always)]
 pub unsafe fn mailbox_send_raw(target_lp: u32, message: u64) -> u64 {
     unsafe { svc3(9, target_lp as u64, message, 0) }
@@ -454,21 +456,21 @@ pub unsafe fn mailbox_send_raw(target_lp: u32, message: u64) -> u64 {
 /// Receive a message from the calling LP's global mailbox.
 /// Returns `(msg, 0)` on success, `(0, 1)` when empty.
 #[inline(always)]
-pub unsafe fn mailbox_recv_raw() -> (u64, u64) {
+pub fn mailbox_recv_raw() -> (u64, u64) {
     unsafe { svc3_x1(10, 0, 0, 0) }
 }
 
 /// Block on a capability with a timeout in milliseconds.
 /// Returns `(0, result_code)` on completion, `(1, _)` on timeout.
 #[inline(always)]
-pub unsafe fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
+pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
     unsafe { svc3_x1(11, cap, timeout_ms, 0) }
 }
 
 /// Block until CQ `cq` of the caller has at least `min_complete` pending
 /// entries or an explicit wake is posted to it.  Returns the pending count.
 #[inline(always)]
-pub unsafe fn cq_wait(min_complete: u64, cq: u32) -> u64 {
+pub fn cq_wait(min_complete: u64, cq: u32) -> u64 {
     unsafe { svc3(12, min_complete, cq as u64, 0) }
 }
 
@@ -476,7 +478,7 @@ pub unsafe fn cq_wait(min_complete: u64, cq: u32) -> u64 {
 /// [`cq_wait`]/[`cq_wait_timeout`] on that queue returns even without a
 /// completion.
 #[inline(always)]
-pub unsafe fn cq_wake(cq: u32) -> u64 {
+pub fn cq_wake(cq: u32) -> u64 {
     unsafe { svc3(41, cq as u64, 0, 0) }
 }
 
@@ -484,7 +486,7 @@ pub unsafe fn cq_wake(cq: u32) -> u64 {
 /// explicit wake is posted to it, or `timeout_ms` elapses. Returns
 /// `(pending, timed_out)` where `timed_out` is 1 if the deadline fired first.
 #[inline(always)]
-pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
+pub fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
     unsafe { svc3_x1(42, min_complete, timeout_ms, cq as u64) }
 }
 
@@ -493,7 +495,7 @@ pub unsafe fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u
 /// nonempty and when the endpoint closes, so one [`cq_wait`] covers both
 /// completions and endpoint work. Returns an IPC status code.
 #[inline(always)]
-pub unsafe fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
+pub fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
     unsafe { svc3(43, endpoint, cq as u64, 0) }
 }
 
@@ -519,13 +521,13 @@ pub mod device_status {
 /// Map an MMIO region capability into the caller's address space at
 /// `base_vaddr` as device memory. Returns a device status code.
 #[inline(always)]
-pub unsafe fn device_mmio_map(cap: u64, base_vaddr: usize, writable: bool) -> DeviceStatusCode {
+pub fn device_mmio_map(cap: u64, base_vaddr: usize, writable: bool) -> DeviceStatusCode {
     unsafe { svc3(44, cap, base_vaddr as u64, writable as u64) }
 }
 
 /// Unmap an MMIO region capability from the caller. Returns a device status code.
 #[inline(always)]
-pub unsafe fn device_mmio_unmap(cap: u64) -> DeviceStatusCode {
+pub fn device_mmio_unmap(cap: u64) -> DeviceStatusCode {
     unsafe { svc3(45, cap, 0, 0) }
 }
 
@@ -534,7 +536,7 @@ pub unsafe fn device_mmio_unmap(cap: u64) -> DeviceStatusCode {
 /// [`cq_wait`] covers device interrupts, completions, and endpoint work.
 /// Returns a device status code.
 #[inline(always)]
-pub unsafe fn device_irq_bind_cq(cap: u64, cq: u32) -> DeviceStatusCode {
+pub fn device_irq_bind_cq(cap: u64, cq: u32) -> DeviceStatusCode {
     unsafe { svc3(46, cap, cq as u64, 0) }
 }
 
@@ -542,18 +544,21 @@ pub unsafe fn device_irq_bind_cq(cap: u64, cq: u32) -> DeviceStatusCode {
 /// source. Returns `(status, consumed)` where `consumed` is the number of
 /// coalesced interrupts observed since the last acknowledgement.
 #[inline(always)]
-pub unsafe fn device_irq_ack(cap: u64) -> (DeviceStatusCode, u64) {
+pub fn device_irq_ack(cap: u64) -> (DeviceStatusCode, u64) {
     unsafe { svc3_x1(47, cap, 0, 0) }
 }
 
 /// Close a device capability (unmap an MMIO region or mask and unroute an
 /// interrupt). Returns a device status code.
 #[inline(always)]
-pub unsafe fn device_close(cap: u64) -> DeviceStatusCode {
+pub fn device_close(cap: u64) -> DeviceStatusCode {
     unsafe { svc3(48, cap, 0, 0) }
 }
 
 /// Open a sender capability targeting LP `target_lp`.  Returns the cap.
+///
+/// # Safety
+/// `target_lp` must be a valid LP id.
 #[inline(always)]
 pub unsafe fn mailbox_open_send(target_lp: u32) -> u64 {
     unsafe { svc3(13, target_lp as u64, 0, 0) }
@@ -561,69 +566,69 @@ pub unsafe fn mailbox_open_send(target_lp: u32) -> u64 {
 
 /// Open a receiver capability for the calling LP.  Returns the cap.
 #[inline(always)]
-pub unsafe fn mailbox_open_recv() -> u64 {
+pub fn mailbox_open_recv() -> u64 {
     unsafe { svc3(14, 0, 0, 0) }
 }
 
 /// Send a message through a sender capability.
 /// Returns 0 on success, 1 on queue-full, 2 on invalid cap.
 #[inline(always)]
-pub unsafe fn mailbox_send(cap: u64, message: u64) -> u64 {
+pub fn mailbox_send(cap: u64, message: u64) -> u64 {
     unsafe { svc3(15, cap, message, 0) }
 }
 
 /// Receive a message through a receiver capability.
 /// Returns `(msg, 0)` on success, `(0, 1)` when empty, `(0, 2)` on invalid cap.
 #[inline(always)]
-pub unsafe fn mailbox_recv(cap: u64) -> (u64, u64) {
+pub fn mailbox_recv(cap: u64) -> (u64, u64) {
     unsafe { svc3_x1(16, cap, 0, 0) }
 }
 
 /// Close a mailbox capability.  Returns 0 on success, 1 on invalid cap.
 #[inline(always)]
-pub unsafe fn mailbox_close(cap: u64) -> u64 {
+pub fn mailbox_close(cap: u64) -> u64 {
     unsafe { svc3(17, cap, 0, 0) }
 }
 
 /// Create an endpoint owned by the caller. Returns endpoint cap, or 0 on error.
 #[inline(always)]
-pub unsafe fn ipc_endpoint_create(interface: u64, version: u32, capacity: usize) -> u64 {
+pub fn ipc_endpoint_create(interface: u64, version: u32, capacity: usize) -> u64 {
     unsafe { svc3(18, interface, version as u64, capacity as u64) }
 }
 
 /// Mint a same-address-space connection from an endpoint cap.
 #[inline(always)]
-pub unsafe fn ipc_connect(endpoint: u64, rights: IpcRights) -> u64 {
+pub fn ipc_connect(endpoint: u64, rights: IpcRights) -> u64 {
     unsafe { svc3(19, endpoint, rights.bits() as u64, 0) }
 }
 
 /// Send a scalar message through a connection. Returns status code.
 #[inline(always)]
-pub unsafe fn ipc_scalar_send(connection: u64, opcode: u32, arg0: u64) -> u64 {
+pub fn ipc_scalar_send(connection: u64, opcode: u32, arg0: u64) -> u64 {
     unsafe { svc3(20, connection, opcode as u64, arg0) }
 }
 
 /// Call through a connection. Returns pending-call cap, or 0 on error.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
+pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
     unsafe { svc3(21, connection, opcode as u64, arg0) }
 }
 
 /// Receive a scalar endpoint IPC message.
 #[inline(always)]
-pub unsafe fn ipc_recv(endpoint: u64) -> IpcMessage {
+pub fn ipc_recv(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv(endpoint) }
 }
 
 /// Block until a scalar endpoint IPC message is readable, then receive it.
 #[inline(always)]
-pub unsafe fn ipc_recv_block(endpoint: u64) -> IpcMessage {
+pub fn ipc_recv_block(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv_block(endpoint) }
 }
 
 /// Complete a call using a reply-token cap. Returns status code.
 #[inline(always)]
-pub unsafe fn ipc_reply(reply: u64, result: i64) -> u64 {
+pub fn ipc_reply(reply: u64, result: i64) -> u64 {
     unsafe { svc3(23, reply, result as u64, 0) }
 }
 
@@ -632,7 +637,7 @@ pub unsafe fn ipc_reply(reply: u64, result: i64) -> u64 {
 /// Returns `(0, result, returned_cap)` when ready, where `returned_cap` is 0
 /// when the reply did not delegate a capability. Returns `(1, 0, 0)` while pending.
 #[inline(always)]
-pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64, u64) {
+pub fn ipc_reply_poll(call: u64) -> (u64, u64, u64) {
     unsafe { svc3_x2(24, call, 0, 0) }
 }
 
@@ -641,64 +646,68 @@ pub unsafe fn ipc_reply_poll(call: u64) -> (u64, u64, u64) {
 /// Returns `(0, result, returned_connection, returned_memory)` when ready.
 /// Either returned cap is 0 when absent.
 #[inline(always)]
-pub unsafe fn ipc_reply_poll_with_memory(call: u64) -> (u64, u64, u64, u64) {
+pub fn ipc_reply_poll_with_memory(call: u64) -> (u64, u64, u64, u64) {
     unsafe { svc3_x3(24, call, 0, 0) }
 }
 
 /// Close an endpoint IPC capability. Returns status code.
 #[inline(always)]
-pub unsafe fn ipc_close(cap: u64) -> u64 {
+pub fn ipc_close(cap: u64) -> u64 {
     unsafe { svc3(25, cap, 0, 0) }
 }
 
 /// Complete a call and return a delegated connection cap to the original caller.
 #[inline(always)]
-pub unsafe fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights, result: i64) -> u64 {
+pub fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights, result: i64) -> u64 {
     unsafe { svc4(26, reply, endpoint, rights.bits() as u64, result as u64) }
 }
 
 /// Allocate a first-class memory object owned by the caller.
 #[inline(always)]
-pub unsafe fn memory_alloc(pages: usize) -> u64 {
+pub fn memory_alloc(pages: usize) -> u64 {
     unsafe { svc3(28, pages as u64, 0, 0) }
 }
 
 /// Map a memory object at `base_vaddr`. Returns a memory status code.
 #[inline(always)]
-pub unsafe fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCode {
+pub fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCode {
     unsafe { svc3(29, cap, base_vaddr as u64, writable as u64) }
 }
 
 /// Unmap a memory object from the caller. Returns a memory status code.
 #[inline(always)]
-pub unsafe fn memory_unmap(cap: u64) -> MemoryStatusCode {
+pub fn memory_unmap(cap: u64) -> MemoryStatusCode {
     unsafe { svc3(30, cap, 0, 0) }
 }
 
 /// Close a memory object cap. Returns a memory status code.
 #[inline(always)]
-pub unsafe fn memory_close(cap: u64) -> MemoryStatusCode {
+pub fn memory_close(cap: u64) -> MemoryStatusCode {
     unsafe { svc3(31, cap, 0, 0) }
 }
 
 /// Return the physical base address of the first frame of memory object
 /// `cap`, or 0 on error. The caller must own the cap.
 #[inline(always)]
-pub unsafe fn memory_get_phys(cap: u64) -> u64 {
+pub fn memory_get_phys(cap: u64) -> u64 {
+    unsafe { svc3(49, cap, 0, 0) }
+}
 
 /// Request the supervisor to spawn a replacement domain (syscall 50).
 /// elf_selector (0=echo), state_cap (0=none), endpoint_cap (0=none).
 /// Returns the new domain's ASID or 0 on failure.
+///
+/// # Safety
+/// The `state_cap` must be valid memory-object capabilities, and
+/// `endpoint_cap` must be a valid endpoint owned by the caller.
 #[inline(always)]
 pub unsafe fn spawn_upgrade(elf_selector: u64, state_cap: u64, endpoint_cap: u64) -> u64 {
     unsafe { svc4(50, 0, elf_selector, state_cap, endpoint_cap) }
 }
-    unsafe { svc3(49, cap, 0, 0) }
-}
 
 /// Send a scalar message and move a memory object to the receiver.
 #[inline(always)]
-pub unsafe fn ipc_scalar_send_move(
+pub fn ipc_scalar_send_move(
     connection: u64,
     opcode: u32,
     arg0: u64,
@@ -709,19 +718,19 @@ pub unsafe fn ipc_scalar_send_move(
 
 /// Call through a connection and move a memory object to the receiver.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+pub fn ipc_scalar_call_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
     unsafe { svc4(33, connection, opcode as u64, arg0, memory) }
 }
 
 /// Reply to a call and move a memory object back to the caller.
 #[inline(always)]
-pub unsafe fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> IpcStatusCode {
+pub fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> IpcStatusCode {
     unsafe { svc3(34, reply, memory, result as u64) }
 }
 
 /// Call through a connection with a reply-bound immutable memory borrow.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_borrow_read(
+pub fn ipc_scalar_call_borrow_read(
     connection: u64,
     opcode: u32,
     arg0: u64,
@@ -732,7 +741,7 @@ pub unsafe fn ipc_scalar_call_borrow_read(
 
 /// Call through a connection with a reply-bound writable memory borrow.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_borrow_write(
+pub fn ipc_scalar_call_borrow_write(
     connection: u64,
     opcode: u32,
     arg0: u64,
@@ -743,7 +752,7 @@ pub unsafe fn ipc_scalar_call_borrow_write(
 
 /// Send a scalar message with a copied memory object.
 #[inline(always)]
-pub unsafe fn ipc_scalar_send_copy(
+pub fn ipc_scalar_send_copy(
     connection: u64,
     opcode: u32,
     arg0: u64,
@@ -754,7 +763,7 @@ pub unsafe fn ipc_scalar_send_copy(
 
 /// Call through a connection with a copied memory object.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
+pub fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
     unsafe { svc4(38, connection, opcode as u64, arg0, memory) }
 }
 
@@ -765,7 +774,7 @@ pub unsafe fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memo
 /// minted connection cap in the `connection` field of the received message.
 /// Returns the pending-call cap, or 0 on error.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_connection(
+pub fn ipc_scalar_call_connection(
     connection: u64,
     opcode: u32,
     arg0: u64,
@@ -783,7 +792,7 @@ pub unsafe fn ipc_scalar_call_connection(
 /// This is the combined-attachment primitive used to register services under
 /// memory-carried (long) names. Returns the pending-call cap, or 0 on error.
 #[inline(always)]
-pub unsafe fn ipc_scalar_call_connection_copy(
+pub fn ipc_scalar_call_connection_copy(
     connection: u64,
     opcode: u32,
     arg0: u64,

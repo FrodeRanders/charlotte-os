@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The CharlotteOS TCP/IP compatibility service (smoltcp-powered).
 //!
 //! Bootstraps, looks up the NIC driver ("net0"), reads its MAC + MTU,

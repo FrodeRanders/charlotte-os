@@ -4,6 +4,7 @@
 //! kernel moves opaque capabilities, while interface ids, opcodes, names,
 //! generations, and lookup policy are defined here.
 #![no_std]
+#![allow(unused_unsafe)] // syscall wrappers now safe; transitional
 
 /// Pack up to 8 ASCII bytes into a u64 service name (little-endian).
 ///

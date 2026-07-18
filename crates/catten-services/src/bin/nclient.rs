@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! Net client — sends a test Ethernet frame through the virtio-net driver.
 #![no_std]
 #![no_main]

@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The CharlotteOS service manager — orchestrates live service upgrades.
 //!
 //! Bootstraps, registers as "svcmgr", and serves OP_UPGRADE requests.

@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The reference echo service.
 //!
 //! Creates its own endpoint, registers it with the name service through the

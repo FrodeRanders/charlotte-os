@@ -121,9 +121,7 @@ impl<const N: usize> Input<N> {
 
 pub fn run_main<const N: usize>(main: fn(Args, Input<N>) -> !) -> ! {
     if N > config::INPUT_CAPACITY {
-        unsafe {
-            thread_exit();
-        }
+        unsafe { thread_exit(); }
     }
 
     let args = launch_args();
@@ -149,10 +147,8 @@ fn launch_input<const N: usize>() -> Input<N> {
     let bytes = config::INPUT_VADDR as *mut u8;
     if N > 0 {
         let cap = unsafe { catten_syscall::submit_read(bytes as usize, N) };
-        unsafe {
-            catten_syscall::wait(cap);
-            catten_syscall::close(cap);
-        }
+        catten_syscall::wait(cap);
+        catten_syscall::close(cap);
     }
     Input {
         bytes: unsafe { &mut *(bytes as *mut [u8; N]) },

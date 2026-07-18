@@ -1,3 +1,4 @@
+#![allow(unused_unsafe)]
 //! The reference console client (architecture doc §10, Phase 8).
 //!
 //! Bootstrap → look up the "uart" console service by name → write a short
