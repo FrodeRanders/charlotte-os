@@ -311,8 +311,11 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
 
 fn compute_bitmap_size(mmap: &MemmapResponse) -> usize {
     let mut highest_address: PAddr = unsafe { PAddr::from_unchecked(0usize) };
-    // Find the highest address in the memory map.
+    // Find the highest address among usable RAM regions.
     for entry in mmap.entries().iter() {
+        if entry.type_ != MEMMAP_USABLE {
+            continue;
+        }
         let entry_end = entry.base + entry.length;
         if entry_end > <PAddr as Into<usize>>::into(highest_address) as u64 {
             highest_address = unsafe { PAddr::from_unchecked(entry_end as usize) };
@@ -341,6 +344,9 @@ fn find_mmap_best_fit(mmap: &MemmapResponse, size: usize) -> Result<PAddr, Error
     let mut best_fit = PAddr::try_from(0usize)?;
     let mut best_fit_size = 0;
     for entry in mmap.entries().iter() {
+        if entry.type_ != MEMMAP_USABLE {
+            continue;
+        }
         let entry_size = entry.length;
         if entry_size >= size as u64 && (best_fit_size == 0 || entry_size < best_fit_size) {
             best_fit = PAddr::try_from(entry.base as usize)?;
