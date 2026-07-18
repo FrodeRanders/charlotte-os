@@ -74,7 +74,7 @@ pub struct CapVectorEntry {
 /// Maximum capability vector entries per message (fits in one 4 KiB page
 /// with the `count` header). The page holds `count: u16` at offset 0,
 /// followed by up to this many entries.
-pub const CAP_VECTOR_MAX: usize = ((4096 - 2) / core::mem::size_of::<CapVectorEntry>());
+pub const CAP_VECTOR_MAX: usize = (4096 - 2) / core::mem::size_of::<CapVectorEntry>();
 
 /// The kernel fills this struct into the receiver's result page during
 /// `ipc_recv_vec`. At most `count` caps were delivered; the receiver
