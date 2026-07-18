@@ -56,6 +56,40 @@ pub enum IpcError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectionRights(u32);
 
+/// A single entry in a capability vector page. The sender packs an array
+/// of these into a one-page memory object and passes it to
+/// `ipc_vector_send` / `ipc_vector_call`. Each entry specifies a
+/// memory-object capability and how it should be transferred.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CapVectorEntry {
+    /// The memory-object capability owned by the sender.
+    pub cap: u64,
+    /// Transfer mode: 0=Copy, 1=Move, 2=BorrowRead, 3=BorrowWrite.
+    pub mode: u32,
+    /// Reserved, must be zero.
+    pub _pad: u32,
+}
+
+/// Maximum capability vector entries per message (fits in one 4 KiB page
+/// with the `count` header). The page holds `count: u16` at offset 0,
+/// followed by up to this many entries.
+pub const CAP_VECTOR_MAX: usize = ((4096 - 2) / core::mem::size_of::<CapVectorEntry>());
+
+/// The kernel fills this struct into the receiver's result page during
+/// `ipc_recv_vec`. At most `count` caps were delivered; the receiver
+/// must close each one after use.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VectorMessage {
+    /// Number of memory-object caps returned.
+    pub memory_count: u16,
+    /// Reserved.
+    pub _pad: [u16; 3],
+    /// Cap IDs of the transferred memory objects.
+    pub memory_caps: [u64; CAP_VECTOR_MAX],
+}
+
 impl ConnectionRights {
     pub const ALL: Self =
         Self(Self::SEND.0 | Self::CALL.0 | Self::RECEIVE.0 | Self::MINT_CONNECTION.0);
@@ -154,7 +188,7 @@ struct QueuedMessage {
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
-    memory: Option<MemoryObjectCap>,
+    memory: Vec<MemoryObjectCap>,
     connection: Option<CapabilityId>,
 }
 
@@ -665,6 +699,7 @@ fn scalar_call_with_connection_impl(
         token,
     });
 
+    let server_memory_vec: Vec<MemoryObjectCap> = server_memory_cap.into_iter().collect();
     let delivery = enqueue_message(
         &mut ipc,
         endpoint_id,
@@ -672,7 +707,7 @@ fn scalar_call_with_connection_impl(
         opcode,
         arg0,
         Some(token_cap),
-        server_memory_cap,
+        server_memory_vec,
         Some(attached_cap),
     )?;
     drop(ipc);
@@ -925,7 +960,7 @@ fn enqueue_scalar(
     arg0: u64,
     reply: Option<CapabilityId>,
 ) -> Result<Delivery, IpcError> {
-    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, None, None)
+    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, Vec::new(), None)
 }
 
 fn enqueue_scalar_with_memory(
@@ -937,7 +972,8 @@ fn enqueue_scalar_with_memory(
     reply: Option<CapabilityId>,
     memory: Option<MemoryObjectCap>,
 ) -> Result<Delivery, IpcError> {
-    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, memory, None)
+    let memory_vec: Vec<MemoryObjectCap> = memory.into_iter().collect();
+    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, memory_vec, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -948,7 +984,7 @@ fn enqueue_message(
     opcode: u32,
     arg0: u64,
     reply: Option<CapabilityId>,
-    memory: Option<MemoryObjectCap>,
+    memory: Vec<MemoryObjectCap>,
     connection: Option<CapabilityId>,
 ) -> Result<Delivery, IpcError> {
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
@@ -1006,6 +1042,9 @@ pub fn receive(
         return Err(IpcError::EndpointClosed);
     }
     let message = endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?;
+    // Scalar receive returns at most the first memory cap for backward
+    // compatibility. Vector receive (receive_vec) returns all of them.
+    let first_memory = message.memory.first().copied();
     Ok(ScalarMessage {
         sender: message.sender,
         interface: endpoint.interface,
@@ -1013,7 +1052,7 @@ pub fn receive(
         opcode: message.opcode,
         arg0: message.arg0,
         reply: message.reply,
-        memory: message.memory,
+        memory: first_memory,
         connection: message.connection,
     })
 }
@@ -1223,8 +1262,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                 if let Some(reply_cap) = message.reply {
                     consume_reply_cap(&mut ipc, asid, reply_cap, REPLY_ENDPOINT_CLOSED);
                 }
-                if let Some(memory_cap) = message.memory {
-                    let _ = crate::memory::object::close_cap(asid, memory_cap);
+                for memory_cap in &message.memory {
+                    let _ = crate::memory::object::close_cap(asid, *memory_cap);
                 }
                 if let Some(connection_cap) = message.connection {
                     let _ = ipc.remove_cap(asid, connection_cap);
@@ -1401,8 +1440,10 @@ fn cancel_queued_message_with_reply(
             if let Some(message) = endpoint.queue.remove(index) {
                 if let Some(borrow) = borrow {
                     let _ = revoke_memory_borrow(borrow);
-                } else if let Some(memory_cap) = message.memory {
-                    let _ = crate::memory::object::close_cap(server, memory_cap);
+                } else {
+                    for memory_cap in &message.memory {
+                        let _ = crate::memory::object::close_cap(server, *memory_cap);
+                    }
                 }
                 if let Some(connection_cap) = message.connection {
                     if let Some(caps) = ipc.caps.get_mut(&server) {
@@ -1427,4 +1468,164 @@ fn revoke_memory_borrow(
         borrow.borrower,
         borrow.borrower_cap,
     )
+}
+
+/// Receive a message like [`receive`], but also fill a result page with
+/// the cap IDs of all delivered memory objects (up to [`CAP_VECTOR_MAX`]).
+pub fn receive_vec(
+    receiver: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+    result_page: MemoryObjectCap,
+) -> Result<ScalarMessage, IpcError> {
+    let mut ipc = IPC.write();
+    let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
+
+    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.closed {
+        return Err(IpcError::EndpointClosed);
+    }
+    let message = endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?;
+    let response = ScalarMessage {
+        sender: message.sender,
+        interface: endpoint.interface,
+        version: endpoint.version,
+        opcode: message.opcode,
+        arg0: message.arg0,
+        reply: message.reply,
+        memory: message.memory.first().copied(),
+        connection: message.connection,
+    };
+
+    let phys = crate::memory::object::get_phys(receiver, result_page);
+    if phys != 0 {
+        if let Ok(paddr) = crate::memory::PAddr::try_from(phys as usize) {
+            let ptr: *mut u8 = paddr.into();
+            let n = message.memory.len().min(CAP_VECTOR_MAX);
+            unsafe {
+                core::ptr::write_volatile(ptr as *mut u16, n as u16);
+                let caps_ptr = ptr.add(2) as *mut u64;
+                for i in 0..n {
+                    core::ptr::write_volatile(caps_ptr.add(i), message.memory[i] as u64);
+                }
+            }
+        }
+    }
+
+    Ok(response)
+}
+
+/// Send a vector of memory objects through a connection. Each entry in
+/// the cap vector page specifies a capability and transfer mode. The
+/// kernel validates and transfers each entry before enqueuing.
+pub fn vector_send(
+    sender: AddressSpaceId,
+    connection: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    cap_vector: MemoryObjectCap,
+) -> Result<(), IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(sender, connection)? {
+        Capability::Connection { endpoint, rights } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::SEND) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+
+    let mut memory_caps = Vec::new();
+    read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
+
+    let delivery = enqueue_message(
+        &mut ipc, endpoint_id, sender, opcode, arg0, None,
+        memory_caps, None,
+    )?;
+    drop(ipc);
+    deliver(delivery);
+
+    let _ = crate::memory::object::close_cap(sender, cap_vector);
+    Ok(())
+}
+
+pub fn vector_call(
+    caller: AddressSpaceId,
+    connection: CapabilityId,
+    opcode: u32,
+    arg0: u64,
+    cap_vector: MemoryObjectCap,
+) -> Result<CapabilityId, IpcError> {
+    let mut ipc = IPC.write();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection)? {
+        Capability::Connection { endpoint, rights } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+
+    let mut memory_caps = Vec::new();
+    read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
+
+    let call = ipc.alloc_call();
+    ipc.pending_calls.insert(call, PendingCall { caller, result: None, observed: false });
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall { call });
+
+    let token = ipc.alloc_reply();
+    ipc.reply_tokens.insert(token, ReplyToken { server, call, consumed: false, borrow: None });
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken { token });
+
+    let delivery = enqueue_message(
+        &mut ipc, endpoint_id, caller, opcode, arg0,
+        Some(token_cap), memory_caps, None,
+    )?;
+    drop(ipc);
+    deliver(delivery);
+
+    let _ = crate::memory::object::close_cap(caller, cap_vector);
+    Ok(call_cap)
+}
+
+fn read_vector_page(
+    sender: AddressSpaceId,
+    cap_vector_page: MemoryObjectCap,
+    target: AddressSpaceId,
+    is_call: bool,
+    out: &mut Vec<MemoryObjectCap>,
+) -> Result<usize, IpcError> {
+    let phys = crate::memory::object::get_phys(sender, cap_vector_page);
+    if phys == 0 {
+        return Err(IpcError::UnknownCapability);
+    }
+    let paddr = crate::memory::PAddr::try_from(phys as usize).map_err(|_| IpcError::MemoryTransferFailed)?;
+    let ptr: *const u8 = paddr.into();
+    let count = unsafe { core::ptr::read_volatile(ptr as *const u16) } as usize;
+    if count == 0 || count > CAP_VECTOR_MAX {
+        return Err(IpcError::MemoryTransferFailed);
+    }
+    let entries_ptr = unsafe { ptr.add(2) } as *const CapVectorEntry;
+    for i in 0..count {
+        let entry = unsafe { core::ptr::read_volatile(entries_ptr.add(i)) };
+        let cap: MemoryObjectCap = entry.cap as MemoryObjectCap;
+        let server_cap = match entry.mode {
+            0 => crate::memory::object::copy_to(sender, cap, target)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+            1 => crate::memory::object::move_to(sender, cap, target)
+                .map_err(|_| IpcError::MemoryTransferFailed)?,
+            2 => {
+                if !is_call { return Err(IpcError::MemoryTransferFailed); }
+                crate::memory::object::lend_read(sender, cap, target)
+                    .map_err(|_| IpcError::MemoryTransferFailed)?
+            }
+            3 => {
+                if !is_call { return Err(IpcError::MemoryTransferFailed); }
+                crate::memory::object::lend_write(sender, cap, target)
+                    .map_err(|_| IpcError::MemoryTransferFailed)?
+            }
+            _ => return Err(IpcError::MemoryTransferFailed),
+        };
+        out.push(server_cap);
+    }
+    Ok(count)
 }

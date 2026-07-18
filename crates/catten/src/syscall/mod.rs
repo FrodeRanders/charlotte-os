@@ -184,10 +184,21 @@ pub mod call_no {
     /// supervisor finds the owner ASID).  Returns the new generation in x0,
     /// or 0 on failure.
     pub const SPAWN_UPGRADE: u16 = 50;
+    /// Send a vector of memory-object caps. x1=connection, x2=opcode,
+    /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
+    pub const IPC_VECTOR_SEND: u16 = 51;
+    /// Call carrying a vector of memory-object caps. x1=connection,
+    /// x2=opcode, x3=arg0, x4=cap_vector_page. Returns pending-call cap
+    /// in x0, or 0 on error.
+    pub const IPC_VECTOR_CALL: u16 = 52;
+    /// Receive a message and fill the caller's result page at x1 with
+    /// cap IDs of delivered memory objects. Returns the same register
+    /// shape as IPC_RECV, plus the result page contents.
+    pub const IPC_RECV_VEC: u16 = 53;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::SPAWN_UPGRADE;
+pub const MAX_SYSCALL: u16 = call_no::IPC_RECV_VEC;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -257,6 +268,9 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
             #[cfg(not(target_arch = "aarch64"))]
             { frame.regs[0] = 0; }
         }
+        call_no::IPC_VECTOR_SEND => sys_ipc_vector_send(frame),
+        call_no::IPC_VECTOR_CALL => sys_ipc_vector_call(frame),
+        call_no::IPC_RECV_VEC => sys_ipc_recv_vec(frame),
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -926,6 +940,49 @@ fn sys_ipc_scalar_call_copy(frame: &mut TrapFrame) {
     let memory = frame.regs[4];
     frame.regs[0] =
         ipc::scalar_call_with_memory_copy(asid, connection, opcode, arg0, memory).unwrap_or(0);
+}
+
+fn sys_ipc_vector_send(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let cap_vector = frame.regs[4];
+    frame.regs[0] = match ipc::vector_send(asid, connection, opcode, arg0, cap_vector) {
+        Ok(()) => 0,
+        Err(error) => error as u64,
+    };
+}
+
+fn sys_ipc_vector_call(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let connection = frame.regs[1];
+    let opcode = frame.regs[2] as u32;
+    let arg0 = frame.regs[3];
+    let cap_vector = frame.regs[4];
+    frame.regs[0] = ipc::vector_call(asid, connection, opcode, arg0, cap_vector).unwrap_or(0);
+}
+
+fn sys_ipc_recv_vec(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    let result_page = frame.regs[3];
+    match ipc::receive_vec(asid, endpoint, result_page) {
+        Ok(msg) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = msg.opcode as u64;
+            frame.regs[2] = msg.arg0;
+            frame.regs[3] = msg.reply.unwrap_or(0);
+            frame.regs[4] = msg.sender as u64;
+            frame.regs[5] = msg.interface;
+            frame.regs[6] = msg.version as u64;
+            frame.regs[7] = msg.memory.unwrap_or(0) as u64;
+            frame.regs[8] = msg.connection.unwrap_or(0) as u64;
+        }
+        Err(error) => {
+            frame.regs[0] = error as u64;
+        }
+    }
 }
 
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
