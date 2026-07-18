@@ -119,3 +119,14 @@ clean:
 
 distclean: clean
     if [ -f Cargo.lock ]; then rm Cargo.lock; fi
+
+# Run the same strict check the CI uses (-D warnings) to catch issues locally
+# before pushing. Equivalent to `RUSTFLAGS="-D warnings" cargo check ...`
+check arch="aarch64":
+    RUSTFLAGS="-D warnings" cargo check --package catten \
+        --target {{ if arch == "x86_64" { "target_specs/x86_64-unknown-none-catten.json" } else { "target_specs/aarch64-unknown-none-catten.json" } }} \
+        --no-default-features --features acpi
+
+# Build and check raft service binary
+check-raft:
+    RUSTFLAGS="-D warnings" cargo check --manifest-path crates/catten-services/Cargo.toml --target crates/catten-services/aarch64-unknown-none.json
