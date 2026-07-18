@@ -104,8 +104,6 @@ const USER_THREAD_CODE: &[u8] = &[
 /// writes the assembly stub, and returns the `AddressSpaceId`.
 #[cfg(target_arch = "aarch64")]
 fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr) -> usize {
-    logln!("Creating user address space...");
-
     let user_as = {
         let _kas = KERNEL_AS.lock();
         let mut as_ = AddressSpace::get_current();
@@ -122,7 +120,6 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         .lock()
         .allocate_frame()
         .expect("failed to allocate physical frame for user code page");
-    logln!("Allocated code frame at vaddr {:?}", vaddr);
 
     let code_mapping = MemoryMapping {
         vaddr,

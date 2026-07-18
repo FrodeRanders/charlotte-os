@@ -23,17 +23,13 @@ impl<'a, T> IdTable<T> {
     }
 
     pub fn add_element(&mut self, element: T) -> usize {
-        logln!("Adding element to ID Table.");
         if let Some(id) = self.available_ids.pop() {
-            logln!("ID Table: Available ID found: {id}.");
             self.list[id] = Some(element);
-            logln!("ID Table: Added element to list.");
             id
         } else {
-            logln!("ID Table: No available IDs. Extending list to push element.");
+            logln!("ID Table: extending list (new size={})", self.list.len() + 1);
             let id = self.list.len();
             self.list.push(Some(element));
-            logln!("ID Table: Added element to list.");
             id
         }
     }
@@ -47,24 +43,23 @@ impl<'a, T> IdTable<T> {
     }
 
     pub fn remove_element(&mut self, element_id: usize) -> Result<(), Error> {
-        let element = self.list.get_mut(element_id).ok_or(Error::IdNotActive)?;
-        if element.is_none() {
-            return Err(Error::IdNotActive);
+        match self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.take() {
+            Some(_) => {
+                self.available_ids.push(element_id);
+                Ok(())
+            }
+            None => Err(Error::IdNotActive),
         }
-        *element = None;
-        self.available_ids.push(element_id);
-        Ok(())
     }
 
-    /// Removes an element from the table and returns it, rather than dropping it
-    /// in place. Useful when the caller must control *when and where* the
-    /// element is dropped (e.g. a thread being reaped must not have its stack
-    /// freed while it is still executing on it).
     pub fn take_element(&mut self, element_id: usize) -> Result<T, Error> {
-        let element = self.list.get_mut(element_id).ok_or(Error::IdNotActive)?;
-        let taken = element.take().ok_or(Error::IdNotActive)?;
-        self.available_ids.push(element_id);
-        Ok(taken)
+        match self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.take() {
+            Some(element) => {
+                self.available_ids.push(element_id);
+                Ok(element)
+            }
+            None => Err(Error::IdNotActive),
+        }
     }
 
     pub fn iter(&'a self) -> core::slice::Iter<'a, Option<T>> {

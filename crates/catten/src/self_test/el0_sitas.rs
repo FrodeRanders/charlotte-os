@@ -269,8 +269,6 @@ pub fn test_el0_sitas() {
     #[cfg(target_arch = "aarch64")]
     {
         logln!("Testing EL0 sitas (Rust-compiled catten-user binary)...");
-        logln!("[sitas] ELF loaded");
-        logln!("[sitas] mapping ELF LOAD segments");
 
         // --- create user address space ---
         let user_as = {
@@ -280,7 +278,6 @@ pub fn test_el0_sitas() {
             as_
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
-        logln!("[sitas] AS created");
 
         let entry_vaddr = load_user_elf(asid, SITAS_ELF);
 
@@ -367,7 +364,6 @@ pub fn test_el0_sitas() {
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
         let _tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
-        logln!("[sitas] thread spawned");
 
         let _vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_sitas);
         logln!("[sitas] verifier deferred");

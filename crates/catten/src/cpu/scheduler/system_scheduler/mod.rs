@@ -69,23 +69,15 @@ impl SystemScheduler {
     }
 
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
-        logln!("Getting least loaded lp.");
         let least_loaded_lp = self.get_least_loaded_lp();
-        logln!("Locking least loaded lp.");
         let mut lp_guard = least_loaded_lp.lock();
         let was_idle = lp_guard.is_idle();
-        logln!("Adding thread to least loaded lp.");
         match lp_guard.add_thread(tid) {
             Ok(()) => {}
-            // A late-arriving wake for a thread that has already exited (and
-            // whose id may since have been recycled and removed) is benign:
-            // there is nothing to make runnable. Do not panic.
             Err(_) => return Err(Error::InvalidThread),
         }
-        logln!("Thread added to least loaded lp. Getting LP ID.");
         let lp_id = lp_guard.get_lp_id();
         drop(lp_guard);
-        logln!("LP ID obtained. Returning with ID value.");
         if was_idle && lp_id != get_lp_id() {
             logln!("LP {lp_id} was idle, sending wakeup IPI.");
             LocalIntCtlr::send_unicast_ipi(lp_id, LAPIC_TIMER_VECTOR).ok();

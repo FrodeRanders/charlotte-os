@@ -50,14 +50,10 @@ pub fn bsp_init() {
     crate::cpu::isa::interrupts::x2apic::X2Apic::record_id();
     // Pre-create all LP schedulers in LP ID order (0..lp_count) while single-threaded.
     // This ensures lp_schedulers[i] is always LP i's scheduler, regardless of AP init order.
-    logln!("LP 0: Initializing LP local scheduler.");
-    logln!("LP 0: Constructing LP scheduler.");
     let sched = Box::new(RoundRobin::new(get_lp_id(), ExtDuration::from_millis(10)));
-    logln!("LP 0: Created new LP scheduler on the heap. Submitting it to the system scheduler.");
     unsafe {
         SYSTEM_SCHEDULER.write().set_lp_scheduler(sched);
     }
-    logln!("LP 0: Submitted LP scheduler to the system scheduler.");
     logln!("LP 0: ISA independent initialization complete.");
     logln!("LP 0: BSP initialization complete.");
 }

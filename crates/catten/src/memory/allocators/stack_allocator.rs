@@ -130,9 +130,7 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
     let lower_guard = stack_region_base;
     let stack_buf_base = stack_region_base + page * (NUM_GUARD_PAGES / 2);
     let upper_guard = stack_buf_base + page * n_pages;
-    logln!("Mapping a thread stack at {stack_buf_base:?}.");
     memory::try_allocate_and_map_range(stack_buf_base, memory::PageSize::Standard, n_pages)?;
-    logln!("Thread stack mapped.");
     // Record the guard pages (reference-counted; a guard may be shared with an
     // adjacent stack).
     let mut guards = KERNEL_GUARD_PAGES.write();
