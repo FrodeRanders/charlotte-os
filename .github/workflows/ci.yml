@@ -20,7 +20,7 @@ jobs:
           - aarch64-unknown-none-catten
           - x86_64-unknown-none-catten
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -47,7 +47,7 @@ jobs:
         target:
           - aarch64-unknown-none-catten
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
