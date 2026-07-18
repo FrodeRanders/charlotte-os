@@ -314,7 +314,6 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
 /// types so that the wire-level encoding stays identical across the
 /// standard-library (Tokio) and CharlotteOS builds.
 pub mod raft {
-    /// Interface id: "RAFT".
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;
 
@@ -331,6 +330,42 @@ pub mod raft {
     pub const ERR_LOG_INCONSISTENCY: i64 = -2;
     pub const ERR_STALE_TERM: i64 = -3;
     pub const ERR_NOT_FOUND: i64 = -4;
+}
+
+/// Socket protocol (`charlotte-protocol-socket` v1).
+///
+/// The TCP/IP service exposes this interface. A client looks up "tcpip"
+/// from the name service and calls socket operations on the returned
+/// connection capability. Data payloads use memory-object transfer
+/// (`Move` for send, `Move` on reply for recv).
+pub mod socket {
+    pub const INTERFACE: u64 = super::name(b"SKT");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"tcpip");
+
+    pub const OP_SOCKET: u32 = 1;
+    pub const OP_CONNECT: u32 = 2;
+    pub const OP_BIND: u32 = 3;
+    pub const OP_LISTEN: u32 = 4;
+    pub const OP_ACCEPT: u32 = 5;
+    pub const OP_SEND: u32 = 6;
+    pub const OP_RECV: u32 = 7;
+    pub const OP_CLOSE: u32 = 8;
+
+    pub const ERR_TOO_MANY_SOCKETS: i64 = -1;
+    pub const ERR_BAD_SOCKET: i64 = -2;
+    pub const ERR_CONNECTION_REFUSED: i64 = -3;
+    pub const ERR_NOT_CONNECTED: i64 = -4;
+    pub const ERR_WOULD_BLOCK: i64 = -5;
+    pub const ERR_BAD_DOMAIN: i64 = -6;
+    pub const ERR_BAD_OPCODE: i64 = -7;
+
+    /// TCP socket domain constant (in arg0).
+    pub const DOMAIN_TCP: u64 = 1;
+    pub const DOMAIN_UDP: u64 = 2;
+
+    /// Max sockets this service supports.
+    pub const MAX_SOCKETS: usize = 16;
 }
 
 /// Spin-poll a pending call until it completes, returning
