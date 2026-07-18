@@ -1,11 +1,4 @@
 #![allow(unused_assignments)]
-#[cfg(target_arch = "aarch64")]
-use crate::{
-    ipc::{self, CapabilityId, ConnectionRights},
-    service::supervisor::{self, NameServiceHandle, ServiceDomain},
-};
-#[cfg(target_arch = "aarch64")]
-use crate::logln;
 
 #[cfg(target_arch = "aarch64")]
 mod inner {
