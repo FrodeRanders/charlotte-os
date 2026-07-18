@@ -156,6 +156,7 @@ fn wait_reply_k2(call: u64, what: &str) -> ipc::ReplyValue {
     val.expect("K2 reply")
 }
 
+#[cfg(target_arch = "aarch64")]
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
         #[allow(unused_assignments)]
     #[allow(unused_assignments)]

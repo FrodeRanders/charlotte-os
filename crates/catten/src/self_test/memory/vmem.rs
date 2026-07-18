@@ -27,7 +27,7 @@ pub fn test_vmem() {
             crate::early_logln!(
                 "[HEAPDBG] vmem {} phys0x3ffff8={:#x}",
                 $w,
-                (hhdm.read())
+                (unsafe { hhdm.read() })
             );
         };
     }

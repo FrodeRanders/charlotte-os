@@ -21,6 +21,8 @@
 //! alias) once the scheduler is active and assert the sentinel and returned
 //! cap, panicking on mismatch or timeout.
 
+use crate::logln;
+
 #[cfg(target_arch = "aarch64")]
 use crate::{
     completion::{
@@ -35,7 +37,6 @@ use crate::{
         },
         scheduler::spawn_thread,
     },
-    logln,
     memory::{
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
