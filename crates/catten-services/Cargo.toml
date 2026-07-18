@@ -64,6 +64,12 @@ path = "src/bin/raft.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "relmsg"
+path = "src/bin/relmsg.rs"
+test = false
+bench = false
+
 [dependencies]
 catten-rt = { path = "../catten-rt" }
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }

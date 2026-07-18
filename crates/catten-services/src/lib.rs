@@ -360,12 +360,34 @@ pub mod socket {
     pub const ERR_BAD_DOMAIN: i64 = -6;
     pub const ERR_BAD_OPCODE: i64 = -7;
 
-    /// TCP socket domain constant (in arg0).
     pub const DOMAIN_TCP: u64 = 1;
     pub const DOMAIN_UDP: u64 = 2;
 
-    /// Max sockets this service supports.
     pub const MAX_SOCKETS: usize = 16;
+}
+
+/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v1).
+///
+/// Exposes sequenced, acknowledged, retransmitted message delivery.
+/// Clients send messages addressed to peer service names; the RML
+/// encapsulates them in `charlotte-protocol-msg` frames and delivers
+/// them via the NIC driver (or directly for same-machine peers).
+pub mod relmsg {
+    pub const INTERFACE: u64 = super::name(b"RELMSG");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"relmsg");
+
+    pub const OP_SEND: u32 = 1;
+    pub const OP_RECV: u32 = 2;
+
+    pub const ERR_PEER_UNREACHABLE: i64 = -1;
+    pub const ERR_BAD_OPCODE: i64 = -2;
+    pub const ERR_UNKNOWN: i64 = -3;
+
+    pub const MAX_PEERS: usize = 16;
+    pub const MAX_MSG: usize = 1400;
+    pub const RETRANSMIT_MS: u64 = 200;
+    pub const MAX_RETRIES: u32 = 5;
 }
 
 /// Spin-poll a pending call until it completes, returning
