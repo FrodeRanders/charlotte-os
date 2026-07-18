@@ -58,6 +58,12 @@ path = "src/bin/tcpip.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "raft"
+path = "src/bin/raft.rs"
+test = false
+bench = false
+
 [dependencies]
 catten-rt = { path = "../catten-rt" }
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }
@@ -65,6 +71,7 @@ charlotte-protocol-msg = { path = "../charlotte-protocol-msg" }
 charlotte-smoltcp = { path = "../charlotte-smoltcp" }
 smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "socket-raw", "socket-udp", "socket-tcp"] }
 catten-syscall = { path = "../catten-syscall" }
+catten-graft = { path = "../catten-graft" }
 
 [profile.dev]
 panic = "abort"

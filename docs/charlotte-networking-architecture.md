@@ -695,7 +695,203 @@ without modifying the underlying transport.
 
 ---
 
-# 18. Comparison
+# 18. Raft Consensus as a Capability Service
+
+The reliable message layer, RPC layer, and capability-based service
+invocation described above are the building blocks of a **generic,
+transport-agnostic Raft consensus service** — a replicated state
+machine exported as a native CharlotteOS IPC endpoint.
+
+> **Implementation status.** The Raft core, transport traits, wire
+> format, and service binary all compile and load as EL0 services.
+> Single-node boot is validated on QEMU (HVF). Multi-node leader
+> election across machines is blocked on two dependencies: (1) the
+> NIC driver must reach runtime validation (currently blocked by the
+> HVF EL0-MMIO limitation; works on KVM), and (2) the reliable
+> message layer must be implemented as a userspace service. Within a
+> single CharlotteOS instance, multiple Raft nodes communicate via
+> local endpoint IPC and elect a leader — this path is blocked only
+> by a scheduler yield issue under the headless HVF build.
+
+| Capability | Status |
+|---|---|
+| Raft core (leader election, log replication, commit/apply) | Compiles, single-node boot validated |
+| Charlotte IPC transport (`CharlotteTransport`) | Compiles, peer-connection table implemented |
+| Election timer (`submit_timer`) | Implemented (SVC #1, OpCode::Timer, CNTV hardware) |
+| Scalar RPCs over endpoint IPC | Compiles (VoteRequest, AppendEntries via `ipc_scalar_call`) |
+| Memory-object RPC payloads (zero-copy log replication) | Wire format defined; transport uses scalar calls only |
+| Durable log (survives service restart) | In-memory `LogStore` exists; page-backed not yet implemented |
+| Cross-machine Raft (NIC driver + reliable message layer) | Blocked on NIC runtime validation (KVM) |
+| Distributed name service (on top of Raft) | Design only; depends on cross-machine Raft |
+
+```
+┌──────────────────────────────────────────────┐
+│          Distributed Name Service             │  ← replicated capability→name store
+│  (a StateMachine on top of the Raft service)  │
+└──────────────────┬───────────────────────────┘
+                   │ IPC (OP_CLIENT_COMMAND)
+┌──────────────────▼───────────────────────────┐
+│          Raft Consensus Service               │  ← one EL0 service per node
+│  endpoint: "RAFT"  opcodes: 1=Vote 2=Append  │
+│           3=Snapshot  4=Command  8=Status     │
+└──────────────────┬───────────────────────────┘
+                   │ IPC / memory objects
+┌──────────────────▼───────────────────────────┐
+│     Reliable Message Layer / NIC driver       │
+└──────────────────────────────────────────────┘
+```
+
+## 18.1 Architectural fit
+
+| Raft concern | CharlotteOS primitive | Status |
+|---|---|---|
+| Peer discovery (single-instance) | Name service (`OP_LOOKUP`) | Works: nodes register as `raft-{id}`, look up local peers |
+| Peer discovery (cross-machine) | Distributed name service (on top of Raft) | Requires cross-machine Raft first |
+| Inter-node RPC (scalar) | Endpoint IPC (`ipc_scalar_call`) | Works: VoteRequest, AppendEntries travel as scalar messages |
+| Inter-node RPC (zero-copy) | Memory objects (`Move` transfer) | Wire format defined; transport currently scalar-only |
+| Election timer | `submit_timer()` (SVC #1, OpCode::Timer) | Implemented: CNTV hardware → CQ completion |
+| Durable log | Memory objects | In-memory `LogStore` implemented; page-backed planned |
+| Client command submission | Capability-based endpoint call | `OP_CLIENT_COMMAND` opcode defined; not yet wired to state machine |
+| Linearizable reads | Reply tokens + read barrier | Supported by `RaftNode` logic; untested end-to-end |
+
+## 18.2 Why this is better than socket-based Raft
+
+**Authority, not addresses — after bootstrap.** Once the cluster is
+running, peers are identified by name service entries, not IP:port.
+A node that has joined the cluster receives connection caps for its
+peers through the name service. No IP configuration and no DNS are
+needed for ongoing operation.
+
+Bootstrap, however, remains a seed problem: a new node must contact
+at least one cluster member to discover the rest. The seed is a
+service name (e.g. `raft-cluster.node-1`) rather than an IP address,
+but it still must be supplied — through launch arguments, a
+configuration page, or a hardware-level discovery protocol.
+Section 18.4 discusses this in detail.
+
+**Transport transparency.** The transport layer is an implementation
+detail behind the `RaftTransport` trait. A connection capability routes
+through local IPC, Ethernet frames, or a future RDMA transport — the
+consensus core never changes.
+
+**Zero-copy replication (planned).** Log payloads can transfer via `Move`
+memory objects: the kernel flips page-table ownership instead of
+copying bytes. The wire format supports this; the current transport
+uses scalar IPC with inline payloads. Moving to memory-object RPCs
+is a transport-layer change that does not affect the consensus core.
+
+**Capability-based security.** A client invokes the Raft service only if
+it possesses a connection cap. The service manager attenuates rights:
+`CALL` for `OP_CLIENT_COMMAND` but not `OP_ADD_SERVER`. No ambient
+authority, no IP-based ACLs.
+
+**Failure isolation.** Each Raft node is a separate protection domain.
+When a node crashes, the service manager restarts it with a new
+generation number. Stale client connections fail with `ServiceRestarted`.
+The cluster continues with the remaining nodes — analogous to the
+userspace UART driver restart already validated in Phase 8.
+
+## 18.3 Distributed name service (design)
+
+> **Status: design only.** The existing name service (`ns.rs`) is
+> single-node. Making it distributed requires (1) cross-machine Raft
+> validated on KVM, (2) the reliable message layer implemented, and
+> (3) the name service refactored as a `StateMachine` implementation.
+
+The existing single-node name service becomes a replicated
+service by running as a `StateMachine` on top of the Raft service:
+
+- `OP_REGISTER` / `OP_LOOKUP` — submitted as commands through the Raft
+  leader, replicated to the log, applied at each node's state machine
+- Service generations — replicated consistently; a restart on node 3
+  cannot create a split-brain where node 1 sees generation 5 and node 2
+  sees generation 3
+- Access keys (`OP_REGISTER_KEYED`) — enforced consistently across the
+  cluster; revocation propagates through the replicated log
+
+The Raft service itself remains **generic**: it replicates opaque
+commands against a pluggable `StateMachine` trait. A distributed name
+service, a distributed lock service, and a cluster configuration store
+are different state machines on the same Raft substrate — none of them
+know about sockets, IP addresses, or TCP.
+
+## 18.4 Cluster bootstrap and seed discovery
+
+Like every consensus system, Charlotte OS Raft faces a bootstrap
+problem: a node starting with an empty peer list must contact at least
+one existing cluster member. The difference is that the seed is
+expressed in terms the OS already understands — service names and
+transport-layer identifiers — rather than IP addresses.
+
+### Static seeds (launch-time configuration)
+
+The simplest mechanism, already implemented in the Raft service
+binary: launch arguments carry the service names of seed peers.
+
+```
+args = ["r4", "r1", "r2", "r3"]  // r4 is this node, r1/r2/r3 are seeds
+```
+
+The node calls `OP_LOOKUP("raft-r1")` on its local name service to
+obtain a connection cap. If the seed node resides on the same machine,
+the name service returns the cap directly. If the seed is remote, the
+local name service forwards the request through the distributed name
+service (once available), which resolves it to a remote connection
+routed through the reliable message layer and NIC driver.
+
+This is functionally equivalent to `--peers=10.0.0.1:7000` in a
+traditional Raft cluster. The difference is that the seed identifier
+is a service name, not a transport address, so the transport layer can
+change (Ethernet → RDMA → shared memory) without invalidating the seed
+configuration.
+
+### Pre-shared cluster capability
+
+A cluster administrator or provisioning system creates a "cluster
+capability" — an endpoint connection cap to a known cluster member —
+and delivers it to new nodes as a bootstrap argument. This eliminates
+even the service-name lookup step: the node already possesses a
+first-class connection to a peer. The supervisor writes this cap into
+the node's config page at launch, alongside the name service
+connection.
+
+### Hardware-level discovery
+
+On a single Ethernet segment, nodes can discover each other without
+any seed configuration. A joining node broadcasts an Ethernet frame
+with a well-known EtherType (the `charlotte-protocol-msg` layer
+already reserves `0x88B5`), carrying a "Raft peer discovery" payload.
+Existing cluster members respond with their service names and a
+connection offer. The joining node then performs a standard name
+service lookup to obtain attested connection caps.
+
+This is analogous to ARP or IPv6 Neighbor Discovery, but at the
+cluster-membership level rather than the address-resolution level.
+It works without any seed configuration when all nodes share a
+broadcast domain, and it degrades gracefully to static seeds when
+they do not (routed networks, overlays).
+
+### Gradual deployment path
+
+These mechanisms are ordered by implementation complexity:
+
+1. **Static seeds in launch args** — works today, requires manual
+   configuration per node. The Raft binary already accepts peer names
+   as argument words.
+2. **Pre-shared cluster capability** — requires the service manager
+   or provisioning system to mint and deliver a capability. Small
+   kernel change, large operational improvement.
+3. **Ethernet broadcast discovery** — requires the reliable message
+   layer to handle broadcast frames and a discovery protocol handler
+   in the Raft binary. Zero-configuration on a single segment.
+4. **Distributed name service** — once the cluster is running and
+   the name service is replicated through Raft, new nodes need only
+   a single seed to discover all peers through the consistent name
+   registry. This is the end state.
+
+---
+
+# 19. Comparison
 
 | Traditional UNIX | CharlotteOS |
 |-----------------|-------------|
@@ -712,7 +908,7 @@ without modifying the underlying transport.
 
 ---
 
-# 19. Guidance for Codex
+# 20. Guidance for Codex
 
 The following rules should guide future implementation.
 
@@ -763,9 +959,31 @@ shall be transparent.
 
 The operating system—not the application—determines how communication is transported.
 
+## Replicated Services
+
+Distributed consensus shall be available as a generic capability service.
+Raft, built on the reliable message layer, exports a replicated state-machine
+abstraction through the same endpoint IPC that local services use.
+
+- The Raft service shall be transport-agnostic: its peer communication uses
+  the `RaftTransport` trait, backed by endpoint IPC. Memory-object transfer
+  (`Move` semantics) shall replace scalar payloads for log replication once
+  the reliable message layer supports frame-sized limits.
+- Cluster membership shall be managed through the name service once a node
+  has joined. Initial bootstrap requires seed configuration (launch args,
+  a pre-shared cluster capability, or Ethernet broadcast discovery — see §18.4).
+- The service is generic: a distributed name service, lock service, or
+  configuration store are different `StateMachine` implementations on the
+  same Raft substrate.
+- Timer-driven operations (election timeouts, heartbeat intervals) shall
+  use the first-class `submit_timer()` completion primitive, not polling loops.
+- Existing single-node services that need consistency across the cluster
+  shall be refactored as state machines behind the Raft service rather than
+  re-implementing consensus internally.
+
 ---
 
-# 20. Architectural Principle
+# 21. Architectural Principle
 
 The networking architecture of CharlotteOS can be summarized by a single statement:
 

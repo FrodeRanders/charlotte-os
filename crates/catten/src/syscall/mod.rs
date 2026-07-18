@@ -291,6 +291,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         0 => crate::completion::OpCode::Nop,
         1 => crate::completion::OpCode::Read,
         2 => crate::completion::OpCode::Write,
+        3 => crate::completion::OpCode::Timer,
         _ => panic!("Unknown op_code in syscall submit: {}", op_code),
     };
 
@@ -314,6 +315,15 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
     } else {
         None
     };
+
+    if op == crate::completion::OpCode::Timer {
+        let timeout_ms = buf_len as u64;
+        match crate::completion::submit_timer(asid, timeout_ms) {
+            Ok(cap) => frame.regs[0] = cap as u64,
+            Err(_) => frame.regs[0] = 0,
+        }
+        return;
+    }
 
     match crate::completion::submit(asid, op, None) {
         Ok(cap) => {

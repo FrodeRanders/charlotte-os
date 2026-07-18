@@ -16,6 +16,7 @@ pub mod el0_demo;
 pub mod el0_ipc;
 pub mod el0_net;
 pub mod el0_pingpong;
+pub mod el0_raft;
 pub mod el0_service;
 pub mod el0_sitas;
 pub mod el0_uart;
@@ -56,6 +57,7 @@ pub fn run_self_tests() {
     shard::test_shard_local();
     shard::test_shard_mailbox();
     el0::test_el0_syscall_round_trip();
+    el0_raft::test_el0_raft();
     el0_ipc::test_el0_endpoint_ipc();
     el0_ipc::test_el0_endpoint_ipc_blocking_receive();
     el0_ipc::test_el0_endpoint_ipc_cross_address_space();

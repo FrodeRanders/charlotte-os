@@ -76,6 +76,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "catten-graft"
+version = "0.1.0"
+dependencies = [
+ "catten-rt",
+ "catten-syscall",
+ "spin 0.9.9",
+]
+
+[[package]]
 name = "catten-rt"
 version = "0.1.0"
 dependencies = [

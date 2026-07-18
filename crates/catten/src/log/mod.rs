@@ -46,7 +46,7 @@ pub fn early_restore_interrupts(interrupts_were_enabled: bool) {
 /// early console.
 #[macro_export]
 macro_rules! early_log {
-    ($text:expr $(, $arg:tt)*) => {{
+    ($text:expr $(, $arg:expr)*) => {{
         #[cfg(target_arch = "aarch64")]
         {
             use core::fmt::Write;
@@ -62,7 +62,7 @@ macro_rules! early_log {
 
 #[macro_export]
 macro_rules! early_logln {
-    ($text:expr $(, $arg:tt)*) => {{
+    ($text:expr $(, $arg:expr)*) => {{
         #[cfg(target_arch = "aarch64")]
         {
             use core::fmt::Write;
@@ -132,7 +132,7 @@ pub fn _write_args(args: core::fmt::Arguments, newline: bool) {
 
 #[macro_export]
 macro_rules! log {
-    ($text:expr $(, $arg:tt)*) => ({
+    ($text:expr $(, $arg:expr)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
         $crate::log::_write_args(format_args!($text $(, $arg)*), false);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();
@@ -140,7 +140,7 @@ macro_rules! log {
 }
 #[macro_export]
 macro_rules! logln {
-    ($text:expr $(, $arg:tt)*) => ({
+    ($text:expr $(, $arg:expr)*) => ({
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.save_int();
         $crate::log::_write_args(format_args!($text $(, $arg)*), true);
         $crate::cpu::multiprocessor::interrupt_tracking::INT_STATE.restore_int();

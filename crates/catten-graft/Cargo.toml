@@ -1,0 +1,24 @@
+[package]
+name = "catten-graft"
+version = "0.1.0"
+edition = "2024"
+description = "no_std Raft consensus core adapted for CharlotteOS"
+
+[lib]
+name = "catten_graft"
+path = "src/lib.rs"
+test = false
+bench = false
+
+[dependencies]
+catten-syscall = { path = "../catten-syscall" }
+catten-rt = { path = "../catten-rt" }
+spin = { version = "0.9", features = ["lock_api"] }
+
+[profile.dev]
+panic = "abort"
+opt-level = "s"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"

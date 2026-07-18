@@ -52,11 +52,18 @@ use crate::{
         system_scheduler::SYSTEM_SCHEDULER,
         yield_lp,
     },
-    klib::observer::{
-        Observable,
-        Observer,
+    klib::{
+        observer::{
+            Observable,
+            Observer,
+        },
+        time::duration::ExtDuration,
     },
     memory::AddressSpaceId,
+    timers::{
+        TIMER_QUEUES,
+        TimerEvent,
+    },
 };
 
 /// A per-address-space handle naming an in-flight or completed async operation.
@@ -91,6 +98,8 @@ pub enum OpCode {
     Read,
     /// Write from the submitted buffer (buffer returned on completion).
     Write,
+    /// Timer completion: auto-completes when a deadline expires.
+    Timer,
 }
 
 /// The terminal result carried by a completed capability.
@@ -201,6 +210,8 @@ struct CompletionInner {
     /// must live somewhere; it lives here, so the observer can still fire when
     /// the worker thread exits.
     exit_observer: Option<Arc<CompletionExitObserver>>,
+    /// Keeps the timer observer (if any) alive until the completion is reclaimed.
+    timer_observer: Option<Arc<CompletionTimerObserver>>,
 }
 
 /// An [`Observer`] that completes a capability when the worker thread it is
@@ -217,9 +228,22 @@ struct CompletionExitObserver {
 
 impl Observer for CompletionExitObserver {
     fn notify(self: Arc<Self>) {
-        // The worker thread has exited: post the terminal result. This runs
-        // from the reaper (`reap_dead_threads` in `cond_yield_lp`), which holds
-        // no scheduler locks, so waking a waiter via `complete` is safe.
+        let _ = complete(self.asid, self.cap, self.result.clone());
+    }
+}
+
+/// An [`Observer`] that completes a capability when a timer fires.
+/// This is the mechanism backing `OpCode::Timer`: the timer event's
+/// observer posts the terminal result, so a userspace caller that
+/// blocks on `cq_wait` is released at the deadline.
+struct CompletionTimerObserver {
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    result: OpResult,
+}
+
+impl Observer for CompletionTimerObserver {
+    fn notify(self: Arc<Self>) {
         let _ = complete(self.asid, self.cap, self.result.clone());
     }
 }
@@ -244,6 +268,7 @@ impl Completion {
                 buffer,
                 state: OpState::InFlight,
                 exit_observer: None,
+                timer_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
         })
@@ -255,6 +280,10 @@ impl Completion {
 
     fn set_exit_observer(&self, observer: Arc<CompletionExitObserver>) {
         self.inner.lock().exit_observer = Some(observer);
+    }
+
+    fn set_timer_observer(&self, observer: Arc<CompletionTimerObserver>) {
+        self.inner.lock().timer_observer = Some(observer);
     }
 
     fn state_kind(&self) -> OpStateKind {
@@ -543,6 +572,29 @@ pub fn submit(
     }
     let cap = as_completions.table.add_element(Completion::new(buffer));
     as_completions.live += 1;
+    Ok(cap)
+}
+
+/// Submits a timer operation: creates a capability that auto-completes after
+/// `timeout_ms` milliseconds. The returned cap delivers a completion ring entry
+/// when the deadline expires, so a user-space service waiting on `cq_wait` is
+/// released exactly at the deadline.
+pub fn submit_timer(
+    asid: AddressSpaceId,
+    timeout_ms: u64,
+) -> Result<CompletionCap, SubmitError> {
+    let cap = submit(asid, OpCode::Timer, None)?;
+    let observer = Arc::new(CompletionTimerObserver {
+        asid,
+        cap,
+        result: OpResult::Ok(0),
+    });
+    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+    if let Ok(completion) = completion_of(asid, cap) {
+        completion.set_timer_observer(observer);
+    }
     Ok(cap)
 }
 

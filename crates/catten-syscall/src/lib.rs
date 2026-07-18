@@ -39,6 +39,7 @@ pub enum OpCode {
     Nop = 0,
     Read = 1,
     Write = 2,
+    Timer = 3,
 }
 
 // ---- endpoint IPC constants -----------------------------------------------
@@ -368,6 +369,13 @@ pub unsafe fn el0_log(a: u64, b: u64) {
 #[inline(always)]
 pub unsafe fn submit(op: OpCode) -> u64 {
     unsafe { svc3(1, op as u64, 0, 0) }
+}
+
+/// Submit a timer operation that completes after `timeout_ms` milliseconds.
+/// Returns a completion capability that auto-completes when the timer fires.
+#[inline(always)]
+pub unsafe fn submit_timer(timeout_ms: u64) -> u64 {
+    unsafe { svc3(1, OpCode::Timer as u64, 0, timeout_ms) }
 }
 
 /// Submit a Read with a user buffer.  `buf_ptr`/`buf_len` point to a

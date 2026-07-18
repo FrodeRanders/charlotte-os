@@ -314,6 +314,31 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
     Some(cap)
 }
 
+/// Raft consensus protocol (`charlotte-protocol-raft` v1).
+///
+/// The opcodes are deliberately aligned with the `graft` crate's message
+/// types so that the wire-level encoding stays identical across the
+/// standard-library (Tokio) and CharlotteOS builds.
+pub mod raft {
+    /// Interface id: "RAFT".
+    pub const INTERFACE: u64 = super::name(b"RAFT");
+    pub const VERSION: u32 = 1;
+
+    pub const OP_VOTE_REQUEST: u32 = 1;
+    pub const OP_APPEND_ENTRIES: u32 = 2;
+    pub const OP_INSTALL_SNAPSHOT: u32 = 3;
+    pub const OP_CLIENT_COMMAND: u32 = 4;
+    pub const OP_CLIENT_QUERY: u32 = 5;
+    pub const OP_ADD_SERVER: u32 = 6;
+    pub const OP_REMOVE_SERVER: u32 = 7;
+    pub const OP_STATUS: u32 = 8;
+
+    pub const ERR_NOT_LEADER: i64 = -1;
+    pub const ERR_LOG_INCONSISTENCY: i64 = -2;
+    pub const ERR_STALE_TERM: i64 = -3;
+    pub const ERR_NOT_FOUND: i64 = -4;
+}
+
 /// Spin-poll a pending call until it completes, returning
 /// `(result, returned_connection_cap)`.
 ///
