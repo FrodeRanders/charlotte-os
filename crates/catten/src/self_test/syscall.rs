@@ -76,6 +76,7 @@ fn synthetic_trap_frame4_in(
 fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpaceId {
     let user_as = {
         let _kas = KERNEL_AS.lock();
+        #[cfg_attr(not(target_arch = "aarch64"), allow(unused_mut))]
         let mut as_ = AddressSpace::get_current();
         #[cfg(target_arch = "aarch64")]
         as_.set_ttbr0(0);

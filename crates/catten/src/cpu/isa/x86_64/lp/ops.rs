@@ -17,7 +17,7 @@ pub fn init_lp_state() {
     unsafe extern "C" {
         fn syscall_entry();
     }
-    let handler_addr = unsafe { syscall_entry as usize as u64 };
+    let handler_addr = syscall_entry as usize as u64;
     unsafe {
         crate::cpu::isa::x86_64::constants::msrs::setup_syscall(handler_addr);
     }

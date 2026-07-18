@@ -71,24 +71,21 @@ pub const SFMASK: u32 = 0xC000_0084;
 
 /// Convenience: enable SYSCALL by setting EFER.SCE.
 pub unsafe fn enable_syscall() {
-    let efer_val = read(EFER);
-    write(EFER, efer_val | EFER_SCE);
+    unsafe {
+        let efer_val = read(EFER);
+        write(EFER, efer_val | EFER_SCE);
+    }
 }
 
 /// Configure SYSCALL entry point. `handler` must be the address of the
 /// assembly trampoline that saves registers and calls into Rust.
 pub unsafe fn setup_syscall(handler_addr: u64) {
-    // IA32_STAR: user segments are at GDT indices 3 (user data) and 4 (user
-    // code, 64-bit). SYSRET returns to CPL3 with the selectors derived from
-    // STAR[63:48] (user CS) and STAR[63:48] + 8 (user SS).
-    //
-    // Kernel segments: GDT index 1 = kernel code (ring 0), index 2 = kernel data.
-    // SYSCALL loads CS = STAR[47:32], SS = STAR[47:32] + 8.
-    let star_val: u64 = (0x0010u64 << 48)  // SYSRET CS = GDT[4] = 0x20, but with RPL bits: index 4, RPL 0 = 0x20, and +8 = 0x28 for SS
-                         | (0x0008u64 << 32); // SYSCALL  CS = GDT[1] = 0x08, SS = 0x10
-    write(STAR, star_val);
-    write(LSTAR, handler_addr);
-    // Clear interrupt flag on entry (mask interrupts during syscall dispatch).
-    write(SFMASK, 1 << 9); // RFLAGS.IF = bit 9
-    enable_syscall();
+    unsafe {
+        let star_val: u64 = (0x0010u64 << 48)
+                         | (0x0008u64 << 32);
+        write(STAR, star_val);
+        write(LSTAR, handler_addr);
+        write(SFMASK, 1 << 9);
+        enable_syscall();
+    }
 }

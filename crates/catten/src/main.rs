@@ -4,6 +4,7 @@
 #![feature(iter_advance_by)]
 #![feature(likely_unlikely)]
 #![feature(step_trait)]
+#![feature(abi_custom)]
 #![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
 

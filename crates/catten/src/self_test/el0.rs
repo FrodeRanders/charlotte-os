@@ -21,6 +21,7 @@
 //! alias) once the scheduler is active and assert the sentinel and returned
 //! cap, panicking on mismatch or timeout.
 
+#[cfg(target_arch = "aarch64")]
 use crate::{
     completion::{
         self,

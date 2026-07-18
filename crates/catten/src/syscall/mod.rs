@@ -251,7 +251,12 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         call_no::DEVICE_IRQ_ACK => sys_device_irq_ack(frame),
         call_no::DEVICE_CLOSE => sys_device_close(frame),
         call_no::MEMORY_GET_PHYS => sys_memory_get_phys(frame),
-        call_no::SPAWN_UPGRADE => sys_spawn_upgrade(frame),
+        call_no::SPAWN_UPGRADE => {
+            #[cfg(target_arch = "aarch64")]
+            sys_spawn_upgrade(frame);
+            #[cfg(not(target_arch = "aarch64"))]
+            { frame.regs[0] = 0; }
+        }
         _ => panic!("Unknown syscall number: {}", syscall_no),
     }
 }
@@ -1119,6 +1124,7 @@ fn sys_device_close(frame: &mut TrapFrame) {
     };
 }
 
+#[cfg(target_arch = "aarch64")]
 fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     let elf_selector = frame.regs[2];
