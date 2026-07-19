@@ -85,6 +85,7 @@ static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_c
 /// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.
 #[unsafe(no_mangle)]
 pub extern "C" fn bsp_main() -> ! {
+    crate::log::init_timestamp_epoch();
     #[cfg(target_arch = "aarch64")]
     {
         crate::cpu::isa::lp::ops::enable_fp_simd();
