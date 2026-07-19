@@ -71,7 +71,9 @@ const GICD_CTLR_ARE_NS: u32 = 1 << 4;
 const GICD_CTLR_ENABLE_GRP1_NS: u32 = 1 << 1;
 
 // Redistributor (RD_base frame) register offsets.
+const GICR_CTLR: usize = 0x0000;
 const GICR_WAKER: usize = 0x0014;
+const GICR_CTLR_RWP: u32 = 1 << 3;
 // GICR_WAKER bits.
 const GICR_WAKER_PROCESSOR_SLEEP: u32 = 1 << 1;
 const GICR_WAKER_CHILDREN_ASLEEP: u32 = 1 << 2;
@@ -172,8 +174,18 @@ impl GicV3 {
     /// redistributor: assign it to Group 1, give it a runnable priority, and
     /// enable it.
     fn enable_private_int(intid: u32) {
+        let rd = gicr_rd_base();
         let sgi = gicr_sgi_base();
         unsafe {
+            // Group and priority are configuration, not live-state controls.
+            // Firmware commonly leaves the BSP timer PPI enabled; changing its
+            // group while enabled is architecturally invalid and on QEMU can
+            // leave LP0's PPI permanently undispatchable. Disable first and
+            // wait for the redistributor write to complete.
+            mmio_write32(sgi, GICR_ICENABLER0, 1 << intid);
+            while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
+                core::hint::spin_loop();
+            }
             // Group 1 (non-secure): set the corresponding bit in IGROUPR0.
             let mut group = mmio_read32(sgi, GICR_IGROUPR0);
             group |= 1 << intid;
@@ -185,6 +197,9 @@ impl GicV3 {
             core::ptr::write_volatile(prio_ptr, DEFAULT_PRIORITY);
             // Enable the interrupt.
             mmio_write32(sgi, GICR_ISENABLER0, 1 << intid);
+            while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
+                core::hint::spin_loop();
+            }
         }
     }
 
@@ -230,6 +245,17 @@ impl LocalIntCtlrIfce for GicV3 {
         }
         Self::redistributor_wake();
         Self::cpu_interface_init();
+        // SGIs are private interrupts too. Configure every IPI used by the
+        // kernel explicitly instead of relying on firmware/reset defaults.
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR,
+        );
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR,
+        );
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::SCHEDULER_IPI_VECTOR,
+        );
         // Enable the EL1 virtual timer PPI (INTID 27) so the scheduler tick is
         // delivered to this core.
         Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR);

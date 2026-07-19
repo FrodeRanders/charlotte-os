@@ -72,15 +72,13 @@ impl SystemScheduler {
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
         let mut lp_guard = least_loaded_lp.lock();
-        let was_idle = lp_guard.is_idle();
         match lp_guard.add_thread(tid, None) {
             Ok(()) => {}
             Err(_) => return Err(Error::InvalidThread),
         }
         let lp_id = lp_guard.get_lp_id();
         drop(lp_guard);
-        if was_idle && lp_id != get_lp_id() {
-            logln!("LP {lp_id} was idle, sending wakeup IPI.");
+        if lp_id != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
         }
@@ -94,11 +92,10 @@ impl SystemScheduler {
     ) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
         let mut lp_guard = least_loaded_lp.lock();
-        let was_idle = lp_guard.is_idle();
         lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
         let lp_id = lp_guard.get_lp_id();
         drop(lp_guard);
-        if was_idle && lp_id != get_lp_id() {
+        if lp_id != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
         }
@@ -117,10 +114,9 @@ impl SystemScheduler {
             }
         };
         let mut sched_guard = sched.lock();
-        let was_idle = sched_guard.is_idle();
         sched_guard.add_thread(tid, None).expect("Error adding thread to target LP");
         drop(sched_guard);
-        if was_idle && target_lp != get_lp_id() {
+        if target_lp != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
         }

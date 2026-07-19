@@ -136,7 +136,6 @@ pub extern "C" fn bsp_main() -> ! {
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
     crate::demo::spawn_async_syscall_demo();
-    unmask_interrupts!();
     logln!("Submitted all initial kernel threads.");
     logln!(
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
@@ -148,6 +147,9 @@ pub extern "C" fn bsp_main() -> ! {
         "LP {}: Initialized local interrupt controller. Yielding the processor to the scheduler.",
         (get_lp_id())
     );
+    // Do not permit an IRQ-tail context switch to abandon the BSP boot
+    // context before its local GIC and timer interrupt have been configured.
+    unmask_interrupts!();
     yield_lp();
     /* We've switched into thread context and never come back */
     unsafe { unreachable_unchecked() }
@@ -165,6 +167,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
         assign_id();
     }
     init::ap_init();
+    mask_interrupts!();
     INIT_BARRIER.wait();
     let lp_id = get_lp_id();
     logln!("LP {lp_id}: Bootstrapping complete.");
@@ -175,6 +178,7 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
         "LP {lp_id}: Initialized local interrupt controller. Yielding the processor to the \
          scheduler."
     );
+    unmask_interrupts!();
     yield_lp();
     /* We've switched into thread context and never come back */
     unsafe { unreachable_unchecked() }

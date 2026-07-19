@@ -417,6 +417,28 @@ dedicated SGI (INTID 2); its handler marks a local context switch pending, and
 send failures are no longer ignored. Round-robin also starts in the idle state,
 because no initial quantum is armed before its first dispatch.
 
+A second AArch64 starvation cause was in BSP boot ordering rather than the
+round-robin policy. LP0 unmasked IRQs before the final barrier and before
+`LocalIntCtlr::init_lp()`. A pending interrupt could therefore enter the IRQ
+tail, observe a scheduler switch request, and permanently abandon the BSP boot
+context before its GIC redistributor and timer PPI were configured. The
+failure was deterministic once isolated: LP0 dispatched the first
+uncooperative EL0 thread, received no timer ticks, and stranded every runnable
+thread behind it; LP1--LP3 continued to rotate normally. Redistributor state
+also showed that LP0 retained firmware defaults while the APs had the expected
+SGI and PPI configuration. BSP and AP paths now keep interrupts masked through
+local-controller initialization and unmask only immediately before their
+initial scheduler yield. Private GIC interrupt setup additionally follows the
+required disable--configure--enable sequence and waits for redistributor writes
+to complete, rather than assuming firmware left the BSP PPI disabled.
+
+After this correction a four-vCPU AArch64 TCG run completed the previously
+starved EL0 IPC scalar/block/memory/cancel/copy, ping-pong, cross-LP, Sitas,
+CQ-wait, device-interrupt, async, and Raft markers. The service and UART
+lifecycle gates remained incomplete in that aggregate run and are tracked as a
+separate shared name-service/lifecycle issue, not as evidence of remaining
+round-robin starvation.
+
 Previously, a delayed observer notification named only a `ThreadId`; after
 exit and ID-table reuse it could wake an unrelated replacement thread. In
 addition, a queued-thread block could hold `MASTER_THREAD_TABLE` while waiting
