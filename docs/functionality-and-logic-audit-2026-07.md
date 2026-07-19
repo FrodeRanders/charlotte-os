@@ -611,11 +611,17 @@ The userspace completion-poll wrapper now returns the status and result already
 provided by syscall 3, and Raft uses that poll after `CQ_WAIT` rather than
 nesting `COMPLETION_WAIT_TIMEOUT`. `raft.elf` was also added to the coherent
 service embed/check script. A subsequent bounded run progressed through Raft
-node startup and UART's first interrupt phase but then stopped producing output
-at 0.270 seconds and missed multiple independent markers. Therefore the ABI
-correction is source-verified and target-checks pass, but it is not yet accepted
-as a runtime fix; the new aggregate stall requires a debugger capture before
-idle-load validation can be repeated.
+node startup but left both nodes as followers. A debugger capture showed three
+LPs idle/in exception vectors and the remaining LP executing the yielding Raft
+verifier: this was not another global lock deadlock. The new wrapper had exposed
+a separate ABI defect: the shared two-register SVC helper did not dispatch
+immediate 3 and reached `unreachable_unchecked()` instead of executing
+`svc #3`. Adding that missing dispatch case and rebuilding `raft.elf` restored
+the timer path; a subsequent SMP4 TCG run elected one leader at 0.866 seconds
+with asynchronous completions `1/1`. A later experimental timer backoff in the
+generic service polling helper caused CQ wake storms and was removed. AArch64
+and x86-64 target checks pass; UART scheduling variability remains under
+investigation before final idle-load acceptance.
 
 ## Architecture conformance assessment
 

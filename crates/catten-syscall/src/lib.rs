@@ -217,6 +217,7 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
     let x1_out: u64;
     unsafe {
         match imm {
+            3 => asm!("svc #3", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             10 => asm!("svc #10", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
