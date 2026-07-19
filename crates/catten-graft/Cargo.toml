@@ -7,7 +7,6 @@ description = "no_std Raft consensus core adapted for CharlotteOS"
 [lib]
 name = "catten_graft"
 path = "src/lib.rs"
-test = false
 bench = false
 
 [dependencies]

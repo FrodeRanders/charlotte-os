@@ -1,6 +1,27 @@
 use alloc::vec::Vec;
 
-use crate::types::{LogEntry, Peer};
+use crate::types::{
+    AppendEntriesResponse,
+    InstallSnapshotResponse,
+    LogEntry,
+    Peer,
+    VoteResponse,
+};
+
+pub enum RpcCompletion {
+    Vote {
+        peer_id: alloc::string::String,
+        response: VoteResponse,
+    },
+    AppendEntries {
+        peer_id: alloc::string::String,
+        response: AppendEntriesResponse,
+    },
+    InstallSnapshot {
+        peer_id: alloc::string::String,
+        response: InstallSnapshotResponse,
+    },
+}
 
 pub trait RaftTransport {
     fn send_vote_request(
@@ -36,6 +57,10 @@ pub trait RaftTransport {
     );
 
     fn broadcast_heartbeat_complete(&self);
+
+    fn poll_completions(&self) -> Vec<RpcCompletion> {
+        Vec::new()
+    }
 }
 
 pub struct NoopTransport;

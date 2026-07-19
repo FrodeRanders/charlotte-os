@@ -1,5 +1,7 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Role {
@@ -127,6 +129,10 @@ pub struct InstallSnapshotRequest {
 #[derive(Debug, Clone)]
 pub struct InstallSnapshotResponse {
     pub term: u64,
+    pub success: bool,
+    pub last_included_index: u64,
+    pub next_offset: u64,
+    pub done: bool,
 }
 
 #[derive(Debug, Clone)]

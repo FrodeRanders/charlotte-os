@@ -28,24 +28,19 @@ USE_HVF="0"
 SMP="4"
 TIMEOUT=""
 
-for arg in "$@"; do
-    case "$arg" in
-        debug|release) PROFILE="$arg" ;;
-        --display)     DISPLAY_MODE="1" ;;
-        --gdb)         GDB="-s -S" ;;
-        --hvf)         USE_HVF="1" ;;
-        --smp)         ;;  # next arg handled below
-        --timeout)     ;;  # next arg handled below
-        *) echo "Unknown argument: $arg" >&2; exit 1 ;;
-    esac
-done
-
-# Parse --smp and --timeout which take a following argument.
-args=("$@")
-for ((i=0; i<${#args[@]}; i++)); do
-    case "${args[i]}" in
-        --smp)     SMP="${args[i+1]}" ;;
-        --timeout) TIMEOUT="${args[i+1]}" ;;
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        debug|release) PROFILE="$1"; shift ;;
+        --display)     DISPLAY_MODE="1"; shift ;;
+        --gdb)         GDB="-s -S"; shift ;;
+        --hvf)         USE_HVF="1"; shift ;;
+        --smp)
+            [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
+            SMP="$2"; shift 2 ;;
+        --timeout)
+            [ "$#" -ge 2 ] || { echo "Missing value for --timeout" >&2; exit 1; }
+            TIMEOUT="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
@@ -125,9 +120,9 @@ fi
 QEMU_OPTS+=(-smp "$SMP")
 
 if [ "$DISPLAY_MODE" = "1" ]; then
-    QEMU_OPTS+=(-device ramfb -serial stdio)
+    QEMU_OPTS+=(-device ramfb)
 else
-    QEMU_OPTS+=(-serial stdio -display none)
+    QEMU_OPTS+=(-display none)
 fi
 
 if [ -n "$TIMEOUT" ]; then
@@ -142,6 +137,7 @@ if [ -n "$TIMEOUT" ]; then
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
 else
+    QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then
         echo ">>> Booting under QEMU (framebuffer window + serial; Ctrl-A X to quit)..."
     else

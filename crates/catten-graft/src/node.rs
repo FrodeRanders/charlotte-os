@@ -1,16 +1,39 @@
-use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
-use alloc::string::String;
-use alloc::string::ToString;
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
+    string::{
+        String,
+        ToString,
+    },
+    sync::Arc,
+    vec::Vec,
+};
 
-use crate::log_store::{LogStore, PersistentStateStore};
-use crate::state_machine::StateMachine;
-use crate::transport::RaftTransport;
-use crate::types::{
-    AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
-    InstallSnapshotResponse, LogEntry, NodeState, Peer,
-    VoteRequest, VoteResponse, ERR_NOT_LEADER,
+use crate::{
+    log_store::{
+        LogStore,
+        PersistentStateStore,
+    },
+    state_machine::StateMachine,
+    transport::{
+        RaftTransport,
+        RpcCompletion,
+    },
+    types::{
+        AppendEntriesRequest,
+        AppendEntriesResponse,
+        ERR_NOT_LEADER,
+        InstallSnapshotRequest,
+        InstallSnapshotResponse,
+        LogEntry,
+        NodeState,
+        Peer,
+        VoteRequest,
+        VoteResponse,
+    },
 };
 
 pub struct PendingSnapshot {
@@ -33,16 +56,20 @@ pub struct RaftNode {
     pub last_applied: u64,
     pub next_index: BTreeMap<String, u64>,
     pub match_index: BTreeMap<String, u64>,
+    pub snapshot_offsets: BTreeMap<String, u64>,
     pub cluster_configuration: Vec<Peer>,
     pub known_leader_id: Option<String>,
     pub pending_snapshot: Option<PendingSnapshot>,
     pub log_store: Box<dyn LogStore>,
     pub persistent_state: Box<dyn PersistentStateStore>,
     pub state_machine: Option<Box<dyn StateMachine>>,
-    pub transport: Box<dyn RaftTransport>,
+    pub transport: Arc<dyn RaftTransport>,
 
     current_millis: u64,
     rand_state: u64,
+    /// Distinct voter IDs that granted a vote in `current_term`.
+    /// This is reset for every election and whenever the node steps down.
+    granted_votes: BTreeSet<String>,
 }
 
 impl RaftNode {
@@ -53,15 +80,17 @@ impl RaftNode {
         persistent_state: Box<dyn PersistentStateStore>,
         state_machine: Option<Box<dyn StateMachine>>,
         cluster_configuration: Vec<Peer>,
-        transport: Box<dyn RaftTransport>,
+        transport: Arc<dyn RaftTransport>,
         current_millis: u64,
     ) -> Self {
         let current_term = persistent_state.current_term();
         let voted_for = persistent_state.voted_for();
         let snapshot_index = log_store.snapshot_index();
 
-        let rand_state = me.id.as_bytes().iter().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(*b as u64));
-        let deadline = current_millis + timeout_millis + (me.id.as_bytes().len() as u64 * 17 % 150);
+        let seed =
+            me.id.as_bytes().iter().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(*b as u64));
+        let rand_state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let deadline = current_millis + timeout_millis + ((rand_state >> 33) % 150);
 
         Self {
             me,
@@ -76,6 +105,7 @@ impl RaftNode {
             last_applied: snapshot_index,
             next_index: BTreeMap::new(),
             match_index: BTreeMap::new(),
+            snapshot_offsets: BTreeMap::new(),
             cluster_configuration,
             known_leader_id: None,
             pending_snapshot: None,
@@ -85,6 +115,7 @@ impl RaftNode {
             transport,
             current_millis,
             rand_state,
+            granted_votes: BTreeSet::new(),
         }
     }
 
@@ -97,7 +128,8 @@ impl RaftNode {
     }
 
     fn random(&mut self) -> u64 {
-        self.rand_state = self.rand_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.rand_state =
+            self.rand_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         self.rand_state >> 33
     }
 
@@ -124,6 +156,8 @@ impl RaftNode {
         self.persistent_state.set_voted_for(self.voted_for.clone());
         self.election_sequence_counter += 1;
         self.known_leader_id = None;
+        self.granted_votes.clear();
+        self.granted_votes.insert(self.me.id.clone());
 
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
 
@@ -141,6 +175,11 @@ impl RaftNode {
                 last_log_index,
                 last_log_term,
             );
+        }
+
+        // A single-voter cluster already has a majority after the self-vote.
+        if self.has_election_majority() {
+            self.become_leader(current_millis);
         }
     }
 
@@ -181,7 +220,7 @@ impl RaftNode {
         }
     }
 
-    pub fn handle_vote_response(&mut self, _peer_id: &str, resp: VoteResponse, current_millis: u64) {
+    pub fn handle_vote_response(&mut self, peer_id: &str, resp: VoteResponse, current_millis: u64) {
         self.current_millis = current_millis;
 
         if self.state != NodeState::Candidate {
@@ -193,25 +232,33 @@ impl RaftNode {
             return;
         }
 
-        if resp.term == self.current_term && resp.vote_granted {
-            let voters: Vec<&Peer> = self
-                .cluster_configuration
-                .iter()
-                .filter(|p| p.is_voter())
-                .collect();
-            let mut granted: usize = 1;
-            for p in &voters {
-                if p.id == self.me.id {
-                    continue;
-                }
-                granted += 1;
-            }
-
-            let majority = (voters.len() / 2) + 1;
-            if granted >= majority {
-                self.become_leader(current_millis);
-            }
+        if resp.term != self.current_term || !resp.vote_granted {
+            return;
         }
+
+        let is_configured_voter =
+            self.cluster_configuration.iter().any(|peer| peer.id == peer_id && peer.is_voter());
+        if !is_configured_voter {
+            return;
+        }
+
+        self.granted_votes.insert(peer_id.to_string());
+        if self.has_election_majority() {
+            self.become_leader(current_millis);
+        }
+    }
+
+    fn has_election_majority(&self) -> bool {
+        let voter_count = self.cluster_configuration.iter().filter(|peer| peer.is_voter()).count();
+        if voter_count == 0 {
+            return false;
+        }
+        let granted = self
+            .cluster_configuration
+            .iter()
+            .filter(|peer| peer.is_voter() && self.granted_votes.contains(&peer.id))
+            .count();
+        granted >= voter_count / 2 + 1
     }
 
     fn step_down(&mut self, term: u64, current_millis: u64) {
@@ -220,6 +267,7 @@ impl RaftNode {
         self.state = NodeState::Follower;
         self.voted_for = None;
         self.persistent_state.set_voted_for(None);
+        self.granted_votes.clear();
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
     }
 
@@ -227,6 +275,7 @@ impl RaftNode {
         self.state = NodeState::Leader;
         self.known_leader_id = Some(self.me.id.clone());
         self.current_millis = current_millis;
+        self.granted_votes.clear();
 
         let last_index = self.log_store.last_index();
         for peer in &self.cluster_configuration {
@@ -235,6 +284,7 @@ impl RaftNode {
             }
             self.next_index.insert(peer.id.clone(), last_index + 1);
             self.match_index.insert(peer.id.clone(), 0);
+            self.snapshot_offsets.insert(peer.id.clone(), 0);
         }
     }
 
@@ -254,11 +304,13 @@ impl RaftNode {
         }
 
         if req.term > self.current_term {
-            self.current_term = req.term;
-            self.persistent_state.set_current_term(self.current_term);
+            self.step_down(req.term, current_millis);
+        } else if self.state != NodeState::Follower {
+            // Valid AppendEntries from the current-term leader establishes that
+            // this node is not the leader for the term.
             self.state = NodeState::Follower;
-            self.voted_for = None;
-            self.persistent_state.set_voted_for(None);
+            self.known_leader_id = None;
+            self.granted_votes.clear();
         }
 
         self.last_heartbeat_millis = current_millis;
@@ -363,7 +415,22 @@ impl RaftNode {
         if req.term < self.current_term {
             return InstallSnapshotResponse {
                 term: self.current_term,
+                success: false,
+                last_included_index: req.last_included_index,
+                next_offset: 0,
+                done: false,
             };
+        }
+
+        if req.term > self.current_term {
+            self.step_down(req.term, current_millis);
+        } else if self.state != NodeState::Follower {
+            // A valid snapshot from the current-term leader establishes that
+            // this node is not the leader for the term. Keep voted_for for the
+            // current term so a follower cannot vote twice.
+            self.state = NodeState::Follower;
+            self.known_leader_id = None;
+            self.granted_votes.clear();
         }
 
         self.last_heartbeat_millis = current_millis;
@@ -379,14 +446,23 @@ impl RaftNode {
             });
         }
 
+        let mut accepted = false;
+        let mut next_offset = 0;
         if let Some(ref mut snap) = self.pending_snapshot {
-            if req.offset == snap.offset {
+            next_offset = snap.offset;
+            if req.last_included_index == snap.last_included_index
+                && req.last_included_term == snap.last_included_term
+                && req.offset == snap.offset
+            {
                 snap.data.extend_from_slice(&req.data);
                 snap.offset += req.data.len() as u64;
+                next_offset = snap.offset;
+                accepted = true;
             }
         }
 
-        if req.done {
+        let installed = accepted && req.done;
+        if installed {
             if let Some(ref snap) = self.pending_snapshot {
                 let data = snap.data.clone();
                 self.log_store.install_snapshot(
@@ -405,6 +481,10 @@ impl RaftNode {
 
         InstallSnapshotResponse {
             term: self.current_term,
+            success: accepted,
+            last_included_index: req.last_included_index,
+            next_offset,
+            done: installed,
         }
     }
 
@@ -421,12 +501,37 @@ impl RaftNode {
             }
 
             let ni = *self.next_index.get(&peer.id).unwrap_or(&1);
-            let prev_log_index = if ni > 1 { ni - 1 } else { 0 };
+            let prev_log_index = if ni > 1 {
+                ni - 1
+            } else {
+                0
+            };
             let prev_log_term = if prev_log_index > 0 {
                 self.log_store.term_at(prev_log_index)
             } else {
                 0
             };
+
+            let snapshot_index = self.log_store.snapshot_index();
+            if snapshot_index > 0 && ni <= snapshot_index {
+                const SNAPSHOT_CHUNK: usize = 3000;
+                let snapshot = self.log_store.snapshot_data();
+                let offset = self.snapshot_offsets.get(&peer.id).copied().unwrap_or(0) as usize;
+                let end = (offset + SNAPSHOT_CHUNK).min(snapshot.len());
+                if offset <= end {
+                    self.transport.send_install_snapshot(
+                        peer,
+                        self.current_term,
+                        &self.me.id,
+                        snapshot_index,
+                        self.log_store.snapshot_term(),
+                        offset as u64,
+                        snapshot[offset..end].to_vec(),
+                        end == snapshot.len(),
+                    );
+                }
+                continue;
+            }
 
             let entries = if ni <= self.log_store.last_index() {
                 self.log_store.entries_from(ni)
@@ -448,6 +553,50 @@ impl RaftNode {
         self.transport.broadcast_heartbeat_complete();
     }
 
+    /// Drain completed asynchronous transport calls into the consensus state
+    /// machine without blocking the shard.
+    pub fn poll_transport(&mut self, current_millis: u64) -> usize {
+        let completions = self.transport.poll_completions();
+        let count = completions.len();
+        for completion in completions {
+            match completion {
+                RpcCompletion::Vote {
+                    peer_id,
+                    response,
+                } => {
+                    self.handle_vote_response(&peer_id, response, current_millis);
+                }
+                RpcCompletion::AppendEntries {
+                    peer_id,
+                    response,
+                } => {
+                    self.handle_append_entries_response(&peer_id, response, current_millis);
+                }
+                RpcCompletion::InstallSnapshot {
+                    peer_id,
+                    response,
+                } => {
+                    if response.term > self.current_term {
+                        self.step_down(response.term, current_millis);
+                    } else if self.state == NodeState::Leader
+                        && response.term == self.current_term
+                        && response.success
+                    {
+                        self.snapshot_offsets.insert(peer_id.clone(), response.next_offset);
+                        if response.done {
+                            self.match_index.insert(peer_id.clone(), response.last_included_index);
+                            self.next_index
+                                .insert(peer_id.clone(), response.last_included_index + 1);
+                            self.snapshot_offsets.insert(peer_id, 0);
+                            self.advance_commit_index();
+                        }
+                    }
+                }
+            }
+        }
+        count
+    }
+
     pub fn submit_command(&mut self, command: Vec<u8>, current_millis: u64) -> Result<u64, i64> {
         self.current_millis = current_millis;
 
@@ -459,33 +608,43 @@ impl RaftNode {
         self.log_store.append(alloc::vec![entry]);
 
         let index = self.log_store.last_index();
-        if let Some(ni) = self.next_index.get_mut(&self.me.id) {
-            *ni = index + 1;
-        }
-        if let Some(mi) = self.match_index.get_mut(&self.me.id) {
-            *mi = index;
-        }
+        // The leader's own log is authoritative locally and is counted
+        // explicitly by `advance_commit_index`; match_index remains
+        // follower-only, like the upstream implementation.
+        self.advance_commit_index();
 
         Ok(index)
     }
 
     fn advance_commit_index(&mut self) {
-        let mut match_indices: Vec<u64> = self.match_index.values().copied().collect();
-        match_indices.sort_unstable_by(|a, b| b.cmp(a));
+        let voter_count = self.cluster_configuration.iter().filter(|peer| peer.is_voter()).count();
+        if voter_count == 0 {
+            return;
+        }
+        let quorum = voter_count / 2 + 1;
+        let mut candidate_commit = self.commit_index;
 
-        let voters: Vec<&Peer> = self
-            .cluster_configuration
-            .iter()
-            .filter(|p| p.is_voter())
-            .collect();
-        let quorum = (voters.len() / 2) + 1;
-
-        if match_indices.len() >= quorum {
-            let candidate = match_indices[quorum - 1];
-            if candidate > self.commit_index && self.log_store.term_at(candidate) == self.current_term {
-                self.commit_index = candidate;
-                self.apply_committed();
+        for index in (self.commit_index + 1)..=self.log_store.last_index() {
+            if self.log_store.term_at(index) != self.current_term {
+                continue;
             }
+
+            // The leader always has its own log entry. Only configured voting
+            // followers may contribute the remaining acknowledgements.
+            let replicated = 1 + self
+                .cluster_configuration
+                .iter()
+                .filter(|peer| peer.id != self.me.id && peer.is_voter())
+                .filter(|peer| self.match_index.get(&peer.id).copied().unwrap_or(0) >= index)
+                .count();
+            if replicated >= quorum {
+                candidate_commit = index;
+            }
+        }
+
+        if candidate_commit > self.commit_index {
+            self.commit_index = candidate_commit;
+            self.apply_committed();
         }
     }
 
@@ -563,5 +722,160 @@ impl RaftNode {
         }
 
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::{
+        boxed::Box,
+        string::ToString,
+        sync::Arc,
+        vec,
+        vec::Vec,
+    };
+
+    use super::RaftNode;
+    use crate::{
+        log_store::{
+            InMemoryLogStore,
+            InMemoryPersistentStateStore,
+        },
+        transport::NoopTransport,
+        types::{
+            AppendEntriesResponse,
+            InstallSnapshotRequest,
+            NodeState,
+            Peer,
+            VoteResponse,
+        },
+    };
+
+    fn node_with_voters(ids: &[&str]) -> RaftNode {
+        let peers: Vec<Peer> = ids.iter().map(|id| Peer::voter((*id).to_string(), 0)).collect();
+        RaftNode::new(
+            peers[0].clone(),
+            150,
+            Box::new(InMemoryLogStore::new()),
+            Box::new(InMemoryPersistentStateStore::new()),
+            None,
+            peers,
+            Arc::new(NoopTransport),
+            0,
+        )
+    }
+
+    #[test]
+    fn election_counts_distinct_configured_voters_only() {
+        let mut node = node_with_voters(&["n1", "n2", "n3", "n4", "n5"]);
+        node.start_election(200);
+
+        let granted = VoteResponse {
+            term: node.current_term,
+            vote_granted: true,
+        };
+        node.handle_vote_response("n2", granted.clone(), 201);
+        assert_eq!(node.state, NodeState::Candidate);
+
+        // Duplicate and unknown responses must not manufacture a quorum.
+        node.handle_vote_response("n2", granted.clone(), 202);
+        node.handle_vote_response("not-a-member", granted.clone(), 203);
+        assert_eq!(node.state, NodeState::Candidate);
+
+        node.handle_vote_response("n3", granted, 204);
+        assert_eq!(node.state, NodeState::Leader);
+    }
+
+    #[test]
+    fn single_voter_elects_and_commits_with_its_self_vote() {
+        let mut node = node_with_voters(&["n1"]);
+        node.start_election(200);
+        assert_eq!(node.state, NodeState::Leader);
+
+        let index = node.submit_command(vec![1, 2, 3], 201).unwrap();
+        assert_eq!(index, 1);
+        assert_eq!(node.commit_index, 1);
+        assert_eq!(node.last_applied, 1);
+    }
+
+    #[test]
+    fn leader_plus_one_follower_commits_in_three_voter_cluster() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.start_election(200);
+        node.handle_vote_response(
+            "n2",
+            VoteResponse {
+                term: node.current_term,
+                vote_granted: true,
+            },
+            201,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+
+        let index = node.submit_command(vec![7], 202).unwrap();
+        assert_eq!(node.commit_index, 0);
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                term: node.current_term,
+                success: true,
+                match_index: index,
+            },
+            203,
+        );
+        assert_eq!(node.commit_index, index);
+    }
+
+    #[test]
+    fn higher_term_snapshot_persists_term_and_steps_down() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.start_election(200);
+        assert_eq!(node.state, NodeState::Candidate);
+
+        let response = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: 5,
+                leader_id: "n2".to_string(),
+                last_included_index: 4,
+                last_included_term: 4,
+                offset: 0,
+                data: vec![9],
+                done: true,
+            },
+            201,
+        );
+
+        assert_eq!(response.term, 5);
+        assert_eq!(node.current_term, 5);
+        assert_eq!(node.state, NodeState::Follower);
+        assert_eq!(node.voted_for, None);
+        assert_eq!(node.persistent_state.current_term(), 5);
+        assert_eq!(node.persistent_state.voted_for(), None);
+        assert_eq!(node.known_leader_id.as_deref(), Some("n2"));
+    }
+
+    #[test]
+    fn same_term_snapshot_steps_down_without_erasing_vote() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.start_election(200);
+        let election_term = node.current_term;
+        assert_eq!(node.voted_for.as_deref(), Some("n1"));
+
+        node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: election_term,
+                leader_id: "n2".to_string(),
+                last_included_index: 0,
+                last_included_term: 0,
+                offset: 0,
+                data: Vec::new(),
+                done: true,
+            },
+            201,
+        );
+
+        assert_eq!(node.state, NodeState::Follower);
+        assert_eq!(node.voted_for.as_deref(), Some("n1"));
+        assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
     }
 }

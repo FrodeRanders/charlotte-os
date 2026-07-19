@@ -236,7 +236,7 @@ unsafe fn svc3_x2(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64
     let x2_out: u64;
     unsafe {
         match imm {
-            24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
@@ -251,7 +251,7 @@ unsafe fn svc3_x3(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64
     let x3_out: u64;
     unsafe {
         match imm {
-            24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
             _ => core::hint::unreachable_unchecked(),
         }
     }
