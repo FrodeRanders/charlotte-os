@@ -109,12 +109,7 @@ pub mod serial_x86;
 
 #[inline(always)]
 pub fn early_save_interrupts() -> bool {
-    #[cfg(target_arch = "x86_64")]
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
-
-    #[cfg(not(target_arch = "x86_64"))]
-    let interrupts_were_enabled = true;
-
     crate::cpu::isa::lp::ops::mask_interrupts!();
     interrupts_were_enabled
 }
@@ -133,6 +128,7 @@ pub fn early_restore_interrupts(interrupts_were_enabled: bool) {
 #[macro_export]
 macro_rules! early_log {
     ($text:expr $(, $arg:expr)*) => {{
+        let interrupts_were_enabled = $crate::log::early_save_interrupts();
         #[cfg(target_arch = "aarch64")]
         {
             use core::fmt::Write;
@@ -143,12 +139,14 @@ macro_rules! early_log {
             use core::fmt::Write;
             let _ = write!($crate::log::serial_x86::SERIAL.lock(), $text $(, $arg)*);
         }
+        $crate::log::early_restore_interrupts(interrupts_were_enabled);
     }};
 }
 
 #[macro_export]
 macro_rules! early_logln {
     ($text:expr $(, $arg:expr)*) => {{
+        let interrupts_were_enabled = $crate::log::early_save_interrupts();
         #[cfg(target_arch = "aarch64")]
         {
             use core::fmt::Write;
@@ -163,6 +161,7 @@ macro_rules! early_logln {
             $crate::log::_write_timestamp(&mut *console);
             let _ = writeln!(console, $text $(, $arg)*);
         }
+        $crate::log::early_restore_interrupts(interrupts_were_enabled);
     }};
 }
 
