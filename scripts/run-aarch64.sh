@@ -9,9 +9,10 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--display] [--gdb] [--hvf] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--hvf] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
+#   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --gdb          Start QEMU paused with gdb stub on tcp::1234
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
@@ -27,10 +28,12 @@ DISPLAY_MODE="0"
 USE_HVF="0"
 SMP="4"
 TIMEOUT=""
+CLEAN_BUILD="0"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         debug|release) PROFILE="$1"; shift ;;
+        --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
         --gdb)         GDB="-s -S"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
@@ -66,6 +69,11 @@ if [ "$PROFILE" = "release" ]; then
     RELEASE_FLAG="--release"
 fi
 
+if [ "$CLEAN_BUILD" = "1" ]; then
+    echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
+    cargo clean --target "$TARGET_SPEC"
+fi
+
 # Feature selection.
 FEATURES="acpi"
 BUILD_EXTRA=""
@@ -91,6 +99,14 @@ fi
 
 cargo build --package catten --target "$TARGET_SPEC" \
     --no-default-features --features "$FEATURES" $RELEASE_FLAG
+
+if command -v sha256sum >/dev/null 2>&1; then
+    KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
+else
+    KERNEL_SHA256="$(shasum -a 256 "$KERNEL" | awk '{print $1}')"
+fi
+echo ">>> Kernel payload: ${KERNEL}"
+echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
 
 # --- Build a FAT32 EFI System Partition image with mtools. ---
 echo ">>> Creating boot image ${IMAGE}..."
