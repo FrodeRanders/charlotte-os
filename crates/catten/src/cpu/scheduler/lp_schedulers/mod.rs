@@ -16,6 +16,7 @@ use crate::{
         },
         scheduler::threads::{
             ThreadCount,
+            ThreadGeneration,
             ThreadId,
         },
     },
@@ -35,7 +36,11 @@ pub trait LpScheduler: Debug + Send {
      * true again when the event notifies */
     fn clear_ctx_switch_pending(&self);
     fn next(&mut self) -> Result<ThreadId, Error>;
-    fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
+    fn add_thread(
+        &mut self,
+        tid: ThreadId,
+        expected_generation: Option<ThreadGeneration>,
+    ) -> Result<(), Error>;
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
     fn is_idle(&self) -> bool;
     fn start(&mut self);

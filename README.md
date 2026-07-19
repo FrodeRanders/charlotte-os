@@ -38,7 +38,8 @@ processors, runs the scheduler with preemptive context switching driven by the
 ARM Generic Timer, and enumerates PCIe via ECAM. See
 [`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) for a detailed
 status report, including current limitations (device-tree discovery and
-userspace/EL0 execution are not yet implemented).
+Linux KVM NIC validation). EL0 execution, isolated userspace services, IPC,
+driver restart, and a two-node Raft election are boot-tested under QEMU TCG.
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 

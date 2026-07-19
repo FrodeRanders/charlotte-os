@@ -35,11 +35,22 @@ pub const MSG_ETHERTYPE: u16 = 0x88B5;
 
 /// Header size in bytes.
 pub const HEADER_SIZE: usize = 16;
+pub const MAX_PAYLOAD_SIZE: usize = 1468;
 
 /// Flags
 pub const FLAG_SYN: u16 = 1 << 0;
 pub const FLAG_ACK: u16 = 1 << 1;
 pub const FLAG_FIN: u16 = 1 << 2;
+pub const VALID_FLAGS: u16 = FLAG_SYN | FLAG_ACK | FLAG_FIN;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderError {
+    WrongEtherType,
+    ReservedBits,
+    InvalidFlags,
+    PayloadTooLarge,
+    InvalidControlPayload,
+}
 
 /// Build a message header into a 16-byte buffer.
 pub fn build_header(
@@ -75,6 +86,30 @@ pub fn parse_header(buf: &[u8; HEADER_SIZE]) -> (u32, u32, u16, u16) {
     (seq, ack, len, flags)
 }
 
+pub fn parse_header_checked(
+    buf: &[u8; HEADER_SIZE],
+) -> Result<(u32, u32, u16, u16), HeaderError> {
+    if u16::from_be_bytes([buf[0], buf[1]]) != MSG_ETHERTYPE {
+        return Err(HeaderError::WrongEtherType);
+    }
+    if buf[2] != 0 || buf[3] != 0 {
+        return Err(HeaderError::ReservedBits);
+    }
+    let parsed = parse_header(buf);
+    let payload_len = parsed.2 as usize;
+    let flags = parsed.3;
+    if flags & !VALID_FLAGS != 0 {
+        return Err(HeaderError::InvalidFlags);
+    }
+    if payload_len > MAX_PAYLOAD_SIZE || HEADER_SIZE + payload_len > 4096 {
+        return Err(HeaderError::PayloadTooLarge);
+    }
+    if flags & (FLAG_SYN | FLAG_FIN) != 0 && payload_len != 0 {
+        return Err(HeaderError::InvalidControlPayload);
+    }
+    Ok(parsed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,11 +117,30 @@ mod tests {
     #[test]
     fn round_trip() {
         let mut hdr = [0u8; HEADER_SIZE];
-        build_header(&mut hdr, 42, 17, 100, FLAG_SYN | FLAG_ACK);
+        build_header(&mut hdr, 42, 17, 100, FLAG_ACK);
         let (seq, ack, len, flags) = parse_header(&hdr);
         assert_eq!(seq, 42);
         assert_eq!(ack, 17);
         assert_eq!(len, 100);
-        assert_eq!(flags, FLAG_SYN | FLAG_ACK);
+        assert_eq!(flags, FLAG_ACK);
+        assert_eq!(parse_header_checked(&hdr), Ok((42, 17, 100, FLAG_ACK)));
+    }
+
+    #[test]
+    fn checked_parser_rejects_malformed_headers() {
+        let mut hdr = [0u8; HEADER_SIZE];
+        build_header(&mut hdr, 1, 0, 0, 0);
+
+        hdr[0] = 0;
+        assert_eq!(parse_header_checked(&hdr), Err(HeaderError::WrongEtherType));
+        build_header(&mut hdr, 1, 0, 0, 0);
+        hdr[2] = 1;
+        assert_eq!(parse_header_checked(&hdr), Err(HeaderError::ReservedBits));
+        build_header(&mut hdr, 1, 0, 0, 1 << 15);
+        assert_eq!(parse_header_checked(&hdr), Err(HeaderError::InvalidFlags));
+        build_header(&mut hdr, 1, 0, (MAX_PAYLOAD_SIZE + 1) as u16, 0);
+        assert_eq!(parse_header_checked(&hdr), Err(HeaderError::PayloadTooLarge));
+        build_header(&mut hdr, 1, 0, 1, FLAG_SYN);
+        assert_eq!(parse_header_checked(&hdr), Err(HeaderError::InvalidControlPayload));
     }
 }

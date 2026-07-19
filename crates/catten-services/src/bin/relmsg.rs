@@ -29,7 +29,6 @@ const STAGE_OFFSET: usize = 0;
 const SCRATCH_VADDR: usize = 0x0000_0000_0080_0000;
 
 struct QueuedMsg {
-    sender_name: u64,
     data_cap: u64,
     data_len: usize,
 }
@@ -58,30 +57,29 @@ impl RmlState {
                     self.pending_recv = Some(pr);
                     return;
                 }
-                unsafe {
-                    let dst = SCRATCH_VADDR as *mut u8;
-                    memory_map(msg.data_cap, SCRATCH_VADDR + 0x1000, false);
-                    let data_src = (SCRATCH_VADDR + 0x1000) as *const u8;
-                    for i in 0..msg.data_len {
-                        core::ptr::write(dst.add(i), core::ptr::read(data_src.add(i)));
-                    }
-                    memory_unmap(msg.data_cap);
-                    memory_close(msg.data_cap);
+                if memory_map(msg.data_cap, SCRATCH_VADDR + 0x1000, false) != 0 {
+                    memory_unmap(out_cap);
+                    memory_close(out_cap);
+                    self.queue.push(msg);
+                    self.pending_recv = Some(pr);
+                    return;
                 }
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        (SCRATCH_VADDR + 0x1000) as *const u8,
+                        SCRATCH_VADDR as *mut u8,
+                        msg.data_len,
+                    );
+                }
+                memory_unmap(msg.data_cap);
+                memory_close(msg.data_cap);
                 memory_unmap(out_cap);
-                ipc_reply_move(pr.reply_token, out_cap, msg.data_len as i64);
+                if ipc_reply_move(pr.reply_token, out_cap, msg.data_len as i64) != 0 {
+                    memory_close(out_cap);
+                }
             }
         }
     }
-}
-
-fn scratch_map_read(cap: u64) {
-    memory_map(cap, SCRATCH_VADDR, false);
-}
-
-fn scratch_unmap_close(cap: u64) {
-    memory_unmap(cap);
-    memory_close(cap);
 }
 
 fn cmain(_args: Args, _input: Input<0>) -> ! {
@@ -124,16 +122,27 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                         ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
                         continue;
                     }
-                    let sender_name = msg.arg0;
-                    scratch_map_read(msg.memory);
-                    let hdr = unsafe {
-                        core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, 16)
-                    };
-                    let (seq, _ack, payload_len, flags) =
-                        charlotte_protocol_msg::parse_header(
-                            unsafe { &*(hdr.as_ptr() as *const [u8; 16]) }
+                    if memory_map(msg.memory, SCRATCH_VADDR, false) != 0 {
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
+                        continue;
+                    }
+                    let mut header = [0u8; charlotte_protocol_msg::HEADER_SIZE];
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            SCRATCH_VADDR as *const u8,
+                            header.as_mut_ptr(),
+                            header.len(),
                         );
+                    }
                     memory_unmap(msg.memory);
+                    let Ok((seq, _ack, payload_len, flags)) =
+                        charlotte_protocol_msg::parse_header_checked(&header)
+                    else {
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
+                        continue;
+                    };
 
                     if flags & charlotte_protocol_msg::FLAG_SYN != 0 {
                         memory_close(msg.memory);
@@ -142,7 +151,11 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                             ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
                             continue;
                         }
-                        memory_map(cap, SCRATCH_VADDR, true);
+                        if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+                            memory_close(cap);
+                            ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
+                            continue;
+                        }
                         let mut ack_hdr = [0u8; 16];
                         charlotte_protocol_msg::build_header(
                             &mut ack_hdr, 0, seq, 0,
@@ -154,26 +167,38 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                             );
                         }
                         memory_unmap(cap);
-                        ipc_reply_move(msg.reply, cap, 0);
+                        if ipc_reply_move(msg.reply, cap, 0) != 0 {
+                            memory_close(cap);
+                        }
                         continue;
                     }
 
                     // Regular data message: queue it for delivery.
                     let data_cap = memory_alloc(1);
                     if data_cap == 0 {
+                        memory_close(msg.memory);
                         ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
                         continue;
                     }
-                    memory_map(data_cap, SCRATCH_VADDR + 0x2000, true);
+                    if memory_map(data_cap, SCRATCH_VADDR + 0x2000, true) != 0 {
+                        memory_close(data_cap);
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
+                        continue;
+                    }
                     // Copy the payload (after 16-byte header) from sender's memory.
-                    scratch_map_read(msg.memory);
+                    if memory_map(msg.memory, SCRATCH_VADDR, false) != 0 {
+                        memory_unmap(data_cap);
+                        memory_close(data_cap);
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, relmsg::ERR_UNKNOWN);
+                        continue;
+                    }
                     unsafe {
                         let src = (SCRATCH_VADDR + 16) as *const u8;
                         let dst = (SCRATCH_VADDR + 0x2000) as *mut u8;
                         let len = payload_len as usize;
-                        for i in 0..len {
-                            core::ptr::write(dst.add(i), core::ptr::read(src.add(i)));
-                        }
+                        core::ptr::copy_nonoverlapping(src, dst, len);
                     }
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
@@ -182,7 +207,6 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                     served += 1;
                     config::write::<u32>(4, served);
                     state.queue.push(QueuedMsg {
-                        sender_name,
                         data_cap,
                         data_len: payload_len as usize,
                     });

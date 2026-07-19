@@ -9,7 +9,13 @@ use alloc::{
     },
     vec::Vec,
 };
-use core::mem::offset_of;
+use core::{
+    mem::offset_of,
+    sync::atomic::{
+        AtomicU64,
+        Ordering,
+    },
+};
 
 use spin::LazyLock;
 
@@ -39,6 +45,9 @@ pub static MASTER_THREAD_TABLE: LazyLock<RwLock<ThreadTable>> =
     LazyLock::new(|| RwLock::new(ThreadTable::new()));
 pub type ThreadTable = IdTable<Thread>;
 pub type ThreadId = usize;
+pub type ThreadGeneration = u64;
+
+static NEXT_THREAD_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 /// Threads that have exited but are awaiting reaping, keyed by the logical
 /// processor on which they last executed. A thread cannot free its own kernel
@@ -103,6 +112,8 @@ pub struct Thread {
     /// pinned regardless of table reallocation.
     pub context: Box<ThreadContext>,
     pub asid: AddressSpaceId,
+    /// Distinguishes successive occupants of a reusable [`ThreadId`] slot.
+    pub generation: ThreadGeneration,
     pub state: ThreadState,
     exit_observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
 }
@@ -122,6 +133,7 @@ impl Thread {
                 },
             ),
             asid,
+            generation: NEXT_THREAD_GENERATION.fetch_add(1, Ordering::Relaxed),
             state: ThreadState::NeedsLpAssignment,
             exit_observers: spin::Mutex::new(Vec::new()),
         }

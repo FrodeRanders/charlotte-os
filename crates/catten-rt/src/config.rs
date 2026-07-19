@@ -39,13 +39,21 @@ pub const IRQ_CAP_OFFSET: usize = 2056;
 /// Read the delegated MMIO-region capability, or `None` if none was granted.
 pub fn mmio_cap() -> Option<u64> {
     let cap = unsafe { read::<u64>(MMIO_CAP_OFFSET) };
-    if cap == 0 { None } else { Some(cap) }
+    if cap == 0 {
+        None
+    } else {
+        Some(cap)
+    }
 }
 
 /// Read the delegated interrupt capability, or `None` if none was granted.
 pub fn irq_cap() -> Option<u64> {
     let cap = unsafe { read::<u64>(IRQ_CAP_OFFSET) };
-    if cap == 0 { None } else { Some(cap) }
+    if cap == 0 {
+        None
+    } else {
+        Some(cap)
+    }
 }
 
 /// The per-shard CQ ring base virtual address slot.
@@ -60,7 +68,11 @@ pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 /// at one shard never releases another.
 pub fn shard_cq_base() -> Option<usize> {
     let base = unsafe { read::<u64>(SHARD_CQ_BASE_OFFSET) } as usize;
-    if base == 0 { None } else { Some(base) }
+    if base == 0 {
+        None
+    } else {
+        Some(base)
+    }
 }
 
 /// Number of per-shard completion-queue rings the loader mapped.
@@ -73,11 +85,11 @@ pub fn shard_cq_count() -> usize {
 pub const HANDOFF_COUNT_OFFSET: usize = 2080;
 
 /// Byte offset of the first handoff state capability id (u64).
-pub const HANDOFF_STATE_OFFSET: usize = 2084;
+pub const HANDOFF_STATE_OFFSET: usize = 2088;
 
 /// Byte offset of the old endpoint capability id (u64) — the previous
 /// instance's endpoint, delivered so the new instance can re-register it.
-pub const HANDOFF_ENDPOINT_OFFSET: usize = 2092;
+pub const HANDOFF_ENDPOINT_OFFSET: usize = 2096;
 
 /// How many handoff memory-object state caps the supervisor delivered.
 pub fn handoff_count() -> u32 {
@@ -102,7 +114,11 @@ pub const OUTPUT_OFFSET: usize = 0;
 /// when no capability was delivered.
 pub fn bootstrap_cap() -> Option<u64> {
     let cap = unsafe { read::<u64>(BOOTSTRAP_CAP_OFFSET) };
-    if cap == 0 { None } else { Some(cap) }
+    if cap == 0 {
+        None
+    } else {
+        Some(cap)
+    }
 }
 
 /// Read a value of type `T` from `offset` bytes into the config page.

@@ -21,7 +21,6 @@
 use alloc::collections::BTreeMap;
 
 use crate::{
-    logln,
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
         lp::{
@@ -30,6 +29,7 @@ use crate::{
         },
     },
     ipc,
+    logln,
     memory::{
         AddressSpaceId,
         VAddr,
@@ -266,7 +266,9 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
             #[cfg(not(target_arch = "aarch64"))]
-            { frame.regs[0] = 0; }
+            {
+                frame.regs[0] = 0;
+            }
         }
         call_no::IPC_VECTOR_SEND => sys_ipc_vector_send(frame),
         call_no::IPC_VECTOR_CALL => sys_ipc_vector_call(frame),
@@ -291,13 +293,7 @@ fn sys_log(frame: &mut TrapFrame) {
     let b = frame.regs[2];
     let lp = frame.lp_id;
     let asid = frame.asid;
-    crate::early_logln!(
-        "[EL0 LOG] lp={} asid={} a={:#x} b={:#x}",
-        lp,
-        asid,
-        a,
-        b
-    );
+    crate::early_logln!("[EL0 LOG] lp={} asid={} a={:#x} b={:#x}", lp, asid, a, b);
 }
 
 fn sys_completion_submit(frame: &mut TrapFrame) {
@@ -442,18 +438,18 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     // queues.
     let thread = Thread::new(asid, entry_fn);
     let tid = MASTER_THREAD_TABLE.write().add_element(thread);
-    SYSTEM_SCHEDULER
-        .read()
-        .submit_to_lp(tid, target_lp)
-        .unwrap_or_else(|_| {
-            let lpc = crate::cpu::multiprocessor::get_lp_count();
-            logln!(
-                "SPAWN_THREAD: target LP {target_lp} does not exist (lp_count={lpc}); falling back to least-loaded LP"
-            );
-            SYSTEM_SCHEDULER.read().submit_ready_thread(tid)
-                .map(|_| ())
-                .expect("SPAWN_THREAD: submit_ready_thread fallback failed")
-        });
+    SYSTEM_SCHEDULER.read().submit_to_lp(tid, target_lp).unwrap_or_else(|_| {
+        let lpc = crate::cpu::multiprocessor::get_lp_count();
+        logln!(
+            "SPAWN_THREAD: target LP {target_lp} does not exist (lp_count={lpc}); falling back to \
+             least-loaded LP"
+        );
+        SYSTEM_SCHEDULER
+            .read()
+            .submit_ready_thread(tid)
+            .map(|_| ())
+            .expect("SPAWN_THREAD: submit_ready_thread fallback failed")
+    });
     // Return the thread id in x0.
     frame.regs[0] = tid as u64;
 }
@@ -1040,7 +1036,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
 
     // Block on the completion.
     SYSTEM_SCHEDULER
-        .write()
+        .read()
         .block_thread(
             tid,
             &*crate::completion::completion_of(asid, cap)
@@ -1096,10 +1092,13 @@ fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
     let min_complete = frame.regs[1].max(1) as u32;
     let timeout_ms = frame.regs[2];
     let cq = frame.regs[3] as u32;
-    let condition_met =
-        crate::completion::wait_on_cq_timeout(asid, cq, min_complete, timeout_ms);
+    let condition_met = crate::completion::wait_on_cq_timeout(asid, cq, min_complete, timeout_ms);
     frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
-    frame.regs[1] = if condition_met { 0 } else { 1 };
+    frame.regs[1] = if condition_met {
+        0
+    } else {
+        1
+    };
 }
 
 fn sys_ipc_endpoint_bind_cq(frame: &mut TrapFrame) {
@@ -1190,14 +1189,20 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
 
     let elf = match crate::service::supervisor::elf_for_selector(elf_selector) {
         Some(image) => image,
-        None => { frame.regs[0] = 0; return; }
+        None => {
+            frame.regs[0] = 0;
+            return;
+        }
     };
 
     let loaded = crate::service::loader::load_domain(elf);
     let ns_guard = crate::service::supervisor::LIVE_NS.lock();
     let ns_handle = match ns_guard.as_ref() {
         Some(h) => h,
-        None => { frame.regs[0] = 0; return; }
+        None => {
+            frame.regs[0] = 0;
+            return;
+        }
     };
 
     // Delegate a bootstrap connection from the name service to the new domain.
@@ -1208,7 +1213,10 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         crate::ipc::ConnectionRights::CALL,
     ) {
         Ok(cap) => cap,
-        Err(_) => { frame.regs[0] = 0; return; }
+        Err(_) => {
+            frame.regs[0] = 0;
+            return;
+        }
     };
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
     crate::service::bootstrap::write_argc(loaded.config_frame, 0);
@@ -1216,9 +1224,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     // Move the state cap from the caller to the new domain.
     if state_cap != 0 {
         let _ = crate::memory::object::move_to(caller_asid, state_cap, loaded.asid);
-        crate::service::bootstrap::write_handoff_state(
-            loaded.config_frame, 1, state_cap, 0,
-        );
+        crate::service::bootstrap::write_handoff_state(loaded.config_frame, 1, state_cap, 0);
     }
 
     // Start the replacement domain.

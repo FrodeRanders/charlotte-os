@@ -573,8 +573,7 @@ pub fn scalar_call(
         token,
     });
 
-    let delivery =
-        enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1076,7 +1075,7 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
         endpoint: endpoint_id,
     };
     crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-        .write()
+        .read()
         .block_thread(tid, &observable)
         .map_err(|_| IpcError::NoMessage)?;
 
@@ -1084,7 +1083,7 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
     // before observer registration completed, re-admit the thread immediately.
     if endpoint_is_readable_or_closed(endpoint_id)? {
         let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-            .write()
+            .read()
             .submit_ready_thread(tid);
     }
 
@@ -1505,7 +1504,7 @@ pub fn receive_vec(
                 core::ptr::write_volatile(ptr as *mut u16, n as u16);
                 let caps_ptr = ptr.add(2) as *mut u64;
                 for i in 0..n {
-                    core::ptr::write_volatile(caps_ptr.add(i), message.memory[i] as u64);
+                    core::ptr::write_unaligned(caps_ptr.add(i), message.memory[i] as u64);
                 }
             }
         }
@@ -1526,7 +1525,10 @@ pub fn vector_send(
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
     let (endpoint_id, rights) = match ipc.cap(sender, connection)? {
-        Capability::Connection { endpoint, rights } => (endpoint, rights),
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
         _ => return Err(IpcError::WrongType),
     };
     if !rights.contains(ConnectionRights::SEND) {
@@ -1535,12 +1537,17 @@ pub fn vector_send(
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
 
     let mut memory_caps = Vec::new();
-    read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
+    let mut applied = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
 
-    let delivery = enqueue_message(
-        &mut ipc, endpoint_id, sender, opcode, arg0, None,
-        memory_caps, None,
-    )?;
+    let delivery =
+        match enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory_caps, None)
+        {
+            Ok(delivery) => delivery,
+            Err(error) => {
+                rollback_vector_transfers(sender, server, &mut applied);
+                return Err(error);
+            }
+        };
     drop(ipc);
     deliver(delivery);
 
@@ -1557,7 +1564,10 @@ pub fn vector_call(
 ) -> Result<CapabilityId, IpcError> {
     let mut ipc = IPC.write();
     let (endpoint_id, rights) = match ipc.cap(caller, connection)? {
-        Capability::Connection { endpoint, rights } => (endpoint, rights),
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
         _ => return Err(IpcError::WrongType),
     };
     if !rights.contains(ConnectionRights::CALL) {
@@ -1566,20 +1576,55 @@ pub fn vector_call(
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
 
     let mut memory_caps = Vec::new();
-    read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
+    let mut applied = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, PendingCall { caller, result: None, observed: false });
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall { call });
+    ipc.pending_calls.insert(
+        call,
+        PendingCall {
+            caller,
+            result: None,
+            observed: false,
+        },
+    );
+    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
+        call,
+    });
 
     let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(token, ReplyToken { server, call, consumed: false, borrow: None });
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken { token });
+    ipc.reply_tokens.insert(
+        token,
+        ReplyToken {
+            server,
+            call,
+            consumed: false,
+            borrow: None,
+        },
+    );
+    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
+        token,
+    });
 
-    let delivery = enqueue_message(
-        &mut ipc, endpoint_id, caller, opcode, arg0,
-        Some(token_cap), memory_caps, None,
-    )?;
+    let delivery = match enqueue_message(
+        &mut ipc,
+        endpoint_id,
+        caller,
+        opcode,
+        arg0,
+        Some(token_cap),
+        memory_caps,
+        None,
+    ) {
+        Ok(delivery) => delivery,
+        Err(error) => {
+            let _ = ipc.as_caps(caller).caps.remove(&call_cap);
+            ipc.pending_calls.remove(&call);
+            let _ = ipc.as_caps(server).caps.remove(&token_cap);
+            ipc.reply_tokens.remove(&token);
+            rollback_vector_transfers(caller, server, &mut applied);
+            return Err(error);
+        }
+    };
     drop(ipc);
     deliver(delivery);
 
@@ -1593,39 +1638,120 @@ fn read_vector_page(
     target: AddressSpaceId,
     is_call: bool,
     out: &mut Vec<MemoryObjectCap>,
-) -> Result<usize, IpcError> {
+) -> Result<Vec<AppliedVectorTransfer>, IpcError> {
     let phys = crate::memory::object::get_phys(sender, cap_vector_page);
     if phys == 0 {
         return Err(IpcError::UnknownCapability);
     }
-    let paddr = crate::memory::PAddr::try_from(phys as usize).map_err(|_| IpcError::MemoryTransferFailed)?;
+    let paddr = crate::memory::PAddr::try_from(phys as usize)
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
     let ptr: *const u8 = paddr.into();
     let count = unsafe { core::ptr::read_volatile(ptr as *const u16) } as usize;
     if count == 0 || count > CAP_VECTOR_MAX {
         return Err(IpcError::MemoryTransferFailed);
     }
     let entries_ptr = unsafe { ptr.add(2) } as *const CapVectorEntry;
+    let mut entries = Vec::with_capacity(count);
     for i in 0..count {
-        let entry = unsafe { core::ptr::read_volatile(entries_ptr.add(i)) };
-        let cap: MemoryObjectCap = entry.cap as MemoryObjectCap;
-        let server_cap = match entry.mode {
-            0 => crate::memory::object::copy_to(sender, cap, target)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-            1 => crate::memory::object::move_to(sender, cap, target)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-            2 => {
-                if !is_call { return Err(IpcError::MemoryTransferFailed); }
-                crate::memory::object::lend_read(sender, cap, target)
-                    .map_err(|_| IpcError::MemoryTransferFailed)?
-            }
-            3 => {
-                if !is_call { return Err(IpcError::MemoryTransferFailed); }
-                crate::memory::object::lend_write(sender, cap, target)
-                    .map_err(|_| IpcError::MemoryTransferFailed)?
-            }
-            _ => return Err(IpcError::MemoryTransferFailed),
-        };
-        out.push(server_cap);
+        let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };
+        if entry._pad != 0 || entry.mode > 3 || (!is_call && entry.mode >= 2) {
+            return Err(IpcError::MemoryTransferFailed);
+        }
+        if entries.iter().any(|prior: &CapVectorEntry| prior.cap == entry.cap) {
+            return Err(IpcError::MemoryTransferFailed);
+        }
+        entries.push(entry);
     }
-    Ok(count)
+
+    let mut applied = Vec::with_capacity(count);
+    for entry in entries {
+        let cap: MemoryObjectCap = entry.cap as MemoryObjectCap;
+        let transfer = match entry.mode {
+            0 => crate::memory::object::copy_to(sender, cap, target).map(|target_cap| {
+                (
+                    target_cap,
+                    AppliedVectorTransfer::Copy {
+                        target_cap,
+                    },
+                )
+            }),
+            1 => crate::memory::object::move_to(sender, cap, target).map(|target_cap| {
+                (
+                    target_cap,
+                    AppliedVectorTransfer::Move {
+                        source_cap: cap,
+                        target_cap,
+                    },
+                )
+            }),
+            2 => crate::memory::object::lend_read(sender, cap, target).map(|target_cap| {
+                (
+                    target_cap,
+                    AppliedVectorTransfer::Lend {
+                        source_cap: cap,
+                        target_cap,
+                    },
+                )
+            }),
+            3 => crate::memory::object::lend_write(sender, cap, target).map(|target_cap| {
+                (
+                    target_cap,
+                    AppliedVectorTransfer::Lend {
+                        source_cap: cap,
+                        target_cap,
+                    },
+                )
+            }),
+            _ => unreachable!(),
+        };
+        match transfer {
+            Ok((server_cap, action)) => {
+                out.push(server_cap);
+                applied.push(action);
+            }
+            Err(_) => {
+                rollback_vector_transfers(sender, target, &mut applied);
+                out.clear();
+                return Err(IpcError::MemoryTransferFailed);
+            }
+        }
+    }
+    Ok(applied)
+}
+
+enum AppliedVectorTransfer {
+    Copy {
+        target_cap: MemoryObjectCap,
+    },
+    Move {
+        source_cap: MemoryObjectCap,
+        target_cap: MemoryObjectCap,
+    },
+    Lend {
+        source_cap: MemoryObjectCap,
+        target_cap: MemoryObjectCap,
+    },
+}
+
+fn rollback_vector_transfers(
+    sender: AddressSpaceId,
+    target: AddressSpaceId,
+    applied: &mut Vec<AppliedVectorTransfer>,
+) {
+    while let Some(action) = applied.pop() {
+        let result = match action {
+            AppliedVectorTransfer::Copy {
+                target_cap,
+            } => crate::memory::object::close_cap(target, target_cap),
+            AppliedVectorTransfer::Move {
+                source_cap,
+                target_cap,
+            } => crate::memory::object::rollback_move_to(target, target_cap, sender, source_cap),
+            AppliedVectorTransfer::Lend {
+                source_cap,
+                target_cap,
+            } => crate::memory::object::revoke_lend(sender, source_cap, target, target_cap),
+        };
+        debug_assert!(result.is_ok(), "vector IPC rollback must be infallible");
+    }
 }

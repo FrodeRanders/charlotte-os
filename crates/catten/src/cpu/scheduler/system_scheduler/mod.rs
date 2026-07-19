@@ -12,7 +12,7 @@ use super::lp_schedulers::LpScheduler;
 use crate::{
     cpu::{
         isa::{
-            constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
+            constants::interrupt_vectors::SCHEDULER_IPI_VECTOR,
             interface::interrupts::LocalIntCtlrIfce,
             interrupts::LocalIntCtlr,
             lp::{
@@ -26,6 +26,7 @@ use crate::{
         },
         scheduler::threads::{
             MASTER_THREAD_TABLE,
+            ThreadGeneration,
             ThreadId,
             ThreadState,
             waker,
@@ -72,7 +73,7 @@ impl SystemScheduler {
         let least_loaded_lp = self.get_least_loaded_lp();
         let mut lp_guard = least_loaded_lp.lock();
         let was_idle = lp_guard.is_idle();
-        match lp_guard.add_thread(tid) {
+        match lp_guard.add_thread(tid, None) {
             Ok(()) => {}
             Err(_) => return Err(Error::InvalidThread),
         }
@@ -80,7 +81,26 @@ impl SystemScheduler {
         drop(lp_guard);
         if was_idle && lp_id != get_lp_id() {
             logln!("LP {lp_id} was idle, sending wakeup IPI.");
-            LocalIntCtlr::send_unicast_ipi(lp_id, LAPIC_TIMER_VECTOR).ok();
+            LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
+                .expect("failed to send scheduler wake IPI");
+        }
+        Ok(lp_id)
+    }
+
+    pub fn submit_woken_thread(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<LpId, Error> {
+        let least_loaded_lp = self.get_least_loaded_lp();
+        let mut lp_guard = least_loaded_lp.lock();
+        let was_idle = lp_guard.is_idle();
+        lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
+        let lp_id = lp_guard.get_lp_id();
+        drop(lp_guard);
+        if was_idle && lp_id != get_lp_id() {
+            LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
+                .expect("failed to send scheduler wake IPI");
         }
         Ok(lp_id)
     }
@@ -98,52 +118,74 @@ impl SystemScheduler {
         };
         let mut sched_guard = sched.lock();
         let was_idle = sched_guard.is_idle();
-        sched_guard.add_thread(tid).expect("Error adding thread to target LP");
+        sched_guard.add_thread(tid, None).expect("Error adding thread to target LP");
         drop(sched_guard);
         if was_idle && target_lp != get_lp_id() {
-            LocalIntCtlr::send_unicast_ipi(target_lp, LAPIC_TIMER_VECTOR).ok();
+            LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)
+                .expect("failed to send scheduler wake IPI");
         }
         Ok(())
     }
 
     /// Block the specified thread at least until the given event notifies its observers
     pub fn block_thread<'a>(
-        &mut self,
+        &self,
         tid: ThreadId,
         event: &'a dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
-        if let Ok(thread) = MASTER_THREAD_TABLE.write().get_mut(tid) {
-            match thread.state {
-                ThreadState::Running(_) => {
-                    // The thread is currently executing on its LP and is
-                    // blocking itself. Do NOT remove it from the LP scheduler
-                    // yet: it must remain the LP's `current_handle` so that the
-                    // following `cond_yield_lp` saves its execution context to
-                    // its own `saved_sp`. `RoundRobin::next` declines to
-                    // re-queue a Blocked thread, so it will not be rescheduled
-                    // until its waker fires and re-admits it.
-                }
-                ThreadState::Ready(lp_id) => {
-                    // Queued but not running: pull it out of the run queue.
-                    self.lp_schedulers[&lp_id]
-                        .lock()
-                        .remove_thread(tid)
-                        .expect("Error removing thread from LP scheduler while blocking");
-                }
-                ThreadState::NeedsLpAssignment => {}
-                ThreadState::Blocked(_) => {
-                    return Err(Error::AlreadyBlocked);
-                }
+        let state = {
+            let table = MASTER_THREAD_TABLE.read();
+            table
+                .get(tid)
+                .map(|thread| match thread.state {
+                    ThreadState::Running(_) => ThreadStateSnapshot::Running,
+                    ThreadState::Ready(lp) => ThreadStateSnapshot::Ready(lp),
+                    ThreadState::NeedsLpAssignment => ThreadStateSnapshot::NeedsLpAssignment,
+                    ThreadState::Blocked(_) => ThreadStateSnapshot::Blocked,
+                })
+                .map_err(|_| Error::InvalidThread)?
+        };
+
+        // For a queued thread, honor the global LP-scheduler -> thread-table
+        // lock order used by dispatch, wake, and abort. Holding these in the
+        // reverse order can deadlock an LP in `RoundRobin::next`.
+        let mut lp_guard = match state {
+            ThreadStateSnapshot::Ready(lp_id) => Some(self.lp_schedulers[&lp_id].lock()),
+            _ => None,
+        };
+        let mut table = MASTER_THREAD_TABLE.write();
+        let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
+        match thread.state {
+            ThreadState::Running(_) => {
+                // The thread is currently executing on its LP and is
+                // blocking itself. Do NOT remove it from the LP scheduler
+                // yet: it must remain the LP's `current_handle` so that the
+                // following `cond_yield_lp` saves its execution context to
+                // its own `saved_sp`. `RoundRobin::next` declines to
+                // re-queue a Blocked thread, so it will not be rescheduled
+                // until its waker fires and re-admits it.
             }
-            let waker = Arc::new(waker::Waker::new(tid));
-            event.register_observer(
-                Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>
-            );
-            thread.state = ThreadState::Blocked(waker);
-            Ok(())
-        } else {
-            Err(Error::InvalidThread)
+            ThreadState::Ready(lp_id) => {
+                // Queued but not running: pull it out of the run queue.
+                let guard = lp_guard.as_mut().ok_or(Error::InvalidThread)?;
+                if guard.get_lp_id() != lp_id {
+                    return Err(Error::InvalidThread);
+                }
+                guard
+                    .remove_thread(tid)
+                    .expect("Error removing thread from LP scheduler while blocking");
+            }
+            ThreadState::NeedsLpAssignment => {}
+            ThreadState::Blocked(_) => {
+                return Err(Error::AlreadyBlocked);
+            }
         }
+        let generation = thread.generation;
+        let waker = Arc::new(waker::Waker::new(tid, generation));
+        event
+            .register_observer(Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>);
+        thread.state = ThreadState::Blocked(waker);
+        Ok(())
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
@@ -208,6 +250,14 @@ impl SystemScheduler {
             }
         })
     }
+}
+
+#[derive(Clone, Copy)]
+enum ThreadStateSnapshot {
+    Running,
+    Ready(LpId),
+    NeedsLpAssignment,
+    Blocked,
 }
 
 pub fn get_thread_id() -> Option<ThreadId> {

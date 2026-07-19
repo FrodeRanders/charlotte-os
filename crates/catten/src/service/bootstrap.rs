@@ -4,10 +4,10 @@
 //! bootstrap slot of its config page. The capability's meaning depends on
 //! the program's role:
 //!
-//! - the name service receives its own registry *endpoint* capability
-//!   (created for it by the supervisor before it starts);
-//! - every other service or client receives a *connection* capability to
-//!   the name service, delegated by the supervisor.
+//! - the name service receives its own registry *endpoint* capability (created for it by the
+//!   supervisor before it starts);
+//! - every other service or client receives a *connection* capability to the name service,
+//!   delegated by the supervisor.
 //!
 //! Names, lookup policy, and restart generations live entirely in the
 //! userspace name service; the kernel only moves opaque capabilities.
@@ -46,9 +46,9 @@ pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 /// Must match `catten_rt::config::HANDOFF_COUNT_OFFSET`.
 pub const HANDOFF_COUNT_OFFSET: usize = 2080;
 /// Must match `catten_rt::config::HANDOFF_STATE_OFFSET`.
-pub const HANDOFF_STATE_OFFSET: usize = 2084;
+pub const HANDOFF_STATE_OFFSET: usize = 2088;
 /// Must match `catten_rt::config::HANDOFF_ENDPOINT_OFFSET`.
-pub const HANDOFF_ENDPOINT_OFFSET: usize = 2092;
+pub const HANDOFF_ENDPOINT_OFFSET: usize = 2096;
 
 /// Write the bootstrap capability id into a domain's config page.
 pub fn write_bootstrap_cap(config_frame: PAddr, cap: u64) {

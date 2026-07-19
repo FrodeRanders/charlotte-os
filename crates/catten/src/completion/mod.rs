@@ -492,7 +492,8 @@ pub fn open_address_space_with_cq_phys(
 /// one per shard in the per-shard-CQ model (§8.1). Replaces any existing
 /// queue with the same id.
 pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
-    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries);
+    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries)
+        .expect("completion queue capacity must be at least two");
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
         as_completions.cqs.insert(
@@ -517,7 +518,8 @@ pub fn open_cq_phys(
     cq_entries: u32,
 ) {
     let ring_ptr =
-        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) };
+        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) }
+            .expect("completion queue capacity must be at least two");
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
         as_completions.cqs.insert(
@@ -579,10 +581,7 @@ pub fn submit(
 /// `timeout_ms` milliseconds. The returned cap delivers a completion ring entry
 /// when the deadline expires, so a user-space service waiting on `cq_wait` is
 /// released exactly at the deadline.
-pub fn submit_timer(
-    asid: AddressSpaceId,
-    timeout_ms: u64,
-) -> Result<CompletionCap, SubmitError> {
+pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
     let cap = submit(asid, OpCode::Timer, None)?;
     let observer = Arc::new(CompletionTimerObserver {
         asid,
@@ -837,14 +836,14 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
         SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().ok_or(CapError::UnknownCap)?;
 
     SYSTEM_SCHEDULER
-        .write()
+        .read()
         .block_thread(tid, completion.as_ref() as &dyn Observable)
         .map_err(|_| CapError::UnknownCap)?;
 
     // Lost-wake guard: if the operation completed after our fast-path check but
     // before (or during) registration, make the thread runnable again.
     if completion.is_terminal() {
-        let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
+        let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
     }
 
     yield_lp();
@@ -971,7 +970,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, min_complete: u32) {
             return;
         }
 
-        if SYSTEM_SCHEDULER.write().block_thread(tid, &observable).is_err() {
+        if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
             return;
         }
 
@@ -979,7 +978,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, min_complete: u32) {
         // while the waker was being registered, re-admit the thread before
         // yielding.
         if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-            let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
+            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
         }
 
         yield_lp();
@@ -1024,7 +1023,7 @@ pub fn wait_on_cq_timeout(
         asid,
         cq,
     };
-    if SYSTEM_SCHEDULER.write().block_thread(tid, &observable).is_err() {
+    if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
         return false;
     }
 
@@ -1044,7 +1043,7 @@ pub fn wait_on_cq_timeout(
 
     // Lost-wake guard.
     if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-        let _ = SYSTEM_SCHEDULER.write().submit_ready_thread(tid);
+        let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
     }
 
     yield_lp();

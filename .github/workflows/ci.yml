@@ -10,6 +10,27 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  host-tests:
+    name: Host-test libraries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Run host-testable library suites
+        run: |
+          set -euo pipefail
+          cd /tmp
+          for manifest in \
+            crates/charlotte-protocol-msg/Cargo.toml \
+            crates/catten-graft/Cargo.toml \
+            crates/charlotte-smoltcp/Cargo.toml
+          do
+            cargo test --manifest-path "$GITHUB_WORKSPACE/$manifest"
+          done
+
   build:
     name: Build (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -92,9 +113,31 @@ jobs:
             -display none \
             -no-reboot &
           QPID=$!
-           # Wait up to 180s for boot + tests to complete
+          required_markers=(
+            "[EL0] SUCCESS:"
+            "[raft] SUCCESS:"
+            "[EL0 IPC] SUCCESS:"
+            "[EL0 IPC block] SUCCESS:"
+            "[EL0 IPC cross-AS] SUCCESS:"
+            "[EL0 IPC memory] SUCCESS:"
+            "[EL0 IPC memory cancel] SUCCESS:"
+            "[EL0 IPC memory copy] SUCCESS:"
+            "[EL0 xLP] SUCCESS:"
+            "[PP] SUCCESS:"
+            "[sitas] SUCCESS:"
+            "[service] SUCCESS:"
+            "[cq wait] SUCCESS:"
+            "[device] SUCCESS:"
+            "[uart] SUCCESS:"
+          )
+          all_markers_present() {
+            for marker in "${required_markers[@]}"; do
+              grep -Fq "$marker" /tmp/serial.log || return 1
+            done
+          }
+          # Wait up to 180s for all deferred verifiers to complete.
           for i in $(seq 180); do
-            if grep -q "Testing Complete. All Tests Passed" /tmp/serial.log 2>/dev/null; then
+            if all_markers_present 2>/dev/null; then
               echo "=== ALL SELF-TESTS PASSED ==="
               cat /tmp/serial.log
               kill $QPID 2>/dev/null || true

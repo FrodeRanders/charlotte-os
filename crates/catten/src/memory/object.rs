@@ -374,6 +374,50 @@ pub fn move_to(
     Ok(target_cap)
 }
 
+/// Undo a successful [`move_to`] while preserving the owner's original
+/// capability number. This is restricted to kernel-internal transaction
+/// rollback; callers must supply the exact target capability returned by the
+/// move and the now-vacant original capability slot.
+pub(crate) fn rollback_move_to(
+    target: AddressSpaceId,
+    target_cap: MemoryObjectCap,
+    owner: AddressSpaceId,
+    original_cap: MemoryObjectCap,
+) -> Result<(), MemoryObjectError> {
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(target, target_cap)?;
+    let object = registry
+        .objects
+        .get(&cap_entry.object)
+        .ok_or(MemoryObjectError::UnknownCapability)?;
+    if object.owner != target || object.lend_state.is_active() || !object.mappings.is_empty() {
+        return Err(MemoryObjectError::WrongOwner);
+    }
+    if registry
+        .caps
+        .get(&owner)
+        .is_some_and(|caps| caps.caps.contains_key(&original_cap))
+    {
+        return Err(MemoryObjectError::LendingActive);
+    }
+
+    registry
+        .caps
+        .get_mut(&target)
+        .and_then(|caps| caps.caps.remove(&target_cap))
+        .ok_or(MemoryObjectError::UnknownCapability)?;
+    registry
+        .objects
+        .get_mut(&cap_entry.object)
+        .ok_or(MemoryObjectError::UnknownCapability)?
+        .owner = owner;
+    registry
+        .caps_for_mut(owner)
+        .caps
+        .insert(original_cap, cap_entry);
+    Ok(())
+}
+
 pub fn copy_to(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,

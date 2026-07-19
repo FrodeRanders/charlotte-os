@@ -136,6 +136,34 @@ if [ -n "$TIMEOUT" ]; then
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
+    REQUIRED_MARKERS=(
+        "[EL0] SUCCESS:"
+        "[raft] SUCCESS:"
+        "[EL0 IPC] SUCCESS:"
+        "[EL0 IPC block] SUCCESS:"
+        "[EL0 IPC cross-AS] SUCCESS:"
+        "[EL0 IPC memory] SUCCESS:"
+        "[EL0 IPC memory cancel] SUCCESS:"
+        "[EL0 IPC memory copy] SUCCESS:"
+        "[EL0 xLP] SUCCESS:"
+        "[PP] SUCCESS:"
+        "[sitas] SUCCESS:"
+        "[service] SUCCESS:"
+        "[cq wait] SUCCESS:"
+        "[device] SUCCESS:"
+        "[uart] SUCCESS:"
+    )
+    missing=0
+    for marker in "${REQUIRED_MARKERS[@]}"; do
+        if ! grep -Fq "$marker" "$LOG"; then
+            echo "error: deferred self-test marker missing: ${marker}" >&2
+            missing=1
+        fi
+    done
+    if [ "$missing" -ne 0 ]; then
+        exit 1
+    fi
+    echo ">>> All required deferred self-test markers observed."
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then

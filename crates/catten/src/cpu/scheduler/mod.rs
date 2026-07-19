@@ -99,7 +99,7 @@ pub fn sleep(duration: ExtDuration) {
     let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
     if let Some(tid) = tid {
         SYSTEM_SCHEDULER
-            .write()
+            .read()
             .block_thread(tid, &mut timer_event)
             .expect("Error putting thread to sleep");
         TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);

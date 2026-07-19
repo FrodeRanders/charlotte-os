@@ -2,13 +2,12 @@
 //!
 //! Spawns three isolated EL0 protection domains from Rust-compiled ELFs:
 //!
-//! - `ns.elf` — the userspace name service (registry endpoint delivered by
-//!   the supervisor through the bootstrap slot);
-//! - `uart.elf` — the reference userspace UART driver, granted a PL011 MMIO
-//!   register window and the PL011 interrupt as *capabilities* (plus a
-//!   bootstrap connection to the name service);
-//! - `cclient.elf` — a console client that looks up "uart" by name and writes
-//!   a short message through the driver.
+//! - `ns.elf` — the userspace name service (registry endpoint delivered by the supervisor through
+//!   the bootstrap slot);
+//! - `uart.elf` — the reference userspace UART driver, granted a PL011 MMIO register window and the
+//!   PL011 interrupt as *capabilities* (plus a bootstrap connection to the name service);
+//! - `cclient.elf` — a console client that looks up "uart" by name and writes a short message
+//!   through the driver.
 //!
 //! The driver never names a physical address or an interrupt vector: the
 //! supervisor mints the MMIO-region and interrupt capabilities kernel-side
@@ -22,6 +21,7 @@
 //! software-pends the real PL011 SPI through the GIC and observes the driver
 //! acknowledge it from EL0 (success criterion 8).
 
+use crate::logln;
 #[cfg(target_arch = "aarch64")]
 use crate::{
     ipc::{
@@ -37,7 +37,6 @@ use crate::{
         ServiceDomain,
     },
 };
-use crate::logln;
 
 #[cfg(target_arch = "aarch64")]
 const NS_ELF: &[u8] = include_bytes!("ns.elf");
@@ -67,7 +66,7 @@ const PL011_BASE: usize = 0x0900_0000;
 const PL011_INTID: u32 = 33;
 
 #[cfg(target_arch = "aarch64")]
-const CLIENT_SENTINEL: u32 = 0xC0DE;
+const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
 const MAX_SPINS: u64 = 80_000_000;
 
@@ -251,8 +250,7 @@ extern "C" fn verify_el0_uart() {
     let state = unsafe { TEST_STATE.as_mut() }.expect("[uart] test state missing");
     let ns_asid = state.name_service.domain.asid;
     let ns_endpoint = state.name_service.endpoint_cap;
-    let driver_asid =
-        state.driver.as_ref().expect("[uart] driver domain handle missing").asid;
+    let driver_asid = state.driver.as_ref().expect("[uart] driver domain handle missing").asid;
 
     let kclient_conn =
         ipc::connection_delegate(ns_asid, ns_endpoint, KCLIENT_ASID, ConnectionRights::CALL)
@@ -282,8 +280,7 @@ extern "C" fn verify_el0_uart() {
     );
 
     // Crash the driver: uncooperative exit, nothing released.
-    ipc::scalar_send(KCLIENT_ASID, stale_conn, OP_CRASH, 0)
-        .expect("[uart] crash send failed");
+    ipc::scalar_send(KCLIENT_ASID, stale_conn, OP_CRASH, 0).expect("[uart] crash send failed");
     let driver1 = state.driver.take().expect("[uart] driver domain handle missing");
     supervisor::wait_domain_exit(&driver1, MAX_SPINS);
     logln!("[uart] driver crashed (uncooperative exit) with a deferred read outstanding");

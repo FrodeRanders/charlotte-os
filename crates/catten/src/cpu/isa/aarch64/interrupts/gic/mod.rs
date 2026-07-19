@@ -4,15 +4,14 @@
 //! GICv3 as found on the QEMU `virt` machine and typical ARMv8-A server/embedded
 //! platforms. GICv3 splits into three cooperating parts:
 //!
-//! - **Distributor (GICD)**: a single system-wide MMIO block that manages
-//!   Shared Peripheral Interrupts (SPIs) and global configuration.
-//! - **Redistributors (GICR)**: one MMIO frame per core that manages that
-//!   core's private interrupts, i.e. Software Generated Interrupts (SGIs,
-//!   INTIDs 0-15, used for IPIs) and Private Peripheral Interrupts (PPIs,
-//!   INTIDs 16-31, which include the Generic Timer).
-//! - **CPU interface**: accessed through `ICC_*_EL1` system registers rather
-//!   than MMIO. This is where interrupts are acknowledged (`ICC_IAR1_EL1`),
-//!   completed (`ICC_EOIR1_EL1`), and generated as IPIs (`ICC_SGI1R_EL1`).
+//! - **Distributor (GICD)**: a single system-wide MMIO block that manages Shared Peripheral
+//!   Interrupts (SPIs) and global configuration.
+//! - **Redistributors (GICR)**: one MMIO frame per core that manages that core's private
+//!   interrupts, i.e. Software Generated Interrupts (SGIs, INTIDs 0-15, used for IPIs) and Private
+//!   Peripheral Interrupts (PPIs, INTIDs 16-31, which include the Generic Timer).
+//! - **CPU interface**: accessed through `ICC_*_EL1` system registers rather than MMIO. This is
+//!   where interrupts are acknowledged (`ICC_IAR1_EL1`), completed (`ICC_EOIR1_EL1`), and generated
+//!   as IPIs (`ICC_SGI1R_EL1`).
 //!
 //! The MMIO base addresses are, for now, the fixed QEMU `virt` defaults. Once
 //! the device tree layer is implemented they should be discovered from the
@@ -24,12 +23,21 @@ use core::arch::asm;
 
 use spin::LazyLock;
 
-use crate::cpu::isa::aarch64::memory::address::paddr::PAddr;
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interface::memory::address::PhysicalAddress;
-use crate::cpu::isa::lp::ops::get_lic_id;
-use crate::cpu::isa::lp::{InterruptVectorNum, LpId};
-use crate::cpu::multiprocessor::spin::per_lp::PerLp;
+use crate::cpu::{
+    isa::{
+        aarch64::memory::address::paddr::PAddr,
+        interface::{
+            interrupts::LocalIntCtlrIfce,
+            memory::address::PhysicalAddress,
+        },
+        lp::{
+            InterruptVectorNum,
+            LpId,
+            ops::get_lic_id,
+        },
+    },
+    multiprocessor::spin::per_lp::PerLp,
+};
 
 pub type LocalIntCtlr = GicV3;
 
@@ -37,7 +45,7 @@ pub type LocalIntCtlr = GicV3;
 const GICD_BASE: usize = 0x0800_0000;
 /// QEMU `virt` GIC redistributor region MMIO physical base address. Each core's
 /// redistributor occupies two consecutive 64 KiB frames (RD_base + SGI_base).
-const GICR_BASE: usize = 0x080A_0000;
+const GICR_BASE: usize = 0x080a_0000;
 /// Size of a single core's redistributor region (two 64 KiB frames: the
 /// RD_base control frame and the SGI_base frame for private interrupts).
 const GICR_STRIDE: usize = 0x2_0000;
@@ -76,10 +84,10 @@ const GICR_IPRIORITYR: usize = 0x0400;
 
 /// Priority value that permits all interrupts through `ICC_PMR_EL1` (lowest
 /// possible priority threshold; larger numeric values are lower priority).
-const PMR_ALLOW_ALL: u64 = 0xFF;
+const PMR_ALLOW_ALL: u64 = 0xff;
 /// Default priority assigned to the interrupts we enable. It must be numerically
 /// lower than the PMR threshold so the interrupt is not masked.
-const DEFAULT_PRIORITY: u8 = 0xA0;
+const DEFAULT_PRIORITY: u8 = 0xa0;
 
 #[derive(Debug)]
 pub enum Error {
@@ -192,12 +200,10 @@ impl GicV3 {
     /// Map the GIC distributor and this core's redistributor MMIO frames into
     /// the kernel address space via the HHDM as Device memory.
     fn map_mmio() {
-        
         use crate::memory::KERNEL_AS;
         let mut kas = KERNEL_AS.lock();
         // Distributor: a single 64 KiB frame.
-        kas.map_mmio_region(GICD_BASE, 0x1_0000)
-            .expect("Failed to map GIC distributor MMIO");
+        kas.map_mmio_region(GICD_BASE, 0x1_0000).expect("Failed to map GIC distributor MMIO");
         // This core's redistributor: RD_base + SGI_base (two 64 KiB frames).
         kas.map_mmio_region(gicr_rd_base(), GICR_STRIDE)
             .expect("Failed to map GIC redistributor MMIO");
@@ -217,11 +223,7 @@ impl LocalIntCtlrIfce for GicV3 {
         // is idempotent and safe to repeat from each core as it comes online.
         unsafe {
             let ctlr = mmio_read32(GICD_BASE, GICD_CTLR);
-            mmio_write32(
-                GICD_BASE,
-                GICD_CTLR,
-                ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS,
-            );
+            mmio_write32(GICD_BASE, GICD_CTLR, ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS);
             // Ensure SPI group registers do not matter here; SPIs are wired up
             // by the external interrupt controller path when devices attach.
             let _ = GICD_IGROUPR;
@@ -230,9 +232,7 @@ impl LocalIntCtlrIfce for GicV3 {
         Self::cpu_interface_init();
         // Enable the EL1 virtual timer PPI (INTID 27) so the scheduler tick is
         // delivered to this core.
-        Self::enable_private_int(
-            crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
-        );
+        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR);
     }
 
     /// Send a unicast IPI to `target_lp` by generating the SGI whose INTID is
@@ -248,10 +248,7 @@ impl LocalIntCtlrIfce for GicV3 {
     /// Cross-core SGI delivery is exercised by the SMP2 boot gate: kernel
     /// ShardMailbox fan-out, EL0 cross-LP completion, and EL0 ping-pong all
     /// require LP0 <-> LP1 wakeups to be delivered through this path.
-    fn send_unicast_ipi(
-        target_lp: LpId,
-        target_vector: InterruptVectorNum,
-    ) -> Result<(), Error> {
+    fn send_unicast_ipi(target_lp: LpId, target_vector: InterruptVectorNum) -> Result<(), Error> {
         // SGIs are INTIDs 0-15 only.
         if target_vector > 15 {
             return Err(Error::InvalidLpId);
@@ -321,8 +318,10 @@ pub const FIRST_SPI: u32 = 32;
 /// the alias into the live translation tables and is idempotent (an already
 /// mapped page is treated as success).
 fn ensure_distributor_mapped() {
-    use crate::cpu::isa::aarch64::memory::paging::AddressSpace;
-    use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+    use crate::cpu::isa::{
+        aarch64::memory::paging::AddressSpace,
+        interface::memory::AddressSpaceInterface,
+    };
     let mut current = AddressSpace::get_current();
     let _ = current.map_mmio_region(GICD_BASE, 0x1_0000);
 }

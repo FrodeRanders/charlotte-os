@@ -3,8 +3,8 @@
 //! On AArch64 with a Generic Interrupt Controller (GIC), interrupts are
 //! identified by INTIDs rather than an IDT vector number as on x86-64:
 //! - INTIDs 0-15 are Software Generated Interrupts (SGIs), used for IPIs.
-//! - INTIDs 16-31 are Private Peripheral Interrupts (PPIs), which include the
-//!   per-core Generic Timer interrupts.
+//! - INTIDs 16-31 are Private Peripheral Interrupts (PPIs), which include the per-core Generic
+//!   Timer interrupts.
 //! - INTIDs 32+ are Shared Peripheral Interrupts (SPIs).
 //!
 //! See the ARM Generic Interrupt Controller Architecture Specification for
@@ -23,3 +23,7 @@ pub const ASYNC_IPI_VECTOR: u32 = 0;
 
 /// SGI used for synchronous inter-processor interrupts.
 pub const SYNC_IPI_VECTOR: u32 = 1;
+
+/// SGI used to make an idle target LP enter its local scheduler after remote
+/// runnable work is queued.
+pub const SCHEDULER_IPI_VECTOR: u32 = 2;

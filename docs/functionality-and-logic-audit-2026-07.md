@@ -209,6 +209,13 @@ was written in `1000cf1`.
 
 ### F4 — High: the smoltcp receive adapter discards the frame length
 
+**Resolution (2026-07-19):** fixed. The adapter now polls each reply once with
+the full memory-return ABI, retains and validates the returned byte length
+against both MTU and page size, closes the pending-call capability, and exposes
+exactly that slice to smoltcp. Invalid lengths and failed mappings close the
+returned object. A host test covers zero, MTU-boundary, oversized, and
+page-oversized lengths.
+
 `CharlotteEthDevice::receive` first calls `ipc_reply_poll`, discards its result
 value, and then calls `ipc_reply_poll_with_memory` for the same pending call
 (`crates/charlotte-smoltcp/src/lib.rs:132-150`). Re-polling happens to work
@@ -228,6 +235,12 @@ and give smoltcp exactly that slice. Add a mock-syscall adapter test for pending
 ready, malformed-length, and back-to-back receives.
 
 ### F5 — High: reliable-message wire lengths allow out-of-bounds EL0 access
+
+**Resolution (2026-07-19):** fixed for the current one-page transport. The
+protocol now has a checked parser that validates EtherType, reserved bytes,
+known flags, control-message payload rules, and the 1,468-byte protocol maximum.
+The service checks every mapping, bounds every copy, and closes all objects on
+failure. Protocol tests exercise malformed headers and oversized lengths.
 
 The reliable-message service parses an untrusted 16-bit `payload_len` and then
 copies that many bytes from offset 16 of a one-page mapping into another
@@ -249,6 +262,14 @@ and reject malformed EtherType/reserved/flag combinations before copying.
 
 ### F6 — High: vector IPC transfer is not transactional
 
+**Resolution (2026-07-19):** fixed. Vector metadata and duplicate entries are
+validated before mutation. Applied copies, moves, and lends are recorded and
+rolled back in reverse order on transfer or enqueue failure; moved objects are
+restored under the sender's original capability number. Unaligned vector-page
+entries are now accessed with unaligned operations rather than volatile typed
+access. A boot self-test forces the second entry to fail after a move and proves
+that the original cap remains valid and no message is enqueued.
+
 The architecture calls for explicit, safe ownership transfer. `read_vector_page`
 performs copy, move, and lend operations sequentially
 (`crates/catten/src/ipc/mod.rs:1590-1630`). If entry N fails, entries 0..N-1
@@ -268,6 +289,13 @@ entry fails for every transfer-mode combination.
 
 ### F7 — Medium: boot self-test success is printed before deferred tests finish
 
+**Resolution (2026-07-19):** the premature global success claim was removed.
+Boot now explicitly reports that synchronous tests passed while deferred
+verifiers remain pending. Bounded QEMU runs and CI require the individual
+terminal success markers for every supported deferred test and return failure
+when any marker is absent. The virtio-net marker is intentionally excluded from
+TCG/HVF aggregation pending the separate Linux KVM milestone.
+
 Several functions called by `run_self_tests` spawn verifier threads and return
 immediately; the boot log itself says "verifier deferred." Nevertheless,
 `run_self_tests` prints `Testing Complete. All Tests Passed!` immediately after
@@ -286,6 +314,10 @@ automatable pass/fail code.
 
 ### F8 — Medium: the documented AArch64 timeout/SMP runner arguments are broken
 
+**Resolution (2026-07-19):** fixed. The runner now parses value-taking options
+in one pass, rejects missing values, and captures a single serial stream for
+bounded runs.
+
 The first argument loop accepts the `--smp` and `--timeout` option names but
 rejects their following numeric values before the second loop can parse them
 (`scripts/run-aarch64.sh:31-50`). For example:
@@ -302,6 +334,13 @@ Impact: repeatable bounded boot tests do not run as documented; developers are
 encouraged toward manual interactive boots with incomplete log capture.
 
 ### F9 — Medium: test/build automation does not cover the workspace it describes
+
+**Resolution (2026-07-19):** improved. CI now has an explicit host-library job
+for the reliable-message protocol, Raft core/wire implementation, and smoltcp
+adapter, executed outside the repository directory so the bare-metal
+`build-std` configuration is not applied to host tests. Kernel target builds
+remain a separate matrix. Full repository-wide formatting cleanup remains a
+separate mechanical change.
 
 The root host workspace check attempts to compile the bare-metal kernel for the
 Mach-O host and fails on ELF Limine section attributes. The workspace's only
@@ -320,6 +359,9 @@ host tests for Raft/protocol/state-machine logic.
 
 ### F10 — Medium: zero-capacity completion rings panic or underflow
 
+**Resolution (2026-07-19):** fixed. Both CQ constructors now return `Result`
+and reject capacities below two. The CQ boot test covers zero and one entry.
+
 `CompletionQueueRing::new_page` and `init_at_phys` accept zero entries and store
 capacity zero (`crates/catten/src/completion/cq.rs:48-65`). `is_full`, `write`,
 `write_batch`, and `read` then use modulo by capacity; `write_batch` additionally
@@ -335,6 +377,10 @@ explicit documented minimum.
 
 ### F11 — Documentation status is internally inconsistent
 
+**Resolution (2026-07-19):** corrected in the README, AArch64 status document,
+and main architecture status table. EL0/TCG evidence is stated explicitly and
+the virtio-net path is consistently described as pending Linux KVM validation.
+
 The main architecture document says the system is substantially implemented and
 boot-validated, including EL0 phases. `README.md:35-41` and
 `aarch64-port-status.md:173-175` still say EL0/userspace is unimplemented or
@@ -349,6 +395,68 @@ Recommended correction: make one status document authoritative, attach each
 claim to a dated command/log/commit, and use the categories **compiled**,
 **synchronous boot-tested**, **deferred test completed**, **HVF-tested**,
 **TCG-tested**, **KVM-tested**, and **hardware-tested**.
+
+### F12 — High: scheduler identities and lock ordering were not lifecycle-safe
+
+**Resolution (2026-07-19):** scheduler wake objects and round-robin
+queue entries now carry a monotonically increasing thread generation as well
+as the reusable numeric thread ID. Stale wakes are ignored and stale queue
+entries cannot dispatch a later occupant of the same ID-table slot. The
+`block_thread` path was also changed from thread-table → LP-queue locking to the
+LP-queue → thread-table order already used by dispatch, wake, and abort.
+Blocking and wake submission now use shared access to the immutable system
+scheduler topology instead of unnecessarily taking its global write lock, and
+round-robin idle state is updated whenever dispatch selects the idle thread so
+remote submission sends the required wakeup IPI.
+
+On AArch64, that wakeup previously attempted to send the generic-timer PPI
+(INTID 27) through the GIC SGI interface. The GIC correctly rejects every IPI
+vector above 15, but the scheduler discarded the error, leaving an idle LP
+asleep until an incidental interrupt arrived. Scheduler wakeups now use a
+dedicated SGI (INTID 2); its handler marks a local context switch pending, and
+send failures are no longer ignored. Round-robin also starts in the idle state,
+because no initial quantum is armed before its first dispatch.
+
+Previously, a delayed observer notification named only a `ThreadId`; after
+exit and ID-table reuse it could wake an unrelated replacement thread. In
+addition, a queued-thread block could hold `MASTER_THREAD_TABLE` while waiting
+for an LP scheduler whose dispatch path held the LP lock while waiting for
+`MASTER_THREAD_TABLE`, forming an AB/BA deadlock.
+
+The live-upgrade stall exposed the same ABA defect in `ServiceDomain`: teardown
+identified the old thread only by a recycled ID and rejected teardown after the
+replacement reused that slot. Service handles now retain the thread generation,
+and `domain_exited` waits for the old thread to leave both the master table and
+the per-LP deferred-reap list before replacement stack allocation. A four-vCPU
+AArch64 TCG boot then completed generation-3 state handoff and printed the
+`[service] SUCCESS:` marker. The aggregate SMP boot remains timing-sensitive in
+other deferred tests (most recently UART), so this resolves the identified
+scheduler/service lifecycle errors but is not evidence that every scheduling
+path is exhaustively validated.
+
+### F13 — Observation: kernel and userspace UART output interleave by byte
+
+The AArch64 serial log can contain isolated characters mixed into kernel log
+lines, for example `U`, `A`, `R`, `T`, `-`, `O`, `K`, a newline, and later `2`.
+Together these reconstruct the expected userspace UART-test output
+`UART-OK\n2`: `cclient` sends `UART-OK\n` as individual synchronous
+`OP_WRITE` calls, and the restart verifier sends `2` through the replacement
+driver.
+
+This is not evidence of partial thread execution or memory corruption. The EL0
+UART driver writes each byte directly to the PL011 data register, while kernel
+logging writes to the same physical PL011. The kernel serial mutex orders
+kernel writers only; it cannot serialize a userspace domain holding direct MMIO
+authority. Scheduler activity and kernel messages can therefore occur between
+any two userspace UART bytes.
+
+The result is useful positive evidence that both the original and restarted
+userspace drivers reached the physical device, but it also exposes ambiguous
+device ownership. A production design should establish one normal writer:
+route post-bootstrap kernel logging through the userspace driver, reserve a
+separate debug UART for the kernel, or retain the UART in the kernel and expose
+a mediated console operation. Early-boot and panic output may remain an
+explicit emergency bypass whose possible interleaving is documented.
 
 ## Architecture conformance assessment
 

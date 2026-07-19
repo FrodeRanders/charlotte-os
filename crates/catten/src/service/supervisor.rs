@@ -10,11 +10,13 @@
 const ECHO_UPGRADE_ELF: &[u8] = include_bytes!("../self_test/echo.elf");
 
 use alloc::vec::Vec;
+
 use crate::{
     cpu::scheduler::{
         spawn_thread,
         threads::{
             MASTER_THREAD_TABLE,
+            ThreadGeneration,
             ThreadId,
         },
         yield_lp,
@@ -40,6 +42,7 @@ use crate::{
 pub struct ServiceDomain {
     pub asid: AddressSpaceId,
     pub tid: ThreadId,
+    pub generation: ThreadGeneration,
     pub config_frame: PAddr,
 }
 
@@ -64,9 +67,15 @@ fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
     let tid = spawn_thread(loaded.asid, entry);
+    let generation = MASTER_THREAD_TABLE
+        .read()
+        .get(tid)
+        .expect("[supervisor] spawned thread missing from table")
+        .generation;
     ServiceDomain {
         asid: loaded.asid,
         tid,
+        generation,
         config_frame: loaded.config_frame,
     }
 }
@@ -183,7 +192,16 @@ pub fn spawn_driver_with_name_service(
 /// Returns true once the domain's initial thread has exited and been reaped
 /// from the master thread table.
 pub fn domain_exited(domain: &ServiceDomain) -> bool {
-    MASTER_THREAD_TABLE.read().get(domain.tid).is_err()
+    if let Ok(thread) = MASTER_THREAD_TABLE.read().get(domain.tid) {
+        if thread.generation == domain.generation {
+            return false;
+        }
+    }
+    !crate::cpu::scheduler::threads::DEAD_THREADS
+        .read()
+        .values()
+        .flatten()
+        .any(|thread| thread.asid == domain.asid)
 }
 
 /// Spin (yielding) until the domain's initial thread exits.
@@ -242,17 +260,21 @@ pub fn spawn_upgrade(
 
     // Move state caps from KERNEL_ASID to the new domain.
     let state_count = grant.state_caps.len() as u32;
-    let first_state = if state_count > 0 { grant.state_caps[0] } else { 0 };
+    let first_state = if state_count > 0 {
+        grant.state_caps[0]
+    } else {
+        0
+    };
     for cap in &grant.state_caps {
-        let _ = crate::memory::object::move_to(
-            crate::memory::KERNEL_ASID, *cap, loaded.asid,
-        );
+        let _ = crate::memory::object::move_to(crate::memory::KERNEL_ASID, *cap, loaded.asid);
     }
     // Delegate a connection from the old endpoint to the new domain while
     // the old domain is still alive.
     let delegated_ep = if grant.endpoint_cap != 0 {
         ipc::connection_delegate(
-            old_asid, grant.endpoint_cap, loaded.asid,
+            old_asid,
+            grant.endpoint_cap,
+            loaded.asid,
             ConnectionRights::SEND | ConnectionRights::CALL,
         )
         .ok()
@@ -260,7 +282,10 @@ pub fn spawn_upgrade(
         None
     };
     bootstrap::write_handoff_state(
-        loaded.config_frame, state_count, first_state, delegated_ep.unwrap_or(0),
+        loaded.config_frame,
+        state_count,
+        first_state,
+        delegated_ep.unwrap_or(0),
     );
     start_domain(loaded)
 }

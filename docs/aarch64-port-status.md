@@ -24,8 +24,9 @@
   is not always provisioned by QEMU/edk2 on `virt`; the kernel falls back to the
   PL011 serial console when none is available, so serial is the reliable log
   sink on macOS. GIC and UART MMIO base addresses are QEMU-`virt` hardcoded
-  pending device-tree support; execution reaches the kernel device-probe idle
-  loop — no EL0/userspace path is exercised yet.
+  pending device-tree support. EL0 userspace, cross-domain IPC, service restart,
+  delegated device access, and a two-node Raft election are exercised by the
+  deferred QEMU TCG boot tests. Virtio-net still requires Linux KVM validation.
 
 ## How to build and run
 
@@ -170,9 +171,9 @@ exception log and `lldb` on the QEMU gdb stub:
   `flat_device_tree` dependency exist but the consumer (`get_pcie_segment_groups`
   for DT) is still `todo!()`. ACPI parsing works on `virt` (which does expose
   ACPI), so this is not blocking today.
-- **No EL0 / userspace exercised.** `user_trampoline` and
-  `create_user_thread_context` are implemented but only kernel threads have been
-  run; the EL0 drop and syscall path are untested.
+- **EL0 / userspace.** The EL0 drop, syscall path, isolated service domains,
+  memory IPC, service restart, and Raft election are TCG-tested. The virtio-net
+  EL0 MMIO path is skipped under HVF and remains pending on Linux KVM.
 - **SPI / external interrupt routing.** Only PPIs (timer) and SGIs (IPIs) are
   wired; device SPIs will need the `ExternalInterruptControllerIfce` path
   (GICD `IROUTER`/config) once drivers attach.

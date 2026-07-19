@@ -1,13 +1,33 @@
 pub mod gic;
 
-use core::arch::{asm, global_asm};
+use core::arch::{
+    asm,
+    global_asm,
+};
 
 pub use gic::*;
 
-use crate::cpu::isa::constants::interrupt_vectors::{ASYNC_IPI_VECTOR, LAPIC_TIMER_VECTOR};
-use crate::cpu::isa::lp::ops::{cond_yield_lp, get_lp_id};
-use crate::early_logln;
-use crate::syscall::{self, ec_from_esr, EC_SVC_AARCH64, MAX_SYSCALL, TrapFrame};
+use crate::{
+    cpu::isa::{
+        constants::interrupt_vectors::{
+            ASYNC_IPI_VECTOR,
+            LAPIC_TIMER_VECTOR,
+            SCHEDULER_IPI_VECTOR,
+        },
+        lp::ops::{
+            cond_yield_lp,
+            get_lp_id,
+        },
+    },
+    early_logln,
+    syscall::{
+        self,
+        EC_SVC_AARCH64,
+        MAX_SYSCALL,
+        TrapFrame,
+        ec_from_esr,
+    },
+};
 
 // Include the interrupt vector table assembly
 global_asm!(include_str!("ivt.asm"));
@@ -45,7 +65,7 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
     let ec = ec_from_esr(esr_el1);
 
     if ec == EC_SVC_AARCH64 {
-        let svc_imm = (esr_el1 & 0xFFFF) as u16;
+        let svc_imm = (esr_el1 & 0xffff) as u16;
         if svc_imm > MAX_SYSCALL {
             panic!("Unknown syscall number: {svc_imm}");
         }
@@ -150,33 +170,33 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         return;
     }
 
-        //   0x20 = Instruction Abort (lower EL)
-        //   0x21 = Instruction Abort (same EL)
-        //   0x24 = Data Abort (lower EL)
-        //   0x25 = Data Abort (same EL)
-        //   0x2C = FP exception (trapped by HVF when FP is used at EL0)
-        match ec {
-            0x0 => {
-                // EC=0 with nonzero ISS is typically a trapped WFI/WFE, WFET, or
-                // WFIT. Some hypervisors (Apple HVF) may also deliver such traps
-                // spuriously (no actual trapped instruction). Returning via eret
-                // re-executes the instruction at ELR just fine.
-                // (No log — HVF in particular can deliver these at high frequency,
-                // and logging each one floods the serial port.)
-                return;
-            }
-            0x20 | 0x24 => {
-                // Abort from EL0: a stale TLB entry on this LP is the most
-                // likely cause (HVF does not faithfully emulate broadcast
-                // TLBI to other vCPUs).  Invalidate the faulting VA in the
-                // local TLB and retry the instruction.  Only recover for
-                // translation/permission faults (ISS[5:0] = 0001xx or 0011xx).
-                let iss = (esr_el1 & 0x3F) as u32;
-                let is_tf  = (iss & 0b111100) == 0b000100; // translation fault
-                let is_pf  = (iss & 0b111100) == 0b001100; // permission fault
-                if is_tf || is_pf {
-                    unsafe {
-                        asm!(
+    //   0x20 = Instruction Abort (lower EL)
+    //   0x21 = Instruction Abort (same EL)
+    //   0x24 = Data Abort (lower EL)
+    //   0x25 = Data Abort (same EL)
+    //   0x2C = FP exception (trapped by HVF when FP is used at EL0)
+    match ec {
+        0x0 => {
+            // EC=0 with nonzero ISS is typically a trapped WFI/WFE, WFET, or
+            // WFIT. Some hypervisors (Apple HVF) may also deliver such traps
+            // spuriously (no actual trapped instruction). Returning via eret
+            // re-executes the instruction at ELR just fine.
+            // (No log — HVF in particular can deliver these at high frequency,
+            // and logging each one floods the serial port.)
+            return;
+        }
+        0x20 | 0x24 => {
+            // Abort from EL0: a stale TLB entry on this LP is the most
+            // likely cause (HVF does not faithfully emulate broadcast
+            // TLBI to other vCPUs).  Invalidate the faulting VA in the
+            // local TLB and retry the instruction.  Only recover for
+            // translation/permission faults (ISS[5:0] = 0001xx or 0011xx).
+            let iss = (esr_el1 & 0x3f) as u32;
+            let is_tf = (iss & 0b111100) == 0b000100; // translation fault
+            let is_pf = (iss & 0b111100) == 0b001100; // permission fault
+            if is_tf || is_pf {
+                unsafe {
+                    asm!(
                             "dsb ishst",
                             "tlbi vaae1is, {va}",
                             "dsb ish",
@@ -184,21 +204,31 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                             va = in(reg) far_el1 >> 12,
                             options(nomem, nostack, preserves_flags),
                         );
-                    }
-                    return; // retry the faulting instruction
                 }
-                // Unrecognised ISS — log and fall through to panic.
-                early_logln!("DATA/INST ABORT EL0: ESR={:x} ELR={:x} FAR={:x}", esr_el1, elr_el1, far_el1);
+                return; // retry the faulting instruction
             }
-            0x25 | 0x21 => {
-                // Abort from same EL: kernel fault — unrecoverable.
-                // Log and let the panic below fire.
-                early_logln!("KERNEL DATA/INST ABORT: ESR={:x} ELR={:x} FAR={:x}", esr_el1, elr_el1, far_el1);
-            }
-            0x2C => {
-                // FP exception trapped by HVF.  Enable FP/SIMD on this LP and retry.
-                unsafe {
-                    asm!(
+            // Unrecognised ISS — log and fall through to panic.
+            early_logln!(
+                "DATA/INST ABORT EL0: ESR={:x} ELR={:x} FAR={:x}",
+                esr_el1,
+                elr_el1,
+                far_el1
+            );
+        }
+        0x25 | 0x21 => {
+            // Abort from same EL: kernel fault — unrecoverable.
+            // Log and let the panic below fire.
+            early_logln!(
+                "KERNEL DATA/INST ABORT: ESR={:x} ELR={:x} FAR={:x}",
+                esr_el1,
+                elr_el1,
+                far_el1
+            );
+        }
+        0x2c => {
+            // FP exception trapped by HVF.  Enable FP/SIMD on this LP and retry.
+            unsafe {
+                asm!(
                         "mrs x9, cpacr_el1",
                         "orr x9, x9, #(3 << 20)",
                         "msr cpacr_el1, x9",
@@ -206,16 +236,23 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                         out("x9") _,
                         options(nomem, nostack, preserves_flags),
                     );
-                }
-                return;
             }
-            _ => {
-                early_logln!("UNHANDLED SYNC: EC={:x} ESR={:x} ELR={:x} FAR={:x}", ec, esr_el1, elr_el1, far_el1);
-            }
+            return;
         }
+        _ => {
+            early_logln!(
+                "UNHANDLED SYNC: EC={:x} ESR={:x} ELR={:x} FAR={:x}",
+                ec,
+                esr_el1,
+                elr_el1,
+                far_el1
+            );
+        }
+    }
     early_logln!("  EC: {} (see Arm ARM D17.2.37 for exception classes)", ec);
     panic!(
-        "Unhandled synchronous exception: EC={ec:#x}, ESR_EL1={esr_el1:#x}, ELR_EL1={elr_el1:#x}, FAR_EL1={far_el1:#x}",
+        "Unhandled synchronous exception: EC={ec:#x}, ESR_EL1={esr_el1:#x}, ELR_EL1={elr_el1:#x}, \
+         FAR_EL1={far_el1:#x}",
     );
 }
 
@@ -242,6 +279,13 @@ pub extern "C" fn irq_dispatcher() {
         ASYNC_IPI_VECTOR => {
             // Asynchronous IPI: drain this LP's IPI RPC queue.
             crate::cpu::multiprocessor::ipi::drain_local_ipi_queue();
+        }
+        SCHEDULER_IPI_VECTOR => {
+            crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .get_lp_scheduler()
+                .lock()
+                .set_ctx_switch_pending();
         }
         _ => {
             // Shared Peripheral Interrupts (INTID >= 32) from devices are

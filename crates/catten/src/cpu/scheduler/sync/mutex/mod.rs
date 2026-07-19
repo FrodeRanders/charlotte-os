@@ -69,7 +69,7 @@ unsafe impl RawMutex for MutexCore {
             }
             // Failed to acquire — block this thread until unlock() wakes us
             if let Some(tid) = get_thread_id() {
-                SYSTEM_SCHEDULER.write().block_thread(tid, self).expect("Failed to block thread");
+                SYSTEM_SCHEDULER.read().block_thread(tid, self).expect("Failed to block thread");
             } else {
                 panic!("Attempted to acquire a blocking mutex from outside thread context.");
             }

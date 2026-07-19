@@ -26,13 +26,10 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-use charlotte_protocol_net::{OP_RECV, OP_SEND, OP_STATUS, decode_status};
+use charlotte_protocol_net::{OP_RECV, OP_SEND};
 use catten_syscall::{
-    IpcMessage, ipc_recv, ipc_reply, ipc_reply_poll, ipc_scalar_call,
-    ipc_scalar_call_move,
-    memory_alloc, memory_close, memory_map, memory_unmap,
-    ipc_status,
+    ipc_close, ipc_recv, ipc_reply, ipc_reply_poll_with_memory, ipc_scalar_call,
+    ipc_scalar_call_move, ipc_status, memory_alloc, memory_close, memory_map, memory_unmap,
 };
 
 use smoltcp::phy::{Device, DeviceCapabilities, RxToken, TxToken};
@@ -50,16 +47,13 @@ pub struct CharlotteEthDevice {
     rx_pending: u64,
     /// The endpoint of the NIC driver, for draining notifications.
     endpoint: u64,
-    /// Cached device properties.
-    mac: [u8; 6],
     mtu: usize,
-    /// Whether we're inside a poll — avoid re-entrant IPC.
-    in_poll: bool,
 }
 
 pub struct CharlotteRx {
     /// The memory cap returned by the NIC driver for a received frame.
     frame_cap: u64,
+    frame_len: usize,
 }
 
 pub struct CharlotteTx {
@@ -71,11 +65,10 @@ impl CharlotteEthDevice {
     /// Create a new adapter.  `conn` is a connection cap to the NIC driver
     /// endpoint.  `mac` and `mtu` come from `OP_STATUS`.  `endpoint` is the
     /// driver's endpoint cap for draining readiness notifications.
-    pub fn new(conn: u64, mac: [u8; 6], mtu: usize, endpoint: u64) -> Self {
+    pub fn new(conn: u64, _mac: [u8; 6], mtu: usize, endpoint: u64) -> Self {
         Self {
-            conn, endpoint, mac, mtu,
+            conn, endpoint, mtu,
             rx_pending: 0,
-            in_poll: false,
         }
     }
 
@@ -101,14 +94,14 @@ impl CharlotteEthDevice {
     /// or transmit — we just need to consume them so the ring doesn't fill.
     fn drain_notifications(&mut self) {
         loop {
-            let m = unsafe { ipc_recv(self.endpoint) };
+            let m = ipc_recv(self.endpoint);
             if m.status == ipc_status::NO_MESSAGE {
                 break;
             }
             // The driver doesn't send endpoint messages to us; it uses CQ
             // wakeup.  If we get a message, reply with stub and discard.
             if m.reply != 0 {
-                unsafe { ipc_reply(m.reply, 0) };
+                ipc_reply(m.reply, 0);
             }
         }
     }
@@ -121,8 +114,7 @@ impl Device for CharlotteEthDevice {
     fn receive(&mut self, _now: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // 1. Issue a new OP_RECV if none is outstanding.
         if self.rx_pending == 0 {
-            self.rx_pending =
-                unsafe { ipc_scalar_call(self.conn, OP_RECV, 0) };
+            self.rx_pending = ipc_scalar_call(self.conn, OP_RECV, 0);
             if self.rx_pending == 0 {
                 return None; // driver rejected the call
             }
@@ -130,36 +122,30 @@ impl Device for CharlotteEthDevice {
         }
 
         // 2. Poll the pending OP_RECV.
-        let (status, _result, _cap) = unsafe { ipc_reply_poll(self.rx_pending) };
-        if status != 0 {
-            return None; // still pending
+        let pending = self.rx_pending;
+        let (status, result, _connection, memory) = ipc_reply_poll_with_memory(pending);
+        if status == 1 {
+            return None;
+        }
+        ipc_close(pending);
+        self.rx_pending = 0;
+
+        if status != 0 || memory == 0 || !valid_rx_len(result as usize, self.mtu) {
+            if memory != 0 {
+                memory_close(memory);
+            }
+            return None;
         }
 
-        // 3. OP_RECV completed.  The reply carries a moved memory cap with
-        //    the received frame.  ipc_reply_poll doesn't return the memory
-        //    cap directly; we need the full poll.  Let's use
-        //    ipc_reply_poll_with_memory from catten-syscall.
-        //    Actually, the wrapper returns (0, result, returned_connection,
-        //    returned_memory).  Let's re-poll with memory.
-        #[allow(unused_assignments)]
-        {
-            let (s2, _, _, mem) =
-                unsafe { catten_syscall::ipc_reply_poll_with_memory(self.rx_pending) };
-            if s2 != 0 || mem == 0 {
-                self.rx_pending = 0;
-                return None;
-            }
-            let rx = mem;
-            let tx = self.conn;
-            self.rx_pending = 0;
-            // Issue the next receive immediately (pipelining).
-            self.rx_pending =
-                unsafe { ipc_scalar_call(self.conn, OP_RECV, 0) };
-            Some((
-                CharlotteRx { frame_cap: rx },
-                CharlotteTx { conn: tx },
-            ))
-        }
+        let tx = self.conn;
+        self.rx_pending = ipc_scalar_call(self.conn, OP_RECV, 0);
+        Some((
+            CharlotteRx {
+                frame_cap: memory,
+                frame_len: result as usize,
+            },
+            CharlotteTx { conn: tx },
+        ))
     }
 
     fn transmit(&mut self, _now: Instant) -> Option<Self::TxToken<'_>> {
@@ -180,14 +166,15 @@ impl RxToken for CharlotteRx {
         F: FnOnce(&[u8]) -> R,
     {
         let cap = self.frame_cap;
-        if unsafe { memory_map(cap, RX_SCRATCH, false) } != 0 {
+        if memory_map(cap, RX_SCRATCH, false) != 0 {
+            memory_close(cap);
             return f(&[]);
         }
         let result = f(unsafe {
-            core::slice::from_raw_parts(RX_SCRATCH as *const u8, 2048)
+            core::slice::from_raw_parts(RX_SCRATCH as *const u8, self.frame_len)
         });
-        unsafe { memory_unmap(cap) };
-        unsafe { memory_close(cap) };
+        memory_unmap(cap);
+        memory_close(cap);
         result
     }
 }
@@ -197,13 +184,17 @@ impl TxToken for CharlotteTx {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
-        let cap = unsafe { memory_alloc(1) };
+        if len > 4096 {
+            let mut empty = [0u8; 0];
+            return f(&mut empty);
+        }
+        let cap = memory_alloc(1);
         if cap == 0 {
             let mut empty = [0u8; 0];
             return f(&mut empty[..]);
         }
-        if unsafe { memory_map(cap, TX_SCRATCH, true) } != 0 {
-            unsafe { memory_close(cap) };
+        if memory_map(cap, TX_SCRATCH, true) != 0 {
+            memory_close(cap);
             let mut empty = [0u8; 0];
             return f(&mut empty[..]);
         }
@@ -211,8 +202,28 @@ impl TxToken for CharlotteTx {
             core::slice::from_raw_parts_mut(TX_SCRATCH as *mut u8, len)
         };
         let result = f(buf);
-        unsafe { memory_unmap(cap) };
-        unsafe { ipc_scalar_call_move(self.conn, OP_SEND, len as u64, cap) };
+        memory_unmap(cap);
+        if ipc_scalar_call_move(self.conn, OP_SEND, len as u64, cap) == 0 {
+            memory_close(cap);
+        }
         result
+    }
+}
+
+fn valid_rx_len(len: usize, mtu: usize) -> bool {
+    len > 0 && len <= mtu && len <= 4096
+}
+
+#[cfg(test)]
+mod tests {
+    use super::valid_rx_len;
+
+    #[test]
+    fn receive_lengths_are_bounded_by_mtu_and_page() {
+        assert!(!valid_rx_len(0, 1500));
+        assert!(valid_rx_len(64, 1500));
+        assert!(valid_rx_len(1500, 1500));
+        assert!(!valid_rx_len(1501, 1500));
+        assert!(!valid_rx_len(4097, usize::MAX));
     }
 }

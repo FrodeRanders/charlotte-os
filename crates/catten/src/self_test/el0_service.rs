@@ -3,12 +3,12 @@
 //!
 //! Spawns three isolated EL0 protection domains from Rust-compiled ELFs:
 //!
-//! - `ns.elf` — the userspace name service (registry endpoint created and
-//!   delivered by the supervisor through the bootstrap slot);
-//! - `echo.elf` — a service that creates its own endpoint and registers it
-//!   by name, attaching a re-delegable connection at call time;
-//! - `client.elf` — a client that looks up "echo" by name and calls it
-//!   through the returned connection.
+//! - `ns.elf` — the userspace name service (registry endpoint created and delivered by the
+//!   supervisor through the bootstrap slot);
+//! - `echo.elf` — a service that creates its own endpoint and registers it by name, attaching a
+//!   re-delegable connection at call time;
+//! - `client.elf` — a client that looks up "echo" by name and calls it through the returned
+//!   connection.
 //!
 //! No domain ever learns another domain's ASID, LP, or kernel object ids;
 //! all authority flows through delegated capabilities.
@@ -18,6 +18,7 @@
 //! domain, observes that stale connections fail with `EndpointClosed`,
 //! restarts the service, and observes the instance generation increment.
 
+use crate::logln;
 #[cfg(target_arch = "aarch64")]
 use crate::{
     ipc::{
@@ -32,7 +33,6 @@ use crate::{
         ServiceDomain,
     },
 };
-use crate::logln;
 
 #[cfg(target_arch = "aarch64")]
 const NS_ELF: &[u8] = include_bytes!("ns.elf");
@@ -65,15 +65,13 @@ const OP_SHUTDOWN: u32 = 2;
 #[cfg(target_arch = "aarch64")]
 const ECHO_VALUE: u64 = 0x1234_5678;
 #[cfg(target_arch = "aarch64")]
-const CLIENT_SENTINEL: u32 = 0xC0DE;
+const CLIENT_SENTINEL: u32 = 0xc0de;
 
 /// The kernel verifier acts as a second client through the direct kernel
 /// API under this pseudo address-space id. It only exists in the IPC
 /// capability registry.
 #[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = 0x7100;
-#[cfg(target_arch = "aarch64")]
-const KCLIENT2_ASID: usize = 0x7200;
 #[cfg(target_arch = "aarch64")]
 const OP_HANDOFF: u32 = 3;
 
@@ -120,10 +118,8 @@ pub fn test_el0_service() {
             });
         }
 
-        let _vtid = crate::cpu::scheduler::spawn_thread(
-            crate::memory::KERNEL_ASID,
-            verify_el0_service,
-        );
+        let _vtid =
+            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_service);
         logln!("[service] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -147,20 +143,26 @@ fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
 /// Poll a pending call created through the direct kernel API until the EL0
 /// server replies.
 #[cfg(target_arch = "aarch64")]
-fn wait_reply_k2(call: u64, what: &str) -> ipc::ReplyValue {
+fn wait_reply_k2(kclient_asid: usize, call: u64, what: &str) -> ipc::ReplyValue {
     let mut val = None;
-    spin_until(|| match ipc::poll_reply(KCLIENT2_ASID, call) {
-        Ok(Some(reply)) => { val = Some(reply); true }
-        Ok(None) => false,
-        Err(e) => panic!("[srv] K2 fail {}: {:?}", what, e),
-    }, what);
-    ipc::close_cap(KCLIENT2_ASID, call).expect("K2 close");
+    spin_until(
+        || match ipc::poll_reply(kclient_asid, call) {
+            Ok(Some(reply)) => {
+                val = Some(reply);
+                true
+            }
+            Ok(None) => false,
+            Err(e) => panic!("[srv] K2 fail {}: {:?}", what, e),
+        },
+        what,
+    );
+    ipc::close_cap(kclient_asid, call).expect("K2 close");
     val.expect("K2 reply")
 }
 
 #[cfg(target_arch = "aarch64")]
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
-        #[allow(unused_assignments)]
+    #[allow(unused_assignments)]
     #[allow(unused_assignments)]
     let mut value = None;
     spin_until(
@@ -226,11 +228,7 @@ extern "C" fn verify_el0_service() {
     }
     let echoed = unsafe { core::ptr::read_volatile(config.add(1)) };
     let generation = unsafe { core::ptr::read_volatile(config.add(2)) };
-    assert_eq!(
-        echoed, ECHO_VALUE as u32,
-        "[service] client echoed value mismatch: {:#x}",
-        echoed
-    );
+    assert_eq!(echoed, ECHO_VALUE as u32, "[service] client echoed value mismatch: {:#x}", echoed);
     assert_eq!(generation, 1, "[service] first echo instance must be generation 1");
     logln!("[service] EL0 client completed name lookup and echo call (generation 1)");
 
@@ -257,11 +255,8 @@ extern "C" fn verify_el0_service() {
     let echo1 = state.echo.take().expect("[service] echo domain handle missing");
     supervisor::wait_domain_exit(&echo1, MAX_SPINS);
     logln!("[service] echo generation 1 exited");
-    // Give the exiting thread time to be switched out and reaped before its
-    // address space is torn down.
-    for _ in 0..1_000 {
-        yield_lp();
-    }
+    // `wait_domain_exit` observes removal from the master thread table, which
+    // occurs only after the thread has switched away and is safe to tear down.
     supervisor::teardown_domain(echo1);
     logln!("[service] echo generation 1 shut down and torn down");
 
@@ -271,35 +266,29 @@ extern "C" fn verify_el0_service() {
         "[service] stale connection to restarted service must fail EndpointClosed"
     );
 
-    let echo2 = supervisor::spawn_with_name_service(
-        ECHO_ELF,
-        &state.name_service,
-        ConnectionRights::CALL,
-    );
+    let echo2 =
+        supervisor::spawn_with_name_service(ECHO_ELF, &state.name_service, ConnectionRights::CALL);
     let echo2_asid = echo2.asid;
     logln!("[service] echo service restarted (asid={})", echo2_asid);
 
-    // Re-lookup until the restarted instance registers with generation 2.
-    #[allow(unused_assignments)]
-    #[allow(unused_assignments)]
-    let mut fresh_conn = 0u64;
+    // Wait on the replacement's launch state instead of flooding the name
+    // service with synchronous lookups while registration is still pending.
+    let echo2_config: *const u32 = {
+        let base: *mut u8 = echo2.config_frame.into();
+        base as *const u32
+    };
     spin_until(
-        || {
-            let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_ECHO)
-                .expect("[service] verifier re-lookup call failed");
-            let reply = wait_reply(lookup, "post-restart lookup reply");
-            if reply.result == 2 {
-                fresh_conn = reply.cap.expect("[service] re-lookup should return connection");
-                true
-            } else {
-                if let Some(cap) = reply.cap {
-                    let _ = ipc::close_cap(KCLIENT_ASID, cap);
-                }
-                false
-            }
+        || unsafe {
+            core::ptr::read_volatile(echo2_config) == 6
+                && core::ptr::read_volatile(echo2_config.add(1)) == 2
         },
         "generation-2 registration",
     );
+    let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_ECHO)
+        .expect("[service] verifier re-lookup call failed");
+    let reply = wait_reply(lookup, "post-restart lookup reply");
+    assert_eq!(reply.result, 2, "[service] re-lookup should report generation 2");
+    let fresh_conn = reply.cap.expect("[service] re-lookup should return connection");
 
     let call = ipc::scalar_call(KCLIENT_ASID, fresh_conn, OP_ECHO, 0xfeed)
         .expect("[service] generation-2 echo call failed");
@@ -309,56 +298,80 @@ extern "C" fn verify_el0_service() {
     state.echo = Some(echo2);
 
     // --- live handoff (Phase D) ---
-    let ns2 = ipc::connection_delegate(state.name_service.domain.asid,
-        state.name_service.endpoint_cap, KCLIENT2_ASID, ConnectionRights::CALL)
-        .expect("[service] K2 bootstrap failed");
-    let l2 = ipc::scalar_call(KCLIENT2_ASID, ns2, OP_LOOKUP, NAME_ECHO)
+    // Unlike the scalar-only verifier above, this client receives a memory
+    // object, so it must be a real address space accepted by memory::move_to.
+    let kclient2_asid = crate::service::loader::create_user_address_space();
+    let ns2 = ipc::connection_delegate(
+        state.name_service.domain.asid,
+        state.name_service.endpoint_cap,
+        kclient2_asid,
+        ConnectionRights::CALL,
+    )
+    .expect("[service] K2 bootstrap failed");
+    let l2 = ipc::scalar_call(kclient2_asid, ns2, OP_LOOKUP, NAME_ECHO)
         .expect("[service] K2 lookup failed");
-    let r2 = wait_reply_k2(l2, "K2 gen-2 lookup");
-    assert_eq!(r2.result, 2); let g2 = r2.cap.expect("gen-2 conn");
-    let ho = ipc::scalar_call(KCLIENT2_ASID, g2, OP_HANDOFF, KCLIENT2_ASID as u64)
+    let r2 = wait_reply_k2(kclient2_asid, l2, "K2 gen-2 lookup");
+    assert_eq!(r2.result, 2);
+    let g2 = r2.cap.expect("gen-2 conn");
+    let ho = ipc::scalar_call(kclient2_asid, g2, OP_HANDOFF, kclient2_asid as u64)
         .expect("[service] handoff failed");
-    let hr = wait_reply_k2(ho, "handoff reply");
+    let hr = wait_reply_k2(kclient2_asid, ho, "handoff reply");
     let sc = hr.memory.expect("state cap");
-    // verify state
-    {
-        let sv = crate::memory::VAddr::from(0x0000_0000_00b0_0000usize);
-        crate::memory::object::map(KCLIENT2_ASID, sc, sv, false)
-            .expect("[service] state map failed");
-        let served: u32 = unsafe { core::ptr::read_volatile(
-            <crate::memory::VAddr as Into<usize>>::into(sv) as *const u32) };
-        crate::memory::object::unmap(KCLIENT2_ASID, sc)
-            .expect("[service] state unmap failed");
-        logln!("[service] handoff served={}", served);
-        assert!(served >= 1);
-    }
+    let kernel_state_cap =
+        crate::memory::object::move_to(kclient2_asid, sc, crate::memory::KERNEL_ASID)
+            .expect("[service] state move to supervisor failed");
+    let state_phys = crate::memory::object::get_phys(crate::memory::KERNEL_ASID, kernel_state_cap);
+    assert_ne!(state_phys, 0, "[service] state object has no physical frame");
+    let state_ptr: *const u32 = crate::memory::PAddr::from(state_phys).into();
+    let served = unsafe { core::ptr::read_volatile(state_ptr) };
+    logln!("[service] handoff served={}", served);
+    assert!(served >= 1);
     // Spawn the replacement (generation 3) BEFORE tearing down gen-2,
     // so the old domain's caps are still valid for endpoint delegation.
     let e2 = state.echo.take().unwrap();
     let old_asid = e2.asid;
     let ep_cap = (hr.result as u64) >> 16;
-    let e3 = supervisor::spawn_upgrade(ECHO_ELF, &state.name_service,
-        ConnectionRights::CALL, old_asid,
-        supervisor::UpgradeGrant { state_caps: alloc::vec![sc], endpoint_cap: ep_cap });
-    // Now wait for the old service to exit and tear it down.
+    // The endpoint capability remains live until address-space teardown, but
+    // the old thread and its kernel stack must be fully reaped before another
+    // context is allocated from the shared stack arena.
     supervisor::wait_domain_exit(&e2, MAX_SPINS);
-    for _ in 0..1_000 { yield_lp(); }
+    let e3 = supervisor::spawn_upgrade(
+        ECHO_ELF,
+        &state.name_service,
+        ConnectionRights::CALL,
+        old_asid,
+        supervisor::UpgradeGrant {
+            state_caps: alloc::vec![kernel_state_cap],
+            endpoint_cap: ep_cap,
+        },
+    );
+    // The old service is stopped and reaped; now invalidate its remaining
+    // capabilities and address space.
     supervisor::teardown_domain(e2);
-    assert_eq!(ipc::scalar_call(KCLIENT2_ASID, g2, OP_ECHO, 5), Err(IpcError::EndpointClosed));
+    assert_eq!(ipc::scalar_call(kclient2_asid, g2, OP_ECHO, 5), Err(IpcError::EndpointClosed));
 
     logln!("[service] generation-3 echo spawned with handoff state (ep_cap={:#x})", ep_cap);
-    let mut f3 = 0u64;
-    spin_until(|| { let l = ipc::scalar_call(KCLIENT2_ASID, ns2, OP_LOOKUP, NAME_ECHO)
-        .expect("gen-3 lup"); let r = wait_reply_k2(l, "gen-3 lup reply");
-        if r.result == 3 { f3 = r.cap.expect("gen-3 conn"); true }
-        else { if let Some(c)=r.cap {let _=ipc::close_cap(KCLIENT2_ASID,c);} false } },
-        "gen-3 regist");
-    let c3 = ipc::scalar_call(KCLIENT2_ASID, f3, OP_ECHO, 0x99)
-        .expect("gen-3 call");
-    let r3 = wait_reply_k2(c3, "gen-3 echo");
+    let echo3_config: *const u32 = {
+        let base: *mut u8 = e3.config_frame.into();
+        base as *const u32
+    };
+    spin_until(
+        || unsafe {
+            core::ptr::read_volatile(echo3_config) == 6
+                && core::ptr::read_volatile(echo3_config.add(1)) == 3
+        },
+        "generation-3 registration",
+    );
+    let l3 = ipc::scalar_call(kclient2_asid, ns2, OP_LOOKUP, NAME_ECHO).expect("gen-3 lookup");
+    let lookup3 = wait_reply_k2(kclient2_asid, l3, "gen-3 lookup reply");
+    assert_eq!(lookup3.result, 3, "gen-3 lookup generation");
+    let f3 = lookup3.cap.expect("gen-3 connection");
+    let c3 = ipc::scalar_call(kclient2_asid, f3, OP_ECHO, 0x99).expect("gen-3 call");
+    let r3 = wait_reply_k2(kclient2_asid, c3, "gen-3 echo");
     assert_eq!(r3.result, 0x99, "gen-3 mismatch");
     state.echo = Some(e3);
-    ipc::close_address_space(KCLIENT2_ASID);
+    crate::memory::close_user_address_space(kclient2_asid)
+        .expect("[service] K2 address-space close failed");
     logln!("[service] live handoff verified");
 
     ipc::close_address_space(KCLIENT_ASID);

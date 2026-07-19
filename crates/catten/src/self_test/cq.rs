@@ -18,7 +18,15 @@ pub fn test_cq_ring() {
     logln!("Testing completion-queue ring...");
 
     // Allocate a ring with 32 entry slots (fits in one page).
-    let (_buf, ring_ptr) = cq::CompletionQueueRing::new_page(32);
+    assert_eq!(
+        cq::CompletionQueueRing::new_page(0).unwrap_err(),
+        cq::CqRingError::CapacityTooSmall
+    );
+    assert_eq!(
+        cq::CompletionQueueRing::new_page(1).unwrap_err(),
+        cq::CqRingError::CapacityTooSmall
+    );
+    let (_buf, ring_ptr) = cq::CompletionQueueRing::new_page(32).unwrap();
     let ring = unsafe { &mut *ring_ptr };
 
     assert_eq!(ring.capacity, 32);
@@ -71,7 +79,7 @@ pub fn test_cq_ring() {
     let ring2_buf;
     let ring2_ptr;
     {
-        (ring2_buf, ring2_ptr) = cq::CompletionQueueRing::new_page(8);
+        (ring2_buf, ring2_ptr) = cq::CompletionQueueRing::new_page(8).unwrap();
     }
     let ring2 = unsafe { &mut *ring2_ptr };
     ring2.write(0,1,1,-5);

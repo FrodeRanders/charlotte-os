@@ -51,9 +51,15 @@ mod inner {
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
         let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
+        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
+            .read()
+            .get(tid)
+            .expect("raft thread missing after spawn")
+            .generation;
         ServiceDomain {
             asid: addr.asid,
             tid,
+            generation,
             config_frame: addr.config_frame,
         }
     }

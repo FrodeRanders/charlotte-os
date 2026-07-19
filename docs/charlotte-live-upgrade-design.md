@@ -103,8 +103,8 @@ The new service receives the state via an extended bootstrap contract:
 fn cmain(args: Args, _input: Input<0>) -> ! {
     let ns_connection = config::bootstrap_cap();        // slot 16
     let state_count    = config::read::<u32>(2080);     // how many state caps
-    let state_base     = config::read::<u64>(2084);     // first state cap
-    let endpoint_cap   = config::read::<u64>(2092);     // old endpoint to take over
+    let state_base     = config::read::<u64>(2088);     // first state cap
+    let endpoint_cap   = config::read::<u64>(2096);     // old endpoint to take over
 
     // Deserialize state from the memory objects, register the old endpoint
     // under the same name (the name service bumps the generation), and

@@ -21,6 +21,7 @@ use crate::{
                 MASTER_THREAD_TABLE,
                 Thread,
                 ThreadCount,
+                ThreadGeneration,
                 ThreadId,
                 ThreadState,
             },
@@ -44,24 +45,9 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ThreadHandle(ThreadId);
-impl PartialOrd for ThreadHandle {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        let tt_guard = MASTER_THREAD_TABLE.read();
-        let self_as = unsafe { tt_guard.get(self.0).as_ref().unwrap_unchecked().asid };
-        let other_as = unsafe { tt_guard.get(other.0).as_ref().unwrap_unchecked().asid };
-        // Sort first by AddressSpaceId then by ThreadId
-        if self_as != other_as {
-            self_as.partial_cmp(&other_as)
-        } else {
-            self.0.partial_cmp(&other.0)
-        }
-    }
-}
-impl Ord for ThreadHandle {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        unsafe { self.partial_cmp(other).unwrap_unchecked() }
-    }
+struct ThreadHandle {
+    tid: ThreadId,
+    generation: ThreadGeneration,
 }
 
 #[derive(Debug)]
@@ -96,7 +82,9 @@ impl RoundRobin {
         Self {
             lp_id,
             quantum,
-            is_idle: false,
+            // No thread has been dispatched and no quantum is armed yet.
+            // Initial remote submission must therefore send a wakeup IPI.
+            is_idle: true,
             timer_event_observer: Arc::new(super::TimerEventObserver::new()),
             run_queue: VecDeque::new(),
             current_handle: None,
@@ -133,7 +121,7 @@ impl LpScheduler for RoundRobin {
 
     fn get_tid(&self) -> Option<ThreadId> {
         if let Some(th) = self.current_handle {
-            Some(th.0)
+            Some(th.tid)
         } else {
             None
         }
@@ -168,13 +156,14 @@ impl LpScheduler for RoundRobin {
         // double-enqueue the thread and corrupt its state machine.
         let previous_running = if let Some(handle) = previous_handle {
             matches!(
-                MASTER_THREAD_TABLE.read().get(handle.0),
-                Ok(t) if matches!(t.state, ThreadState::Running(_))
+                MASTER_THREAD_TABLE.read().get(handle.tid),
+                Ok(t) if t.generation == handle.generation
+                    && matches!(t.state, ThreadState::Running(_))
             )
         } else {
             false
         };
-        let previous_is_idle = matches!(previous_handle, Some(h) if h.0 == self.idle_tid);
+        let previous_is_idle = matches!(previous_handle, Some(h) if h.tid == self.idle_tid);
         let requeue_previous = previous_running && !previous_is_idle;
 
         if requeue_previous {
@@ -185,17 +174,37 @@ impl LpScheduler for RoundRobin {
         // thread. Falling back to idle (rather than returning the outgoing
         // thread) is what lets a self-blocked or exited sole thread be switched
         // away from correctly instead of being spuriously resumed.
-        let next_handle = match self.run_queue.pop_front() {
-            Some(handle) => handle,
-            None => ThreadHandle(self.idle_tid),
+        let next_handle = loop {
+            match self.run_queue.pop_front() {
+                Some(handle) => {
+                    let valid = MASTER_THREAD_TABLE
+                        .read()
+                        .get(handle.tid)
+                        .is_ok_and(|thread| thread.generation == handle.generation);
+                    if valid {
+                        break handle;
+                    }
+                    // A stale handle must never schedule a later occupant of
+                    // the recycled numeric thread id.
+                }
+                None => {
+                    let generation =
+                        MASTER_THREAD_TABLE.read().get(self.idle_tid).unwrap().generation;
+                    break ThreadHandle {
+                        tid: self.idle_tid,
+                        generation,
+                    };
+                }
+            }
         };
         self.current_handle = Some(next_handle);
-        let next_tid = next_handle.0;
+        let next_tid = next_handle.tid;
+        self.is_idle = next_tid == self.idle_tid;
 
         let mut tt_guard = MASTER_THREAD_TABLE.write();
         if requeue_previous {
             tt_guard
-                .get_mut(unsafe { previous_handle.unwrap_unchecked() }.0)
+                .get_mut(unsafe { previous_handle.unwrap_unchecked() }.tid)
                 .as_mut()
                 .unwrap()
                 .state = ThreadState::Ready(self.lp_id);
@@ -204,13 +213,24 @@ impl LpScheduler for RoundRobin {
         Ok(next_tid)
     }
 
-    fn add_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
+    fn add_thread(
+        &mut self,
+        tid: ThreadId,
+        expected_generation: Option<ThreadGeneration>,
+    ) -> Result<(), Error> {
         let mut tt_guard = MASTER_THREAD_TABLE.write();
         let thread = match tt_guard.get_mut(tid) {
             Ok(t) => t,
             // The thread was removed (e.g. exited via THREAD_EXIT) before a
             // late-arriving observer notification could re-admit it. Harmless.
             Err(_) => return Err(Error::InvalidThread),
+        };
+        if expected_generation.is_some_and(|generation| generation != thread.generation) {
+            return Err(Error::InvalidThread);
+        }
+        let handle = ThreadHandle {
+            tid,
+            generation: thread.generation,
         };
         match thread.state {
             // Already runnable. A wake that aggregates several sources onto one
@@ -224,20 +244,22 @@ impl LpScheduler for RoundRobin {
             ThreadState::Ready(_) => Ok(()),
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
                 thread.state = ThreadState::Ready(self.lp_id);
-                self.run_queue.push_back(ThreadHandle(tid));
+                self.run_queue.push_back(handle);
                 Ok(())
             }
         }
     }
 
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
-        let handle = ThreadHandle(tid);
+        let handle = self.run_queue.iter().find(|handle| handle.tid == tid).copied();
 
-        if self.current_handle == Some(handle) {
+        if self.current_handle.is_some_and(|handle| handle.tid == tid) {
             self.current_handle = None;
             Ok(())
         } else {
-            match self.run_queue.iter().position(|queued| *queued == handle) {
+            match handle
+                .and_then(|handle| self.run_queue.iter().position(|queued| *queued == handle))
+            {
                 Some(idx) => {
                     self.run_queue.remove(idx);
                     Ok(())
@@ -266,7 +288,7 @@ impl LpScheduler for RoundRobin {
 
     fn thread_count(&self) -> ThreadCount {
         // The idle thread is not real work and must not skew load balancing.
-        let current_is_real = matches!(self.current_handle, Some(h) if h.0 != self.idle_tid);
+        let current_is_real = matches!(self.current_handle, Some(h) if h.tid != self.idle_tid);
         self.run_queue.len()
             + if current_is_real {
                 1

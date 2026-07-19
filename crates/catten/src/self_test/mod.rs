@@ -51,6 +51,7 @@ pub fn run_self_tests() {
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();
+    ipc::test_vector_ipc_transaction_rollback();
     adversarial::test_adversarial_ipc();
     syscall::test_syscall_dispatch();
     ipi::test_ipi_bounded_queue();
@@ -77,5 +78,5 @@ pub fn run_self_tests() {
     #[cfg(all(feature = "hvf_compat", target_arch = "aarch64"))]
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
     el0_uart::test_el0_uart();
-    logln!("Testing Complete. All Tests Passed!");
+    logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }

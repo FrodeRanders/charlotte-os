@@ -950,3 +950,62 @@ pub fn test_endpoint_ipc_connection_copy() {
     close_user_address_space(nameservice).expect("named ns AS close failed");
     logln!("Combined connection + copied-memory IPC attachment tests passed.");
 }
+
+pub fn test_vector_ipc_transaction_rollback() {
+    logln!("Testing vector IPC transaction rollback...");
+    let server = create_ipc_memory_test_address_space("vector-server");
+    let client = create_ipc_memory_test_address_space("vector-client");
+    let endpoint = ipc::endpoint_create(server, 0x5645_4354, 1, 4)
+        .expect("vector endpoint create failed");
+    let connection = ipc::connection_delegate(
+        server,
+        endpoint,
+        client,
+        ConnectionRights::SEND,
+    )
+    .expect("vector connection delegation failed");
+
+    let moved = object::allocate(client, 1).expect("vector moved object allocation failed");
+    let vector = object::allocate(client, 1).expect("vector page allocation failed");
+    object::map(client, vector, VAddr::from(0x140000usize), true)
+        .expect("vector page map failed");
+    let frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(client)
+        .expect("vector client AS missing")
+        .translate_address(VAddr::from(0x140000usize))
+        .expect("vector page translation failed");
+    let base: *mut u8 = frame.into();
+    unsafe {
+        core::ptr::write_volatile(base as *mut u16, 2);
+        core::ptr::write_unaligned(
+            base.add(2) as *mut ipc::CapVectorEntry,
+            ipc::CapVectorEntry { cap: moved, mode: 1, _pad: 0 },
+        );
+        core::ptr::write_unaligned(
+            base.add(2 + core::mem::size_of::<ipc::CapVectorEntry>())
+                as *mut ipc::CapVectorEntry,
+            ipc::CapVectorEntry { cap: u64::MAX, mode: 0, _pad: 0 },
+        );
+    }
+    object::unmap(client, vector).expect("vector page unmap failed");
+
+    assert_eq!(
+        ipc::vector_send(client, connection, 1, 0, vector),
+        Err(IpcError::MemoryTransferFailed)
+    );
+    assert!(
+        object::info(client, moved).is_ok(),
+        "a failed vector must restore a moved cap under its original ID"
+    );
+    assert_eq!(
+        ipc::receive(server, endpoint),
+        Err(IpcError::NoMessage),
+        "a partially transferred vector must not enqueue a message"
+    );
+    object::close_cap(client, moved).expect("vector moved object cleanup failed");
+    object::close_cap(client, vector).expect("vector page cleanup failed");
+    close_user_address_space(client).expect("vector client AS close failed");
+    close_user_address_space(server).expect("vector server AS close failed");
+    logln!("Vector IPC transaction rollback test passed.");
+}

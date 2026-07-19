@@ -37,7 +37,7 @@ is in the repository history and earlier revisions of this document.
 | 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, backlog batching, §8.2 32-byte richer completion records | Done |
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
-| 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation blocked by HVF EL0-MMIO limitation; the stack validates on KVM. | Driver built, not yet runtime-validated |
+| 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation is blocked by HVF's EL0-MMIO limitation and remains pending on Linux KVM. | Driver built, not yet runtime-validated |
 | 10 | Lock-free device interrupt delivery (deferred wake), idempotent scheduler wakes | Done |
 
 ### Success criteria met and boot-validated

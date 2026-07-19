@@ -88,7 +88,7 @@ unsafe impl RawRwLock for RwLockCore {
 
     fn lock_exclusive(&self) {
         while self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_err() {
-            let _ = SYSTEM_SCHEDULER.write().block_thread(
+            let _ = SYSTEM_SCHEDULER.read().block_thread(
                 get_thread_id()
                     .expect("Attempted to lock a blocking lock from outside thread context!"),
                 &self.waitlist_exclusive,
@@ -124,7 +124,7 @@ unsafe impl RawRwLock for RwLockCore {
             })
             .is_err()
         {
-            let _ = SYSTEM_SCHEDULER.write().block_thread(
+            let _ = SYSTEM_SCHEDULER.read().block_thread(
                 get_thread_id()
                     .expect("Attempted to lock a blocking lock from outside thread context!"),
                 &self.waitlist_shared,
