@@ -402,6 +402,9 @@ pub extern "C" fn lp_idle_loop() {
         // shard blocked in `CQ_WAIT` is released even when its LP has nothing
         // else to run.
         crate::device::drain_deferred_wakes();
+        // A deferred wake may select this same idle LP. Same-LP admission does
+        // not need an IPI, so honour its pending switch before sleeping.
+        cond_yield_lp();
         unsafe {
             core::arch::asm!("sti", "hlt", options(nomem, nostack, preserves_flags));
         }

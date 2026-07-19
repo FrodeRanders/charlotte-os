@@ -153,10 +153,6 @@ mod inner {
             assert!(spins < MAX_SPINS, "[raft] FAILED to elect one leader");
             yield_lp();
         }
-
-        loop {
-            yield_lp();
-        }
     }
 }
 

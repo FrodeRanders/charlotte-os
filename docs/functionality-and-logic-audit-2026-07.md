@@ -501,6 +501,122 @@ filter was then removed. Two normal aggregate SMP4 TCG boots completed every
 required deferred marker, including `[service] SUCCESS:` and `[uart] SUCCESS:`;
 the final verification used no scheduler or verifier diagnostic instrumentation.
 
+### F15 — Critical: preemptible memory-table lock ownership could deadlock every LP
+
+**Resolution (2026-07-20, commit `a9c6b4e`):** memory-global mutexes now use
+the kernel's interrupt-masking spin mutex rather than `spin::Mutex`. This keeps
+the local timer from preempting a thread for the complete lock-ownership
+interval and prevents a runnable lock owner from being stranded behind
+IRQ-masked syscall contexts.
+
+The observed failure looked initially like a logging or cross-address-space IPC
+problem. Four-vCPU TCG runs sometimes stopped immediately after:
+
+```text
+[EL0 IPC cross-AS] SUCCESS: client AS 9 called server endpoint; call cap 2, reply result 0x6789.
+```
+
+QEMU then consumed approximately 400% host CPU while producing no more serial
+output. A host sample showed all four TCG vCPU threads continuously executing
+guest translation blocks, confirming a guest spin rather than an idle guest or
+blocked QEMU I/O path. Making console acquisition non-blocking changed the
+timing and allowed some runs to progress, but did not eliminate the freeze; the
+logging experiment was therefore reverted.
+
+The decisive reproduction used QEMU's GDB stub and LLDB to stop the live guest.
+The four LPs were executing these paths:
+
+- three LPs were spinning on the global `ADDRESS_SPACE_TABLE` mutex from memory
+  mapping, completion submission, and device-MMIO mapping syscalls;
+- the fourth LP was spinning on the global `MEMORY_OBJECTS` mutex from a memory
+  mapping syscall; and
+- no current LP was the owner of the contended address-space-table lock.
+
+The deadlock sequence was:
+
+1. A preemptible kernel thread acquired a memory-global `spin::Mutex`.
+2. Its timer quantum expired and the scheduler switched it out without releasing
+   the lock.
+3. EL0 threads on all four LPs entered synchronous syscalls that needed the same
+   memory tables.
+4. AArch64 synchronous exception handling kept IRQs masked while those syscall
+   paths spun on the locks.
+5. With every LP spinning in an IRQ-masked exception context, timer preemption
+   could not run the queued lock owner, so the system could not make progress.
+
+The memory module had re-exported `spin::Mutex` for `KERNEL_AS`,
+`ADDRESS_SPACE_TABLE`, `PHYSICAL_FRAME_ALLOCATOR`, and memory-object state even
+though these locks are shared between preemptible kernel threads and synchronous
+EL0 exception paths. It now re-exports
+`cpu::multiprocessor::spin::mutex::Mutex`, whose guard masks local interrupts
+for the ownership interval. The accompanying virtual-memory self-test log was
+also made a single record so its timestamp and message cannot be misread as two
+separate events.
+
+Validation after the correction included AArch64 and x86-64 target checks and
+four repeated SMP4 TCG boots. Three boots completed every required deferred
+marker. The remaining short run continued through Raft, UART, device, and
+CQ-wait completion without a global freeze but missed the independent service
+marker before its 25-second cutoff. A final 45-second run completed all required
+markers, including cross-AS IPC, memory IPC, Raft, service lifecycle, UART
+lifecycle, device interrupt, and CQ-wait success.
+
+### F16 — High: completed self-tests and an impossible net test kept TCG CPUs runnable
+
+**Resolution in progress (2026-07-20):** terminal verifier threads now return
+through the kernel thread trampoline, and the hand-written EL0 test payloads
+terminate with `THREAD_EXIT` instead of permanent `nop; b` loops. Round-robin
+LPs no longer re-arm periodic scheduler quanta while running their idle thread;
+admission always requests a context switch, including the same-LP case where no
+scheduler IPI is sent. The AArch64 and x86-64 idle loops also re-check a pending
+same-LP admission before entering `wfi`/`hlt`.
+
+QEMU GDB evidence after the CQ-wait success marker showed three LPs executing
+tight EL0 `nop; b` loops in raw self-test payloads. After those were converted
+to `svc #8`, residual load was traced to the EL0 virtio-net integration test.
+The ordinary TCG runner did not guarantee the exact PCI topology assumed by
+that test, so its verifier/client/driver could remain runnable indefinitely.
+The test is now gated by the opt-in `virtio_net_test` feature (`--net-test` in
+the AArch64 runner) and remains excluded from HVF, where EL0 device MMIO is not
+supported.
+
+Final idle-load acceptance remains pending the timer/reactor issue in F18.
+
+### F17 — High: UART restart could create a level-triggered interrupt wake storm
+
+**Resolved in source and refreshed embedded image (2026-07-20):** the EL0 UART
+driver now clears the PL011 interrupt condition before asking the kernel to
+acknowledge and re-arm its GIC source, on every CQ wake. Previously it cleared
+PL011 only when a deferred read was outstanding and called the kernel re-arm
+first. An interrupt arriving after driver restart with no retained read could
+therefore remain asserted and repeatedly wake the driver's CQ, starving its
+generation-2 endpoint request. Runtime evidence was a long sequence of
+`Waking thread with ID 42` messages after the initial driver had been replaced.
+The wake storm disappeared after rebuilding and embedding `uart.elf` with the
+correct device-clear-before-controller-rearm ordering.
+
+### F18 — High, validation pending: Raft combined two blocking wait mechanisms as if one were a poll
+
+The Raft service submits a 25 ms completion timer, blocks in `CQ_WAIT`, and then
+calls `wait_timeout(election_timer, 0)` to test whether the timer fired. Syscall
+11 is not a nonblocking poll: when the completion is pending it blocks the
+thread and installs a second timer, including for a zero-millisecond timeout.
+A 45-second SMP4 TCG run after the scheduler and UART fixes showed both nodes at
+serving stage 6 but permanently in follower state (`states 1/1`), while other
+deferred tests including service lifecycle, device interrupt, and CQ wait
+completed. The verifier remained runnable because `node.millis()` advanced only
+when this timer path reported a completion.
+
+The userspace completion-poll wrapper now returns the status and result already
+provided by syscall 3, and Raft uses that poll after `CQ_WAIT` rather than
+nesting `COMPLETION_WAIT_TIMEOUT`. `raft.elf` was also added to the coherent
+service embed/check script. A subsequent bounded run progressed through Raft
+node startup and UART's first interrupt phase but then stopped producing output
+at 0.270 seconds and missed multiple independent markers. Therefore the ABI
+correction is source-verified and target-checks pass, but it is not yet accepted
+as a runtime fix; the new aggregate stall requires a debugger capture before
+idle-load validation can be repeated.
+
 ## Architecture conformance assessment
 
 The kernel's implemented shape follows the main architecture well: capabilities

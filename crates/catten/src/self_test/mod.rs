@@ -73,10 +73,12 @@ pub fn run_self_tests() {
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
     device::test_device_capabilities();
-    #[cfg(all(not(feature = "hvf_compat"), target_arch = "aarch64"))]
+    #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     el0_net::test_el0_net();
-    #[cfg(all(feature = "hvf_compat", target_arch = "aarch64"))]
+    #[cfg(all(feature = "virtio_net_test", feature = "hvf_compat", target_arch = "aarch64"))]
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
+    #[cfg(all(not(feature = "virtio_net_test"), target_arch = "aarch64"))]
+    logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
     el0_uart::test_el0_uart();
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }

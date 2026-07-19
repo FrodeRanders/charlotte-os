@@ -77,6 +77,10 @@ impl SystemScheduler {
             Err(_) => return Err(Error::InvalidThread),
         }
         let lp_id = lp_guard.get_lp_id();
+        // Admission is itself a scheduling event. This is required for
+        // same-LP admission (which sends no IPI), and harmlessly coalesces for
+        // duplicate wakes or a remote admission whose IPI also sets pending.
+        lp_guard.set_ctx_switch_pending();
         drop(lp_guard);
         if lp_id != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
@@ -94,6 +98,7 @@ impl SystemScheduler {
         let mut lp_guard = least_loaded_lp.lock();
         lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
         let lp_id = lp_guard.get_lp_id();
+        lp_guard.set_ctx_switch_pending();
         drop(lp_guard);
         if lp_id != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
@@ -115,6 +120,7 @@ impl SystemScheduler {
         };
         let mut sched_guard = sched.lock();
         sched_guard.add_thread(tid, None).expect("Error adding thread to target LP");
+        sched_guard.set_ctx_switch_pending();
         drop(sched_guard);
         if target_lp != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)

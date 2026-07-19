@@ -393,9 +393,7 @@ extern "C" fn verify_el0_sitas() {
                 expected, sum
             );
             logln!("[sitas] SUCCESS: adder program computed the correct sum.");
-            loop {
-                yield_lp();
-            }
+            return;
         }
         if sentinel != 0 && sentinel != 0xc0de {
             assert_eq!(
@@ -404,9 +402,7 @@ extern "C" fn verify_el0_sitas() {
                 sentinel
             );
             logln!("[sitas] SUCCESS: basic_kv ran at EL0, produced total_len {:#x}.", sentinel);
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(

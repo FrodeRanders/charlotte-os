@@ -137,7 +137,12 @@ impl LpScheduler for RoundRobin {
 
     fn clear_ctx_switch_pending(&self) {
         self.timer_event_observer.pending.store(false, Ordering::Release);
-        self.set_next_timer_event();
+        // An idle LP is woken explicitly when work is admitted, so periodic
+        // round-robin ticks only waste host CPU and immediately return to the
+        // same idle thread. Arm a quantum only for real runnable work.
+        if !self.is_idle {
+            self.set_next_timer_event();
+        }
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {

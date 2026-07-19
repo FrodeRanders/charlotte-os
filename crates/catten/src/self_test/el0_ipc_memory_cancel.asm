@@ -87,9 +87,7 @@ __catten_el0_ipc_memory_cancel_server_start:
     dmb ish
     movz w10, #0xca51
     str w10, [x9, #4]
-2:
-    nop
-    b 2b
+    svc #8
 
 __catten_el0_ipc_memory_cancel_server_end:
 
@@ -268,8 +266,6 @@ __catten_el0_ipc_memory_cancel_client_start:
     dmb ish
     movz w10, #0xca54
     str w10, [x9, #120]
-4:
-    nop
-    b 4b
+    svc #8
 
 __catten_el0_ipc_memory_cancel_client_end:

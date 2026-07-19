@@ -406,6 +406,9 @@ pub extern "C" fn lp_idle_loop() {
         // context switch pending, honoured by the IRQ-tail `cond_yield_lp`
         // after the `wfi` returns on the next interrupt.
         crate::device::drain_deferred_wakes();
+        // A deferred wake may select this same idle LP. Same-LP admission does
+        // not need an IPI, so honour its pending switch before sleeping.
+        cond_yield_lp();
         unsafe {
             core::arch::asm!(
                 "msr daifclr, 0b1111",

@@ -208,9 +208,6 @@ extern "C" fn irq_waiter() {
     let _ = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 2 failed");
     ROUND2_RELEASED.store(1, Ordering::Release);
 
-    loop {
-        crate::cpu::scheduler::yield_lp();
-    }
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -253,9 +250,6 @@ extern "C" fn irq_driver() {
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \
          a completion queue via both the kernel path and a real GIC SPI all verified."
     );
-    loop {
-        yield_lp();
-    }
 }
 
 #[cfg(target_arch = "aarch64")]

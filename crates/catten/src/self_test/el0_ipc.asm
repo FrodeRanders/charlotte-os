@@ -72,8 +72,6 @@ __catten_el0_ipc_start:
     dmb ish
     movz w10, #0x1c50
     str w10, [x9]
-1:
-    nop
-    b 1b
+    svc #8
 
 __catten_el0_ipc_end:

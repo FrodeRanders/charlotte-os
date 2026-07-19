@@ -400,9 +400,10 @@ pub fn complete(cap: u64, result_code: i64) {
 }
 
 /// Non-blocking check: drain the completion if it is terminal.
+/// Returns `(0, result_code)` when ready and `(1, 0)` while pending.
 #[inline(always)]
-pub fn poll(cap: u64) {
-    unsafe { svc3(3, cap, 0, 0); }
+pub fn poll(cap: u64) -> (u64, u64) {
+    unsafe { svc3_x1(3, cap, 0, 0) }
 }
 
 /// Block until the given capability reaches a terminal completion.

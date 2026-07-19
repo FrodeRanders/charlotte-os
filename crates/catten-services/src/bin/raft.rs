@@ -62,10 +62,10 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
+    poll,
     submit_timer,
     thread_exit,
     wait,
-    wait_timeout,
 };
 
 // Registration happens while the system is still bringing up its services and
@@ -298,7 +298,11 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
         }
 
         let timer_fired = if election_timer != 0 {
-            let (status, _result) = wait_timeout(election_timer, 0);
+            // `cq_wait` is the sole blocking primitive in this reactor. Once
+            // it releases, drain the timer completion non-blockingly; using
+            // `wait_timeout(..., 0)` here nested another blocking wait and
+            // armed a second timer instead of polling.
+            let (status, _result) = poll(election_timer);
             if status == 0 {
                 completion_close(election_timer);
                 true

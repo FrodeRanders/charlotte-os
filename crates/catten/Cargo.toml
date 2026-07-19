@@ -23,6 +23,10 @@ virtio_gpu = ["display"]
 # syndrome info (hvf_handle_exception: isv assertion). This skips the PCI
 # topology probe and the EL0 virtio-net test. Use on macOS with -accel hvf.
 hvf_compat = []
+# Run the userspace virtio-net integration test. This requires a matching
+# virtio-net PCI device and is intentionally opt-in: the ordinary AArch64
+# QEMU command only attaches the boot disk.
+virtio_net_test = []
 qemu = ["virtio_gpu"]
 
 [dependencies]

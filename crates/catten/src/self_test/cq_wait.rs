@@ -111,9 +111,6 @@ extern "C" fn cq_waiter() {
     assert_eq!(message.arg0, 0x1234);
     ROUND4_RELEASED.store(1, Ordering::Release);
 
-    loop {
-        yield_lp();
-    }
 }
 
 extern "C" fn cq_driver() {
@@ -161,9 +158,6 @@ extern "C" fn cq_driver() {
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \
          per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
     );
-    loop {
-        yield_lp();
-    }
 }
 
 pub fn test_cq_wait_wake() {

@@ -37,9 +37,7 @@ __catten_el0_ipc_cross_server_start:
     dmb ish
     movz w10, #0x5e51
     str w10, [x9, #4]
-1:
-    nop
-    b 1b
+    svc #8
 
 __catten_el0_ipc_cross_server_end:
 
@@ -75,8 +73,6 @@ __catten_el0_ipc_cross_client_start:
     dmb ish
     movz w10, #0xc1e1
     str w10, [x9, #56]
-4:
-    nop
-    b 4b
+    svc #8
 
 __catten_el0_ipc_cross_client_end:

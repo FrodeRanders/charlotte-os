@@ -163,6 +163,17 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
         cq_wait(1, 0);
         
 
+        // Clear the device-side level condition before asking the kernel to
+        // re-arm the GIC source. Clearing only when a deferred read exists
+        // leaves an interrupt asserted after restart; re-arming it then
+        // creates an IRQ/CQ wake storm that can starve endpoint requests.
+        unsafe {
+            core::ptr::write_volatile(
+                (UART_MMIO_VADDR + pl011::ICR) as *mut u32,
+                pl011::IMSC_RXIM,
+            );
+        }
+
         // Drain device interrupts: acknowledge and re-arm the source,
         // counting coalesced deliveries.
         let (status, consumed) = device_irq_ack(irq_cap);
@@ -179,10 +190,6 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
                 let result = byte | ((irq_count as i64) << 8);
                 unsafe {
                     ipc_reply(pending_read, result);
-                    core::ptr::write_volatile(
-                        (UART_MMIO_VADDR + pl011::ICR) as *mut u32,
-                        pl011::IMSC_RXIM,
-                    );
                 }
                 pending_read = 0;
                 config::write::<u32>(READ_ARMED_OFFSET, 0);

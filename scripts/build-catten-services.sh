@@ -24,14 +24,14 @@ cargo +nightly build --manifest-path "$MANIFEST" --target "$TARGET" \
     --release -Z build-std=core,alloc
 
 if [ "$MODE" = "embed" ]; then
-    for service in ns echo client uart cclient; do
+    for service in ns echo client uart cclient raft; do
         install -m 0755 "$OUTPUT/$service" \
             "crates/catten/src/self_test/$service.elf"
     done
-    echo ">>> Refreshed embedded service bundle (ns, echo, client, uart, cclient)."
+    echo ">>> Refreshed embedded service bundle (ns, echo, client, uart, cclient, raft)."
 elif [ "$MODE" = "check" ]; then
     stale=0
-    for service in ns echo client uart cclient; do
+    for service in ns echo client uart cclient raft; do
         if ! cmp -s "$OUTPUT/$service" \
             "crates/catten/src/self_test/$service.elf"; then
             echo "error: embedded $service.elf is stale" >&2

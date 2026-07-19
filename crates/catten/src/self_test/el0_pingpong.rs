@@ -297,9 +297,7 @@ extern "C" fn verify_ping_pong() {
                 ping_result_raw,
                 pong_buf_val
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(

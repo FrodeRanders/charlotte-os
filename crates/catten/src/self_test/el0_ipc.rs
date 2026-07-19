@@ -737,9 +737,7 @@ extern "C" fn verify_el0_endpoint_ipc() {
                 call_cap,
                 poll_result
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(
@@ -798,9 +796,7 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
                 call_cap,
                 poll_result
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(
@@ -866,9 +862,7 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
                 call_cap,
                 poll_result
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(
@@ -1139,9 +1133,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
                 server_read_borrow_value,
                 client_write_borrow_returned_value
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(
@@ -1332,9 +1324,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
                 server_first_recv,
                 server_second_recv
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(
@@ -1470,9 +1460,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
                 client_after_value,
                 IPC_MEMORY_COPY_SERVER_VALUE
             );
-            loop {
-                yield_lp();
-            }
+            return;
         }
         spins += 1;
         assert!(

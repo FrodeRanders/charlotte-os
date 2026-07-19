@@ -1,5 +1,10 @@
 //! Self-test: Phase 9 userspace virtio-net driver.
 //!
+//! This module is invoked only with the `virtio_net_test` feature. The test
+//! requires a virtio-net PCI function at the BAR and interrupt described
+//! below; starting it in the ordinary disk-only QEMU configuration leaves
+//! its deferred verifier waiting forever and keeps guest CPUs runnable.
+//!
 //! Spawns the name service synchronously during self-tests; a deferred kernel
 //! verifier thread (which runs after the scheduler and the topology probe
 //! become active) discovers the virtio-net PCI device, grants its BAR0 + IRQ
@@ -152,7 +157,4 @@ extern "C" fn verify_el0_net() {
 
     logln!("[net] SUCCESS: userspace virtio-net driver reached DRIVER_OK, read MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, and served a status query from EL0.",
         m0, m1, m2, m3, m4, m5);
-    loop {
-        yield_lp();
-    }
 }

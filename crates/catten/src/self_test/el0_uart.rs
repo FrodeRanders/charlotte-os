@@ -370,9 +370,6 @@ extern "C" fn verify_el0_uart() {
          and interrupt, cancelled the outstanding deferred read, invalidated stale connections, \
          and a restarted generation-2 instance serves with fresh device grants."
     );
-    loop {
-        yield_lp();
-    }
 }
 
 /// Poll a pending call created through the direct kernel API until it

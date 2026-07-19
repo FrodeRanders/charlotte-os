@@ -9,13 +9,14 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--hvf] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--hvf] [--net-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --gdb          Start QEMU paused with gdb stub on tcp::1234
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
+#   --net-test     Build the KVM-only virtio-net test (requires separately configured matching PCI hardware)
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
 #
@@ -26,6 +27,7 @@ PROFILE="debug"
 GDB=""
 DISPLAY_MODE="0"
 USE_HVF="0"
+NET_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -37,6 +39,7 @@ while [ "$#" -gt 0 ]; do
         --display)     DISPLAY_MODE="1"; shift ;;
         --gdb)         GDB="-s -S"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
+        --net-test)    NET_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
             SMP="$2"; shift 2 ;;
@@ -95,6 +98,14 @@ fi
 
 if [ "$USE_HVF" = "1" ]; then
     FEATURES="${FEATURES},hvf_compat"
+fi
+
+if [ "$NET_TEST" = "1" ]; then
+    if [ "$USE_HVF" = "1" ]; then
+        echo "error: --net-test is incompatible with --hvf (EL0 MMIO is unsupported)" >&2
+        exit 1
+    fi
+    FEATURES="${FEATURES},virtio_net_test"
 fi
 
 cargo build --package catten --target "$TARGET_SPEC" \

@@ -379,7 +379,4 @@ extern "C" fn verify_el0_service() {
         "[service] SUCCESS: bootstrap delivery, name lookup, stale-connection failure, and \
          restart generation all verified."
     );
-    loop {
-        yield_lp();
-    }
 }
