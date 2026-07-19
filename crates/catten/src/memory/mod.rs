@@ -13,10 +13,15 @@ pub use physical::{
 };
 pub use spin::{
     LazyLock,
-    Mutex,
     RwLock,
 };
 
+// Memory-global locks are acquired from both preemptible kernel threads and
+// synchronous EL0 exception paths. A plain spin::Mutex permits its owner to be
+// timer-preempted; if every LP then enters a synchronous exception and spins
+// for that lock with IRQs masked, the owner can never be scheduled again.
+// Mask local interrupts for the complete ownership interval instead.
+pub use crate::cpu::multiprocessor::spin::mutex::Mutex;
 use crate::environment::boot_protocol::limine::{
     HHDM_REQUEST,
     MEMORY_MAP_REQUEST,

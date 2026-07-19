@@ -51,7 +51,7 @@ pub fn test_vmem() {
         paddr: frame,
         page_type: PageType::KernelData,
     };
-    logln!("Created MemoryMapping struct.\nMapping the allocated frame to the beginning of the higher half.");
+    logln!("Created MemoryMapping struct... Mapping the allocated frame to the beginning of the higher half.");
     match current_as.map_page(mapping) {
         Ok(_) => logln!("Page mapped successfully."),
         Err(e) => panic!("Error mapping page: {:?}", e),
