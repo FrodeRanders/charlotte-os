@@ -451,10 +451,10 @@ replacement reused that slot. Service handles now retain the thread generation,
 and `domain_exited` waits for the old thread to leave both the master table and
 the per-LP deferred-reap list before replacement stack allocation. A four-vCPU
 AArch64 TCG boot then completed generation-3 state handoff and printed the
-`[service] SUCCESS:` marker. The aggregate SMP boot remains timing-sensitive in
-other deferred tests (most recently UART), so this resolves the identified
-scheduler/service lifecycle errors but is not evidence that every scheduling
-path is exhaustively validated.
+`[service] SUCCESS:` marker. After refreshing the complete embedded service
+bundle as described in F14, two consecutive aggregate SMP4 boots completed both
+service and UART lifecycle markers; this still is not evidence that every
+scheduling path is exhaustively validated.
 
 ### F13 — Observation: kernel and userspace UART output interleave by byte
 
@@ -479,6 +479,27 @@ route post-bootstrap kernel logging through the userspace driver, reserve a
 separate debug UART for the kernel, or retain the UART in the kernel and expose
 a mediated console operation. Early-boot and panic output may remain an
 explicit emergency bypass whose possible interleaving is documented.
+
+### F14 — Medium: embedded EL0 service images had silently drifted from their ABI
+
+**Resolution (2026-07-19):** the five service-lifecycle fixtures embedded by
+the kernel (`ns`, `echo`, `client`, `uart`, and `cclient`) are now rebuilt and
+refreshed as one bundle. A new `scripts/build-catten-services.sh --embed`
+command provides a single reproducible path for doing so.
+
+The kernel compiles these programs with `include_bytes!`, but its ordinary
+build does not rebuild them. The checked-in name-service, echo, and service
+client happened to match one release build while UART and its console client
+were older binaries with different hashes. This mixed userspace generation was
+being tested against current `catten-rt` and `catten-syscall` code, making the
+result look like a scheduler-dependent lifecycle failure.
+
+In a focused SMP4 boot, a coherently rebuilt bundle completed service
+generation-3 state handoff and UART interrupt-driven read, uncooperative driver
+crash, teardown reconciliation, and generation-2 restart. The temporary focus
+filter was then removed. Two normal aggregate SMP4 TCG boots completed every
+required deferred marker, including `[service] SUCCESS:` and `[uart] SUCCESS:`;
+the final verification used no scheduler or verifier diagnostic instrumentation.
 
 ## Architecture conformance assessment
 
