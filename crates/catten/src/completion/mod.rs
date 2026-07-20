@@ -401,8 +401,8 @@ struct DetachedOp {
     cancel_pending: bool,
 }
 
-/// One completion queue: the shared ring plus its non-lossy backlog, pending
-/// wake, and blocked waiters. An address space owns one per shard.
+/// One completion queue: the shared ring plus its non-lossy backlog and a
+/// monotonic work-generation counter.  An address space owns one per shard.
 struct CqState {
     /// The shared ring (zero-syscall drain path). The allocation backing a
     /// heap-backed ring is kept alive by `_buf`.
@@ -411,11 +411,18 @@ struct CqState {
     /// This preserves the non-lossy completion contract: a full userspace
     /// ring delays delivery but does not discard terminal completions.
     backlog: VecDeque<(u64, u64, u32, i64)>,
-    /// An explicit cross-thread wake was posted ([`wake`]) and has not yet
-    /// been consumed by a waiter on this queue. Consume-on-wait semantics
-    /// close the lost-wake race: a wake posted between a waiter's ring check
-    /// and its blocking is still observed by the guard re-check.
-    wake_pending: bool,
+    /// Monotonic counter bumped every time new work arrives on this queue:
+    /// a completion is posted or an explicit wake is posted.  Used by
+    /// [`wait_on_cq`] to detect new work without depending on the shared
+    /// ring's `pending()` count — callers that poll individual completions
+    /// via `poll(cap)` and never drain the ring are not stuck in a busy-spin.
+    work_generation: u64,
+    /// The `work_generation` value when the last [`wait_on_cq`] returned on
+    /// this queue.  Only new work (generation > last_seen) releases the next
+    /// wait.  A per-CQ field rather than a per-call local so that work
+    /// submitted *before* the first `cq_wait` call (the fast path) is
+    /// detected correctly.
+    last_seen_generation: u64,
     /// Threads blocked waiting for this queue to become readable.
     observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
@@ -501,7 +508,8 @@ pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
             CqState {
                 ring: ring_ptr,
                 backlog: VecDeque::new(),
-                wake_pending: false,
+                work_generation: 0,
+                last_seen_generation: 0,
                 observers: ConcurrentQueue::unbounded(),
                 _buf: Some(alloc::boxed::Box::new(buf)),
             },
@@ -527,7 +535,8 @@ pub fn open_cq_phys(
             CqState {
                 ring: ring_ptr,
                 backlog: VecDeque::new(),
-                wake_pending: false,
+                work_generation: 0,
+                last_seen_generation: 0,
                 observers: ConcurrentQueue::unbounded(),
                 _buf: None,
             },
@@ -662,10 +671,11 @@ pub fn complete(
     {
         let mut registry = COMPLETIONS.write();
         if let Some(as_completions) = registry.get_mut(&asid) {
-            if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
-                let op = completion.operation_id();
-                post_to_cq(cq_state, op, cap as u64, &effective);
-            }
+        if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
+            let op = completion.operation_id();
+            post_to_cq(cq_state, op, cap as u64, &effective);
+            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+        }
         }
     }
 
@@ -746,6 +756,7 @@ pub fn complete_detached(
         };
         if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
             post_to_cq(cq_state, operation, detached.user_data, &effective);
+            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
         }
         as_completions.live = as_completions.live.saturating_sub(1);
         detached.cq
@@ -916,47 +927,26 @@ pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
 }
 
 /// Posts an explicit wake to the waiters of one queue (architecture doc
-/// §7.3/§9.4): a thread blocked in [`wait_on_cq`]/[`wait_on_cq_timeout`] on
-/// that queue returns even though no completion entry was posted. Used by
-/// userspace reactors so a peer shard can interrupt a blocking CQ wait (for
-/// example when new internal work is queued). Wakes are consume-on-wait and
-/// coalesce: any number of wakes before the next wait release exactly one
-/// waiter pass.
+/// §7.3/§9.4): bumps the work generation so a thread blocked in
+/// [`wait_on_cq`]/[`wait_on_cq_timeout`] returns even though no completion
+/// entry was posted.  Used by userspace reactors (peer shard interrupts a
+/// blocking CQ wait) and by the IPC layer (endpoint-bound CQ wake).
 pub fn wake(asid: AddressSpaceId, cq: CqId) {
     {
         let mut registry = COMPLETIONS.write();
         if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-            cq_state.wake_pending = true;
+            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
         }
     }
     signal_cq(asid, cq);
 }
 
-/// Consumes a pending wake, if any.
-fn take_wake(asid: AddressSpaceId, cq: CqId) -> bool {
-    let mut registry = COMPLETIONS.write();
-    match registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-        Some(cq_state) => core::mem::take(&mut cq_state.wake_pending),
-        None => false,
-    }
-}
-
-/// Non-consuming check for a pending wake (lost-wake guard re-check).
-fn peek_wake(asid: AddressSpaceId, cq: CqId) -> bool {
-    let registry = COMPLETIONS.read();
-    registry
-        .get(&asid)
-        .and_then(|c| c.cqs.get(&cq))
-        .map(|state| state.wake_pending)
-        .unwrap_or(false)
-}
-
-/// Blocks the calling thread until queue `cq` of `asid` has at least
-/// `min_complete` pending entries **or** an explicit [`wake`] is posted to
-/// that queue. This is the kernel-internal implementation of the `CQ_WAIT`
-/// syscall (§4.2): the reactor blocks on CQ readiness, and `complete()`
-/// writes entries to the ring/backlog before waking waiters.
-pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, min_complete: u32) {
+/// Blocks the calling thread until queue `cq` of `asid` receives new work
+/// (a completion, an explicit wake, or an endpoint-bound message).  Uses a
+/// per-CQ monotonic work-generation counter rather than checking the ring's
+/// `pending()` count, so callers that poll individual completions via
+/// `poll(cap)` and never drain the shared ring are not stuck in a busy-spin.
+pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
     let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
         return;
     };
@@ -965,33 +955,71 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, min_complete: u32) {
         cq,
     };
 
+    // Fast path: work arrived before the first cq_wait call.
+    {
+        let mut registry = COMPLETIONS.write();
+        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+            if cq_state.work_generation != cq_state.last_seen_generation {
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return;
+            }
+        }
+    }
+
     loop {
-        if take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-            return;
+        // Re-check under read — work may have arrived between the fast-path
+        // write lock above and this read.
+        {
+            let registry = COMPLETIONS.read();
+            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
+                if cq_state.work_generation != cq_state.last_seen_generation {
+                    return;
+                }
+            }
         }
 
         if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
             return;
         }
 
-        // Lost-wake guard: if the CQ became readable (or a wake was posted)
-        // while the waker was being registered, re-admit the thread before
-        // yielding.
-        if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+        // Lost-wake guard: if work arrived while the waker was being
+        // registered, re-admit the thread before it yields.
+        {
+            let registry = COMPLETIONS.read();
+            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
+                if cq_state.work_generation != cq_state.last_seen_generation {
+                    let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+                }
+            }
         }
 
         yield_lp();
+
+        // On resume, update last_seen and return if new work arrived.
+        {
+            let mut registry = COMPLETIONS.write();
+            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+                // If the generation hasn't changed, we were woken
+                // spuriously — loop and block again.
+                if cq_state.work_generation == cq_state.last_seen_generation {
+                    continue;
+                }
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return;
+            }
+        }
+        // CQ was removed while we slept — nothing to wait on.
+        return;
     }
 }
 
 /// Like [`wait_on_cq`] but also returns when `timeout_ms` elapses. Returns
-/// whether the CQ readiness/wake condition was met (`true`) or the deadline
+/// whether the work-generation condition was met (`true`) or the deadline
 /// fired first (`false`).
 pub fn wait_on_cq_timeout(
     asid: AddressSpaceId,
     cq: CqId,
-    min_complete: u32,
+    _min_complete: u32,
     timeout_ms: u64,
 ) -> bool {
     use crate::{
@@ -1015,8 +1043,14 @@ pub fn wait_on_cq_timeout(
         return false;
     };
 
-    if take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-        return true;
+    {
+        let mut registry = COMPLETIONS.write();
+        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+            if cq_state.work_generation != cq_state.last_seen_generation {
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return true;
+            }
+        }
     }
 
     let observable = CqObservable {
@@ -1027,8 +1061,6 @@ pub fn wait_on_cq_timeout(
         return false;
     }
 
-    // Arm a timer that also wakes this thread (timeout path). The observer
-    // must outlive the sleep, so keep the strong Arc on this stack frame.
     let timeout_obs = Arc::new(CqTimeoutWake {
         tid,
     });
@@ -1037,18 +1069,25 @@ pub fn wait_on_cq_timeout(
         &timer_event,
         Arc::downgrade(&timeout_obs) as Weak<dyn Observer>,
     );
-    // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
-    // any threads run.
     unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
 
-    // Lost-wake guard.
-    if peek_wake(asid, cq) || cq_pending(asid, cq) >= min_complete {
-        let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+    {
+        let registry = COMPLETIONS.read();
+        if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
+            if cq_state.work_generation != cq_state.last_seen_generation {
+                let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+            }
+        }
     }
 
     yield_lp();
 
-    // Report whether the condition (rather than the deadline) released us,
-    // consuming a wake if one was posted.
-    take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete
+    let mut registry = COMPLETIONS.write();
+    if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
+        if cq_state.work_generation != cq_state.last_seen_generation {
+            cq_state.last_seen_generation = cq_state.work_generation;
+            return true;
+        }
+    }
+    false
 }
