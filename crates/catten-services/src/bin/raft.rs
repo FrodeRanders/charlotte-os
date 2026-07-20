@@ -61,6 +61,7 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
+    poll,
     submit_timer,
     thread_exit,
     wait,
@@ -289,8 +290,6 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
         }
         election_timer = submit_timer(LOOP_TICK_MS);
 
-        // Drain transport completions, then any inbound endpoint messages
-        // that arrived while we were blocked on the timer.
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
             config::write::<u32>(16, completed as u32);
@@ -304,10 +303,17 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             },
         );
 
+        // Registration order is nondeterministic. Keep all configured voters
+        // in the cluster and retry name-service discovery until their
+        // connection becomes available.
         for (peer_id, peer_name) in &peer_specs {
             let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
         }
 
+        // Drain inbound Raft traffic before acting on an election timeout.
+        // A vote request and timer can become ready together; processing the
+        // timer first makes both nodes become candidates and reject each
+        // other's otherwise valid vote.
         loop {
             let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {

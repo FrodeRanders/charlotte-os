@@ -37,7 +37,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    close as completion_close,
+    cq_wait,
     device_irq_ack,
     device_irq_bind_cq,
     device_mmio_map,
@@ -48,9 +48,7 @@ use catten_syscall::{
     ipc_reply,
     ipc_scalar_call_connection,
     ipc_status,
-    submit_timer,
     thread_exit,
-    wait,
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
@@ -160,19 +158,10 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     // read result to hand back once a device interrupt completes it.
     let mut pending_read: u64 = 0;
 
-    const LOOP_TICK_MS: u64 = 10;
-    let mut poll_timer: u64 = submit_timer(LOOP_TICK_MS);
-
     loop {
-        // Block on the polling timer rather than cq_wait.  The CQ ring
-        // accumulates undrained entries from every completion; cq_wait
-        // checks the ring's pending count and would return immediately
-        // after the first tick, turning the loop into a busy-spin.
-        if poll_timer != 0 {
-            wait(poll_timer);
-            completion_close(poll_timer);
-        }
-        poll_timer = submit_timer(LOOP_TICK_MS);
+        // Block on the single wait point.
+        cq_wait(1, 0);
+        
 
         // Clear the device-side level condition before asking the kernel to
         // re-arm the GIC source. Clearing only when a deferred read exists
@@ -199,7 +188,9 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
             if pending_read != 0 {
                 let byte = unsafe { uart_get() }.unwrap_or(0) as i64;
                 let result = byte | ((irq_count as i64) << 8);
-                ipc_reply(pending_read, result);
+                unsafe {
+                    ipc_reply(pending_read, result);
+                }
                 pending_read = 0;
                 config::write::<u32>(READ_ARMED_OFFSET, 0);
             }

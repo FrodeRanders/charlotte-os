@@ -161,6 +161,15 @@ mod inner {
             // QEMU busy. Block between observations so the LP can enter idle.
             sleep(ExtDuration::from_millis(10));
         }
+        // Kill the raft node domains — the verifier succeeded; leaving
+        // nodes running as orphan EL0 services would keep non-idle LPs
+        // busy with heartbeat and timer work.
+        let sys_sched = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
+        let _ = sys_sched.abort_thread(r1_domain.tid);
+        let _ = sys_sched.abort_thread(r2_domain.tid);
+        if let Some(ns) = unsafe { RAFT_NS.take() } {
+            let _ = sys_sched.abort_thread(ns.domain.tid);
+        }
     }
 }
 
