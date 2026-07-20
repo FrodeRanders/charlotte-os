@@ -187,11 +187,7 @@ impl RaftNode {
         self.current_millis = current_millis;
 
         if req.term > self.current_term {
-            self.current_term = req.term;
-            self.persistent_state.set_current_term(self.current_term);
-            self.state = NodeState::Follower;
-            self.voted_for = None;
-            self.persistent_state.set_voted_for(None);
+            self.step_down(req.term, current_millis);
         }
 
         let mut vote_granted = false;
@@ -268,6 +264,8 @@ impl RaftNode {
         self.voted_for = None;
         self.persistent_state.set_voted_for(None);
         self.granted_votes.clear();
+        self.known_leader_id = None;
+        self.election_sequence_counter = 0;
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
     }
 
@@ -286,6 +284,14 @@ impl RaftNode {
             self.match_index.insert(peer.id.clone(), 0);
             self.snapshot_offsets.insert(peer.id.clone(), 0);
         }
+
+        // Append a no-op entry for the new term so the leader can commit
+        // entries from its own term and advance the commit index.
+        self.log_store.append(
+            self.current_term,
+            alloc::vec![0u8],
+        );
+        self.advance_commit_index();
     }
 
     pub fn handle_append_entries(
@@ -306,11 +312,13 @@ impl RaftNode {
         if req.term > self.current_term {
             self.step_down(req.term, current_millis);
         } else if self.state != NodeState::Follower {
-            // Valid AppendEntries from the current-term leader establishes that
-            // this node is not the leader for the term.
+            // Valid AppendEntries from the current-term leader: step down
+            // from Candidate to Follower, clearing election state.
             self.state = NodeState::Follower;
             self.known_leader_id = None;
             self.granted_votes.clear();
+            self.voted_for = None;
+            self.persistent_state.set_voted_for(None);
         }
 
         self.last_heartbeat_millis = current_millis;
