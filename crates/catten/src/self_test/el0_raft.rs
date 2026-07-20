@@ -27,8 +27,6 @@ mod inner {
 
     const ARGC_OFFSET: usize = 24;
     const ARGS_OFFSET: usize = 32;
-    const MAX_SPINS: u64 = 80_000_000;
-
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 
     fn spawn_raft_node(args: &[u32], ns_handle: &NameServiceHandle) -> ServiceDomain {
@@ -79,7 +77,13 @@ mod inner {
     }
 
     extern "C" fn verify_raft_cluster() {
-        use crate::cpu::scheduler::yield_lp;
+        use crate::{
+            cpu::scheduler::{
+                sleep,
+                yield_lp,
+            },
+            klib::time::duration::ExtDuration,
+        };
 
         let ns = unsafe { RAFT_NS }.expect("[raft] verifier name service missing");
         let ns_stage: *const u32 = {
@@ -122,7 +126,7 @@ mod inner {
             unsafe { core::ptr::read_volatile(r2) }
         );
 
-        let mut spins = 0u64;
+        let mut polls = 0u64;
         loop {
             let s1 = unsafe { core::ptr::read_volatile(r1.add(2)) };
             let s2 = unsafe { core::ptr::read_volatile(r2.add(2)) };
@@ -144,14 +148,18 @@ mod inner {
                     break;
                 }
             }
-            spins += 1;
-            if spins % 10_000 == 0 {
+            polls += 1;
+            if polls % 100 == 0 {
                 let stage1 = unsafe { core::ptr::read_volatile(r1) };
                 let stage2 = unsafe { core::ptr::read_volatile(r2) };
                 crate::logln!("[raft] waiting: stages {}/{}, states {}/{}", stage1, stage2, s1, s2);
             }
-            assert!(spins < MAX_SPINS, "[raft] FAILED to elect one leader");
-            yield_lp();
+            assert!(polls < 12_000, "[raft] FAILED to elect one leader within two minutes");
+            // Config-page progress changes only when the EL0 nodes process CQ
+            // or timer events. Remaining runnable and yielding in a tight loop
+            // adds no responsiveness; it merely monopolises one LP and keeps
+            // QEMU busy. Block between observations so the LP can enter idle.
+            sleep(ExtDuration::from_millis(10));
         }
     }
 }

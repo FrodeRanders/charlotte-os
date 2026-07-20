@@ -129,6 +129,18 @@ impl CompletionQueueRing {
         }
     }
 
+    /// Consume all pending entries, advancing `tail` to `head`.  Callers
+    /// that poll individual completions via `poll(cap)` rather than reading
+    /// the shared ring must drain it before calling `cq_wait` again;
+    /// otherwise the undrained entries make `pending()` non-zero, causing
+    /// `cq_wait` to return immediately without blocking.
+    pub unsafe fn drain(&mut self) {
+        // SAFETY: &mut self guarantees exclusive access.
+        let h = unsafe { core::ptr::read_volatile(&self.head) };
+        unsafe { core::ptr::write_volatile(&mut self.tail, h) };
+        fence(Ordering::Release);
+    }
+
     pub fn is_full(&self) -> bool {
         core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
         let n = (unsafe { core::ptr::read_volatile(&self.head) } + 1) % self.capacity;

@@ -9,14 +9,12 @@
 //! Two first-class object types are added to the three-primitive model
 //! (Capabilities, Endpoints, Memory Objects) as derived facilities:
 //!
-//! - [`DeviceObject::Mmio`] — a page-granular device register window that a
-//!   driver can map into its own address space as Device-nGnRnE memory,
-//!   reachable from EL0 under its own page table;
-//! - [`DeviceObject::Interrupt`] — an interrupt source whose readiness is
-//!   delivered to the driver's completion queue. This reuses the same
-//!   notification machinery as endpoint readiness (Phase 7): an IRQ posts a
-//!   coalesced wake to the bound CQ (§16.3: readiness is a notification to
-//!   inspect state, not a completion record).
+//! - [`DeviceObject::Mmio`] — a page-granular device register window that a driver can map into its
+//!   own address space as Device-nGnRnE memory, reachable from EL0 under its own page table;
+//! - [`DeviceObject::Interrupt`] — an interrupt source whose readiness is delivered to the driver's
+//!   completion queue. This reuses the same notification machinery as endpoint readiness (Phase 7):
+//!   an IRQ posts a coalesced wake to the bound CQ (§16.3: readiness is a notification to inspect
+//!   state, not a completion record).
 //!
 //! Interrupt delivery follows the kernel interrupt path of §10.2: the IRQ
 //! handler identifies and masks the source, marks the interrupt object
@@ -51,12 +49,23 @@ use crate::{
             ops::get_lp_id,
         },
     },
+    logln,
     memory::{
         AddressSpaceId,
         VAddr,
         physical::PAddr,
     },
 };
+
+const SCHED_TRACE: bool = false;
+
+macro_rules! sched_trace {
+    ($($arg:tt)*) => {
+        if SCHED_TRACE {
+            logln!($($arg)*);
+        }
+    };
+}
 
 const PAGE_SIZE: usize = 4096;
 
@@ -146,25 +155,20 @@ static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
 // on the same core may hold it (architecture doc §10.2 durable-design note).
 // The delivery path therefore works exclusively on this lock-free state:
 //
-// - `ROUTE_TABLE[intid]` packs the owning `(asid, cq)` of a bound interrupt
-//   (0 = unrouted; a driver address space id is never 0, so a present route
-//   is always nonzero). Written by bind/close in thread context, read
-//   atomically by `deliver_interrupt`.
+// - `ROUTE_TABLE[intid]` packs the owning `(asid, cq)` of a bound interrupt (0 = unrouted; a driver
+//   address space id is never 0, so a present route is always nonzero). Written by bind/close in
+//   thread context, read atomically by `deliver_interrupt`.
 // - `IRQ_PENDING`/`IRQ_COUNT` are the per-INTID coalescing counters.
-// - `DEFERRED_WAKES` carries the packed `(asid, cq)` of each delivery out of
-//   interrupt context; [`drain_deferred_wakes`] performs the actual
-//   `completion::wake` (which takes locks and may wake threads) from thread
-//   context — the idle loop and cooperative yield both drain it.
+// - `DEFERRED_WAKES` carries the packed `(asid, cq)` of each delivery out of interrupt context;
+//   [`drain_deferred_wakes`] performs the actual `completion::wake` (which takes locks and may wake
+//   threads) from thread context — the idle loop and cooperative yield both drain it.
 
 /// One more than the highest INTID a driver interrupt may use.
 const MAX_ROUTED_INTID: usize = 256;
 
-static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] =
-    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
-static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] =
-    [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
-static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] =
-    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] = [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
+static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
 
 /// Deferred `(asid, cq)` wakes queued by interrupt context, delivered by
 /// [`drain_deferred_wakes`] from thread context. Wakes coalesce (§9.4), so
@@ -516,6 +520,15 @@ pub fn deliver_interrupt(intid: u32) -> bool {
     IRQ_PENDING[intid as usize].fetch_add(1, Ordering::AcqRel);
     IRQ_COUNT[intid as usize].fetch_add(1, Ordering::AcqRel);
 
+    let (asid, cq) = unpack_route(packed);
+    sched_trace!(
+        "[sched] irq-deliver INTID={} count={} -> AS={} CQ={}",
+        intid,
+        IRQ_COUNT[intid as usize].load(Ordering::Acquire),
+        asid,
+        cq
+    );
+
     // Hand the coalesced readiness wake to thread context. A full queue means
     // an equivalent wake is already pending delivery, so dropping is safe.
     let _ = DEFERRED_WAKES.push(packed);
@@ -528,9 +541,15 @@ pub fn deliver_interrupt(intid: u32) -> bool {
 /// it, so a driver blocked in `CQ_WAIT` is released promptly once its LP has
 /// nothing else to run.
 pub fn drain_deferred_wakes() {
+    let mut drained = 0u32;
     while let Ok(packed) = DEFERRED_WAKES.pop() {
         let (asid, cq) = unpack_route(packed);
+        sched_trace!("[sched] drain-wake AS={} CQ={}", asid, cq);
         crate::completion::wake(asid, cq);
+        drained += 1;
+    }
+    if drained > 0 && SCHED_TRACE {
+        logln!("[sched] drained {} deferred wake(s)", drained);
     }
 }
 

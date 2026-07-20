@@ -34,6 +34,7 @@ use crate::{
         },
         time::duration::ExtDuration,
     },
+    logln,
     memory::{
         AddressSpaceId,
         KERNEL_ASID,
@@ -43,6 +44,16 @@ use crate::{
         TimerEvent,
     },
 };
+
+const SCHED_TRACE: bool = false;
+
+macro_rules! sched_trace {
+    ($($arg:tt)*) => {
+        if SCHED_TRACE {
+            logln!($($arg)*);
+        }
+    };
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ThreadHandle {
@@ -204,7 +215,8 @@ impl LpScheduler for RoundRobin {
         };
         self.current_handle = Some(next_handle);
         let next_tid = next_handle.tid;
-        self.is_idle = next_tid == self.idle_tid;
+        let became_idle = next_tid == self.idle_tid;
+        self.is_idle = became_idle;
 
         let mut tt_guard = MASTER_THREAD_TABLE.write();
         if requeue_previous {
@@ -215,6 +227,17 @@ impl LpScheduler for RoundRobin {
                 .state = ThreadState::Ready(self.lp_id);
         }
         tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
+
+        sched_trace!(
+            "[sched] LP{} dispatch: out={:?} requeue={} in={} depth={} idle={}",
+            self.lp_id,
+            previous_handle,
+            requeue_previous,
+            next_tid,
+            self.run_queue.len(),
+            became_idle
+        );
+
         Ok(next_tid)
     }
 
@@ -245,11 +268,34 @@ impl LpScheduler for RoundRobin {
             // once before the thread next parks. Re-admitting an
             // already-runnable thread is therefore a benign no-op, not an error
             // — it must not double-enqueue it and must not panic.
-            ThreadState::Running(_) => Ok(()),
-            ThreadState::Ready(_) => Ok(()),
+            ThreadState::Running(_) => {
+                sched_trace!(
+                    "[sched] LP{} add TID={} gen={} already-Running (noop)",
+                    self.lp_id,
+                    tid,
+                    thread.generation
+                );
+                Ok(())
+            }
+            ThreadState::Ready(_) => {
+                sched_trace!(
+                    "[sched] LP{} add TID={} gen={} already-Ready (noop)",
+                    self.lp_id,
+                    tid,
+                    thread.generation
+                );
+                Ok(())
+            }
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
                 thread.state = ThreadState::Ready(self.lp_id);
                 self.run_queue.push_back(handle);
+                sched_trace!(
+                    "[sched] LP{} add TID={} gen={} -> Ready depth={}",
+                    self.lp_id,
+                    tid,
+                    thread.generation,
+                    self.run_queue.len()
+                );
                 Ok(())
             }
         }

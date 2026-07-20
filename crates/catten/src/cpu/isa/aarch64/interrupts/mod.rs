@@ -272,8 +272,12 @@ pub extern "C" fn irq_dispatcher() {
         LAPIC_TIMER_VECTOR => {
             // Advance the timer queue, firing any events whose deadline passed
             // (waking their observer threads) and rearming the timer.
-            if let Ok(mut timer_queue) = crate::timers::TIMER_QUEUES.try_get_mut() {
-                timer_queue.process_events();
+            match crate::timers::TIMER_QUEUES.try_get_mut() {
+                Ok(mut timer_queue) => timer_queue.process_events(),
+                Err(_) => crate::early_logln!(
+                    "[timer] LP{} IRQ skipped: local timer queue busy",
+                    crate::cpu::isa::lp::ops::get_lp_id()
+                ),
             }
         }
         ASYNC_IPI_VECTOR => {

@@ -30,6 +30,8 @@ pub mod sync;
 pub mod system_scheduler;
 pub mod threads;
 
+const SCHED_TRACE: bool = false;
+
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
@@ -65,6 +67,22 @@ pub fn yield_lp() {
     // cooperative yield across every LP — makes a driver blocked in `CQ_WAIT`
     // runnable promptly without the interrupt handler ever taking a lock.
     crate::device::drain_deferred_wakes();
+    if SCHED_TRACE {
+        let sched = SYSTEM_SCHEDULER.read();
+        let lsched = sched.get_lp_scheduler().lock();
+        let current = lsched.get_tid();
+        let pending = lsched.is_ctx_switch_pending();
+        let idle = lsched.is_idle();
+        drop(lsched);
+        drop(sched);
+        logln!(
+            "[sched] yield_lp LP{:?} current={:?} ctx_pending={} idle={}",
+            crate::cpu::isa::lp::ops::get_lp_id(),
+            current,
+            pending,
+            idle
+        );
+    }
     SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
     crate::cpu::isa::lp::ops::cond_yield_lp();
 }

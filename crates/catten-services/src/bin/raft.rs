@@ -47,7 +47,6 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     close as completion_close,
-    cq_wait,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -62,7 +61,6 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
-    poll,
     submit_timer,
     thread_exit,
     wait,
@@ -275,8 +273,24 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
     let mut election_timer: u64 = submit_timer(LOOP_TICK_MS);
 
     loop {
-        cq_wait(1, 0);
+        // Block on the election timer — do NOT use cq_wait here.  The ring
+        // that backs the completion queue is never drained by this service
+        // (it polls individual completions via `poll`), so every timer tick
+        // leaves a stale entry in the ring.  After the very first tick
+        // cq_wait would find the undrained entry and return immediately,
+        // turning the loop into a busy-spin that burns a full LP core.
+        if election_timer != 0 {
+            wait(election_timer);
+            completion_close(election_timer);
+        }
+        node.set_millis(node.millis() + LOOP_TICK_MS);
+        if node.check_timeout() {
+            node.start_election(node.millis());
+        }
+        election_timer = submit_timer(LOOP_TICK_MS);
 
+        // Drain transport completions, then any inbound endpoint messages
+        // that arrived while we were blocked on the timer.
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
             config::write::<u32>(16, completed as u32);
@@ -290,33 +304,10 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             },
         );
 
-        // Registration order is nondeterministic. Keep all configured voters
-        // in the cluster and retry name-service discovery until their
-        // connection becomes available.
         for (peer_id, peer_name) in &peer_specs {
             let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
         }
 
-        let timer_fired = if election_timer != 0 {
-            // `cq_wait` is the sole blocking primitive in this reactor. Once
-            // it releases, drain the timer completion non-blockingly; using
-            // `wait_timeout(..., 0)` here nested another blocking wait and
-            // armed a second timer instead of polling.
-            let (status, _result) = poll(election_timer);
-            if status == 0 {
-                completion_close(election_timer);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        // Drain inbound Raft traffic before acting on an election timeout.
-        // A vote request and timer can become ready together; processing the
-        // timer first makes both nodes become candidates and reject each
-        // other's otherwise valid vote.
         loop {
             let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
@@ -404,14 +395,6 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
                     }
                 }
             }
-        }
-
-        if timer_fired {
-            node.set_millis(node.millis() + LOOP_TICK_MS);
-            if node.check_timeout() {
-                node.start_election(node.millis());
-            }
-            election_timer = submit_timer(LOOP_TICK_MS);
         }
 
         if node.state == NodeState::Leader {

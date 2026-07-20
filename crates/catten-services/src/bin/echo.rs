@@ -25,10 +25,9 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
-    ipc_recv,
+    ipc_recv_block,
     ipc_reply,
     ipc_reply_move,
     ipc_scalar_call_connection,
@@ -36,7 +35,6 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_get_phys,
     memory_map,
     memory_unmap,
     thread_exit,
@@ -114,80 +112,58 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     let mut served: u32 = 0;
 
     loop {
-        // 1. Block on the single wait point. Releases on endpoint readiness,
-        //    kernel completions, or explicit peer wakes alike.
-        cq_wait(1, 0);
-        
+        // Block on the endpoint without going through cq_wait.  The CQ ring
+        // accumulates undrained entries from every completion; cq_wait checks
+        // the ring's pending count and would return immediately after the
+        // first completion, turning this loop into a busy-spin.
+        let message = unsafe { ipc_recv_block(endpoint) };
+        if message.status == ipc_status::ENDPOINT_CLOSED {
+            unsafe { thread_exit() };
+        }
+        if !message.is_ok() {
+            continue;
+        }
 
-        // 2. Drain every ready endpoint message. (A full executor would also
-        //    drain CQ ring entries and wake tasks here.)
-        loop {
-            let message = ipc_recv(endpoint);
-            if message.status == ipc_status::NO_MESSAGE {
-                break;
+        match message.opcode {
+            echo::OP_ECHO => {
+                served += 1;
+                config::write::<u32>(8, served);
+                if message.reply != 0 {
+                    ipc_reply(message.reply, message.arg0 as i64);
+                }
             }
-            if message.status == ipc_status::ENDPOINT_CLOSED {
+            echo::OP_SHUTDOWN => {
+                if message.reply != 0 {
+                    ipc_reply(message.reply, 0);
+                }
                 unsafe { thread_exit() };
             }
-            if !message.is_ok() {
-                break;
+            echo::OP_HANDOFF => {
+                let state_cap = memory_alloc(1);
+                if state_cap != 0 {
+                    const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
+                    if memory_map(state_cap, STATE_VADDR, true) == 0 {
+                        unsafe {
+                            core::ptr::write_volatile(
+                                STATE_VADDR as *mut u32, served,
+                            );
+                            memory_unmap(state_cap);
+                        }
+                    }
+                    if message.reply != 0 {
+                        unsafe {
+                            let packed = (endpoint << 16) | (served as u64 & 0xffff);
+                            ipc_reply_move(message.reply, state_cap, packed as i64);
+                        }
+                    }
+                } else if message.reply != 0 {
+                    ipc_reply(message.reply, -1);
+                }
+                unsafe { thread_exit() };
             }
-
-            match message.opcode {
-                echo::OP_ECHO => {
-                    served += 1;
-                    config::write::<u32>(8, served);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, message.arg0 as i64);
-                        
-                    }
-                }
-                echo::OP_SHUTDOWN => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, 0);
-                        
-                    }
-                    unsafe { thread_exit() };
-                }
-                echo::OP_HANDOFF => {
-                    // Serialise state: allocate a page, write served count,
-                    // move it to the caller (the supervisor).  Reply with
-                    // the moved memory cap so the supervisor can hand it
-                    // to the replacement service.
-                    let state_cap = memory_alloc(1);
-                    if state_cap != 0 {
-                        // Use HEAP_VADDR + high offset as scratch (above the
-                        // long-name scratch at 0x100000).
-                        const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
-                        if memory_map(state_cap, STATE_VADDR, true) == 0 {
-                            unsafe {
-                                core::ptr::write_volatile(
-                                    STATE_VADDR as *mut u32, served,
-                                );
-                                memory_unmap(state_cap);
-                            }
-                        }
-                        if message.reply != 0 {
-                            unsafe {
-                                // Encode the endpoint cap in the reply's result
-                                // so the supervisor can delegate it to the
-                                // replacement service.  Upper 48 bits carry
-                                // the endpoint cap id; lower 16 bits carry
-                                // the served counter.
-                                let packed = (endpoint << 16) | (served as u64 & 0xffff);
-                                ipc_reply_move(message.reply, state_cap, packed as i64);
-                            }
-                        }
-                    } else if message.reply != 0 {
-                        ipc_reply(message.reply, -1);
-                    }
-                    unsafe { thread_exit() };
-                }
-                _ => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, -1);
-                        
-                    }
+            _ => {
+                if message.reply != 0 {
+                    ipc_reply(message.reply, -1);
                 }
             }
         }

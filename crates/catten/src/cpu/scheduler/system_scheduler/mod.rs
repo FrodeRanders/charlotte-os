@@ -36,6 +36,16 @@ use crate::{
     memory::AddressSpaceId,
 };
 
+const SCHED_TRACE: bool = false;
+
+macro_rules! sched_trace {
+    ($($arg:tt)*) => {
+        if SCHED_TRACE {
+            logln!($($arg)*);
+        }
+    };
+}
+
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 
 #[derive(Debug)]
@@ -72,17 +82,27 @@ impl SystemScheduler {
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
         let mut lp_guard = least_loaded_lp.lock();
+        let load_before = lp_guard.thread_count();
         match lp_guard.add_thread(tid, None) {
             Ok(()) => {}
             Err(_) => return Err(Error::InvalidThread),
         }
         let lp_id = lp_guard.get_lp_id();
+        let load_after = lp_guard.thread_count();
         // Admission is itself a scheduling event. This is required for
         // same-LP admission (which sends no IPI), and harmlessly coalesces for
         // duplicate wakes or a remote admission whose IPI also sets pending.
         lp_guard.set_ctx_switch_pending();
         drop(lp_guard);
+        sched_trace!(
+            "[sched] submit_ready TID={} -> LP{} load={}->{}",
+            tid,
+            lp_id,
+            load_before,
+            load_after
+        );
         if lp_id != get_lp_id() {
+            sched_trace!("[sched]   IPI -> LP{} for TID={}", lp_id, tid);
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
         }
@@ -96,11 +116,22 @@ impl SystemScheduler {
     ) -> Result<LpId, Error> {
         let least_loaded_lp = self.get_least_loaded_lp();
         let mut lp_guard = least_loaded_lp.lock();
+        let load_before = lp_guard.thread_count();
         lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
         let lp_id = lp_guard.get_lp_id();
+        let load_after = lp_guard.thread_count();
         lp_guard.set_ctx_switch_pending();
         drop(lp_guard);
+        sched_trace!(
+            "[sched] submit_woken TID={} gen={} -> LP{} load={}->{}",
+            tid,
+            generation,
+            lp_id,
+            load_before,
+            load_after
+        );
         if lp_id != get_lp_id() {
+            sched_trace!("[sched]   IPI -> LP{} for TID={}", lp_id, tid);
             LocalIntCtlr::send_unicast_ipi(lp_id, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
         }
