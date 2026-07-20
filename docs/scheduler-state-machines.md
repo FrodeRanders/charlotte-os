@@ -14,31 +14,31 @@ scheduler change should be checked against these invariants.
 ```
                         spawn_thread()
                              │
-                    ┌────────▼─────────┐
+                    ┌────────▼──────────┐
                     │ NeedsLpAssignment │
-                    └────────┬─────────┘
+                    └────────┬──────────┘
                              │ submit_ready_thread()
                              │  → get_least_loaded_lp()
                              │  → add_thread()
                     ┌────────▼──────────┐        block_thread(self)
-                    │   Ready(lp_id)    │◄───────────────────────┐
-                    └──┬────────────┬───┘                        │
-          next()       │            │ block_thread(remote)       │
-    pops from run_queue│            │ remove_thread()            │
-                       │            │                            │
-               ┌───────▼───────┐    │    ┌───────────────────────┤
-               │ Running(lp_id)├────┘    │   Blocked(Arc<Waker>) │
+                    │   Ready(lp_id)    │◄─────────────────────────┐
+                    └──┬────────────▲───┘                          │
+          next()       │            │ block_thread(remote)         │
+    pops from run_queue│            │ remove_thread()              │
+                       │            │                              │
+               ┌───────▼───────┐    │    ┌───────────────────────┐ │
+               │ Running(lp_id)├────┘    │   Blocked(Arc<Waker>) │─┘
                └───┬───────┬───┘         └───────────┬───────────┘
-                   │       │                          │
-       next()      │       │ abort_thread()           │ Waker::notify()
-    requeue as     │       │   → stage_dead           │  → submit_woken_thread()
-    Ready(same LP) │       │   → reap later           │  → validate generation
-                   │       ▼                          │  → add_thread()
-                   │   ╔══════╗                       │
-                   │   ║ DEAD ║                       │
-                   │   ╚══════╝                       │
-                   │                                  │
-                   └──────────────────────────────────┘
+                   │       │                         │
+       next()      │       │ abort_thread()          │ Waker::notify()
+    requeue as     │       │   → stage_dead          │  → submit_woken_thread()
+    Ready(same LP) │       │   → reap later          │  → validate generation
+                   │       ▼                         │  → add_thread()
+                   │   ╔══════╗                      │
+                   │   ║ DEAD ║                      │
+                   │   ╚══════╝                      │
+                   │                                 │
+                   └─────────────────────────────────┘
 ```
 
 ### Invariants
@@ -95,13 +95,13 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
 ```
   armed=false ── set_next_timer_event() ──► armed=true
        ▲                                        │
-       │       TimerEventObserver::notify()      │
+       │       TimerEventObserver::notify()     │
        └────────────────────────────────────────┘
               (quantum PPI fires)
 
   pending=false ── set_ctx_switch_pending() ──► pending=true
        ▲                                              │
-       │      clear_ctx_switch_pending()               │
+       │      clear_ctx_switch_pending()              │
        └──────────────────────────────────────────────┘
               (honoured inside cond_yield_lp)
 ```
@@ -136,7 +136,7 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
      │                       │
      │ complete()            │ complete()
      │                       │ (forces Cancelled)
-     ▼                       ▼
+     ▼                       │
   Completed ◄────────────────┘
      │
      │ take() (drain result + buffer)
@@ -248,9 +248,9 @@ Reset the watermark when userspace drains the ring (observed as
 
 ```
   false ── wake() ──► true ── take_wake() ──► false
-    ▲                    │
-    │   wake()           │  (idempotent if already true)
-    └────────────────────┘
+    ▲                   │
+    │   wake()          │  (idempotent if already true)
+    └───────────────────┘
 ```
 
 - `wake()`: sets `wake_pending = true` + calls `signal_cq()` (wakes blocked waiters)
@@ -261,9 +261,9 @@ Reset the watermark when userspace drains the ring (observed as
 
 ```
 1. take_wake() → false        [fast-path miss]
-2. block_thread()              [register Waker]
+2. block_thread()             [register Waker]
 3.  ◄── wake() fires here ──  [race window]
-4. yield_lp()                  [would sleep forever]
+4. yield_lp()                 [would sleep forever]
 5.  BUT: guard at (3): peek_wake() → true → submit_ready_thread()
    → thread re-admitted, doesn't yield, loops back to (1) → take_wake() → true
 ```
@@ -289,7 +289,7 @@ PHASE A (IRQ context, LOCK-FREE):
   irq_dispatcher(intid)
     → deliver_interrupt(intid)
       → ROUTE_TABLE[intid].load()       [atomic]
-      → arch_disable_irq(intid)          [MMIO]
+      → arch_disable_irq(intid)         [MMIO]
       → IRQ_PENDING[intid]++            [atomic]
       → DEFERRED_WAKES.push(asid, cq)   [lock-free queue]
 
