@@ -28,7 +28,7 @@ scheduler change should be checked against these invariants.
                        │            │                              │
                ┌───────▼────────┐   │    ┌───────────────────────┐ │
                │ Running(lp_id) ├───┘    │   Blocked(Arc<Waker>) │─┘
-               └───┬───────┬────┘         └───────────┬───────────┘
+               └───┬───────┬────┘        └───────────┬───────────┘
                    │       │                         │
        next()      │       │ abort_thread()          │ Waker::notify()
     requeue as     │       │   → stage_dead          │  → submit_woken_thread()
