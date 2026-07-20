@@ -287,10 +287,11 @@ impl RaftNode {
 
         // Append a no-op entry for the new term so the leader can commit
         // entries from its own term and advance the commit index.
-        self.log_store.append(
+        self.log_store.append(alloc::vec![crate::types::LogEntry::new(
             self.current_term,
+            self.me.id.clone(),
             alloc::vec![0u8],
-        );
+        )]);
         self.advance_commit_index();
     }
 

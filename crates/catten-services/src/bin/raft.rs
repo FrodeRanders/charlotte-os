@@ -47,7 +47,6 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     close as completion_close,
-    cq_wait,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -62,7 +61,6 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
-    poll,
     submit_timer,
     thread_exit,
     wait,
@@ -275,7 +273,15 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
     let mut election_timer: u64 = submit_timer(LOOP_TICK_MS);
 
     loop {
-        cq_wait(1, 0);
+        if election_timer != 0 {
+            wait(election_timer);
+            completion_close(election_timer);
+        }
+        node.set_millis(node.millis() + LOOP_TICK_MS);
+        if node.check_timeout() {
+            node.start_election(node.millis());
+        }
+        election_timer = submit_timer(LOOP_TICK_MS);
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
@@ -297,22 +303,7 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
         }
 
-        let timer_fired = if election_timer != 0 {
-            let (status, _result) = poll(election_timer);
-            if status == 0 {
-                completion_close(election_timer);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        // Drain inbound Raft traffic before acting on an election timeout.
-        // A vote request and timer can become ready together; processing the
-        // timer first makes both nodes become candidates and reject each
-        // other's otherwise valid vote.
+        // Drain inbound Raft traffic after processing the timer tick.
         loop {
             let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
@@ -400,14 +391,6 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
                     }
                 }
             }
-        }
-
-        if timer_fired {
-            node.set_millis(node.millis() + LOOP_TICK_MS);
-            if node.check_timeout() {
-                node.start_election(node.millis());
-            }
-            election_timer = submit_timer(LOOP_TICK_MS);
         }
 
         if node.state == NodeState::Leader {
