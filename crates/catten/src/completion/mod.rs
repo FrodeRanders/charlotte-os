@@ -675,6 +675,12 @@ pub fn complete(
             let op = completion.operation_id();
             post_to_cq(cq_state, op, cap as u64, &effective);
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_COMPLETE,
+                asid as u64,
+                cq_state.work_generation,
+                cap as u64,
+            );
         }
         }
     }
@@ -757,6 +763,12 @@ pub fn complete_detached(
         if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
             post_to_cq(cq_state, operation, detached.user_data, &effective);
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_COMPLETE_DETACHED,
+                asid as u64,
+                cq_state.work_generation,
+                operation,
+            );
         }
         as_completions.live = as_completions.live.saturating_sub(1);
         detached.cq
@@ -802,6 +814,12 @@ fn signal_cq(asid: AddressSpaceId, cq: CqId) {
         };
         cq_state.observers.try_iter().collect::<Vec<_>>()
     };
+    crate::debug_trace::trace(
+        crate::debug_trace::TAG_SIGNAL_CQ,
+        asid as u64,
+        cq as u64,
+        observers.len() as u64,
+    );
     for observer in observers {
         if let Some(observer) = observer.upgrade() {
             observer.notify();
@@ -936,6 +954,12 @@ pub fn wake(asid: AddressSpaceId, cq: CqId) {
         let mut registry = COMPLETIONS.write();
         if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_WAKE,
+                asid as u64,
+                cq_state.work_generation,
+                cq as u64,
+            );
         }
     }
     signal_cq(asid, cq);
@@ -960,6 +984,12 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
         let mut registry = COMPLETIONS.write();
         if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
             if cq_state.work_generation != cq_state.last_seen_generation {
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_CQ_WAIT_FAST,
+                    asid as u64,
+                    cq_state.work_generation,
+                    cq_state.last_seen_generation,
+                );
                 cq_state.last_seen_generation = cq_state.work_generation;
                 return;
             }
@@ -978,6 +1008,21 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
             }
         }
 
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_CQ_WAIT_ENTER,
+            asid as u64,
+            {
+                let registry = COMPLETIONS.read();
+                registry.get(&asid).and_then(|c| c.cqs.get(&cq))
+                    .map(|s| s.work_generation).unwrap_or(0)
+            },
+            {
+                let registry = COMPLETIONS.read();
+                registry.get(&asid).and_then(|c| c.cqs.get(&cq))
+                    .map(|s| s.last_seen_generation).unwrap_or(0)
+            },
+        );
+
         if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
             return;
         }
@@ -988,6 +1033,12 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
             let registry = COMPLETIONS.read();
             if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
                 if cq_state.work_generation != cq_state.last_seen_generation {
+                    crate::debug_trace::trace(
+                        crate::debug_trace::TAG_CQ_WAIT_GUARD,
+                        asid as u64,
+                        cq_state.work_generation,
+                        cq_state.last_seen_generation,
+                    );
                     let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
                 }
             }
@@ -1004,6 +1055,12 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
                 if cq_state.work_generation == cq_state.last_seen_generation {
                     continue;
                 }
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_CQ_WAIT_RESUME,
+                    asid as u64,
+                    cq_state.work_generation,
+                    cq_state.last_seen_generation,
+                );
                 cq_state.last_seen_generation = cq_state.work_generation;
                 return;
             }
