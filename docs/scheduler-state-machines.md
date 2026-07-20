@@ -192,7 +192,7 @@ Single-producer (kernel), single-consumer (userspace) ring buffer.
 
 ### Ring interaction with `cq_wait`
 
-```rust
+```
 wait_on_cq(asid, cq, min_complete):
   loop:
     ┌── take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete
