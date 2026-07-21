@@ -117,6 +117,7 @@ impl BitOr for IpcRights {
 // ---- raw svc primitives ----------------------------------------------------
 
 /// Issue `svc #imm` with `x1=arg1, x2=arg2, x3=arg3`, return `x0`.
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
     let ret: u64;
@@ -165,6 +166,8 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
 }
 
 #[inline(always)]
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
 unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
     let ret: u64;
     unsafe {
@@ -209,8 +212,39 @@ unsafe fn svc6(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, 
     ret
 }
 
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc3(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> u64 {
+    0
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc4(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64, _arg4: u64) -> u64 {
+    0
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc3_x1(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64) {
+    (0, 0)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc3_x2(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
+    (0, 0, 0)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc3_x3(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
+    (0, 0, 0, 0)
+}
+
 /// Like [`svc3`] but also captures the x1 return value (for syscalls that
 /// return a secondary value in x1, e.g. MAILBOX_RECV_CAP, WAIT_TIMEOUT).
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
     let ret: u64;
@@ -230,6 +264,7 @@ unsafe fn svc3_x1(imm: u16, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64) {
     (ret, x1_out)
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc3_x2(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
     let ret: u64;
@@ -244,6 +279,7 @@ unsafe fn svc3_x2(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64
     (ret, x1_out, x2_out)
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc3_x3(imm: u16, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
     let ret: u64;
