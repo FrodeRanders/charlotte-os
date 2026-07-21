@@ -165,7 +165,6 @@ unsafe fn svc3(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
     ret
 }
 
-#[inline(always)]
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
