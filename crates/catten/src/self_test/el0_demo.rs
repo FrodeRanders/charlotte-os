@@ -61,6 +61,7 @@ const EXPECTED_RESULT: u32 = 42;
 /// Physical frame of the result page, read by the verifier via HHDM.
 #[cfg(target_arch = "aarch64")]
 static mut DEMO_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+static mut XLP_COORDINATOR_TID: Option<crate::cpu::scheduler::threads::ThreadId> = None;
 
 /// Coordinator stub. The kernel derives ASID from the running thread; `x0` is
 /// deliberately just a dummy legacy slot here.
@@ -197,6 +198,7 @@ pub fn test_el0_cross_lp_async() {
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(COORD_CODE_VADDR) };
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
         logln!("[EL0 xLP] coordinator spawned tid={} asid={}", tid, asid);
+        unsafe { XLP_COORDINATOR_TID = Some(tid); }
 
         let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_demo);
         logln!("[EL0 xLP] verifier thread tid={}; assertion deferred to scheduler.", vtid);
@@ -235,6 +237,11 @@ extern "C" fn verify_el0_demo() {
                 cap,
                 value
             );
+            if let Some(ctid) = unsafe { XLP_COORDINATOR_TID } {
+                let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                    .read()
+                    .abort_thread(ctid);
+            }
             return;
         }
         spins += 1;
