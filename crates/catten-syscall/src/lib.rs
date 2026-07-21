@@ -186,6 +186,7 @@ unsafe fn svc4(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
     ret
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc5(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
     let ret: u64;
@@ -199,6 +200,7 @@ unsafe fn svc5(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) 
     ret
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc6(imm: u16, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64, arg6: u64) -> u64 {
     let ret: u64;
@@ -239,6 +241,34 @@ unsafe fn svc3_x2(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u
 #[inline(always)]
 unsafe fn svc3_x3(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
     (0, 0, 0, 0)
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc5(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 { 0 }
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc6(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64, _a6: u64) -> u64 { 0 }
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc_ipc_recv(_endpoint: u64) -> IpcMessage {
+    IpcMessage {
+        status: ipc_status::NO_MESSAGE,
+        opcode: 0, arg0: 0, reply: 0, sender: 0,
+        interface: 0, version: 0, memory: 0, connection: 0,
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+unsafe fn svc_ipc_recv_block(_endpoint: u64) -> IpcMessage {
+    IpcMessage {
+        status: ipc_status::ENDPOINT_CLOSED,
+        opcode: 0, arg0: 0, reply: 0, sender: 0,
+        interface: 0, version: 0, memory: 0, connection: 0,
+    }
 }
 
 /// Like [`svc3`] but also captures the x1 return value (for syscalls that
@@ -314,6 +344,7 @@ impl IpcMessage {
 }
 
 /// Receive a scalar endpoint IPC message from `endpoint`.
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     let status: u64;
@@ -354,6 +385,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
 }
 
 /// Block until an endpoint IPC message is readable, then receive it.
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
     let status: u64;
