@@ -191,9 +191,6 @@ pub extern "C" fn probe_device_topology() {
     logln!("LP {}: Probing device topology...", (get_lp_id()));
     let device_topology = &*DEVICE_TOPOLOGY;
     logln!("LP {}: Device Topology:\n{}", (get_lp_id()), device_topology);
-    loop {
-        yield_lp();
-    }
 }
 
 #[unsafe(no_mangle)]
