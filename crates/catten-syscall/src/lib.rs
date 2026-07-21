@@ -894,6 +894,8 @@ pub fn ipc_vector_call(connection: u64, opcode: u32, arg0: u64, cap_vector: u64)
 /// `x1` = endpoint cap, `x3` = result page cap (mapped writable).
 /// Returns the same 9-register shape as [`ipc_recv`], and the result
 /// page contents are updated with the cap IDs.
+#[cfg(target_arch = "aarch64")]
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     let status: u64;
@@ -930,5 +932,14 @@ pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
         version: version as u32,
         memory,
         connection,
+    }
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
+    IpcMessage {
+        status: ipc_status::NO_MESSAGE,
+        opcode: 0, arg0: 0, reply: 0, sender: 0,
+        interface: 0, version: 0, memory: 0, connection: 0,
     }
 }
