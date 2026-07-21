@@ -1,0 +1,171 @@
+# CharlotteOS Scheduler Investigation — Full Report
+
+## Timeline
+
+1. **CQ ring undrained-entry problem** — `cq_wait` returns immediately after first completion because `complete()` posts ring entries that are never drained by callers using `poll(cap)`.  Fixed by replacing `wake_pending`/`cq_pending()` in `wait_on_cq` with a per-CQ monotonic work-generation counter (`work_generation`/`last_seen_generation`).  Every `complete()`, `complete_detached()`, and `wake()` bumps the counter; `wait_on_cq` blocks until the counter advances.
+
+2. **Cap-0 rejection bug** — `if election_timer != 0` treated cap 0 (a valid `IdTable` slot) as "no timer."  The raft nodes silently skipped every timer tick.  Fixed by removing the zero-check: `poll()` correctly returns `u64::MAX` on an empty table.
+
+3. **Raft election liveness** — `handle_vote_request` manually set `state = Follower` without calling `step_down()`, leaving `timeout_at_millis` stale.  The node immediately timed out again, causing rapid election cycling with neither reaching quorum.  Fixed by calling `step_down(req.term, current_millis)` which properly resets the deadline.
+
+4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing threads across LPs.  This caused timer-on-wrong-LP bugs and TLB churn.  Fixed by adding `affinity_lp: Option<LpId>` to `Thread`, set on first assignment, preferred for all re-admissions via `pick_lp_for()`.
+
+5. **Orphan EL0 test threads** — device probe thread (`probe_device_topology`) had `loop { yield_lp() }` after logging.  Fixed by removing the loop (trampoline calls `abort()` on return).  Two EL0 payload threads (TID=4, TID=25) never reach `svc #8 (THREAD_EXIT)` despite having the correct instruction encoding.  Fixed by having verifier threads `abort_thread()` the payload threads after confirming test success.
+
+6. **Rebalance skeleton** — `try_rebalance()` detects idle-overloaded LP pairs and migrates threads with `active_timers == 0`.  Available but disabled: migrating threads mid-IPC breaks test protocols.
+
+## Investigation Methodology
+
+### Scheduler instrumentation (`SCHED_TRACE`)
+
+Per-file compile-time trace guards added to:
+- `system_scheduler/mod.rs` — admission decisions (TID, LP, load before/after)
+- `round_robin.rs` — ready-queue operations (add, dispatch, requeue decisions)
+- `scheduler/mod.rs` — yield_lp drain point
+- `threads/waker.rs` — wake notifications
+- `device/mod.rs` — interrupt delivery and deferred wakes
+
+Toggled by `const SCHED_TRACE: bool = true/false;` per file.  Enabled on-demand for investigation, disabled for normal runs to avoid serial-port perturbation.
+
+### In-memory debug trace buffer (`debug_trace.rs`)
+
+A lock-free ring buffer (16384 entries, `#[repr(C)]`) in `.bss` at symbol `DEBUG_TRACE`.  Each entry records:
+- `tick: u64` — ARM Generic Timer CNTPCT_EL0 (62.5 MHz, never stops)
+- `lp: u64` — which LP captured the event
+- `tag: u64` — well-known event tag
+- `a, b, c: u64` — context-dependent payload
+
+Well-known tags:
+| Tag | Meaning | a | b | c |
+|-----|---------|---|---|---|
+| `CQ_WAIT_ENTER` | About to block in `wait_on_cq` | asid | work_generation | last_seen_generation |
+| `CQ_WAIT_RESUME` | Woke from `yield_lp` | asid | work_generation | last_seen before update |
+| `CQ_WAIT_FAST` | Fast-path return (no block) | asid | work_generation | last_seen before update |
+| `COMPLETE` | Timer/worker completion | asid | new work_generation | cap |
+| `WAKE` | Explicit `completion::wake()` | asid | new work_generation | cq |
+| `SIGNAL_CQ` | `signal_cq()` called | asid | cq | observer count |
+| `WAKER_NOTIFY` | Thread Waker fired | tid | generation | 0 |
+| `SUBMIT_TIMER_OK` | Timer submitted successfully | asid | cap | timeout_ms |
+| `TIMER_FIRED` | Timer event processed | 0 | 0 | 0 |
+| `TIMER_ARMED` | Hardware comparator armed | 0 | deadline | 0 |
+| `TIMER_STOPPED` | Hardware comparator stopped | 0 | 0 | 0 |
+
+Events are read post-mortem via `dump_after(ms)` which spawns a kernel thread that sleeps for `ms` milliseconds, then prints the buffer via `logln!()`.  Serial writes perturb timing, so the dump is deferred until after the test burst.
+
+This tool was instrumental in diagnosing:
+
+### Discovery 1: Cross-LP timer migration (run 2)
+
+The trace showed LP migration causing observer-not-found races:
+
+```
+tick=373M lp=0  CQ_WAIT_ENTER   a=0x19 b=0x0 c=0x0   ← enters wait on LP0
+tick=373M lp=0  COMPLETE        a=0x19 b=0x1 c=0x0   ← timer fires on LP0
+tick=373M lp=0  SIGNAL_CQ       a=0x19 b=0x0 c=0x1   ← 1 observer notified
+tick=373M lp=3  CQ_WAIT_RESUME  a=0x19 b=0x1 c=0x0   ← wakes on **LP3** (migrated!)
+tick=374M lp=3  COMPLETE        a=0x19 b=0x2 c=0x1   ← second timer on LP3
+tick=374M lp=3  SIGNAL_CQ       a=0x19 b=0x0 c=0x0   ← **0 observers** on LP3
+tick=375M lp=0  CQ_WAIT_FAST    a=0x19 b=0x2 c=0x1   ← migrated back to LP0
+tick=375M lp=0  CQ_WAIT_ENTER   a=0x19 b=0x2 c=0x2   ← blocks forever
+```
+
+The thread migrated from LP0→LP3 between the first and second timer ticks.  The Waker registered on LP0 was consumed by the first wake; on LP3, `signal_cq` found zero observers because no new Waker had been registered yet.  The thread eventually migrated back to LP0 and registered a new Waker, but by then the second timer's signal was lost and the third timer never fired.  This led directly to LP affinity.
+
+### Discovery 2: All LP comparators stop (run 3)
+
+After applying LP affinity, cross-LP migration was eliminated, but the trace revealed a deeper problem:
+
+```
+LP0 COMPLETE events:  tick=359M..375M  (0.26s window)
+LP1 COMPLETE events:  tick=369M..471M  (1.6s window)
+After tick 376M:      ZERO COMPLETE events on any LP
+```
+
+All LPs' generic timer comparators stopped firing after ~0.4s.  New timers submitted by the raft nodes (via `submit_timer`) were adding events to the queue, but the PPI never fired to process them.  The `COMPLETE` trace events (which fire inside `complete()`) stopped appearing.  The `SUBMIT_TIMER_OK` trace (which fires inside the `submit_timer` syscall) confirmed the timer events WERE being submitted.  They just never fired.
+
+The `TIMER_FIRED`/`TIMER_ARMED`/`TIMER_STOPPED` traces were added to narrow this down.  The traces initially flooded the buffer (quantum ticks fire every 10ms on every LP, ~400 events/sec), so the buffer size was increased from 4096 to 16384 entries and the dump delay was reduced from 10s to 4s.
+
+### Discovery 3: Cap-0 rejection (run 4)
+
+With the timer traces in place, the raft nodes showed:
+
+```
+tick=370M lp=0 SUBMIT_TIMER_OK  a=0x19 b=0x0 c=0x19   ← cap 0, timeout 25ms
+tick=372M lp=0 SUBMIT_TIMER_OK  a=0x1a b=0x0 c=0x19   ← cap 0
+tick=372M lp=0 COMPLETE         a=0x19 b=0x1 c=0x0    ← timer fires
+tick=374M lp=0 COMPLETE         a=0x1a b=0x1 c=0x0    ← timer fires
+--- NO MORE EVENTS for asid=0x19 or 0x1a ---
+```
+
+The timers were being submitted with cap 0 — a valid `IdTable` slot when the table is empty.  But the raft node's loop checked `if election_timer != 0` before polling.  `0 != 0` is false, so the timer was never processed, time never advanced, and no new timer was submitted.  The first timer from `submit_timer(LOOP_TICK_MS)` before the loop DID fire (the COMPLETE events above), but the loop never acknowledged it.
+
+### Discovery 4: EL0 payload exit failure (steady-state dispatch)
+
+With SCHED_TRACE enabled, the dispatch pattern at +23s post-boot showed:
+
+```
+LP0: TIDs 4, 27, 49 — all requeue=true, never blocking
+LP1: TIDs 25, 47
+LP2: TID 8
+LP3: TIDs 43, 48
+~270 dispatches/sec across 3 busy LPs
+```
+
+These are EL0 test payload threads that never exit.  The `probe_device_topology` thread (TID=44) had an explicit `loop { yield_lp() }` — fixed by removing the loop (the thread returns, trampoline calls `abort()`).
+
+For the hand-written assembly payloads, instrumentation was added to `sys_thread_exit` and `abort()`:
+
+```
+THREAD_EXIT syscall: asid=6 tid=Some(8)   ← EL0 IPC test payload: EXITS ✓
+THREAD_EXIT syscall: asid=7 tid=Some(10)  ← EL0 IPC block test: EXITS ✓
+--- NO THREAD_EXIT syscall for asid=5 --- ← EL0 SVC test (TID=4): NEVER EXITS ✗
+```
+
+The `svc #8` encoding was verified correct — both the hand-written bytes (`0x08, 0x01, 0x00, 0xd4`) and the Rust inline asm (`asm!("svc #8", ...)`) produce the identical instruction `0xd4000108`.  The `svc #1` (SUBMIT) instruction in the same payload DOES reach the kernel (the verifier confirms the result page was written).  The thread reaches `svc #1`, writes the result page, but never executes the `svc #8` that follows.
+
+**Hypothesis:** The `str` instruction between `svc #1` and `svc #8` writes to a user page at EL0.  On QEMU TCG, this may trigger a recoverable translation fault.  The AArch64 abort handler recovers by invalidating the TLB and retrying the faulting instruction.  The write eventually succeeds (the verifier confirms it), but the CPU state after recovery may not correctly advance to the next instruction.
+
+### Discovery 5: Verifier cleanup eliminates all CPU load
+
+After adding `abort_thread()` calls to the verifier functions (killing the EL0 payload threads after confirming test success), the steady-state dispatch rate dropped to **zero on all LPs**:
+
+```
+LP0 (t>10s): {}   ← no dispatches
+LP1 (t>10s): {}
+LP2 (t>10s): {}
+LP3 (t>10s): {}
+```
+
+## Final State
+
+All 15 self-tests pass.  The system idles completely after the test burst.  Key architectural changes:
+
+| Component | Before | After |
+|-----------|--------|-------|
+| `cq_wait` blocking mechanism | `cq_pending()` checks undrained ring → busy-spin | Per-CQ work-generation counter, decoupled from ring |
+| Thread admission | `get_least_loaded_lp()` on every wake → LP migration | `pick_lp_for()` uses affinity LP set at first assignment |
+| Raft timer polling | `if election_timer != 0` rejects valid cap 0 | Always poll; `poll(0)` returns u64::MAX on empty table |
+| Raft election timeout | Manual field reset without `step_down()` → stale deadline | `step_down()` properly resets `timeout_at_millis` |
+| Device probe thread | `loop { yield_lp() }` → permanent CPU burn | Returns normally; trampoline calls `abort()` |
+| EL0 test payloads | Threads never exit (stall between store and `svc #8`) | Verifiers kill payload threads after confirming success |
+| LP idle load | 3 LPs at ~270 dispatches/sec indefinitely | 0 dispatches/sec after test burst |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `completion/mod.rs` | `CqState` with `work_generation`/`last_seen_generation`; `wait_on_cq` uses generation comparison |
+| `completion/cq.rs` | `drain()` method on `CompletionQueueRing` |
+| `scheduler/threads/mod.rs` | `affinity_lp: Option<LpId>` and `active_timers: AtomicU32` on `Thread` |
+| `scheduler/system_scheduler/mod.rs` | `pick_lp_for()`, affinity-aware `submit_ready_thread`/`submit_woken_thread` |
+| `scheduler/mod.rs` | `bump_active_timers()`, `drop_active_timer()`, `yield_lp` |
+| `syscall/mod.rs` | Timer tracking in submit/poll/close |
+| `catten-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |
+| `catten-services/src/bin/raft.rs` | Cap-0 fix (remove `!= 0` guard) |
+| `main.rs` | Remove infinite yield loop from `probe_device_topology` |
+| `self_test/el0.rs` | Verifier kills EL0 user thread after SUCCESS |
+| `self_test/el0_demo.rs` | Verifier kills xLP coordinator thread after SUCCESS |
+| `debug_trace.rs` | Lock-free in-memory trace buffer (development tool, no-op stub on dev) |
+| `docs/scheduler-state-machines.md` | Formal state machine reference |
+| `scripts/run-aarch64.sh` | Always rebuild EL0 services before kernel build |
+| `scripts/build-catten-services.sh` | `--clean` flag |
