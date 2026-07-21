@@ -74,9 +74,9 @@ pub fn yield_lp() {
     // runnable promptly without the interrupt handler ever taking a lock.
     crate::device::drain_deferred_wakes();
 
-    // Periodically check for load imbalance: if one LP is idle while
-    // another is overloaded, migrate a thread with no active timers.
-    // Disabled for now — pure affinity first.
+    // Periodically check for load imbalance.  Disabled — migrating
+    // threads mid-IPC can break test protocols.  Needs per-thread
+    // "safe to migrate" tracking beyond just active_timers == 0.
     if false {
         let tick = REBALANCE_TICK.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         if tick % 64 == 0 {

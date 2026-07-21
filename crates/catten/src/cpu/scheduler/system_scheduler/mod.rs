@@ -337,26 +337,41 @@ impl SystemScheduler {
         };
         let Some(tid) = candidate_tid else { return };
 
-        // Migrate: remove from busy LP, add to idle LP, clear affinity.
-        {
-            let mut busy_sched = self.lp_schedulers[&busy_lp].lock();
-            busy_sched.remove_thread(tid).ok();
+        // Lock both LP schedulers in LP-ID order to avoid deadlock when
+        // multiple LPs call try_rebalance concurrently with swapped
+        // busy/idle pairs.
+        let (first_lp, second_lp) = if busy_lp < idle_lp {
+            (busy_lp, idle_lp)
+        } else {
+            (idle_lp, busy_lp)
+        };
+        let mut sched1 = self.lp_schedulers[&first_lp].lock();
+        let mut sched2 = self.lp_schedulers[&second_lp].lock();
+
+        // Migrate: remove from busy, add to idle, clear affinity.
+        if busy_lp == first_lp {
+            sched1.remove_thread(tid).ok();
+        } else {
+            sched2.remove_thread(tid).ok();
         }
         {
             let mut table = MASTER_THREAD_TABLE.write();
             if let Ok(thread) = table.get_mut(tid) {
-                // Mark as NeedsLpAssignment so add_thread below picks it up.
                 thread.state = ThreadState::NeedsLpAssignment;
                 thread.affinity_lp = None;
             } else {
                 return;
             }
         }
-        {
-            let mut idle_sched = self.lp_schedulers[&idle_lp].lock();
-            idle_sched.add_thread(tid, None).ok();
-            idle_sched.set_ctx_switch_pending();
+        if idle_lp == first_lp {
+            sched1.add_thread(tid, None).ok();
+            sched1.set_ctx_switch_pending();
+        } else {
+            sched2.add_thread(tid, None).ok();
+            sched2.set_ctx_switch_pending();
         }
+        drop(sched1);
+        drop(sched2);
         sched_trace!(
             "[sched] rebalance: TID={} migrated LP{} -> LP{} (load={}->{})",
             tid,
