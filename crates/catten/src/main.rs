@@ -24,6 +24,7 @@ extern crate alloc;
 
 pub mod completion;
 pub mod cpu;
+pub mod debug_trace;
 pub mod deferred_work_manager;
 pub mod demo;
 pub mod device;

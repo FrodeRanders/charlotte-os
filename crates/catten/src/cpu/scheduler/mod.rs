@@ -1,5 +1,8 @@
 use alloc::sync::Weak;
-use core::hint::unreachable_unchecked;
+use core::{
+    hint::unreachable_unchecked,
+    sync::atomic::Ordering,
+};
 
 use crate::{
     cpu::scheduler::{
@@ -139,5 +142,30 @@ pub fn observe_thread_exit(
         Ok(())
     } else {
         Err(system_scheduler::Error::InvalidThread)
+    }
+}
+
+/// Bump the calling thread's active-timer count.  Called by the
+/// `submit_timer` syscall so the rebalancer knows this thread has
+/// timer events queued on its affinity LP.
+pub fn bump_active_timers() {
+    let tid =
+        system_scheduler::SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
+        if let Ok(thread) = MASTER_THREAD_TABLE.read().get(tid) {
+            thread.active_timers.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Drop one active-timer count for the calling thread.  Called when a
+/// timer completion is drained or closed.
+pub fn drop_active_timer() {
+    let tid =
+        system_scheduler::SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
+        if let Ok(thread) = MASTER_THREAD_TABLE.read().get(tid) {
+            thread.active_timers.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }

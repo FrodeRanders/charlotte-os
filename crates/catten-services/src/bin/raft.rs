@@ -47,6 +47,7 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     close as completion_close,
+    cq_wait,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -274,21 +275,7 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
     let mut election_timer: u64 = submit_timer(LOOP_TICK_MS);
 
     loop {
-        // Block on the election timer — do NOT use cq_wait here.  The ring
-        // that backs the completion queue is never drained by this service
-        // (it polls individual completions via `poll`), so every timer tick
-        // leaves a stale entry in the ring.  After the very first tick
-        // cq_wait would find the undrained entry and return immediately,
-        // turning the loop into a busy-spin that burns a full LP core.
-        if election_timer != 0 {
-            wait(election_timer);
-            completion_close(election_timer);
-        }
-        node.set_millis(node.millis() + LOOP_TICK_MS);
-        if node.check_timeout() {
-            node.start_election(node.millis());
-        }
-        election_timer = submit_timer(LOOP_TICK_MS);
+        cq_wait(1, 0);
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
@@ -310,10 +297,19 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
         }
 
-        // Drain inbound Raft traffic before acting on an election timeout.
-        // A vote request and timer can become ready together; processing the
-        // timer first makes both nodes become candidates and reject each
-        // other's otherwise valid vote.
+        // Poll the timer regardless of cap value — cap 0 is a valid
+        // completion handle when the IdTable reuses slot 0.
+        let timer_fired = {
+            let (status, _result) = poll(election_timer);
+            if status == 0 {
+                completion_close(election_timer);
+                true
+            } else {
+                false
+            }
+        };
+
+        // Drain inbound Raft traffic after processing the timer tick.
         loop {
             let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
@@ -401,6 +397,14 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
                     }
                 }
             }
+        }
+
+        if timer_fired {
+            node.set_millis(node.millis() + LOOP_TICK_MS);
+            if node.check_timeout() {
+                node.start_election(node.millis());
+            }
+            election_timer = submit_timer(LOOP_TICK_MS);
         }
 
         if node.state == NodeState::Leader {

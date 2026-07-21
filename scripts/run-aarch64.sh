@@ -75,6 +75,11 @@ fi
 if [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
     cargo clean --target "$TARGET_SPEC"
+    echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
+    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean
+else
+    echo ">>> Rebuilding embedded EL0 service bundle..."
+    "${ROOT_DIR}/scripts/build-catten-services.sh" --embed
 fi
 
 # Feature selection.
