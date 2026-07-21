@@ -7,18 +7,26 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 MODE="build"
-if [ "${1:-}" = "--embed" ]; then
-    MODE="embed"
-elif [ "${1:-}" = "--check" ]; then
-    MODE="check"
-elif [ "$#" -ne 0 ]; then
-    echo "usage: $0 [--embed|--check]" >&2
-    exit 1
-fi
+CLEAN=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --embed) MODE="embed"; shift ;;
+        --check) MODE="check"; shift ;;
+        --clean) CLEAN=1; shift ;;
+        *) echo "usage: $0 [--embed|--check] [--clean]" >&2; exit 1 ;;
+    esac
+done
 
 MANIFEST="crates/catten-services/Cargo.toml"
 TARGET="crates/catten-services/aarch64-unknown-none.json"
 OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
+
+if [ "$CLEAN" = "1" ]; then
+    echo ">>> Cleaning service target artifacts..."
+    cargo +nightly clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
+    rm -f crates/catten/src/self_test/{ns,echo,client,uart,cclient,raft}.elf
+    echo ">>> Forcing clean rebuild of all EL0 services..."
+fi
 
 cargo +nightly build --manifest-path "$MANIFEST" --target "$TARGET" \
     --release -Z build-std=core,alloc
