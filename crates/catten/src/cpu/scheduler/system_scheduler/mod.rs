@@ -7,6 +7,7 @@ use alloc::{
     },
     vec::Vec,
 };
+use core::sync::atomic::Ordering;
 
 use super::lp_schedulers::LpScheduler;
 use crate::{
@@ -79,9 +80,25 @@ impl SystemScheduler {
         &self.lp_schedulers[&get_lp_id()]
     }
 
+    /// Pick the LP to admit a thread to: if the thread already has an
+    /// affinity, prefer it; otherwise pick the least-loaded LP.
+    fn pick_lp_for(&self, tid: ThreadId) -> &Mutex<Box<dyn LpScheduler>> {
+        // Check if the thread already has an affinity LP (read-only, no lock).
+        let existing = {
+            let table = MASTER_THREAD_TABLE.read();
+            table.get(tid).ok().and_then(|t| t.affinity_lp)
+        };
+        if let Some(lp) = existing {
+            if let Some(sched) = self.lp_schedulers.get(&lp) {
+                return sched;
+            }
+        }
+        self.get_least_loaded_lp()
+    }
+
     pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
-        let least_loaded_lp = self.get_least_loaded_lp();
-        let mut lp_guard = least_loaded_lp.lock();
+        let target = self.pick_lp_for(tid);
+        let mut lp_guard = target.lock();
         let load_before = lp_guard.thread_count();
         match lp_guard.add_thread(tid, None) {
             Ok(()) => {}
@@ -93,6 +110,16 @@ impl SystemScheduler {
         // same-LP admission (which sends no IPI), and harmlessly coalesces for
         // duplicate wakes or a remote admission whose IPI also sets pending.
         lp_guard.set_ctx_switch_pending();
+        // Set affinity on first assignment — do this under the LP scheduler
+        // lock to honour the lp_scheduler → MASTER_THREAD_TABLE lock order.
+        {
+            let mut table = MASTER_THREAD_TABLE.write();
+            if let Ok(thread) = table.get_mut(tid) {
+                if thread.affinity_lp.is_none() {
+                    thread.affinity_lp = Some(lp_id);
+                }
+            }
+        }
         drop(lp_guard);
         sched_trace!(
             "[sched] submit_ready TID={} -> LP{} load={}->{}",
@@ -114,8 +141,8 @@ impl SystemScheduler {
         tid: ThreadId,
         generation: ThreadGeneration,
     ) -> Result<LpId, Error> {
-        let least_loaded_lp = self.get_least_loaded_lp();
-        let mut lp_guard = least_loaded_lp.lock();
+        let target = self.pick_lp_for(tid);
+        let mut lp_guard = target.lock();
         let load_before = lp_guard.thread_count();
         lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
         let lp_id = lp_guard.get_lp_id();
@@ -272,6 +299,72 @@ impl SystemScheduler {
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1
+    }
+
+    /// If one LP is idle (`thread_count == 0`) while another has multiple
+    /// runnable threads, migrate one idle-safe thread from the busiest LP to
+    /// the idle LP.  A thread is idle-safe if it has no active timers (no
+    /// per-LP queue dependency).  The migration clears the thread's affinity
+    /// so it finds a new home.
+    pub fn try_rebalance(&self) {
+        // Collect per-LP load snapshot.
+        let mut loads: Vec<(LpId, usize)> = self
+            .lp_schedulers
+            .iter()
+            .map(|(&lp, sched)| (lp, sched.lock().thread_count()))
+            .collect();
+
+        // Find an idle LP and the busiest LP.
+        let idle = loads.iter().find(|(_, count)| *count == 0).map(|(lp, _)| *lp);
+        let Some(idle_lp) = idle else { return; };
+        let Some((busy_lp, busy_count)) = loads.iter().filter(|(_, c)| *c > 1).max_by_key(|(_, c)| *c) else { return; };
+        let busy_lp = *busy_lp;
+
+        // Find a migration candidate: a thread on the busy LP with no active
+        // timers, preferring one that has affinity to the busy LP.
+        let candidate_tid = {
+            let table = MASTER_THREAD_TABLE.read();
+            table.iter().enumerate().find_map(|(tid, thread)| {
+                let thread = thread.as_ref()?;
+                if matches!(thread.state, ThreadState::Ready(lp) if lp == busy_lp)
+                    && thread.active_timers.load(Ordering::Relaxed) == 0
+                {
+                    Some(tid)
+                } else {
+                    None
+                }
+            })
+        };
+        let Some(tid) = candidate_tid else { return };
+
+        // Migrate: remove from busy LP, add to idle LP, clear affinity.
+        {
+            let mut busy_sched = self.lp_schedulers[&busy_lp].lock();
+            busy_sched.remove_thread(tid).ok();
+        }
+        {
+            let mut table = MASTER_THREAD_TABLE.write();
+            if let Ok(thread) = table.get_mut(tid) {
+                // Mark as NeedsLpAssignment so add_thread below picks it up.
+                thread.state = ThreadState::NeedsLpAssignment;
+                thread.affinity_lp = None;
+            } else {
+                return;
+            }
+        }
+        {
+            let mut idle_sched = self.lp_schedulers[&idle_lp].lock();
+            idle_sched.add_thread(tid, None).ok();
+            idle_sched.set_ctx_switch_pending();
+        }
+        sched_trace!(
+            "[sched] rebalance: TID={} migrated LP{} -> LP{} (load={}->{})",
+            tid,
+            busy_lp,
+            idle_lp,
+            busy_count,
+            1
+        );
     }
 
     fn current_lp_for_thread(&self, tid: ThreadId) -> Option<LpId> {

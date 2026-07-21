@@ -334,7 +334,10 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
     if op == crate::completion::OpCode::Timer {
         let timeout_ms = buf_len as u64;
         match crate::completion::submit_timer(asid, timeout_ms) {
-            Ok(cap) => frame.regs[0] = cap as u64,
+            Ok(cap) => {
+                crate::cpu::scheduler::bump_active_timers();
+                frame.regs[0] = cap as u64;
+            }
             Err(_) => frame.regs[0] = 0,
         }
         return;
@@ -376,6 +379,7 @@ fn sys_completion_poll(frame: &mut TrapFrame) {
     let cap = frame.regs[1] as usize;
     match crate::completion::poll(asid, cap) {
         Ok(Some(completed)) => {
+            crate::cpu::scheduler::drop_active_timer();
             frame.regs[0] = 0;
             frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
             frame.regs[2] = completed.buffer.as_ref().map_or(0, |buf| buf.len()) as u64;
@@ -404,7 +408,9 @@ fn sys_completion_cancel(frame: &mut TrapFrame) {
 fn sys_completion_close(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cap = frame.regs[1] as usize;
-    let _ = crate::completion::close(asid, cap);
+    if crate::completion::close(asid, cap).is_ok() {
+        crate::cpu::scheduler::drop_active_timer();
+    }
 }
 
 fn sys_spawn_thread(frame: &mut TrapFrame) {

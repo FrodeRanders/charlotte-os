@@ -12,6 +12,7 @@ use alloc::{
 use core::{
     mem::offset_of,
     sync::atomic::{
+        AtomicU32,
         AtomicU64,
         Ordering,
     },
@@ -115,6 +116,16 @@ pub struct Thread {
     /// Distinguishes successive occupants of a reusable [`ThreadId`] slot.
     pub generation: ThreadGeneration,
     pub state: ThreadState,
+    /// The LP this thread prefers to run on, assigned at spawn time.
+    /// Re-admission via `submit_woken_thread` and `submit_ready_thread`
+    /// try this LP first rather than scanning for the least-loaded one,
+    /// giving the thread cache affinity and keeping its timer events on
+    /// the same LP's queue.
+    pub affinity_lp: Option<LpId>,
+    /// Count of submitted-but-not-yet-completed timer completions owned
+    /// by this thread.  The rebalancer avoids migrating threads with
+    /// active timers because the timer lives on the affinity LP's queue.
+    pub active_timers: AtomicU32,
     exit_observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -135,6 +146,8 @@ impl Thread {
             asid,
             generation: NEXT_THREAD_GENERATION.fetch_add(1, Ordering::Relaxed),
             state: ThreadState::NeedsLpAssignment,
+            affinity_lp: None,
+            active_timers: AtomicU32::new(0),
             exit_observers: spin::Mutex::new(Vec::new()),
         }
     }

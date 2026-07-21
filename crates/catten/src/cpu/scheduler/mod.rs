@@ -1,5 +1,8 @@
 use alloc::sync::Weak;
-use core::hint::unreachable_unchecked;
+use core::{
+    hint::unreachable_unchecked,
+    sync::atomic::Ordering,
+};
 
 use crate::{
     cpu::scheduler::{
@@ -31,6 +34,9 @@ pub mod system_scheduler;
 pub mod threads;
 
 const SCHED_TRACE: bool = false;
+
+static REBALANCE_TICK: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
 
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
@@ -67,6 +73,16 @@ pub fn yield_lp() {
     // cooperative yield across every LP — makes a driver blocked in `CQ_WAIT`
     // runnable promptly without the interrupt handler ever taking a lock.
     crate::device::drain_deferred_wakes();
+
+    // Periodically check for load imbalance: if one LP is idle while
+    // another is overloaded, migrate a thread with no active timers.
+    // Disabled for now — pure affinity first.
+    if false {
+        let tick = REBALANCE_TICK.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if tick % 64 == 0 {
+            SYSTEM_SCHEDULER.read().try_rebalance();
+        }
+    }
     if SCHED_TRACE {
         let sched = SYSTEM_SCHEDULER.read();
         let lsched = sched.get_lp_scheduler().lock();
@@ -139,5 +155,30 @@ pub fn observe_thread_exit(
         Ok(())
     } else {
         Err(system_scheduler::Error::InvalidThread)
+    }
+}
+
+/// Bump the calling thread's active-timer count.  Called by the
+/// `submit_timer` syscall so the rebalancer knows this thread has
+/// timer events queued on its affinity LP.
+pub fn bump_active_timers() {
+    let tid =
+        system_scheduler::SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
+        if let Ok(thread) = MASTER_THREAD_TABLE.read().get(tid) {
+            thread.active_timers.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Drop one active-timer count for the calling thread.  Called when a
+/// timer completion is drained or closed.
+pub fn drop_active_timer() {
+    let tid =
+        system_scheduler::SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    if let Some(tid) = tid {
+        if let Ok(thread) = MASTER_THREAD_TABLE.read().get(tid) {
+            thread.active_timers.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
