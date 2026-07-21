@@ -53,8 +53,6 @@ use crate::{
 /// user binary's output via HHDM after the thread runs.
 #[cfg(target_arch = "aarch64")]
 static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
-static mut EL0_USER_TID: Option<crate::cpu::scheduler::threads::ThreadId> = None;
 
 #[cfg(target_arch = "aarch64")]
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -251,7 +249,6 @@ pub fn test_el0_syscall_round_trip() {
         // page mapped into the user address space.
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
         logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-        unsafe { EL0_USER_TID = Some(tid); }
 
         // The verification thread runs after `yield_lp()` (self-tests run on the
         // boot path before the scheduler is entered), polls the result page via
@@ -295,14 +292,6 @@ extern "C" fn verify_el0_result() {
                  verified.",
                 cap
             );
-            // Kill the EL0 user thread whose svc #8 may not have reached the
-            // kernel.  The verifier confirmed the test passed, so the payload
-            // already wrote its result — the thread is just stuck spinning.
-            if let Some(user_tid) = unsafe { EL0_USER_TID } {
-                let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-                    .read()
-                    .abort_thread(user_tid);
-            }
             return;
         }
         spins += 1;
