@@ -297,7 +297,9 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
         }
 
-        let timer_fired = if election_timer != 0 {
+        // Poll the timer regardless of cap value — cap 0 is a valid
+        // completion handle when the IdTable reuses slot 0.
+        let timer_fired = {
             let (status, _result) = poll(election_timer);
             if status == 0 {
                 completion_close(election_timer);
@@ -305,8 +307,6 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
             } else {
                 false
             }
-        } else {
-            false
         };
 
         // Drain inbound Raft traffic after processing the timer tick.

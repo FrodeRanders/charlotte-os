@@ -13,7 +13,7 @@ use core::sync::atomic::{
     Ordering,
 };
 
-const CAPACITY: usize = 4096;
+const CAPACITY: usize = 16384;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -108,6 +108,10 @@ pub fn dump() {
             TAG_WAKE => "WAKE",
             TAG_SIGNAL_CQ => "SIGNAL_CQ",
             TAG_WAKER_NOTIFY => "WAKER_NOTIFY",
+            TAG_SUBMIT_TIMER_OK => "SUBMIT_TIMER_OK",
+            TAG_TIMER_FIRED => "TIMER_FIRED",
+            TAG_TIMER_ARMED => "TIMER_ARMED",
+            TAG_TIMER_STOPPED => "TIMER_STOPPED",
             _ => "?",
         };
         crate::logln!(
@@ -145,3 +149,7 @@ pub const TAG_COMPLETE_DETACHED: u64 = 0xc0_0011;
 pub const TAG_WAKE: u64 = 0xc0_0012;
 pub const TAG_SIGNAL_CQ: u64 = 0xc0_0013;
 pub const TAG_WAKER_NOTIFY: u64 = 0xc0_0020;
+pub const TAG_SUBMIT_TIMER_OK: u64 = 0xc0_0030;
+pub const TAG_TIMER_FIRED: u64 = 0xc0_0031;
+pub const TAG_TIMER_ARMED: u64 = 0xc0_0032;
+pub const TAG_TIMER_STOPPED: u64 = 0xc0_0033;

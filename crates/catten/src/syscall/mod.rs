@@ -336,6 +336,12 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         match crate::completion::submit_timer(asid, timeout_ms) {
             Ok(cap) => {
                 crate::cpu::scheduler::bump_active_timers();
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_SUBMIT_TIMER_OK,
+                    asid as u64,
+                    cap as u64,
+                    timeout_ms,
+                );
                 frame.regs[0] = cap as u64;
             }
             Err(_) => frame.regs[0] = 0,

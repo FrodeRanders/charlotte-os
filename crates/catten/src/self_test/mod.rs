@@ -80,6 +80,6 @@ pub fn run_self_tests() {
     #[cfg(all(not(feature = "virtio_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
     el0_uart::test_el0_uart();
-    crate::debug_trace::dump_after(10_000);
+    crate::debug_trace::dump_after(4_000);
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }
