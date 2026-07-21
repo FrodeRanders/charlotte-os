@@ -801,10 +801,11 @@ mod tests {
         node.start_election(200);
         assert_eq!(node.state, NodeState::Leader);
 
+        // Index 1 is the no-op entry appended by become_leader.
         let index = node.submit_command(vec![1, 2, 3], 201).unwrap();
-        assert_eq!(index, 1);
-        assert_eq!(node.commit_index, 1);
-        assert_eq!(node.last_applied, 1);
+        assert_eq!(index, 2);
+        assert_eq!(node.commit_index, 2);
+        assert_eq!(node.last_applied, 2);
     }
 
     #[test]
