@@ -20,6 +20,8 @@ const CAPACITY: usize = 4096;
 pub struct TraceEvent {
     pub tick: u64,
     pub tag: u64,
+    /// Logical processor on which this event was recorded.
+    pub lp: u64,
     pub a: u64,
     pub b: u64,
     pub c: u64,
@@ -38,17 +40,19 @@ impl DebugTrace {
     pub const fn new() -> Self {
         Self {
             write_idx: AtomicU64::new(0),
-            buf: [TraceEvent { tick: 0, tag: 0, a: 0, b: 0, c: 0 }; CAPACITY],
+            buf: [TraceEvent { tick: 0, tag: 0, lp: 0, a: 0, b: 0, c: 0 }; CAPACITY],
         }
     }
 
     pub fn trace(&self, tag: u64, a: u64, b: u64, c: u64) {
         let idx = self.write_idx.fetch_add(1, Ordering::Relaxed) as usize % CAPACITY;
         let tick = read_tick();
+        let lp = crate::cpu::isa::lp::ops::get_lp_id() as u64;
         unsafe {
             let slot = &raw const self.buf[idx] as *mut TraceEvent;
             (*slot).tick = tick;
             (*slot).tag = tag;
+            (*slot).lp = lp;
             (*slot).a = a;
             (*slot).b = b;
             (*slot).c = c;
@@ -75,8 +79,7 @@ pub fn trace(tag: u64, a: u64, b: u64, c: u64) {
     trace.trace(tag, a, b, c);
 }
 
-/// Print the trace buffer to the serial console.  Must be called from
-/// thread context — serial writes take the kernel console lock.
+/// Print the trace buffer to the serial console.
 pub fn dump() {
     let trace = unsafe { &*core::ptr::addr_of!(DEBUG_TRACE) };
     let total = trace.write_idx.load(Ordering::Relaxed);
@@ -108,8 +111,8 @@ pub fn dump() {
             _ => "?",
         };
         crate::logln!(
-            "[TRACE] tick={} {} a={:#x} b={:#x} c={:#x}",
-            e.tick, tag_name, e.a, e.b, e.c
+            "[TRACE] tick={} lp={} {} a={:#x} b={:#x} c={:#x}",
+            e.tick, e.lp, tag_name, e.a, e.b, e.c
         );
     }
     crate::logln!("[TRACE] dump complete.");
@@ -117,8 +120,6 @@ pub fn dump() {
 
 static DUMP_DELAY_MS: AtomicU64 = AtomicU64::new(0);
 
-/// Spawn a kernel thread that sleeps for `delay_ms` milliseconds,
-/// then dumps the trace buffer to the serial console.  Call during boot.
 pub fn dump_after(delay_ms: u64) {
     DUMP_DELAY_MS.store(delay_ms, Ordering::Relaxed);
 
