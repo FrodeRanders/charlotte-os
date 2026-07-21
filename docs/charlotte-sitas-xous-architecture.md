@@ -1093,6 +1093,29 @@ block
 The observer implementation is an internal mechanism. The ABI contract
 is that state transition and waiter registration cannot lose a wake.
 
+**Current implementation.**  The kernel uses a per-CQ monotonic
+`work_generation` counter paired with a `last_seen_generation` field.
+Every `complete()`, `complete_detached()`, and `wake()` bumps the
+generation; `wait_on_cq` blocks until `work_generation !=
+last_seen_generation` and saves the new value on return.  This
+decouples the wait condition from the shared ring's `pending()` count,
+solving the undrained-ring problem: callers that poll individual
+completions via `poll(cap)` and never drain the shared ring are not
+stuck in a busy-spin simply because the ring accumulated stale
+entries.  The lost-wake guard re-checks the generation after the
+waiter is registered, re-admitting the thread if work arrived during
+the registration window.
+
+### 8.6 LP affinity
+
+Each execution context is assigned an affinity LP on first admission.
+Re-admission after a wake (timer expiry, endpoint message, device
+interrupt) returns the thread to its affinity LP rather than scanning
+for the globally least-loaded LP.  This keeps timer events on the same
+LP's queue, eliminates cross-LP migration races (observer-not-found
+when `signal_cq` runs on a different LP than the one where the Waker
+was registered), and preserves cache warmth.
+
 ------------------------------------------------------------------------
 
 ## 9. Sitas inside a service process
@@ -1458,6 +1481,19 @@ The ABI should leave room for:
 
 Do not encode these policies directly into sitas task priority. They
 cross protection and trust boundaries and require kernel mediation.
+
+### 14.1 Load rebalancing (future)
+
+The kernel includes a `try_rebalance()` skeleton that detects
+idle-LP/overloaded-LP pairs and migrates threads with no active timers
+to the idle LP.  Threads with active timers are excluded because timer
+events live on the affinity LP's per-LP queue; migrating them would
+orphan the timer.  The migration clears the thread's `affinity_lp` so
+it finds a new home.
+
+Currently disabled: migrating threads mid-IPC can break request/reply
+protocols.  Activation requires per-thread "safe to migrate" tracking
+in the IPC layer.
 
 ------------------------------------------------------------------------
 
@@ -1886,6 +1922,11 @@ After userspace architecture is proven:
 -   audit `ShardLocal<T>` use;
 -   ensure no interrupt path accesses shard-local-only state;
 -   add wake coalescing;
+-   add LP affinity: threads assigned an affinity LP at first admission,
+    re-admitted to the same LP after every wake (§8.6).  This eliminates
+    cross-LP migration races and keeps timer events on the correct
+    per-LP queue.  A rebalancing skeleton (§14.1) is available but
+    disabled pending thread-safety review.
 -   add LP migration/hotplug assumptions explicitly.
 
 ------------------------------------------------------------------------
@@ -2143,7 +2184,11 @@ Current status:
 -   Criterion 5 is met. Its kernel half has self-test evidence: one
     blocking CQ wait is released by kernel completions, explicit
     cross-thread wakes, and CQ-bound endpoint readiness
-    (`test_cq_wait_wake`). At EL0, the reference echo service serves its
+    (`test_cq_wait_wake`).  The `wait_on_cq` implementation uses a
+    per-CQ monotonic work-generation counter (§8.5) decoupled from the
+    shared ring's `pending()` count, so services that poll individual
+    completions via `poll(cap)` and never drain the ring are not stuck
+    in a busy-spin.  At EL0, the reference echo service serves its
     entire protocol — including shutdown and restart — from one `CQ_WAIT`
     with endpoint readiness bound to its default queue, and the sitas
     `ShardExecutor` (sitas repo) now performs task wakeup from the
