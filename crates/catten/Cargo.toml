@@ -18,6 +18,7 @@ devicetree = ["dep:flat_device_tree"]
 # If this is disabled all display code will be stripped out to reduce size for headless systems.
 display = ["dep:flanterm_bindings"]
 yield_trace = []
+scheduler_trace = []
 virtio_gpu = ["display"]
 # Apple HVF cannot emulate MMIO from EL0 or ECAM reads with missing ISS
 # syndrome info (hvf_handle_exception: isv assertion). This skips the PCI

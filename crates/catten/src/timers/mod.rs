@@ -207,6 +207,12 @@ impl TimerQueue {
     pub fn process_events(&mut self) {
         while let Some(event) = self.events.front() {
             if event.get_deadline() <= LpTimer::now() {
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_TIMER_FIRED,
+                    event.get_deadline(),
+                    self.events.len() as u64,
+                    0,
+                );
                 event.signal();
                 self.events.pop_front();
             } else if let Some(deadline) = self.get_next_deadline() {
@@ -216,9 +222,16 @@ impl TimerQueue {
                     continue;
                 }
                 timerlk.start().expect("Failed to start timer for next event");
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_TIMER_ARMED,
+                    deadline,
+                    self.events.len() as u64,
+                    0,
+                );
                 return;
             } else {
                 let _ = LpTimer::get().lock().stop();
+                crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
                 return;
             }
         }
@@ -226,6 +239,7 @@ impl TimerQueue {
         // firing on a stale (already-passed) compare value — the ARM Generic
         // Timer interrupt is level-triggered and would otherwise re-assert.
         let _ = LpTimer::get().lock().stop();
+        crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
     }
 
     fn get_next_deadline(&self) -> Option<Timestamp> {
@@ -247,5 +261,11 @@ impl TimerQueue {
             Err(e) => panic!("Failed to set timer deadline for new event: {e:?}"),
         }
         timerlk.start().expect("Failed to start timer for new event");
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_TIMER_ARMED,
+            next_event.deadline,
+            self.events.len() as u64,
+            0,
+        );
     }
 }

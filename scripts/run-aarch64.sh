@@ -9,12 +9,13 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--hvf] [--net-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--scheduler-trace] [--hvf] [--net-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --gdb          Start QEMU paused with gdb stub on tcp::1234
+#   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --net-test     Build the KVM-only virtio-net test (requires separately configured matching PCI hardware)
 #   --smp N        Number of CPUs (default: 4)
@@ -31,6 +32,7 @@ NET_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
+SCHEDULER_TRACE="0"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -38,6 +40,7 @@ while [ "$#" -gt 0 ]; do
         --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
         --gdb)         GDB="-s -S"; shift ;;
+        --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --smp)
@@ -113,6 +116,18 @@ if [ "$NET_TEST" = "1" ]; then
     FEATURES="${FEATURES},virtio_net_test"
 fi
 
+if [ "$SCHEDULER_TRACE" = "1" ]; then
+    if [ -z "$TIMEOUT" ]; then
+        echo "error: --scheduler-trace requires --timeout" >&2
+        exit 1
+    fi
+    if [ -n "$GDB" ]; then
+        echo "error: --scheduler-trace cannot be combined with --gdb" >&2
+        exit 1
+    fi
+    FEATURES="${FEATURES},scheduler_trace"
+fi
+
 cargo build --package catten --target "$TARGET_SPEC" \
     --no-default-features --features "$FEATURES" $RELEASE_FLAG
 
@@ -161,9 +176,42 @@ if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte-serial.log"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
+    if [ "$SCHEDULER_TRACE" = "1" ]; then
+        QEMU_OPTS+=(-gdb tcp::1234)
+    fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
     sleep "$TIMEOUT"
+    if [ "$SCHEDULER_TRACE" = "1" ]; then
+        TRACE_RAW="/tmp/charlotte-scheduler-trace.bin"
+        TRACE_TEXT="/tmp/charlotte-scheduler-trace.log"
+        read -r TRACE_ADDR TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "DEBUG_TRACE" { print "0x" $1, "0x" $2; exit }')
+        if [ -n "${TRACE_ADDR:-}" ] && command -v lldb >/dev/null 2>&1; then
+            TRACE_COUNT=$((TRACE_SIZE))
+            lldb --batch \
+                -o "settings set interpreter.stop-command-source-on-error false" \
+                -o "gdb-remote 1234" \
+                -o "thread backtrace all" \
+                -o "thread select 1" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 2" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 3" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 4" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "memory read --force --binary --size 1 --count ${TRACE_COUNT} --outfile ${TRACE_RAW} ${TRACE_ADDR}" \
+                -o "process detach" "$KERNEL" >/tmp/charlotte-trace-lldb.log 2>&1 || true
+            if [ -s "$TRACE_RAW" ]; then
+                python3 scripts/decode-scheduler-trace.py "$TRACE_RAW" >"$TRACE_TEXT"
+                echo ">>> Scheduler trace captured in ${TRACE_TEXT}"
+            else
+                echo "warning: scheduler trace capture failed; see /tmp/charlotte-trace-lldb.log" >&2
+            fi
+        else
+            echo "warning: DEBUG_TRACE symbol or lldb unavailable; scheduler trace not captured" >&2
+        fi
+    fi
     kill "$QPID" 2>/dev/null || true
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"

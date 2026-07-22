@@ -255,3 +255,23 @@ sleeps. The current HVF gate must therefore still be considered timing
 sensitive despite successful runs; the next diagnostic should capture timer
 head, comparator state, current TID, and ready-queue transitions into a fixed
 memory ring that can be dumped after an independent watchdog trigger.
+
+That diagnostic is now available with
+`scripts/run-aarch64.sh debug --hvf --scheduler-trace --timeout 12`. It uses a
+feature-gated 16,384-entry atomic ring and extracts it through QEMU's debugger
+stub at timeout, so retrieval does not depend on a functioning kernel timer or
+thread. The decoded trace is written to
+`/tmp/charlotte-scheduler-trace.log`; all-LP backtraces and exception registers
+are written to `/tmp/charlotte-trace-lldb.log`.
+
+The first externally captured early stall changes the diagnosis materially.
+Three LPs were spinning with interrupts masked: the Raft verifier waited for
+`KERNEL_AS` in `load_domain`, an EL0 spawn syscall waited for
+`STACK_ARENA_LOCK` in `allocate_stack`, and IRQ-tail dead-thread reaping waited
+for the same arena lock in `deallocate_stack`. The fourth LP was at the kernel
+synchronous-exception vector and is the likely arena-lock owner. No timer or
+scheduler trace events occurred after this lock convoy formed. This points to
+an exception or fault while stack-arena allocation holds its global spin lock,
+not round-robin starvation or a stranded timer comparator. Exception-register
+capture was added to the timeout tooling to identify the precise fault before
+changing allocator/reaper synchronization.

@@ -228,6 +228,12 @@ impl LpScheduler for RoundRobin {
             self.run_queue.len(),
             became_idle
         );
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_SCHED_DISPATCH,
+            previous_handle.map_or(u64::MAX, |handle| handle.tid as u64),
+            next_tid as u64,
+            ((self.run_queue.len() as u64) << 1) | became_idle as u64,
+        );
 
         Ok(next_tid)
     }
@@ -280,6 +286,12 @@ impl LpScheduler for RoundRobin {
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
                 thread.state = ThreadState::Ready(self.lp_id);
                 self.run_queue.push_back(handle);
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_SCHED_ADMIT,
+                    tid as u64,
+                    thread.generation,
+                    self.run_queue.len() as u64,
+                );
                 sched_trace!(
                     "[sched] LP{} add TID={} gen={} -> Ready depth={}",
                     self.lp_id,

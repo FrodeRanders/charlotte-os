@@ -32,6 +32,12 @@ impl Waker {
 
 impl crate::klib::observer::Observer for Waker {
     fn notify(self: Arc<Self>) {
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_WAKER_NOTIFY,
+            self.0 as u64,
+            self.1,
+            0,
+        );
         sched_trace!("[sched] waker notify TID={} gen={}", self.0, self.1);
         // A notification may race thread exit and table-slot reuse. Treat a
         // generation mismatch as a stale wake, never as authority to wake the
