@@ -11,11 +11,6 @@
 //! happened.
 
 use alloc::collections::BTreeMap;
-use core::ops::Bound::{
-    Excluded,
-    Unbounded,
-};
-
 use spin::{
     LazyLock,
     Mutex,
@@ -176,28 +171,21 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
 
 /// Deallocate a kernel stack previously allocated by [`allocate_stack`]. The
 /// argument is the base address returned by `allocate_stack`.
-pub fn deallocate_stack(stack_buf_base: VAddr) -> Result<(), Error> {
+pub fn deallocate_stack(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
     // Serialize teardown against concurrent alloc/free on other LPs.
-    with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base))
+    with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base, n_pages))
 }
 
-fn deallocate_stack_locked(stack_buf_base: VAddr) -> Result<(), Error> {
+fn deallocate_stack_locked(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
     let page = PageSize::Standard.num_bytes();
     let lower_guard = stack_buf_base - page;
-    // The number of usable pages is the distance from the base up to the next
-    // (upper) guard page.
-    let upper_guard = {
+    let upper_guard = stack_buf_base + page * n_pages;
+    {
         let guards = KERNEL_GUARD_PAGES.read();
-        if !guards.contains_key(&lower_guard) {
+        if !guards.contains_key(&lower_guard) || !guards.contains_key(&upper_guard) {
             return Err(Error::InvalidStack);
         }
-        guards
-            .range((Excluded(&lower_guard), Unbounded))
-            .next()
-            .map(|(addr, _)| *addr)
-            .ok_or(Error::InvalidStack)?
-    };
-    let n_pages = (upper_guard - stack_buf_base) as usize / page;
+    }
     memory::unmap_and_deallocate_range(stack_buf_base, PageSize::Standard, n_pages);
     // Drop a reference on each guard page; remove it only when no adjacent stack
     // still relies on it.

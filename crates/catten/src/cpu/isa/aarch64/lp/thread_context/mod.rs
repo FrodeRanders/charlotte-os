@@ -141,7 +141,7 @@ impl Drop for ThreadContext {
                 crate::early_logln!("WARNING: failed to free user stack on thread teardown");
             }
         }
-        if deallocate_stack(self._kernel_stack_buf).is_err() {
+        if deallocate_stack(self._kernel_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
             crate::early_logln!("WARNING: failed to free kernel stack on thread teardown");
         }
     }

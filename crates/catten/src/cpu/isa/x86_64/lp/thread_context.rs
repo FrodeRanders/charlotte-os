@@ -117,11 +117,11 @@ pub struct ThreadContext {
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if let Some(user_stack_buf) = self._user_stack_buf {
-            if deallocate_stack(user_stack_buf).is_err() {
+            if deallocate_stack(user_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
                 crate::early_logln!("WARNING: failed to free user stack on thread teardown");
             }
         }
-        if deallocate_stack(self._kernel_stack_buf).is_err() {
+        if deallocate_stack(self._kernel_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
             crate::early_logln!("WARNING: failed to free kernel stack on thread teardown");
         }
     }

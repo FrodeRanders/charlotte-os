@@ -275,3 +275,29 @@ an exception or fault while stack-arena allocation holds its global spin lock,
 not round-robin starvation or a stranded timer comparator. Exception-register
 capture was added to the timeout tooling to identify the precise fault before
 changing allocator/reaper synchronization.
+
+The enhanced capture identified two independent lockup mechanisms. In the
+stack case, the arena owner entered `deallocate_stack` at SP
+`0xffff810000065da0` and recursively faulted only 352 bytes lower while the
+exception vector attempted its first stack push. `ESR_EL1=0x96000047` is a
+current-EL level-3 write translation fault. This was not stack exhaustion:
+deallocation had unmapped the live reaper stack. The allocator previously
+reconstructed a stack's size by selecting the next address in the global guard
+map. Deallocation now requires the allocation's original page count, validates
+both exact guard addresses, and unmaps only that exact range.
+
+In the completion case, all four LPs were captured spinning on the global
+completion registry's `spin::RwLock`: two readers and two writers, with the
+owner no longer executing. A timer can preempt an EL1 thread holding a plain
+spin lock; a replacement EL0 thread then enters an IRQ-masked SVC, contends on
+the same lock, and can never be preempted to let the owner run. The completion
+registry and per-completion mutex now use Charlotte's interrupt-masking kernel
+spin locks, making their critical sections locally non-preemptible. A traced
+SMP4 HVF run subsequently observed every required marker without either lock
+convoy.
+
+Ordinary uninstrumented runs after these changes remained schedulable and
+completed scheduler lifecycle, Raft, CQ wait, UART, and service gates. One
+20-second run still missed only `[device] SUCCESS`; this is a separate device
+verifier progress problem rather than the prior global scheduler lockup and
+remains to be investigated independently.

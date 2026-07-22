@@ -41,16 +41,18 @@ use alloc::{
 };
 
 use concurrent_queue::ConcurrentQueue;
-use spin::{
-    LazyLock,
-    Mutex,
-    RwLock,
-};
+use spin::LazyLock;
 
 use crate::{
-    cpu::scheduler::{
-        system_scheduler::SYSTEM_SCHEDULER,
-        yield_lp,
+    cpu::{
+        multiprocessor::spin::{
+            mutex::Mutex,
+            rwlock::RwLock,
+        },
+        scheduler::{
+            system_scheduler::SYSTEM_SCHEDULER,
+            yield_lp,
+        },
     },
     klib::{
         observer::{
