@@ -563,7 +563,7 @@ lifecycle, device interrupt, and CQ-wait success.
 
 ### F16 — High: completed self-tests and an impossible net test kept TCG CPUs runnable
 
-**Resolution in progress (2026-07-20):** terminal verifier threads now return
+**Resolved and runtime-validated (2026-07-22):** terminal verifier threads now return
 through the kernel thread trampoline, and the hand-written EL0 test payloads
 terminate with `THREAD_EXIT` instead of permanent `nop; b` loops. Round-robin
 LPs no longer re-arm periodic scheduler quanta while running their idle thread;
@@ -580,7 +580,11 @@ The test is now gated by the opt-in `virtio_net_test` feature (`--net-test` in
 the AArch64 runner) and remains excluded from HVF, where EL0 device MMIO is not
 supported.
 
-Final idle-load acceptance remains pending the timer/reactor issue in F18.
+The scheduler quantum is now a keyed singleton owned by the per-LP timer queue,
+eliminating divergence between the queue and the former separate `armed` flag.
+Idle LPs remove their quantum and enter `wfi`/`hlt`; ordinary polling helpers
+block on short timers. An SMP4 HVF validation run completed every required
+deferred marker and observed an LP in the architectural idle path.
 
 ### F17 — High: UART restart could create a level-triggered interrupt wake storm
 
@@ -595,7 +599,9 @@ generation-2 endpoint request. Runtime evidence was a long sequence of
 The wake storm disappeared after rebuilding and embedding `uart.elf` with the
 correct device-clear-before-controller-rearm ordering.
 
-### F18 — High, validation pending: Raft combined two blocking wait mechanisms as if one were a poll
+### F18 — High: Raft combined two blocking wait mechanisms as if one were a poll
+
+**Resolved and runtime-validated (2026-07-22).**
 
 The Raft service submits a 25 ms completion timer, blocks in `CQ_WAIT`, and then
 calls `wait_timeout(election_timer, 0)` to test whether the timer fired. Syscall
@@ -618,10 +624,11 @@ a separate ABI defect: the shared two-register SVC helper did not dispatch
 immediate 3 and reached `unreachable_unchecked()` instead of executing
 `svc #3`. Adding that missing dispatch case and rebuilding `raft.elf` restored
 the timer path; a subsequent SMP4 TCG run elected one leader at 0.866 seconds
-with asynchronous completions `1/1`. A later experimental timer backoff in the
-generic service polling helper caused CQ wake storms and was removed. AArch64
-and x86-64 target checks pass; UART scheduling variability remains under
-investigation before final idle-load acceptance.
+with asynchronous completions `1/1`. The later scheduler repair made quantum
+ownership authoritative in the timer queue and changed low-frequency polling
+to blocking timer waits. An SMP4 HVF run then completed every required marker:
+UART at 0.131 seconds, Raft at 0.364 seconds, and CQ wait at 0.506 seconds.
+AArch64 and x86-64 target checks pass.
 
 ## Architecture conformance assessment
 
@@ -631,13 +638,11 @@ transfer modes explicit, and completion queues aggregate asynchronous kernel and
 device events. The boot evidence supports real address-space isolation, EL0
 execution, scalar IPC, and a substantial set of negative capability tests.
 
-The main conformance gaps are currently at lifecycle boundaries:
-
-- vector transfer needs atomic ownership semantics (F6);
-- deferred test completion needs a durable observable terminal state (F7);
-- network buffers need authoritative byte lengths and validation (F4/F5);
-- distributed-service authority cannot be trusted until the consensus layer
-  implements actual quorum rules (F1-F3).
+The source-level correctness gaps identified in F1-F6 are resolved. Remaining
+validation boundaries are operational rather than known instances of those
+defects: preserve complete boot-test artifacts, exercise the network path on
+Linux KVM, and extend consensus testing beyond the deterministic two-node boot
+case to randomized ordering, loss, duplication, and membership changes.
 
 The long-term networking document remains a proposal rather than a description
 of current behavior. The code presently provides a frame protocol, compile-only
@@ -674,19 +679,17 @@ Not established by that run:
 
 ## Recommended validation order
 
-1. Fix F1-F6 before treating KVM time as a validation run; otherwise KVM will
-   only reveal defects already determinable from source.
-2. Repair the bounded runner and deferred result aggregation (F7/F8), then save
-   complete serial logs as CI artifacts.
-3. Add host-side deterministic Raft and protocol tests, including randomized
+1. Preserve complete serial logs from bounded boots as CI artifacts; marker
+   aggregation exists, but durable artifact retention remains environment work.
+2. Add host-side deterministic Raft and protocol tests, including randomized
    message ordering, duplicates, stale terms, malformed lengths, and partial
    vector failures.
-4. Run AArch64 TCG and HVF at 1, 2, and 4 LPs, with repeated boots and forced
+3. Run AArch64 TCG and HVF at supported LP counts, with repeated boots and forced
    service crashes/restarts.
-5. On Linux KVM, validate virtio feature negotiation, queue memory ordering,
+4. On Linux KVM, validate virtio feature negotiation, queue memory ordering,
    interrupt routing, RX/TX lengths, buffer ownership return, CQ overflow, and
    driver death during in-flight DMA.
-6. Only after those pass, exercise smoltcp and reliable-message traffic under
+5. Only after those pass, exercise smoltcp and reliable-message traffic under
    loss, duplication, reordering, saturation, and service restart.
-7. Treat real-hardware and IOMMU/SMMU validation as separate milestones rather
+6. Treat real-hardware and IOMMU/SMMU validation as separate milestones rather
    than consequences of QEMU success.

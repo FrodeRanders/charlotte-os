@@ -115,6 +115,13 @@ impl TimerQueue {
     pub(crate) fn ensure_event(&mut self, event: TimerEvent) {
         let key = event.key.expect("ensure_event requires a keyed event");
         if self.events.iter().any(|queued| queued.key == Some(key)) {
+            // Software presence does not prove that the LP comparator is
+            // still programmed. In particular, the initial quantum can be
+            // queued before local interrupt-controller initialization resets
+            // or masks the hardware timer. Reconcile without moving the
+            // existing deadline; a past deadline becomes the minimal prompt
+            // timeout in `rearm_front`.
+            self.rearm_front();
             return;
         }
         self.add_event(event);

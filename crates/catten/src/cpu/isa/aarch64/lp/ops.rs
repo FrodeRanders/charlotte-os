@@ -406,9 +406,6 @@ pub extern "C" fn lp_idle_loop() {
         // context switch pending, honoured by the IRQ-tail `cond_yield_lp`
         // after the `wfi` returns on the next interrupt.
         crate::device::drain_deferred_wakes();
-        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-            .read()
-            .try_rebalance();
         // A deferred wake may select this same idle LP. Same-LP admission does
         // not need an IPI, so honour its pending switch before sleeping.
         // Reconcile the software timer queue with the hardware comparator as

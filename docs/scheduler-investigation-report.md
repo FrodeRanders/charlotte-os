@@ -8,11 +8,11 @@
 
 3. **Raft election liveness** — `handle_vote_request` manually set `state = Follower` without calling `step_down()`, leaving `timeout_at_millis` stale.  The node immediately timed out again, causing rapid election cycling with neither reaching quorum.  Fixed by calling `step_down(req.term, current_millis)` which properly resets the deadline.
 
-4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing ordinarily admitted threads across LPs.  This caused timer-on-wrong-LP bugs and TLB churn.  Fixed by adding `affinity_lp: Option<LpId>` to `Thread`, set on first ordinary assignment and preferred for re-admission via `pick_lp_for()`.  Explicit `submit_to_lp()` placement remains one-shot: making it persistent in a follow-up review stalled the pinned cross-LP workload and requires a separate lifecycle investigation.
+4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing ordinarily admitted threads across LPs. This caused timer-on-wrong-LP bugs and TLB churn. Fixed by adding soft `affinity_lp` placement, set on first ordinary assignment and preferred on wake. Explicit `submit_to_lp()` now also records a separate hard `pinned_lp` for future placement policy.
 
 5. **Orphan EL0 test threads** — device probe thread (`probe_device_topology`) had `loop { yield_lp() }` after logging.  Fixed by removing the loop (trampoline calls `abort()` on return).  Two EL0 payload threads (TID=4, TID=25) appeared not to reach `svc #8 (THREAD_EXIT)` despite having the correct instruction encoding.  Verifiers now perform idempotent teardown after observing the committed result. This prevents a payload exit failure from becoming permanent scheduler load without claiming to explain the underlying exit anomaly.
 
-6. **Rebalance experiment** — branch `sched/cq-generation-counter` contains a disabled `try_rebalance()` skeleton.  It was intentionally not ported to `dev`: timer-free is not a sufficient migration-safety condition, and review found missing locked-state revalidation, destination wakeup, persistent destination affinity, and error handling.
+6. **Rebalancing remains disabled** — a transactional `Ready`-only version was tested after the timer repair, but a repeat HVF boot stopped at 0.093 seconds when admission order changed. `Ready` is not proof that a thread has no LP-local CQ, endpoint, or device relationship. Automatic migration was removed again; it must wait for explicit migratability/resource-ownership metadata. Stable affinity and hard pin semantics remain.
 
 ## Investigation Methodology
 
@@ -175,7 +175,7 @@ retained on `dev` are:
 | `scripts/run-aarch64.sh` | Always rebuild EL0 services before kernel build |
 | `scripts/build-catten-services.sh` | `--clean` flag |
 
-## Follow-up: quantum ownership and controlled rebalancing (2026-07-22)
+## Follow-up: quantum ownership and migration boundary (2026-07-22)
 
 A later HVF run stopped with several genuinely runnable threads on every LP.
 The immediate defect was split ownership of the round-robin quantum: an
@@ -193,14 +193,15 @@ Placement now has two explicit levels:
 - `affinity_lp` is a soft home assigned on first admission. Blocked threads
   wake there, keeping per-LP timer ownership and cache locality stable.
 - `pinned_lp` is a hard constraint established by `submit_to_lp` for shard and
-  other LP-local work. Rebalancing never moves pinned work.
-- An idle LP may pull exactly one `Ready`, non-pinned thread from an LP with
-  more than one runnable thread. Source and destination locks are ordered by
-  LP ID, the generation and state are revalidated, and running or blocked
-  threads are never migrated.
+  other LP-local work.
+- Automatic migration remains disabled. A `Ready` thread can still retain an
+  LP-local CQ, endpoint, or device relationship, so state alone cannot prove
+  migratability.
 
 With timer liveness restored, low-frequency reply/test polling was converted
 from runnable yield loops to 1 ms blocking timer waits. A 4-LP AArch64 HVF run
 then observed every required deferred marker: UART at 0.131 s, Raft at 0.364 s,
 and CQ wait at 0.506 s. The diagnostic snapshot used during development showed
-an LP entering the real idle path; it was removed after validation.
+an LP entering the real idle path; it was removed after validation. A later
+repeat exposed the migration limitation above, so automatic rebalancing was
+removed before the final validation series.

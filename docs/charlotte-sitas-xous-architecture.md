@@ -1924,10 +1924,11 @@ After userspace architecture is proven:
 -   ensure no interrupt path accesses shard-local-only state;
 -   add wake coalescing;
 -   add LP affinity: threads assigned an affinity LP at first admission,
-    re-admitted to the same LP after every wake (§8.6).  This eliminates
-    cross-LP migration races and keeps timer events on the correct
-    per-LP queue.  A rebalancing skeleton (§14.1) is available but
-    disabled pending thread-safety review.
+    re-admitted to the same LP after every wake (§8.6). This eliminates
+    cross-LP migration races and keeps timer events on the correct per-LP
+    queue. Automatic rebalancing remains disabled: even a queued `Ready`
+    thread may retain LP-local CQ, endpoint, or device relationships. A future
+    migrator needs explicit resource-ownership metadata, not only thread state.
 -   add LP migration/hotplug assumptions explicitly.
 
 ------------------------------------------------------------------------

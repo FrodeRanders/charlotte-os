@@ -402,9 +402,6 @@ pub extern "C" fn lp_idle_loop() {
         // shard blocked in `CQ_WAIT` is released even when its LP has nothing
         // else to run.
         crate::device::drain_deferred_wakes();
-        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-            .read()
-            .try_rebalance();
         // A deferred wake may select this same idle LP. Same-LP admission does
         // not need an IPI, so honour its pending switch before sleeping.
         // Reconcile the software timer queue with the hardware comparator so
