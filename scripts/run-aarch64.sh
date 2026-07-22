@@ -9,12 +9,13 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--scheduler-trace] [--hvf] [--net-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
 #   --gdb          Start QEMU paused with gdb stub on tcp::1234
+#   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --net-test     Build the KVM-only virtio-net test (requires separately configured matching PCI hardware)
@@ -33,6 +34,7 @@ SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
 SCHEDULER_TRACE="0"
+DEBUG_SNAPSHOT="0"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -40,6 +42,7 @@ while [ "$#" -gt 0 ]; do
         --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
         --gdb)         GDB="-s -S"; shift ;;
+        --debug-snapshot) DEBUG_SNAPSHOT="1"; shift ;;
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
@@ -128,6 +131,17 @@ if [ "$SCHEDULER_TRACE" = "1" ]; then
     FEATURES="${FEATURES},scheduler_trace"
 fi
 
+if [ "$DEBUG_SNAPSHOT" = "1" ]; then
+    if [ -z "$TIMEOUT" ]; then
+        echo "error: --debug-snapshot requires --timeout" >&2
+        exit 1
+    fi
+    if [ -n "$GDB" ]; then
+        echo "error: --debug-snapshot cannot be combined with --gdb" >&2
+        exit 1
+    fi
+fi
+
 cargo build --package catten --target "$TARGET_SPEC" \
     --no-default-features --features "$FEATURES" $RELEASE_FLAG
 
@@ -176,7 +190,7 @@ if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte-serial.log"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
-    if [ "$SCHEDULER_TRACE" = "1" ]; then
+    if [ "$SCHEDULER_TRACE" = "1" ] || [ "$DEBUG_SNAPSHOT" = "1" ]; then
         QEMU_OPTS+=(-gdb tcp::1234)
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
@@ -210,6 +224,25 @@ if [ -n "$TIMEOUT" ]; then
             fi
         else
             echo "warning: DEBUG_TRACE symbol or lldb unavailable; scheduler trace not captured" >&2
+        fi
+    elif [ "$DEBUG_SNAPSHOT" = "1" ]; then
+        if command -v lldb >/dev/null 2>&1; then
+            lldb --batch \
+                -o "settings set interpreter.stop-command-source-on-error false" \
+                -o "gdb-remote 1234" \
+                -o "thread backtrace all" \
+                -o "thread select 1" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 2" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 3" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "thread select 4" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "process detach" "$KERNEL" >/tmp/charlotte-debug-snapshot-lldb.log 2>&1 || true
+            echo ">>> Debug snapshot captured in /tmp/charlotte-debug-snapshot-lldb.log"
+        else
+            echo "warning: lldb unavailable; debug snapshot not captured" >&2
         fi
     fi
     kill "$QPID" 2>/dev/null || true

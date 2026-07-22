@@ -333,3 +333,16 @@ fails explicitly after two seconds instead of waiting effectively forever.
 An uninstrumented validation run then reached `[device] SUCCESS` at 0.250 s;
 that particular run missed only the independently timing-sensitive service
 gate, so repeated whole-suite validation remains warranted.
+
+To investigate that residual timing sensitivity without changing the kernel
+binary, the AArch64 runner now also accepts `--debug-snapshot`. Unlike
+`--scheduler-trace`, it does not enable the trace feature or add trace-ring
+atomics; it only exposes QEMU's debugger stub and captures all-LP backtraces
+and exception registers at timeout in
+`/tmp/charlotte-debug-snapshot-lldb.log`. Three consecutive ordinary SMP4 HVF
+runs with this option subsequently observed every required marker. Their
+snapshots showed normal quiescence (idle loops plus the intentionally resident
+EL0 workloads), with no allocator or completion lock convoy. This does not
+disprove a low-frequency wakeup race, but provides a low-perturbation capture
+path for the next occurrence and avoids drawing conclusions from the heavier
+trace build.
