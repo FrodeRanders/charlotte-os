@@ -59,8 +59,7 @@ pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemSchedul
 pub static REBALANCE_SUCCESSES: AtomicU64 = AtomicU64::new(0);
 /// Runtime-adjustable sustained-imbalance window. It is independent of the
 /// round-robin quantum; a future policy service may tune it without rebuilding.
-pub static REBALANCE_WINDOW_MILLIS: AtomicU64 =
-    AtomicU64::new(DEFAULT_REBALANCE_WINDOW_MILLIS);
+pub static REBALANCE_WINDOW_MILLIS: AtomicU64 = AtomicU64::new(DEFAULT_REBALANCE_WINDOW_MILLIS);
 pub const MAX_TRACKED_LPS: usize = 256;
 pub static LP_LOAD_SUMMARIES: [AtomicUsize; MAX_TRACKED_LPS] =
     [const { AtomicUsize::new(0) }; MAX_TRACKED_LPS];
@@ -365,9 +364,7 @@ impl SystemScheduler {
             return false;
         }
         let since = self.rebalance_since_millis.load(Ordering::Relaxed);
-        if now_millis.saturating_sub(since)
-            < REBALANCE_WINDOW_MILLIS.load(Ordering::Acquire)
-        {
+        if now_millis.saturating_sub(since) < REBALANCE_WINDOW_MILLIS.load(Ordering::Acquire) {
             return false;
         }
 

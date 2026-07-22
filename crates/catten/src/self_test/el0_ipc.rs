@@ -1188,8 +1188,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
             let server_delivered_memory = unsafe { core::ptr::read_volatile(result.add(25)) };
             let server_delivered_map = unsafe { core::ptr::read_volatile(result.add(26)) };
             let server_delivered_value = unsafe { core::ptr::read_volatile(result.add(27)) };
-            let server_delivered_revoked_map =
-                unsafe { core::ptr::read_volatile(result.add(28)) };
+            let server_delivered_revoked_map = unsafe { core::ptr::read_volatile(result.add(28)) };
             let server_delivered_reply_after_cancel =
                 unsafe { core::ptr::read_volatile(result.add(29)) };
             let delivered_alloc_cap = unsafe { core::ptr::read_volatile(result.add(31)) };
@@ -1382,10 +1381,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
             let client_after_unmap = unsafe { core::ptr::read_volatile(result.add(28)) };
             let client_close = unsafe { core::ptr::read_volatile(result.add(29)) };
 
-            assert_ne!(
-                client_alloc_cap, 0,
-                "EL0 IPC memory copy: allocation returned no cap",
-            );
+            assert_ne!(client_alloc_cap, 0, "EL0 IPC memory copy: allocation returned no cap",);
             assert_eq!(client_seed_map, 0, "EL0 IPC memory copy: seed map failed");
             assert_eq!(client_seed_unmap, 0, "EL0 IPC memory copy: seed unmap failed");
             assert_ne!(
@@ -1400,10 +1396,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
                 client_original_value, IPC_MEMORY_COPY_INITIAL_VALUE,
                 "EL0 IPC memory copy: source payload changed before server reply",
             );
-            assert_eq!(
-                client_original_unmap, 0,
-                "EL0 IPC memory copy: source unmap failed",
-            );
+            assert_eq!(client_original_unmap, 0, "EL0 IPC memory copy: source unmap failed",);
 
             assert_eq!(server_recv, 0, "EL0 IPC memory copy: server recv failed");
             assert_eq!(server_opcode, 0x90, "EL0 IPC memory copy: opcode mismatch");
@@ -1417,16 +1410,10 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
             );
             assert_eq!(server_unmap, 0, "EL0 IPC memory copy: server unmap failed");
             assert_eq!(server_close, 0, "EL0 IPC memory copy: server close failed");
-            assert_eq!(
-                server_reply_status, 0,
-                "EL0 IPC memory copy: scalar reply failed",
-            );
+            assert_eq!(server_reply_status, 0, "EL0 IPC memory copy: scalar reply failed",);
 
             assert_eq!(client_poll, 0, "EL0 IPC memory copy: reply poll failed");
-            assert_eq!(
-                client_poll_result, 0xc0,
-                "EL0 IPC memory copy: reply result mismatch",
-            );
+            assert_eq!(client_poll_result, 0xc0, "EL0 IPC memory copy: reply result mismatch",);
             assert_eq!(
                 client_poll_cap, 0,
                 "EL0 IPC memory copy: reply returned unexpected connection cap",
@@ -1435,22 +1422,13 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
                 client_poll_memory, 0,
                 "EL0 IPC memory copy: reply returned unexpected memory cap",
             );
-            assert_eq!(
-                client_after_map, 0,
-                "EL0 IPC memory copy: source remap after reply failed",
-            );
+            assert_eq!(client_after_map, 0, "EL0 IPC memory copy: source remap after reply failed",);
             assert_eq!(
                 client_after_value, IPC_MEMORY_COPY_INITIAL_VALUE,
                 "EL0 IPC memory copy: server write to copy mutated source",
             );
-            assert_eq!(
-                client_after_unmap, 0,
-                "EL0 IPC memory copy: source final unmap failed",
-            );
-            assert_eq!(
-                client_close, 0,
-                "EL0 IPC memory copy: source close failed",
-            );
+            assert_eq!(client_after_unmap, 0, "EL0 IPC memory copy: source final unmap failed",);
+            assert_eq!(client_close, 0, "EL0 IPC memory copy: source close failed",);
 
             logln!(
                 "[EL0 IPC memory copy] SUCCESS: source cap {}, copied server cap {}, payload \

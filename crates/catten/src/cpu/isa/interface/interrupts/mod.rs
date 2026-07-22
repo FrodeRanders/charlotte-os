@@ -1,11 +1,10 @@
-
 use crate::cpu::{
-        interrupt_routing::InterruptHandler,
-        isa::lp::{
-            InterruptVectorNum,
-            LpId,
-        },
-    };
+    interrupt_routing::InterruptHandler,
+    isa::lp::{
+        InterruptVectorNum,
+        LpId,
+    },
+};
 
 /// Dynamic Interrupt Dispatcher Interface
 pub trait DynInterruptDispatcherIfce {

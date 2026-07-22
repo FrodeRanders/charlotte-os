@@ -185,7 +185,12 @@ fn main(ctx: Context) -> ! {
                 let result = if message.connection == 0 {
                     ns::ERR_INVALID
                 } else {
-                    register(&mut registry, scalar_key(message.arg0), message.connection, access_key)
+                    register(
+                        &mut registry,
+                        scalar_key(message.arg0),
+                        message.connection,
+                        access_key,
+                    )
                 };
                 if message.reply != 0 {
                     unsafe {

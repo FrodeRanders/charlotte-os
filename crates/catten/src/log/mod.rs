@@ -178,26 +178,26 @@ pub fn _write_args(args: core::fmt::Arguments, newline: bool) {
     #[cfg(feature = "display")]
     {
         let mut console = crate::log::flanterm::FT_CTX.lock();
-            if console.is_available() {
-                if newline {
-                    _write_timestamp(&mut *console);
-                }
+        if console.is_available() {
+            if newline {
+                _write_timestamp(&mut *console);
+            }
+            let _ = console.write_fmt(args);
+            if newline {
+                let _ = console.write_str("\n");
+            }
+            // Also continue to serial so headless test runs can
+            // capture output even when a framebuffer is present.
+        } else {
+            #[cfg(not(target_arch = "aarch64"))]
+            {
                 let _ = console.write_fmt(args);
                 if newline {
                     let _ = console.write_str("\n");
                 }
-                // Also continue to serial so headless test runs can
-                // capture output even when a framebuffer is present.
-            } else {
-                #[cfg(not(target_arch = "aarch64"))]
-                {
-                    let _ = console.write_fmt(args);
-                    if newline {
-                        let _ = console.write_str("\n");
-                    }
-                    return;
-                }
+                return;
             }
+        }
     }
     #[cfg(target_arch = "aarch64")]
     {

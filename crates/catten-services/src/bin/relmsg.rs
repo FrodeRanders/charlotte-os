@@ -16,12 +16,30 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{Context, config};
-use catten_services::{ns, relmsg, wait_reply};
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    ns,
+    relmsg,
+    wait_reply,
+};
 use catten_syscall::{
-    IpcRights, cq_wait, ipc_endpoint_bind_cq, ipc_endpoint_create, ipc_recv,
-    ipc_reply, ipc_reply_move, ipc_scalar_call_connection, ipc_status,
-    memory_alloc, memory_close, memory_map, memory_unmap, thread_exit,
+    IpcRights,
+    cq_wait,
+    ipc_endpoint_bind_cq,
+    ipc_endpoint_create,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_move,
+    ipc_scalar_call_connection,
+    ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map,
+    memory_unmap,
+    thread_exit,
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
@@ -44,14 +62,20 @@ struct RmlState {
 
 impl RmlState {
     fn new() -> Self {
-        Self { queue: Vec::new(), pending_recv: None }
+        Self {
+            queue: Vec::new(),
+            pending_recv: None,
+        }
     }
 
     fn try_deliver(&mut self) {
         if let Some(pr) = self.pending_recv.take() {
             if let Some(msg) = self.queue.pop() {
                 let out_cap = memory_alloc(1);
-                if out_cap == 0 { self.pending_recv = Some(pr); return; }
+                if out_cap == 0 {
+                    self.pending_recv = Some(pr);
+                    return;
+                }
                 if memory_map(out_cap, SCRATCH_VADDR, true) != 0 {
                     memory_close(out_cap);
                     self.pending_recv = Some(pr);
@@ -85,20 +109,32 @@ impl RmlState {
 fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
     let ns_conn = match ctx.bootstrap_cap() {
-        Some(c) => c, None => unsafe { thread_exit() },
+        Some(c) => c,
+        None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
     let ep = ipc_endpoint_create(relmsg::INTERFACE, relmsg::VERSION, 8);
-    if ep == 0 { unsafe { thread_exit() }; }
+    if ep == 0 {
+        unsafe { thread_exit() };
+    }
     let reg = ipc_scalar_call_connection(
-        ns_conn, ns::OP_REGISTER, relmsg::NAME, ep,
+        ns_conn,
+        ns::OP_REGISTER,
+        relmsg::NAME,
+        ep,
         IpcRights::SEND | IpcRights::CALL,
     );
-    if reg == 0 { unsafe { thread_exit() }; }
+    if reg == 0 {
+        unsafe { thread_exit() };
+    }
     let (generation, _) = unsafe { wait_reply(reg, REPLY_SPINS) };
-    if generation < 1 { unsafe { thread_exit() }; }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 { unsafe { thread_exit() }; }
+    if generation < 1 {
+        unsafe { thread_exit() };
+    }
+    if ipc_endpoint_bind_cq(ep, 0) != 0 {
+        unsafe { thread_exit() };
+    }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut state = RmlState::new();
@@ -107,12 +143,20 @@ fn main(ctx: Context) -> ! {
     loop {
         loop {
             let msg = ipc_recv(ep);
-            if msg.status == ipc_status::NO_MESSAGE { break; }
-            if msg.status == ipc_status::ENDPOINT_CLOSED { unsafe { thread_exit() }; }
-            if !msg.is_ok() { break; }
+            if msg.status == ipc_status::NO_MESSAGE {
+                break;
+            }
+            if msg.status == ipc_status::ENDPOINT_CLOSED {
+                unsafe { thread_exit() };
+            }
+            if !msg.is_ok() {
+                break;
+            }
 
             if msg.reply == 0 {
-                if msg.memory != 0 { memory_close(msg.memory); }
+                if msg.memory != 0 {
+                    memory_close(msg.memory);
+                }
                 continue;
             }
 
@@ -158,12 +202,17 @@ fn main(ctx: Context) -> ! {
                         }
                         let mut ack_hdr = [0u8; 16];
                         charlotte_protocol_msg::build_header(
-                            &mut ack_hdr, 0, seq, 0,
+                            &mut ack_hdr,
+                            0,
+                            seq,
+                            0,
                             charlotte_protocol_msg::FLAG_SYN | charlotte_protocol_msg::FLAG_ACK,
                         );
                         unsafe {
                             core::ptr::copy_nonoverlapping(
-                                ack_hdr.as_ptr(), SCRATCH_VADDR as *mut u8, 16,
+                                ack_hdr.as_ptr(),
+                                SCRATCH_VADDR as *mut u8,
+                                16,
                             );
                         }
                         memory_unmap(cap);
@@ -219,11 +268,15 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, 0);
                         continue;
                     }
-                    state.pending_recv = Some(PendingRecv { reply_token: msg.reply });
+                    state.pending_recv = Some(PendingRecv {
+                        reply_token: msg.reply,
+                    });
                     state.try_deliver();
                 }
 
-                _ => { ipc_reply(msg.reply, relmsg::ERR_BAD_OPCODE); }
+                _ => {
+                    ipc_reply(msg.reply, relmsg::ERR_BAD_OPCODE);
+                }
             }
         }
 

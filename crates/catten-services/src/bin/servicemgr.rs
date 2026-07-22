@@ -17,8 +17,14 @@
 
 extern crate alloc;
 
-use catten_rt::{Context, config};
-use catten_services::{echo, ns};
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    echo,
+    ns,
+};
 use catten_syscall::{
     IpcRights,
     cq_wait,
@@ -49,7 +55,10 @@ const ENDPOINT_CAP_OFFSET: usize = 24;
 const fn name(s: &[u8]) -> u64 {
     let mut packed = [0u8; 8];
     let mut i = 0;
-    while i < s.len() && i < 8 { packed[i] = s[i]; i += 1; }
+    while i < s.len() && i < 8 {
+        packed[i] = s[i];
+        i += 1;
+    }
     u64::from_le_bytes(packed)
 }
 
@@ -65,7 +74,9 @@ unsafe fn spin_call(call: u64, what: &str) -> (u64, u64) {
             return (result, cap);
         }
         spins += 1;
-        if spins >= REPLY_SPINS { unsafe { thread_exit() }; }
+        if spins >= REPLY_SPINS {
+            unsafe { thread_exit() };
+        }
         core::hint::spin_loop();
     }
     let _ = what;
@@ -78,10 +89,14 @@ unsafe fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
         let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
         if l != 0 {
             let (generation, cap) = unsafe { spin_call(l, "lookup") };
-            if generation >= 1 && cap != 0 { return Some(cap); }
+            if generation >= 1 && cap != 0 {
+                return Some(cap);
+            }
         }
         attempts += 1;
-        if attempts >= LOOKUP_ATTEMPTS { return None; }
+        if attempts >= LOOKUP_ATTEMPTS {
+            return None;
+        }
         core::hint::spin_loop();
     }
 }
@@ -95,25 +110,42 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 2);
 
     let ep = ipc_endpoint_create(0x5356434d, 1, 8); // "SVCM"
-    if ep == 0 { unsafe { thread_exit() }; }
+    if ep == 0 {
+        unsafe { thread_exit() };
+    }
     let reg = ipc_scalar_call_connection(
-            ns_connection, ns::OP_REGISTER, MGR_NAME, ep,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        );
-    if reg == 0 { unsafe { thread_exit() }; }
+        ns_connection,
+        ns::OP_REGISTER,
+        MGR_NAME,
+        ep,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+    );
+    if reg == 0 {
+        unsafe { thread_exit() };
+    }
     let r = unsafe { spin_call(reg, "register") };
-    if r.0 == 0 { unsafe { thread_exit() }; }
+    if r.0 == 0 {
+        unsafe { thread_exit() };
+    }
 
-    if ipc_endpoint_bind_cq(ep, 0) != 0 { unsafe { thread_exit() }; }
+    if ipc_endpoint_bind_cq(ep, 0) != 0 {
+        unsafe { thread_exit() };
+    }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     loop {
         cq_wait(1, 0);
         loop {
             let m = ipc_recv(ep);
-            if m.status == ipc_status::NO_MESSAGE { break; }
-            if m.status == ipc_status::ENDPOINT_CLOSED { unsafe { thread_exit() }; }
-            if !m.is_ok() { break; }
+            if m.status == ipc_status::NO_MESSAGE {
+                break;
+            }
+            if m.status == ipc_status::ENDPOINT_CLOSED {
+                unsafe { thread_exit() };
+            }
+            if !m.is_ok() {
+                break;
+            }
 
             if m.opcode == 1 && m.reply != 0 {
                 let result = do_upgrade(ns_connection, m.arg0);
@@ -130,22 +162,27 @@ fn main(ctx: Context) -> ! {
 fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     let target_conn = match unsafe { lookup(ns_conn, target_name) } {
         Some(c) => c,
-        None => { config::write::<u32>(ERROR_OFFSET, 1); return -1; }
+        None => {
+            config::write::<u32>(ERROR_OFFSET, 1);
+            return -1;
+        }
     };
 
     // OP_HANDOFF: the target serialises state, returns (state_cap, ep_cap),
     // and exits.  We use ipc_reply_poll_with_memory to capture the moved
     // memory cap.
     let call = ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0);
-    if call == 0 { config::write::<u32>(ERROR_OFFSET, 2); return -2; }
+    if call == 0 {
+        config::write::<u32>(ERROR_OFFSET, 2);
+        return -2;
+    }
 
     let mut state_cap: u64 = 0;
     let mut handoff_result: u64 = 0;
     {
         let mut spins: u64 = 0;
         loop {
-            let (status, result, _conn, mem) =
-                ipc_reply_poll_with_memory(call);
+            let (status, result, _conn, mem) = ipc_reply_poll_with_memory(call);
             if status == 0 {
                 state_cap = mem;
                 handoff_result = result;

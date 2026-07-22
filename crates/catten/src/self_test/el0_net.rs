@@ -14,13 +14,13 @@
 
 use crate::{
     ipc::ConnectionRights,
+    logln,
     service::supervisor::{
         self,
         DriverGrant,
         NameServiceHandle,
     },
 };
-use crate::logln;
 
 #[cfg(target_arch = "aarch64")]
 const NS_ELF: &[u8] = include_bytes!("ns.elf");
@@ -43,7 +43,7 @@ const fn packed_name(bytes: &[u8]) -> u64 {
 #[cfg(target_arch = "aarch64")]
 const NS_INTERFACE: u64 = packed_name(b"NAME");
 #[cfg(target_arch = "aarch64")]
-const CLIENT_SENTINEL: u32 = 0xC0DE;
+const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
 const MAX_SPINS: u64 = 80_000_000;
 
@@ -61,8 +61,7 @@ pub fn test_el0_net() {
 
         unsafe { TEST_STATE = Some(name_service) };
 
-        let _vtid =
-            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_net);
+        let _vtid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_net);
         logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -106,8 +105,7 @@ extern "C" fn verify_el0_net() {
     logln!("[net] driver spawned (asid={}) with BAR0 + IRQ grants", driver_asid);
     let _driver = driver;
 
-    let client =
-        supervisor::spawn_with_name_service(NCLIENT_ELF, ns, ConnectionRights::CALL);
+    let client = supervisor::spawn_with_name_service(NCLIENT_ELF, ns, ConnectionRights::CALL);
     let client_config = client.status_frame;
     let client_asid = client.asid;
     logln!("[net] client spawned (asid={})", client_asid);
@@ -147,7 +145,13 @@ extern "C" fn verify_el0_net() {
     let m5 = ((status >> 8) & 0xff) as u8;
     logln!(
         "[net] client status link={} MAC={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        link, m0, m1, m2, m3, m4, m5
+        link,
+        m0,
+        m1,
+        m2,
+        m3,
+        m4,
+        m5
     );
     assert_ne!(status >> 8, 0, "[net] MAC must be nonzero");
     assert_eq!(link, 1, "[net] link must be up");
@@ -155,6 +159,14 @@ extern "C" fn verify_el0_net() {
     let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
     assert!(ds >= 6, "[net] driver must reach serving stage (got {})", ds);
 
-    logln!("[net] SUCCESS: userspace virtio-net driver reached DRIVER_OK, read MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, and served a status query from EL0.",
-        m0, m1, m2, m3, m4, m5);
+    logln!(
+        "[net] SUCCESS: userspace virtio-net driver reached DRIVER_OK, read MAC \
+         {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, and served a status query from EL0.",
+        m0,
+        m1,
+        m2,
+        m3,
+        m4,
+        m5
+    );
 }

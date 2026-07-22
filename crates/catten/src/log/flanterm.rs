@@ -58,15 +58,21 @@ pub static FT_CTX: LazyLock<Mutex<FlantermConsole>> = LazyLock::new(|| Mutex::ne
 fn init_console() -> FlantermConsole {
     let Some(fb_res) = FRAMEBUFFER_REQUEST.response() else {
         crate::early_logln!("flanterm: no Limine framebuffer response");
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     };
     let Some(fb) = fb_res.framebuffers().first() else {
         crate::early_logln!("flanterm: framebuffer response has no framebuffers");
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     };
     if fb.address().is_null() || fb.width == 0 || fb.height == 0 || fb.pitch == 0 {
         crate::early_logln!("flanterm: no usable framebuffer (null or zero dimensions)");
-        return FlantermConsole { ctx: None };
+        return FlantermConsole {
+            ctx: None,
+        };
     }
     crate::early_logln!("flanterm: framebuffer terminal initialised successfully");
     let ctx_mut = unsafe {

@@ -17,19 +17,56 @@ extern crate alloc;
 
 use alloc::collections::BTreeMap;
 
-use catten_rt::{Context, config};
-use catten_services::{net, ns, socket, wait_reply};
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    net,
+    ns,
+    socket,
+    wait_reply,
+};
 use catten_syscall::{
-    IpcRights, cq_wait, ipc_endpoint_bind_cq, ipc_endpoint_create, ipc_recv,
-    ipc_reply, ipc_reply_move, ipc_scalar_call, ipc_scalar_call_connection,
-    ipc_status, memory_alloc, memory_close, memory_map, memory_unmap, thread_exit,
+    IpcRights,
+    cq_wait,
+    ipc_endpoint_bind_cq,
+    ipc_endpoint_create,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_move,
+    ipc_scalar_call,
+    ipc_scalar_call_connection,
+    ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map,
+    memory_unmap,
+    thread_exit,
 };
 use charlotte_protocol_net::decode_status;
 use charlotte_smoltcp::CharlotteEthDevice;
-use smoltcp::iface::{Config, Interface, SocketSet};
-use smoltcp::socket::tcp::{self, Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
-use smoltcp::time::Instant;
-use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv4Cidr, IpEndpoint};
+use smoltcp::{
+    iface::{
+        Config,
+        Interface,
+        SocketSet,
+    },
+    socket::tcp::{
+        self,
+        Socket as TcpSocket,
+        SocketBuffer as TcpSocketBuffer,
+    },
+    time::Instant,
+    wire::{
+        HardwareAddress,
+        IpAddress,
+        IpCidr,
+        IpEndpoint,
+        Ipv4Address,
+        Ipv4Cidr,
+    },
+};
 
 const REPLY_SPINS: u64 = 50_000_000;
 const LOOKUP_ATTEMPTS: u64 = 2_000_000;
@@ -50,7 +87,9 @@ impl TcpipState {
     fn alloc_sock_id(&mut self) -> u64 {
         let id = self.next_sock_id;
         self.next_sock_id = id.wrapping_add(1);
-        if self.next_sock_id == 0 { self.next_sock_id = 1; }
+        if self.next_sock_id == 0 {
+            self.next_sock_id = 1;
+        }
         id
     }
 }
@@ -58,7 +97,8 @@ impl TcpipState {
 fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
     let ns_connection = match ctx.bootstrap_cap() {
-        Some(c) => c, None => unsafe { thread_exit() },
+        Some(c) => c,
+        None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
@@ -68,32 +108,49 @@ fn main(ctx: Context) -> ! {
             let l = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
             if l != 0 {
                 let (r, cap) = unsafe { wait_reply(l, REPLY_SPINS) };
-                if r >= 1 && cap != 0 { break cap; }
+                if r >= 1 && cap != 0 {
+                    break cap;
+                }
             }
             attempts += 1;
-            if attempts >= LOOKUP_ATTEMPTS { unsafe { thread_exit() }; }
+            if attempts >= LOOKUP_ATTEMPTS {
+                unsafe { thread_exit() };
+            }
             core::hint::spin_loop();
         }
     };
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status_call == 0 { unsafe { thread_exit() }; }
+    if status_call == 0 {
+        unsafe { thread_exit() };
+    }
     let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
     let (link, mac) = decode_status(status);
     let mtu: usize = 1500;
     config::write::<u32>(STAGE_OFFSET, 4);
 
     let ep = ipc_endpoint_create(socket::INTERFACE, socket::VERSION, 8);
-    if ep == 0 { unsafe { thread_exit() }; }
+    if ep == 0 {
+        unsafe { thread_exit() };
+    }
     let reg = ipc_scalar_call_connection(
-        ns_connection, ns::OP_REGISTER, socket::NAME, ep,
+        ns_connection,
+        ns::OP_REGISTER,
+        socket::NAME,
+        ep,
         IpcRights::SEND | IpcRights::CALL,
     );
-    if reg == 0 { unsafe { thread_exit() }; }
+    if reg == 0 {
+        unsafe { thread_exit() };
+    }
     let (generation, _) = unsafe { wait_reply(reg, REPLY_SPINS) };
-    if generation < 1 { unsafe { thread_exit() }; }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 { unsafe { thread_exit() }; }
+    if generation < 1 {
+        unsafe { thread_exit() };
+    }
+    if ipc_endpoint_bind_cq(ep, 0) != 0 {
+        unsafe { thread_exit() };
+    }
     config::write::<u32>(STAGE_OFFSET, 5);
 
     let mut device = CharlotteEthDevice::new(net_conn, mac, mtu, ep);
@@ -109,7 +166,10 @@ fn main(ctx: Context) -> ! {
     iface.routes_mut().add_default_ipv4_route(gateway).ok();
     let mut sock_storage: [_; 16] = Default::default();
     let mut sockets = SocketSet::new(&mut sock_storage[..]);
-    let mut state = TcpipState { sockets: BTreeMap::new(), next_sock_id: 1 };
+    let mut state = TcpipState {
+        sockets: BTreeMap::new(),
+        next_sock_id: 1,
+    };
     let mut ticks: u64 = 0;
     config::write::<u32>(STAGE_OFFSET, 6);
 
@@ -124,20 +184,32 @@ fn main(ctx: Context) -> ! {
                 let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                 if sock.can_recv() {
                     let cap = memory_alloc(1);
-                    if cap == 0 { continue; }
+                    if cap == 0 {
+                        continue;
+                    }
                     if memory_map(cap, SCRATCH_VADDR, true) != 0 {
                         memory_close(cap);
                         continue;
                     }
-                    let buf = unsafe { core::slice::from_raw_parts_mut(SCRATCH_VADDR as *mut u8, 4096) };
+                    let buf =
+                        unsafe { core::slice::from_raw_parts_mut(SCRATCH_VADDR as *mut u8, 4096) };
                     match sock.recv_slice(buf) {
-                        Ok(0) => { memory_unmap(cap); memory_close(cap); }
+                        Ok(0) => {
+                            memory_unmap(cap);
+                            memory_close(cap);
+                        }
                         Ok(len) => {
                             memory_unmap(cap);
                             ipc_reply_move(reply_token, cap, len as i64);
-                            if completed_n < 8 { completed[completed_n] = *id; completed_n += 1; }
+                            if completed_n < 8 {
+                                completed[completed_n] = *id;
+                                completed_n += 1;
+                            }
                         }
-                        Err(_) => { memory_unmap(cap); memory_close(cap); }
+                        Err(_) => {
+                            memory_unmap(cap);
+                            memory_close(cap);
+                        }
                     }
                 }
             }
@@ -150,12 +222,20 @@ fn main(ctx: Context) -> ! {
 
         loop {
             let msg = ipc_recv(ep);
-            if msg.status == ipc_status::NO_MESSAGE { break; }
-            if msg.status == ipc_status::ENDPOINT_CLOSED { unsafe { thread_exit() }; }
-            if !msg.is_ok() { break; }
+            if msg.status == ipc_status::NO_MESSAGE {
+                break;
+            }
+            if msg.status == ipc_status::ENDPOINT_CLOSED {
+                unsafe { thread_exit() };
+            }
+            if !msg.is_ok() {
+                break;
+            }
 
             if msg.reply == 0 {
-                if msg.memory != 0 { memory_close(msg.memory); }
+                if msg.memory != 0 {
+                    memory_close(msg.memory);
+                }
                 continue;
             }
 
@@ -174,14 +254,23 @@ fn main(ctx: Context) -> ! {
                     let tcp = TcpSocket::new(rx, tx);
                     let handle = sockets.add(tcp);
                     let id = state.alloc_sock_id();
-                    state.sockets.insert(id, SocketEntry { handle, recv_pending: None });
+                    state.sockets.insert(
+                        id,
+                        SocketEntry {
+                            handle,
+                            recv_pending: None,
+                        },
+                    );
                     ipc_reply(msg.reply, id as i64);
                 }
 
                 socket::OP_CONNECT => {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
-                        None => { ipc_reply(msg.reply, socket::ERR_BAD_SOCKET); continue; }
+                        None => {
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
                     };
                     if msg.memory == 0 {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
@@ -189,13 +278,15 @@ fn main(ctx: Context) -> ! {
                     }
                     memory_map(msg.memory, SCRATCH_VADDR, false);
                     let a = unsafe { core::ptr::read_volatile(SCRATCH_VADDR as *const u8) };
-                    let b = unsafe { core::ptr::read_volatile((SCRATCH_VADDR+1) as *const u8) };
-                    let c = unsafe { core::ptr::read_volatile((SCRATCH_VADDR+2) as *const u8) };
-                    let d = unsafe { core::ptr::read_volatile((SCRATCH_VADDR+3) as *const u8) };
-                    let port = unsafe { core::ptr::read_unaligned((SCRATCH_VADDR+4) as *const u16) };
+                    let b = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 1) as *const u8) };
+                    let c = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 2) as *const u8) };
+                    let d = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 3) as *const u8) };
+                    let port =
+                        unsafe { core::ptr::read_unaligned((SCRATCH_VADDR + 4) as *const u16) };
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
-                    let remote = IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::new(a,b,c,d)), port);
+                    let remote =
+                        IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)), port);
                     let local = IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::UNSPECIFIED), 0);
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     match sock.connect(iface.context(), remote, local) {
@@ -207,11 +298,18 @@ fn main(ctx: Context) -> ! {
                 socket::OP_SEND => {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
-                        None => { ipc_reply(msg.reply, socket::ERR_BAD_SOCKET); continue; }
+                        None => {
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
                     };
-                    if msg.memory == 0 { ipc_reply(msg.reply, 0); continue; }
+                    if msg.memory == 0 {
+                        ipc_reply(msg.reply, 0);
+                        continue;
+                    }
                     memory_map(msg.memory, SCRATCH_VADDR, false);
-                    let data = unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, 4096) };
+                    let data =
+                        unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, 4096) };
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     let result = match sock.send_slice(data) {
                         Ok(len) => len as i64,
@@ -225,7 +323,10 @@ fn main(ctx: Context) -> ! {
                 socket::OP_RECV => {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
-                        None => { ipc_reply(msg.reply, socket::ERR_BAD_SOCKET); continue; }
+                        None => {
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
                     };
                     if entry.recv_pending.is_some() {
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
@@ -244,7 +345,9 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(msg.reply, 0);
                 }
 
-                _ => { ipc_reply(msg.reply, socket::ERR_BAD_OPCODE); }
+                _ => {
+                    ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                }
             }
         }
 

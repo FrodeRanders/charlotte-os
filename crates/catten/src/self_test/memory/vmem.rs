@@ -24,16 +24,14 @@ pub fn test_vmem() {
     macro_rules! probe {
         ($w:expr) => {
             #[cfg(target_arch = "x86_64")]
-            crate::early_logln!(
-                "[HEAPDBG] vmem {} phys0x3ffff8={:#x}",
-                $w,
-                (hhdm.read())
-            );
+            crate::early_logln!("[HEAPDBG] vmem {} phys0x3ffff8={:#x}", $w, (hhdm.read()));
         };
     }
     logln!("Entering Virtual Memory Subsystem Self Test");
     #[cfg(target_arch = "x86_64")]
-    unsafe { probe!("enter"); }
+    unsafe {
+        probe!("enter");
+    }
     logln!("Allocating physical frame");
     let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
     crate::early_logln!(
@@ -51,13 +49,18 @@ pub fn test_vmem() {
         paddr: frame,
         page_type: PageType::KernelData,
     };
-    logln!("Created MemoryMapping struct... Mapping the allocated frame to the beginning of the higher half.");
+    logln!(
+        "Created MemoryMapping struct... Mapping the allocated frame to the beginning of the \
+         higher half."
+    );
     match current_as.map_page(mapping) {
         Ok(_) => logln!("Page mapped successfully."),
         Err(e) => panic!("Error mapping page: {:?}", e),
     }
     #[cfg(target_arch = "x86_64")]
-    unsafe { probe!("after map_page"); }
+    unsafe {
+        probe!("after map_page");
+    }
     let addr: *mut u32 = higher_half_start.into_mut();
     const MAGIC_NUMBER: u32 = 0xcafebabe;
     unsafe {

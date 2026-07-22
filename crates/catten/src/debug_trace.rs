@@ -4,7 +4,10 @@
 //! until after the failure window so tracing does not serialize the scheduler.
 
 #[cfg(feature = "scheduler_trace")]
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
 #[cfg(feature = "scheduler_trace")]
 const CAPACITY: usize = 16_384;

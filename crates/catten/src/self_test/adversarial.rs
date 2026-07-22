@@ -21,15 +21,9 @@ const ASV_C: usize = 0x0ad3;
 
 pub fn test_adversarial_ipc() {
     // Address spaces for isolation testing
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(
-        memory::AddressSpace::get_current()
-    );
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(
-        memory::AddressSpace::get_current()
-    );
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(
-        memory::AddressSpace::get_current()
-    );
+    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
+    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
+    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
 
     logln!("Testing adversarial IPC scenarios...");
 
@@ -46,7 +40,9 @@ pub fn test_adversarial_ipc() {
 fn test_double_close() {
     // Create an endpoint, mint a connection, close it twice.
     let endpoint = ipc::endpoint_create(ASV_A, 0xabcd, 1, 4).unwrap();
-    let conn = ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL).unwrap();
+    let conn =
+        ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL)
+            .unwrap();
 
     // First close succeeds.
     assert_eq!(ipc::close_cap(ASV_A, conn), Ok(()), "first close must succeed");
@@ -66,7 +62,9 @@ fn test_double_close() {
 fn test_double_reply() {
     // A server replies to a call, then tries to reply again — must fail.
     let endpoint = ipc::endpoint_create(ASV_A, 0xef01, 1, 4).unwrap();
-    let conn = ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL).unwrap();
+    let conn =
+        ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL)
+            .unwrap();
     let conn2 = ipc::connection_delegate(ASV_A, endpoint, ASV_B, ConnectionRights::CALL).unwrap();
 
     // Client calls the server.
@@ -110,7 +108,8 @@ fn test_wrong_asid() {
     );
 
     // But proper delegation (connection_mint in the target AS) should work.
-    let delegated = ipc::connection_delegate(ASV_A, endpoint, ASV_C, ConnectionRights::SEND).unwrap();
+    let delegated =
+        ipc::connection_delegate(ASV_A, endpoint, ASV_C, ConnectionRights::SEND).unwrap();
     assert_eq!(ipc::scalar_send(ASV_C, delegated, 7, 0), Ok(()));
 
     ipc::close_cap(ASV_A, conn).unwrap();
@@ -123,7 +122,9 @@ fn test_insufficient_rights() {
     // A connection with SEND-only rights must reject CALL.
     let endpoint = ipc::endpoint_create(ASV_A, 0xf00d, 1, 4).unwrap();
     let conn = ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND).unwrap();
-    let conn_full = ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL).unwrap();
+    let conn_full =
+        ipc::connection_mint(ASV_A, endpoint, ConnectionRights::SEND | ConnectionRights::CALL)
+            .unwrap();
 
     // SEND should work on both.
     assert_eq!(ipc::scalar_send(ASV_A, conn, 1, 0), Ok(()));

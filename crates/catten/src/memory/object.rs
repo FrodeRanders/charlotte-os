@@ -386,18 +386,12 @@ pub(crate) fn rollback_move_to(
 ) -> Result<(), MemoryObjectError> {
     let mut registry = MEMORY_OBJECTS.lock();
     let cap_entry = registry.lookup(target, target_cap)?;
-    let object = registry
-        .objects
-        .get(&cap_entry.object)
-        .ok_or(MemoryObjectError::UnknownCapability)?;
+    let object =
+        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
     if object.owner != target || object.lend_state.is_active() || !object.mappings.is_empty() {
         return Err(MemoryObjectError::WrongOwner);
     }
-    if registry
-        .caps
-        .get(&owner)
-        .is_some_and(|caps| caps.caps.contains_key(&original_cap))
-    {
+    if registry.caps.get(&owner).is_some_and(|caps| caps.caps.contains_key(&original_cap)) {
         return Err(MemoryObjectError::LendingActive);
     }
 
@@ -411,10 +405,7 @@ pub(crate) fn rollback_move_to(
         .get_mut(&cap_entry.object)
         .ok_or(MemoryObjectError::UnknownCapability)?
         .owner = owner;
-    registry
-        .caps_for_mut(owner)
-        .caps
-        .insert(original_cap, cap_entry);
+    registry.caps_for_mut(owner).caps.insert(original_cap, cap_entry);
     Ok(())
 }
 
@@ -840,13 +831,13 @@ fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), Me
 /// `cap` owned by `asid`. Returns 0 on any error.
 pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
     let registry = MEMORY_OBJECTS.lock();
-    let Ok(cap_entry) = registry.lookup(asid, cap) else { return 0 };
+    let Ok(cap_entry) = registry.lookup(asid, cap) else {
+        return 0;
+    };
     let object = registry.objects.get(&cap_entry.object);
     match object {
         Some(obj) if obj.owner == asid => {
-            obj.frames.first().copied()
-                .map(|paddr| <PAddr as Into<u64>>::into(paddr))
-                .unwrap_or(0)
+            obj.frames.first().copied().map(|paddr| <PAddr as Into<u64>>::into(paddr)).unwrap_or(0)
         }
         _ => 0,
     }

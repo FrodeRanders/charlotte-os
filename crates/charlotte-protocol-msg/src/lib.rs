@@ -31,7 +31,7 @@
 
 /// CharlotteOS reliable-message EtherType (IANA unassigned, chosen for
 /// internal use until registration).
-pub const MSG_ETHERTYPE: u16 = 0x88B5;
+pub const MSG_ETHERTYPE: u16 = 0x88b5;
 
 /// Header size in bytes.
 pub const HEADER_SIZE: usize = 16;
@@ -53,16 +53,11 @@ pub enum HeaderError {
 }
 
 /// Build a message header into a 16-byte buffer.
-pub fn build_header(
-    buf: &mut [u8; HEADER_SIZE],
-    seq: u32,
-    ack: u32,
-    payload_len: u16,
-    flags: u16,
-) {
+pub fn build_header(buf: &mut [u8; HEADER_SIZE], seq: u32, ack: u32, payload_len: u16, flags: u16) {
     buf[0] = (MSG_ETHERTYPE >> 8) as u8;
     buf[1] = MSG_ETHERTYPE as u8;
-    buf[2] = 0; buf[3] = 0; // reserved
+    buf[2] = 0;
+    buf[3] = 0; // reserved
     buf[4] = (seq >> 24) as u8;
     buf[5] = (seq >> 16) as u8;
     buf[6] = (seq >> 8) as u8;
@@ -86,9 +81,7 @@ pub fn parse_header(buf: &[u8; HEADER_SIZE]) -> (u32, u32, u16, u16) {
     (seq, ack, len, flags)
 }
 
-pub fn parse_header_checked(
-    buf: &[u8; HEADER_SIZE],
-) -> Result<(u32, u32, u16, u16), HeaderError> {
+pub fn parse_header_checked(buf: &[u8; HEADER_SIZE]) -> Result<(u32, u32, u16, u16), HeaderError> {
     if u16::from_be_bytes([buf[0], buf[1]]) != MSG_ETHERTYPE {
         return Err(HeaderError::WrongEtherType);
     }

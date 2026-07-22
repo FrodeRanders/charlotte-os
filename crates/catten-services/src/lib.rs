@@ -409,7 +409,9 @@ pub unsafe fn wait_reply(call: u64, max_spins: u64) -> (i64, u64) {
         }
         spins += 1;
         if spins >= max_spins {
-            unsafe { catten_syscall::thread_exit(); }
+            unsafe {
+                catten_syscall::thread_exit();
+            }
         }
         sleep_ms(1);
     }

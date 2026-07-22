@@ -26,14 +26,32 @@
 
 extern crate alloc;
 
-use charlotte_protocol_net::{OP_RECV, OP_SEND};
 use catten_syscall::{
-    ipc_close, ipc_recv, ipc_reply, ipc_reply_poll_with_memory, ipc_scalar_call,
-    ipc_scalar_call_move, ipc_status, memory_alloc, memory_close, memory_map, memory_unmap,
+    ipc_close,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_poll_with_memory,
+    ipc_scalar_call,
+    ipc_scalar_call_move,
+    ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map,
+    memory_unmap,
 };
-
-use smoltcp::phy::{Device, DeviceCapabilities, RxToken, TxToken};
-use smoltcp::time::Instant;
+use charlotte_protocol_net::{
+    OP_RECV,
+    OP_SEND,
+};
+use smoltcp::{
+    phy::{
+        Device,
+        DeviceCapabilities,
+        RxToken,
+        TxToken,
+    },
+    time::Instant,
+};
 
 /// Scratch virtual address for mapping received frames into.
 const RX_SCRATCH: usize = 0x0000_0000_00c0_0000;
@@ -67,7 +85,9 @@ impl CharlotteEthDevice {
     /// driver's endpoint cap for draining readiness notifications.
     pub fn new(conn: u64, _mac: [u8; 6], mtu: usize, endpoint: u64) -> Self {
         Self {
-            conn, endpoint, mtu,
+            conn,
+            endpoint,
+            mtu,
             rx_pending: 0,
         }
     }
@@ -108,8 +128,14 @@ impl CharlotteEthDevice {
 }
 
 impl Device for CharlotteEthDevice {
-    type RxToken<'a> = CharlotteRx where Self: 'a;
-    type TxToken<'a> = CharlotteTx where Self: 'a;
+    type RxToken<'a>
+        = CharlotteRx
+    where
+        Self: 'a;
+    type TxToken<'a>
+        = CharlotteTx
+    where
+        Self: 'a;
 
     fn receive(&mut self, _now: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         // 1. Issue a new OP_RECV if none is outstanding.
@@ -144,12 +170,16 @@ impl Device for CharlotteEthDevice {
                 frame_cap: memory,
                 frame_len: result as usize,
             },
-            CharlotteTx { conn: tx },
+            CharlotteTx {
+                conn: tx,
+            },
         ))
     }
 
     fn transmit(&mut self, _now: Instant) -> Option<Self::TxToken<'_>> {
-        Some(CharlotteTx { conn: self.conn })
+        Some(CharlotteTx {
+            conn: self.conn,
+        })
     }
 
     fn capabilities(&self) -> DeviceCapabilities {
@@ -170,9 +200,8 @@ impl RxToken for CharlotteRx {
             memory_close(cap);
             return f(&[]);
         }
-        let result = f(unsafe {
-            core::slice::from_raw_parts(RX_SCRATCH as *const u8, self.frame_len)
-        });
+        let result =
+            f(unsafe { core::slice::from_raw_parts(RX_SCRATCH as *const u8, self.frame_len) });
         memory_unmap(cap);
         memory_close(cap);
         result
@@ -198,9 +227,7 @@ impl TxToken for CharlotteTx {
             let mut empty = [0u8; 0];
             return f(&mut empty[..]);
         }
-        let buf = unsafe {
-            core::slice::from_raw_parts_mut(TX_SCRATCH as *mut u8, len)
-        };
+        let buf = unsafe { core::slice::from_raw_parts_mut(TX_SCRATCH as *mut u8, len) };
         let result = f(buf);
         memory_unmap(cap);
         if ipc_scalar_call_move(self.conn, OP_SEND, len as u64, cap) == 0 {

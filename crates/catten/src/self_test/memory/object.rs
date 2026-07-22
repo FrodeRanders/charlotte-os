@@ -1,21 +1,21 @@
 use crate::{
     cpu::isa::{
         interface::memory::{
-            address::PhysicalAddress,
             AddressSpaceInterface,
+            address::PhysicalAddress,
         },
         memory::paging::AddressSpace,
     },
     logln,
     memory::{
+        ADDRESS_SPACE_TABLE,
+        KERNEL_AS,
         close_user_address_space,
         linear::VAddr,
         object::{
             self,
             MemoryObjectError,
         },
-        ADDRESS_SPACE_TABLE,
-        KERNEL_AS,
     },
 };
 

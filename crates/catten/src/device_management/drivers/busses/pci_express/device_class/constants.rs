@@ -1,4 +1,3 @@
-
 pub mod vendor_id {
     pub type PciVendorId = u16;
 

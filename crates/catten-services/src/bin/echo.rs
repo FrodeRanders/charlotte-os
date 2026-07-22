@@ -59,12 +59,12 @@ fn main(ctx: Context) -> ! {
 
     // Register under the short (scalar) name.
     let register = ipc_scalar_call_connection(
-            ns_connection,
-            ns::OP_REGISTER,
-            echo::NAME,
-            endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        );
+        ns_connection,
+        ns::OP_REGISTER,
+        echo::NAME,
+        endpoint,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+    );
     if register == 0 {
         unsafe { thread_exit() };
     }
@@ -96,7 +96,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 5); // stage: long register call sent
     let (named_generation, _) = unsafe { wait_reply(register_named, REPLY_SPINS) };
     memory_close(name_cap);
-    
+
     if named_generation < 1 {
         unsafe { thread_exit() };
     }
@@ -113,13 +113,12 @@ fn main(ctx: Context) -> ! {
     let mut served: u32 = 0;
 
     loop {
-        // 1. Block on the single wait point. Releases on endpoint readiness,
-        //    kernel completions, or explicit peer wakes alike.
+        // 1. Block on the single wait point. Releases on endpoint readiness, kernel completions, or
+        //    explicit peer wakes alike.
         cq_wait(1, 0);
-        
 
-        // 2. Drain every ready endpoint message. (A full executor would also
-        //    drain CQ ring entries and wake tasks here.)
+        // 2. Drain every ready endpoint message. (A full executor would also drain CQ ring entries
+        //    and wake tasks here.)
         loop {
             let message = ipc_recv(endpoint);
             if message.status == ipc_status::NO_MESSAGE {
@@ -138,13 +137,11 @@ fn main(ctx: Context) -> ! {
                     config::write::<u32>(8, served);
                     if message.reply != 0 {
                         ipc_reply(message.reply, message.arg0 as i64);
-                        
                     }
                 }
                 echo::OP_SHUTDOWN => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, 0);
-                        
                     }
                     unsafe { thread_exit() };
                 }
@@ -160,9 +157,7 @@ fn main(ctx: Context) -> ! {
                         const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
                         if memory_map(state_cap, STATE_VADDR, true) == 0 {
                             unsafe {
-                                core::ptr::write_volatile(
-                                    STATE_VADDR as *mut u32, served,
-                                );
+                                core::ptr::write_volatile(STATE_VADDR as *mut u32, served);
                                 memory_unmap(state_cap);
                             }
                         }
@@ -185,7 +180,6 @@ fn main(ctx: Context) -> ! {
                 _ => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, -1);
-                        
                     }
                 }
             }

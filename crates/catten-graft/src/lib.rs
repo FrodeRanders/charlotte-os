@@ -2,10 +2,10 @@
 
 extern crate alloc;
 
-pub mod types;
+pub mod charlotte;
 pub mod log_store;
+pub mod node;
 pub mod state_machine;
 pub mod transport;
-pub mod node;
+pub mod types;
 pub mod wire;
-pub mod charlotte;

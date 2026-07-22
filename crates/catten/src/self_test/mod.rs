@@ -23,9 +23,9 @@ pub mod el0_uart;
 pub mod ipc;
 pub mod ipi;
 pub mod memory;
+pub mod scheduler_lifecycle;
 pub mod shard;
 pub mod syscall;
-pub mod scheduler_lifecycle;
 
 use crate::logln;
 

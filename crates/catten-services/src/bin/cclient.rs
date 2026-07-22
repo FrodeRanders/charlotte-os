@@ -15,14 +15,24 @@
 
 extern crate alloc;
 
-use catten_rt::{Context, config};
-use catten_services::{console, ns, wait_reply};
-use catten_syscall::{ipc_scalar_call, thread_exit};
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    console,
+    ns,
+    wait_reply,
+};
+use catten_syscall::{
+    ipc_scalar_call,
+    thread_exit,
+};
 
 const REPLY_SPINS: u64 = 50_000_000;
 const READ_SPINS: u64 = 400_000_000;
 const LOOKUP_ATTEMPTS: u64 = 1_000_000;
-const SENTINEL: u32 = 0xC0DE;
+const SENTINEL: u32 = 0xc0de;
 
 /// Config-page output words (console-client domain).
 const SENTINEL_OFFSET: usize = 0;

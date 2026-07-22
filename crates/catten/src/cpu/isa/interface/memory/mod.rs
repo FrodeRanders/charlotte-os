@@ -1,11 +1,11 @@
 pub mod address;
 
 use crate::cpu::isa::memory::{
+    MemoryInterfaceImpl,
     address::{
         paddr::PAddr,
         vaddr::VAddr,
     },
-    MemoryInterfaceImpl,
 };
 pub use crate::memory::linear::{
     MemoryMapping,

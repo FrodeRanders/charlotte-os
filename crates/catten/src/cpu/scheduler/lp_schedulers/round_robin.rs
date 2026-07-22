@@ -17,6 +17,7 @@ use crate::{
                 Error,
                 LpScheduler,
             },
+            system_scheduler::LP_LOAD_SUMMARIES,
             threads::{
                 MASTER_THREAD_TABLE,
                 Thread,
@@ -26,7 +27,6 @@ use crate::{
                 ThreadState,
                 record_dispatch,
             },
-            system_scheduler::LP_LOAD_SUMMARIES,
         },
     },
     klib::{

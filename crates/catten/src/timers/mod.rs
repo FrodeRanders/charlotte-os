@@ -12,14 +12,16 @@ use core::sync::atomic::{
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
-use crate::cpu::isa::lp::ops::{mask_interrupts, unmask_interrupts};
-
 use crate::{
     cpu::{
         isa::{
             interface::timers::{
                 LpTimerError,
                 LpTimerIfce,
+            },
+            lp::ops::{
+                mask_interrupts,
+                unmask_interrupts,
             },
             timers::LpTimer,
         },
@@ -82,10 +84,7 @@ pub fn enqueue_event(event: TimerEvent) {
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
     mask_interrupts!();
     {
-        TIMER_QUEUES
-            .try_get_mut()
-            .expect("local timer queue is already borrowed")
-            .add_event(event);
+        TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed").add_event(event);
     }
     if interrupts_were_enabled {
         unmask_interrupts!();
@@ -100,10 +99,7 @@ pub fn process_local_events() {
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
     mask_interrupts!();
     {
-        TIMER_QUEUES
-            .try_get_mut()
-            .expect("local timer queue is already borrowed")
-            .process_events();
+        TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed").process_events();
     }
     if interrupts_were_enabled {
         unmask_interrupts!();
@@ -194,10 +190,8 @@ impl TimerQueue {
                 self.events.iter().filter(|event| event.key.is_none()).count() as u64,
                 Ordering::Relaxed,
             );
-            diag.front_deadline.store(
-                self.events.front().map_or(0, |event| event.deadline),
-                Ordering::Relaxed,
-            );
+            diag.front_deadline
+                .store(self.events.front().map_or(0, |event| event.deadline), Ordering::Relaxed);
             diag.sampled_now.store(LpTimer::now(), Ordering::Relaxed);
         }
     }

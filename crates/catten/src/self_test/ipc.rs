@@ -643,23 +643,15 @@ pub fn test_endpoint_ipc_connection_attach() {
 
     let ns_endpoint = ipc::endpoint_create(nameservice, 0x4e53_5643, 1, 4)
         .expect("name-service endpoint_create failed");
-    let service_ns_conn = ipc::connection_delegate(
-        nameservice,
-        ns_endpoint,
-        service,
-        ConnectionRights::CALL,
-    )
-    .expect("service bootstrap connection delegation failed");
-    let client_ns_conn = ipc::connection_delegate(
-        nameservice,
-        ns_endpoint,
-        client,
-        ConnectionRights::CALL,
-    )
-    .expect("client bootstrap connection delegation failed");
+    let service_ns_conn =
+        ipc::connection_delegate(nameservice, ns_endpoint, service, ConnectionRights::CALL)
+            .expect("service bootstrap connection delegation failed");
+    let client_ns_conn =
+        ipc::connection_delegate(nameservice, ns_endpoint, client, ConnectionRights::CALL)
+            .expect("client bootstrap connection delegation failed");
 
-    let service_endpoint = ipc::endpoint_create(service, 0x4543_484f, 1, 4)
-        .expect("service endpoint_create failed");
+    let service_endpoint =
+        ipc::endpoint_create(service, 0x4543_484f, 1, 4).expect("service endpoint_create failed");
 
     // Attaching a cap without MINT_CONNECTION must fail.
     let weak_conn = ipc::connection_mint(service, service_endpoint, ConnectionRights::SEND)
@@ -679,8 +671,8 @@ pub fn test_endpoint_ipc_connection_attach() {
     ipc::close_cap(service, weak_conn).expect("weak connection close failed");
 
     // Attaching a wrong-type cap must fail.
-    let bogus_call = ipc::scalar_call(service, service_ns_conn, 2, 0)
-        .expect("bogus scalar_call failed");
+    let bogus_call =
+        ipc::scalar_call(service, service_ns_conn, 2, 0).expect("bogus scalar_call failed");
     assert_eq!(
         ipc::scalar_call_with_connection(
             service,
@@ -709,13 +701,11 @@ pub fn test_endpoint_ipc_connection_attach() {
         ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
     )
     .expect("register call with connection failed");
-    let register_message =
-        ipc::receive(nameservice, ns_endpoint).expect("register receive failed");
+    let register_message = ipc::receive(nameservice, ns_endpoint).expect("register receive failed");
     assert_eq!(register_message.opcode, 1);
     assert_eq!(register_message.arg0, 0x6563_686f);
-    let stored_conn = register_message
-        .connection
-        .expect("register message should carry attached connection cap");
+    let stored_conn =
+        register_message.connection.expect("register message should carry attached connection cap");
     let register_reply = register_message.reply.expect("register should carry reply token");
     ipc::reply(nameservice, register_reply, 1).expect("register reply failed");
     let register_value = ipc::poll_reply(service, register_call)
@@ -724,8 +714,8 @@ pub fn test_endpoint_ipc_connection_attach() {
     assert_eq!(register_value.result, 1, "registration should report generation 1");
 
     // LOOKUP: reply with a connection minted from the stored connection cap.
-    let lookup_call = ipc::scalar_call(client, client_ns_conn, 3, 0x6563_686f)
-        .expect("lookup call failed");
+    let lookup_call =
+        ipc::scalar_call(client, client_ns_conn, 3, 0x6563_686f).expect("lookup call failed");
     let lookup_message = ipc::receive(nameservice, ns_endpoint).expect("lookup receive failed");
     assert_eq!(lookup_message.opcode, 3);
     let lookup_reply = lookup_message.reply.expect("lookup should carry reply token");
@@ -747,8 +737,7 @@ pub fn test_endpoint_ipc_connection_attach() {
     // The delegated connection reaches the real service endpoint...
     let echo_call = ipc::scalar_call(client, client_service_conn, 7, 0xbeef)
         .expect("client call through re-delegated connection failed");
-    let echo_message =
-        ipc::receive(service, service_endpoint).expect("service receive failed");
+    let echo_message = ipc::receive(service, service_endpoint).expect("service receive failed");
     assert_eq!(echo_message.opcode, 7);
     assert_eq!(echo_message.arg0, 0xbeef);
     ipc::reply(service, echo_message.reply.expect("echo should carry reply"), 0xbeef)
@@ -843,8 +832,7 @@ pub fn test_endpoint_ipc_connection_copy() {
     // The service writes a long name into a memory object, then registers
     // with a combined connection + copied-name call.
     let name_bytes: &[u8] = b"system.console.primary.v1";
-    let name_object =
-        object::allocate(service, 1).expect("named name allocation failed");
+    let name_object = object::allocate(service, 1).expect("named name allocation failed");
     object::map(service, name_object, VAddr::from(0x120000usize), true)
         .expect("named name map failed");
     let name_frame = ADDRESS_SPACE_TABLE
@@ -876,11 +864,9 @@ pub fn test_endpoint_ipc_connection_copy() {
         "copy attachment must not consume the sender's name object"
     );
 
-    let message =
-        ipc::receive(nameservice, ns_endpoint).expect("named register receive failed");
+    let message = ipc::receive(nameservice, ns_endpoint).expect("named register receive failed");
     assert_eq!(message.arg0, name_bytes.len() as u64, "name length should arrive in arg0");
-    let stored_conn =
-        message.connection.expect("combined call should carry attached connection");
+    let stored_conn = message.connection.expect("combined call should carry attached connection");
     let name_copy = message.memory.expect("combined call should carry copied name memory");
     let reply = message.reply.expect("combined call should carry reply token");
 
@@ -955,20 +941,14 @@ pub fn test_vector_ipc_transaction_rollback() {
     logln!("Testing vector IPC transaction rollback...");
     let server = create_ipc_memory_test_address_space("vector-server");
     let client = create_ipc_memory_test_address_space("vector-client");
-    let endpoint = ipc::endpoint_create(server, 0x5645_4354, 1, 4)
-        .expect("vector endpoint create failed");
-    let connection = ipc::connection_delegate(
-        server,
-        endpoint,
-        client,
-        ConnectionRights::SEND,
-    )
-    .expect("vector connection delegation failed");
+    let endpoint =
+        ipc::endpoint_create(server, 0x5645_4354, 1, 4).expect("vector endpoint create failed");
+    let connection = ipc::connection_delegate(server, endpoint, client, ConnectionRights::SEND)
+        .expect("vector connection delegation failed");
 
     let moved = object::allocate(client, 1).expect("vector moved object allocation failed");
     let vector = object::allocate(client, 1).expect("vector page allocation failed");
-    object::map(client, vector, VAddr::from(0x140000usize), true)
-        .expect("vector page map failed");
+    object::map(client, vector, VAddr::from(0x140000usize), true).expect("vector page map failed");
     let frame = ADDRESS_SPACE_TABLE
         .lock()
         .get_mut(client)
@@ -980,12 +960,19 @@ pub fn test_vector_ipc_transaction_rollback() {
         core::ptr::write_volatile(base as *mut u16, 2);
         core::ptr::write_unaligned(
             base.add(2) as *mut ipc::CapVectorEntry,
-            ipc::CapVectorEntry { cap: moved, mode: 1, _pad: 0 },
+            ipc::CapVectorEntry {
+                cap: moved,
+                mode: 1,
+                _pad: 0,
+            },
         );
         core::ptr::write_unaligned(
-            base.add(2 + core::mem::size_of::<ipc::CapVectorEntry>())
-                as *mut ipc::CapVectorEntry,
-            ipc::CapVectorEntry { cap: u64::MAX, mode: 0, _pad: 0 },
+            base.add(2 + core::mem::size_of::<ipc::CapVectorEntry>()) as *mut ipc::CapVectorEntry,
+            ipc::CapVectorEntry {
+                cap: u64::MAX,
+                mode: 0,
+                _pad: 0,
+            },
         );
     }
     object::unmap(client, vector).expect("vector page unmap failed");

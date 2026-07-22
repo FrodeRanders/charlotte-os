@@ -8,17 +8,17 @@ use core::sync::atomic::{
 use crate::{
     cpu::{
         isa::lp::ops::get_lp_id,
+        multiprocessor::get_lp_count,
         scheduler::{
             sleep_millis,
-            spawn_thread,
             spawn_migratable_thread_on_lp,
+            spawn_thread,
             system_scheduler::{
-                get_thread_id,
                 REBALANCE_SUCCESSES,
+                get_thread_id,
             },
             threads::MASTER_THREAD_TABLE,
         },
-        multiprocessor::get_lp_count,
     },
     logln,
     memory::KERNEL_ASID,
@@ -47,11 +47,8 @@ extern "C" fn worker() {
     // These workers are migratable only while queued at boot. Once they begin
     // their timer-affinity regression, freeze their established home; the
     // delayed compute-only workload below separately covers runtime migration.
-    MASTER_THREAD_TABLE
-        .write()
-        .get_mut(tid)
-        .expect("lifecycle worker vanished")
-        .migration_safe = false;
+    MASTER_THREAD_TABLE.write().get_mut(tid).expect("lifecycle worker vanished").migration_safe =
+        false;
     let home = get_lp_id();
     for _ in 0..128 {
         sleep_millis(1);
@@ -69,7 +66,8 @@ extern "C" fn worker() {
             assert!(migrations > 0);
         }
         logln!(
-            "[scheduler lifecycle] SUCCESS: {} timer wakes retained post-rebalance LP affinity across {} workers; {} certified Ready migration(s) completed.",
+            "[scheduler lifecycle] SUCCESS: {} timer wakes retained post-rebalance LP affinity \
+             across {} workers; {} certified Ready migration(s) completed.",
             128 * WORKER_COUNT,
             WORKER_COUNT,
             migrations
@@ -95,7 +93,8 @@ extern "C" fn runtime_rebalance_worker() {
     }
     if RUNTIME_REBALANCE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
         logln!(
-            "[scheduler runtime rebalance] SUCCESS: sustained-window sampling advanced certified migrations to {}.",
+            "[scheduler runtime rebalance] SUCCESS: sustained-window sampling advanced certified \
+             migrations to {}.",
             REBALANCE_SUCCESSES.load(Ordering::Relaxed)
         );
     }

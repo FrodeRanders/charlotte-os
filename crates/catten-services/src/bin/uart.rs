@@ -9,16 +9,14 @@
 //!
 //! Flow:
 //!
-//! 1. map the delegated MMIO region into its own address space as device
-//!    memory (a real EL0 device mapping under the driver's own page table);
+//! 1. map the delegated MMIO region into its own address space as device memory (a real EL0 device
+//!    mapping under the driver's own page table);
 //! 2. create a console endpoint and register it by name;
-//! 3. bind both the endpoint's readiness and the interrupt to the default
-//!    completion queue, then serve from one `CQ_WAIT` — the unified shard
-//!    wait of §7: the same wait releases for console requests and for device
-//!    interrupts alike;
-//! 4. on `OP_WRITE`, transmit the byte through the PL011 transmit FIFO
-//!    (a direct EL0 MMIO write); on a device interrupt, acknowledge it and
-//!    count it.
+//! 3. bind both the endpoint's readiness and the interrupt to the default completion queue, then
+//!    serve from one `CQ_WAIT` — the unified shard wait of §7: the same wait releases for console
+//!    requests and for device interrupts alike;
+//! 4. on `OP_WRITE`, transmit the byte through the PL011 transmit FIFO (a direct EL0 MMIO write);
+//!    on a device interrupt, acknowledge it and count it.
 #![no_std]
 #![no_main]
 
@@ -118,12 +116,12 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     let register = ipc_scalar_call_connection(
-            ns_connection,
-            ns::OP_REGISTER,
-            console::NAME,
-            endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        );
+        ns_connection,
+        ns::OP_REGISTER,
+        console::NAME,
+        endpoint,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+    );
     if register == 0 {
         unsafe { thread_exit() };
     }
@@ -144,10 +142,7 @@ fn main(ctx: Context) -> ! {
     // Unmask the PL011 receive interrupt so real received data raises the
     // delegated interrupt (the self-test drives it via a software-pended SPI).
     unsafe {
-        core::ptr::write_volatile(
-            (UART_MMIO_VADDR + pl011::IMSC) as *mut u32,
-            pl011::IMSC_RXIM,
-        );
+        core::ptr::write_volatile((UART_MMIO_VADDR + pl011::IMSC) as *mut u32, pl011::IMSC_RXIM);
     }
     config::write::<u32>(STAGE_OFFSET, 5); // serving
 
@@ -160,17 +155,13 @@ fn main(ctx: Context) -> ! {
     loop {
         // Block on the single wait point.
         cq_wait(1, 0);
-        
 
         // Clear the device-side level condition before asking the kernel to
         // re-arm the GIC source. Clearing only when a deferred read exists
         // leaves an interrupt asserted after restart; re-arming it then
         // creates an IRQ/CQ wake storm that can starve endpoint requests.
         unsafe {
-            core::ptr::write_volatile(
-                (UART_MMIO_VADDR + pl011::ICR) as *mut u32,
-                pl011::IMSC_RXIM,
-            );
+            core::ptr::write_volatile((UART_MMIO_VADDR + pl011::ICR) as *mut u32, pl011::IMSC_RXIM);
         }
 
         // Drain device interrupts: acknowledge and re-arm the source,
@@ -217,13 +208,11 @@ fn main(ctx: Context) -> ! {
                     config::write::<u32>(SERVED_OFFSET, served);
                     if message.reply != 0 {
                         ipc_reply(message.reply, 0);
-                        
                     }
                 }
                 console::OP_STATUS => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, irq_count as i64);
-                        
                     }
                 }
                 console::OP_READ_DEFERRED => {
@@ -235,7 +224,6 @@ fn main(ctx: Context) -> ! {
                         // No reply authority: nothing to defer.
                     } else if pending_read != 0 {
                         ipc_reply(message.reply, -1);
-                        
                     } else {
                         pending_read = message.reply;
                         config::write::<u32>(READ_ARMED_OFFSET, 1);
@@ -244,7 +232,6 @@ fn main(ctx: Context) -> ! {
                 console::OP_SHUTDOWN => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, 0);
-                        
                     }
                     unsafe {
                         device_mmio_unmap(mmio_cap);
@@ -262,7 +249,6 @@ fn main(ctx: Context) -> ! {
                 _ => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, -1);
-                        
                     }
                 }
             }

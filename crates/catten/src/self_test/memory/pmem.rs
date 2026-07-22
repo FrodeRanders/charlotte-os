@@ -13,15 +13,11 @@ pub fn test_pmem() {
             unsafe {
                 let frame_ptr = frame.into_hhdm_mut::<u32>();
                 frame_ptr.write(magic_number);
-                assert_eq!(frame_ptr.read(), magic_number,
-                    "Physical memory readback mismatch");
+                assert_eq!(frame_ptr.read(), magic_number, "Physical memory readback mismatch");
             }
-            pfa_lock.deallocate_frame(*frame)
-                .expect("Failed to deallocate physical memory frame");
+            pfa_lock.deallocate_frame(*frame).expect("Failed to deallocate physical memory frame");
         }
-        Err(e) => panic!(
-            "Failed to allocate a frame from the physical frame allocator: {:?}", e
-        ),
+        Err(e) => panic!("Failed to allocate a frame from the physical frame allocator: {:?}", e),
     }
     logln!("All physical memory subsystem tests passed.");
 }

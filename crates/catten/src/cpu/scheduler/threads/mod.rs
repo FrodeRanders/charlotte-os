@@ -134,10 +134,14 @@ pub const SCHEDULER_DIAGNOSTIC_FIELDS: usize = 6;
 #[unsafe(no_mangle)]
 pub static SCHEDULER_LP_DIAGNOSTICS: [AtomicU64;
     SCHEDULER_DIAGNOSTIC_LPS * SCHEDULER_DIAGNOSTIC_FIELDS] =
-    [const { AtomicU64::new(u64::MAX) };
-        SCHEDULER_DIAGNOSTIC_LPS * SCHEDULER_DIAGNOSTIC_FIELDS];
+    [const { AtomicU64::new(u64::MAX) }; SCHEDULER_DIAGNOSTIC_LPS * SCHEDULER_DIAGNOSTIC_FIELDS];
 
-pub fn record_dispatch(lp: LpId, tid: ThreadId, generation: ThreadGeneration, asid: AddressSpaceId) {
+pub fn record_dispatch(
+    lp: LpId,
+    tid: ThreadId,
+    generation: ThreadGeneration,
+    asid: AddressSpaceId,
+) {
     let base = lp as usize * SCHEDULER_DIAGNOSTIC_FIELDS;
     SCHEDULER_LP_DIAGNOSTICS[base].store(tid as u64, Ordering::Relaxed);
     SCHEDULER_LP_DIAGNOSTICS[base + 1].store(generation, Ordering::Relaxed);

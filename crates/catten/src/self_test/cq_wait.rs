@@ -23,9 +23,7 @@ use crate::{
         OpCode,
         OpResult,
     },
-    cpu::scheduler::{
-        spawn_thread,
-    },
+    cpu::scheduler::spawn_thread,
     ipc::{
         self,
         ConnectionRights,

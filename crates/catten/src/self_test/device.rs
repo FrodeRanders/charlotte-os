@@ -214,9 +214,7 @@ extern "C" fn irq_waiter() {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn irq_driver() {
-    use crate::{
-        device,
-    };
+    use crate::device;
 
     let irq = IRQ_CAP.load(Ordering::Acquire);
     device_phase(10, irq, 0);

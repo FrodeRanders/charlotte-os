@@ -33,7 +33,7 @@ use catten_syscall::{
 const REPLY_SPINS: u64 = 50_000_000;
 const LOOKUP_ATTEMPTS: u64 = 1_000_000;
 const ECHO_VALUE: u64 = 0x1234_5678;
-const SENTINEL: u32 = 0xC0DE;
+const SENTINEL: u32 = 0xc0de;
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(12, 1); // stage: started
@@ -75,7 +75,7 @@ fn main(ctx: Context) -> ! {
         core::hint::spin_loop();
     };
     memory_close(name_cap);
-    
+
     config::write::<u32>(12, 4); // stage: connection obtained
 
     let call = ipc_scalar_call(echo_connection, echo::OP_ECHO, ECHO_VALUE);
