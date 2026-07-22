@@ -16,12 +16,10 @@ use alloc::{
 use core::ops::BitOr;
 
 use concurrent_queue::ConcurrentQueue;
-use spin::{
-    LazyLock,
-    RwLock,
-};
+use spin::LazyLock;
 
 use crate::{
+    cpu::multiprocessor::spin::rwlock::RwLock,
     klib::observer::{
         Observable,
         Observer,

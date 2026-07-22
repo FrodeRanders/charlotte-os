@@ -471,16 +471,14 @@ fn sys_thread_exit(_frame: &mut TrapFrame) {
     crate::cpu::scheduler::abort();
 }
 
-use spin::{
-    LazyLock,
-    RwLock,
-};
+use spin::LazyLock;
 
 /// A kernel-global mailbox set for EL0-to-EL0 inter-LP messaging. One bounded
 /// MPSC queue per LP; senders target a specific LP, receivers drain their own.
 use crate::cpu::multiprocessor::{
     get_lp_count,
     shard_mailbox::ShardMailboxSet,
+    spin::rwlock::RwLock,
 };
 static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> = LazyLock::new(|| ShardMailboxSet::new(256));
 

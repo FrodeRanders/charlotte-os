@@ -35,19 +35,19 @@ use core::sync::atomic::{
 };
 
 use concurrent_queue::ConcurrentQueue;
-use spin::{
-    LazyLock,
-    Mutex,
-};
+use spin::LazyLock;
 
 use crate::{
     completion::CqId,
-    cpu::isa::{
-        interface::memory::address::Address,
-        lp::{
-            LpId,
-            ops::get_lp_id,
+    cpu::{
+        isa::{
+            interface::memory::address::Address,
+            lp::{
+                LpId,
+                ops::get_lp_id,
+            },
         },
+        multiprocessor::spin::mutex::Mutex,
     },
     logln,
     memory::{

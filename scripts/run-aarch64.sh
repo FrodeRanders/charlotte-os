@@ -207,13 +207,17 @@ if [ -n "$TIMEOUT" ]; then
                 -o "gdb-remote 1234" \
                 -o "thread backtrace all" \
                 -o "thread select 1" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 2" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 3" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 4" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "memory read --force --binary --size 1 --count ${TRACE_COUNT} --outfile ${TRACE_RAW} ${TRACE_ADDR}" \
                 -o "process detach" "$KERNEL" >/tmp/charlotte-trace-lldb.log 2>&1 || true
             if [ -s "$TRACE_RAW" ]; then
@@ -232,13 +236,17 @@ if [ -n "$TIMEOUT" ]; then
                 -o "gdb-remote 1234" \
                 -o "thread backtrace all" \
                 -o "thread select 1" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 2" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 3" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "thread select 4" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp" \
+                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
+                -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "process detach" "$KERNEL" >/tmp/charlotte-debug-snapshot-lldb.log 2>&1 || true
             echo ">>> Debug snapshot captured in /tmp/charlotte-debug-snapshot-lldb.log"
         else

@@ -25,7 +25,10 @@ use crate::{
             LpId,
             thread_context::ThreadContext,
         },
-        multiprocessor::spin::rwlock::RwLock,
+        multiprocessor::spin::{
+            mutex::Mutex,
+            rwlock::RwLock,
+        },
         scheduler::threads::waker::Waker,
     },
     klib::{
@@ -96,9 +99,8 @@ pub fn reap_dead_threads() {
     // containing the instruction stream's current SP; leave it for the next
     // switch on this LP.
     let current_sp = current_stack_pointer();
-    let (deferred, reclaimable): (Vec<_>, Vec<_>) = dead
-        .into_iter()
-        .partition(|thread| thread.context.kernel_stack_contains(current_sp));
+    let (deferred, reclaimable): (Vec<_>, Vec<_>) =
+        dead.into_iter().partition(|thread| thread.context.kernel_stack_contains(current_sp));
     if !deferred.is_empty() {
         DEAD_THREADS.write().entry(lp).or_default().extend(deferred);
     }
@@ -158,7 +160,7 @@ pub struct Thread {
     /// (notably shard workers). Unlike soft affinity, rebalancing must never
     /// change this value.
     pub pinned_lp: Option<LpId>,
-    exit_observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
+    exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
@@ -180,7 +182,7 @@ impl Thread {
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
             pinned_lp: None,
-            exit_observers: spin::Mutex::new(Vec::new()),
+            exit_observers: Mutex::new(Vec::new()),
         }
     }
 

@@ -60,8 +60,9 @@ pub struct NameServiceHandle {
 /// The live name-service handle, populated by `spawn_name_service` so
 /// the SPAWN_UPGRADE syscall handler can delegate bootstrap connections
 /// without needing access to the test harness.
-pub(crate) static LIVE_NS: spin::LazyLock<spin::Mutex<Option<NameServiceHandle>>> =
-    spin::LazyLock::new(|| spin::Mutex::new(None));
+pub(crate) static LIVE_NS: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =

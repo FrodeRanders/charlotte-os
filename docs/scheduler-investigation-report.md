@@ -346,3 +346,70 @@ EL0 workloads), with no allocator or completion lock convoy. This does not
 disprove a low-frequency wakeup race, but provides a low-perturbation capture
 path for the next occurrence and avoids drawing conclusions from the heavier
 trace build.
+
+The low-perturbation repetition eventually captured the missing lifecycle gate
+and corrected the timer hypothesis. LP0's timer IRQ was firing a sleep event
+and its waker was blocked acquiring `MASTER_THREAD_TABLE`; LP2 and LP3 were
+also waiting for that table. LP1 held the table's write lock in
+`block_thread`, which registers the new waker with the supplied observable
+before publishing `Blocked` (the ordering needed to avoid a lost wake), and
+was waiting for the IPC endpoint registry. The interrupted LP0 context was in
+`connection_delegate`, still owning that registry's plain `spin::RwLock` when
+the timer IRQ preempted it. This formed a concrete IRQ-mediated ABBA cycle:
+
+```text
+LP0 interrupted context: IPC registry write lock
+LP0 timer IRQ:           waits for MASTER_THREAD_TABLE
+LP1 block_thread:        MASTER_THREAD_TABLE write lock
+LP1 observer register:   waits for IPC registry
+```
+
+The IPC registry now uses Charlotte's interrupt-masking kernel `RwLock`, like
+the completion registry. An LP therefore cannot take a timer preemption while
+it owns the IPC registry, closing the captured cycle while retaining the
+atomic observer-registration/block transition. Both target builds pass. The
+first repeated SMP4 HVF run passed every gate; the second passed scheduler
+lifecycle but isolated a different service-only stall after `echo service
+restarted (asid=20)`, with generation-2 registration never observed. Its
+snapshot had no lock convoy and showed LP0/LP1 timer comparators enabled, so
+that service-generation issue remains separate from timer and IPC-lock
+liveness.
+
+### Plain-spin-lock audit
+
+The IPC finding prompted a source-wide audit of remaining plain
+`spin::Mutex`/`spin::RwLock` uses. The important threat model is broader than
+"called from an IRQ": any lock held by ordinary EL1 code can be stranded when
+a timer preempts its owner and schedules a different EL0 thread; a syscall from
+that replacement can then spin with IRQs masked and prevent the owner from ever
+running again.
+
+Four additional runtime locks were susceptible and now use Charlotte's
+interrupt-masking kernel locks:
+
+| State | Exposure |
+|---|---|
+| Device capability registry | Device-management syscalls and teardown on multiple threads |
+| EL0 mailbox capability registry | Mailbox capability syscalls and address-space teardown |
+| Live name-service handle | Supervisor publication and bootstrap-cap syscall lookup |
+| Per-thread exit-observer list | Observer registration and notification during thread teardown |
+
+The remaining plain locks were retained after call-path review:
+
+- serial and framebuffer locks are acquired only through logging entry points
+  that mask interrupts first;
+- stack-arena and guard-map locks are confined to `with_arena`, which masks
+  interrupts across the entire operation;
+- LP-count and x86 IDT locks are initialization-only;
+- the private IPI closure slot cannot be contended after successful ownership
+  transfer to the target queue.
+
+`spin::LazyLock` initialization deserves separate treatment: its once state is
+also a spin primitive. The major mutable registries are forced by synchronous
+boot tests before scheduler concurrency, but future lazily initialized runtime
+state should either be eagerly forced before enabling preemption or use an
+explicit interrupt-safe initialization mechanism.
+
+Both AArch64 and x86-64 target checks passed after the conversions. A complete
+SMP4 HVF run with the low-perturbation debugger endpoint also observed every
+required deferred marker.
