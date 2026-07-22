@@ -148,6 +148,12 @@ impl Drop for ThreadContext {
 }
 
 impl ThreadContext {
+    /// Whether `address` lies in this context's mapped kernel-stack pages.
+    pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
+        let base: usize = self._kernel_stack_buf.into();
+        (base..base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE).contains(&address)
+    }
+
     /// Create the context for a kernel thread that begins executing at
     /// `entry_point` at EL1 on its own kernel stack.
     pub fn create_kernel_thread_context(entry_point: extern "C" fn()) -> Result<Self, Error> {

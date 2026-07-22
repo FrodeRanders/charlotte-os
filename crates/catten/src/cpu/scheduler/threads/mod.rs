@@ -87,7 +87,40 @@ pub fn reap_dead_threads() {
             _ => return,
         }
     };
-    drop(dead);
+
+    // `switch_ctx` is coroutine-like: it returns through the incoming
+    // context's older `cond_yield_lp` invocation.  Consequently an LP-local
+    // reap list can contain that very incoming context (for example after a
+    // remote abort/re-admission race).  LP identity alone is therefore not a
+    // sufficient proof that a stack is no longer live.  Never unmap the stack
+    // containing the instruction stream's current SP; leave it for the next
+    // switch on this LP.
+    let current_sp = current_stack_pointer();
+    let (deferred, reclaimable): (Vec<_>, Vec<_>) = dead
+        .into_iter()
+        .partition(|thread| thread.context.kernel_stack_contains(current_sp));
+    if !deferred.is_empty() {
+        DEAD_THREADS.write().entry(lp).or_default().extend(deferred);
+    }
+    drop(reclaimable);
+}
+
+#[cfg(target_arch = "aarch64")]
+fn current_stack_pointer() -> usize {
+    let sp: usize;
+    unsafe {
+        core::arch::asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
+    }
+    sp
+}
+
+#[cfg(target_arch = "x86_64")]
+fn current_stack_pointer() -> usize {
+    let sp: usize;
+    unsafe {
+        core::arch::asm!("mov {}, rsp", out(reg) sp, options(nomem, nostack, preserves_flags));
+    }
+    sp
 }
 
 pub type ThreadCount = usize;

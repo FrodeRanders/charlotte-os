@@ -181,9 +181,11 @@ extern "C" fn irq_waiter() {
     };
 
     let irq = IRQ_CAP.load(Ordering::Acquire);
+    device_phase(1, irq, 0);
 
     // Round 1: released by the deterministic kernel delivery path.
     completion::wait_on_cq(DEV_ASID, 0, 1);
+    device_phase(2, irq, 0);
     let (pending, count) =
         device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 1 failed");
     assert!(pending >= 1, "[device] round 1 must observe a pending interrupt");
@@ -194,16 +196,20 @@ extern "C" fn irq_waiter() {
         device::interrupt_status(DEV_ASID, irq).expect("[device] status after ack failed");
     assert_eq!(pending_after, 0, "[device] ack must clear pending");
     ROUND1_RELEASED.store(1, Ordering::Release);
+    device_phase(3, u64::from(pending), count);
 
     // Round 2: released by a real GIC software-pended SPI through the live
     // interrupt path (dispatcher → deliver_interrupt → CQ wake).
     spin_until(&ROUND2_START, "round 2 start");
+    device_phase(4, irq, 0);
     completion::wait_on_cq(DEV_ASID, 0, 1);
+    device_phase(5, irq, 0);
     let (pending, _) =
         device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 2 failed");
     assert!(pending >= 1, "[device] round 2 must observe a pending interrupt");
     let _ = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 2 failed");
     ROUND2_RELEASED.store(1, Ordering::Release);
+    device_phase(6, u64::from(pending), 0);
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -213,6 +219,7 @@ extern "C" fn irq_driver() {
     };
 
     let irq = IRQ_CAP.load(Ordering::Acquire);
+    device_phase(10, irq, 0);
 
     // Give the waiter a chance to block first; the fast path covers the case
     // where it has not.
@@ -225,7 +232,9 @@ extern "C" fn irq_driver() {
         device::deliver_interrupt(TEST_SPI),
         "[device] deliver_interrupt must claim the bound INTID"
     );
+    device_phase(11, irq, 0);
     spin_until(&ROUND1_RELEASED, "round 1 release");
+    device_phase(12, irq, 0);
 
     // Round 2: pend the SPI in the real GIC and let the hardware path deliver
     // it. The prior ack re-armed the source.
@@ -235,7 +244,27 @@ extern "C" fn irq_driver() {
     }
     let _ = irq; // cap consumed by the waiter; keep symmetry with round 1
     crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
-    spin_until(&ROUND2_RELEASED, "round 2 release");
+    device_phase(13, irq, TEST_SPI as u64);
+    // QEMU/HVF can occasionally lose a distributor software-pend transition.
+    // A real level-triggered device keeps its line asserted until ack, so
+    // faithfully model that property here: while neither the capability's
+    // pending counter nor the waiter reports delivery, reassert the source at
+    // a modest interval. Never re-pend after delivery, since doing so while the
+    // source is masked would create an artificial second interrupt on ack.
+    let mut waits = 0u32;
+    while ROUND2_RELEASED.load(Ordering::Acquire) == 0 {
+        waits += 1;
+        assert!(waits < 2_000, "[device] FAILED waiting for round 2 GIC delivery");
+        crate::cpu::scheduler::sleep_millis(1);
+        if waits.is_multiple_of(16) {
+            let (pending, _) = device::interrupt_status(DEV_ASID, irq)
+                .expect("[device] status while awaiting round 2 failed");
+            if pending == 0 {
+                crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
+            }
+        }
+    }
+    device_phase(14, irq, 0);
 
     // Tear down the interrupt cap: mask and unroute the source.
     device::close_cap(DEV_ASID, IRQ_CAP.load(Ordering::Acquire))
@@ -245,6 +274,11 @@ extern "C" fn irq_driver() {
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \
          a completion queue via both the kernel path and a real GIC SPI all verified."
     );
+}
+
+#[cfg(target_arch = "aarch64")]
+fn device_phase(phase: u64, a: u64, b: u64) {
+    crate::debug_trace::trace(crate::debug_trace::TAG_DEVICE_PHASE, phase, a, b);
 }
 
 #[cfg(target_arch = "aarch64")]

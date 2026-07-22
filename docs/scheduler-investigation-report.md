@@ -301,3 +301,35 @@ completed scheduler lifecycle, Raft, CQ wait, UART, and service gates. One
 20-second run still missed only `[device] SUCCESS`; this is a separate device
 verifier progress problem rather than the prior global scheduler lockup and
 remains to be investigated independently.
+
+The next external capture exposed a second stack-lifetime condition that the
+exact-range change did not address. LP1 acquired the arena lock to free the
+stack at `0xffff810000056000` while its current SP was
+`0xffff810000065da0`, inside that same 16-page mapping. The first exception
+push then faulted at SP-16 and the other LPs formed a convoy on the arena lock.
+The mistaken invariant was that reaping on the thread's last LP after
+`switch_ctx` necessarily means execution has left its stack. Context switching
+is coroutine-like: `switch_ctx` returns through the incoming context's older
+`cond_yield_lp` invocation, so LP identity and source-level call order alone do
+not prove which stack is live.
+
+Reaping now applies the direct memory-safety condition: before dropping any
+dead `ThreadContext`, it tests whether the context's kernel-stack mapping
+contains the current architectural SP. A matching context is retained in that
+LP's reap list and reconsidered after a later switch. In the validation trace,
+the formerly self-targeted `0xffff810000056000` stack was subsequently freed
+from SP `0xffff810000164d20`, and all required deferred tests passed. The same
+check is implemented for AArch64 and x86-64.
+
+Device phase tracing then showed the intended two-round sequence in a passing
+run, while an ordinary run could still miss only the real-GIC round. The first
+round uses deterministic `deliver_interrupt`; the second writes QEMU's
+software-pending distributor bit. Under HVF that transition can occasionally
+be lost. The test now models a real level-triggered device more faithfully by
+reasserting the SPI at a bounded 16 ms interval only while the interrupt
+object's pending count remains zero. It never re-pends after delivery has been
+observed, avoiding an artificial second interrupt on acknowledgement, and it
+fails explicitly after two seconds instead of waiting effectively forever.
+An uninstrumented validation run then reached `[device] SUCCESS` at 0.250 s;
+that particular run missed only the independently timing-sensitive service
+gate, so repeated whole-suite validation remains warranted.

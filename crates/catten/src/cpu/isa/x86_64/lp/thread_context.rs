@@ -128,6 +128,12 @@ impl Drop for ThreadContext {
 }
 
 impl ThreadContext {
+    /// Whether `address` lies in this context's mapped kernel-stack pages.
+    pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
+        let base: usize = self._kernel_stack_buf.into();
+        (base..base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE).contains(&address)
+    }
+
     pub fn create_user_thread_context(
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),

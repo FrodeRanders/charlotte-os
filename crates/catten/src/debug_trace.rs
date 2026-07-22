@@ -161,6 +161,7 @@ fn tag_name(tag: u64) -> &'static str {
         TAG_STACK_ARENA_WAIT => "STACK_ARENA_WAIT",
         TAG_STACK_ARENA_ACQUIRED => "STACK_ARENA_ACQUIRED",
         TAG_STACK_ARENA_RELEASED => "STACK_ARENA_RELEASED",
+        TAG_DEVICE_PHASE => "DEVICE_PHASE",
         _ => "?",
     }
 }
@@ -183,3 +184,4 @@ pub const TAG_SCHED_ADMIT: u64 = 0xc0_0041;
 pub const TAG_STACK_ARENA_WAIT: u64 = 0xc0_0050;
 pub const TAG_STACK_ARENA_ACQUIRED: u64 = 0xc0_0051;
 pub const TAG_STACK_ARENA_RELEASED: u64 = 0xc0_0052;
+pub const TAG_DEVICE_PHASE: u64 = 0xc0_0060;
