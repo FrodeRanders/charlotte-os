@@ -704,21 +704,23 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 > **Implementation status.** The Raft core, transport traits, wire
 > format, and service binary all compile and load as EL0 services.
-> Single-node boot is validated on QEMU (HVF). Multi-node leader
-> election across machines is blocked on two dependencies: (1) the
-> NIC driver must reach runtime validation (currently blocked by the
-> HVF EL0-MMIO limitation; works on KVM), and (2) the reliable
-> message layer must be implemented as a userspace service. Within a
-> single CharlotteOS instance, multiple Raft nodes communicate via
-> local endpoint IPC and elect a leader — this path is blocked only
-> by a scheduler yield issue under the headless HVF build.
+> A two-node cluster in one CharlotteOS instance repeatedly elects one
+> leader over local endpoint IPC on four-LP QEMU/HVF. Election timers use
+> completion events, and verifier/test domains terminate rather than polling
+> forever; the settled system reaches the idle/WFI path. Cross-machine leader
+> election remains blocked on two dependencies: (1) the NIC driver and TCP/IP
+> service need runtime validation on Linux KVM because HVF cannot safely
+> exercise the required EL0 MMIO path, and (2) the reliable-message service
+> needs end-to-end implementation and validation over that driver.
+> Commit `2679085` established local two-node IPC election; later scheduler,
+> timer, and lifecycle fixes preserve that result under the current HVF boot.
 
 | Capability | Status |
 |---|---|
-| Raft core (leader election, log replication, commit/apply) | Compiles, single-node boot validated |
-| Charlotte IPC transport (`CharlotteTransport`) | Compiles, peer-connection table implemented |
+| Raft core (leader election, log replication, commit/apply) | Two-node local election boot-validated; broader replication/state-machine coverage remains incomplete |
+| Charlotte IPC transport (`CharlotteTransport`) | Local peer-connection table and endpoint transport boot-validated |
 | Election timer (`submit_timer`) | Implemented (SVC #1, OpCode::Timer, CNTV hardware) |
-| Scalar RPCs over endpoint IPC | Compiles (VoteRequest, AppendEntries via `ipc_scalar_call`) |
+| Scalar RPCs over endpoint IPC | Local VoteRequest/AppendEntries path boot-validated via endpoint calls |
 | Memory-object RPC payloads (zero-copy log replication) | Wire format defined; transport uses scalar calls only |
 | Durable log (survives service restart) | In-memory `LogStore` exists; page-backed not yet implemented |
 | Cross-machine Raft (NIC driver + reliable message layer) | Blocked on NIC runtime validation (KVM) |
@@ -785,11 +787,12 @@ it possesses a connection cap. The service manager attenuates rights:
 `CALL` for `OP_CLIENT_COMMAND` but not `OP_ADD_SERVER`. No ambient
 authority, no IP-based ACLs.
 
-**Failure isolation.** Each Raft node is a separate protection domain.
-When a node crashes, the service manager restarts it with a new
-generation number. Stale client connections fail with `ServiceRestarted`.
-The cluster continues with the remaining nodes — analogous to the
-userspace UART driver restart already validated in Phase 8.
+**Failure isolation (partly implemented).** Each local Raft node runs in a
+separate protection domain, and generic service/UART lifecycle tests validate
+generation changes and stale-connection failure. Automatic Raft-node restart,
+durable state recovery, and continued quorum operation after a node crash have
+not yet been validated. Those remain requirements for the cross-machine
+service rather than current evidence.
 
 ## 18.3 Distributed name service (design)
 

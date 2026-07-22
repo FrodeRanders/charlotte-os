@@ -38,7 +38,8 @@ is in the repository history and earlier revisions of this document.
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
 | 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation is blocked by HVF's EL0-MMIO limitation and remains pending on Linux KVM. | Driver built, not yet runtime-validated |
-| 10 | Lock-free device interrupt delivery (deferred wake), idempotent scheduler wakes | Done |
+| 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Done |
+| 11 | Userspace startup ABI: ELF `_start`, `entry!(main)`, typed `Context`, fixed-width/versioned launch header, explicit startup input | Done |
 
 ### Success criteria met and boot-validated
 
@@ -63,8 +64,9 @@ is in the repository history and earlier revisions of this document.
 - **Network service stack** — build the reliable-message layer, RPC,
   and distributed-object services per the networking architecture doc.
 
-All code from Phases 1–8 and 10 is committed, boot-validated, and
-pushed to both the CharlotteOS and sitas repositories.
+All code from Phases 1–8 and 10–11 is committed and boot-validated in
+CharlotteOS. Sitas integration changes are maintained in the companion Sitas
+repository; repository history is the authority for what has been pushed.
 
 ## 1. Executive conclusion
 
@@ -1482,19 +1484,24 @@ The ABI should leave room for:
 Do not encode these policies directly into sitas task priority. They
 cross protection and trust boundaries and require kernel mediation.
 
-### 14.1 Load rebalancing (future)
+### 14.1 Load rebalancing
 
-The investigation branch `sched/cq-generation-counter` contains a disabled
-`try_rebalance()` prototype that detects idle-LP/overloaded-LP pairs.  It was
-not ported to `dev`.  Excluding threads with active timers is necessary but not
-sufficient: migration must also account for IPC and device ownership, recheck
-the candidate while both LP schedulers are locked, preserve destination
-affinity, handle remove/add failures transactionally, and wake a remote idle
-LP.
+Conservative runtime rebalancing is implemented and boot-validated. Threads
+are not assumed migratable merely because they are `Ready`: migration is
+opt-in (`migration_safe`) and is rejected while timer, endpoint, completion
+queue, general-wait, pinning, or other recorded ownership constraints apply.
+The scheduler rechecks a candidate during the migration transaction and wakes
+an idle destination LP when necessary.
 
-Activation therefore requires an explicit per-thread "safe to migrate"
-contract and a tested migration transaction.  Until then, stable LP affinity
-is the scheduler's correctness policy; load balancing is future work.
+Rebalancing is deliberately low-pass filtered. Per-LP load is sampled over a
+runtime-adjustable sustained-imbalance window rather than acted upon from one
+instantaneous queue-depth observation. Stable affinity therefore remains the
+default correctness policy, while certified compute-only work may move after
+the imbalance persists. The scheduler lifecycle harness validates timer-wait
+affinity and successful certified migrations. This is not yet priority or
+scheduling-context donation; those policies remain deferred. Relevant commits
+are `b6d7c78` (ownership constraints), `c2df9e4` (filtered runtime
+rebalancing), and `432305e` (terminal-domain teardown and true-idle evidence).
 
 ------------------------------------------------------------------------
 
@@ -1674,23 +1681,35 @@ Only then promote rich IPC payloads.
 
 ## 16.7 Replace global smoke-test ABI surfaces
 
-### Current direction
+### Current implementation
 
-Some experimental paths rely on fixed/global result pages, embedded test
-images, and smoke-specific launch metadata.
+The general service path now has ELF `PT_LOAD` mapping, kernel-owned ASID
+selection, standard runtime pages, a versioned fixed-width launch header, and
+the Rust source contract `fn main(ctx: Context) -> !`. The `entry!` macro owns
+the ELF `_start`, panic handler, and allocator bootstrap. crt0 validates launch
+magic, ABI version, header size, and config-page size before interpreting
+arguments or capabilities. Startup input is explicit rather than hidden in a
+function-signature type.
 
-### Redirect
+The legacy `Args`/`Input<N>` entry form has been removed. Programs access
+bootstrap authority, device grants, shard CQ layout, handoff state, and launch
+arguments through `Context`; raw offsets are not the intended application API.
 
-Build a general process loader and startup contract:
+### Remaining work
 
--   ELF `PT_LOAD` mapping;
+The following parts of the target contract are still incomplete:
+
 -   stack and guard pages;
--   declared heap or allocator bootstrap;
--   initial capability vector;
--   argument/environment block;
--   bootstrap endpoint;
--   no caller-supplied ASID;
--   no global shared result page.
+-   a declared/customizable heap layout rather than one runtime arena;
+-   a typed initial capability vector rather than role-specific fixed slots;
+-   a general argument/environment or manifest block rather than `u32` words;
+-   one shared/generated ABI definition instead of duplicated kernel/runtime
+    constants;
+-   removal of raw config-page status writes and global result pages from test
+    infrastructure.
+
+Embedded test images and result pages remain acceptable as internal test
+instrumentation, but must not become the public process ABI.
 
 ## 16.8 Treat service discovery as userspace policy
 
@@ -1926,10 +1945,30 @@ After userspace architecture is proven:
 -   add LP affinity: threads assigned an affinity LP at first admission,
     re-admitted to the same LP after every wake (§8.6). This eliminates
     cross-LP migration races and keeps timer events on the correct per-LP
-    queue. Automatic rebalancing remains disabled: even a queued `Ready`
-    thread may retain LP-local CQ, endpoint, or device relationships. A future
-    migrator needs explicit resource-ownership metadata, not only thread state.
+    queue. Runtime rebalancing is enabled only for explicitly certified
+    `Ready` threads with no active migration constraints. It uses a sustained
+    imbalance window and preserves affinity for timer, CQ, endpoint, pinned,
+    and other LP-local ownership relationships.
+-   retire completed self-test domains as an ownership unit so shard executors
+    cannot remain permanently runnable after their verifier succeeds;
+-   avoid quantum rearming for idle threads and validate that every LP reaches
+    the WFI path after deferred tests settle;
 -   add LP migration/hotplug assumptions explicitly.
+
+## Phase 11 --- [done] Versioned userspace startup contract
+
+The public Rust entry contract is `fn main(ctx: Context) -> !`, generated by
+`catten_rt::entry!`. The ELF loader still enters `_start`; developers do not
+define crt0, the panic handler, or the default allocator. `Context` provides
+typed access to launch arguments, bootstrap authority, device grants,
+per-shard completion queues, and live-upgrade handoff state.
+
+The kernel writes, and crt0 validates, launch ABI v1 before `main` runs. Its
+fixed-width header contains a magic value, major/minor version, header size,
+config-page size, and feature flags. Argument count is `u32`, not `usize`.
+The former `Args`/`Input<N>` entry contract was removed; startup reads are
+explicit blocking operations. Commit `4b2e2bb` contains the implementation and
+boot validation. See `docs/charlotte-userspace-development.md`.
 
 ------------------------------------------------------------------------
 
@@ -2224,6 +2263,19 @@ Current status:
     registers with direct EL0 MMIO writes, completes an interrupt-driven
     deferred read (§7.2), and acknowledges a delegated device interrupt
     from EL0.
+-   Criterion 10 remains pending runtime validation on Linux KVM. The
+    virtio-net driver, protocol crates, smoltcp adapter, and TCP/IP service
+    compile, but no successful end-to-end NIC data path is claimed from HVF.
+-   Criterion 11 is substantially strengthened but remains open as a complete
+    ABI audit. Launch ABI v1 is versioned and fixed-width, including a `u32`
+    argument count, and crt0 validates it before calling `main(Context)`.
+    Completion, IPC, and protocol records are designed as fixed-width wire
+    structures; duplicated launch constants and remaining experimental/raw
+    surfaces still need consolidation before declaring every public ABI stable.
+-   Criterion 12 is partially met by wrong-domain, stale-generation,
+    insufficient-rights, double-close, double-reply, queue-full, cancellation,
+    service-death, and lending tests. Broader malformed-message and randomized
+    race coverage remains work in progress.
 
 ------------------------------------------------------------------------
 
