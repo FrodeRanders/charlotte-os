@@ -13,34 +13,16 @@
 //! userspace name service; the kernel only moves opaque capabilities.
 #![cfg(target_arch = "aarch64")]
 
+use charlotte_launch::{
+    ARGS_OFFSET,
+    CAPABILITY_VECTOR_CAPACITY,
+    CapabilityKind,
+    CapabilityRecord,
+    LAUNCH_HEADER_OFFSET,
+    LaunchHeader,
+};
+
 use crate::memory::physical::PAddr;
-
-/// Byte offset of the bootstrap capability slot in the config page.
-///
-/// Must match `catten_rt::config::BOOTSTRAP_CAP_OFFSET`.
-pub const BOOTSTRAP_CAP_OFFSET: usize = 16;
-
-/// Byte offset of the launch argument count (`catten-rt` contract).
-pub const ARGC_OFFSET: usize = 24;
-
-/// Versioned crt0 launch header. These fixed-width fields are validated before
-/// userspace interprets any capability or argument slots.
-pub const LAUNCH_HEADER_OFFSET: usize = 2112;
-pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
-pub const LAUNCH_ABI_MAJOR: u16 = 1;
-pub const LAUNCH_ABI_MINOR: u16 = 0;
-pub const LAUNCH_HEADER_SIZE: u16 = 24;
-pub const CONFIG_PAGE_SIZE: u32 = 4096;
-
-/// Byte offset of the delegated MMIO-region device capability slot.
-///
-/// Must match `catten_rt::config::MMIO_CAP_OFFSET`.
-pub const MMIO_CAP_OFFSET: usize = 2048;
-
-/// Byte offset of the delegated interrupt device capability slot.
-///
-/// Must match `catten_rt::config::IRQ_CAP_OFFSET`.
-pub const IRQ_CAP_OFFSET: usize = 2056;
 
 /// Byte offset of the per-shard CQ ring base virtual address.
 ///
@@ -52,50 +34,52 @@ pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 /// Must match `catten_rt::config::SHARD_CQ_COUNT_OFFSET`.
 pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 
-/// Must match `catten_rt::config::HANDOFF_COUNT_OFFSET`.
-pub const HANDOFF_COUNT_OFFSET: usize = 2080;
-/// Must match `catten_rt::config::HANDOFF_STATE_OFFSET`.
-pub const HANDOFF_STATE_OFFSET: usize = 2088;
-/// Must match `catten_rt::config::HANDOFF_ENDPOINT_OFFSET`.
-pub const HANDOFF_ENDPOINT_OFFSET: usize = 2096;
-
 pub fn write_launch_header(config_frame: PAddr) {
     let base: *mut u8 = config_frame.into();
     unsafe {
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET) as *mut u64, LAUNCH_MAGIC);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 8) as *mut u16, LAUNCH_ABI_MAJOR);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 10) as *mut u16, LAUNCH_ABI_MINOR);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 12) as *mut u16, LAUNCH_HEADER_SIZE);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 14) as *mut u16, 0);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 16) as *mut u32, CONFIG_PAGE_SIZE);
-        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 20) as *mut u32, 0);
+        core::ptr::write_volatile(
+            base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader,
+            LaunchHeader::new(),
+        );
+    }
+}
+
+fn append_capability(config_frame: PAddr, kind: CapabilityKind, handle: u64) {
+    let base: *mut u8 = config_frame.into();
+    let header_ptr = unsafe { base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader };
+    let mut header = unsafe { core::ptr::read_volatile(header_ptr) };
+    assert!(header.is_compatible(), "capability written before launch header");
+    let index = header.capabilities_count as usize;
+    assert!(index < CAPABILITY_VECTOR_CAPACITY, "launch capability vector is full");
+    let record = CapabilityRecord {
+        kind: kind as u16,
+        rights: 0,
+        flags: 0,
+        handle,
+    };
+    unsafe {
+        let records = base.add(header.capabilities_offset as usize) as *mut CapabilityRecord;
+        core::ptr::write_volatile(records.add(index), record);
+        header.capabilities_count += 1;
+        core::ptr::write_volatile(header_ptr, header);
     }
 }
 
 /// Write the bootstrap capability id into a domain's config page.
 pub fn write_bootstrap_cap(config_frame: PAddr, cap: u64) {
-    let base: *mut u8 = config_frame.into();
-    unsafe {
-        core::ptr::write_volatile(base.add(BOOTSTRAP_CAP_OFFSET) as *mut u64, cap);
-    }
+    append_capability(config_frame, CapabilityKind::Bootstrap, cap);
 }
 
 /// Write a delegated MMIO-region device capability into a driver domain's
 /// config page (architecture doc §10.1, Phase 8).
 pub fn write_mmio_cap(config_frame: PAddr, cap: u64) {
-    let base: *mut u8 = config_frame.into();
-    unsafe {
-        core::ptr::write_volatile(base.add(MMIO_CAP_OFFSET) as *mut u64, cap);
-    }
+    append_capability(config_frame, CapabilityKind::Mmio, cap);
 }
 
 /// Write a delegated interrupt device capability into a driver domain's
 /// config page (architecture doc §10.1, Phase 8).
 pub fn write_irq_cap(config_frame: PAddr, cap: u64) {
-    let base: *mut u8 = config_frame.into();
-    unsafe {
-        core::ptr::write_volatile(base.add(IRQ_CAP_OFFSET) as *mut u64, cap);
-    }
+    append_capability(config_frame, CapabilityKind::Interrupt, cap);
 }
 
 /// Write the per-shard CQ ring layout (base virtual address and count) into a
@@ -119,19 +103,28 @@ pub fn write_handoff_state(
     state_cap: u64,
     endpoint_cap: u64,
 ) {
-    let base: *mut u8 = config_frame.into();
-    unsafe {
-        core::ptr::write_volatile(base.add(HANDOFF_COUNT_OFFSET) as *mut u32, state_count);
-        core::ptr::write_volatile(base.add(HANDOFF_STATE_OFFSET) as *mut u64, state_cap);
-        core::ptr::write_volatile(base.add(HANDOFF_ENDPOINT_OFFSET) as *mut u64, endpoint_cap);
+    if state_count > 0 {
+        append_capability(config_frame, CapabilityKind::HandoffState, state_cap);
+    }
+    if endpoint_cap != 0 {
+        append_capability(config_frame, CapabilityKind::HandoffEndpoint, endpoint_cap);
     }
 }
 
-/// Write the launch argument count into a domain's config page.
-pub fn write_argc(config_frame: PAddr, argc: usize) {
-    let argc = u32::try_from(argc).expect("launch argument count exceeds ABI width");
+/// Write the fixed-width launch argument vector into a domain's config page.
+pub fn write_args(config_frame: PAddr, args: &[u32]) {
+    let argc = u32::try_from(args.len()).expect("launch argument count exceeds ABI width");
+    assert!(ARGS_OFFSET + args.len() * core::mem::size_of::<u32>() <= 2048);
     let base: *mut u8 = config_frame.into();
+    let header_ptr = unsafe { base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader };
+    let mut header = unsafe { core::ptr::read_volatile(header_ptr) };
+    assert!(header.is_compatible(), "arguments written before launch header");
+    header.args_count = argc;
     unsafe {
-        core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut u32, argc);
+        let destination = base.add(ARGS_OFFSET) as *mut u32;
+        for (index, argument) in args.iter().copied().enumerate() {
+            core::ptr::write_volatile(destination.add(index), argument);
+        }
+        core::ptr::write_volatile(header_ptr, header);
     }
 }

@@ -25,8 +25,6 @@ mod inner {
     const NS_INTERFACE: u64 = packed_name(b"NAME");
     const _RAFT_INTERFACE: u64 = packed_name(b"RAFT");
 
-    const ARGC_OFFSET: usize = 24;
-    const ARGS_OFFSET: usize = 32;
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 
     fn spawn_raft_node(args: &[u32], ns_handle: &NameServiceHandle) -> ServiceDomain {
@@ -39,13 +37,7 @@ mod inner {
         )
         .expect("raft conn delegate");
         crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        let base: *mut u8 = addr.config_frame.into();
-        unsafe {
-            core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut u32, args.len() as u32);
-            for (i, &a) in args.iter().enumerate() {
-                core::ptr::write_volatile(base.add(ARGS_OFFSET + i * 4) as *mut u32, a);
-            }
-        }
+        crate::service::bootstrap::write_args(addr.config_frame, args);
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
         let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);

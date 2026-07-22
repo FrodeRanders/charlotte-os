@@ -98,7 +98,7 @@ pub fn spawn_name_service(
     let endpoint_cap = ipc::endpoint_create(loaded.asid, interface, version, capacity)
         .expect("[supervisor] name-service endpoint_create failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, endpoint_cap);
-    bootstrap::write_argc(loaded.config_frame, 0);
+    bootstrap::write_args(loaded.config_frame, &[]);
     let domain = start_domain(loaded);
     let handle = NameServiceHandle {
         domain,
@@ -125,7 +125,7 @@ pub fn spawn_with_name_service(
     )
     .expect("[supervisor] bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_argc(loaded.config_frame, 0);
+    bootstrap::write_args(loaded.config_frame, &[]);
     start_domain(loaded)
 }
 
@@ -179,7 +179,7 @@ pub fn spawn_driver_with_name_service(
     )
     .expect("[supervisor] driver bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_argc(loaded.config_frame, 0);
+    bootstrap::write_args(loaded.config_frame, &[]);
 
     let mmio = crate::device::grant_mmio(loaded.asid, grant.mmio_phys_base, grant.mmio_pages)
         .expect("[supervisor] MMIO region grant failed");
@@ -257,7 +257,7 @@ pub fn spawn_upgrade(
     )
     .expect("[supervisor] upgrade bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_argc(loaded.config_frame, 0);
+    bootstrap::write_args(loaded.config_frame, &[]);
 
     // Move state caps from KERNEL_ASID to the new domain.
     let state_count = grant.state_caps.len() as u32;

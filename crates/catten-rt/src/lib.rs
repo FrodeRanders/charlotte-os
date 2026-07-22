@@ -84,6 +84,36 @@ impl Context {
         self.args.get(index).copied()
     }
 
+    pub fn capabilities(&self) -> InitialCapabilities {
+        InitialCapabilities {
+            index: 0,
+        }
+    }
+
+    pub fn heap_layout(&self) -> MemoryRegion {
+        let header = config::launch_layout();
+        MemoryRegion {
+            base: header.heap_base as usize,
+            size: header.heap_size as usize,
+        }
+    }
+
+    pub fn input_layout(&self) -> MemoryRegion {
+        let header = config::launch_layout();
+        MemoryRegion {
+            base: header.input_base as usize,
+            size: header.input_size as usize,
+        }
+    }
+
+    pub fn completion_queue_layout(&self) -> CompletionQueueLayout {
+        let header = config::launch_layout();
+        CompletionQueueLayout {
+            base: header.cq_base as usize,
+            entries: header.cq_entries,
+        }
+    }
+
     pub fn bootstrap_cap(&self) -> Option<u64> {
         config::bootstrap_cap()
     }
@@ -125,10 +155,54 @@ impl Context {
         if buffer.is_empty() {
             return Ok(());
         }
-        let cap = unsafe { catten_syscall::submit_read(buffer.as_mut_ptr() as usize, buffer.len()) };
+        let cap =
+            unsafe { catten_syscall::submit_read(buffer.as_mut_ptr() as usize, buffer.len()) };
         catten_syscall::wait(cap);
         catten_syscall::close(cap);
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MemoryRegion {
+    pub base: usize,
+    pub size: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompletionQueueLayout {
+    pub base: usize,
+    pub entries: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InitialCapability {
+    pub kind: config::CapabilityKind,
+    pub rights: u16,
+    pub flags: u32,
+    pub handle: u64,
+}
+
+pub struct InitialCapabilities {
+    index: usize,
+}
+
+impl Iterator for InitialCapabilities {
+    type Item = InitialCapability;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let record = config::capability_record(self.index)?;
+            self.index += 1;
+            if let Some(kind) = config::CapabilityKind::from_raw(record.kind) {
+                return Some(InitialCapability {
+                    kind,
+                    rights: record.rights,
+                    flags: record.flags,
+                    handle: record.handle,
+                });
+            }
+        }
     }
 }
 
@@ -139,35 +213,29 @@ pub enum InputError {
 
 pub fn run_main(main: fn(Context) -> !) -> ! {
     if !config::launch_header_is_compatible() {
-        unsafe { thread_exit(); }
+        unsafe {
+            thread_exit();
+        }
     }
     main(Context {
-        args: launch_args(),
+        args: config::launch_args(),
     })
-}
-
-fn launch_args() -> &'static [u32] {
-    let argc = unsafe { config::read::<u32>(config::ARGC_OFFSET) } as usize;
-    let byte_len = argc.saturating_mul(core::mem::size_of::<u32>());
-    if config::ARGS_OFFSET.saturating_add(byte_len) > 4096 {
-        return &[];
-    }
-    let ptr = (config::CONFIG_VADDR + config::ARGS_OFFSET) as *const u32;
-    unsafe { core::slice::from_raw_parts(ptr, argc) }
 }
 
 // ---- allocator support (used by entry! macro) -----------------------------
 
 pub use talc::{
-    source::Claim,
     TalcLock,
+    source::Claim,
 };
 
 pub type HeapLock = TalcLock<spin::Mutex<()>, Claim>;
 
 /// Construct the heap arena at the canonical heap VADDR (0x13000).
 pub const fn heap() -> HeapLock {
-    TalcLock::new(unsafe { Claim::new(0x0000_0000_0001_3000usize as *mut u8, 0xd000) })
+    TalcLock::new(unsafe {
+        Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, charlotte_launch::HEAP_SIZE)
+    })
 }
 
 // ---- plumbing (not user-facing) -------------------------------------------

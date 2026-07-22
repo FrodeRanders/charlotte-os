@@ -1,0 +1,11 @@
+[package]
+name = "charlotte-launch"
+version = "0.1.0"
+edition = "2024"
+description = "Shared fixed-width CharlotteOS userspace launch ABI"
+
+[lib]
+name = "charlotte_launch"
+path = "src/lib.rs"
+test = false
+bench = false

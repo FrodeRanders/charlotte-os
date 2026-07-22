@@ -7,6 +7,14 @@
 //! are mapped and zeroed.
 #![cfg(target_arch = "aarch64")]
 
+pub use charlotte_launch::{
+    CONFIG_VADDR,
+    CQ_ENTRIES,
+    CQ_VADDR,
+    HEAP_VADDR,
+    INPUT_VADDR,
+};
+
 use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
@@ -25,22 +33,11 @@ use crate::{
         physical::PAddr,
     },
 };
-
-/// The canonical config-page virtual address (`catten-rt` contract).
-pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
-/// Canonical completion-queue ring virtual address (default queue 0).
-pub const CQ_VADDR: usize = 0x0000_0000_0001_1000;
-/// Canonical launch input buffer virtual address.
-pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
-/// Canonical user heap base (`catten-rt`'s allocator arena).
-pub const HEAP_VADDR: usize = 0x0000_0000_0001_3000;
-/// Number of heap pages backing the `catten-rt` allocator arena (0xd000).
-pub const HEAP_PAGES: usize = 13;
+/// Number of pages backing the heap declared by launch ABI v1.
+pub const HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / PAGE_SIZE;
 
 /// Completion capability-table capacity granted to a service domain.
 pub const COMPLETION_CAPACITY: usize = 16;
-/// Entry slots in a service domain's default CQ ring.
-pub const CQ_ENTRIES: u32 = 32;
 
 /// Base virtual address of the per-shard completion-queue ring array. Each
 /// shard of a multi-shard service waits on its own ring (queue id `i + 1`)
@@ -327,7 +324,11 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
     }
 
     // Publish the layout so user-space runtimes can find their shard's ring.
-    crate::service::bootstrap::write_shard_cq_layout(config_frame, SHARD_CQ_VADDR_BASE, SHARD_CQ_COUNT);
+    crate::service::bootstrap::write_shard_cq_layout(
+        config_frame,
+        SHARD_CQ_VADDR_BASE,
+        SHARD_CQ_COUNT,
+    );
 
     LoadedDomain {
         asid,

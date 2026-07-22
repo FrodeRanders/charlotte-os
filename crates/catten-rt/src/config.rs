@@ -3,80 +3,96 @@
 //! The kernel maps a single 4 KiB page at VADDR `0x0001_0000` in every user
 //! address space and writes launch metadata there during setup.
 
-/// The canonical config-page virtual address.
-pub const CONFIG_VADDR: usize = 0x0000_0000_0001_0000;
-
-/// Canonical launch input buffer virtual address.
-pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
-
-/// Bytes available in the canonical launch input buffer.
-pub const INPUT_CAPACITY: usize = 4096;
-
-/// Number of 32-bit launch argument words at [`ARGS_OFFSET`].
-pub const ARGC_OFFSET: usize = 24;
-
-/// Launch argument words start here.
-pub const ARGS_OFFSET: usize = 32;
-
-/// Versioned launch-header area. Kept separate from the temporary low offsets
-/// used by current service status pages during the ABI transition.
-pub const LAUNCH_HEADER_OFFSET: usize = 2112;
-pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
-pub const LAUNCH_ABI_MAJOR: u16 = 1;
-pub const LAUNCH_ABI_MINOR: u16 = 0;
-pub const LAUNCH_HEADER_SIZE: u16 = 24;
-pub const CONFIG_PAGE_SIZE: u32 = 4096;
+pub use charlotte_launch::{
+    ARGC_OFFSET,
+    ARGS_OFFSET,
+    CONFIG_PAGE_SIZE,
+    CONFIG_VADDR,
+    CapabilityKind,
+    INPUT_CAPACITY,
+    INPUT_VADDR,
+};
+use charlotte_launch::{
+    CAPABILITY_VECTOR_CAPACITY,
+    CapabilityRecord,
+    LAUNCH_HEADER_OFFSET,
+    LaunchHeader,
+};
 
 /// Check the fixed-width launch header before crt0 interprets any other field.
 pub fn launch_header_is_compatible() -> bool {
-    let magic = unsafe { read::<u64>(LAUNCH_HEADER_OFFSET) };
-    let major = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 8) };
-    let minor = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 10) };
-    let header_size = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 12) };
-    let config_size = unsafe { read::<u32>(LAUNCH_HEADER_OFFSET + 16) };
-    magic == LAUNCH_MAGIC
-        && major == LAUNCH_ABI_MAJOR
-        && minor >= LAUNCH_ABI_MINOR
-        && header_size >= LAUNCH_HEADER_SIZE
-        && config_size == CONFIG_PAGE_SIZE
+    launch_header().is_compatible()
 }
 
-/// The bootstrap capability slot.
-///
-/// The supervisor writes one initial capability id here before the domain
-/// starts (architecture doc §16.7). Its type (endpoint vs. connection) is
-/// determined by the program's role, not encoded in the slot. A value of 0
-/// means "no bootstrap capability was delivered".
-pub const BOOTSTRAP_CAP_OFFSET: usize = 16;
+pub(crate) fn launch_args() -> &'static [u32] {
+    let header = launch_header();
+    if !header.is_compatible() {
+        return &[];
+    }
+    let ptr = (CONFIG_VADDR + header.args_offset as usize) as *const u32;
+    unsafe { core::slice::from_raw_parts(ptr, header.args_count as usize) }
+}
 
-/// The delegated MMIO-region device capability slot (architecture doc §10.1,
-/// Phase 8). A driver domain receives exactly the register windows its
-/// manager grants here; 0 means "no MMIO region was delivered". Placed well
-/// past the launch-argument region so it never collides with `argv`.
-pub const MMIO_CAP_OFFSET: usize = 2048;
+pub(crate) fn launch_layout() -> LaunchHeader {
+    launch_header()
+}
 
-/// The delegated interrupt device capability slot (architecture doc §10.1).
-/// 0 means "no interrupt was delivered".
-pub const IRQ_CAP_OFFSET: usize = 2056;
+fn launch_header() -> LaunchHeader {
+    unsafe {
+        core::ptr::read_volatile((CONFIG_VADDR + LAUNCH_HEADER_OFFSET) as *const LaunchHeader)
+    }
+}
+
+fn capability(kind: CapabilityKind) -> Option<u64> {
+    let header = launch_header();
+    if !header.is_compatible() {
+        return None;
+    }
+    let count = core::cmp::min(header.capabilities_count as usize, CAPABILITY_VECTOR_CAPACITY);
+    let records = (CONFIG_VADDR + header.capabilities_offset as usize) as *const CapabilityRecord;
+    for index in 0..count {
+        let record = unsafe { core::ptr::read_volatile(records.add(index)) };
+        if CapabilityKind::from_raw(record.kind) == Some(kind) {
+            return Some(record.handle);
+        }
+    }
+    None
+}
+
+pub(crate) fn capability_record(index: usize) -> Option<CapabilityRecord> {
+    let header = launch_header();
+    if !header.is_compatible() || index >= header.capabilities_count as usize {
+        return None;
+    }
+    let records = (CONFIG_VADDR + header.capabilities_offset as usize) as *const CapabilityRecord;
+    Some(unsafe { core::ptr::read_volatile(records.add(index)) })
+}
+
+fn capability_count(kind: CapabilityKind) -> u32 {
+    let header = launch_header();
+    if !header.is_compatible() {
+        return 0;
+    }
+    let count = core::cmp::min(header.capabilities_count as usize, CAPABILITY_VECTOR_CAPACITY);
+    let records = (CONFIG_VADDR + header.capabilities_offset as usize) as *const CapabilityRecord;
+    let mut matches = 0;
+    for index in 0..count {
+        let record = unsafe { core::ptr::read_volatile(records.add(index)) };
+        if CapabilityKind::from_raw(record.kind) == Some(kind) {
+            matches += 1;
+        }
+    }
+    matches
+}
 
 /// Read the delegated MMIO-region capability, or `None` if none was granted.
 pub fn mmio_cap() -> Option<u64> {
-    let cap = unsafe { read::<u64>(MMIO_CAP_OFFSET) };
-    if cap == 0 {
-        None
-    } else {
-        Some(cap)
-    }
+    capability(CapabilityKind::Mmio)
 }
 
 /// Read the delegated interrupt capability, or `None` if none was granted.
 pub fn irq_cap() -> Option<u64> {
-    let cap = unsafe { read::<u64>(IRQ_CAP_OFFSET) };
-    if cap == 0 {
-        None
-    } else {
-        Some(cap)
-    }
+    capability(CapabilityKind::Interrupt)
 }
 
 /// The per-shard CQ ring base virtual address slot.
@@ -103,30 +119,19 @@ pub fn shard_cq_count() -> usize {
     unsafe { read::<u64>(SHARD_CQ_COUNT_OFFSET) as usize }
 }
 
-/// Byte offset of the handoff state count (u32) — how many memory-object
-/// caps the supervisor delivered from the previous instance.
-pub const HANDOFF_COUNT_OFFSET: usize = 2080;
-
-/// Byte offset of the first handoff state capability id (u64).
-pub const HANDOFF_STATE_OFFSET: usize = 2088;
-
-/// Byte offset of the old endpoint capability id (u64) — the previous
-/// instance's endpoint, delivered so the new instance can re-register it.
-pub const HANDOFF_ENDPOINT_OFFSET: usize = 2096;
-
 /// How many handoff memory-object state caps the supervisor delivered.
 pub fn handoff_count() -> u32 {
-    unsafe { read::<u32>(HANDOFF_COUNT_OFFSET) }
+    capability_count(CapabilityKind::HandoffState)
 }
 
 /// The first handoff state memory-object cap, or 0 if none.
 pub fn handoff_state_cap() -> u64 {
-    unsafe { read::<u64>(HANDOFF_STATE_OFFSET) }
+    capability(CapabilityKind::HandoffState).unwrap_or(0)
 }
 
 /// The old endpoint capability (for re-registration), or 0 if none.
 pub fn handoff_endpoint_cap() -> u64 {
-    unsafe { read::<u64>(HANDOFF_ENDPOINT_OFFSET) }
+    capability(CapabilityKind::HandoffEndpoint).unwrap_or(0)
 }
 
 /// Output/status words are intentionally kept at the beginning of the page so
@@ -136,12 +141,7 @@ pub const OUTPUT_OFFSET: usize = 0;
 /// Read the bootstrap capability id delivered by the supervisor, or `None`
 /// when no capability was delivered.
 pub fn bootstrap_cap() -> Option<u64> {
-    let cap = unsafe { read::<u64>(BOOTSTRAP_CAP_OFFSET) };
-    if cap == 0 {
-        None
-    } else {
-        Some(cap)
-    }
+    capability(CapabilityKind::Bootstrap)
 }
 
 /// Read a value of type `T` from `offset` bytes into the config page.
@@ -154,6 +154,8 @@ pub fn bootstrap_cap() -> Option<u64> {
 /// that has never been written is sound (the kernel zeros the page), but its
 /// value is unspecified.
 pub unsafe fn read<T: Copy>(offset: usize) -> T {
+    assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
+    assert!(offset.saturating_add(core::mem::size_of::<T>()) <= CONFIG_PAGE_SIZE as usize);
     unsafe { core::ptr::read_volatile((CONFIG_VADDR as *const u8).add(offset) as *const T) }
 }
 
@@ -161,6 +163,8 @@ pub unsafe fn read<T: Copy>(offset: usize) -> T {
 ///
 /// `offset` should be a multiple of `align_of::<T>()`.
 pub fn write<T: Copy>(offset: usize, value: T) {
+    assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
+    assert!(offset.saturating_add(core::mem::size_of::<T>()) <= CONFIG_PAGE_SIZE as usize);
     unsafe {
         core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value);
     }

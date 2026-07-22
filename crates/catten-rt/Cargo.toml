@@ -11,6 +11,7 @@ test = false
 bench = false
 
 [dependencies]
+charlotte-launch = { path = "../charlotte-launch" }
 catten-syscall = { path = "../catten-syscall" }
 talc = { version = ">=5.0.3", default-features = false, features = ["nightly"] }
 spin = { version = "0.9", features = ["lock_api"] }

@@ -65,6 +65,7 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 name = "catten"
 version = "0.8.1"
 dependencies = [
+ "charlotte-launch",
  "concurrent-queue",
  "flanterm_bindings",
  "flat_device_tree",
@@ -89,6 +90,7 @@ name = "catten-rt"
 version = "0.1.0"
 dependencies = [
  "catten-syscall",
+ "charlotte-launch",
  "spin 0.9.9",
  "talc",
 ]
@@ -121,6 +123,10 @@ name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+
+[[package]]
+name = "charlotte-launch"
+version = "0.1.0"
 
 [[package]]
 name = "charlotte-protocol-msg"

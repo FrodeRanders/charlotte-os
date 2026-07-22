@@ -29,6 +29,12 @@ arguments, the bootstrap capability, device grants, per-shard completion-queue
 layout, live-upgrade handoff state, and explicit bounded startup reads. Programs
 should not depend on config-page virtual addresses or field offsets.
 
+Initial authority is encoded as a bounded vector of typed capability records.
+`Context::capabilities()` enumerates their kind, rights metadata, flags, and
+handle; role-oriented helpers such as `bootstrap_cap()` and `mmio_cap()` search
+the same vector. Presence is represented by a record, so handle zero is not
+mistaken for an absent capability.
+
 The former `fn(Args, Input<N>) -> !` entry form has been removed. Startup input
 is no longer hidden in a function signature; a program explicitly calls
 `Context::read_startup_input` when it intends to block for input.
@@ -36,10 +42,15 @@ is no longer hidden in a function signature; a program explicitly calls
 ## Launch ABI v1
 
 Before calling `main`, crt0 validates a fixed-width header in the mapped launch
-page. Version 1 contains an eight-byte magic value, ABI major and minor
-versions, header size, config-page size, and feature flags. An invalid magic,
-unsupported major version, short header, or unexpected page size terminates the
+page. Version 1.1 contains an eight-byte magic value, ABI major and minor
+versions, header size, config-page size, feature flags, bounded argument and
+capability-vector locations, and the declared heap, input-buffer, and default
+completion-queue layouts. An invalid or out-of-bounds layout terminates the
 initial thread rather than interpreting unchecked offsets.
+
+The kernel and runtime import this representation from the shared no-std
+`charlotte-launch` crate. Compile-time size assertions keep the header and
+capability record layouts stable across both sides of the boundary.
 
 The argument count is a `u32`, independent of kernel or userspace pointer
 width. The current argument payload remains an array of `u32` values. Future
