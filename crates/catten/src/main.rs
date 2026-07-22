@@ -145,6 +145,20 @@ pub extern "C" fn bsp_main() -> ! {
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
     crate::demo::spawn_async_syscall_demo();
+    // Admit the controlled scheduler-rebalancing workload last so its initial
+    // co-location cannot be cancelled out by later least-loaded admissions.
+    crate::self_test::scheduler_lifecycle::test_scheduler_lifecycle();
+    // Initial admission is intentionally affinity-preserving. Once the full
+    // boot workload is known, migrate explicitly certified Ready work from
+    // overloaded LPs before any of those contexts begin executing.
+    let mut rebalanced = 0usize;
+    while crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read().try_rebalance() {
+        rebalanced += 1;
+    }
+    logln!(
+        "[scheduler rebalance] moved {} certified Ready thread(s) at boot quiescence.",
+        rebalanced
+    );
     logln!("Submitted all initial kernel threads.");
     logln!(
         "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",

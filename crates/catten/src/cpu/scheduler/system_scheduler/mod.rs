@@ -7,6 +7,10 @@ use alloc::{
     },
     vec::Vec,
 };
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
 use super::lp_schedulers::LpScheduler;
 use crate::{
@@ -37,6 +41,7 @@ use crate::{
 };
 
 const SCHED_TRACE: bool = false;
+const REBALANCE_MIN_LOAD_DIFFERENCE: usize = 2;
 
 macro_rules! sched_trace {
     ($($arg:tt)*) => {
@@ -47,6 +52,7 @@ macro_rules! sched_trace {
 }
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
+pub static REBALANCE_SUCCESSES: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug)]
 pub enum Error {
@@ -182,6 +188,7 @@ impl SystemScheduler {
             let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
             thread.affinity_lp = Some(target_lp);
             thread.pinned_lp = Some(target_lp);
+            thread.migration_safe = false;
         }
         sched_guard.set_ctx_switch_pending();
         drop(sched_guard);
@@ -190,6 +197,114 @@ impl SystemScheduler {
                 .expect("failed to send scheduler wake IPI");
         }
         Ok(())
+    }
+
+    /// Give certified migratable work an initial soft placement. Unlike
+    /// `submit_to_lp`, this does not pin the thread; it exists for deliberate
+    /// initial placement and for the boot rebalancing regression workload.
+    pub fn submit_migratable_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
+        let sched = self.lp_schedulers.get(&target_lp).ok_or(Error::InvalidThread)?;
+        let mut sched_guard = sched.lock();
+        sched_guard.add_thread(tid, None).map_err(|_| Error::InvalidThread)?;
+        {
+            let mut table = MASTER_THREAD_TABLE.write();
+            let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
+            if !thread.migration_safe || thread.pinned_lp.is_some() {
+                return Err(Error::InvalidThread);
+            }
+            thread.affinity_lp = Some(target_lp);
+        }
+        sched_guard.set_ctx_switch_pending();
+        drop(sched_guard);
+        if target_lp != get_lp_id() {
+            LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)
+                .expect("failed to send scheduler wake IPI");
+        }
+        Ok(())
+    }
+
+    /// Move at most one explicitly migratable Ready thread from the busiest LP
+    /// to the least-loaded LP. Running and Blocked threads never migrate: a
+    /// Blocked thread may still own an event in its affinity LP's timer queue,
+    /// while a Running thread's context has not completed the `on_cpu`
+    /// hand-off. Both LP queues are locked in numeric order before the thread
+    /// table, making the queue move, state transition, and affinity update one
+    /// transaction under the scheduler's canonical lock order.
+    pub fn try_rebalance(&self) -> bool {
+        if self.lp_schedulers.len() < 2 {
+            return false;
+        }
+
+        let mut loads: Vec<(LpId, usize)> = self
+            .lp_schedulers
+            .iter()
+            .map(|(&lp, scheduler)| (lp, scheduler.lock().thread_count()))
+            .collect();
+        loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
+        let (destination_lp, destination_load) = loads[0];
+        let (source_lp, source_load) = loads[loads.len() - 1];
+        if source_lp == destination_lp
+            || source_load < destination_load + REBALANCE_MIN_LOAD_DIFFERENCE
+        {
+            return false;
+        }
+
+        let first_lp = source_lp.min(destination_lp);
+        let second_lp = source_lp.max(destination_lp);
+        let mut first = self.lp_schedulers[&first_lp].lock();
+        let mut second = self.lp_schedulers[&second_lp].lock();
+        let (source, destination): (&mut dyn LpScheduler, &mut dyn LpScheduler) =
+            if source_lp == first_lp {
+                (&mut **first, &mut **second)
+            } else {
+                (&mut **second, &mut **first)
+            };
+
+        // Loads may have changed while the two locks were acquired.
+        if source.thread_count() < destination.thread_count() + REBALANCE_MIN_LOAD_DIFFERENCE {
+            return false;
+        }
+
+        let candidates = source.ready_migration_candidates();
+        let mut table = MASTER_THREAD_TABLE.write();
+        let candidate = candidates.into_iter().find(|&(tid, generation)| {
+            table.get(tid).is_ok_and(|thread| {
+                thread.generation == generation
+                    && thread.migration_safe
+                    && thread.pinned_lp.is_none()
+                    && matches!(thread.state, ThreadState::Ready(lp) if lp == source_lp)
+            })
+        });
+        let Some((tid, generation)) = candidate else {
+            return false;
+        };
+
+        source
+            .remove_ready_for_migration(tid, generation)
+            .expect("validated migration candidate vanished from source queue");
+        destination
+            .add_ready_from_migration(tid, generation)
+            .expect("migration duplicated a destination queue entry");
+        let thread = table.get_mut(tid).expect("validated migration candidate vanished");
+        thread.state = ThreadState::Ready(destination_lp);
+        thread.affinity_lp = Some(destination_lp);
+        destination.set_ctx_switch_pending();
+        drop(table);
+        drop(second);
+        drop(first);
+
+        if destination_lp != get_lp_id() {
+            LocalIntCtlr::send_unicast_ipi(destination_lp, SCHEDULER_IPI_VECTOR)
+                .expect("failed to send scheduler rebalance IPI");
+        }
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_SCHED_ADMIT,
+            tid as u64,
+            generation,
+            (1u64 << 63) | destination_lp as u64,
+        );
+        REBALANCE_SUCCESSES.fetch_add(1, Ordering::Relaxed);
+        true
     }
 
     /// Block the specified thread at least until the given event notifies its observers

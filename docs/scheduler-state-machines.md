@@ -388,11 +388,27 @@ switch_ctx saves T's context
                                          restore from *next_sp
 ```
 
-Automatic load migration is disabled. `affinity_lp` keeps ordinary threads on
-their established LP, while `pinned_lp` is a hard constraint for explicit
-shard placement. The `on_cpu` protocol remains a defensive SMP ownership
-invariant; it is not evidence that arbitrary thread migration is currently
-safe.
+Automatic and wake-path load migration remain disabled. `affinity_lp` keeps
+ordinary threads on their established LP, while `pinned_lp` is a hard
+constraint for explicit shard placement.
+
+The scheduler supports one deliberately narrow rebalancing operation:
+`try_rebalance()` may move an explicitly certified, queued `Ready` thread from
+the busiest LP to the least-loaded LP when their load differs by at least two.
+Certification is opt-in through `spawn_migratable_thread`; ordinary
+`spawn_thread` and explicit `submit_to_lp` work are non-migratable. Running and
+Blocked threads are never candidates because their CPU hand-off or LP-local
+timer/resource ownership may still be live.
+
+Migration locks both LP schedulers in numeric LP order and then the master
+thread table. It revalidates generation, state, pin and certification before
+moving the queue handle and updating `ThreadState::Ready(destination)` plus
+soft affinity as one transaction. It currently runs only at the boot quiescent
+point. There is no departure-, periodic-, or wake-driven work stealing. In
+particular, timer and CQ wake admission return to the established affinity LP.
+A tested departure trigger was rejected because wake-before-save can make a
+still-on-CPU thread appear `Ready`. The `on_cpu` protocol prevents concurrent
+restoration but does not make such migration preserve timer affinity.
 
 ---
 

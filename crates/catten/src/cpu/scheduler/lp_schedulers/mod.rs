@@ -2,6 +2,7 @@ pub mod round_robin;
 use alloc::{
     fmt::Debug,
     sync::Arc,
+    vec::Vec,
 };
 use core::sync::atomic::{
     AtomicBool,
@@ -42,6 +43,21 @@ pub trait LpScheduler: Debug + Send {
         expected_generation: Option<ThreadGeneration>,
     ) -> Result<(), Error>;
     fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
+    /// Return a queued thread that may be considered for migration. The
+    /// system scheduler validates policy and state under the thread-table lock.
+    fn ready_migration_candidates(&self) -> Vec<(ThreadId, ThreadGeneration)>;
+    /// Queue-only halves of a transactional Ready-thread migration. Callers
+    /// must hold both LP scheduler locks and update ThreadState atomically.
+    fn remove_ready_for_migration(
+        &mut self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<(), Error>;
+    fn add_ready_from_migration(
+        &mut self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<(), Error>;
     fn is_idle(&self) -> bool;
     fn start(&mut self);
     fn stop(&mut self);

@@ -160,6 +160,9 @@ pub struct Thread {
     /// (notably shard workers). Unlike soft affinity, rebalancing must never
     /// change this value.
     pub pinned_lp: Option<LpId>,
+    /// Explicit permission for Ready-state load migration. Hard pinning still
+    /// takes precedence. Set false for work with unmodelled LP-local state.
+    pub migration_safe: bool,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -182,6 +185,7 @@ impl Thread {
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
             pinned_lp: None,
+            migration_safe: false,
             exit_observers: Mutex::new(Vec::new()),
         }
     }

@@ -32,7 +32,39 @@ const SCHED_TRACE: bool = false;
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
-    let thread = Thread::new(asid, entry_point);
+    spawn_thread_with_migration(asid, entry_point, false)
+}
+
+/// Spawn work whose creator explicitly certifies that it owns no LP-local
+/// resources while Ready. This is intentionally separate from `spawn_thread`:
+/// migration must be opt-in, never inferred from scheduler state alone.
+pub fn spawn_migratable_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
+    spawn_thread_with_migration(asid, entry_point, true)
+}
+
+/// Spawn certified migratable work with an explicit initial soft placement.
+pub fn spawn_migratable_thread_on_lp(
+    asid: AddressSpaceId,
+    entry_point: extern "C" fn(),
+    lp: crate::cpu::isa::lp::LpId,
+) -> ThreadId {
+    let mut thread = Thread::new(asid, entry_point);
+    thread.migration_safe = true;
+    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    SYSTEM_SCHEDULER
+        .read()
+        .submit_migratable_to_lp(tid, lp)
+        .expect("Error submitting migratable thread to requested LP");
+    tid
+}
+
+fn spawn_thread_with_migration(
+    asid: AddressSpaceId,
+    entry_point: extern "C" fn(),
+    migration_safe: bool,
+) -> ThreadId {
+    let mut thread = Thread::new(asid, entry_point);
+    thread.migration_safe = migration_safe;
     let tid = MASTER_THREAD_TABLE.write().add_element(thread);
     SYSTEM_SCHEDULER
         .read()

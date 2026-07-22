@@ -323,6 +323,40 @@ impl LpScheduler for RoundRobin {
         }
     }
 
+    fn ready_migration_candidates(&self) -> alloc::vec::Vec<(ThreadId, ThreadGeneration)> {
+        self.run_queue.iter().map(|handle| (handle.tid, handle.generation)).collect()
+    }
+
+    fn remove_ready_for_migration(
+        &mut self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<(), Error> {
+        let position = self
+            .run_queue
+            .iter()
+            .position(|handle| handle.tid == tid && handle.generation == generation)
+            .ok_or(Error::ThreadNotAssignedToThisLp)?;
+        self.run_queue.remove(position);
+        Ok(())
+    }
+
+    fn add_ready_from_migration(
+        &mut self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Result<(), Error> {
+        if self.run_queue.iter().any(|handle| handle.tid == tid && handle.generation == generation)
+        {
+            return Err(Error::ThreadAlreadyAssignedToLp);
+        }
+        self.run_queue.push_back(ThreadHandle {
+            tid,
+            generation,
+        });
+        Ok(())
+    }
+
     fn is_idle(&self) -> bool {
         self.is_idle
     }
