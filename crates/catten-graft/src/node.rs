@@ -751,6 +751,7 @@ mod tests {
         },
         transport::NoopTransport,
         types::{
+            AppendEntriesRequest,
             AppendEntriesResponse,
             InstallSnapshotRequest,
             NodeState,
