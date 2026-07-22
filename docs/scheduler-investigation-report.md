@@ -209,15 +209,17 @@ removed before the final validation series.
 A dedicated scheduler-lifecycle gate performs 128 one-millisecond timer
 block/wake cycles while checking LP affinity. Initially, merely adding that
 worker reliably reproduced the early stall at approximately 0.09 seconds.
-Timer events were being inserted and the comparator programmed while local
-IRQs were enabled; an immediately due timer could re-enter the IRQ handler
-while the per-LP timer queue still had an outstanding mutable borrow. The IRQ
-could not process the queue and the level-triggered source was left in a bad
-transition.
+This first appeared to be interrupt re-entry during timer queue mutation.
+Closer inspection showed that the queue's kernel `RwLock` guard already saves
+and masks local IRQ state, however, so interrupt re-entry through that guard is
+not an established root cause.
 
 All non-scheduler timer insertion now goes through `enqueue_event`, which
 preserves the caller's interrupt state and masks local interrupts across the
-queue mutation and comparator programming. With that change, the reproducer
+queue mutation and comparator programming. This makes the required critical
+section explicit and is useful defensive synchronization, but duplicates the
+current lock guard's masking and must not be treated as the causal fix. With
+that change, the reproducer
 completed all 128 wakes on its original LP at 0.235 seconds, and the complete
 SMP4 HVF suite also passed. The lifecycle marker is now required by the bounded
 AArch64 runner.
@@ -230,3 +232,26 @@ then armed from the new head or stopped for an empty queue. Queue mutation and
 comparator programming are one local interrupt-masked transaction. The idle
 loop uses the same protected reconciliation wrapper; only the timer IRQ handler
 calls `process_events` directly, because exception entry already masks IRQs.
+
+An attempted extension of the scheduler lifecycle gate armed four logical
+events at 2, 4, 7, and 11 milliseconds on one LP. With per-interrupt queue and
+comparator tracing enabled, all four events fired in deadline order and the
+complete deferred test suite passed. The same binary rebuilt without tracing
+occasionally stopped making progress around 90 milliseconds, before the four
+events were armed; only the earliest EL0 marker was then present. Consequently
+the extension was not retained as a gate. This is evidence that the sorted
+timer queue can drive one comparator through multiple deadlines, but it also
+exposes a remaining timing- or layout-sensitive early scheduler liveness issue.
+The tracing changes scheduling enough to hide that issue, so a future
+investigation should use a bounded in-memory trace rather than synchronous
+serial logging.
+
+A subsequent uninstrumented run with only the committed lifecycle gate reached
+its 128-wake success marker and Raft success, then remained silent with only
+`[cq wait] SUCCESS` missing. This confirms that the liveness problem is not
+created by the four-deadline extension. It can occur both during early boot and
+later while the CQ driver is progressing through repeated one-millisecond
+sleeps. The current HVF gate must therefore still be considered timing
+sensitive despite successful runs; the next diagnostic should capture timer
+head, comparator state, current TID, and ready-queue transitions into a fixed
+memory ring that can be dumped after an independent watchdog trigger.
