@@ -51,6 +51,7 @@ mod inner {
             tid,
             generation,
             config_frame: addr.config_frame,
+            status_frame: addr.status_frame,
         }
     }
 
@@ -79,7 +80,7 @@ mod inner {
 
         let ns = unsafe { RAFT_NS }.expect("[raft] verifier name service missing");
         let ns_stage: *const u32 = {
-            let base: *mut u8 = ns.domain.config_frame.into();
+            let base: *mut u8 = ns.domain.status_frame.into();
             base as *const u32
         };
         while unsafe { core::ptr::read_volatile(ns_stage) } < 2 {
@@ -92,7 +93,7 @@ mod inner {
         // polling client starve the server it is waiting for.
         let r1_domain = spawn_raft_node(&[b'r' as u32, b'1' as u32, b'r' as u32, b'2' as u32], &ns);
         let r1_stage: *const u32 = {
-            let base: *mut u8 = r1_domain.config_frame.into();
+            let base: *mut u8 = r1_domain.status_frame.into();
             base as *const u32
         };
         while unsafe { core::ptr::read_volatile(r1_stage) } < 6 {
@@ -101,8 +102,8 @@ mod inner {
         let r2_domain = spawn_raft_node(&[b'r' as u32, b'2' as u32, b'r' as u32, b'1' as u32], &ns);
         crate::logln!("[raft] nodes spawned in registration order after name service became ready");
 
-        let r1_config = r1_domain.config_frame;
-        let r2_config = r2_domain.config_frame;
+        let r1_config = r1_domain.status_frame;
+        let r2_config = r2_domain.status_frame;
         let r1: *const u32 = {
             let base: *mut u8 = r1_config.into();
             base as *const u32

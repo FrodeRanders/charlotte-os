@@ -114,7 +114,7 @@ pub fn test_el0_service() {
             TEST_STATE = Some(TestState {
                 name_service,
                 echo: Some(echo),
-                client_config: client.config_frame,
+                client_config: client.status_frame,
             });
         }
 
@@ -188,12 +188,12 @@ extern "C" fn verify_el0_service() {
         base as *const u32
     };
     let ns_config: *const u32 = {
-        let base: *mut u8 = state.name_service.domain.config_frame.into();
+        let base: *mut u8 = state.name_service.domain.status_frame.into();
         base as *const u32
     };
     let echo_config: *const u32 = {
         let base: *mut u8 =
-            state.echo.as_ref().expect("[service] echo domain missing").config_frame.into();
+            state.echo.as_ref().expect("[service] echo domain missing").status_frame.into();
         base as *const u32
     };
     {
@@ -270,7 +270,7 @@ extern "C" fn verify_el0_service() {
     // Wait on the replacement's launch state instead of flooding the name
     // service with synchronous lookups while registration is still pending.
     let echo2_config: *const u32 = {
-        let base: *mut u8 = echo2.config_frame.into();
+        let base: *mut u8 = echo2.status_frame.into();
         base as *const u32
     };
     spin_until(
@@ -348,7 +348,7 @@ extern "C" fn verify_el0_service() {
 
     logln!("[service] generation-3 echo spawned with handoff state (ep_cap={:#x})", ep_cap);
     let echo3_config: *const u32 = {
-        let base: *mut u8 = e3.config_frame.into();
+        let base: *mut u8 = e3.status_frame.into();
         base as *const u32
     };
     spin_until(

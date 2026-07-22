@@ -1697,10 +1697,13 @@ arguments through `Context`; raw offsets are not the intended application API.
 
 ### Remaining work
 
-Launch ABI v1.1 now uses the shared no-std `charlotte-launch` crate. It declares
+Launch ABI v1.2 now uses the shared no-std `charlotte-launch` crate. It declares
 heap, input, and default-CQ layouts and carries a bounded typed initial
 capability vector. Both the kernel and crt0 consume the same fixed-width
 structures, and capability presence no longer relies on a nonzero handle.
+The launch page is mapped read-only to EL0. Mutable diagnostic and self-test
+output has moved to a separately mapped status page, so result publication can
+no longer corrupt arguments, capability records, or the launch header.
 AArch64 user threads already receive separately mapped stacks with an unmapped
 guard-page stride.
 
@@ -1709,10 +1712,10 @@ The following parts of the target contract are still incomplete:
 -   selectable/customizable heap policy rather than the declared default arena;
 -   a general argument/environment or manifest block rather than `u32` words;
 -   equivalent user-stack/guard-page validation on the x86-64 path;
--   removal of raw config-page status writes and global result pages from test
-    infrastructure.
+-   replacement of the remaining raw status-page test instrumentation with
+    typed diagnostics or ordinary service/completion protocols.
 
-Embedded test images and result pages remain acceptable as internal test
+Embedded test images and status pages remain acceptable as internal test
 instrumentation, but must not become the public process ABI.
 
 ## 16.8 Treat service discovery as userspace policy
@@ -1967,7 +1970,7 @@ define crt0, the panic handler, or the default allocator. `Context` provides
 typed access to launch arguments, bootstrap authority, device grants,
 per-shard completion queues, and live-upgrade handoff state.
 
-The kernel writes, and crt0 validates, launch ABI v1.1 before `main` runs. Its
+The kernel writes, and crt0 validates, launch ABI v1.2 before `main` runs. Its
 fixed-width shared header contains a magic value, major/minor version, header
 size, config-page size, feature flags, bounded argument and capability-vector
 locations, and declared heap/input/default-CQ layouts. Initial authority is a
@@ -2273,7 +2276,7 @@ Current status:
     virtio-net driver, protocol crates, smoltcp adapter, and TCP/IP service
     compile, but no successful end-to-end NIC data path is claimed from HVF.
 -   Criterion 11 is substantially strengthened but remains open as a complete
-    ABI audit. Launch ABI v1.1 is shared, versioned, bounded, and fixed-width,
+    ABI audit. Launch ABI v1.2 is shared, versioned, bounded, and fixed-width,
     including a `u32` argument count and typed capability records; crt0
     validates it before calling `main(Context)`.
     Completion, IPC, and protocol records are designed as fixed-width wire

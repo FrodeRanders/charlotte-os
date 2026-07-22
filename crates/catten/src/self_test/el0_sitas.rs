@@ -48,6 +48,8 @@ const SITAS_INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 const SITAS_HEAP_VADDR: usize = 0x0000_0000_0001_3000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_HEAP_PAGES: usize = 13;
+#[cfg(target_arch = "aarch64")]
+const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
@@ -301,7 +303,7 @@ pub fn test_el0_sitas() {
             .map_page(MemoryMapping {
                 vaddr: VAddr::from(SITAS_CONFIG_VADDR),
                 paddr: config_frame,
-                page_type: PageType::UserData,
+                page_type: PageType::UserRoData,
             })
             .expect("[sitas] failed to map config page");
 
@@ -326,9 +328,6 @@ pub fn test_el0_sitas() {
             .lock()
             .allocate_frame()
             .expect("[sitas] failed to allocate input frame");
-        unsafe {
-            SITAS_RESULT_FRAME = Some(config_frame); // verifier polls config page
-        }
         ADDRESS_SPACE_TABLE
             .lock()
             .get_mut(asid)
@@ -339,6 +338,27 @@ pub fn test_el0_sitas() {
                 page_type: PageType::UserData,
             })
             .expect("[sitas] failed to map input page");
+
+        // --- map the mutable program status page separately from launch data ---
+        let status_frame = PHYSICAL_FRAME_ALLOCATOR
+            .lock()
+            .allocate_frame()
+            .expect("[sitas] failed to allocate status frame");
+        ADDRESS_SPACE_TABLE
+            .lock()
+            .get_mut(asid)
+            .expect("[sitas] AS not found")
+            .map_page(MemoryMapping {
+                vaddr: VAddr::from(SITAS_STATUS_VADDR),
+                paddr: status_frame,
+                page_type: PageType::UserData,
+            })
+            .expect("[sitas] failed to map status page");
+        let status_base: *mut u8 = status_frame.into();
+        unsafe {
+            core::ptr::write_bytes(status_base, 0, PAGE_SIZE);
+            SITAS_RESULT_FRAME = Some(status_frame);
+        }
 
         // --- map user heap pages ---
         for i in 0..SITAS_HEAP_PAGES {

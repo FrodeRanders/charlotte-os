@@ -114,6 +114,15 @@ impl Context {
         }
     }
 
+    /// Mutable diagnostic/status region, separate from read-only launch data.
+    pub fn status_layout(&self) -> MemoryRegion {
+        let header = config::launch_layout();
+        MemoryRegion {
+            base: header.status_base as usize,
+            size: header.status_size as usize,
+        }
+    }
+
     pub fn bootstrap_cap(&self) -> Option<u64> {
         config::bootstrap_cap()
     }

@@ -44,6 +44,8 @@ pub struct ServiceDomain {
     pub tid: ThreadId,
     pub generation: ThreadGeneration,
     pub config_frame: PAddr,
+    /// Mutable userspace status/output page observed by supervisors and tests.
+    pub status_frame: PAddr,
 }
 
 /// A running name-service domain plus the supervisor's handle to its
@@ -78,6 +80,7 @@ fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
         tid,
         generation,
         config_frame: loaded.config_frame,
+        status_frame: loaded.status_frame,
     }
 }
 

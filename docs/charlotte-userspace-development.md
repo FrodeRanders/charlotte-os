@@ -42,10 +42,10 @@ is no longer hidden in a function signature; a program explicitly calls
 ## Launch ABI v1
 
 Before calling `main`, crt0 validates a fixed-width header in the mapped launch
-page. Version 1.1 contains an eight-byte magic value, ABI major and minor
+page. Version 1.2 contains an eight-byte magic value, ABI major and minor
 versions, header size, config-page size, feature flags, bounded argument and
-capability-vector locations, and the declared heap, input-buffer, and default
-completion-queue layouts. An invalid or out-of-bounds layout terminates the
+capability-vector locations, and the declared heap, input-buffer, default
+completion-queue, and mutable status layouts. An invalid or out-of-bounds layout terminates the
 initial thread rather than interpreting unchecked offsets.
 
 The kernel and runtime import this representation from the shared no-std
@@ -57,9 +57,11 @@ width. The current argument payload remains an array of `u32` values. Future
 minor versions may add typed records behind `Context`; applications should not
 parse the backing page directly.
 
-Some bundled services still use `config::write` for test progress and status
-reporting. That output mechanism is transitional and is separate from the
-developer-facing launch-data API.
+The launch page is mapped read-only in EL0. Mutable program status and test
+progress use a separate zeroed status page; `config::read`, `config::write`,
+and `config::output_ptr` address that page for low-level programs. Applications
+should still prefer their service protocol or completion queues for normal
+results rather than treating the status page as general IPC.
 
 ## Building bundled examples
 

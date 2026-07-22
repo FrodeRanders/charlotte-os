@@ -118,18 +118,18 @@ pub fn test_el0_uart() {
                 intid: PL011_INTID,
             },
         );
-        let driver_config = driver.config_frame;
+        let driver_config = driver.status_frame;
         let driver_asid = driver.asid;
         logln!("[uart] driver spawned (asid={}) with PL011 MMIO + IRQ grants", driver_asid);
 
         let client =
             supervisor::spawn_with_name_service(CCLIENT_ELF, &name_service, ConnectionRights::CALL);
-        let client_config = client.config_frame;
+        let client_config = client.status_frame;
         let client_asid = client.asid;
         logln!("[uart] console client spawned (asid={})", client_asid);
 
         // The client is a fire-and-forget domain observed only through its
-        // config page; keep just the frame pointer alive.
+        // status page; keep just the frame pointer alive.
         let _ = client;
 
         unsafe {

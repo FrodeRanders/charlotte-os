@@ -13,6 +13,7 @@ pub use charlotte_launch::{
     CQ_VADDR,
     HEAP_VADDR,
     INPUT_VADDR,
+    STATUS_VADDR,
 };
 
 use crate::{
@@ -67,6 +68,7 @@ pub struct LoadedDomain {
     pub asid: AddressSpaceId,
     pub entry_vaddr: usize,
     pub config_frame: PAddr,
+    pub status_frame: PAddr,
 }
 
 #[derive(Clone, Copy)]
@@ -267,8 +269,8 @@ pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
     entry
 }
 
-/// Map one zeroed `UserData` page at `vaddr` and return its backing frame.
-pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
+/// Map one zeroed user page at `vaddr` and return its backing frame.
+fn map_user_page(asid: AddressSpaceId, vaddr: usize, page_type: PageType) -> PAddr {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
         .allocate_frame()
@@ -280,7 +282,7 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
         .map_page(MemoryMapping {
             vaddr: VAddr::from(vaddr),
             paddr: frame,
-            page_type: PageType::UserData,
+            page_type,
         })
         .expect("[loader] failed to map user data page");
     let hhdm: *mut u8 = frame.into();
@@ -288,6 +290,11 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
         core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
     }
     frame
+}
+
+/// Map one zeroed mutable `UserData` page at `vaddr`.
+pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
+    map_user_page(asid, vaddr, PageType::UserData)
 }
 
 /// Create an address space, load `image`, and map the standard `catten-rt`
@@ -300,8 +307,12 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
     let asid = create_user_address_space();
     let entry_vaddr = load_user_elf(asid, image);
 
-    let config_frame = map_user_data_page(asid, CONFIG_VADDR);
+    // EL0 may inspect launch data but cannot mutate it. The supervisor still
+    // populates the physical frame through the kernel's direct mapping before
+    // and, where necessary, immediately after the initial thread is started.
+    let config_frame = map_user_page(asid, CONFIG_VADDR, PageType::UserRoData);
     crate::service::bootstrap::write_launch_header(config_frame);
+    let status_frame = map_user_data_page(asid, STATUS_VADDR);
     let cq_frame = map_user_data_page(asid, CQ_VADDR);
     let _input_frame = map_user_data_page(asid, INPUT_VADDR);
     for i in 0..HEAP_PAGES {
@@ -334,5 +345,6 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
         asid,
         entry_vaddr,
         config_frame,
+        status_frame,
     }
 }

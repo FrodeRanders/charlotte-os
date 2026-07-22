@@ -1,7 +1,7 @@
-//! Typed access to the canonical kernel↔userspace config page.
+//! Typed access to the canonical kernel↔userspace launch and status pages.
 //!
-//! The kernel maps a single 4 KiB page at VADDR `0x0001_0000` in every user
-//! address space and writes launch metadata there during setup.
+//! The kernel maps read-only launch metadata at `CONFIG_VADDR` and a separate
+//! mutable diagnostic/status page at `STATUS_VADDR` in every runtime domain.
 
 pub use charlotte_launch::{
     ARGC_OFFSET,
@@ -11,6 +11,8 @@ pub use charlotte_launch::{
     CapabilityKind,
     INPUT_CAPACITY,
     INPUT_VADDR,
+    STATUS_PAGE_SIZE,
+    STATUS_VADDR,
 };
 use charlotte_launch::{
     CAPABILITY_VECTOR_CAPACITY,
@@ -106,7 +108,7 @@ pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 /// per-shard rings. A shard executor waits on its own ring so a wake targeted
 /// at one shard never releases another.
 pub fn shard_cq_base() -> Option<usize> {
-    let base = unsafe { read::<u64>(SHARD_CQ_BASE_OFFSET) } as usize;
+    let base = unsafe { read_launch::<u64>(SHARD_CQ_BASE_OFFSET) } as usize;
     if base == 0 {
         None
     } else {
@@ -116,7 +118,7 @@ pub fn shard_cq_base() -> Option<usize> {
 
 /// Number of per-shard completion-queue rings the loader mapped.
 pub fn shard_cq_count() -> usize {
-    unsafe { read::<u64>(SHARD_CQ_COUNT_OFFSET) as usize }
+    unsafe { read_launch::<u64>(SHARD_CQ_COUNT_OFFSET) as usize }
 }
 
 /// How many handoff memory-object state caps the supervisor delivered.
@@ -134,8 +136,7 @@ pub fn handoff_endpoint_cap() -> u64 {
     capability(CapabilityKind::HandoffEndpoint).unwrap_or(0)
 }
 
-/// Output/status words are intentionally kept at the beginning of the page so
-/// existing kernel verifiers can poll `config[0]` as a sentinel.
+/// Output/status words begin at the start of the dedicated status page.
 pub const OUTPUT_OFFSET: usize = 0;
 
 /// Read the bootstrap capability id delivered by the supervisor, or `None`
@@ -144,33 +145,39 @@ pub fn bootstrap_cap() -> Option<u64> {
     capability(CapabilityKind::Bootstrap)
 }
 
-/// Read a value of type `T` from `offset` bytes into the config page.
-///
-/// `offset` should be a multiple of `align_of::<T>()`.
-///
-/// # Safety
-/// The caller must ensure that a value of type `T` was written at `offset` by
-/// the kernel (or by a prior [`write`] in this program).  Reading a location
-/// that has never been written is sound (the kernel zeros the page), but its
-/// value is unspecified.
-pub unsafe fn read<T: Copy>(offset: usize) -> T {
+unsafe fn read_launch<T: Copy>(offset: usize) -> T {
     assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
     assert!(offset.saturating_add(core::mem::size_of::<T>()) <= CONFIG_PAGE_SIZE as usize);
     unsafe { core::ptr::read_volatile((CONFIG_VADDR as *const u8).add(offset) as *const T) }
 }
 
-/// Write `value` of type `T` to `offset` bytes into the config page.
+/// Read a value of type `T` from `offset` bytes into the mutable status page.
+///
+/// `offset` should be a multiple of `align_of::<T>()`.
+///
+/// # Safety
+/// The caller must ensure that a value of type `T` was written at `offset` by
+/// the kernel (or by a prior [`write`] in this program). Reading a location
+/// that has never been written is sound (the kernel zeros the page), but its
+/// value is unspecified.
+pub unsafe fn read<T: Copy>(offset: usize) -> T {
+    assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
+    assert!(offset.saturating_add(core::mem::size_of::<T>()) <= STATUS_PAGE_SIZE as usize);
+    unsafe { core::ptr::read_volatile((STATUS_VADDR as *const u8).add(offset) as *const T) }
+}
+
+/// Write `value` of type `T` to `offset` bytes into the mutable status page.
 ///
 /// `offset` should be a multiple of `align_of::<T>()`.
 pub fn write<T: Copy>(offset: usize, value: T) {
     assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
-    assert!(offset.saturating_add(core::mem::size_of::<T>()) <= CONFIG_PAGE_SIZE as usize);
+    assert!(offset.saturating_add(core::mem::size_of::<T>()) <= STATUS_PAGE_SIZE as usize);
     unsafe {
-        core::ptr::write_volatile((CONFIG_VADDR as *mut u8).add(offset) as *mut T, value);
+        core::ptr::write_volatile((STATUS_VADDR as *mut u8).add(offset) as *mut T, value);
     }
 }
 
-/// Pointer to the canonical output/status area at the start of the config page.
+/// Pointer to the canonical output/status area at the start of the status page.
 pub fn output_ptr<T>() -> *mut T {
-    (CONFIG_VADDR + OUTPUT_OFFSET) as *mut T
+    (STATUS_VADDR + OUTPUT_OFFSET) as *mut T
 }

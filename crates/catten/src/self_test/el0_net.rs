@@ -101,14 +101,14 @@ extern "C" fn verify_el0_net() {
             intid,
         },
     );
-    let driver_config = driver.config_frame;
+    let driver_config = driver.status_frame;
     let driver_asid = driver.asid;
     logln!("[net] driver spawned (asid={}) with BAR0 + IRQ grants", driver_asid);
     let _driver = driver;
 
     let client =
         supervisor::spawn_with_name_service(NCLIENT_ELF, ns, ConnectionRights::CALL);
-    let client_config = client.config_frame;
+    let client_config = client.status_frame;
     let client_asid = client.asid;
     logln!("[net] client spawned (asid={})", client_asid);
     let _client = client;
