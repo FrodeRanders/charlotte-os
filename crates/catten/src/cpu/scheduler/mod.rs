@@ -167,7 +167,10 @@ pub fn abort() -> ! {
     let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
     if let Some(tid) = tid {
         logln!("Thread {} is aborting execution.", tid);
-        SYSTEM_SCHEDULER.read().abort_thread(tid).expect("Error aborting thread");
+        match SYSTEM_SCHEDULER.read().abort_thread(tid) {
+            Ok(_) | Err(system_scheduler::Error::InvalidThread) => {}
+            Err(error) => panic!("Error aborting thread: {:?}", error),
+        }
     }
     yield_lp();
     unsafe { unreachable_unchecked() }

@@ -4,14 +4,13 @@
 
 extern crate alloc;
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_syscall::thread_exit;
 use sitas_charlotte::CharlotteReactor;
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(_ctx: Context) -> ! {
     let reactor = CharlotteReactor::new(0);
 
     unsafe {
@@ -23,4 +22,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

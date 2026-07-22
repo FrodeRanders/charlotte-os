@@ -3,7 +3,7 @@
 //! Provides:
 //! - The [`entry!`] macro that generates `_start`, `#[panic_handler]`, and `#[global_allocator]`.
 //! - A [`config`] module for typed output via the canonical config page.
-//! - Type-driven launch arguments and input-buffer setup for `cmain`.
+//! - A safe [`Context`] passed to the program's Rust `main` function.
 //!
 //! ## Usage
 //!
@@ -13,22 +13,21 @@
 //!
 //! extern crate alloc;
 //! use catten_syscall::*;
-//! use catten_rt::{config, Args, Input};
+//! use catten_rt::{config, Context};
 //!
-//! fn cmain(args: Args, input: Input<32>) -> ! {
-//!     let a = args.get(0).unwrap_or(0);
-//!     let b = args.get(1).unwrap_or(0);
-//!     let kernel_val = input.read_u32(0).unwrap_or(0);
-//!     config::write(0, a.wrapping_add(b).wrapping_add(kernel_val));
+//! fn main(ctx: Context) -> ! {
+//!     let a = ctx.arg(0).unwrap_or(0);
+//!     let b = ctx.arg(1).unwrap_or(0);
+//!     config::write(0, a.wrapping_add(b));
 //!     unsafe { thread_exit(); }
 //! }
 //!
-//! catten_rt::entry!(cmain);
+//! catten_rt::entry!(main);
 //! ```
 //!
 //! The program does **not** define `_start`, `panic_handler`, or an allocator.
-//! The input length is part of the `Input<N>` parameter type; `_start` consumes
-//! exactly `N` bytes before entering `cmain`.
+//! `_start` constructs the context before entering `main`. Programs that need
+//! startup input request it explicitly with [`Context::read_startup_input`].
 #![no_std]
 
 pub mod config;
@@ -38,8 +37,8 @@ pub mod config;
 /// Generates the full EL0 program entry infrastructure: `_start`, a
 /// `#[panic_handler]`, and a `#[global_allocator]` backed by a talc arena.
 ///
-/// The user function takes [`Args`] and [`Input<N>`], and never returns. The
-/// input byte count is inferred from the function's `Input<N>` parameter.
+/// The user function takes a safe [`Context`] and never returns. The generated
+/// `_start` remains the ELF entry point; `main` is a Rust source-level contract.
 ///
 /// ```ignore
 /// catten_rt::entry!(my_main);
@@ -66,93 +65,95 @@ macro_rules! entry {
 
 // ---- launch contract -------------------------------------------------------
 
+/// Launch-time facilities supplied to a CharlotteOS program.
+///
+/// This is the normal developer-facing startup contract. It hides canonical
+/// virtual addresses and config-page offsets; raw config access remains
+/// available for existing low-level services during the ABI transition.
 #[derive(Clone, Copy)]
-pub struct Args {
-    words: &'static [u32],
+pub struct Context {
+    args: &'static [u32],
 }
 
-impl Args {
-    pub fn len(&self) -> usize {
-        self.words.len()
+impl Context {
+    pub fn args(&self) -> &'static [u32] {
+        self.args
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.words.is_empty()
+    pub fn arg(&self, index: usize) -> Option<u32> {
+        self.args.get(index).copied()
     }
 
-    pub fn get(&self, index: usize) -> Option<u32> {
-        self.words.get(index).copied()
+    pub fn bootstrap_cap(&self) -> Option<u64> {
+        config::bootstrap_cap()
     }
 
-    pub fn as_slice(&self) -> &'static [u32] {
-        self.words
-    }
-}
-
-pub struct Input<const N: usize> {
-    bytes: &'static mut [u8; N],
-}
-
-impl<const N: usize> Input<N> {
-    pub fn len(&self) -> usize {
-        N
+    pub fn mmio_cap(&self) -> Option<u64> {
+        config::mmio_cap()
     }
 
-    pub fn is_empty(&self) -> bool {
-        N == 0
+    pub fn irq_cap(&self) -> Option<u64> {
+        config::irq_cap()
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes[..]
+    pub fn shard_cq_base(&self) -> Option<usize> {
+        config::shard_cq_base()
     }
 
-    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
-        &mut self.bytes[..]
+    pub fn shard_cq_count(&self) -> usize {
+        config::shard_cq_count()
     }
 
-    pub fn read_u32(&self, offset: usize) -> Option<u32> {
-        if offset.checked_add(core::mem::size_of::<u32>())? > N {
-            return None;
+    pub fn handoff_count(&self) -> u32 {
+        config::handoff_count()
+    }
+
+    pub fn handoff_state_cap(&self) -> u64 {
+        config::handoff_state_cap()
+    }
+
+    pub fn handoff_endpoint_cap(&self) -> u64 {
+        config::handoff_endpoint_cap()
+    }
+
+    /// Read launch input explicitly, blocking until the requested buffer has
+    /// been filled. The loader currently provides at most one 4 KiB page.
+    pub fn read_startup_input(&self, buffer: &mut [u8]) -> Result<(), InputError> {
+        if buffer.len() > config::INPUT_CAPACITY {
+            return Err(InputError::TooLarge);
         }
-        let ptr = unsafe { self.bytes.as_ptr().add(offset) as *const u32 };
-        Some(unsafe { core::ptr::read_unaligned(ptr) })
-    }
-}
-
-pub fn run_main<const N: usize>(main: fn(Args, Input<N>) -> !) -> ! {
-    if N > config::INPUT_CAPACITY {
-        unsafe { thread_exit(); }
-    }
-
-    let args = launch_args();
-    let input = launch_input::<N>();
-    main(args, input)
-}
-
-fn launch_args() -> Args {
-    let argc = unsafe { config::read::<usize>(config::ARGC_OFFSET) };
-    let byte_len = argc.saturating_mul(core::mem::size_of::<u32>());
-    if config::ARGS_OFFSET.saturating_add(byte_len) > 4096 {
-        return Args {
-            words: &[],
-        };
-    }
-    let ptr = (config::CONFIG_VADDR + config::ARGS_OFFSET) as *const u32;
-    Args {
-        words: unsafe { core::slice::from_raw_parts(ptr, argc) },
-    }
-}
-
-fn launch_input<const N: usize>() -> Input<N> {
-    let bytes = config::INPUT_VADDR as *mut u8;
-    if N > 0 {
-        let cap = unsafe { catten_syscall::submit_read(bytes as usize, N) };
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        let cap = unsafe { catten_syscall::submit_read(buffer.as_mut_ptr() as usize, buffer.len()) };
         catten_syscall::wait(cap);
         catten_syscall::close(cap);
+        Ok(())
     }
-    Input {
-        bytes: unsafe { &mut *(bytes as *mut [u8; N]) },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputError {
+    TooLarge,
+}
+
+pub fn run_main(main: fn(Context) -> !) -> ! {
+    if !config::launch_header_is_compatible() {
+        unsafe { thread_exit(); }
     }
+    main(Context {
+        args: launch_args(),
+    })
+}
+
+fn launch_args() -> &'static [u32] {
+    let argc = unsafe { config::read::<u32>(config::ARGC_OFFSET) } as usize;
+    let byte_len = argc.saturating_mul(core::mem::size_of::<u32>());
+    if config::ARGS_OFFSET.saturating_add(byte_len) > 4096 {
+        return &[];
+    }
+    let ptr = (config::CONFIG_VADDR + config::ARGS_OFFSET) as *const u32;
+    unsafe { core::slice::from_raw_parts(ptr, argc) }
 }
 
 // ---- allocator support (used by entry! macro) -----------------------------

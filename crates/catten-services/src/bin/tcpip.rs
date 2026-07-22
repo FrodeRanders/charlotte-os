@@ -17,7 +17,7 @@ extern crate alloc;
 
 use alloc::collections::BTreeMap;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{net, ns, socket, wait_reply};
 use catten_syscall::{
     IpcRights, cq_wait, ipc_endpoint_bind_cq, ipc_endpoint_create, ipc_recv,
@@ -55,9 +55,9 @@ impl TcpipState {
     }
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(c) => c, None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
@@ -252,4 +252,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

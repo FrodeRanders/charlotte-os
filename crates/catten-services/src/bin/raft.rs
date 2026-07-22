@@ -36,8 +36,7 @@ use catten_graft::{
     },
 };
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_services::{
@@ -186,17 +185,17 @@ fn discover_peer(
     true
 }
 
-fn cmain(args: Args, _input: Input<0>) -> ! {
-    let argc = args.len();
+fn main(ctx: Context) -> ! {
+    let argc = ctx.args().len();
 
-    let c0 = args.get(0).unwrap_or(b'r' as u32) as u8;
-    let c1 = args.get(1).unwrap_or(b'1' as u32) as u8;
+    let c0 = ctx.arg(0).unwrap_or(b'r' as u32) as u8;
+    let c1 = ctx.arg(1).unwrap_or(b'1' as u32) as u8;
     let raw_id = [c0, c1];
     let node_id = core::str::from_utf8(&raw_id).unwrap_or("r1");
 
     config::write::<u32>(0, 1);
 
-    let ns_conn = match config::bootstrap_cap() {
+    let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => fatal(1),
     };
@@ -242,8 +241,8 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
     let mut peer_specs: Vec<(String, u64)> = Vec::new();
     let mut i = 2;
     while i + 1 < argc {
-        let pc0 = args.get(i).unwrap_or(0) as u8;
-        let pc1 = args.get(i + 1).unwrap_or(0) as u8;
+        let pc0 = ctx.arg(i).unwrap_or(0) as u8;
+        let pc1 = ctx.arg(i + 1).unwrap_or(0) as u8;
         let rid = [pc0, pc1];
         let peer_id = core::str::from_utf8(&rid).unwrap_or("");
         if peer_id.is_empty() {
@@ -417,4 +416,4 @@ fn cmain(args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

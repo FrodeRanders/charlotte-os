@@ -10,7 +10,7 @@
 
 extern crate alloc;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{net, ns, virtio, wait_reply};
 use catten_syscall::{
     device_irq_ack, device_irq_bind_cq, device_mmio_map, device_mmio_unmap,
@@ -73,11 +73,11 @@ unsafe fn cfg_vq(bar0: usize, q: u16, size: u16, pfn: u32) {
     unsafe { w32(bar0 + virtio::QUEUE_ADDRESS, pfn) };
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_conn = match config::bootstrap_cap() { Some(c) => c, None => unsafe { thread_exit() }, };
-    let mmio_cap = match config::mmio_cap() { Some(c) => c, None => unsafe { thread_exit() } };
-    let irq_cap  = match config::irq_cap()  { Some(c) => c, None => unsafe { thread_exit() } };
+    let ns_conn = match ctx.bootstrap_cap() { Some(c) => c, None => unsafe { thread_exit() }, };
+    let mmio_cap = match ctx.mmio_cap() { Some(c) => c, None => unsafe { thread_exit() } };
+    let irq_cap  = match ctx.irq_cap()  { Some(c) => c, None => unsafe { thread_exit() } };
     config::write::<u32>(STAGE_OFFSET, 2);
     if device_mmio_map(mmio_cap, VADDR_BAR0, true) != 0 { unsafe { thread_exit() }; }
     config::write::<u32>(STAGE_OFFSET, 3);
@@ -245,4 +245,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

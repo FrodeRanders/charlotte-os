@@ -100,11 +100,12 @@ OP_HANDOFF => {
 The new service receives the state via an extended bootstrap contract:
 
 ```rust
-fn cmain(args: Args, _input: Input<0>) -> ! {
-    let ns_connection = config::bootstrap_cap();        // slot 16
-    let state_count    = config::read::<u32>(2080);     // how many state caps
-    let state_base     = config::read::<u64>(2088);     // first state cap
-    let endpoint_cap   = config::read::<u64>(2096);     // old endpoint to take over
+fn main(ctx: Context) -> ! {
+    let args = ctx.args();
+    let ns_connection = ctx.bootstrap_cap();
+    let state_count = ctx.handoff_count();
+    let state_base = ctx.handoff_state_cap();
+    let endpoint_cap = ctx.handoff_endpoint_cap();
 
     // Deserialize state from the memory objects, register the old endpoint
     // under the same name (the name service bumps the generation), and

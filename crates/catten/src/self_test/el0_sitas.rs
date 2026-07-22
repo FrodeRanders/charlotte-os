@@ -52,7 +52,6 @@ const SITAS_HEAP_PAGES: usize = 13;
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
 #[cfg(target_arch = "aarch64")]
-const CONFIG_ARGC_OFFSET: usize = 24;
 
 /// The Rust-compiled sitas-based catten-user ELF.
 #[cfg(target_arch = "aarch64")]
@@ -362,12 +361,10 @@ pub fn test_el0_sitas() {
 
         completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
 
-        // `basic_kv` uses Args([]) and Input<0>; crt0 therefore enters cmain
+        // `basic_kv` receives an empty launch Context; crt0 therefore enters main
         // without consuming a launch input stream. ASID stays kernel-private.
-        let config_base: *mut u8 = config_frame.into();
-        unsafe {
-            core::ptr::write_volatile(config_base.add(CONFIG_ARGC_OFFSET) as *mut usize, 0);
-        }
+        crate::service::bootstrap::write_launch_header(config_frame);
+        crate::service::bootstrap::write_argc(config_frame, 0);
 
         // Spawn the EL0 thread at the ELF entry point.
         let entry: extern "C" fn() =

@@ -25,8 +25,7 @@
 extern crate alloc;
 
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_services::{
@@ -90,18 +89,18 @@ unsafe fn uart_get() -> Option<u8> {
     }
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1); // started
 
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let mmio_cap = match config::mmio_cap() {
+    let mmio_cap = match ctx.mmio_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let irq_cap = match config::irq_cap() {
+    let irq_cap = match ctx.irq_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -271,4 +270,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

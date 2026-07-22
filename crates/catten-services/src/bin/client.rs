@@ -14,8 +14,7 @@
 extern crate alloc;
 
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_services::{
@@ -36,9 +35,9 @@ const LOOKUP_ATTEMPTS: u64 = 1_000_000;
 const ECHO_VALUE: u64 = 0x1234_5678;
 const SENTINEL: u32 = 0xC0DE;
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(12, 1); // stage: started
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -95,4 +94,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

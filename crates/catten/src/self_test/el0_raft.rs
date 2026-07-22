@@ -41,7 +41,7 @@ mod inner {
         crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
         let base: *mut u8 = addr.config_frame.into();
         unsafe {
-            core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut usize, args.len());
+            core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut u32, args.len() as u32);
             for (i, &a) in args.iter().enumerate() {
                 core::ptr::write_volatile(base.add(ARGS_OFFSET + i * 4) as *mut u32, a);
             }

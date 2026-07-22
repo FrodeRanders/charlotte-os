@@ -16,7 +16,7 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{ns, relmsg, wait_reply};
 use catten_syscall::{
     IpcRights, cq_wait, ipc_endpoint_bind_cq, ipc_endpoint_create, ipc_recv,
@@ -82,9 +82,9 @@ impl RmlState {
     }
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_conn = match config::bootstrap_cap() {
+    let ns_conn = match ctx.bootstrap_cap() {
         Some(c) => c, None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
@@ -231,4 +231,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

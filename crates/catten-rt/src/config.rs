@@ -18,6 +18,29 @@ pub const ARGC_OFFSET: usize = 24;
 /// Launch argument words start here.
 pub const ARGS_OFFSET: usize = 32;
 
+/// Versioned launch-header area. Kept separate from the temporary low offsets
+/// used by current service status pages during the ABI transition.
+pub const LAUNCH_HEADER_OFFSET: usize = 2112;
+pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
+pub const LAUNCH_ABI_MAJOR: u16 = 1;
+pub const LAUNCH_ABI_MINOR: u16 = 0;
+pub const LAUNCH_HEADER_SIZE: u16 = 24;
+pub const CONFIG_PAGE_SIZE: u32 = 4096;
+
+/// Check the fixed-width launch header before crt0 interprets any other field.
+pub fn launch_header_is_compatible() -> bool {
+    let magic = unsafe { read::<u64>(LAUNCH_HEADER_OFFSET) };
+    let major = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 8) };
+    let minor = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 10) };
+    let header_size = unsafe { read::<u16>(LAUNCH_HEADER_OFFSET + 12) };
+    let config_size = unsafe { read::<u32>(LAUNCH_HEADER_OFFSET + 16) };
+    magic == LAUNCH_MAGIC
+        && major == LAUNCH_ABI_MAJOR
+        && minor >= LAUNCH_ABI_MINOR
+        && header_size >= LAUNCH_HEADER_SIZE
+        && config_size == CONFIG_PAGE_SIZE
+}
+
 /// The bootstrap capability slot.
 ///
 /// The supervisor writes one initial capability id here before the domain

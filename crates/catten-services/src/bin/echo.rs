@@ -13,8 +13,7 @@
 extern crate alloc;
 
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_services::{
@@ -44,9 +43,9 @@ use catten_syscall::{
 
 const REPLY_SPINS: u64 = 50_000_000;
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1); // stage: started
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -194,4 +193,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

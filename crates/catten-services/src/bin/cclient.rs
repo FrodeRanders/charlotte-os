@@ -15,7 +15,7 @@
 
 extern crate alloc;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{console, ns, wait_reply};
 use catten_syscall::{ipc_scalar_call, thread_exit};
 
@@ -34,9 +34,9 @@ const READ_RESULT_OFFSET: usize = 40;
 /// The message the client writes through the console driver.
 const MESSAGE: &[u8] = b"UART-OK\n";
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -90,4 +90,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

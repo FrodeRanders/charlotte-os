@@ -304,6 +304,7 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
     let entry_vaddr = load_user_elf(asid, image);
 
     let config_frame = map_user_data_page(asid, CONFIG_VADDR);
+    crate::service::bootstrap::write_launch_header(config_frame);
     let cq_frame = map_user_data_page(asid, CQ_VADDR);
     let _input_frame = map_user_data_page(asid, INPUT_VADDR);
     for i in 0..HEAP_PAGES {

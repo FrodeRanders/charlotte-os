@@ -105,8 +105,8 @@ The service program itself is simple — it bootstraps, looks up `net0`, runs th
 poll loop:
 
 ```rust
-fn cmain(_args: Args, _input: Input<0>) -> ! {
-    let ns = config::bootstrap_cap().unwrap();
+fn main(ctx: Context) -> ! {
+    let ns = ctx.bootstrap_cap().unwrap();
     let (_, net_conn) = ns.lookup("net0").unwrap(); // generation 1+
 
     // Read MAC + MTU from the driver.

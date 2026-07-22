@@ -17,7 +17,7 @@
 
 extern crate alloc;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{echo, ns};
 use catten_syscall::{
     IpcRights,
@@ -86,9 +86,9 @@ unsafe fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
     }
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_connection = match config::bootstrap_cap() {
+    let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -182,4 +182,4 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     0 // success
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

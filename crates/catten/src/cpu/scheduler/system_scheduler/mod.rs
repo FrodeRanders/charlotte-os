@@ -492,7 +492,10 @@ impl SystemScheduler {
             }
         }
         for tid in threads_to_abort {
-            self.abort_thread(tid).expect("Error aborting thread by ASID");
+            match self.abort_thread(tid) {
+                Ok(_) | Err(Error::InvalidThread) => {}
+                Err(error) => panic!("Error aborting thread by ASID: {:?}", error),
+            }
         }
     }
 

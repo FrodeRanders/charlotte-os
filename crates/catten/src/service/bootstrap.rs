@@ -23,6 +23,15 @@ pub const BOOTSTRAP_CAP_OFFSET: usize = 16;
 /// Byte offset of the launch argument count (`catten-rt` contract).
 pub const ARGC_OFFSET: usize = 24;
 
+/// Versioned crt0 launch header. These fixed-width fields are validated before
+/// userspace interprets any capability or argument slots.
+pub const LAUNCH_HEADER_OFFSET: usize = 2112;
+pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
+pub const LAUNCH_ABI_MAJOR: u16 = 1;
+pub const LAUNCH_ABI_MINOR: u16 = 0;
+pub const LAUNCH_HEADER_SIZE: u16 = 24;
+pub const CONFIG_PAGE_SIZE: u32 = 4096;
+
 /// Byte offset of the delegated MMIO-region device capability slot.
 ///
 /// Must match `catten_rt::config::MMIO_CAP_OFFSET`.
@@ -49,6 +58,19 @@ pub const HANDOFF_COUNT_OFFSET: usize = 2080;
 pub const HANDOFF_STATE_OFFSET: usize = 2088;
 /// Must match `catten_rt::config::HANDOFF_ENDPOINT_OFFSET`.
 pub const HANDOFF_ENDPOINT_OFFSET: usize = 2096;
+
+pub fn write_launch_header(config_frame: PAddr) {
+    let base: *mut u8 = config_frame.into();
+    unsafe {
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET) as *mut u64, LAUNCH_MAGIC);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 8) as *mut u16, LAUNCH_ABI_MAJOR);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 10) as *mut u16, LAUNCH_ABI_MINOR);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 12) as *mut u16, LAUNCH_HEADER_SIZE);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 14) as *mut u16, 0);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 16) as *mut u32, CONFIG_PAGE_SIZE);
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET + 20) as *mut u32, 0);
+    }
+}
 
 /// Write the bootstrap capability id into a domain's config page.
 pub fn write_bootstrap_cap(config_frame: PAddr, cap: u64) {
@@ -107,8 +129,9 @@ pub fn write_handoff_state(
 
 /// Write the launch argument count into a domain's config page.
 pub fn write_argc(config_frame: PAddr, argc: usize) {
+    let argc = u32::try_from(argc).expect("launch argument count exceeds ABI width");
     let base: *mut u8 = config_frame.into();
     unsafe {
-        core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut usize, argc);
+        core::ptr::write_volatile(base.add(ARGC_OFFSET) as *mut u32, argc);
     }
 }

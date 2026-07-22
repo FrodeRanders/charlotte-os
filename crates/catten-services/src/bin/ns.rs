@@ -24,8 +24,7 @@ use alloc::{
 };
 
 use catten_rt::{
-    Args,
-    Input,
+    Context,
     config,
 };
 use catten_services::{
@@ -145,9 +144,9 @@ fn reply_lookup(registry: &Registry, key: &[u8], reply: u64, caller_key: u64) {
     }
 }
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1); // stage: started
-    let endpoint = match config::bootstrap_cap() {
+    let endpoint = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -261,4 +260,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     }
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);

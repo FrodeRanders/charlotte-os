@@ -4,7 +4,7 @@
 
 extern crate alloc;
 
-use catten_rt::{Args, Input, config};
+use catten_rt::{Context, config};
 use catten_services::{net, ns, wait_reply};
 use catten_syscall::{
     ipc_scalar_call, ipc_scalar_call_move,
@@ -30,9 +30,9 @@ const TEST_FRAME: [u8; 64] = [
     0,0,
 ];
 
-fn cmain(_args: Args, _input: Input<0>) -> ! {
+fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
-    let ns_conn = match config::bootstrap_cap() { Some(c) => c, None => unsafe { thread_exit() } };
+    let ns_conn = match ctx.bootstrap_cap() { Some(c) => c, None => unsafe { thread_exit() } };
     config::write::<u32>(STAGE_OFFSET, 2);
 
     let mut attempts: u64 = 0;
@@ -71,4 +71,4 @@ fn cmain(_args: Args, _input: Input<0>) -> ! {
     unsafe { thread_exit() };
 }
 
-catten_rt::entry!(cmain);
+catten_rt::entry!(main);
