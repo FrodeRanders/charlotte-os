@@ -16,9 +16,8 @@
 //! use catten_rt::{config, Context};
 //!
 //! fn main(ctx: Context) -> ! {
-//!     let a = ctx.arg(0).unwrap_or(0);
-//!     let b = ctx.arg(1).unwrap_or(0);
-//!     config::write(0, a.wrapping_add(b));
+//!     let mode = ctx.manifest_value(charlotte_launch::manifest_key(b"mode"));
+//!     config::write(0, mode.is_some() as u32);
 //!     unsafe { thread_exit(); }
 //! }
 //!
@@ -31,6 +30,7 @@
 #![no_std]
 
 pub mod config;
+pub use charlotte_launch::manifest_key;
 
 // ---- entry macro -----------------------------------------------------------
 
@@ -71,17 +71,20 @@ macro_rules! entry {
 /// virtual addresses and config-page offsets; raw config access remains
 /// available for existing low-level services during the ABI transition.
 #[derive(Clone, Copy)]
-pub struct Context {
-    args: &'static [u32],
-}
+pub struct Context;
 
 impl Context {
-    pub fn args(&self) -> &'static [u32] {
-        self.args
+    /// Iterate the typed, named launch manifest in supervisor-provided order.
+    /// Keys may repeat, which is useful for lists such as Raft seed peers.
+    pub fn manifest(&self) -> ManifestEntries {
+        ManifestEntries {
+            index: 0,
+        }
     }
 
-    pub fn arg(&self, index: usize) -> Option<u32> {
-        self.args.get(index).copied()
+    /// Return the first manifest value with `key`.
+    pub fn manifest_value(&self, key: u64) -> Option<ManifestValue> {
+        self.manifest().find(|entry| entry.key == key).map(|entry| entry.value)
     }
 
     pub fn capabilities(&self) -> InitialCapabilities {
@@ -196,6 +199,58 @@ pub struct InitialCapabilities {
     index: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ManifestValue {
+    Unsigned(u64),
+    Signed(i64),
+    Bytes(&'static [u8]),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ManifestEntry {
+    pub key: u64,
+    pub flags: u16,
+    pub value: ManifestValue,
+}
+
+pub struct ManifestEntries {
+    index: usize,
+}
+
+impl Iterator for ManifestEntries {
+    type Item = ManifestEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let record = config::manifest_record(self.index)?;
+            self.index += 1;
+            let Some(kind) = config::ManifestValueKind::from_raw(record.kind) else {
+                continue;
+            };
+            let value = match kind {
+                config::ManifestValueKind::Unsigned if record.value_len == 8 => {
+                    ManifestValue::Unsigned(record.value)
+                }
+                config::ManifestValueKind::Signed if record.value_len == 8 => {
+                    ManifestValue::Signed(record.value as i64)
+                }
+                config::ManifestValueKind::Bytes => {
+                    let Some(bytes) = config::manifest_bytes(record) else {
+                        continue;
+                    };
+                    ManifestValue::Bytes(bytes)
+                }
+                _ => continue,
+            };
+            return Some(ManifestEntry {
+                key: record.key,
+                flags: record.flags,
+                value,
+            });
+        }
+    }
+}
+
 impl Iterator for InitialCapabilities {
     type Item = InitialCapability;
 
@@ -226,9 +281,7 @@ pub fn run_main(main: fn(Context) -> !) -> ! {
             thread_exit();
         }
     }
-    main(Context {
-        args: config::launch_args(),
-    })
+    main(Context)
 }
 
 // ---- allocator support (used by entry! macro) -----------------------------

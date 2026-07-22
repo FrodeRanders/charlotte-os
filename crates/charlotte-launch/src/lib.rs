@@ -19,11 +19,25 @@ pub const LAUNCH_HEADER_OFFSET: usize = 2112;
 pub const CAPABILITY_VECTOR_OFFSET: usize = 2224;
 pub const CAPABILITY_VECTOR_CAPACITY: usize = 32;
 pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
-pub const LAUNCH_ABI_MAJOR: u16 = 1;
-pub const LAUNCH_ABI_MINOR: u16 = 2;
+pub const LAUNCH_ABI_MAJOR: u16 = 2;
+pub const LAUNCH_ABI_MINOR: u16 = 0;
 
-pub const ARGC_OFFSET: usize = 24;
-pub const ARGS_OFFSET: usize = 32;
+pub const MANIFEST_VECTOR_OFFSET: usize = 32;
+pub const MANIFEST_VECTOR_CAPACITY: usize = 32;
+pub const MANIFEST_DATA_OFFSET: usize = 1024;
+pub const MANIFEST_DATA_CAPACITY: usize = 1024;
+
+/// Pack an ASCII manifest key of at most eight bytes into its stable ABI form.
+pub const fn manifest_key(bytes: &[u8]) -> u64 {
+    assert!(bytes.len() <= 8, "manifest keys are limited to eight bytes");
+    let mut packed = [0u8; 8];
+    let mut index = 0;
+    while index < bytes.len() && index < packed.len() {
+        packed[index] = bytes[index];
+        index += 1;
+    }
+    u64::from_le_bytes(packed)
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -35,8 +49,10 @@ pub struct LaunchHeader {
     pub reserved: u16,
     pub config_size: u32,
     pub flags: u32,
-    pub args_offset: u32,
-    pub args_count: u32,
+    pub manifest_offset: u32,
+    pub manifest_count: u32,
+    pub manifest_data_offset: u32,
+    pub manifest_data_size: u32,
     pub capabilities_offset: u32,
     pub capabilities_count: u32,
     pub heap_base: u64,
@@ -60,8 +76,10 @@ impl LaunchHeader {
             reserved: 0,
             config_size: CONFIG_PAGE_SIZE,
             flags: 0,
-            args_offset: ARGS_OFFSET as u32,
-            args_count: 0,
+            manifest_offset: MANIFEST_VECTOR_OFFSET as u32,
+            manifest_count: 0,
+            manifest_data_offset: MANIFEST_DATA_OFFSET as u32,
+            manifest_data_size: 0,
             capabilities_offset: CAPABILITY_VECTOR_OFFSET as u32,
             capabilities_count: 0,
             heap_base: HEAP_VADDR as u64,
@@ -77,18 +95,28 @@ impl LaunchHeader {
     }
 
     pub const fn is_compatible(&self) -> bool {
-        let args_end = self.args_offset as usize + self.args_count as usize * 4;
-        let capabilities_end = self.capabilities_offset as usize
-            + self.capabilities_count as usize * core::mem::size_of::<CapabilityRecord>();
+        let manifest_end = (self.manifest_offset as usize).saturating_add(
+            (self.manifest_count as usize).saturating_mul(core::mem::size_of::<ManifestRecord>()),
+        );
+        let manifest_data_end =
+            (self.manifest_data_offset as usize).saturating_add(self.manifest_data_size as usize);
+        let capabilities_end = (self.capabilities_offset as usize).saturating_add(
+            (self.capabilities_count as usize)
+                .saturating_mul(core::mem::size_of::<CapabilityRecord>()),
+        );
         self.magic == LAUNCH_MAGIC
             && self.abi_major == LAUNCH_ABI_MAJOR
             && self.abi_minor >= LAUNCH_ABI_MINOR
             && self.header_size as usize >= core::mem::size_of::<Self>()
             && self.config_size == CONFIG_PAGE_SIZE
-            && self.args_offset as usize >= ARGS_OFFSET
+            && self.manifest_offset as usize >= MANIFEST_VECTOR_OFFSET
+            && self.manifest_count as usize <= MANIFEST_VECTOR_CAPACITY
+            && self.manifest_data_offset as usize >= MANIFEST_DATA_OFFSET
+            && self.manifest_data_size as usize <= MANIFEST_DATA_CAPACITY
             && self.capabilities_offset as usize >= CAPABILITY_VECTOR_OFFSET
             && self.capabilities_count as usize <= CAPABILITY_VECTOR_CAPACITY
-            && args_end <= CONFIG_PAGE_SIZE as usize
+            && manifest_end <= MANIFEST_DATA_OFFSET
+            && manifest_data_end <= LAUNCH_HEADER_OFFSET
             && capabilities_end <= CONFIG_PAGE_SIZE as usize
             && self.heap_base != 0
             && self.heap_size != 0
@@ -98,6 +126,38 @@ impl LaunchHeader {
             && self.status_size != 0
             && self.status_size <= STATUS_PAGE_SIZE
     }
+}
+
+/// Stable identifiers for manifest value encodings.
+#[repr(u16)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ManifestValueKind {
+    Unsigned = 1,
+    Signed = 2,
+    Bytes = 3,
+}
+
+impl ManifestValueKind {
+    pub const fn from_raw(raw: u16) -> Option<Self> {
+        match raw {
+            1 => Some(Self::Unsigned),
+            2 => Some(Self::Signed),
+            3 => Some(Self::Bytes),
+            _ => None,
+        }
+    }
+}
+
+/// One named launch-manifest value. Keys are packed ASCII names of at most
+/// eight bytes. Byte values refer to the bounded manifest data area.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct ManifestRecord {
+    pub key: u64,
+    pub kind: u16,
+    pub flags: u16,
+    pub value_len: u32,
+    pub value: u64,
 }
 
 #[repr(u16)]
@@ -132,5 +192,6 @@ pub struct CapabilityRecord {
     pub handle: u64,
 }
 
-const _: [(); 96] = [(); core::mem::size_of::<LaunchHeader>()];
+const _: [(); 104] = [(); core::mem::size_of::<LaunchHeader>()];
+const _: [(); 24] = [(); core::mem::size_of::<ManifestRecord>()];
 const _: [(); 16] = [(); core::mem::size_of::<CapabilityRecord>()];

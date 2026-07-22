@@ -1224,7 +1224,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         }
     };
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
-    crate::service::bootstrap::write_args(loaded.config_frame, &[]);
+    crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
 
     // Move the state cap from the caller to the new domain.
     if state_cap != 0 {

@@ -34,7 +34,7 @@ use crate::{
         physical::PAddr,
     },
 };
-/// Number of pages backing the heap declared by launch ABI v1.
+/// Number of pages backing the heap declared by the launch ABI.
 pub const HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / PAGE_SIZE;
 
 /// Completion capability-table capacity granted to a service domain.

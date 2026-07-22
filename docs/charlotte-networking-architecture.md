@@ -767,7 +767,7 @@ needed for ongoing operation.
 Bootstrap, however, remains a seed problem: a new node must contact
 at least one cluster member to discover the rest. The seed is a
 service name (e.g. `raft-cluster.node-1`) rather than an IP address,
-but it still must be supplied — through launch arguments, a
+but it still must be supplied — through the launch manifest, a
 configuration page, or a hardware-level discovery protocol.
 Section 18.4 discusses this in detail.
 
@@ -829,10 +829,13 @@ transport-layer identifiers — rather than IP addresses.
 ### Static seeds (launch-time configuration)
 
 The simplest mechanism, already implemented in the Raft service
-binary: launch arguments carry the service names of seed peers.
+binary: named launch-manifest records carry the node and seed-peer service names.
 
 ```
-args = ["r4", "r1", "r2", "r3"]  // r4 is this node, r1/r2/r3 are seeds
+node-id = "r4"
+peer-id = "r1"  // repeated keys form the seed list
+peer-id = "r2"
+peer-id = "r3"
 ```
 
 The node calls `OP_LOOKUP("raft-r1")` on its local name service to

@@ -11,7 +11,7 @@ use catten_rt::Context;
 
 fn main(ctx: Context) -> ! {
     let bootstrap = ctx.bootstrap_cap();
-    let first_argument = ctx.arg(0);
+    let mode = ctx.manifest_value(catten_rt::manifest_key(b"mode"));
 
     // Program or service loop.
     unsafe { catten_syscall::thread_exit() }
@@ -25,7 +25,7 @@ The program does not define `_start`, a panic handler, or a global allocator.
 Rust developer contract and is not exported as a C ABI function.
 
 `Context` is the supported interface to launch-time state. It provides launch
-arguments, the bootstrap capability, device grants, per-shard completion-queue
+manifest values, the bootstrap capability, device grants, per-shard completion-queue
 layout, live-upgrade handoff state, and explicit bounded startup reads. Programs
 should not depend on config-page virtual addresses or field offsets.
 
@@ -39,11 +39,11 @@ The former `fn(Args, Input<N>) -> !` entry form has been removed. Startup input
 is no longer hidden in a function signature; a program explicitly calls
 `Context::read_startup_input` when it intends to block for input.
 
-## Launch ABI v1
+## Launch ABI v2
 
 Before calling `main`, crt0 validates a fixed-width header in the mapped launch
-page. Version 1.2 contains an eight-byte magic value, ABI major and minor
-versions, header size, config-page size, feature flags, bounded argument and
+page. Version 2.0 contains an eight-byte magic value, ABI major and minor
+versions, header size, config-page size, feature flags, bounded manifest and
 capability-vector locations, and the declared heap, input-buffer, default
 completion-queue, and mutable status layouts. An invalid or out-of-bounds layout terminates the
 initial thread rather than interpreting unchecked offsets.
@@ -52,10 +52,12 @@ The kernel and runtime import this representation from the shared no-std
 `charlotte-launch` crate. Compile-time size assertions keep the header and
 capability record layouts stable across both sides of the boundary.
 
-The argument count is a `u32`, independent of kernel or userspace pointer
-width. The current argument payload remains an array of `u32` values. Future
-minor versions may add typed records behind `Context`; applications should not
-parse the backing page directly.
+The manifest is a bounded vector of named, typed records. Keys are stable
+packed names of up to eight bytes; values may be unsigned integers, signed
+integers, or bounded byte strings. Keys may repeat to represent lists. Variable
+data resides in a separately bounded region of the read-only launch page.
+Applications consume it through `Context::manifest()` or
+`Context::manifest_value()` and should not parse the backing page directly.
 
 The launch page is mapped read-only in EL0. Mutable program status and test
 progress use a separate zeroed status page; `config::read`, `config::write`,

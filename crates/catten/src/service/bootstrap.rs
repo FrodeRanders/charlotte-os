@@ -14,12 +14,15 @@
 #![cfg(target_arch = "aarch64")]
 
 use charlotte_launch::{
-    ARGS_OFFSET,
     CAPABILITY_VECTOR_CAPACITY,
     CapabilityKind,
     CapabilityRecord,
     LAUNCH_HEADER_OFFSET,
     LaunchHeader,
+    MANIFEST_DATA_CAPACITY,
+    MANIFEST_VECTOR_CAPACITY,
+    ManifestRecord,
+    ManifestValueKind,
 };
 
 use crate::memory::physical::PAddr;
@@ -111,20 +114,60 @@ pub fn write_handoff_state(
     }
 }
 
-/// Write the fixed-width launch argument vector into a domain's config page.
-pub fn write_args(config_frame: PAddr, args: &[u32]) {
-    let argc = u32::try_from(args.len()).expect("launch argument count exceeds ABI width");
-    assert!(ARGS_OFFSET + args.len() * core::mem::size_of::<u32>() <= 2048);
+#[derive(Clone, Copy)]
+pub enum ManifestValue<'a> {
+    Unsigned(u64),
+    Signed(i64),
+    Bytes(&'a [u8]),
+}
+
+#[derive(Clone, Copy)]
+pub struct ManifestEntry<'a> {
+    pub key: u64,
+    pub flags: u16,
+    pub value: ManifestValue<'a>,
+}
+
+/// Write the complete typed launch manifest into a domain's config page.
+pub fn write_manifest(config_frame: PAddr, entries: &[ManifestEntry<'_>]) {
+    assert!(entries.len() <= MANIFEST_VECTOR_CAPACITY, "launch manifest is full");
     let base: *mut u8 = config_frame.into();
     let header_ptr = unsafe { base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader };
     let mut header = unsafe { core::ptr::read_volatile(header_ptr) };
-    assert!(header.is_compatible(), "arguments written before launch header");
-    header.args_count = argc;
+    assert!(header.is_compatible(), "manifest written before launch header");
+    let records = unsafe { base.add(header.manifest_offset as usize) as *mut ManifestRecord };
+    let mut data_size = 0usize;
     unsafe {
-        let destination = base.add(ARGS_OFFSET) as *mut u32;
-        for (index, argument) in args.iter().copied().enumerate() {
-            core::ptr::write_volatile(destination.add(index), argument);
+        for (index, entry) in entries.iter().copied().enumerate() {
+            let (kind, value_len, value) = match entry.value {
+                ManifestValue::Unsigned(value) => (ManifestValueKind::Unsigned, 8, value),
+                ManifestValue::Signed(value) => (ManifestValueKind::Signed, 8, value as u64),
+                ManifestValue::Bytes(bytes) => {
+                    let end = data_size.checked_add(bytes.len()).expect("manifest data overflow");
+                    assert!(end <= MANIFEST_DATA_CAPACITY, "launch manifest data is full");
+                    let offset = header.manifest_data_offset as usize + data_size;
+                    core::ptr::copy_nonoverlapping(bytes.as_ptr(), base.add(offset), bytes.len());
+                    data_size = end;
+                    (
+                        ManifestValueKind::Bytes,
+                        u32::try_from(bytes.len()).expect("manifest byte value exceeds ABI width"),
+                        offset as u64,
+                    )
+                }
+            };
+            core::ptr::write_volatile(
+                records.add(index),
+                ManifestRecord {
+                    key: entry.key,
+                    kind: kind as u16,
+                    flags: entry.flags,
+                    value_len,
+                    value,
+                },
+            );
         }
+        header.manifest_count = entries.len() as u32;
+        header.manifest_data_size = data_size as u32;
         core::ptr::write_volatile(header_ptr, header);
     }
 }

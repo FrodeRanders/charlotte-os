@@ -3,22 +3,23 @@
 //! The kernel maps read-only launch metadata at `CONFIG_VADDR` and a separate
 //! mutable diagnostic/status page at `STATUS_VADDR` in every runtime domain.
 
-pub use charlotte_launch::{
-    ARGC_OFFSET,
-    ARGS_OFFSET,
-    CONFIG_PAGE_SIZE,
-    CONFIG_VADDR,
-    CapabilityKind,
-    INPUT_CAPACITY,
-    INPUT_VADDR,
-    STATUS_PAGE_SIZE,
-    STATUS_VADDR,
-};
 use charlotte_launch::{
     CAPABILITY_VECTOR_CAPACITY,
     CapabilityRecord,
     LAUNCH_HEADER_OFFSET,
     LaunchHeader,
+    MANIFEST_VECTOR_CAPACITY,
+    ManifestRecord,
+};
+pub use charlotte_launch::{
+    CONFIG_PAGE_SIZE,
+    CONFIG_VADDR,
+    CapabilityKind,
+    INPUT_CAPACITY,
+    INPUT_VADDR,
+    ManifestValueKind,
+    STATUS_PAGE_SIZE,
+    STATUS_VADDR,
 };
 
 /// Check the fixed-width launch header before crt0 interprets any other field.
@@ -26,13 +27,36 @@ pub fn launch_header_is_compatible() -> bool {
     launch_header().is_compatible()
 }
 
-pub(crate) fn launch_args() -> &'static [u32] {
+pub(crate) fn manifest_record(index: usize) -> Option<ManifestRecord> {
+    let header = launch_header();
+    if !header.is_compatible() || index >= header.manifest_count as usize {
+        return None;
+    }
+    let count = core::cmp::min(header.manifest_count as usize, MANIFEST_VECTOR_CAPACITY);
+    if index >= count {
+        return None;
+    }
+    let records = (CONFIG_VADDR + header.manifest_offset as usize) as *const ManifestRecord;
+    Some(unsafe { core::ptr::read_volatile(records.add(index)) })
+}
+
+pub(crate) fn manifest_bytes(record: ManifestRecord) -> Option<&'static [u8]> {
+    if ManifestValueKind::from_raw(record.kind) != Some(ManifestValueKind::Bytes) {
+        return None;
+    }
     let header = launch_header();
     if !header.is_compatible() {
-        return &[];
+        return None;
     }
-    let ptr = (CONFIG_VADDR + header.args_offset as usize) as *const u32;
-    unsafe { core::slice::from_raw_parts(ptr, header.args_count as usize) }
+    let offset = usize::try_from(record.value).ok()?;
+    let len = record.value_len as usize;
+    let data_start = header.manifest_data_offset as usize;
+    let data_end = data_start.checked_add(header.manifest_data_size as usize)?;
+    let value_end = offset.checked_add(len)?;
+    if offset < data_start || value_end > data_end {
+        return None;
+    }
+    Some(unsafe { core::slice::from_raw_parts((CONFIG_VADDR + offset) as *const u8, len) })
 }
 
 pub(crate) fn launch_layout() -> LaunchHeader {

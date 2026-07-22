@@ -2,12 +2,22 @@
 mod inner {
     use crate::{
         ipc::ConnectionRights,
-        service::supervisor::{
-            self,
-            NameServiceHandle,
-            ServiceDomain,
+        service::{
+            bootstrap::{
+                ManifestEntry,
+                ManifestValue,
+            },
+            supervisor::{
+                self,
+                NameServiceHandle,
+                ServiceDomain,
+            },
         },
     };
+
+    const NODE_ID_KEY: u64 = charlotte_launch::manifest_key(b"node-id");
+    const PEER_ID_KEY: u64 = charlotte_launch::manifest_key(b"peer-id");
+    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
 
     const NS_ELF: &[u8] = include_bytes!("ns.elf");
     const RAFT_ELF: &[u8] = include_bytes!("raft.elf");
@@ -27,7 +37,10 @@ mod inner {
 
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 
-    fn spawn_raft_node(args: &[u32], ns_handle: &NameServiceHandle) -> ServiceDomain {
+    fn spawn_raft_node(
+        manifest: &[ManifestEntry<'_>],
+        ns_handle: &NameServiceHandle,
+    ) -> ServiceDomain {
         let addr = crate::service::loader::load_domain(RAFT_ELF);
         let conn = crate::ipc::connection_delegate(
             ns_handle.domain.asid,
@@ -37,7 +50,7 @@ mod inner {
         )
         .expect("raft conn delegate");
         crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_args(addr.config_frame, args);
+        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
         let entry: extern "C" fn() =
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
         let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
@@ -91,7 +104,24 @@ mod inner {
         // service has entered its receive loop. During early boot the
         // scheduler is cooperative, so starting all three together can let a
         // polling client starve the server it is waiting for.
-        let r1_domain = spawn_raft_node(&[b'r' as u32, b'1' as u32, b'r' as u32, b'2' as u32], &ns);
+        let r1_manifest = [
+            ManifestEntry {
+                key: NODE_ID_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(b"r1"),
+            },
+            ManifestEntry {
+                key: PEER_ID_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(b"r2"),
+            },
+            ManifestEntry {
+                key: ELECTION_KEY,
+                flags: 0,
+                value: ManifestValue::Unsigned(150),
+            },
+        ];
+        let r1_domain = spawn_raft_node(&r1_manifest, &ns);
         let r1_stage: *const u32 = {
             let base: *mut u8 = r1_domain.status_frame.into();
             base as *const u32
@@ -99,7 +129,24 @@ mod inner {
         while unsafe { core::ptr::read_volatile(r1_stage) } < 6 {
             yield_lp();
         }
-        let r2_domain = spawn_raft_node(&[b'r' as u32, b'2' as u32, b'r' as u32, b'1' as u32], &ns);
+        let r2_manifest = [
+            ManifestEntry {
+                key: NODE_ID_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(b"r2"),
+            },
+            ManifestEntry {
+                key: PEER_ID_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(b"r1"),
+            },
+            ManifestEntry {
+                key: ELECTION_KEY,
+                flags: 0,
+                value: ManifestValue::Unsigned(150),
+            },
+        ];
+        let r2_domain = spawn_raft_node(&r2_manifest, &ns);
         crate::logln!("[raft] nodes spawned in registration order after name service became ready");
 
         let r1_config = r1_domain.status_frame;

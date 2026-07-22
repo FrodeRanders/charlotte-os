@@ -101,7 +101,7 @@ The new service receives the state via an extended bootstrap contract:
 
 ```rust
 fn main(ctx: Context) -> ! {
-    let args = ctx.args();
+    let manifest = ctx.manifest();
     let ns_connection = ctx.bootstrap_cap();
     let state_count = ctx.handoff_count();
     let state_base = ctx.handoff_state_cap();

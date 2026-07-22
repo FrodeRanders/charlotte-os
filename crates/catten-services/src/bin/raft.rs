@@ -37,7 +37,9 @@ use catten_graft::{
 };
 use catten_rt::{
     Context,
+    ManifestValue,
     config,
+    manifest_key,
 };
 use catten_services::{
     ns,
@@ -185,13 +187,19 @@ fn discover_peer(
     true
 }
 
-fn main(ctx: Context) -> ! {
-    let argc = ctx.args().len();
+const NODE_ID_KEY: u64 = manifest_key(b"node-id");
+const PEER_ID_KEY: u64 = manifest_key(b"peer-id");
+const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
 
-    let c0 = ctx.arg(0).unwrap_or(b'r' as u32) as u8;
-    let c1 = ctx.arg(1).unwrap_or(b'1' as u32) as u8;
-    let raw_id = [c0, c1];
-    let node_id = core::str::from_utf8(&raw_id).unwrap_or("r1");
+fn main(ctx: Context) -> ! {
+    let node_id = match ctx.manifest_value(NODE_ID_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => core::str::from_utf8(bytes).unwrap_or("r1"),
+        _ => "r1",
+    };
+    let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
+        Some(ManifestValue::Unsigned(value)) => value,
+        _ => 150,
+    };
 
     config::write::<u32>(0, 1);
 
@@ -239,14 +247,12 @@ fn main(ctx: Context) -> ! {
     peers.push(me.clone());
 
     let mut peer_specs: Vec<(String, u64)> = Vec::new();
-    let mut i = 2;
-    while i + 1 < argc {
-        let pc0 = ctx.arg(i).unwrap_or(0) as u8;
-        let pc1 = ctx.arg(i + 1).unwrap_or(0) as u8;
-        let rid = [pc0, pc1];
-        let peer_id = core::str::from_utf8(&rid).unwrap_or("");
+    for entry in ctx.manifest().filter(|entry| entry.key == PEER_ID_KEY) {
+        let ManifestValue::Bytes(peer_bytes) = entry.value else {
+            continue;
+        };
+        let peer_id = core::str::from_utf8(peer_bytes).unwrap_or("");
         if peer_id.is_empty() {
-            i += 2;
             continue;
         }
 
@@ -254,15 +260,22 @@ fn main(ctx: Context) -> ! {
         peers.push(Peer::voter(peer_id.to_string(), peer_name));
         peer_specs.push((peer_id.to_string(), peer_name));
         let _ = discover_peer(ns_conn, peer_id, peer_name, &transport);
-        i += 2;
     }
 
     config::write::<u32>(0, 5);
 
     config::write::<u32>(0, 6);
 
-    let mut node =
-        RaftNode::new(me, 150, log_store, persistent_store, None, peers, transport.clone(), 0);
+    let mut node = RaftNode::new(
+        me,
+        election_timeout_ms,
+        log_store,
+        persistent_store,
+        None,
+        peers,
+        transport.clone(),
+        0,
+    );
 
     let mut served: u32 = 0;
 
