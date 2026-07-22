@@ -127,6 +127,30 @@ fn current_stack_pointer() -> usize {
 
 pub type ThreadCount = usize;
 
+pub const SCHEDULER_DIAGNOSTIC_LPS: usize = 256;
+pub const SCHEDULER_DIAGNOSTIC_FIELDS: usize = 6;
+/// Per LP: current TID, generation, ASID, dispatch count, last exiting TID,
+/// last exiting generation. Kept lock-free for debugger inspection.
+#[unsafe(no_mangle)]
+pub static SCHEDULER_LP_DIAGNOSTICS: [AtomicU64;
+    SCHEDULER_DIAGNOSTIC_LPS * SCHEDULER_DIAGNOSTIC_FIELDS] =
+    [const { AtomicU64::new(u64::MAX) };
+        SCHEDULER_DIAGNOSTIC_LPS * SCHEDULER_DIAGNOSTIC_FIELDS];
+
+pub fn record_dispatch(lp: LpId, tid: ThreadId, generation: ThreadGeneration, asid: AddressSpaceId) {
+    let base = lp as usize * SCHEDULER_DIAGNOSTIC_FIELDS;
+    SCHEDULER_LP_DIAGNOSTICS[base].store(tid as u64, Ordering::Relaxed);
+    SCHEDULER_LP_DIAGNOSTICS[base + 1].store(generation, Ordering::Relaxed);
+    SCHEDULER_LP_DIAGNOSTICS[base + 2].store(asid as u64, Ordering::Relaxed);
+    SCHEDULER_LP_DIAGNOSTICS[base + 3].fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn record_exit(lp: LpId, tid: ThreadId, generation: ThreadGeneration) {
+    let base = lp as usize * SCHEDULER_DIAGNOSTIC_FIELDS;
+    SCHEDULER_LP_DIAGNOSTICS[base + 4].store(tid as u64, Ordering::Relaxed);
+    SCHEDULER_LP_DIAGNOSTICS[base + 5].store(generation, Ordering::Relaxed);
+}
+
 /// Ownership relationships that prevent moving an otherwise Ready thread.
 #[derive(Debug, Clone, Copy)]
 pub enum MigrationConstraint {

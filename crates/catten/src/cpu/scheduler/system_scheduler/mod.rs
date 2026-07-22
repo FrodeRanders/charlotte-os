@@ -35,6 +35,7 @@ use crate::{
             ThreadGeneration,
             ThreadId,
             ThreadState,
+            record_exit,
             waker,
         },
     },
@@ -476,6 +477,7 @@ impl SystemScheduler {
         let stage_lp = current_lp.unwrap_or_else(get_lp_id);
         let thread =
             MASTER_THREAD_TABLE.write().take_element(tid).map_err(|_| Error::InvalidThread)?;
+        record_exit(stage_lp, tid, thread.generation);
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);
         Ok(tid)
     }

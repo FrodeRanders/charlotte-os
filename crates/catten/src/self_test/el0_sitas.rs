@@ -11,6 +11,12 @@
 //! and writes the total key count to the result page.
 
 #[cfg(target_arch = "aarch64")]
+use core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+
+#[cfg(target_arch = "aarch64")]
 use crate::completion;
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -54,6 +60,8 @@ const SITAS_ELF: &[u8] = include_bytes!("sitas-user.elf");
 
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+#[cfg(target_arch = "aarch64")]
+static SITAS_ASID: AtomicUsize = AtomicUsize::new(usize::MAX);
 
 #[cfg(target_arch = "aarch64")]
 const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
@@ -278,6 +286,7 @@ pub fn test_el0_sitas() {
             as_
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        SITAS_ASID.store(asid, Ordering::Release);
 
         let entry_vaddr = load_user_elf(asid, SITAS_ELF);
 
@@ -393,6 +402,7 @@ extern "C" fn verify_el0_sitas() {
                 expected, sum
             );
             logln!("[sitas] SUCCESS: adder program computed the correct sum.");
+            teardown_sitas_domain();
             return;
         }
         if sentinel != 0 && sentinel != 0xc0de {
@@ -402,6 +412,7 @@ extern "C" fn verify_el0_sitas() {
                 sentinel
             );
             logln!("[sitas] SUCCESS: basic_kv ran at EL0, produced total_len {:#x}.", sentinel);
+            teardown_sitas_domain();
             return;
         }
         spins += 1;
@@ -411,5 +422,19 @@ extern "C" fn verify_el0_sitas() {
             sentinel,
         );
         yield_lp();
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn teardown_sitas_domain() {
+    let asid = SITAS_ASID.swap(usize::MAX, Ordering::AcqRel);
+    if asid != usize::MAX {
+        // `basic_kv` spawns pinned no-std shard executors whose raw join
+        // handles currently have no shutdown protocol. Once the committed
+        // result is verified, terminate every thread in the test domain so
+        // those executors do not keep two LPs permanently runnable.
+        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .abort_as_threads(asid);
     }
 }

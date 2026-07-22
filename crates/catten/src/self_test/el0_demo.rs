@@ -67,9 +67,9 @@ const EXPECTED_RESULT: u32 = 42;
 /// Physical frame of the result page, read by the verifier via HHDM.
 #[cfg(target_arch = "aarch64")]
 static mut DEMO_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-/// Numeric TID plus one; zero means the coordinator has not been spawned.
+/// Address-space ID plus one; zero means the demo domain has not been created.
 #[cfg(target_arch = "aarch64")]
-static XLP_COORDINATOR_TID: AtomicUsize = AtomicUsize::new(0);
+static XLP_ASID: AtomicUsize = AtomicUsize::new(0);
 
 /// Coordinator stub. The kernel derives ASID from the running thread; `x0` is
 /// deliberately just a dummy legacy slot here.
@@ -174,6 +174,7 @@ pub fn test_el0_cross_lp_async() {
             as_
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        XLP_ASID.store(asid + 1, Ordering::Release);
         logln!("[EL0 xLP] user AS asid={}", asid);
 
         // --- map code (coordinator + worker), CQ ring, and result pages ---
@@ -206,7 +207,6 @@ pub fn test_el0_cross_lp_async() {
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(COORD_CODE_VADDR) };
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
         logln!("[EL0 xLP] coordinator spawned tid={} asid={}", tid, asid);
-        XLP_COORDINATOR_TID.store(tid + 1, Ordering::Release);
 
         let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_demo);
         logln!("[EL0 xLP] verifier thread tid={}; assertion deferred to scheduler.", vtid);
@@ -245,11 +245,15 @@ extern "C" fn verify_el0_demo() {
                 cap,
                 value
             );
-            let encoded_tid = XLP_COORDINATOR_TID.swap(0, Ordering::AcqRel);
-            if encoded_tid != 0 {
-                let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            let encoded_asid = XLP_ASID.swap(0, Ordering::AcqRel);
+            if encoded_asid != 0 {
+                // The worker stub deliberately spins after completing the
+                // request. Retire the complete self-test domain once its
+                // externally visible result has been verified; aborting only
+                // the coordinator leaves that worker permanently runnable.
+                crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                     .read()
-                    .abort_thread(encoded_tid - 1);
+                    .abort_as_threads(encoded_asid - 1);
             }
             return;
         }

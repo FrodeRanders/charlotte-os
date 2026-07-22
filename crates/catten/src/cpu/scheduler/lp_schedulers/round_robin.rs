@@ -24,6 +24,7 @@ use crate::{
                 ThreadGeneration,
                 ThreadId,
                 ThreadState,
+                record_dispatch,
             },
             system_scheduler::LP_LOAD_SUMMARIES,
         },
@@ -223,6 +224,8 @@ impl LpScheduler for RoundRobin {
                 .state = ThreadState::Ready(self.lp_id);
         }
         tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
+        let next_thread = tt_guard.get(next_tid).unwrap();
+        record_dispatch(self.lp_id, next_tid, next_thread.generation, next_thread.asid);
 
         sched_trace!(
             "[sched] LP{} dispatch: out={:?} requeue={} in={} depth={} idle={}",

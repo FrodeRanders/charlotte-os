@@ -630,6 +630,34 @@ to blocking timer waits. An SMP4 HVF run then completed every required marker:
 UART at 0.131 seconds, Raft at 0.364 seconds, and CQ wait at 0.506 seconds.
 AArch64 and x86-64 target checks pass.
 
+### F19 — High: completed EL0 tests left worker runtimes permanently runnable
+
+**Resolved and runtime-validated (2026-07-22).**
+
+After all deferred test markers had passed, an HVF run still consumed roughly
+two host cores without producing log output. Lock-free per-LP debugger metadata
+identified the current threads as two Sitas shard executors in ASID 18. The
+embedded `basic_kv` test creates one executor per shard, but its raw no-std join
+handles do not yet provide a shutdown operation. Returning from the test's main
+thread therefore did not terminate its executor threads. The Sitas verifier now
+retires every thread owned by the test address space after checking the result.
+
+A second snapshot then exposed one remaining runnable thread in ASID 16. The
+EL0 cross-LP demo had aborted its coordinator after success, but its worker stub
+deliberately spins after posting the completion. That test now also retires the
+whole address space rather than one selected thread. The ownership rule is that
+a self-contained test domain is torn down as a unit once its externally visible
+result has been verified.
+
+`--debug-snapshot` now captures a lock-free six-field record for each LP:
+current TID, generation, ASID, dispatch count, and the most recently exited TID
+and generation. In a 10-second four-LP HVF validation, every required deferred
+marker passed (including Raft election and runtime rebalance), all four debugger
+stacks were in `lp_idle_loop`, every current ASID was the kernel ASID, and every
+local virtual timer was disabled. This distinguishes a quiet but spinning test
+thread from a genuinely idle kernel without requiring scheduler locks in the
+debugger path.
+
 ## Architecture conformance assessment
 
 The kernel's implemented shape follows the main architecture well: capabilities
