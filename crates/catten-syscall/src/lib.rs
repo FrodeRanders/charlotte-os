@@ -245,19 +245,29 @@ unsafe fn svc3_x3(_imm: u16, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u
 
 #[cfg(not(target_arch = "aarch64"))]
 #[inline(always)]
-unsafe fn svc5(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 { 0 }
+unsafe fn svc5(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
+    0
+}
 
 #[cfg(not(target_arch = "aarch64"))]
 #[inline(always)]
-unsafe fn svc6(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64, _a6: u64) -> u64 { 0 }
+unsafe fn svc6(_imm: u16, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64, _a6: u64) -> u64 {
+    0
+}
 
 #[cfg(not(target_arch = "aarch64"))]
 #[inline(always)]
 unsafe fn svc_ipc_recv(_endpoint: u64) -> IpcMessage {
     IpcMessage {
         status: ipc_status::NO_MESSAGE,
-        opcode: 0, arg0: 0, reply: 0, sender: 0,
-        interface: 0, version: 0, memory: 0, connection: 0,
+        opcode: 0,
+        arg0: 0,
+        reply: 0,
+        sender: 0,
+        interface: 0,
+        version: 0,
+        memory: 0,
+        connection: 0,
     }
 }
 
@@ -266,8 +276,14 @@ unsafe fn svc_ipc_recv(_endpoint: u64) -> IpcMessage {
 unsafe fn svc_ipc_recv_block(_endpoint: u64) -> IpcMessage {
     IpcMessage {
         status: ipc_status::ENDPOINT_CLOSED,
-        opcode: 0, arg0: 0, reply: 0, sender: 0,
-        interface: 0, version: 0, memory: 0, connection: 0,
+        opcode: 0,
+        arg0: 0,
+        reply: 0,
+        sender: 0,
+        interface: 0,
+        version: 0,
+        memory: 0,
+        connection: 0,
     }
 }
 
@@ -433,7 +449,9 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
 /// Emit a kernel debug log line with two arbitrary values (smoke debugging).
 #[inline(always)]
 pub fn el0_log(a: u64, b: u64) {
-    unsafe { svc3(0, a, b, 0); }
+    unsafe {
+        svc3(0, a, b, 0);
+    }
 }
 
 /// Submit an async operation.  Returns a completion capability.
@@ -443,7 +461,8 @@ pub fn submit(op: OpCode) -> u64 {
 }
 
 /// Submit a timer operation that completes after `timeout_ms` milliseconds.
-/// Returns a completion capability that auto-completes when the timer fires.
+/// Returns a completion capability that auto-completes when the timer fires,
+/// or `u64::MAX` when submission fails. Capability zero is valid.
 #[inline(always)]
 pub fn submit_timer(timeout_ms: u64) -> u64 {
     unsafe { svc3(1, OpCode::Timer as u64, 0, timeout_ms) }
@@ -464,7 +483,9 @@ pub unsafe fn submit_read(buf_ptr: usize, buf_len: usize) -> u64 {
 /// Post a terminal result for a completion capability.
 #[inline(always)]
 pub fn complete(cap: u64, result_code: i64) {
-    unsafe { svc3(2, cap, result_code as u64, 0); }
+    unsafe {
+        svc3(2, cap, result_code as u64, 0);
+    }
 }
 
 /// Non-blocking check: drain the completion if it is terminal.
@@ -477,19 +498,25 @@ pub fn poll(cap: u64) -> (u64, u64) {
 /// Block until the given capability reaches a terminal completion.
 #[inline(always)]
 pub fn wait(cap: u64) {
-    unsafe { svc3(4, cap, 0, 0); }
+    unsafe {
+        svc3(4, cap, 0, 0);
+    }
 }
 
 /// Request cancellation of an in-flight capability.
 #[inline(always)]
 pub fn cancel(cap: u64) {
-    unsafe { svc3(5, cap, 0, 0); }
+    unsafe {
+        svc3(5, cap, 0, 0);
+    }
 }
 
 /// Release a completed/drained capability slot.
 #[inline(always)]
 pub fn close(cap: u64) {
-    unsafe { svc3(6, cap, 0, 0); }
+    unsafe {
+        svc3(6, cap, 0, 0);
+    }
 }
 
 /// Spawn a new EL0 thread pinned to `target_lp`, starting at `entry_vaddr`.
@@ -510,8 +537,12 @@ pub unsafe fn spawn_thread(entry_vaddr: usize, target_lp: u32) -> u64 {
 /// kernel does not track on thread teardown.
 #[inline(always)]
 pub unsafe fn thread_exit() -> ! {
-    unsafe { svc3(8, 0, 0, 0); }
-    loop { core::hint::spin_loop(); }
+    unsafe {
+        svc3(8, 0, 0, 0);
+    }
+    loop {
+        core::hint::spin_loop();
+    }
 }
 
 /// Send a 64-bit message to the target LP's global mailbox.
@@ -778,12 +809,7 @@ pub unsafe fn spawn_upgrade(elf_selector: u64, state_cap: u64, endpoint_cap: u64
 
 /// Send a scalar message and move a memory object to the receiver.
 #[inline(always)]
-pub fn ipc_scalar_send_move(
-    connection: u64,
-    opcode: u32,
-    arg0: u64,
-    memory: u64,
-) -> IpcStatusCode {
+pub fn ipc_scalar_send_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> IpcStatusCode {
     unsafe { svc4(32, connection, opcode as u64, arg0, memory) }
 }
 
@@ -801,34 +827,19 @@ pub fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> IpcStatusCode {
 
 /// Call through a connection with a reply-bound immutable memory borrow.
 #[inline(always)]
-pub fn ipc_scalar_call_borrow_read(
-    connection: u64,
-    opcode: u32,
-    arg0: u64,
-    memory: u64,
-) -> u64 {
+pub fn ipc_scalar_call_borrow_read(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
     unsafe { svc4(35, connection, opcode as u64, arg0, memory) }
 }
 
 /// Call through a connection with a reply-bound writable memory borrow.
 #[inline(always)]
-pub fn ipc_scalar_call_borrow_write(
-    connection: u64,
-    opcode: u32,
-    arg0: u64,
-    memory: u64,
-) -> u64 {
+pub fn ipc_scalar_call_borrow_write(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
     unsafe { svc4(36, connection, opcode as u64, arg0, memory) }
 }
 
 /// Send a scalar message with a copied memory object.
 #[inline(always)]
-pub fn ipc_scalar_send_copy(
-    connection: u64,
-    opcode: u32,
-    arg0: u64,
-    memory: u64,
-) -> IpcStatusCode {
+pub fn ipc_scalar_send_copy(connection: u64, opcode: u32, arg0: u64, memory: u64) -> IpcStatusCode {
     unsafe { svc4(37, connection, opcode as u64, arg0, memory) }
 }
 
@@ -939,7 +950,13 @@ pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
 pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
     IpcMessage {
         status: ipc_status::NO_MESSAGE,
-        opcode: 0, arg0: 0, reply: 0, sender: 0,
-        interface: 0, version: 0, memory: 0, connection: 0,
+        opcode: 0,
+        arg0: 0,
+        reply: 0,
+        sender: 0,
+        interface: 0,
+        version: 0,
+        memory: 0,
+        connection: 0,
     }
 }

@@ -153,8 +153,6 @@ pub fn test_el0_uart() {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_uart() {
-    use crate::cpu::scheduler::yield_lp;
-
     let state = unsafe { TEST_STATE.as_ref() }.expect("[uart] test state missing");
 
     let client_cfg: *const u32 = {
@@ -184,7 +182,7 @@ extern "C" fn verify_el0_uart() {
                 );
             }
             assert!(spins < MAX_SPINS, "[uart] FAILED waiting for console client writes");
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
     let write_status = unsafe { core::ptr::read_volatile(client_cfg.add(1)) };
@@ -207,7 +205,7 @@ extern "C" fn verify_el0_uart() {
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
             spins += 1;
             assert!(spins < MAX_SPINS, "[uart] FAILED waiting for driver to arm the deferred read");
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
     crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
@@ -220,7 +218,7 @@ extern "C" fn verify_el0_uart() {
             if spins % 20_000_000 == 0 {
                 crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
             }
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
 
@@ -270,7 +268,7 @@ extern "C" fn verify_el0_uart() {
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
             spins += 1;
             assert!(spins < MAX_SPINS, "[uart] FAILED waiting for verifier read to arm");
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
     assert_eq!(
@@ -348,7 +346,7 @@ extern "C" fn verify_el0_uart() {
             }
             spins += 1;
             assert!(spins < MAX_SPINS, "[uart] FAILED waiting for generation-2 registration");
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
     let write = ipc::scalar_call(KCLIENT_ASID, fresh_conn, OP_WRITE, b'2' as u64)
@@ -376,8 +374,6 @@ extern "C" fn verify_el0_uart() {
 /// completes, then close the pending-call cap.
 #[cfg(target_arch = "aarch64")]
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
-    use crate::cpu::scheduler::yield_lp;
-
     #[allow(unused_assignments)]
     let mut value = None;
     let mut spins: u64 = 0;
@@ -392,7 +388,7 @@ fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
         }
         spins += 1;
         assert!(spins < MAX_SPINS, "[uart] FAILED waiting for {}", what);
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     ipc::close_cap(KCLIENT_ASID, call).expect("[uart] pending-call close failed");
     value.expect("[uart] reply value missing")

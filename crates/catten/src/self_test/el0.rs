@@ -21,8 +21,13 @@
 //! alias) once the scheduler is active and assert the sentinel and returned
 //! cap, panicking on mismatch or timeout.
 
-use crate::logln;
+#[cfg(target_arch = "aarch64")]
+use core::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
 
+use crate::logln;
 #[cfg(target_arch = "aarch64")]
 use crate::{
     completion::{
@@ -53,6 +58,9 @@ use crate::{
 /// user binary's output via HHDM after the thread runs.
 #[cfg(target_arch = "aarch64")]
 static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
+/// Numeric TID plus one; zero means the payload has not been spawned.
+#[cfg(target_arch = "aarch64")]
+static EL0_USER_TID: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(target_arch = "aarch64")]
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -249,6 +257,7 @@ pub fn test_el0_syscall_round_trip() {
         // page mapped into the user address space.
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
         logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
+        EL0_USER_TID.store(tid + 1, Ordering::Release);
 
         // The verification thread runs after `yield_lp()` (self-tests run on the
         // boot path before the scheduler is entered), polls the result page via
@@ -292,6 +301,16 @@ extern "C" fn verify_el0_result() {
                  verified.",
                 cap
             );
+            // Teardown belongs to the verifier: once the observable result is
+            // committed, the payload has no further role. This is idempotent
+            // when svc #8 already removed it and prevents a failed exit path
+            // from becoming permanent scheduler load.
+            let encoded_tid = EL0_USER_TID.swap(0, Ordering::AcqRel);
+            if encoded_tid != 0 {
+                let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                    .read()
+                    .abort_thread(encoded_tid - 1);
+            }
             return;
         }
         spins += 1;

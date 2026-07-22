@@ -130,13 +130,11 @@ pub fn test_el0_service() {
 
 #[cfg(target_arch = "aarch64")]
 fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
-    use crate::cpu::scheduler::yield_lp;
-
     let mut spins: u64 = 0;
     while !condition() {
         spins += 1;
         assert!(spins < MAX_SPINS, "[service] FAILED waiting for {}", what);
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
 }
 
@@ -182,8 +180,6 @@ fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_service() {
-    use crate::cpu::scheduler::yield_lp;
-
     let state = unsafe { TEST_STATE.as_mut() }.expect("[service] test state missing");
 
     // --- Phase A: the EL0 client completes bootstrap → lookup → call. ---
@@ -223,7 +219,7 @@ extern "C" fn verify_el0_service() {
             if spins >= MAX_SPINS {
                 panic!("[service] FAILED waiting for EL0 client");
             }
-            yield_lp();
+            crate::cpu::scheduler::sleep_millis(1);
         }
     }
     let echoed = unsafe { core::ptr::read_volatile(config.add(1)) };

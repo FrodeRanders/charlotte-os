@@ -411,6 +411,16 @@ pub unsafe fn wait_reply(call: u64, max_spins: u64) -> (i64, u64) {
         if spins >= max_spins {
             unsafe { catten_syscall::thread_exit(); }
         }
-        core::hint::spin_loop();
+        sleep_ms(1);
     }
+}
+
+/// Block the calling userspace thread between low-frequency reply polls.
+pub fn sleep_ms(milliseconds: u64) {
+    let timer = catten_syscall::submit_timer(milliseconds);
+    if timer == u64::MAX {
+        return;
+    }
+    catten_syscall::wait(timer);
+    catten_syscall::close(timer);
 }

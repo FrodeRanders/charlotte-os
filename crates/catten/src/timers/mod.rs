@@ -33,11 +33,23 @@ pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
+/// Identity for timer events that must have at most one queued instance.
+///
+/// Ordinary sleeps and completion timers are anonymous. The scheduler quantum
+/// is different: every dispatch resets the same per-LP deadline, so its
+/// identity belongs in the timer queue rather than in a separate `armed` bit
+/// that can drift out of sync with the queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TimerEventKey {
+    SchedulerQuantum,
+}
+
 /// A timer event that should notify observers when a specified deadline is reached. The deadline
 /// can be set using either a duration or an absolute timestamp.
 #[derive(Debug)]
 pub struct TimerEvent {
     deadline: Timestamp,
+    key: Option<TimerEventKey>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
 }
 
@@ -45,6 +57,12 @@ impl TimerEvent {
     #[inline(always)]
     pub fn get_deadline(&self) -> Timestamp {
         self.deadline
+    }
+
+    pub(crate) fn keyed(duration: ExtDuration, key: TimerEventKey) -> Self {
+        let mut event = Self::from(duration);
+        event.key = Some(key);
+        event
     }
 
     fn signal(&self) {
@@ -60,6 +78,7 @@ impl From<Timestamp> for TimerEvent {
     fn from(deadline: Timestamp) -> Self {
         Self {
             deadline,
+            key: None,
             observers: ConcurrentQueue::unbounded(),
         }
     }
@@ -71,6 +90,7 @@ impl From<ExtDuration> for TimerEvent {
             + (duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos()) as Timestamp;
         Self {
             deadline,
+            key: None,
             observers: ConcurrentQueue::unbounded(),
         }
     }
@@ -89,6 +109,22 @@ pub struct TimerQueue {
 }
 
 impl TimerQueue {
+    /// Queue a keyed event only when no event with that identity is already
+    /// present. The queue is the source of truth, while an existing quantum's
+    /// deadline is deliberately preserved across voluntary yields.
+    pub(crate) fn ensure_event(&mut self, event: TimerEvent) {
+        let key = event.key.expect("ensure_event requires a keyed event");
+        if self.events.iter().any(|queued| queued.key == Some(key)) {
+            return;
+        }
+        self.add_event(event);
+    }
+
+    pub(crate) fn remove_event(&mut self, key: TimerEventKey) {
+        self.events.retain(|queued| queued.key != Some(key));
+        self.rearm_front();
+    }
+
     pub fn add_event(&mut self, event: TimerEvent) {
         let mut insertion_idx: Option<usize> = None;
         for (i, event_node) in self.events.iter().enumerate() {
@@ -104,32 +140,9 @@ impl TimerQueue {
         }
         let i = insertion_idx.unwrap();
         self.events.insert(i, event);
-        if i == 0 {
-            // If the event we added is at the front of the queue then we need to prime the
-            // timer with its deadline so that it will fire at the
-            // correct time. If there are other events then the timer is
-            // already primed with the correct deadline and will be
-            // updated when the current event expires.
-            if let Some(next_event) = self.events.front() {
-                let timer = LpTimer::get();
-                let mut timerlk = timer.lock();
-                let _ = timerlk.stop();
-                match timerlk.set_deadline(next_event.deadline) {
-                    Ok(()) => {}
-                    // The deadline is already in the past by the time we arm the
-                    // timer (a very short duration, or scheduling/lock latency —
-                    // readily hit on real hardware with a high-resolution
-                    // counter). Arm a minimal timeout instead so the interrupt
-                    // fires promptly and `process_events` handles the due event,
-                    // mirroring the `DeadlinePassed` handling there.
-                    Err(LpTimerError::DeadlinePassed) => {
-                        let _ = timerlk.set_duration(ExtDuration::from_nanos(1));
-                    }
-                    Err(e) => panic!("Failed to set timer deadline for new event: {e:?}"),
-                }
-                timerlk.start().expect("Failed to start timer for new event");
-            }
-        }
+        // Always reconcile after insertion. This keeps software and hardware
+        // state together even after an earlier interrupt/queue interleaving.
+        self.rearm_front();
     }
 
     pub fn process_events(&mut self) {
@@ -158,5 +171,22 @@ impl TimerQueue {
 
     fn get_next_deadline(&self) -> Option<Timestamp> {
         self.events.front().map(|event| event.deadline)
+    }
+
+    fn rearm_front(&self) {
+        let timer = LpTimer::get();
+        let mut timerlk = timer.lock();
+        let _ = timerlk.stop();
+        let Some(next_event) = self.events.front() else {
+            return;
+        };
+        match timerlk.set_deadline(next_event.deadline) {
+            Ok(()) => {}
+            Err(LpTimerError::DeadlinePassed) => {
+                let _ = timerlk.set_duration(ExtDuration::from_nanos(1));
+            }
+            Err(e) => panic!("Failed to set timer deadline for new event: {e:?}"),
+        }
+        timerlk.start().expect("Failed to start timer for new event");
     }
 }

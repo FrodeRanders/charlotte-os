@@ -25,7 +25,6 @@ use crate::{
     },
     cpu::scheduler::{
         spawn_thread,
-        yield_lp,
     },
     ipc::{
         self,
@@ -59,7 +58,7 @@ fn spin_until(flag: &AtomicU32, what: &str) {
     while flag.load(Ordering::Acquire) == 0 {
         spins += 1;
         assert!(spins < MAX_SPINS, "[cq wait] FAILED waiting for {}", what);
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
 }
 
@@ -110,14 +109,13 @@ extern "C" fn cq_waiter() {
     assert_eq!(message.opcode, 0x77);
     assert_eq!(message.arg0, 0x1234);
     ROUND4_RELEASED.store(1, Ordering::Release);
-
 }
 
 extern "C" fn cq_driver() {
     // Give the waiter a chance to block first; the fast path covers the case
     // where it has not.
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     // Round 1: a capability-free operation completes and posts a CQ entry.
     let operation = completion::submit_detached(CQW_ASID, 0, OpCode::Nop, 0xd1)
@@ -133,21 +131,21 @@ extern "C" fn cq_driver() {
 
     ROUND2_START.store(1, Ordering::Release);
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     completion::wake(CQW_ASID, 0);
     spin_until(&ROUND2_RELEASED, "wake release");
 
     ROUND3_START.store(1, Ordering::Release);
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     completion::wake(CQW_ASID, 1);
     spin_until(&ROUND3_RELEASED, "per-queue wake release");
 
     ROUND4_START.store(1, Ordering::Release);
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     let connection = SENDER_CONN.load(Ordering::Acquire);
     ipc::scalar_send(CQW_SENDER_ASID, connection, 0x77, 0x1234)

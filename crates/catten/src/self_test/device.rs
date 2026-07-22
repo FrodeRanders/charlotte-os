@@ -3,16 +3,14 @@
 //! Exercises the kernel half of the userspace-driver model (architecture doc
 //! §10, Phase 8):
 //!
-//! - negative tests for the capability model: unknown caps, wrong-type
-//!   operations, acknowledging an unbound interrupt, unmapping an unmapped
-//!   region;
-//! - mapping an MMIO region capability into a real address space as
-//!   user-accessible device memory, then unmapping it;
-//! - interrupt delivery to a completion queue: a thread blocked in a single
-//!   `wait_on_cq` is released both by the deterministic kernel delivery path
-//!   (`deliver_interrupt`, what the IRQ dispatcher calls) and by a **real**
-//!   GIC software-pended SPI routed through the live interrupt path, and the
-//!   interrupt object tracks pending/ack state across re-arming.
+//! - negative tests for the capability model: unknown caps, wrong-type operations, acknowledging an
+//!   unbound interrupt, unmapping an unmapped region;
+//! - mapping an MMIO region capability into a real address space as user-accessible device memory,
+//!   then unmapping it;
+//! - interrupt delivery to a completion queue: a thread blocked in a single `wait_on_cq` is
+//!   released both by the deterministic kernel delivery path (`deliver_interrupt`, what the IRQ
+//!   dispatcher calls) and by a **real** GIC software-pended SPI routed through the live interrupt
+//!   path, and the interrupt object tracks pending/ack state across re-arming.
 //!
 //! The waiter and driver run as scheduled kernel threads, mirroring the
 //! `cq_wait` self-test: every release condition is also observed by the
@@ -67,8 +65,8 @@ pub fn test_device_capabilities() {
         completion_open();
 
         // --- Capability-model negative tests -------------------------------
-        let mmio = device::grant_mmio(DEV_ASID, 0x0900_0000, 1)
-            .expect("[device] grant_mmio failed");
+        let mmio =
+            device::grant_mmio(DEV_ASID, 0x0900_0000, 1).expect("[device] grant_mmio failed");
         let irq =
             device::grant_interrupt(DEV_ASID, TEST_SPI).expect("[device] grant_interrupt failed");
 
@@ -107,8 +105,7 @@ pub fn test_device_capabilities() {
         device::close_cap(DEV_ASID, mmio).expect("[device] close_cap(mmio) failed");
 
         // --- Interrupt delivery to a completion queue ----------------------
-        device::interrupt_bind_cq(DEV_ASID, irq, 0)
-            .expect("[device] interrupt_bind_cq failed");
+        device::interrupt_bind_cq(DEV_ASID, irq, 0).expect("[device] interrupt_bind_cq failed");
         assert_eq!(
             device::interrupt_bind_cq(DEV_ASID, irq, 0),
             Err(DeviceError::AlreadyBound),
@@ -207,13 +204,11 @@ extern "C" fn irq_waiter() {
     assert!(pending >= 1, "[device] round 2 must observe a pending interrupt");
     let _ = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 2 failed");
     ROUND2_RELEASED.store(1, Ordering::Release);
-
 }
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn irq_driver() {
     use crate::{
-        cpu::scheduler::yield_lp,
         device,
     };
 
@@ -222,7 +217,7 @@ extern "C" fn irq_driver() {
     // Give the waiter a chance to block first; the fast path covers the case
     // where it has not.
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
 
     // Round 1: simulate exactly what the IRQ dispatcher does for this INTID.
@@ -236,7 +231,7 @@ extern "C" fn irq_driver() {
     // it. The prior ack re-armed the source.
     ROUND2_START.store(1, Ordering::Release);
     for _ in 0..64 {
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
     let _ = irq; // cap consumed by the waiter; keep symmetry with round 1
     crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
@@ -254,12 +249,10 @@ extern "C" fn irq_driver() {
 
 #[cfg(target_arch = "aarch64")]
 fn spin_until(flag: &AtomicU32, what: &str) {
-    use crate::cpu::scheduler::yield_lp;
-
     let mut spins: u64 = 0;
     while flag.load(Ordering::Acquire) == 0 {
         spins += 1;
         assert!(spins < MAX_SPINS, "[device] FAILED waiting for {}", what);
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(1);
     }
 }

@@ -1484,16 +1484,17 @@ cross protection and trust boundaries and require kernel mediation.
 
 ### 14.1 Load rebalancing (future)
 
-The kernel includes a `try_rebalance()` skeleton that detects
-idle-LP/overloaded-LP pairs and migrates threads with no active timers
-to the idle LP.  Threads with active timers are excluded because timer
-events live on the affinity LP's per-LP queue; migrating them would
-orphan the timer.  The migration clears the thread's `affinity_lp` so
-it finds a new home.
+The investigation branch `sched/cq-generation-counter` contains a disabled
+`try_rebalance()` prototype that detects idle-LP/overloaded-LP pairs.  It was
+not ported to `dev`.  Excluding threads with active timers is necessary but not
+sufficient: migration must also account for IPC and device ownership, recheck
+the candidate while both LP schedulers are locked, preserve destination
+affinity, handle remove/add failures transactionally, and wake a remote idle
+LP.
 
-Currently disabled: migrating threads mid-IPC can break request/reply
-protocols.  Activation requires per-thread "safe to migrate" tracking
-in the IPC layer.
+Activation therefore requires an explicit per-thread "safe to migrate"
+contract and a tested migration transaction.  Until then, stable LP affinity
+is the scheduler's correctness policy; load balancing is future work.
 
 ------------------------------------------------------------------------
 

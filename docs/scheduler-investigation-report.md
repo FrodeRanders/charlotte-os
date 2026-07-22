@@ -8,11 +8,11 @@
 
 3. **Raft election liveness** — `handle_vote_request` manually set `state = Follower` without calling `step_down()`, leaving `timeout_at_millis` stale.  The node immediately timed out again, causing rapid election cycling with neither reaching quorum.  Fixed by calling `step_down(req.term, current_millis)` which properly resets the deadline.
 
-4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing threads across LPs.  This caused timer-on-wrong-LP bugs and TLB churn.  Fixed by adding `affinity_lp: Option<LpId>` to `Thread`, set on first assignment, preferred for all re-admissions via `pick_lp_for()`.
+4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing ordinarily admitted threads across LPs.  This caused timer-on-wrong-LP bugs and TLB churn.  Fixed by adding `affinity_lp: Option<LpId>` to `Thread`, set on first ordinary assignment and preferred for re-admission via `pick_lp_for()`.  Explicit `submit_to_lp()` placement remains one-shot: making it persistent in a follow-up review stalled the pinned cross-LP workload and requires a separate lifecycle investigation.
 
-5. **Orphan EL0 test threads** — device probe thread (`probe_device_topology`) had `loop { yield_lp() }` after logging.  Fixed by removing the loop (trampoline calls `abort()` on return).  Two EL0 payload threads (TID=4, TID=25) never reach `svc #8 (THREAD_EXIT)` despite having the correct instruction encoding.  Fixed by having verifier threads `abort_thread()` the payload threads after confirming test success.
+5. **Orphan EL0 test threads** — device probe thread (`probe_device_topology`) had `loop { yield_lp() }` after logging.  Fixed by removing the loop (trampoline calls `abort()` on return).  Two EL0 payload threads (TID=4, TID=25) appeared not to reach `svc #8 (THREAD_EXIT)` despite having the correct instruction encoding.  Verifiers now perform idempotent teardown after observing the committed result. This prevents a payload exit failure from becoming permanent scheduler load without claiming to explain the underlying exit anomaly.
 
-6. **Rebalance skeleton** — `try_rebalance()` detects idle-overloaded LP pairs and migrates threads with `active_timers == 0`.  Available but disabled: migrating threads mid-IPC breaks test protocols.
+6. **Rebalance experiment** — branch `sched/cq-generation-counter` contains a disabled `try_rebalance()` skeleton.  It was intentionally not ported to `dev`: timer-free is not a sufficient migration-safety condition, and review found missing locked-state revalidation, destination wakeup, persistent destination affinity, and error handling.
 
 ## Investigation Methodology
 
@@ -125,7 +125,7 @@ The `svc #8` encoding was verified correct — both the hand-written bytes (`0x0
 
 **Hypothesis:** The `str` instruction between `svc #1` and `svc #8` writes to a user page at EL0.  On QEMU TCG, this may trigger a recoverable translation fault.  The AArch64 abort handler recovers by invalidating the TLB and retrying the faulting instruction.  The write eventually succeeds (the verifier confirms it), but the CPU state after recovery may not correctly advance to the next instruction.
 
-### Discovery 5: Verifier cleanup eliminates all CPU load
+### Discovery 5: Verifier cleanup experiment eliminates all CPU load
 
 After adding `abort_thread()` calls to the verifier functions (killing the EL0 payload threads after confirming test success), the steady-state dispatch rate dropped to **zero on all LPs**:
 
@@ -136,9 +136,14 @@ LP2 (t>10s): {}
 LP3 (t>10s): {}
 ```
 
+This demonstrated that those payloads accounted for the residual load. The
+cleanup is test teardown, not evidence that the payload's own `THREAD_EXIT`
+lifecycle is correct; the exit anomaly remains a separate investigation item.
+
 ## Final State
 
-All 15 self-tests pass.  The system idles completely after the test burst.  Key architectural changes:
+All 15 self-tests passed in the instrumented investigation run. Key changes
+retained on `dev` are:
 
 | Component | Before | After |
 |-----------|--------|-------|
@@ -147,8 +152,8 @@ All 15 self-tests pass.  The system idles completely after the test burst.  Key 
 | Raft timer polling | `if election_timer != 0` rejects valid cap 0 | Always poll; `poll(0)` returns u64::MAX on empty table |
 | Raft election timeout | Manual field reset without `step_down()` → stale deadline | `step_down()` properly resets `timeout_at_millis` |
 | Device probe thread | `loop { yield_lp() }` → permanent CPU burn | Returns normally; trampoline calls `abort()` |
-| EL0 test payloads | Threads never exit (stall between store and `svc #8`) | Verifiers kill payload threads after confirming success |
-| LP idle load | 3 LPs at ~270 dispatches/sec indefinitely | 0 dispatches/sec after test burst |
+| EL0 test payloads | Some payloads appeared not to exit | Idempotent verifier teardown; lifecycle cause remains open |
+| LP idle load | 3 LPs at ~270 dispatches/sec in the affected run | Zero in the instrumented teardown run; revalidate after scheduler changes |
 
 ## Files Modified
 
@@ -156,16 +161,46 @@ All 15 self-tests pass.  The system idles completely after the test burst.  Key 
 |------|--------|
 | `completion/mod.rs` | `CqState` with `work_generation`/`last_seen_generation`; `wait_on_cq` uses generation comparison |
 | `completion/cq.rs` | `drain()` method on `CompletionQueueRing` |
-| `scheduler/threads/mod.rs` | `affinity_lp: Option<LpId>` and `active_timers: AtomicU32` on `Thread` |
+| `scheduler/threads/mod.rs` | `affinity_lp: Option<LpId>` on `Thread` |
 | `scheduler/system_scheduler/mod.rs` | `pick_lp_for()`, affinity-aware `submit_ready_thread`/`submit_woken_thread` |
-| `scheduler/mod.rs` | `bump_active_timers()`, `drop_active_timer()`, `yield_lp` |
-| `syscall/mod.rs` | Timer tracking in submit/poll/close |
+| `scheduler/mod.rs` | Scheduler yield and lifecycle handling |
+| `syscall/mod.rs` | Timer submission and completion ABI |
 | `catten-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |
 | `catten-services/src/bin/raft.rs` | Cap-0 fix (remove `!= 0` guard) |
 | `main.rs` | Remove infinite yield loop from `probe_device_topology` |
-| `self_test/el0.rs` | Verifier kills EL0 user thread after SUCCESS |
-| `self_test/el0_demo.rs` | Verifier kills xLP coordinator thread after SUCCESS |
+| `self_test/el0.rs` | Idempotent verifier teardown of the completed payload |
+| `self_test/el0_demo.rs` | Idempotent verifier teardown of the completed coordinator |
 | `debug_trace.rs` | Lock-free in-memory trace buffer (development tool, no-op stub on dev) |
 | `docs/scheduler-state-machines.md` | Formal state machine reference |
 | `scripts/run-aarch64.sh` | Always rebuild EL0 services before kernel build |
 | `scripts/build-catten-services.sh` | `--clean` flag |
+
+## Follow-up: quantum ownership and controlled rebalancing (2026-07-22)
+
+A later HVF run stopped with several genuinely runnable threads on every LP.
+The immediate defect was split ownership of the round-robin quantum: an
+`armed` atomic could remain true after the corresponding `TimerEvent` was no
+longer in the per-LP queue. Subsequent dispatches then declined to queue a new
+quantum, stranding ready work indefinitely.
+
+The timer queue now owns the invariant. Scheduler quanta are keyed singleton
+events: `ensure_event` adds one only when absent, preserving its deadline over
+voluntary yields, and idle transition removes it. There is no second `armed`
+state that can disagree with the queue.
+
+Placement now has two explicit levels:
+
+- `affinity_lp` is a soft home assigned on first admission. Blocked threads
+  wake there, keeping per-LP timer ownership and cache locality stable.
+- `pinned_lp` is a hard constraint established by `submit_to_lp` for shard and
+  other LP-local work. Rebalancing never moves pinned work.
+- An idle LP may pull exactly one `Ready`, non-pinned thread from an LP with
+  more than one runnable thread. Source and destination locks are ordered by
+  LP ID, the generation and state are revalidated, and running or blocked
+  threads are never migrated.
+
+With timer liveness restored, low-frequency reply/test polling was converted
+from runnable yield loops to 1 ms blocking timer waits. A 4-LP AArch64 HVF run
+then observed every required deferred marker: UART at 0.131 s, Raft at 0.364 s,
+and CQ wait at 0.506 s. The diagnostic snapshot used during development showed
+an LP entering the real idle path; it was removed after validation.

@@ -417,11 +417,10 @@ struct CqState {
     /// ring's `pending()` count — callers that poll individual completions
     /// via `poll(cap)` and never drain the ring are not stuck in a busy-spin.
     work_generation: u64,
-    /// The `work_generation` value when the last [`wait_on_cq`] returned on
-    /// this queue.  Only new work (generation > last_seen) releases the next
-    /// wait.  A per-CQ field rather than a per-call local so that work
-    /// submitted *before* the first `cq_wait` call (the fast path) is
-    /// detected correctly.
+    /// The `work_generation` value consumed by this queue's reactor. Only new
+    /// work releases the next wait. Charlotte's per-shard model has one
+    /// blocking reactor per CQ; multiple independent waiters would require a
+    /// cursor per waiter rather than this queue-wide cursor.
     last_seen_generation: u64,
     /// Threads blocked waiting for this queue to become readable.
     observers: ConcurrentQueue<Weak<dyn Observer>>,
@@ -671,17 +670,17 @@ pub fn complete(
     {
         let mut registry = COMPLETIONS.write();
         if let Some(as_completions) = registry.get_mut(&asid) {
-        if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
-            let op = completion.operation_id();
-            post_to_cq(cq_state, op, cap as u64, &effective);
-            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-            crate::debug_trace::trace(
-                crate::debug_trace::TAG_COMPLETE,
-                asid as u64,
-                cq_state.work_generation,
-                cap as u64,
-            );
-        }
+            if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
+                let op = completion.operation_id();
+                post_to_cq(cq_state, op, cap as u64, &effective);
+                cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_COMPLETE,
+                    asid as u64,
+                    cq_state.work_generation,
+                    cap as u64,
+                );
+            }
         }
     }
 
@@ -997,12 +996,14 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
     }
 
     loop {
-        // Re-check under read — work may have arrived between the fast-path
-        // write lock above and this read.
+        // Work may have arrived between the fast-path check and this loop.
+        // Consume that generation atomically; returning without advancing
+        // last_seen would make the following wait report the same work again.
         {
-            let registry = COMPLETIONS.read();
-            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
+            let mut registry = COMPLETIONS.write();
+            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
                 if cq_state.work_generation != cq_state.last_seen_generation {
+                    cq_state.last_seen_generation = cq_state.work_generation;
                     return;
                 }
             }
@@ -1013,13 +1014,19 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
             asid as u64,
             {
                 let registry = COMPLETIONS.read();
-                registry.get(&asid).and_then(|c| c.cqs.get(&cq))
-                    .map(|s| s.work_generation).unwrap_or(0)
+                registry
+                    .get(&asid)
+                    .and_then(|c| c.cqs.get(&cq))
+                    .map(|s| s.work_generation)
+                    .unwrap_or(0)
             },
             {
                 let registry = COMPLETIONS.read();
-                registry.get(&asid).and_then(|c| c.cqs.get(&cq))
-                    .map(|s| s.last_seen_generation).unwrap_or(0)
+                registry
+                    .get(&asid)
+                    .and_then(|c| c.cqs.get(&cq))
+                    .map(|s| s.last_seen_generation)
+                    .unwrap_or(0)
             },
         );
 

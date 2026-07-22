@@ -42,6 +42,7 @@ use crate::{
     timers::{
         TIMER_QUEUES,
         TimerEvent,
+        TimerEventKey,
     },
 };
 
@@ -105,23 +106,11 @@ impl RoundRobin {
     }
 
     fn set_next_timer_event(&self) {
-        // Keep exactly one quantum event in flight. If one is already armed,
-        // do not enqueue another — otherwise manual `yield_lp` calls (which
-        // also clear the pending flag) would each add a quantum event and the
-        // timer queue would grow without bound.
-        if self
-            .timer_event_observer
-            .armed
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return;
-        }
-        let timer_event = TimerEvent::from(self.quantum);
+        let timer_event = TimerEvent::keyed(self.quantum, TimerEventKey::SchedulerQuantum);
         timer_event.register_observer(
             Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
         );
-        TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);
+        TIMER_QUEUES.try_get_mut().unwrap().ensure_event(timer_event);
     }
 }
 
@@ -153,6 +142,8 @@ impl LpScheduler for RoundRobin {
         // same idle thread. Arm a quantum only for real runnable work.
         if !self.is_idle {
             self.set_next_timer_event();
+        } else {
+            TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
         }
     }
 
@@ -331,6 +322,7 @@ impl LpScheduler for RoundRobin {
 
     fn stop(&mut self) {
         self.is_idle = true;
+        TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
     }
 
     fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {

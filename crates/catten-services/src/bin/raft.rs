@@ -103,16 +103,11 @@ unsafe fn wait_reply_2(call: u64, max_spins: u64) -> Option<(i64, u64)> {
         if spins >= max_spins {
             return None;
         }
-        // The Charlotte scheduler is cooperative at this point in boot. A
-        // pure spin can starve the name service that must produce this reply.
-        if spins % 1_000 == 0 {
-            let timer = submit_timer(1);
-            if timer != 0 {
-                wait(timer);
-                completion_close(timer);
-            }
+        let timer = submit_timer(1);
+        if timer != u64::MAX {
+            wait(timer);
+            completion_close(timer);
         }
-        core::hint::spin_loop();
     }
 }
 
@@ -174,7 +169,7 @@ fn discover_peer(
     let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, peer_name);
     if lookup == 0 {
         let timer = submit_timer(1);
-        if timer != 0 {
+        if timer != u64::MAX {
             wait(timer);
             completion_close(timer);
         }

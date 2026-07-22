@@ -314,12 +314,11 @@ impl RaftNode {
             self.step_down(req.term, current_millis);
         } else if self.state != NodeState::Follower {
             // Valid AppendEntries from the current-term leader: step down
-            // from Candidate to Follower, clearing election state.
+            // without erasing this term's vote. Clearing voted_for here would
+            // allow a follower to grant a second vote in the same term.
             self.state = NodeState::Follower;
             self.known_leader_id = None;
             self.granted_votes.clear();
-            self.voted_for = None;
-            self.persistent_state.set_voted_for(None);
         }
 
         self.last_heartbeat_millis = current_millis;
@@ -884,6 +883,31 @@ mod tests {
             201,
         );
 
+        assert_eq!(node.state, NodeState::Follower);
+        assert_eq!(node.voted_for.as_deref(), Some("n1"));
+        assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
+    }
+
+    #[test]
+    fn same_term_append_entries_steps_down_without_erasing_vote() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.start_election(200);
+        let election_term = node.current_term;
+        assert_eq!(node.voted_for.as_deref(), Some("n1"));
+
+        let response = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: election_term,
+                leader_id: "n2".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: Vec::new(),
+                leader_commit: 0,
+            },
+            201,
+        );
+
+        assert!(response.success);
         assert_eq!(node.state, NodeState::Follower);
         assert_eq!(node.voted_for.as_deref(), Some("n1"));
         assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));

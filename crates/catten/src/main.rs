@@ -156,6 +156,7 @@ pub extern "C" fn bsp_main() -> ! {
     /* We've switched into thread context and never come back */
     unsafe { unreachable_unchecked() }
 }
+
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
 /// called by each application processor upon entering the kernel. It initializes the processor and
 /// then hands it off to the scheduler. It is made C ABI compatible so that it can work with the

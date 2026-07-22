@@ -12,7 +12,6 @@ use alloc::{
 use core::{
     mem::offset_of,
     sync::atomic::{
-        AtomicU32,
         AtomicU64,
         Ordering,
     },
@@ -122,10 +121,10 @@ pub struct Thread {
     /// giving the thread cache affinity and keeping its timer events on
     /// the same LP's queue.
     pub affinity_lp: Option<LpId>,
-    /// Count of submitted-but-not-yet-completed timer completions owned
-    /// by this thread.  The rebalancer avoids migrating threads with
-    /// active timers because the timer lives on the affinity LP's queue.
-    pub active_timers: AtomicU32,
+    /// A hard placement constraint for work whose semantics are LP-local
+    /// (notably shard workers). Unlike soft affinity, rebalancing must never
+    /// change this value.
+    pub pinned_lp: Option<LpId>,
     exit_observers: spin::Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -147,7 +146,7 @@ impl Thread {
             generation: NEXT_THREAD_GENERATION.fetch_add(1, Ordering::Relaxed),
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
-            active_timers: AtomicU32::new(0),
+            pinned_lp: None,
             exit_observers: spin::Mutex::new(Vec::new()),
         }
     }
