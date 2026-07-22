@@ -72,13 +72,49 @@ static STACK_ARENA_LOCK: Mutex<()> = Mutex::new(());
 /// Runs `f` with interrupts masked and [`STACK_ARENA_LOCK`] held, releasing the
 /// lock *before* restoring the previous interrupt state (so a preemption taken
 /// right after unmasking cannot observe the lock still held by this LP).
-fn with_arena<R>(f: impl FnOnce() -> R) -> R {
+#[cfg(target_arch = "aarch64")]
+fn current_sp() -> u64 {
+    let sp: u64;
+    unsafe {
+        core::arch::asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
+    }
+    sp
+}
+
+#[cfg(target_arch = "x86_64")]
+fn current_sp() -> u64 {
+    let sp: u64;
+    unsafe {
+        core::arch::asm!("mov {}, rsp", out(reg) sp, options(nomem, nostack, preserves_flags));
+    }
+    sp
+}
+
+fn with_arena<R>(operation: u64, subject: u64, f: impl FnOnce() -> R) -> R {
     let ints_were_enabled = get_int_state();
     mask_interrupts!();
+    crate::debug_trace::trace(
+        crate::debug_trace::TAG_STACK_ARENA_WAIT,
+        operation,
+        current_sp(),
+        subject,
+    );
     let result = {
         let _lock = STACK_ARENA_LOCK.lock();
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_STACK_ARENA_ACQUIRED,
+            operation,
+            current_sp(),
+            subject,
+        );
         f()
     };
+    crate::debug_trace::trace(
+        crate::debug_trace::TAG_STACK_ARENA_RELEASED,
+        operation,
+        current_sp(),
+        subject,
+    );
     if ints_were_enabled {
         unmask_interrupts!();
     }
@@ -111,7 +147,7 @@ impl From<memory::Error> for Error {
 /// [`KERNEL_GUARD_PAGE_SET`] so the stack can later be validated and freed.
 pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
     // Serialize the whole region-search-then-map sequence against other LPs.
-    with_arena(|| allocate_stack_locked(n_pages))
+    with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages))
 }
 
 fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
@@ -142,7 +178,7 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
 /// argument is the base address returned by `allocate_stack`.
 pub fn deallocate_stack(stack_buf_base: VAddr) -> Result<(), Error> {
     // Serialize teardown against concurrent alloc/free on other LPs.
-    with_arena(|| deallocate_stack_locked(stack_buf_base))
+    with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base))
 }
 
 fn deallocate_stack_locked(stack_buf_base: VAddr) -> Result<(), Error> {

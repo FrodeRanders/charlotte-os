@@ -158,6 +158,9 @@ fn tag_name(tag: u64) -> &'static str {
         TAG_TIMER_STOPPED => "TIMER_STOPPED",
         TAG_SCHED_DISPATCH => "SCHED_DISPATCH",
         TAG_SCHED_ADMIT => "SCHED_ADMIT",
+        TAG_STACK_ARENA_WAIT => "STACK_ARENA_WAIT",
+        TAG_STACK_ARENA_ACQUIRED => "STACK_ARENA_ACQUIRED",
+        TAG_STACK_ARENA_RELEASED => "STACK_ARENA_RELEASED",
         _ => "?",
     }
 }
@@ -177,3 +180,6 @@ pub const TAG_TIMER_ARMED: u64 = 0xc0_0032;
 pub const TAG_TIMER_STOPPED: u64 = 0xc0_0033;
 pub const TAG_SCHED_DISPATCH: u64 = 0xc0_0040;
 pub const TAG_SCHED_ADMIT: u64 = 0xc0_0041;
+pub const TAG_STACK_ARENA_WAIT: u64 = 0xc0_0050;
+pub const TAG_STACK_ARENA_ACQUIRED: u64 = 0xc0_0051;
+pub const TAG_STACK_ARENA_RELEASED: u64 = 0xc0_0052;
