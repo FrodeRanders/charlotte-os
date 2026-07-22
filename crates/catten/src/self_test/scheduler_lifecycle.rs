@@ -11,7 +11,11 @@ use crate::{
         scheduler::{
             sleep_millis,
             spawn_migratable_thread_on_lp,
-            system_scheduler::REBALANCE_SUCCESSES,
+            system_scheduler::{
+                get_thread_id,
+                REBALANCE_SUCCESSES,
+            },
+            threads::MASTER_THREAD_TABLE,
         },
         multiprocessor::get_lp_count,
     },
@@ -37,9 +41,15 @@ pub fn test_scheduler_lifecycle() {
 
 extern "C" fn worker() {
     let home = get_lp_id();
+    let tid = get_thread_id().expect("lifecycle worker has no scheduler thread id");
     for _ in 0..128 {
         sleep_millis(1);
         assert_eq!(get_lp_id(), home);
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).expect("lifecycle worker vanished");
+        assert_eq!(thread.migration_constraints, 0);
+        assert!(!thread.is_fully_migratable());
+        drop(table);
         SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
     }
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {

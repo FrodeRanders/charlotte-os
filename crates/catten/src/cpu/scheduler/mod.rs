@@ -147,7 +147,11 @@ pub fn sleep(duration: ExtDuration) {
     if let Some(tid) = tid {
         SYSTEM_SCHEDULER
             .read()
-            .block_thread(tid, &mut timer_event)
+            .block_thread_with_constraint(
+                tid,
+                &mut timer_event,
+                threads::MigrationConstraint::TimerWait,
+            )
             .expect("Error putting thread to sleep");
         crate::timers::enqueue_event(timer_event);
         // Yield so the sleep takes effect: `block_thread` marks the thread

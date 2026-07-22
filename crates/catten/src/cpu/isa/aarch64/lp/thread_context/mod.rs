@@ -148,6 +148,17 @@ impl Drop for ThreadContext {
 }
 
 impl ThreadContext {
+    /// Whether an LP still owns this context. Assembly accesses `on_cpu` with
+    /// byte-sized acquire/release operations; use matching atomic semantics.
+    pub(crate) fn is_on_cpu(&self) -> bool {
+        use core::sync::atomic::{
+            AtomicU8,
+            Ordering,
+        };
+
+        unsafe { (&*((&raw const self.on_cpu).cast::<AtomicU8>())).load(Ordering::Acquire) != 0 }
+    }
+
     /// Whether `address` lies in this context's mapped kernel-stack pages.
     pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
         let base: usize = self._kernel_stack_buf.into();

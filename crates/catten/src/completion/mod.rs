@@ -1029,7 +1029,15 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
             },
         );
 
-        if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
+        if SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint(
+                tid,
+                &observable,
+                crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
+            )
+            .is_err()
+        {
             return;
         }
 
@@ -1117,7 +1125,15 @@ pub fn wait_on_cq_timeout(
         asid,
         cq,
     };
-    if SYSTEM_SCHEDULER.read().block_thread(tid, &observable).is_err() {
+    if SYSTEM_SCHEDULER
+        .read()
+        .block_thread_with_constraint(
+            tid,
+            &observable,
+            crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
+        )
+        .is_err()
+    {
         return false;
     }
 

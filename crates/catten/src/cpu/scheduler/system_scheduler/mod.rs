@@ -30,6 +30,7 @@ use crate::{
         },
         scheduler::threads::{
             MASTER_THREAD_TABLE,
+            MigrationConstraint,
             ThreadGeneration,
             ThreadId,
             ThreadState,
@@ -42,6 +43,7 @@ use crate::{
 
 const SCHED_TRACE: bool = false;
 const REBALANCE_MIN_LOAD_DIFFERENCE: usize = 2;
+pub const DEFAULT_REBALANCE_WINDOW_MILLIS: u64 = 100;
 
 macro_rules! sched_trace {
     ($($arg:tt)*) => {
@@ -53,6 +55,14 @@ macro_rules! sched_trace {
 
 pub static SYSTEM_SCHEDULER: RwLock<SystemScheduler> = RwLock::new(SystemScheduler::new());
 pub static REBALANCE_SUCCESSES: AtomicU64 = AtomicU64::new(0);
+/// Runtime-adjustable sustained-imbalance window. It is independent of the
+/// round-robin quantum; a future policy service may tune it without rebuilding.
+pub static REBALANCE_WINDOW_MILLIS: AtomicU64 =
+    AtomicU64::new(DEFAULT_REBALANCE_WINDOW_MILLIS);
+
+pub fn set_rebalance_window_millis(window_millis: u64) {
+    REBALANCE_WINDOW_MILLIS.store(window_millis.max(1), Ordering::Release);
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -64,12 +74,16 @@ pub enum Error {
 /// The system-wide thread scheduler
 pub struct SystemScheduler {
     lp_schedulers: BTreeMap<LpId, Mutex<Box<dyn LpScheduler>>>,
+    rebalance_pair: AtomicU64,
+    rebalance_since_millis: AtomicU64,
 }
 
 impl SystemScheduler {
     pub const fn new() -> Self {
         Self {
             lp_schedulers: BTreeMap::new(),
+            rebalance_pair: AtomicU64::new(0),
+            rebalance_since_millis: AtomicU64::new(0),
         }
     }
 
@@ -270,8 +284,7 @@ impl SystemScheduler {
         let candidate = candidates.into_iter().find(|&(tid, generation)| {
             table.get(tid).is_ok_and(|thread| {
                 thread.generation == generation
-                    && thread.migration_safe
-                    && thread.pinned_lp.is_none()
+                    && thread.is_fully_migratable()
                     && matches!(thread.state, ThreadState::Ready(lp) if lp == source_lp)
             })
         });
@@ -307,11 +320,64 @@ impl SystemScheduler {
         true
     }
 
+    /// Low-pass-filtered runtime rebalance entry point. A transient load spike
+    /// merely starts/replaces the observation window. Only the same busiest
+    /// and least-loaded LP pair remaining imbalanced for the full configured
+    /// window reaches the transactional migration path.
+    ///
+    /// This is intentionally not called from wake admission. A future runtime
+    /// sampler should invoke it from a non-interrupt scheduler maintenance
+    /// point with a monotonic millisecond timestamp.
+    pub fn try_rebalance_sustained(&self, now_millis: u64) -> bool {
+        if self.lp_schedulers.len() < 2 {
+            return false;
+        }
+        let mut loads: Vec<(LpId, usize)> = self
+            .lp_schedulers
+            .iter()
+            .map(|(&lp, scheduler)| (lp, scheduler.lock().thread_count()))
+            .collect();
+        loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
+        let (destination_lp, destination_load) = loads[0];
+        let (source_lp, source_load) = loads[loads.len() - 1];
+        if source_lp == destination_lp
+            || source_load < destination_load + REBALANCE_MIN_LOAD_DIFFERENCE
+        {
+            self.rebalance_pair.store(0, Ordering::Release);
+            return false;
+        }
+
+        let pair = 1 + ((source_lp as u64) << 32) + destination_lp as u64;
+        if self.rebalance_pair.load(Ordering::Acquire) != pair {
+            self.rebalance_since_millis.store(now_millis, Ordering::Relaxed);
+            self.rebalance_pair.store(pair, Ordering::Release);
+            return false;
+        }
+        let since = self.rebalance_since_millis.load(Ordering::Relaxed);
+        if now_millis.saturating_sub(since)
+            < REBALANCE_WINDOW_MILLIS.load(Ordering::Acquire)
+        {
+            return false;
+        }
+
+        self.rebalance_pair.store(0, Ordering::Release);
+        self.try_rebalance()
+    }
+
     /// Block the specified thread at least until the given event notifies its observers
     pub fn block_thread<'a>(
         &self,
         tid: ThreadId,
         event: &'a dyn crate::klib::observer::Observable,
+    ) -> Result<(), Error> {
+        self.block_thread_with_constraint(tid, event, MigrationConstraint::GeneralWait)
+    }
+
+    pub fn block_thread_with_constraint<'a>(
+        &self,
+        tid: ThreadId,
+        event: &'a dyn crate::klib::observer::Observable,
+        constraint: MigrationConstraint,
     ) -> Result<(), Error> {
         let state = {
             let table = MASTER_THREAD_TABLE.read();
@@ -364,6 +430,7 @@ impl SystemScheduler {
         let waker = Arc::new(waker::Waker::new(tid, generation));
         event
             .register_observer(Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>);
+        thread.add_migration_constraint(constraint);
         thread.state = ThreadState::Blocked(waker);
         Ok(())
     }

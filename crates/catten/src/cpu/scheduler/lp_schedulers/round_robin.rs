@@ -284,6 +284,9 @@ impl LpScheduler for RoundRobin {
                 Ok(())
             }
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
+                if matches!(thread.state, ThreadState::Blocked(_)) {
+                    thread.clear_blocking_migration_constraints();
+                }
                 thread.state = ThreadState::Ready(self.lp_id);
                 self.run_queue.push_back(handle);
                 crate::debug_trace::trace(

@@ -410,6 +410,30 @@ A tested departure trigger was rejected because wake-before-save can make a
 still-on-CPU thread appear `Ready`. The `on_cpu` protocol prevents concurrent
 restoration but does not make such migration preserve timer affinity.
 
+`Thread::migration_constraints` now records typed ownership reasons rather
+than relying only on the spawn-time `migration_safe` promise. The first wired
+constraints are general scheduler waits, timer waits, CQ waits, and endpoint
+waits. `block_thread_with_constraint` installs the appropriate bit while the
+thread is Blocked; the LP scheduler clears the temporary blocking bits only on
+the validated `Blocked -> Ready` transition. A migration candidate must also
+have an empty constraint mask and an acquire-load of AArch64 `on_cpu == 0`.
+The lifecycle regression checks after every timer wake that the timer
+constraint has cleared while the running context is still rejected by the
+`on_cpu` condition.
+
+Runtime policy also has a low-pass entry point,
+`try_rebalance_sustained(now_millis)`. The default 100 ms window is adjustable
+at runtime through `set_rebalance_window_millis`. A sample starts a window for the current
+busiest/least-loaded LP pair; balance recovery or a different pair resets it.
+Only a pair that remains at least two runnable threads apart for the entire
+window can reach transactional migration. No wake or interrupt path invokes
+it. An experimental 10 ms maintenance sleeper was removed after consecutive
+HVF runs missed different service/device gates despite performing no runtime
+migrations: adding another periodic timer thread during boot was itself too
+disruptive. Device domains and deferred workers remain default-denied because
+their ownership is recorded per address space or worker rather than attributed
+to a certified migratable thread.
+
 ---
 
 ## 8. Lock Ordering Rules

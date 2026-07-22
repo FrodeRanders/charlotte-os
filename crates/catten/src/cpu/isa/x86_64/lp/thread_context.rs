@@ -128,6 +128,12 @@ impl Drop for ThreadContext {
 }
 
 impl ThreadContext {
+    /// x86_64 has no cross-LP ownership handshake yet. Runtime migration stays
+    /// disabled there; current migration happens before contexts execute.
+    pub(crate) fn is_on_cpu(&self) -> bool {
+        false
+    }
+
     /// Whether `address` lies in this context's mapped kernel-stack pages.
     pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
         let base: usize = self._kernel_stack_buf.into();

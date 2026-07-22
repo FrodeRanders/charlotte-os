@@ -1074,7 +1074,11 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
     };
     crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
         .read()
-        .block_thread(tid, &observable)
+        .block_thread_with_constraint(
+            tid,
+            &observable,
+            crate::cpu::scheduler::threads::MigrationConstraint::EndpointWait,
+        )
         .map_err(|_| IpcError::NoMessage)?;
 
     // Lost-wake guard: if a sender enqueued after the fast-path check but

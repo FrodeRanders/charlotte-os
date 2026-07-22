@@ -216,6 +216,30 @@ the boot quiescent point, requires at least one actual migration on SMP, and
 then verifies 384 timer block/wake cycles retain each worker's post-migration
 affinity.
 
+The subsequent ownership-metadata step added a per-thread constraint mask.
+Generic scheduler waits, timer sleeps, CQ waits, and endpoint waits install
+distinct temporary constraints at `block_thread`; the validated
+`Blocked -> Ready` transition clears those blocking constraints. Candidate
+selection now additionally requires an empty mask and, on AArch64, an acquire
+read of the context-switch ownership byte showing `on_cpu == 0`. The lifecycle
+workers inspect this invariant after every wake: their timer constraint must be
+gone, but they must still be ineligible while their context is executing. This
+closes the specific Ready-but-still-on-CPU hole without yet enabling runtime
+rebalancing.
+
+To avoid reacting to momentary queue depth, runtime policy now includes a
+low-pass filter. `try_rebalance_sustained(now_millis)` requires the same
+busiest/least-loaded LP pair to retain a load difference of at least two for a
+runtime-adjustable window (100 ms by default). A changed pair or recovered balance resets the
+window. Resource eligibility and load persistence remain separate gates; wake
+and interrupt paths never rebalance. A trial non-migratable worker sampling
+every 10 ms caused consecutive HVF runs to miss different service/device gates
+without recording any runtime migration. It was removed: introducing another
+periodic timer workload during boot is not a neutral sampling mechanism.
+Device grants are address-space-owned and deferred-work workers are ordinary
+default-denied threads, so neither is falsely attributed to an arbitrary
+certified worker.
+
 A dedicated scheduler-lifecycle gate performs 128 one-millisecond timer
 block/wake cycles while checking LP affinity. Initially, merely adding that
 worker reliably reproduced the early stall at approximately 0.09 seconds.

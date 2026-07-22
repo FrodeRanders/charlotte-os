@@ -127,6 +127,23 @@ fn current_stack_pointer() -> usize {
 
 pub type ThreadCount = usize;
 
+/// Ownership relationships that prevent moving an otherwise Ready thread.
+#[derive(Debug, Clone, Copy)]
+pub enum MigrationConstraint {
+    GeneralWait = 1 << 0,
+    TimerWait = 1 << 1,
+    CompletionQueueWait = 1 << 2,
+    EndpointWait = 1 << 3,
+    DeviceBound = 1 << 4,
+    DeferredWork = 1 << 5,
+}
+
+impl MigrationConstraint {
+    pub const fn bit(self) -> u32 {
+        self as u32
+    }
+}
+
 #[derive(Debug)]
 pub enum ThreadState {
     Running(LpId),
@@ -163,6 +180,8 @@ pub struct Thread {
     /// Explicit permission for Ready-state load migration. Hard pinning still
     /// takes precedence. Set false for work with unmodelled LP-local state.
     pub migration_safe: bool,
+    /// Active temporary or permanent reasons why the thread must remain local.
+    pub migration_constraints: u32,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -186,12 +205,31 @@ impl Thread {
             affinity_lp: None,
             pinned_lp: None,
             migration_safe: false,
+            migration_constraints: 0,
             exit_observers: Mutex::new(Vec::new()),
         }
     }
 
     pub fn is_user_thread(&self) -> bool {
         self.asid != KERNEL_ASID
+    }
+
+    pub fn add_migration_constraint(&mut self, constraint: MigrationConstraint) {
+        self.migration_constraints |= constraint.bit();
+    }
+
+    pub fn clear_blocking_migration_constraints(&mut self) {
+        self.migration_constraints &= !(MigrationConstraint::GeneralWait.bit()
+            | MigrationConstraint::TimerWait.bit()
+            | MigrationConstraint::CompletionQueueWait.bit()
+            | MigrationConstraint::EndpointWait.bit());
+    }
+
+    pub fn is_fully_migratable(&self) -> bool {
+        self.migration_safe
+            && self.pinned_lp.is_none()
+            && self.migration_constraints == 0
+            && !self.context.is_on_cpu()
     }
 }
 
