@@ -38,7 +38,6 @@ use catten_syscall::{
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
-    memory_close,
     thread_exit,
 };
 
@@ -65,7 +64,7 @@ const fn name(s: &[u8]) -> u64 {
 const MGR_NAME: u64 = name(b"svcmgr");
 
 /// Spin until a pending call completes.  Returns `(result, returned_cap)`.
-unsafe fn spin_call(call: u64, what: &str) -> (u64, u64) {
+unsafe fn spin_call(call: u64, _what: &str) -> (u64, u64) {
     let mut spins: u64 = 0;
     loop {
         let (status, result, cap) = ipc_reply_poll(call);
@@ -79,7 +78,6 @@ unsafe fn spin_call(call: u64, what: &str) -> (u64, u64) {
         }
         core::hint::spin_loop();
     }
-    let _ = what;
 }
 
 /// Look up a service by short name; return its connection cap.
@@ -177,16 +175,12 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
         return -2;
     }
 
-    let mut state_cap: u64 = 0;
-    let mut handoff_result: u64 = 0;
-    {
+    let (state_cap, handoff_result) = {
         let mut spins: u64 = 0;
         loop {
             let (status, result, _conn, mem) = ipc_reply_poll_with_memory(call);
             if status == 0 {
-                state_cap = mem;
-                handoff_result = result;
-                break;
+                break (mem, result);
             }
             spins += 1;
             if spins >= REPLY_SPINS {
@@ -195,7 +189,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
             }
             core::hint::spin_loop();
         }
-    }
+    };
     catten_syscall::ipc_close(call);
 
     if state_cap == 0 {

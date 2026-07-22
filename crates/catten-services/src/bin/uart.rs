@@ -178,9 +178,7 @@ fn main(ctx: Context) -> ! {
             if pending_read != 0 {
                 let byte = unsafe { uart_get() }.unwrap_or(0) as i64;
                 let result = byte | ((irq_count as i64) << 8);
-                unsafe {
-                    ipc_reply(pending_read, result);
-                }
+                ipc_reply(pending_read, result);
                 pending_read = 0;
                 config::write::<u32>(READ_ARMED_OFFSET, 0);
             }

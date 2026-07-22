@@ -53,14 +53,12 @@ fn main(ctx: Context) -> ! {
     };
     let mut attempts: u64 = 0;
     let (generation, echo_connection) = loop {
-        let lookup = unsafe {
-            ipc_scalar_call_copy(
-                ns_connection,
-                ns::OP_LOOKUP_NAMED,
-                echo::LONG_NAME.len() as u64,
-                name_cap,
-            )
-        };
+        let lookup = ipc_scalar_call_copy(
+            ns_connection,
+            ns::OP_LOOKUP_NAMED,
+            echo::LONG_NAME.len() as u64,
+            name_cap,
+        );
         if lookup != 0 {
             let (result, cap) = unsafe { wait_reply(lookup, REPLY_SPINS) };
             if result >= 1 && cap != 0 {

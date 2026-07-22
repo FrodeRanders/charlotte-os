@@ -53,7 +53,6 @@ use smoltcp::{
         SocketSet,
     },
     socket::tcp::{
-        self,
         Socket as TcpSocket,
         SocketBuffer as TcpSocketBuffer,
     },
@@ -126,7 +125,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
-    let (link, mac) = decode_status(status);
+    let (_link, mac) = decode_status(status);
     let mtu: usize = 1500;
     config::write::<u32>(STAGE_OFFSET, 4);
 

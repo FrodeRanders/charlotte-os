@@ -83,8 +83,7 @@ fn main(ctx: Context) -> ! {
     }
 
     // Send through OP_SEND (call with moved memory object).
-    let call =
-        unsafe { ipc_scalar_call_move(net_conn, net::OP_SEND, TEST_FRAME.len() as u64, frame_cap) };
+    let call = ipc_scalar_call_move(net_conn, net::OP_SEND, TEST_FRAME.len() as u64, frame_cap);
     if call == 0 {
         unsafe { thread_exit() };
     }

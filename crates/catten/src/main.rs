@@ -49,6 +49,11 @@ use spin::{
     LazyLock,
 };
 
+#[cfg(not(feature = "hvf_compat"))]
+use crate::{
+    cpu::scheduler::spawn_thread,
+    memory::KERNEL_ASID,
+};
 use crate::{
     cpu::{
         isa::{
@@ -69,13 +74,11 @@ use crate::{
             },
         },
         scheduler::{
-            spawn_thread,
             system_scheduler::SYSTEM_SCHEDULER,
             yield_lp,
         },
     },
     device_management::topology::DEVICE_TOPOLOGY,
-    memory::KERNEL_ASID,
 };
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 8, 1);

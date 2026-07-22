@@ -9,7 +9,7 @@
 #   --embed   Also copy the stripped ELF into the kernel's self_test/
 #             directory.
 #
-# Requirements: rustc +nightly with aarch64-unknown-none target,
+# Requirements: the pinned repository toolchain with aarch64-unknown-none target,
 #               llvm-objcopy (included with rustup component llvm-tools).
 #
 set -euo pipefail
@@ -32,14 +32,15 @@ for arg in "$@"; do
 done
 
 echo ">>> Building $BIN_NAME ..."
-cargo +nightly build --manifest-path "$MANIFEST" \
+cargo build --manifest-path "$MANIFEST" \
     --target "$TARGET_JSON" \
     -Z build-std=core,alloc 2>&1 | tail -3
 
 echo ">>> Stripping ELF for embedding ..."
-SYSROOT="$(rustc +nightly --print sysroot)"
-OBJCOPY="$SYSROOT/lib/rustlib/aarch64-apple-darwin/bin/llvm-objcopy"
-READOBJ="$SYSROOT/lib/rustlib/aarch64-apple-darwin/bin/llvm-readobj"
+SYSROOT="$(rustc --print sysroot)"
+HOST_TRIPLE="$(rustc -vV | awk '/^host:/ {print $2}')"
+OBJCOPY="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-objcopy"
+READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
 "$OBJCOPY" --strip-all "$TARGET_DIR/$BIN_NAME" /tmp/catten-user.elf
 
 SIZE=$(wc -c < /tmp/catten-user.elf)

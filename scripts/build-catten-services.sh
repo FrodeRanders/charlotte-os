@@ -23,12 +23,12 @@ OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
-    cargo +nightly clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
+    cargo clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
     rm -f crates/catten/src/self_test/{ns,echo,client,uart,cclient,raft}.elf
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
-cargo +nightly build --manifest-path "$MANIFEST" --target "$TARGET" \
+cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
     --release -Z build-std=core,alloc
 
 if [ "$MODE" = "embed" ]; then

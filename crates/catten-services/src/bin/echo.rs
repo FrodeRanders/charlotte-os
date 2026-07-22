@@ -35,7 +35,6 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_get_phys,
     memory_map,
     memory_unmap,
     thread_exit,
@@ -80,16 +79,14 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let register_named = unsafe {
-        ipc_scalar_call_connection_copy(
-            ns_connection,
-            ns::OP_REGISTER_NAMED,
-            echo::LONG_NAME.len() as u64,
-            endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-            name_cap,
-        )
-    };
+    let register_named = ipc_scalar_call_connection_copy(
+        ns_connection,
+        ns::OP_REGISTER_NAMED,
+        echo::LONG_NAME.len() as u64,
+        endpoint,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        name_cap,
+    );
     if register_named == 0 {
         unsafe { thread_exit() };
     }
@@ -158,19 +155,17 @@ fn main(ctx: Context) -> ! {
                         if memory_map(state_cap, STATE_VADDR, true) == 0 {
                             unsafe {
                                 core::ptr::write_volatile(STATE_VADDR as *mut u32, served);
-                                memory_unmap(state_cap);
                             }
+                            memory_unmap(state_cap);
                         }
                         if message.reply != 0 {
-                            unsafe {
-                                // Encode the endpoint cap in the reply's result
-                                // so the supervisor can delegate it to the
-                                // replacement service.  Upper 48 bits carry
-                                // the endpoint cap id; lower 16 bits carry
-                                // the served counter.
-                                let packed = (endpoint << 16) | (served as u64 & 0xffff);
-                                ipc_reply_move(message.reply, state_cap, packed as i64);
-                            }
+                            // Encode the endpoint cap in the reply's result
+                            // so the supervisor can delegate it to the
+                            // replacement service. Upper 48 bits carry
+                            // the endpoint cap id; lower 16 bits carry
+                            // the served counter.
+                            let packed = (endpoint << 16) | (served as u64 & 0xffff);
+                            ipc_reply_move(message.reply, state_cap, packed as i64);
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);

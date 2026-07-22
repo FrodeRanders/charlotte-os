@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
   formatting:
@@ -51,6 +52,24 @@ jobs:
             cargo test --manifest-path "$GITHUB_WORKSPACE/$manifest"
           done
 
+  el0-build:
+    name: Build warning-clean EL0 services
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-07-18
+          targets: aarch64-unknown-none
+          components: rust-src,llvm-tools
+
+      # catten-user integrates the sibling gautelis/sitas checkout and is built
+      # by scripts/build-catten-user.sh in developer trees that provide it.
+      - name: Build service bundle
+        run: scripts/build-catten-services.sh
+
   build:
     name: Build (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -75,8 +94,6 @@ jobs:
           cargo build --package catten \
             --target "target_specs/${{ matrix.target }}.json" \
             --no-default-features --features acpi
-        env:
-          RUSTFLAGS: "-D warnings"
 
   test:
     name: Test (${{ matrix.target }})

@@ -1,7 +1,7 @@
 //! Self-test: load the Rust-compiled sitas-based catten-user binary at EL0.
 //!
 //! Unlike the hand-written stub in [`super::el0`], this test embeds the full
-//! ELF produced by `cargo +nightly build -p catten-user --target …`
+//! ELF produced by the repository's pinned toolchain for the catten-user target
 //! (which links against sitas-core and sitas-charlotte).  The kernel maps
 //! PT_LOAD segments at their linked virtual addresses with page permissions
 //! derived from ELF flags.
