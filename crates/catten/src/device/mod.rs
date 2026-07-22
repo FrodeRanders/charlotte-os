@@ -177,6 +177,14 @@ static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; 
 static DEFERRED_WAKES: LazyLock<ConcurrentQueue<u64>> =
     LazyLock::new(|| ConcurrentQueue::bounded(MAX_ROUTED_INTID));
 
+/// Force construction of interrupt-ingress state before scheduler preemption
+/// or device IRQ delivery is enabled. `spin::LazyLock` itself uses spinning;
+/// first use from a preempted/IRQ context would otherwise have the same owner
+/// progress hazard as a plain runtime spin lock.
+pub fn prepare_interrupt_ingress() {
+    LazyLock::force(&DEFERRED_WAKES);
+}
+
 fn pack_route(asid: AddressSpaceId, cq: CqId) -> u64 {
     debug_assert!(asid != 0 && asid <= u32::MAX as usize, "driver asid must pack into 32 bits");
     ((asid as u64) << 32) | cq as u64

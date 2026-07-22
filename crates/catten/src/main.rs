@@ -109,6 +109,13 @@ pub extern "C" fn bsp_main() -> ! {
     }
     early_logln!("BSP assigned ID 0.");
     init::bsp_init();
+    // Construct global queues that can later be reached from interrupt or
+    // preemptible runtime context while execution is still BSP-only. Their
+    // `spin::LazyLock` once state must never become another spin dependency on
+    // a preempted initializer.
+    crate::device::prepare_interrupt_ingress();
+    spin::LazyLock::force(&crate::cpu::multiprocessor::ipi::IPI_CMD_QUEUES);
+    spin::LazyLock::force(&crate::deferred_work_manager::DWM);
     logln!("System initialized.");
     logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");

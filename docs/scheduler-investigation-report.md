@@ -410,6 +410,24 @@ boot tests before scheduler concurrency, but future lazily initialized runtime
 state should either be eagerly forced before enabling preemption or use an
 explicit interrupt-safe initialization mechanism.
 
+The interrupt-ingress lazy state is now explicitly prepared by the BSP before
+secondary LP startup: the deferred device-wake queue, per-LP IPI command
+queues, and deferred-work manager are all forced while execution is
+single-threaded and non-preemptible. This prevents their first `LazyLock`
+initialization from occurring in an IRQ or ordinary preemptible runtime path.
+Architecture-local GIC and timer structures are initialized later by each LP
+with interrupts masked, which already guarantees initializer progress.
+
+The first SMP4 HVF run after adding eager preparation reproduced the residual
+timer-event failure: service, device, UART, and Raft completed, but scheduler
+lifecycle and CQ wait remained blocked. The timeout snapshot showed no spin
+lock convoy; LP0 and LP1 were still executing EL0 work with their virtual
+timers enabled, while LP2 and LP3 were idle. Thus the eager `LazyLock`
+preparation is not a remedy for—and did not expose another instance of—the
+lock-owner problem. The remaining failure is consistent with anonymous sleep
+events being lost while scheduler-quantum comparator activity continues and
+must be investigated in the timer queue separately.
+
 Both AArch64 and x86-64 target checks passed after the conversions. A complete
 SMP4 HVF run with the low-perturbation debugger endpoint also observed every
 required deferred marker.
