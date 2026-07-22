@@ -9,36 +9,24 @@ scheduler change should be checked against these invariants.
 
 ## 1. Thread State Machine (`ThreadState`)
 
-**Source:** `crates/catten/src/cpu/scheduler/threads/mod.rs:95-101`
+**Source:** `crates/catten/src/cpu/scheduler/threads/mod.rs`
 
 ```
-                        spawn_thread()
-                             │
-                    ┌────────▼──────────┐
-                    │ NeedsLpAssignment │
-                    └────────┬──────────┘
-                             │ submit_ready_thread()
-                             │  → get_least_loaded_lp()
-                             │  → add_thread()
-                    ┌────────▼──────────┐        block_thread(self)
-                    │   Ready(lp_id)    │◄─────────────────────────┐
-                    └──┬────────────▲───┘                          │
-          next()       │            │ block_thread(remote)         │
-    pops from run_queue│            │ remove_thread()              │
-                       │            │                              │
-               ┌───────▼────────┐   │    ┌───────────────────────┐ │
-               │ Running(lp_id) ├───┘    │   Blocked(Arc<Waker>) │─┘
-               └───┬───────┬────┘        └───────────┬───────────┘
-                   │       │                         │
-       next()      │       │ abort_thread()          │ Waker::notify()
-    requeue as     │       │   → stage_dead          │  → submit_woken_thread()
-    Ready(same LP) │       │   → reap later          │  → validate generation
-                   │       ▼                         │  → add_thread()
-                   │   ╔══════╗                      │
-                   │   ║ DEAD ║                      │
-                   │   ╚══════╝                      │
-                   │                                 │
-                   └─────────────────────────────────┘
+spawn_thread()
+      │
+      ▼
+NeedsLpAssignment ── submit_ready_thread() ──► Ready(lp)
+      │                                             │
+      │ block_thread()                              │ next(): dequeue
+      ▼                                             ▼
+Blocked(Waker) ◄──── block_thread() ───────── Running(lp)
+      │                                             │
+      └── Waker::notify(generation) ──► Ready(lp) ◄─┘
+                                           ▲       preemption: requeue
+                                           │
+                                  soft-affinity LP
+
+Any live state ── abort_thread() ──► staged DEAD ── reap after switch
 ```
 
 ### Invariants
@@ -49,14 +37,14 @@ scheduler change should be checked against these invariants.
 | T2 | `Ready(lp)` ⇒ thread IS in `run_queue` of LP `lp`; NOT any `current_handle`. |
 | T3 | `Blocked` ⇒ thread is NOT in any `run_queue`. Transiently it may still be `current_handle` (during the `block_thread → cond_yield_lp` window). |
 | T4 | `idle_tid` is never in `run_queue` and never `Blocked`. |
-| T5 | Every scheduling op validates `generation` to prevent stale-handle-after-slot-reuse. |
+| T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
 | T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
 
 ### Lock order for transitions
 
 ```
-spawn_thread:         MASTER_THREAD_TABLE.write() → SYSTEM_SCHEDULER.read() → lp_scheduler.lock()
-block_thread (self):  MASTER_THREAD_TABLE.read() → SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.write()
+spawn_thread:         MASTER_THREAD_TABLE.write() [drop] → SYSTEM_SCHEDULER.read() → lp_scheduler.lock()
+block_thread (self):  SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.read() [drop] → MASTER_THREAD_TABLE.write()
 block_thread (Ready): SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
 submit_*:             SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
 abort_thread:         MASTER_THREAD_TABLE.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
@@ -70,7 +58,7 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
 
 ## 2. LP Scheduler State (`RoundRobin`)
 
-**Source:** `crates/catten/src/cpu/scheduler/lp_schedulers/round_robin.rs:64-82`
+**Source:** `crates/catten/src/cpu/scheduler/lp_schedulers/round_robin.rs`
 
 ```
                     ┌─────────┐
@@ -90,14 +78,14 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
                     [back to IDLE]
 ```
 
-### Quantum timer sub-state (`TimerEventObserver`)
+### Quantum timer sub-state (`TimerEventObserver` + `TimerQueue`)
 
 ```
-  armed=false ── set_next_timer_event() ──► armed=true
-       ▲                                        │
-       │       TimerEventObserver::notify()     │
-       └────────────────────────────────────────┘
-              (quantum PPI fires)
+  no SchedulerQuantum key ── ensure_event() ──► one keyed queue event
+          ▲                                           │
+          │         process_events(): pop + notify    │
+          └───────────────────────────────────────────┘
+                    (quantum PPI fires)
 
   pending=false ── set_ctx_switch_pending() ──► pending=true
        ▲                                              │
@@ -112,9 +100,10 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
 |---|-----------|
 | L1 | `is_idle == true` ⇒ `current_handle.tid == idle_tid`. |
 | L2 | `clear_ctx_switch_pending()` arms a quantum timer ONLY when `!is_idle`. An idle LP gets NO periodic ticks; it is woken by admission IPI or deferred wake. |
-| L3 | At most one quantum event is in flight per LP (CAS on `armed`). |
+| L3 | At most one `SchedulerQuantum` event is queued per LP. Uniqueness belongs to the timer queue; there is no separate `armed` flag that can diverge from it. |
 | L4 | `cond_yield_lp` with `curr_tid == next_tid` (sole runnable) still calls `clear_ctx_switch_pending()` to re-arm the timer. Without this, `sleep()` freezes. |
-| L5 | The idle loop (`lp_idle_loop`) calls `drain_deferred_wakes()` and `process_events()` before `cond_yield_lp()` — so a deferred wake that admits a same-LP thread is processed before entering `wfi`. |
+| L5 | The idle loop calls `drain_deferred_wakes()` and interrupt-masked `process_local_events()` before `cond_yield_lp()`, so deferred wakes and due timers are reconciled before `wfi`/`hlt`. |
+| L6 | The hardware comparator represents the sorted timer-queue head. Queue mutation and comparator programming are one local interrupt-masked transaction. |
 
 ### What makes an LP idle vs busy
 
@@ -125,9 +114,49 @@ The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thre
 
 ---
 
+### Per-LP logical timer queue
+
+**Source:** `crates/catten/src/timers/mod.rs`
+
+Each LP has one hardware comparator but may have many future logical events.
+The logical events stay in deadline order and the hardware always represents
+the head:
+
+```
+enqueue E:
+  mask local IRQs
+  insert E in absolute-deadline order
+  arm hardware from queue.front()
+  restore prior IRQ state
+
+timer IRQ / idle reconciliation:
+  while queue.front().deadline <= now:
+      event = pop_front()
+      notify(event.observers)
+  if queue.front() exists: arm its deadline
+  else: stop hardware timer
+```
+
+Ordinary sleep/completion events are anonymous. The round-robin quantum uses
+the key `SchedulerQuantum`, allowing at most one such event per LP. The armed
+event remains at the queue head rather than being moved to a separate slot, so
+the queue remains authoritative. Normally the comparator receives the head's
+absolute deadline; if that deadline has already passed, it receives a minimal
+prompt timeout so the IRQ can drain the due head.
+
+| # | Invariant |
+|---|-----------|
+| TM1 | Logical timer events are sorted by absolute deadline. |
+| TM2 | The hardware comparator represents the earliest queued event. |
+| TM3 | Insertion, removal, and comparator programming cannot be re-entered by the local timer IRQ. |
+| TM4 | An IRQ processes every event due at the sampled `now`, then arms only the new head. |
+| TM5 | `SchedulerQuantum` is a keyed singleton; anonymous logical timers remain independent. |
+
+---
+
 ## 3. Completion Operation Lifecycle (`OpState`)
 
-**Source:** `crates/catten/src/completion/mod.rs:158-168`
+**Source:** `crates/catten/src/completion/mod.rs`
 
 ```
   submit()
@@ -176,7 +205,7 @@ completion::wait(asid, cap):
 
 ## 4. CQ Ring Buffer (`CompletionQueueRing`)
 
-**Source:** `crates/catten/src/completion/cq.rs:63-69`
+**Source:** `crates/catten/src/completion/cq.rs`
 
 Single-producer (kernel), single-consumer (userspace) ring buffer.
 
@@ -195,39 +224,34 @@ Single-producer (kernel), single-consumer (userspace) ring buffer.
 ```
 wait_on_cq(asid, cq, min_complete):
   loop:
-    ┌── take_wake(asid, cq) || cq_pending(asid, cq) >= min_complete
-    │   → return immediately  (ring entries count as "pending")
+    ┌── work_generation != last_seen_generation
+    │   → advance last_seen_generation and return
     │
     ├── block_thread(tid, &observable)
     │
-    ├── guard: peek_wake(asid, cq) || cq_pending(...) >= min_complete
+    ├── guard: generation changed while registering Waker
     │   → submit_ready_thread(tid)   [lost-wake guard]
     │
     └── yield_lp() → blocks until woken → loop
 ```
 
-| Condition | Returns? | Consumed by |
-|-----------|----------|-------------|
-| `take_wake()` is true | Yes | `wake()` sets `wake_pending`; consumed once per waiter pass |
-| `cq_pending()` >= min_complete | Yes | Ring entry count (includes undrained entries!) |
-| Neither | Blocks | Thread sleeps; woken by CQ observer signal |
+Every posted completion, detached completion, explicit wake, or endpoint-bound
+wake increments `work_generation`. The queue-wide `last_seen_generation` is
+advanced by the single shard reactor when it consumes readiness. Ring occupancy
+is deliberately not the wait condition.
 
-### The undrained-ring problem
+### Resolution of the undrained-ring problem
 
-Every `complete()` posts a ring entry. If the caller polls the completion via
-`poll(cap)` and never reads the shared ring, the entry persists.  `cq_pending()`
-returns the undrained count.  After the first completion, `cq_wait` **always**
-finds `pending() >= 1` and returns immediately — the event loop degenerates
-into a busy-spin.
+Under the historical implementation, every `complete()` posted a ring entry
+and `cq_wait` treated the undrained `cq_pending()` count as new readiness. If a
+caller polled the individual capability without reading the shared ring, the
+old entry made every later wait return immediately and the reactor busy-spun.
 
-**Known workaround:** Services that poll individual completions must NOT use
-`cq_wait`.  Use `COMPLETION_WAIT` on a specific timer or `ipc_recv_block` on
-the endpoint.
-
-**Proposed kernel fix (pending):** Track a `last_pending` watermark per CQ.
-Only entries that arrived *since* the last `cq_wait` return count as "new."
-Reset the watermark when userspace drains the ring (observed as
-`pending < last_pending`).
+The old implementation used `cq_pending()` as readiness and therefore spun on
+an undrained historical entry. The generation counter decouples reactor
+readiness from ring consumption. A caller may poll a specific completion
+without draining the shared ring; its next `cq_wait` still blocks until new
+work changes the generation.
 
 ### Invariants
 
@@ -237,50 +261,53 @@ Reset the watermark when userspace drains the ring (observed as
 | Q2 | At most `capacity - 1` entries are in-flight simultaneously. |
 | Q3 | Ring write happens-before observer notification (`complete()` posts ring, then signals). |
 | Q4 | `drain()` (`tail = head`) requires `&mut self` — exclusive access. |
+| Q5 | CQ wait readiness depends on generation change, not `ring.pending()`. |
 
 ---
 
 ## 5. CQ Waiter State (`CqState`)
 
-**Source:** `crates/catten/src/completion/mod.rs:406-423`
+**Source:** `crates/catten/src/completion/mod.rs`
 
-### `wake_pending` — consume-on-wait semantics
+### Work-generation semantics
 
 ```
-  false ── wake() ──► true ── take_wake() ──► false
-    ▲                   │
-    │   wake()          │  (idempotent if already true)
-    └───────────────────┘
+  work_generation == last_seen_generation  → no new work; block
+  work_generation != last_seen_generation  → consume by assigning
+                                              last_seen_generation = work_generation
 ```
 
-- `wake()`: sets `wake_pending = true` + calls `signal_cq()` (wakes blocked waiters)
-- `take_wake()`: atomically consumes the flag (once per waiter pass)
-- `peek_wake()`: non-consuming read for lost-wake guard
+- `wake()`: increments `work_generation`, releases the registry write lock,
+  then calls `signal_cq()`.
+- Completion posting increments the same generation after writing/backlogging
+  the CQ record.
+- The design assumes one blocking reactor per shard CQ. Multiple independent
+  waiters would require a cursor per waiter.
 
 ### Lost-wake race closure
 
 ```
-1. take_wake() → false        [fast-path miss]
+1. generations equal         [fast-path miss]
 2. block_thread()             [register Waker]
 3.  ◄── wake() fires here ──  [race window]
 4. yield_lp()                 [would sleep forever]
-5.  BUT: guard at (3): peek_wake() → true → submit_ready_thread()
-   → thread re-admitted, doesn't yield, loops back to (1) → take_wake() → true
+5.  BUT: guard observes generation change → submit_ready_thread()
+   → thread re-admitted and consumes the new generation
 ```
 
 ### Invariants
 
 | # | Invariant |
 |---|-----------|
-| W1 | `wake_pending == true` ⇒ every subsequent `wait_on_cq` iteration returns immediately (short-circuit). |
-| W2 | Coalescing: N `wake()` calls between two waiter passes → exactly 1 `take_wake()` success. |
-| W3 | Lost-wake guard (`peek_wake`) observes a wake posted during the `block_thread` → observer-registration window. |
+| W1 | Equal generations mean no unconsumed readiness; unequal generations mean at least one new event. |
+| W2 | N arrivals between waiter passes coalesce into one return while preserving monotonic evidence that work arrived. |
+| W3 | The lost-wake guard observes a generation change during observer registration and re-admits the thread. |
 
 ---
 
 ## 6. Device Interrupt Delivery
 
-**Source:** `crates/catten/src/device/mod.rs:169-178,507-554`
+**Source:** `crates/catten/src/device/mod.rs`
 
 Two-phase, crossing IRQ context → thread context without locks.
 
@@ -298,7 +325,7 @@ PHASE B (thread context):
     → drain_deferred_wakes()
       → DEFERRED_WAKES.pop() → (asid, cq)
       → completion::wake(asid, cq)
-        → CqState.wake_pending = true   [COMPLETIONS.write()]
+        → CqState.work_generation++     [COMPLETIONS.write()]
         → signal_cq()                   [COMPLETIONS.read()]
           → Waker::notify()
             → submit_woken_thread()
@@ -317,7 +344,7 @@ PHASE B (thread context):
 
 ## 7. Context Switch (`cond_yield_lp`)
 
-**Source:** `crates/catten/src/cpu/isa/aarch64/lp/ops.rs:174-251`
+**Sources:** `crates/catten/src/cpu/isa/{aarch64,x86_64}/lp/ops.rs`
 
 ```
 cond_yield_lp():
@@ -350,8 +377,8 @@ leak it (the outgoing thread's stack is abandoned).
 ### SMP thread handover (`on_cpu` field)
 
 ```
-Thread T on LP A                    Thread T migrating to LP B
-─────────────────                   ──────────────────────────
+Thread T switching out on LP A      Defensive cross-LP ownership check
+──────────────────────────────      ─────────────────────────────────
 switch_ctx saves T's context
   writes *curr_sp = saved SP
   stlrb wzr, [curr_on_cpu] ──────────►   ldaxrb + loop until 0
@@ -361,6 +388,12 @@ switch_ctx saves T's context
                                          restore from *next_sp
 ```
 
+Automatic load migration is disabled. `affinity_lp` keeps ordinary threads on
+their established LP, while `pinned_lp` is a hard constraint for explicit
+shard placement. The `on_cpu` protocol remains a defensive SMP ownership
+invariant; it is not evidence that arbitrary thread migration is currently
+safe.
+
 ---
 
 ## 8. Lock Ordering Rules
@@ -368,21 +401,24 @@ switch_ctx saves T's context
 The canonical lock order (outermost first):
 
 ```
-COMPLETIONS.write()
-  → DEVICES.lock()
-    → SYSTEM_SCHEDULER.read()
-      → lp_scheduler.lock()
-        → MASTER_THREAD_TABLE.write()
-          → DEAD_THREADS.write()
+SYSTEM_SCHEDULER.read()
+  → lp_scheduler.lock()
+    → MASTER_THREAD_TABLE.write()
 ```
+
+This is the scheduler's nested order, not one global chain containing every
+subsystem lock. Completion paths release `COMPLETIONS.write()` before
+signalling observers, and device IRQ delivery defers lock-taking work to
+thread context.
 
 | Rule | Description |
 |------|-------------|
-| LO1 | **COMPLETIONS before SYSTEM_SCHEDULER.** `wake()` takes `COMPLETIONS.write()` then Waker chain enters scheduler locks. |
+| LO1 | **Do not signal observers while holding `COMPLETIONS.write()`.** Update CQ state, release it, then signal so the Waker chain can enter scheduler locks. |
 | LO2 | **lp_scheduler before MASTER_THREAD_TABLE.** Enforced by `add_thread`, `next`, `block_thread`, `abort_thread`. Reversed order deadlocks `RoundRobin::next`. |
 | LO3 | **No read-guard held across write-guard.** `abort()` and `sleep()` bind `tid` in a temp scope, drop all guards, then proceed. The `RwLock` is non-reentrant. |
 | LO4 | **ALL locks dropped before `switch_ctx`.** Raw pointers captured under lock, dereferenced lock-free. |
 | LO5 | **deliver_interrupt (IRQ context) takes NO locks.** Only atomics + MMIO. Deferred wake crosses to thread context via lock-free `ConcurrentQueue`. |
+| LO6 | **Timer queue/comparator mutation masks local IRQs.** The timer IRQ handler accesses the queue directly only because exception entry already masks IRQs. |
 
 ---
 
@@ -401,15 +437,15 @@ An LP enters `wfi` (idle) when:
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
 | LP dispatches >100/sec indefinitely | A thread is continuously runnable (busy-spins in `yield_lp()` loop) | Thread must block (`sleep()`, `wait()`, `block_thread()`) instead of yielding |
-| `cq_wait` returns immediately after first completion | CQ ring entries are never drained; `cq_pending()` is always > 0 | Service must use `COMPLETION_WAIT` on a specific timer, or use `ipc_recv_block`, or the kernel must drain stale ring entries |
+| `cq_wait` returns immediately after first completion | Historical implementation used undrained ring occupancy as readiness | Fixed: per-CQ work generations represent only new readiness |
 | `is_idle` is false but only idle thread runs | `next()` requeues the sole runnable thread instead of selecting idle; thread never blocks | Thread must transition to `Blocked`, not stay in `Ready`/`Running` |
 | Timer never fires after LP goes idle | `clear_ctx_switch_pending()` skips quantum re-arm when `is_idle`; next wake depends on IPI or device IRQ | This is CORRECT behaviour — idle LP is woken by admission IPI |
-| Timer events stranded, LP stays in `wfi` forever | Software timer queue had an event but hardware comparator wasn't re-programmed | Idle loop calls `process_events()` before `wfi` to reconcile |
+| Timer events stranded, LP stays in `wfi` forever | Queue/comparator state diverged, or an immediately due IRQ re-entered queue mutation | Keyed quantum ownership plus interrupt-masked enqueue and idle reconciliation |
 
-### Current persistent-CPU sources (post-fix)
+### Expected long-lived services after boot tests
 
-After the echo/raft/uart fixes (commit `bddab44`), the remaining threads that
-stay runnable after their test completes:
+The remaining service threads should block rather than remain continuously
+runnable:
 
 | Thread | Source | State after test | Fix applied |
 |--------|--------|-----------------|-------------|
@@ -418,7 +454,9 @@ stay runnable after their test completes:
 | UART driver | `uart.elf` | Killed by teardown (does NOT persist) | Yes (10ms timer) |
 | Name services (multiple) | `ns.elf` | `ipc_recv_block` — blocks until message arrives | Already correct |
 | Raft verifier | kernel | `sleep(10ms)` — exits after SUCCESS | Yes |
-| Other verifiers | kernel | `yield_lp()` polling → return → trampoline calls `abort()` | Exit after SUCCESS (F16 resolved) |
+| Other verifiers | kernel | Blocking wait or bounded polling, then return through trampoline | Exit after SUCCESS |
 
-The system should now reach near-zero CPU in the steady state after all
-tests complete.  The only active work is the raft nodes' 25ms timer wakeups.
+The system should reach low CPU in steady state. The principal periodic work is
+the Raft nodes' timer wakeups; idle LPs carry no round-robin quantum. The
+bounded runner also requires the 128-cycle scheduler timer/affinity lifecycle
+gate.
