@@ -1006,10 +1006,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             observer::Observable as _,
             time::duration::ExtDuration,
         },
-        timers::{
-            TIMER_QUEUES,
-            TimerEvent,
-        },
+        timers::TimerEvent,
     };
 
     let asid = caller_asid(frame);
@@ -1064,7 +1061,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     );
     // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
     // any threads run.
-    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+    crate::timers::enqueue_event(timer_event);
 
     yield_lp();
 

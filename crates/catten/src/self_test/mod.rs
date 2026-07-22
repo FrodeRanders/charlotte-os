@@ -25,6 +25,7 @@ pub mod ipi;
 pub mod memory;
 pub mod shard;
 pub mod syscall;
+pub mod scheduler_lifecycle;
 
 use crate::logln;
 
@@ -57,6 +58,7 @@ pub fn run_self_tests() {
     ipi::test_ipi_bounded_queue();
     shard::test_shard_local();
     shard::test_shard_mailbox();
+    scheduler_lifecycle::test_scheduler_lifecycle();
     el0::test_el0_syscall_round_trip();
     el0_raft::test_el0_raft();
     el0_ipc::test_el0_endpoint_ipc();

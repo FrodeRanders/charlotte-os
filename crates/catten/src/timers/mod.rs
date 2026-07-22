@@ -8,6 +8,8 @@ use alloc::{
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
+use crate::cpu::isa::lp::ops::{mask_interrupts, unmask_interrupts};
+
 use crate::{
     cpu::{
         isa::{
@@ -32,6 +34,42 @@ pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
     LazyLock::new(|| PerLp::new(TimerQueue::default));
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
+
+/// Insert an event into the current LP's queue without allowing the timer IRQ
+/// to re-enter while the per-LP mutable guard and hardware timer lock are held.
+/// Very short and already-due deadlines can fire as soon as `add_event`
+/// programs the comparator, so masking is part of the queue mutation contract.
+pub fn enqueue_event(event: TimerEvent) {
+    let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
+    mask_interrupts!();
+    {
+        TIMER_QUEUES
+            .try_get_mut()
+            .expect("local timer queue is already borrowed")
+            .add_event(event);
+    }
+    if interrupts_were_enabled {
+        unmask_interrupts!();
+    }
+}
+
+/// Reconcile due events and the hardware comparator from thread context.
+/// The IRQ dispatcher calls `TimerQueue::process_events` directly because its
+/// exception entry has already masked local IRQs; idle-loop callers use this
+/// wrapper to obtain the same non-reentrant transaction.
+pub fn process_local_events() {
+    let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
+    mask_interrupts!();
+    {
+        TIMER_QUEUES
+            .try_get_mut()
+            .expect("local timer queue is already borrowed")
+            .process_events();
+    }
+    if interrupts_were_enabled {
+        unmask_interrupts!();
+    }
+}
 
 /// Identity for timer events that must have at most one queued instance.
 ///
@@ -147,6 +185,20 @@ impl TimerQueue {
         }
         let i = insertion_idx.unwrap();
         self.events.insert(i, event);
+        debug_assert!(
+            self.events
+                .iter()
+                .zip(self.events.iter().skip(1))
+                .all(|(left, right)| left.deadline <= right.deadline),
+            "timer queue lost deadline ordering"
+        );
+        if let Some(key) = self.events[i].key {
+            debug_assert_eq!(
+                self.events.iter().filter(|queued| queued.key == Some(key)).count(),
+                1,
+                "keyed timer event is not unique"
+            );
+        }
         // Always reconcile after insertion. This keeps software and hardware
         // state together even after an earlier interrupt/queue interleaving.
         self.rearm_front();

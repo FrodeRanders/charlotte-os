@@ -184,6 +184,7 @@ if [ -n "$TIMEOUT" ]; then
         "[cq wait] SUCCESS:"
         "[device] SUCCESS:"
         "[uart] SUCCESS:"
+        "[scheduler lifecycle] SUCCESS:"
     )
     missing=0
     for marker in "${REQUIRED_MARKERS[@]}"; do

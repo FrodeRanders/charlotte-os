@@ -412,9 +412,7 @@ pub extern "C" fn lp_idle_loop() {
         // well. This closes the failure mode where a missed/interleaved timer
         // transition leaves an event queued but no comparator armed: without
         // another interrupt the LP would otherwise remain in WFI forever.
-        if let Ok(mut timer_queue) = crate::timers::TIMER_QUEUES.try_get_mut() {
-            timer_queue.process_events();
-        }
+        crate::timers::process_local_events();
         cond_yield_lp();
         unsafe {
             core::arch::asm!(

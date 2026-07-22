@@ -406,9 +406,7 @@ pub extern "C" fn lp_idle_loop() {
         // not need an IPI, so honour its pending switch before sleeping.
         // Reconcile the software timer queue with the hardware comparator so
         // an LP never halts with a queued event but no timer interrupt armed.
-        if let Ok(mut timer_queue) = crate::timers::TIMER_QUEUES.try_get_mut() {
-            timer_queue.process_events();
-        }
+        crate::timers::process_local_events();
         cond_yield_lp();
         unsafe {
             core::arch::asm!("sti", "hlt", options(nomem, nostack, preserves_flags));

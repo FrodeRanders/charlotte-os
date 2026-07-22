@@ -60,10 +60,7 @@ use crate::{
         time::duration::ExtDuration,
     },
     memory::AddressSpaceId,
-    timers::{
-        TIMER_QUEUES,
-        TimerEvent,
-    },
+    timers::TimerEvent,
 };
 
 /// A per-address-space handle naming an in-flight or completed async operation.
@@ -598,7 +595,7 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
     });
     let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
     timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
-    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+    crate::timers::enqueue_event(timer_event);
     if let Ok(completion) = completion_of(asid, cap) {
         completion.set_timer_observer(observer);
     }
@@ -1088,10 +1085,7 @@ pub fn wait_on_cq_timeout(
 ) -> bool {
     use crate::{
         klib::time::duration::ExtDuration,
-        timers::{
-            TIMER_QUEUES,
-            TimerEvent,
-        },
+        timers::TimerEvent,
     };
 
     struct CqTimeoutWake {
@@ -1133,7 +1127,7 @@ pub fn wait_on_cq_timeout(
         &timer_event,
         Arc::downgrade(&timeout_obs) as Weak<dyn Observer>,
     );
-    unsafe { TIMER_QUEUES.try_get_mut().unwrap_unchecked() }.add_event(timer_event);
+    crate::timers::enqueue_event(timer_event);
 
     {
         let registry = COMPLETIONS.read();

@@ -19,10 +19,7 @@ use crate::{
     },
     logln,
     memory::AddressSpaceId,
-    timers::{
-        TIMER_QUEUES,
-        TimerEvent,
-    },
+    timers::TimerEvent,
 };
 
 pub mod lp_schedulers;
@@ -120,7 +117,7 @@ pub fn sleep(duration: ExtDuration) {
             .read()
             .block_thread(tid, &mut timer_event)
             .expect("Error putting thread to sleep");
-        TIMER_QUEUES.try_get_mut().unwrap().add_event(timer_event);
+        crate::timers::enqueue_event(timer_event);
         // Yield so the sleep takes effect: `block_thread` marks the thread
         // Blocked and registers its waker on the timer event; this yield saves
         // the thread's context and switches away. When the timer expires it

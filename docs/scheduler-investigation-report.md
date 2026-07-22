@@ -205,3 +205,28 @@ and CQ wait at 0.506 s. The diagnostic snapshot used during development showed
 an LP entering the real idle path; it was removed after validation. A later
 repeat exposed the migration limitation above, so automatic rebalancing was
 removed before the final validation series.
+
+A dedicated scheduler-lifecycle gate performs 128 one-millisecond timer
+block/wake cycles while checking LP affinity. Initially, merely adding that
+worker reliably reproduced the early stall at approximately 0.09 seconds.
+Timer events were being inserted and the comparator programmed while local
+IRQs were enabled; an immediately due timer could re-enter the IRQ handler
+while the per-LP timer queue still had an outstanding mutable borrow. The IRQ
+could not process the queue and the level-triggered source was left in a bad
+transition.
+
+All non-scheduler timer insertion now goes through `enqueue_event`, which
+preserves the caller's interrupt state and masks local interrupts across the
+queue mutation and comparator programming. With that change, the reproducer
+completed all 128 wakes on its original LP at 0.235 seconds, and the complete
+SMP4 HVF suite also passed. The lifecycle marker is now required by the bounded
+AArch64 runner.
+
+The resulting per-LP timer design follows the classic one-hardware-timer,
+many-logical-timers model: logical events remain sorted by absolute deadline;
+the hardware comparator represents the queue head; an interrupt removes and
+signals every event due at the sampled current time; and the comparator is
+then armed from the new head or stopped for an empty queue. Queue mutation and
+comparator programming are one local interrupt-masked transaction. The idle
+loop uses the same protected reconciliation wrapper; only the timer IRQ handler
+calls `process_events` directly, because exception entry already masks IRQs.
