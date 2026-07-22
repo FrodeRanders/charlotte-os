@@ -231,6 +231,9 @@ if [ -n "$TIMEOUT" ]; then
         fi
     elif [ "$DEBUG_SNAPSHOT" = "1" ]; then
         if command -v lldb >/dev/null 2>&1; then
+            TIMER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "TIMER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
+            WAKER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "WAKER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
+            LIFECYCLE_PROGRESS_ADDR="$(nm "$KERNEL" | awk '$3 == "SCHEDULER_LIFECYCLE_PROGRESS" && !found { print "0x" $1; found=1 }')"
             lldb --batch \
                 -o "settings set interpreter.stop-command-source-on-error false" \
                 -o "gdb-remote 1234" \
@@ -247,6 +250,9 @@ if [ -n "$TIMEOUT" ]; then
                 -o "thread select 4" \
                 -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
                 -o "register read cntv_ctl_el0 cntv_cval_el0" \
+                -o "memory read --force --format x --size 8 --count 32 ${TIMER_DIAG_ADDR}" \
+                -o "memory read --force --format x --size 8 --count 3 ${WAKER_DIAG_ADDR}" \
+                -o "memory read --force --format x --size 8 --count 1 ${LIFECYCLE_PROGRESS_ADDR}" \
                 -o "process detach" "$KERNEL" >/tmp/charlotte-debug-snapshot-lldb.log 2>&1 || true
             echo ">>> Debug snapshot captured in /tmp/charlotte-debug-snapshot-lldb.log"
         else

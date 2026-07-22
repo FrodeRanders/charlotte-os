@@ -428,6 +428,25 @@ lock-owner problem. The remaining failure is consistent with anonymous sleep
 events being lost while scheduler-quantum comparator activity continues and
 must be investigated in the timer queue separately.
 
+Compact per-LP counters subsequently disproved software timer-queue loss. In a
+failing run, every LP satisfied
+`anonymous_added == anonymous_fired + anonymous_queued`; LP3's two remaining
+anonymous events were ordered behind a correctly programmed future comparator.
+Global waker counters recorded 705 notification attempts, 705 successful
+thread admissions, and zero rejected/stale admissions. The lifecycle worker's
+own progress counter had reached only 29 of 128 iterations after ten seconds.
+
+The residual missing marker is therefore scheduler latency, not a lost timer
+or wake. The gate repeatedly sleeps for 1 ms but, after each admission, joins a
+strict round-robin queue whose 10 ms quantum and persistent LP affinity can put
+many runnable/resident EL0 threads ahead of it. In the unfavorable placement,
+128 iterations can legitimately exceed the runner's ten-second observation
+window. This restores the earlier conclusion that a budget/latency-aware
+scheduler or controlled rebalancing is the architectural remedy; changing
+timer synchronization cannot solve this case. The compact diagnostics remain
+useful for distinguishing actual loss (`added != fired + queued` or failed
+admission) from slow dispatch.
+
 Both AArch64 and x86-64 target checks passed after the conversions. A complete
 SMP4 HVF run with the low-perturbation debugger endpoint also observed every
 required deferred marker.

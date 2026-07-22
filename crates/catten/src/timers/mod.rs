@@ -4,6 +4,10 @@ use alloc::{
     collections::vec_deque::VecDeque,
     sync::Weak,
 };
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
 use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
@@ -32,6 +36,41 @@ use crate::{
 
 pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
     LazyLock::new(|| PerLp::new(TimerQueue::default));
+
+const MAX_DIAGNOSTIC_LPS: usize = 256;
+
+/// Low-perturbation timer lifecycle counters, readable from an external
+/// debugger even when scheduler tracing is disabled.
+#[repr(C)]
+pub struct TimerDiagnostic {
+    pub anonymous_added: AtomicU64,
+    pub anonymous_fired: AtomicU64,
+    pub keyed_added: AtomicU64,
+    pub keyed_fired: AtomicU64,
+    pub queue_len: AtomicU64,
+    pub anonymous_queued: AtomicU64,
+    pub front_deadline: AtomicU64,
+    pub sampled_now: AtomicU64,
+}
+
+impl TimerDiagnostic {
+    const fn new() -> Self {
+        Self {
+            anonymous_added: AtomicU64::new(0),
+            anonymous_fired: AtomicU64::new(0),
+            keyed_added: AtomicU64::new(0),
+            keyed_fired: AtomicU64::new(0),
+            queue_len: AtomicU64::new(0),
+            anonymous_queued: AtomicU64::new(0),
+            front_deadline: AtomicU64::new(0),
+            sampled_now: AtomicU64::new(0),
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub static TIMER_DIAGNOSTICS: [TimerDiagnostic; MAX_DIAGNOSTIC_LPS] =
+    [const { TimerDiagnostic::new() }; MAX_DIAGNOSTIC_LPS];
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
@@ -147,6 +186,22 @@ pub struct TimerQueue {
 }
 
 impl TimerQueue {
+    fn record_state(&self) {
+        let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
+        if let Some(diag) = TIMER_DIAGNOSTICS.get(lp) {
+            diag.queue_len.store(self.events.len() as u64, Ordering::Relaxed);
+            diag.anonymous_queued.store(
+                self.events.iter().filter(|event| event.key.is_none()).count() as u64,
+                Ordering::Relaxed,
+            );
+            diag.front_deadline.store(
+                self.events.front().map_or(0, |event| event.deadline),
+                Ordering::Relaxed,
+            );
+            diag.sampled_now.store(LpTimer::now(), Ordering::Relaxed);
+        }
+    }
+
     /// Queue a keyed event only when no event with that identity is already
     /// present. The queue is the source of truth, while an existing quantum's
     /// deadline is deliberately preserved across voluntary yields.
@@ -168,9 +223,11 @@ impl TimerQueue {
     pub(crate) fn remove_event(&mut self, key: TimerEventKey) {
         self.events.retain(|queued| queued.key != Some(key));
         self.rearm_front();
+        self.record_state();
     }
 
     pub fn add_event(&mut self, event: TimerEvent) {
+        let is_anonymous = event.key.is_none();
         let mut insertion_idx: Option<usize> = None;
         for (i, event_node) in self.events.iter().enumerate() {
             if event.deadline < event_node.get_deadline() {
@@ -185,6 +242,12 @@ impl TimerQueue {
         }
         let i = insertion_idx.unwrap();
         self.events.insert(i, event);
+        let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
+        if is_anonymous {
+            diag.anonymous_added.fetch_add(1, Ordering::Relaxed);
+        } else {
+            diag.keyed_added.fetch_add(1, Ordering::Relaxed);
+        }
         debug_assert!(
             self.events
                 .iter()
@@ -202,11 +265,13 @@ impl TimerQueue {
         // Always reconcile after insertion. This keeps software and hardware
         // state together even after an earlier interrupt/queue interleaving.
         self.rearm_front();
+        self.record_state();
     }
 
     pub fn process_events(&mut self) {
         while let Some(event) = self.events.front() {
             if event.get_deadline() <= LpTimer::now() {
+                let is_anonymous = event.key.is_none();
                 crate::debug_trace::trace(
                     crate::debug_trace::TAG_TIMER_FIRED,
                     event.get_deadline(),
@@ -215,6 +280,13 @@ impl TimerQueue {
                 );
                 event.signal();
                 self.events.pop_front();
+                let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
+                if is_anonymous {
+                    diag.anonymous_fired.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    diag.keyed_fired.fetch_add(1, Ordering::Relaxed);
+                }
+                self.record_state();
             } else if let Some(deadline) = self.get_next_deadline() {
                 let timer = LpTimer::get();
                 let mut timerlk = timer.lock();
@@ -228,10 +300,12 @@ impl TimerQueue {
                     self.events.len() as u64,
                     0,
                 );
+                self.record_state();
                 return;
             } else {
                 let _ = LpTimer::get().lock().stop();
                 crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
+                self.record_state();
                 return;
             }
         }
@@ -240,6 +314,7 @@ impl TimerQueue {
         // Timer interrupt is level-triggered and would otherwise re-assert.
         let _ = LpTimer::get().lock().stop();
         crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
+        self.record_state();
     }
 
     fn get_next_deadline(&self) -> Option<Timestamp> {
