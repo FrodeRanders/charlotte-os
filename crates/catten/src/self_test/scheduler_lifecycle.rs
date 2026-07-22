@@ -10,6 +10,7 @@ use crate::{
         isa::lp::ops::get_lp_id,
         scheduler::{
             sleep_millis,
+            spawn_thread,
             spawn_migratable_thread_on_lp,
             system_scheduler::{
                 get_thread_id,
@@ -26,6 +27,8 @@ use crate::{
 #[unsafe(no_mangle)]
 pub static SCHEDULER_LIFECYCLE_PROGRESS: AtomicU64 = AtomicU64::new(0);
 static SCHEDULER_LIFECYCLE_WORKERS_DONE: AtomicU64 = AtomicU64::new(0);
+static RUNTIME_REBALANCE_TARGET: AtomicU64 = AtomicU64::new(u64::MAX);
+static RUNTIME_REBALANCE_WORKERS_DONE: AtomicU64 = AtomicU64::new(0);
 
 const WORKER_COUNT: u64 = 3;
 
@@ -40,8 +43,16 @@ pub fn test_scheduler_lifecycle() {
 }
 
 extern "C" fn worker() {
-    let home = get_lp_id();
     let tid = get_thread_id().expect("lifecycle worker has no scheduler thread id");
+    // These workers are migratable only while queued at boot. Once they begin
+    // their timer-affinity regression, freeze their established home; the
+    // delayed compute-only workload below separately covers runtime migration.
+    MASTER_THREAD_TABLE
+        .write()
+        .get_mut(tid)
+        .expect("lifecycle worker vanished")
+        .migration_safe = false;
+    let home = get_lp_id();
     for _ in 0..128 {
         sleep_millis(1);
         assert_eq!(get_lp_id(), home);
@@ -62,6 +73,30 @@ extern "C" fn worker() {
             128 * WORKER_COUNT,
             WORKER_COUNT,
             migrations
+        );
+        spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
+    }
+}
+
+extern "C" fn runtime_rebalance_coordinator() {
+    // Keep the deliberate runnable imbalance out of the early lifecycle gates.
+    sleep_millis(3_000);
+    let target = REBALANCE_SUCCESSES.load(Ordering::Acquire) + 1;
+    RUNTIME_REBALANCE_TARGET.store(target, Ordering::Release);
+    for _ in 0..WORKER_COUNT {
+        spawn_migratable_thread_on_lp(KERNEL_ASID, runtime_rebalance_worker, 0);
+    }
+}
+
+extern "C" fn runtime_rebalance_worker() {
+    let target = RUNTIME_REBALANCE_TARGET.load(Ordering::Acquire);
+    while REBALANCE_SUCCESSES.load(Ordering::Acquire) < target {
+        crate::cpu::scheduler::yield_lp();
+    }
+    if RUNTIME_REBALANCE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
+        logln!(
+            "[scheduler runtime rebalance] SUCCESS: sustained-window sampling advanced certified migrations to {}.",
+            REBALANCE_SUCCESSES.load(Ordering::Relaxed)
         );
     }
 }

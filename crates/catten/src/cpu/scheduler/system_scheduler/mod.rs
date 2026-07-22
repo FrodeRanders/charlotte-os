@@ -9,6 +9,7 @@ use alloc::{
 };
 use core::sync::atomic::{
     AtomicU64,
+    AtomicUsize,
     Ordering,
 };
 
@@ -59,6 +60,9 @@ pub static REBALANCE_SUCCESSES: AtomicU64 = AtomicU64::new(0);
 /// round-robin quantum; a future policy service may tune it without rebuilding.
 pub static REBALANCE_WINDOW_MILLIS: AtomicU64 =
     AtomicU64::new(DEFAULT_REBALANCE_WINDOW_MILLIS);
+pub const MAX_TRACKED_LPS: usize = 256;
+pub static LP_LOAD_SUMMARIES: [AtomicUsize; MAX_TRACKED_LPS] =
+    [const { AtomicUsize::new(0) }; MAX_TRACKED_LPS];
 
 pub fn set_rebalance_window_millis(window_millis: u64) {
     REBALANCE_WINDOW_MILLIS.store(window_millis.max(1), Ordering::Release);
@@ -251,8 +255,11 @@ impl SystemScheduler {
 
         let mut loads: Vec<(LpId, usize)> = self
             .lp_schedulers
-            .iter()
-            .map(|(&lp, scheduler)| (lp, scheduler.lock().thread_count()))
+            .keys()
+            .map(|&lp| {
+                assert!((lp as usize) < MAX_TRACKED_LPS);
+                (lp, LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
+            })
             .collect();
         loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
         let (destination_lp, destination_load) = loads[0];
@@ -334,8 +341,11 @@ impl SystemScheduler {
         }
         let mut loads: Vec<(LpId, usize)> = self
             .lp_schedulers
-            .iter()
-            .map(|(&lp, scheduler)| (lp, scheduler.lock().thread_count()))
+            .keys()
+            .map(|&lp| {
+                assert!((lp as usize) < MAX_TRACKED_LPS);
+                (lp, LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
+            })
             .collect();
         loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
         let (destination_lp, destination_load) = loads[0];

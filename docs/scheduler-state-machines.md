@@ -434,6 +434,28 @@ disruptive. Device domains and deferred workers remain default-denied because
 their ownership is recorded per address space or worker rather than attributed
 to a certified migratable thread.
 
+A second experiment sampled from LP0 after context switching and dead-thread
+reaping, avoiding an extra thread and timer. Reading queue depth by locking
+every LP still perturbed the device gate, so each round-robin scheduler now
+publishes its runnable count to an atomic per-LP summary whenever its queue or
+current thread changes. LP0's rate-limited sample reads only those atomics; LP
+locks are acquired only after an imbalance survives the full low-pass window
+and transactional migration is actually attempted. x86_64 sampling remains
+disabled until it has an `on_cpu` ownership protocol.
+
+The regression suite starts a delayed runtime workload after the early service,
+device and timer-affinity gates: three certified compute-only workers are
+soft-placed on LP0 and cooperatively yield. They remain runnable long enough to
+cross the sustained window, require `REBALANCE_SUCCESSES` to advance beyond the
+boot migrations, then terminate. This exercises the automatic path without
+mistaking the boot quiescent rebalance for runtime evidence.
+
+The timer-lifecycle workers use a narrower certification lifetime: they may be
+moved while queued at boot, then clear `migration_safe` on first dispatch before
+starting their 384 fixed-affinity timer cycles. This prevents the runtime
+sampler from invalidating the timer-affinity regression while leaving runtime
+migration to the compute-only workload.
+
 ---
 
 ## 8. Lock Ordering Rules

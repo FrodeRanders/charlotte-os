@@ -1,5 +1,10 @@
 use alloc::sync::Weak;
 use core::hint::unreachable_unchecked;
+#[cfg(target_arch = "aarch64")]
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
 use crate::{
     cpu::scheduler::{
@@ -28,6 +33,10 @@ pub mod system_scheduler;
 pub mod threads;
 
 const SCHED_TRACE: bool = false;
+#[cfg(target_arch = "aarch64")]
+const REBALANCE_SAMPLE_MILLIS: u64 = 10;
+#[cfg(target_arch = "aarch64")]
+static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
 
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
@@ -72,6 +81,33 @@ fn spawn_thread_with_migration(
         .expect("Error submitting ready thread to system scheduler");
     tid
 }
+
+#[cfg(target_arch = "aarch64")]
+pub fn maybe_sample_rebalance() {
+    use crate::cpu::isa::{
+        interface::timers::LpTimerIfce,
+        lp::ops::get_lp_id,
+        timers::LpTimer,
+    };
+
+    if get_lp_id() != 0 {
+        return;
+    }
+    let now_millis = ((LpTimer::now() as u128 * LpTimer::get_ts_cycle_period().as_picos())
+        / 1_000_000_000) as u64;
+    let previous = LAST_REBALANCE_SAMPLE_MILLIS.load(Ordering::Relaxed);
+    if now_millis.saturating_sub(previous) < REBALANCE_SAMPLE_MILLIS
+        || LAST_REBALANCE_SAMPLE_MILLIS
+            .compare_exchange(previous, now_millis, Ordering::AcqRel, Ordering::Relaxed)
+            .is_err()
+    {
+        return;
+    }
+    SYSTEM_SCHEDULER.read().try_rebalance_sustained(now_millis);
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+pub fn maybe_sample_rebalance() {}
 
 /// Returns the address-space id of the currently running thread, if execution
 /// is currently inside scheduler-managed thread context.

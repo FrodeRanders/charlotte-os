@@ -240,6 +240,24 @@ Device grants are address-space-owned and deferred-work workers are ordinary
 default-denied threads, so neither is falsely attributed to an arbitrary
 certified worker.
 
+Runtime sampling was subsequently tried at an existing post-context-switch
+maintenance point instead of adding work. LP0 rate-limited samples to one per
+10 ms after context switching and dead-thread reaping. Locking every LP merely
+to read queue depth still perturbed the device gate. Round-robin schedulers now
+publish load into per-LP atomics on every queue/current-thread change, making
+ordinary samples lock-free. LP locks are taken only if the imbalance survives
+the complete window and a real migration is attempted. x86_64 sampling remains
+disabled because it lacks the AArch64 ownership byte.
+
+A delayed regression distinguishes runtime behavior from the two boot moves.
+After the early lifecycle gates, it co-locates three certified compute-only
+workers on LP0. Their cooperative-yield workload maintains runnable imbalance
+past the filter window and requires the global migration count to advance
+before all three exit and emit `[scheduler runtime rebalance] SUCCESS`.
+The boot timer-lifecycle workers revoke their own migratability on first
+dispatch, after boot placement but before sleeping, so their fixed-affinity
+contract and the runtime compute-migration contract are tested independently.
+
 A dedicated scheduler-lifecycle gate performs 128 one-millisecond timer
 block/wake cycles while checking LP affinity. Initially, merely adding that
 worker reliably reproduced the early stall at approximately 0.09 seconds.

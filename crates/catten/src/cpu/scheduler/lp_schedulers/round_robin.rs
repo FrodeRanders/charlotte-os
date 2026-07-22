@@ -25,6 +25,7 @@ use crate::{
                 ThreadId,
                 ThreadState,
             },
+            system_scheduler::LP_LOAD_SUMMARIES,
         },
     },
     klib::{
@@ -111,6 +112,10 @@ impl RoundRobin {
             Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
         );
         TIMER_QUEUES.try_get_mut().unwrap().ensure_event(timer_event);
+    }
+
+    fn publish_load(&self) {
+        LP_LOAD_SUMMARIES[self.lp_id as usize].store(self.thread_count(), Ordering::Release);
     }
 }
 
@@ -234,6 +239,7 @@ impl LpScheduler for RoundRobin {
             next_tid as u64,
             ((self.run_queue.len() as u64) << 1) | became_idle as u64,
         );
+        self.publish_load();
 
         Ok(next_tid)
     }
@@ -289,6 +295,7 @@ impl LpScheduler for RoundRobin {
                 }
                 thread.state = ThreadState::Ready(self.lp_id);
                 self.run_queue.push_back(handle);
+                self.publish_load();
                 crate::debug_trace::trace(
                     crate::debug_trace::TAG_SCHED_ADMIT,
                     tid as u64,
@@ -312,6 +319,7 @@ impl LpScheduler for RoundRobin {
 
         if self.current_handle.is_some_and(|handle| handle.tid == tid) {
             self.current_handle = None;
+            self.publish_load();
             Ok(())
         } else {
             match handle
@@ -319,6 +327,7 @@ impl LpScheduler for RoundRobin {
             {
                 Some(idx) => {
                     self.run_queue.remove(idx);
+                    self.publish_load();
                     Ok(())
                 }
                 None => Err(Error::ThreadNotAssignedToThisLp),
@@ -341,6 +350,7 @@ impl LpScheduler for RoundRobin {
             .position(|handle| handle.tid == tid && handle.generation == generation)
             .ok_or(Error::ThreadNotAssignedToThisLp)?;
         self.run_queue.remove(position);
+        self.publish_load();
         Ok(())
     }
 
@@ -357,6 +367,7 @@ impl LpScheduler for RoundRobin {
             tid,
             generation,
         });
+        self.publish_load();
         Ok(())
     }
 
@@ -367,11 +378,13 @@ impl LpScheduler for RoundRobin {
     fn start(&mut self) {
         self.is_idle = false;
         self.set_next_timer_event();
+        self.publish_load();
     }
 
     fn stop(&mut self) {
         self.is_idle = true;
         TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
+        self.publish_load();
     }
 
     fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {

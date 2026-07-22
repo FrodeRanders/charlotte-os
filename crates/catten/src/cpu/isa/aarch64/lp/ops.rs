@@ -245,6 +245,7 @@ pub extern "C" fn cond_yield_lp() {
     // thread, so we are now on a different thread's stack and can safely free
     // the dead thread's kernel stack.
     crate::cpu::scheduler::threads::reap_dead_threads();
+    crate::cpu::scheduler::maybe_sample_rebalance();
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
