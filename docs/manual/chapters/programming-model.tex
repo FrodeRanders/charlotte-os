@@ -1,0 +1,173 @@
+\chapter{Programming model}
+
+This chapter describes the rules, patterns, and primitives for writing kernel
+code that respects the async-first, shard-per-core model. These invariants are
+derived from sitas and are enforced by the kernel's own concurrency design.
+
+\section{Invariants}
+
+\subsection{Only the owning LP mutates its state}
+
+Per-LP data is accessed only from the LP that owns it. Cross-LP mutation must
+go through message dispatch (\texttt{ShardMailbox<M>}, IPI closure, or IPI
+RPC), never through a shared lock acquired from a foreign LP.
+
+\subsection{Messages are owned values}
+
+Everything that crosses a shard boundary is an owned value --- a
+\texttt{Box<dyn FnOnce>}, an \texttt{IpiRpc}, or a typed \texttt{M} in a
+\texttt{ShardSender<M>}. No shared references, no \texttt{Arc<Mutex<...>>} as
+the normal programming model. \texttt{Send + 'static} boundaries enforce this
+at compile time.
+
+\subsection{References to shard-local state must not escape}
+
+\texttt{ShardLocal<T>::with(fn)} provides \texttt{\&mut T} inside a closure;
+the borrow is verified at runtime (owner-check + re-entrancy flag). The closure
+must not store the reference, send it to another thread, or cross an
+\texttt{.await}. The same rule applies to sitas's \texttt{ShardLocal<T>}
+userspace equivalent.
+
+\subsection{Work stays on its assigned LP}
+
+A thread spawned on LP $N$ stays on LP $N$. To submit work to another LP, use
+\texttt{try\_run\_on\_lp(target, closure)} or \texttt{ShardSender::try\_send}.
+The kernel's IPI infrastructure and the sitas \texttt{ShardedSubmitter} are
+the two sides of this contract.
+
+\subsection{Observability returns owned snapshots}
+
+The kernel's house style is owned values for diagnostics. sitas's
+\texttt{RuntimeSnapshot} / \texttt{ShardSnapshot} pattern applies: never
+expose borrowed references into runtime internals. Self-tests and the demo
+illustrate this.
+
+\section{Primitives}
+
+\subsection{ShardLocal<T>} Lock-free per-LP container. Use for single-LP,
+thread-only data. \\Access: \texttt{sl.with(|val| \{ *val = 42; \})}.
+
+\subsection{ShardMailbox<M>} Typed bounded per-LP queue. Cloneable
+\texttt{ShardSender<M>} (any LP can send), single-consumer\\
+\texttt{ShardReceiver<M>} (one per LP). \texttt{try\_send(m)} returns
+\texttt{Err(m)} on backpressure.
+
+\subsection{IPI closure} \texttt{try\_run\_on\_lp(target\_lp, || \{ ... \})}.
+Boxes arbitrary work and delivers it to the target LP's IPI queue. Returns the
+closure on full queue.
+
+\subsection{Completion API} \texttt{submit}, \texttt{submit\_worker},
+\texttt{complete}, \texttt{poll}, \texttt{wait}, \texttt{cancel}, \texttt{close}.
+The exit-observer path \\ (\texttt{submit\_worker}) is the intended default; the
+explicit \texttt{complete} is the escape hatch for non-thread-based work.
+
+\subsection{CQ ring} \texttt{CompletionQueueRing} for zero-syscall completion
+draining. Kernel side: \texttt{write(cap, result)}. Consumer side:
+\texttt{read() -> Option<CqEntry>}. Integration: \texttt{open\_as\_with\_cq}
+attaches a ring to a capability table; \texttt{complete()} writes to it.
+
+\section{Rule-of-thumb guidance}
+
+\begin{itemize}
+    \item \textbf{Use} \texttt{PerLp<T>} for interrupt-accessed data and
+        cross-LP access; \textbf{use} \texttt{ShardLocal<T>} for single-LP,
+        thread-only data.
+    \item \textbf{Use} \texttt{ShardMailbox<M>} (or \texttt{try\_run\_on\_lp})
+        for cross-LP communication; do \textbf{not} lock an LP's state from
+        another LP.
+    \item \textbf{Use} \texttt{submit\_worker} for fire-and-forget async
+        kernel work; the worker just returns, and the exit-observer completes
+        the capability.
+    \item \textbf{Register} a CQ ring when creating an address space so that
+        completions are visible to userspace without per-entry syscalls.
+    \item \textbf{Accept} backpressure: bounded tables and queues return
+        \texttt{WouldBlock} / \texttt{Err(m)}; retry or apply backpressure
+        upstream. Never silently drop messages.
+\end{itemize}
+
+\section{Working at the sitas--CharlotteOS boundary}
+
+The most useful mental model is that sitas is the userspace runtime and
+CharlotteOS is the substrate that makes sitas's assumptions native. sitas code
+should think in shards, owned messages, futures, and completion handles.
+CharlotteOS code should think in LPs, pinned threads, kernel-owned capability
+tables, and wakeable events. The two vocabularies describe the same shape at
+different privilege levels.
+
+\subsection{For userspace developers}
+
+Treat a CharlotteOS userspace program as a small \texttt{no\_std} process with
+a \texttt{crt0} supplied by \texttt{catten-rt}. The program provides
+\texttt{cmain(args, input)} and uses \texttt{catten\_rt::entry!(cmain)}; it
+does not define \texttt{\_start}, an allocator, or a panic handler. The type
+\texttt{Input<N>} is the declaration of how many bytes the runtime should read
+before entering \texttt{cmain}. If the program does not need launch input, use
+\texttt{Input<0>}. Command-like values belong in \texttt{Args}.
+
+Userspace application are interested in completion capabilities, mailbox
+capabilities, and returned handles.
+
+When writing sitas-on-CharlotteOS code, keep the sitas model intact:
+\begin{itemize}
+    \item A sitas shard is an LP-affine CharlotteOS user thread.
+    \item \texttt{sitas-charlotte::CharlotteReactor::new(lp\_id)} binds a
+        reactor to the calling shard's LP.
+    \item Async operations return kernel-owned completion capabilities. A
+        completion capability is opaque; wait for it, poll it, close it, or
+        pass it through a typed channel when the ABI permits that.
+    \item Cross-shard work is an owned message. Prefer sitas channels and
+        futures over shared mutable state.
+    \item Backpressure is normal. Bounded queues and capability tables are part
+        of the contract, not exceptional conditions to paper over.
+\end{itemize}
+
+The current \texttt{basic\_kv} image is the reference smoke test. It enters via
+\texttt{crt0}, uses \texttt{Args([])} and \texttt{Input<0>}, constructs a
+Charlotte reactor for LP0, starts a one-shard \texttt{ShardedKv}, writes three
+keys, reads one back, and reports \texttt{total\_len == 3} through the
+configured output page. If this stops working, either the userspace launch
+contract, the syscall ABI, the loader mapping, or the sitas runtime boundary has
+regressed.
+
+\subsection{For kernel developers}
+
+The kernel side must preserve the authority and ownership boundaries that make
+the userspace model sound:
+\begin{itemize}
+    \item \textbf{Caller identity is kernel authority.} Syscalls derive the
+        caller's address space from \texttt{TrapFrame.asid}; never accept ASID,
+        page-table roots, or equivalent authority from userspace registers or
+        config pages.
+    \item \textbf{Handles are capabilities.} Completion and mailbox ids are
+        scoped to the caller's address space. Validate them in the per-AS table
+        before acting.
+    \item \textbf{Completions must be non-lossy.} A CQ overflow counter is
+        useful diagnostics, but a terminal completion must either be delivered,
+        retained in a kernel backlog, or prevented by submission backpressure.
+    \item \textbf{Buffers have one owner.} While an async operation owns a user
+        buffer, userspace must not mutate or free it. Cancellation still ends in
+        a terminal completion so ownership can return or be deliberately leaked
+        during teardown.
+    \item \textbf{Placement is real.} A sitas shard maps to an LP-pinned user
+        thread. \texttt{SPAWN\_THREAD} takes an entry virtual address and target
+        LP; the address space comes from the caller.
+    \item \textbf{Do not smuggle shared kernel state into userspace.} Shared
+        pages such as the CQ ring are data queues with a narrow layout, not
+        references to kernel objects.
+\end{itemize}
+
+The present sitas smoke loader now consumes a stripped AArch64 ELF image rather
+than a flattened binary. It maps each \texttt{PT\_LOAD} segment at its linked
+virtual address, chooses \texttt{UserCode}, \texttt{UserRoData}, or
+\texttt{UserData} from the segment flags, rejects writable-executable segments,
+rejects LOAD segments that overlap within one 4 KiB page, and relies on the
+freshly zeroed page frames to satisfy the BSS contract. The
+\texttt{catten-user} linker script therefore page-separates executable text,
+read-only data, and writable data.
+
+This is still a self-test loader, not yet a general userspace process loader:
+the config page, CQ page, input page, and heap are still mapped at fixed
+CharlotteOS addresses, and there is no dynamic argument/environment layout.
+Treat larger sitas binaries as both runtime tests and loader-contract tests.
+
+\endinput
