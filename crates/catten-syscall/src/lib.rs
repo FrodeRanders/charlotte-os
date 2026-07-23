@@ -25,10 +25,9 @@
 //! ```
 #![no_std]
 
-use core::ops::BitOr;
-
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
+use core::ops::BitOr;
 
 // ---- op codes --------------------------------------------------------------
 
