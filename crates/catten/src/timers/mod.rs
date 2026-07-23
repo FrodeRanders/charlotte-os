@@ -1,4 +1,17 @@
-//! # Kernel Timer System
+//! Per-LP sorted timer queue, backed by the ARM Generic Timer.
+//!
+//! Each LP has a [`TimerQueue`] — a sorted list of [`TimerEvent`]s ordered
+//! by deadline.  When an event reaches the front of the queue the hardware
+//! comparator is programmed with its deadline; the PPI interrupt fires at
+//! that tick, `process_events` drains all expired events, and the comparator
+//! is re-armed with the next deadline.
+//!
+//! `add_event` only re-arms the comparator when the new event lands at
+//! index 0 (earliest deadline).  If a stale far-future event occupies the
+//! front, a later-arriving near-term event is queued behind it and may not
+//! fire until the front event expires.  The idle loop calls `process_events`
+//! before `wfi` to reconcile the software queue with the hardware comparator
+//! and prevent missed deadlines after timer transitions.
 
 use alloc::{
     collections::vec_deque::VecDeque,

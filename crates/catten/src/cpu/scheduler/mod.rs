@@ -1,3 +1,15 @@
+//! Kernel thread scheduler — spawn, block, abort, yield.
+//!
+//! A thread is a kernel-scheduled execution context.  The scheduler
+//! assigns threads to logical processors (LPs), runs a per-LP
+//! round-robin policy with a configurable quantum, and provides
+//! cooperative `yield_lp`, blocking `sleep`, and thread exit.
+//!
+//! Threads carry an optional LP affinity — a preference for a
+//! specific LP set at first admission.  Re-admission after a wake
+//! (timer, endpoint message, device interrupt) returns the thread
+//! to its affinity LP rather than the globally least-loaded one.
+
 use alloc::sync::Weak;
 use core::hint::unreachable_unchecked;
 #[cfg(target_arch = "aarch64")]

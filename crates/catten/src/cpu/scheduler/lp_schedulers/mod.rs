@@ -1,3 +1,16 @@
+//! Per-LP scheduler trait and quantum timer observer.
+//!
+//! [`LpScheduler`] is the trait implemented by per-LP scheduling policies
+//! (currently only [`RoundRobin`](crate::cpu::scheduler::lp_schedulers::round_robin::RoundRobin)).
+//! It manages a run queue of ready threads, tracks the current thread, and
+//! honours a `ctx_switch_pending` flag set by the quantum timer, IPI handlers,
+//! and cooperative yield.
+//!
+//! [`TimerEventObserver`] tracks two atomic booleans — `pending` ("a context
+//! switch has been requested") and `armed` ("a quantum TimerEvent is in
+//! flight").  At most one quantum event is in flight per LP; the CAS on
+//! `armed` prevents duplication on repeated `yield_lp` calls.
+
 pub mod round_robin;
 use alloc::{
     fmt::Debug,

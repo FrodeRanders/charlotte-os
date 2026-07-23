@@ -1,3 +1,24 @@
+//! System-wide thread scheduler — admission, blocking, abort, and load rebalancing.
+//!
+//! [`SystemScheduler`] holds one per-LP [`LpScheduler`] and makes global
+//! decisions:
+//!
+//! - **Admission** ([`submit_ready_thread`], [`submit_woken_thread`]): assign
+//!   a thread to an LP, preferring its [`affinity_lp`](crate::cpu::scheduler::threads::Thread::affinity_lp)
+//!   (set at first admission) over the globally least-loaded LP.
+//! - **Blocking** ([`block_thread`], [`block_thread_with_constraint`]):
+//!   register a waker on an observable event, transition the thread to `Blocked`,
+//!   and remove it from the run queue if it was `Ready`.  Threads that are
+//!   `Running` (self-block) remain `current_handle` until `next()` saves their
+//!   context.
+//! - **Abort** ([`abort_thread`]): remove a thread from its LP scheduler and
+//!   the master table, stage it for deferred stack reaping.
+//! - **Rebalancing** ([`try_rebalance`], [`try_rebalance_sustained`]):
+//!   periodically migrate idle-safe threads from overloaded LPs to idle LPs.
+//!   Only threads explicitly marked `migration_safe` (no active timers, no
+//!   pending IPC state) are eligible.  Long-term idle loads trigger tighter
+//!   rebalancing through [`try_rebalance_sustained`].
+
 use alloc::{
     boxed::Box,
     collections::btree_map::BTreeMap,

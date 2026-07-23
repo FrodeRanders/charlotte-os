@@ -1,3 +1,15 @@
+//! Per-LP round-robin scheduler with a configurable quantum.
+//!
+//! Each LP has a [`RoundRobin`] instance holding a FIFO `run_queue` of
+//! [`ThreadHandle`]s, a `current_handle`, and a dedicated per-LP idle thread.
+//! The idle thread is never enqueued; `next()` returns it only when the
+//! run queue is empty.  When `is_idle` is true the quantum timer is not
+//! re-armed — an idle LP is woken by an admission IPI or deferred wake.
+//!
+//! A [`ThreadHandle`] pairs a [`ThreadId`] with a [`ThreadGeneration`].
+//! `next()` validates the generation against the master table before
+//! dispatching, preventing stale-handle-after-slot-reuse.
+
 use alloc::{
     collections::vec_deque::VecDeque,
     sync::Arc,

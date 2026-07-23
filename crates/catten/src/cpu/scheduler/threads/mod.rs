@@ -1,3 +1,25 @@
+//! Thread control block, state machine, and the global thread table.
+//!
+//! A [`Thread`] represents a kernel-scheduled execution context.  Threads
+//! transition through four states:
+//!
+//! ```text
+//! NeedsLpAssignment → Ready(lp) → Running(lp) → Blocked(waker) → Ready(lp)
+//!                         ↑                                      │
+//!                         └──────────────────────────────────────┘
+//! ```
+//!
+//! - `NeedsLpAssignment`: freshly spawned, not yet assigned to an LP.
+//! - `Ready(lp)`: enqueued in LP `lp`'s run queue, waiting to run.
+//! - `Running(lp)`: `current_handle` of LP `lp`'s scheduler; actively executing.
+//! - `Blocked(waker)`: parked, waiting for an observable event to fire the waker.
+//!
+//! The [`MASTER_THREAD_TABLE`] is the system-wide [`IdTable`] keyed by
+//! reusable [`ThreadId`].  Each entry is guarded by a monotonic
+//! [`ThreadGeneration`] that prevents stale-handle-after-slot-reuse races.
+//! Exited threads are staged per-LP in [`DEAD_THREADS`] and reaped after
+//! the context switch away from them.
+
 pub mod waker;
 
 use alloc::{
