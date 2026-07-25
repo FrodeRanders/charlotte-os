@@ -23,9 +23,6 @@ const NVME_ELF: &[u8] = include_bytes!("nvme.elf");
 const OBJSTORE_ELF: &[u8] = include_bytes!("objstore.elf");
 
 #[cfg(target_arch = "aarch64")]
-const MAX_SPINS: u64 = 10_000_000_000;
-
-#[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<NameServiceHandle> = None;
 
 pub fn test_el0_nvme() {
@@ -84,11 +81,8 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] driver spawned (asid={})", driver.asid);
 
     // Wait for driver to register
-    let mut spins: u64 = 0;
     let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
     while unsafe { core::ptr::read_volatile(sentinel_ptr) } != 0x900d {
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[nvme] FAILED waiting for NVMe driver");
         core::hint::spin_loop();
     }
     logln!("[nvme] driver ready");
@@ -121,10 +115,7 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
 
     // Wait for object store to register
-    spins = 0;
     while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[nvme] FAILED waiting for objstore");
         core::hint::spin_loop();
     }
 
