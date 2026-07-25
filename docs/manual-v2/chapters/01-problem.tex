@@ -1,0 +1,137 @@
+\chapter{The Problem}
+
+\section{The operating system is the bottleneck}
+
+Critical software has two requirements that pull in opposite directions: it must be
+\textbf{correct} (failures are expensive or dangerous), and it must be
+\textbf{performant} (latency and throughput matter). Modern systems try to satisfy
+both by piling layers onto an operating system whose fundamental abstractions were
+designed for timesharing, not for the workloads we run today.
+
+The result is what we call the \textbf{retrofit tax}: the cost, in complexity and
+performance, of making an OS designed for synchronous, trust-everyone, monolithic
+execution behave as if it were asynchronous, least-privilege, and decomposed.
+
+\section{The retrofit tax, itemized}
+
+\subsection{Async over blocking}
+
+Most operating systems expose synchronous system calls: \texttt{read()} blocks the
+calling thread until data arrives. When applications need concurrency without
+dedicating one thread per operation, they reach for \texttt{epoll}, \texttt{kqueue},
+or \texttt{io\_uring}. These are effective, but they are \emph{retrofits}: the kernel
+internally still blocks on disk I/O, network I/O, and locks, while the completion
+mechanism translates those blocking events into readiness notifications for
+userspace.
+
+This translation layer brings with it:
+\begin{itemize}
+    \item Async-signal-safety problems --- the kernel may deliver a
+        completion while userspace holds a lock, requiring elaborate
+        signal-handler discipline or a dedicated thread pool.
+    \item Thread-pool overhead --- many async runtimes spawn a pool of OS
+        threads to convert blocking syscalls into futures, undoing the
+        resource-efficiency argument for async in the first place.
+    \item Two concurrency models --- the application uses async/await; the
+        kernel uses threads and blocking. The mismatch forces every boundary
+        crossing to bridge two foreign paradigms.
+\end{itemize}
+
+\subsection{Ambient authority}
+
+A conventional OS process has access to the filesystem namespace, the network, and
+other global resources by default. Security is subtractive: you start with
+everything and try to take things away (chroot, seccomp, namespaces). This is
+brittle because it requires the developer to enumerate what \emph{should not} be
+accessible --- an unbounded problem. In practice, most programs run with far more
+authority than they need, and exploits exploit that gap.
+
+\subsection{Hardware asynchrony disguised as software synchrony}
+
+Hardware is inherently asynchronous with respect to the CPU. A disk controller
+signals completion via an interrupt. A network card delivers packets on its own
+schedule. A timer fires after a programmed interval. Yet the operating system
+interface presents these as synchronous calls: \texttt{read()} returns when the
+data is ready, blocking the calling thread in the meantime.
+
+This is a leaky abstraction. The thread that blocks on I/O is an OS resource that
+cannot be used for anything else while it waits. High-concurrency servers
+compensate with thread pools; real-time systems compensate with carefully tuned
+polling loops. Neither is the natural solution.
+
+\subsection{Fault propagation across trust boundaries}
+
+A bug in a device driver can crash a monolithic kernel. A memory corruption in one
+application can, in a system without hardware-enforced isolation, corrupt another.
+Conventional microkernels solve this with address-space isolation, but at the cost
+of IPC overhead that often drives designers back toward monolithic architectures
+for performance.
+
+The industry has settled on a compromise: run untrusted code in virtual machines;
+run trusted code in the kernel; hope the trusted code has no bugs. For critical
+systems, hope is a poor strategy.
+
+\section{Why Rust ownership is not enough}
+
+Rust's type system eliminates data races, use-after-free, and null-pointer
+dereferences at compile time. This is a transformative improvement for systems
+programming, but Rust programs still run on operating systems that do not share
+Rust's ownership discipline.
+
+\begin{itemize}
+    \item A Rust program cannot protect itself from a C driver that
+        corrupts kernel memory. Isolation must be enforced by the hardware
+        (MMU, IOMMU), not by the language.
+    \item A Rust \texttt{Mutex<Vec<T>>} crossing a syscall boundary is
+        still a shared-memory lock with all the contention, priority inversion,
+        and deadlock risks that implies. The kernel does not know the lock exists.
+    \item Rust's \texttt{async}/\texttt{await} compiles to a state machine
+        driven by a userspace executor, but the executor must still interact with
+        the kernel's blocking I/O model. The \texttt{Future} trait and the
+        kernel's wait queue speak different languages.
+\end{itemize}
+
+The insight is: Rust eliminates \emph{some} classes of bugs within a single
+address space. But the OS defines the rules for \emph{between} address spaces ---
+and if those rules are "any process can do anything until restricted," Rust's
+guarantees are local optimizations on a global problem.
+
+\section{What needs to change}
+
+We need an operating system whose foundational abstractions align with the demands
+of critical, performant software:
+
+\begin{enumerate}
+    \item Asynchronous by construction: Operations that may wait for
+        external progress should have submission/completion semantics, not
+        blocking-call semantics. No subsystem should force a thread to dedicate
+        itself to one operation.
+
+    \item Capability-based, not ambient, authority: A process should be
+        able to perform an operation only if it holds a capability authorizing it.
+        Capabilities are unforgeable and must be explicitly granted.
+
+    \item Isolation by default: Every protection domain should run in its
+        own address space. Communication crosses a kernel-mediated boundary.
+        A fault in one domain should not propagate to another.
+
+    \item Ownership that crosses boundaries: Data movement between
+        domains should transfer ownership, not copy bytes. The kernel should move
+        page mappings, so the sender loses access and the receiver gains it.
+
+    \item Bounded resource consumption: Every queue, table, and buffer
+        should be bounded. Backpressure should propagate explicitly. No unbounded
+        allocation should be a correctness requirement.
+
+    \item The OS and the language runtime should agree: The kernel's model
+        of concurrency (asynchronous, completion-driven) should match the
+        language's model of concurrency (futures, wakers). No translation layer
+        should be needed.
+\end{enumerate}
+
+CharlotteOS is an operating system built from these six principles. This manual
+explains the architecture, the programming model, and --- most importantly --- why
+the combination eliminates the retrofit tax and provides a strong foundation for
+software that must be both correct and fast.
+
+\endinput

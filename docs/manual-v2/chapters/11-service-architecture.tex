@@ -1,0 +1,163 @@
+\chapter{Service Architecture}
+
+This chapter explains how protection domains are created, how services are named
+and discovered, and how the system recovers from failures --- all without
+privileged code knowing what any particular service \emph{does}.
+
+\section{Protection domains as failure boundaries}
+
+A protection domain (Chapter~3) is the unit of both authority and failure. When
+a service crashes:
+
+\begin{itemize}
+    \item Its capability table is destroyed. Every connection to every client is
+        invalidated atomically.
+    \item Its memory mappings are removed. Outstanding borrows are revoked; the
+        kernel unmaps the pages from the (dead) borrower and restores the lender's
+        access.
+    \item Its threads are aborted. Any thread blocked on a CQ or endpoint is
+        woken with a terminal error.
+    \item Its device grants are recovered. The supervisor regains ownership of
+        any MMIO region and interrupt objects the domain held.
+\end{itemize}
+
+A crash in one domain does not propagate to the kernel or to other domains.
+The failure is contained by the MMU and the capability system.
+
+\section{The supervisor --- domain lifecycle manager}
+
+The \textbf{supervisor} is a kernel-side component that creates and destroys
+protection domains. It does not understand service protocols but it do understand
+ELF images, memory mappings, and capability grants.
+
+Its operations are:
+
+\begin{enumerate}
+    \item \textbf{Load:} parse an ELF image, validate its segments, create a
+        new address space, map \texttt{PT\_LOAD} segments at their linked
+        virtual addresses, set up a stack with a guard page.
+    \item \textbf{Grant:} populate the domain's config-page with the bootstrap
+        capabilities it needs:
+        \begin{itemize}
+            \item A connection to the name service (for service lookup).
+            \item For driver domains: an \texttt{MmioRegion} capability, an
+                \texttt{Interrupt} capability.
+            \item For service domains: an \texttt{Endpoint} capability on which
+                to listen.
+            \item A default CQ handle.
+        \end{itemize}
+    \item \textbf{Spawn:} create the initial thread with the domain's entry
+        point and its affinity LP.
+    \item \textbf{Monitor:} register to be notified when the domain exits.
+    \item \textbf{Teardown:} on exit, reclaim all capabilities, revoke
+        mappings, reconcile outstanding operations, and make the address-space
+        ID available for reuse.
+\end{enumerate}
+
+Grants are minted kernel-side by the supervisor and never through a syscall. A
+driver does not ask the kernel for MMIO; the supervisor grants it at creation
+time based on the device topology it enumerated during boot.
+
+\section{The name service --- discovery without the kernel}
+
+The kernel does not know about service names. A userspace \textbf{name service}
+maps human-readable names to connection capabilities:
+
+\begin{description}
+    \item[Registration] A service calls \texttt{register("driver.nic.v1",
+        endpoint, access\_key)} on the name service. The name service stores the
+        endpoint's identity and opens a connection to it.
+    \item[Generation tracking] Each registration bumps a generation counter.
+        If the service restarts and re-registers with the same name, the new
+        generation replaces the old one. Existing connections bound to the old
+        generation fail with \texttt{ServiceRestarted}.
+    \item[Lookup] A client calls \texttt{lookup("driver.nic.v1", access\_key)}.
+        The name service checks the access key (if the service registered one),
+        then delegates a connection capability to the client --- typically with
+        \texttt{SEND | CALL} rights only.
+    \item[Access-key gating] A registration with a non-zero access key requires
+        lookers to provide the matching key. This is userspace policy: the name
+        service enforces it; the kernel does not participate.
+\end{description}
+
+The name service runs as a \texttt{no\_std} EL0 service process, reached through
+the bootstrap connection every domain receives at startup.
+
+\section{Service restart and recovery}
+
+When a service crashes and the supervisor restarts it:
+
+\begin{enumerate}
+    \item \textbf{Device reset.} If the service was a driver, the supervisor
+        resets the device before re-granting it to a new driver instance. The
+        new driver sees a clean hardware state.
+    \item \textbf{Generation increment.} The name service bumps the service's
+        generation. All old connections are invalidated.
+    \item \textbf{Stale connection failures.} Clients holding connections to
+        the old instance receive \texttt{ServiceRestarted} on their next call
+        attempt. They re-lookup the service and receive a connection to the
+        new instance.
+    \item \textbf{Outstanding operation reconciliation.} The supervisor
+        reconciles any operations the old domain had submitted but not
+        completed: cancellations are posted, borrowed memory is returned,
+        DMA buffers are recovered.
+    \item \textbf{Fresh bootstrap.} The new domain receives a fresh config-page
+        with freshly minted capabilities. It does not inherit the previous
+        instance's capability table, reply tokens, or DMA ownership.
+\end{enumerate}
+
+A restarted service must not silently inherit outstanding authority or
+in-flight operations from the previous instance. The kernel and the supervisor
+guarantee this.
+
+\section{The overall system topology}
+
+At steady state, a CharlotteOS system consists of:
+
+\begin{itemize}
+    \item \textbf{The kernel} --- capabilities, endpoints, memory objects,
+        CQs, scheduling, interrupt routing.
+    \item \textbf{The supervisor} (kernel-side) --- domain lifecycle, ELF
+        loading, device enumeration.
+    \item \textbf{The name service} (userspace) --- service registration,
+        lookup, access-key gating, generation tracking.
+    \item \textbf{Service processes} --- one or more per logical function:
+        NIC driver, TCP/IP stack, filesystem, Raft consensus, application
+        servers.
+    \item \textbf{Client processes} --- application code that looks up
+        services and invokes them through capabilities.
+\end{itemize}
+
+Every component beyond the kernel, supervisor, and name service is a replaceable
+userspace process. A different NIC driver, a different filesystem, a different
+network stack --- these are configuration choices, not kernel modifications.
+
+\section{Why service architecture matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Failure containment is architectural.} If the NIC driver
+        crashes, the TCP/IP service loses connectivity but does not crash.
+        If the filesystem crashes, applications holding file handles get
+        errors. If the name service crashes, lookup fails but existing
+        connections remain valid. No single service crash takes down the
+        system.
+
+    \item \textbf{Recovery is defined, not ad-hoc.} The restart sequence
+        (device reset, generation bump, connection invalidation, operation
+        reconciliation) is the same for every driver. A new driver
+        implemented to the same endpoint protocol replaces the old one
+        without any special-case recovery code.
+
+    \item \textbf{Policy lives in userspace.} The kernel enforces mechanism
+        (capabilities, endpoints, memory objects). Userspace enforces policy
+        (who can register what name, who can look up what service, how
+        many restarts are allowed, what log level to use). The kernel
+        stays small; policy is auditable and replaceable.
+
+    \item \textbf{The bootstrap contract is explicit and minimal.} Every
+        domain starts with exactly the capabilities it needs and no more.
+        The config-page contract defines what a domain receives; there is no
+        ambient authority to discover or exploit.
+\end{enumerate}
+
+\endinput

@@ -1,0 +1,157 @@
+\chapter{Shards and Logical Processors}
+
+CharlotteOS separates two concepts that are often conflated: the hardware
+execution context (logical processor, or LP) and the userspace ownership domain
+(shard). This chapter explains both and the relationship between them.
+
+\section{The logical processor (LP) --- the hardware unit of scheduling}
+
+An LP is CharlotteOS's representation of a schedulable hardware execution
+context. In most configurations, one LP equals one CPU core (or one hyperthread).
+The kernel shards its own state per-LP, meaning each LP has:
+
+\begin{itemize}
+    \item Its own run queue of ready threads.
+    \item Its own timer queue and quantum timer.
+    \item Its own scheduler instance (e.g., \texttt{RoundRobin}).
+    \item Its own IPI command queues for receiving work from other LPs.
+    \item Per-LP data structures accessible through \rusttype{PerLp<T>}.
+\end{itemize}
+
+An LP is a \textbf{place}: threads are pinned to LP at creation and (by default)
+stay there. Migration is opt-in and restricted.
+
+\section{The shard --- the userspace unit of ownership}
+
+A shard is a userspace ownership and execution domain. The rules of the shard are
+the sitas discipline:
+
+\begin{enumerate}
+    \item \textbf{Only the owning shard mutates shard-local state.} There is no
+        lock on shard-local data because there is no concurrent access. The
+        executor runs one task at a time on the shard.
+
+    \item \textbf{Cross-shard interaction goes through bounded typed messages.}
+        A value that moves from shard A to shard B is sent through a typed
+        channel (\rusttype{ShardSender<M>}). The sender loses the value; the
+        receiver gains it.
+
+    \item \textbf{Placement is explicit.} Code that needs to be shard-local is
+        accessed through \rusttype{ShardLocal<T>}, which verifies at runtime that
+        the calling thread belongs to the owning LP.
+
+    \item \textbf{Observability returns owned snapshots.} Diagnostics and
+        introspection capture state by value. No borrowed reference into shard
+        internals escapes the shard.
+\end{enumerate}
+
+\section{The mapping: one shard $\leftrightarrow$ one LP}
+
+In the typical configuration:
+
+\begin{verbatim}
+one sitas shard
+    <-> one LP-affine userspace thread
+    <-> normally one logical CPU
+\end{verbatim}
+
+The userspace thread is pinned to its LP. Its executor runs only on that LP. Its
+shard-local state (\rusttype{ShardLocal<T>}) is valid only when the owning LP's
+thread is executing.
+
+The architecture retains the distinction (shard $\neq$ LP) so that more complex
+configurations remain possible:
+
+\begin{itemize}
+    \item \textbf{Multiple sharded processes:} one LP might host shards from
+        multiple protection domains, time-sliced by the kernel scheduler.
+    \item \textbf{CPU hotplug:} an LP can be taken offline; its shards can be
+        migrated (when migration-safe) or torn down.
+    \item \textbf{Oversubscription:} a test can run $N$ shards on $M < N$ LPs
+        to exercise migration and scheduling paths.
+\end{itemize}
+
+\section{\texttt{PerLp<T>} --- interrupt-safe shared data}
+
+\label{sec:per-lp}
+
+For kernel data that must be accessible from multiple LPs (including from
+interrupt context), CharlotteOS uses \rusttype{PerLp<T>}: a boxed slice of
+per-LP cells, each wrapped in a lock. Access is:
+
+\begin{verbatim}
+per_lp_data.with(|lp_data| { lp_data.do_something(); });
+\end{verbatim}
+
+The \texttt{with} closure acquires the lock for the current LP, calls the closure,
+and releases the lock. This is interrupt-safe (the lock masks interrupts during
+the critical section on architectures where that is necessary).
+
+Use \rusttype{PerLp<T>} for data that is:
+\begin{itemize}
+    \item Accessed from interrupt handlers (timers, device IRQs).
+    \item Modified by an IPI from another LP.
+    \item Part of the scheduler, memory allocator, or other kernel subsystem
+        that must be LP-safe.
+\end{itemize}
+
+\section{\texttt{ShardLocal<T>} --- lock-free single-owner data}
+
+\label{sec:shard-local}
+
+For kernel data that is accessed only from one LP and never from interrupt
+context, CharlotteOS provides \rusttype{ShardLocal<T>}: a lock-free per-LP
+container using \texttt{UnsafeCell<T>} with runtime owner-check and borrow-flag
+guard. Access is:
+
+\begin{verbatim}
+shard_local.with(|val| { *val = 42; });
+\end{verbatim}
+
+The \texttt{with} closure:
+\begin{enumerate}
+    \item Checks that the calling thread belongs to the owning LP (panics if not).
+    \item Checks that the borrow flag is clear (panics on re-entrant access).
+    \item Sets the borrow flag.
+    \item Calls the closure with \texttt{\&mut T}.
+    \item Clears the borrow flag.
+\end{enumerate}
+
+The closure must not:
+\begin{itemize}
+    \item Store the \texttt{\&mut T} reference anywhere (it must not escape).
+    \item Send it to another thread or LP.
+    \item Cross an \texttt{.await} point.
+    \item Panic or unwind (the borrow flag would remain set, deadlocking future
+        access).
+\end{itemize}
+
+\section{Why the distinction matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Data-race freedom by construction.} Shard-local state is never
+        accessed concurrently. There is no lock, no atomic, no memory-ordering
+        subtlety. If you hold \texttt{\&mut T}, no one else can access \texttt{T}.
+        This is Rust's borrow-checker guarantee extended to the kernel's
+        scheduling model.
+
+    \item \textbf{Placement is deliberate.} Sending work to a
+        specific LP is an explicit operation (\texttt{try\_run\_on\_lp},
+        \texttt{ShardSender::try\_send}) and it is not at the mercy of a global
+        work-stealing scheduler. This makes it possible to reason about locality,
+        cache behavior, and latency.
+
+    \item \textbf{The two container types force a design choice.} When you reach
+        for shared data, you must decide: is this accessed from interrupt context?
+        Use \rusttype{PerLp<T>} with locking. Is it thread-only? Use
+        \rusttype{ShardLocal<T>} with zero overhead. There is no
+        ``just wrap it in Mutex and move on'' ambiguity.
+
+    \item \textbf{Cross-shard communication is typed and bounded.} A
+        \rusttype{ShardSender<M>} carries a specific Rust type (not
+        \texttt{Box<dyn Any>}, not a byte buffer). The receiver knows what it will
+        get. The channel has fixed capacity; senders handle backpressure. There
+        is no unbounded message queue that can exhaust memory.
+\end{enumerate}
+
+\endinput

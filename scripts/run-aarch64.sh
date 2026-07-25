@@ -30,6 +30,7 @@ GDB=""
 DISPLAY_MODE="0"
 USE_HVF="0"
 NET_TEST="0"
+NVME_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -46,6 +47,7 @@ while [ "$#" -gt 0 ]; do
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
+        --nvme-test)   NVME_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
             SMP="$2"; shift 2 ;;
@@ -119,6 +121,14 @@ if [ "$NET_TEST" = "1" ]; then
     FEATURES="${FEATURES},virtio_net_test"
 fi
 
+if [ "$NVME_TEST" = "1" ]; then
+    if [ "$USE_HVF" = "1" ]; then
+        echo "error: --nvme-test is incompatible with --hvf (EL0 MMIO is unsupported)" >&2
+        exit 1
+    fi
+    FEATURES="${FEATURES},nvme_test"
+fi
+
 if [ "$SCHEDULER_TRACE" = "1" ]; then
     if [ -z "$TIMEOUT" ]; then
         echo "error: --scheduler-trace requires --timeout" >&2
@@ -164,6 +174,17 @@ mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FIL
 mcopy -i "$IMAGE" "$KERNEL" "::/catten"
 mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 
+# --- NVMe persistent disk image ---
+if [ "$NVME_TEST" = "1" ]; then
+    NVME_IMAGE="${IMAGE_DIR}/nvme-disk.img"
+    if [ ! -f "$NVME_IMAGE" ]; then
+        echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
+        dd if=/dev/zero of="$NVME_IMAGE" bs=1m count=16 status=none
+    else
+        echo ">>> Reusing existing NVMe disk image ${NVME_IMAGE}"
+    fi
+fi
+
 # --- QEMU options ---
 QEMU_OPTS=(
     -M virt,gic-version=3
@@ -179,6 +200,14 @@ else
 fi
 
 QEMU_OPTS+=(-smp "$SMP")
+
+if [ "$NVME_TEST" = "1" ]; then
+    NVME_IMAGE="${IMAGE_DIR}/nvme-disk.img"
+    QEMU_OPTS+=(
+        -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
+        -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4"
+    )
+fi
 
 if [ "$DISPLAY_MODE" = "1" ]; then
     QEMU_OPTS+=(-device ramfb)
@@ -283,6 +312,9 @@ if [ -n "$TIMEOUT" ]; then
         "[uart] SUCCESS:"
         "[scheduler lifecycle] SUCCESS:"
     )
+    if [ "$NVME_TEST" = "1" ]; then
+        REQUIRED_MARKERS+=("[nvme] SUCCESS:")
+    fi
     missing=0
     for marker in "${REQUIRED_MARKERS[@]}"; do
         if ! grep -Fq "$marker" "$LOG"; then

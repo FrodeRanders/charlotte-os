@@ -5,6 +5,11 @@
 //! generations, and lookup policy are defined here.
 #![no_std]
 
+extern crate alloc;
+
+/// Disk-backed Raft persistent state and log store on top of the object store.
+pub mod disk_raft;
+
 /// Pack up to 8 ASCII bytes into a u64 service name (little-endian).
 ///
 /// This interim scalar encoding is limited to 8 bytes; longer names travel
@@ -332,6 +337,31 @@ pub mod raft {
     pub const ERR_NOT_FOUND: i64 = -4;
 }
 
+/// Block device protocol (`charlotte-protocol-block` v1).
+///
+/// Defines the interface between block device consumers (filesystems, Raft
+/// log stores, etc.) and block device drivers (NVMe, AHCI, etc.). The
+/// driver knows nothing about filesystems, partitions, or higher-level
+/// storage semantics — it reads and writes fixed-size blocks at linear
+/// block addresses.
+pub mod block {
+    pub const INTERFACE: u64 = super::name(b"BLOCK");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"blk0");
+
+    pub const OP_INFO: u32 = 1;
+    pub const OP_READ: u32 = 2;
+    pub const OP_WRITE: u32 = 3;
+    pub const OP_FLUSH: u32 = 4;
+    pub const OP_TRIM: u32 = 5;
+
+    pub const ERR_OK: i64 = 0;
+    pub const ERR_IO_ERROR: i64 = 1;
+    pub const ERR_INVALID_RANGE: i64 = 2;
+    pub const ERR_UNALIGNED: i64 = 3;
+    pub const ERR_DEVICE_GONE: i64 = 4;
+}
+
 /// Socket protocol (`charlotte-protocol-socket` v1).
 ///
 /// The TCP/IP service exposes this interface. A client looks up "tcpip"
@@ -364,6 +394,53 @@ pub mod socket {
     pub const DOMAIN_UDP: u64 = 2;
 
     pub const MAX_SOCKETS: usize = 16;
+}
+
+/// Persistent object store protocol (`charlotte-protocol-objstore` v1).
+pub mod objstore {
+    pub const INTERFACE: u64 = super::name(b"OBJSTR ");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"obj");
+
+    pub const OP_CREATE: u32 = 1;
+    pub const OP_DELETE: u32 = 2;
+    pub const OP_WRITE: u32 = 3;
+    pub const OP_READ: u32 = 4;
+    pub const OP_RESIZE: u32 = 5;
+    pub const OP_FLUSH: u32 = 6;
+    pub const OP_INFO: u32 = 7;
+
+    pub const ERR_OK: i64 = 0;
+    pub const ERR_NOT_FOUND: i64 = 1;
+    pub const ERR_NO_SPACE: i64 = 2;
+    pub const ERR_INVALID_ID: i64 = 3;
+    pub const ERR_IO_ERROR: i64 = 4;
+    pub const ERR_EXISTS: i64 = 5;
+}
+
+/// Native filesystem protocol (`charlotte-protocol-fs` v1).
+pub mod fs {
+    pub const INTERFACE: u64 = super::name(b"FFS");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"fs");
+
+    pub const OP_LOOKUP: u32 = 1;
+    pub const OP_CREATE: u32 = 2;
+    pub const OP_READ: u32 = 3;
+    pub const OP_WRITE: u32 = 4;
+    pub const OP_DELETE: u32 = 5;
+    pub const OP_LIST: u32 = 6;
+    pub const OP_FLUSH: u32 = 7;
+
+    pub const FLAG_DIR: u32 = 1 << 0;
+
+    pub const ERR_OK: i64 = 0;
+    pub const ERR_NOT_FOUND: i64 = 1;
+    pub const ERR_EXISTS: i64 = 2;
+    pub const ERR_NO_SPACE: i64 = 3;
+    pub const ERR_IO_ERROR: i64 = 4;
+    pub const ERR_NOT_DIR: i64 = 5;
+    pub const ERR_DIR_NOT_EMPTY: i64 = 6;
 }
 
 /// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v1).

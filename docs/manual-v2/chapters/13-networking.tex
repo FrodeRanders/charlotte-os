@@ -1,0 +1,220 @@
+\chapter{Networking}
+
+CharlotteOS deliberately departs from the traditional UNIX networking model.
+Rather than treating TCP/IP as the foundation of all communication, CharlotteOS
+treats networking as \textbf{an extension of the operating system's message passing
+and capability model.}
+
+The guiding principle is:
+
+\begin{quote}
+\textbf{Remote IPC is local IPC with a different transport.}
+\end{quote}
+
+\section{Why not sockets?}
+
+The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
+\texttt{recv()}) has served the Internet for decades. But it is not the right
+foundation for a capability-based microkernel:
+
+\begin{itemize}
+    \item \textbf{Sockets identify hosts, not services.}
+        \texttt{10.2.3.17:443} tells you where to connect, not what you are
+        talking to. The mapping from address to service is out-of-band (DNS).
+
+    \item \textbf{Sockets are byte streams, not messages.} Message boundaries
+        are lost. Every protocol invents its own framing on top of TCP's
+        undifferentiated stream.
+
+    \item \textbf{Sockets carry ambient authority.} Any process can open a
+        socket to any address. There is no capability check; authority comes
+        from being able to reach the network, not from being granted a
+        connection.
+
+    \item \textbf{Sockets couple applications to transports.} Code written
+        against TCP cannot transparently use shared memory for local
+        communication or RDMA for high-performance communication.
+\end{itemize}
+
+CharlotteOS replaces all of this with a layered model where each layer has a
+single responsibility.
+
+\section{The native protocol stack}
+
+\begin{verbatim}
+Applications
+        |
+Capability Invocation
+        |
+Distributed Objects
+        |
+RPC
+        |
+Reliable Message Layer
+        |
+Ethernet Frame Transport
+        |
+VirtIO / NIC Driver
+\end{verbatim}
+
+\subsection{Ethernet --- generic frame transport}
+
+The NIC driver exports raw Ethernet frames. It knows about MAC addresses, MTU,
+and frame CRCs. It knows \textbf{nothing} about IP, TCP, RPC, or services. Its
+endpoint protocol has two operations:
+
+\begin{itemize}
+    \item \texttt{OP\_SEND(frame\_buffer)} --- transmit a frame via a moved
+        memory object.
+    \item \texttt{OP\_RECV} --- deferred receive: the caller retains a reply
+        token; the driver replies with a received frame buffer.
+\end{itemize}
+
+Ethernet is a generic frame transport that can carry IP, ARP, LLDP, custom protocols, 
+or CharlotteOS native messages. The driver provides the frames and higher layers 
+interpret them.
+
+\subsection{Reliable message layer}
+
+This layer provides sequenced, acknowledged, reliable delivery of \textbf{messages}
+(not streams) over the raw frame transport. It handles:
+
+\begin{itemize}
+    \item Sequencing (each message has a monotonic sequence number).
+    \item Acknowledgements (the receiver confirms delivery).
+    \item Retransmission (unacknowledged messages are resent).
+    \item Fragmentation (messages larger than MTU are split and reassembled).
+    \item Batching (multiple messages in one frame, one ACK for multiple messages).
+    \item Congestion control (bounded in-flight windows).
+\end{itemize}
+
+The abstraction exported is a \textbf{reliable message}, not a byte stream.
+This is the building block for RPC, consensus protocols, and distributed objects.
+
+\subsection{RPC layer}
+
+The RPC layer provides request/reply semantics over the reliable message layer:
+
+\begin{itemize}
+    \item \textbf{Synchronous-looking futures:} \texttt{service.call(opcode, args).await?}
+    \item \textbf{Asynchronous invocation:} the \texttt{Future} is backed by a
+        pending RPC call; the shard continues other work while waiting.
+    \item \textbf{Object references:} capabilities can be serialized and sent
+        over RPC (delegation across machines).
+    \item \textbf{Serialization:} typed protocol crates handle encoding/decoding
+        between Rust types and the wire format.
+\end{itemize}
+
+\subsection{Distributed objects}
+
+At the top of the stack, applications interact with \textbf{capabilities} ---
+the same abstraction they use for local IPC:
+
+\begin{verbatim}
+let payroll: Capability<PayrollService> = lookup("Payroll")?;
+payroll.call("calculate_salary", employee).await?;
+\end{verbatim}
+
+Whether the Payroll service runs on the same machine (local endpoint IPC) or on
+a different machine (remote RPC over reliable messages over Ethernet) is
+\textbf{transparent to the application}. The capability lookup returns a
+connection; the transport layer behind that connection is an implementation
+detail.
+
+\section{TCP/IP as a compatibility service}
+
+TCP/IP remains fully supported --- as a userspace compatibility service, not the
+native programming model. A smoltcp adapter implements the \texttt{phy::Device}
+trait over the NIC driver endpoint:
+
+\begin{verbatim}
+// smoltcp adapter:
+fn receive(&mut self, now: Instant) -> Option<(IpPacket, ...)> {
+    // Calls OP_RECV on the NIC driver endpoint.
+}
+
+fn transmit(&mut self, now: Instant) -> Option<...> {
+    // Calls OP_SEND with a memory object.
+}
+\end{verbatim}
+
+The TCP/IP stack itself --- a standard smoltcp 0.13 instance --- needs no
+modification. It is wrapped in a userspace service that registers as
+\texttt{"tcpip"} and serves clients through endpoint IPC. Legacy software
+that requires TCP/IP connects to this service.
+
+\section{Transport independence}
+
+The reliable message layer is transport-agnostic. It can run over:
+
+\begin{itemize}
+    \item \textbf{Ethernet} --- for inter-machine communication.
+    \item \textbf{Shared memory} --- for co-located processes on the same machine,
+        where the kernel can set up shared memory regions instead of going through
+        the NIC.
+    \item \textbf{Loopback} --- for same-machine same-stack communication.
+    \item \textbf{RDMA} --- for high-performance cluster interconnects.
+    \item \textbf{PCIe NTB} --- for backplane communication in multi-socket
+        systems.
+\end{itemize}
+
+The RPC layer and everything above it are unchanged regardless of the transport.
+This is the same principle that makes local IPC transparent to the application
+when it moves from same-process to same-machine to different-machine.
+
+\section{Zero-copy networking}
+
+The network stack avoids copying whenever possible:
+
+\begin{itemize}
+    \item \textbf{Receive path:} the NIC driver receives a buffer from hardware.
+        That buffer (a memory object) is passed up the stack by transferring
+        ownership --- first to the message layer (for reassembly), then to the
+        RPC layer (for deserialization), then to the application. No intermediate
+        copies.
+    \item \textbf{Transmit path:} the application creates a buffer. It is passed
+        down by moving ownership. The NIC driver DMA's it directly from the
+        application's pages.
+    \item \textbf{Buffer recycling:} after the application consumes a received
+        buffer, it returns the (now empty) memory object to the driver's RX pool.
+        The driver re-pins it for DMA and the cycle repeats.
+\end{itemize}
+
+This is the memory-object transfer model (Chapter~6) applied to networking.
+
+\section{Why the networking architecture matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Remote IPC = local IPC.} An application that invokes a
+        capability does not know or care whether the service is local or
+        remote. This means:
+        \begin{itemize}
+            \item Services can be relocated without application changes.
+            \item Testing can substitute a local mock for a remote service.
+            \item The network boundary is not a source of bugs that only
+                appear in production.
+        \end{itemize}
+
+    \item \textbf{Capability-based, not address-based.} An application invokes
+        \texttt{PayrollService}, not \texttt{10.2.3.17:443}. Authority is a
+        capability, not reachability. A compromised application that can
+        reach the network cannot fabricate a connection to a service it was
+        not granted.
+
+    \item \textbf{Zero-copy without loss of safety.} Pages move by changing
+        ownership, not by copying. The MMU (and IOMMU) enforce that the sender
+        cannot access moved data. This is faster than a socket and safer than
+        shared memory.
+
+    \item \textbf{Message boundaries are preserved.} The native abstraction is a
+        message with identity, ownership, metadata, and boundaries. There is no
+        need for framing protocols on top of TCP streams. This simplifies
+        protocol implementations and eliminates framing bugs.
+
+    \item \textbf{TCP/IP is available but not mandatory.} Legacy software
+        connects to the TCP/IP service. Native software uses the capability-based
+        stack. The transition is incremental: a service can expose both a native
+        endpoint and a TCP/IP socket through the compatibility service.
+\end{enumerate}
+
+\endinput

@@ -1,0 +1,130 @@
+\chapter{Implementation Status}
+
+This appendix catalogs what has been built and verified, organized by
+architectural phase. It is a snapshot; the repository history is the
+authoritative record.
+
+\section{Implementation phases}
+
+\begin{longtable}{|c|p{8cm}|c|}
+\hline
+\textbf{Phase} & \textbf{Description} & \textbf{Status} \\
+\hline
+1 & Capability table, rights masks, object teardown & Done \\
+2 & Endpoint IPC v1: scalar send/call/receive/reply, connection delegation,
+    reply tokens & Done \\
+3 & Userspace name/service manager, bootstrap delivery, ELF loader,
+    supervisor, generation tracking & Done \\
+4 & First-class memory objects: allocate, map, unmap, close, ownership
+    accounting & Done \\
+5 & Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation,
+    cancellation, server-death recovery & Done \\
+6 & CQ subsystem normalization: operation IDs, detached submission,
+    CQ\_WAIT/CQ\_WAKE, per-shard CQ partitioning, backlog batching, 32-byte
+    completion records & Done \\
+7 & Sitas endpoint/CQ backend: endpoint readiness binding, unified shard
+    wait, ShardExecutor (budgeted polling), ShardParker seam (spin free),
+    per-shard CQ rings & Done \\
+8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
+    interrupt-driven deferred reads, crash recovery & Done \\
+9 & Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init,
+    MAC read, virtqueue setup, frame TX/RX (compiles). Smoltcp 0.13 adapter
+    + TCP/IP service binary (compile). Runtime validation pending on KVM. &
+    Driver built, not runtime-validated \\
+10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
+    wakes, sustained-window load rebalancing & Done \\
+11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
+    \texttt{Context}, fixed-width versioned launch header, explicit startup
+    input & Done \\
+\hline
+\end{longtable}
+
+\section{Success criteria}
+
+\begin{enumerate}
+    \item Two EL0 domains communicate through a bounded endpoint --- \textbf{Verified.}
+    \item Deferred async call while a shard continues other tasks --- \textbf{Verified.}
+    \item Moved memory object --- sender locked out until return --- \textbf{Verified.}
+    \item Lending enforced by mappings, including death cleanup --- \textbf{Verified.}
+    \item Single \texttt{CQ\_WAIT} for endpoint + completions + device interrupts --- \textbf{Verified.}
+    \item Terminal CQ results survive ring overflow (non-lossy backlog) --- \textbf{Verified.}
+    \item Coalesced remote shard wakes (idempotent scheduler fix) --- \textbf{Verified.}
+    \item Userspace UART driver with only delegated MMIO + IRQ --- \textbf{Verified.}
+    \item Restart invalidates stale connections + device reset + op reconciliation --- \textbf{Verified.}
+    \item Virtio-net data path with batched packet buffers --- \textbf{Compiled, runtime pending.}
+    \item Fixed-width stable ABI representations (32-byte CQ entries) --- \textbf{Implemented; not formally audited.}
+    \item Capability misuse and cancellation race adversarial tests --- \textbf{Partial; six IPC error-path tests.}
+\end{enumerate}
+
+\section{Verified (boots on QEMU, zero panics)}
+
+\begin{itemize}
+    \item \textbf{AArch64:} boots, all self-tests pass, the full EL0 service
+        suite (name service, echo, client, UART driver, sitas executor) runs
+        through \texttt{crt0/cmain}. The sitas \texttt{basic\_kv} binary runs
+        with 2 shards on per-shard CQ rings.
+
+    \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
+        Ring-3 userspace is implemented but not yet exercised.
+
+    \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
+        close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
+        integrated with AS, non-lossy CQ overflow backlog, per-shard CQ
+        partitioning, 32-byte entries.
+
+    \item \textbf{Endpoint IPC:} bounded server queues, scalar messages,
+        connection delegation with rights attenuation, memory-object attachments
+        (move/lend/copy), deferred replies, reply-time connection delegation.
+
+    \item \textbf{Device capabilities:} MmioRegion and Interrupt object types,
+        user-accessible Device-nGnRnE page mapping, GICv3 SPI enable/route/mask,
+        IRQ-to-CQ coalesced delivery (lock-free deferred wake).
+
+    \item \textbf{Userspace drivers:} reference UART driver (PL011) with
+        delegated MMIO + IRQ, interrupt-driven deferred reads, crash-test
+        restart with device reset and operation reconciliation.
+
+    \item \textbf{Syscall dispatch:} AArch64 SVC handler dispatches 49 syscalls.
+        Caller ASID is derived from the trap frame, never a userspace parameter.
+
+    \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
+        idempotent wakes, deferred reaper, per-LP thread pinning.
+
+    \item \textbf{Sitas integration:} sitas-core compiles for aarch64-none.
+        sitas-charlotte links against the kernel's syscall ABI. Per-shard CQ
+        rings mapped by the loader contract. ShardParker seam retires
+        busy-waiting.
+
+    \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net},
+        \texttt{charlotte-protocol-msg}.
+
+    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service binary
+        compile for aarch64-none.
+
+    \item \textbf{Raft:} two-node election over local endpoint IPC on 4-LP
+        QEMU/HVF. Timer-driven elections via completion events. Verifier domains
+        terminate rather than polling.
+
+    \item \textbf{CI:} GitHub Actions builds both architectures with
+        \texttt{-D warnings}, QEMU boot gate on AArch64.
+\end{itemize}
+
+\section{Known limitations}
+
+\begin{itemize}
+    \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists;
+        the EL0 test and real-EL0 user thread are AArch64-only.
+    \item \textbf{Virtio-net runtime:} the driver and TCP/IP stack compile but
+        cannot be runtime-validated on macOS (HVF does not emulate EL0 MMIO
+        instructions). Validation requires a Linux KVM host.
+    \item \textbf{General process loader:} the ELF loader is fixed-address for
+        reference service images, not a general loader with argv/env/auxv-style
+        setup.
+    \item \textbf{Resource accounting:} per-domain quotas are not yet
+        implemented; capability-table capacity is fixed.
+    \item \textbf{Cross-machine Raft:} blocked on NIC runtime validation (KVM)
+        and the reliable message layer implementation.
+    \item \textbf{IOMMU/SMMU integration:} designed but not implemented.
+\end{itemize}
+
+\endinput

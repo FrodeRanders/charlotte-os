@@ -1,0 +1,256 @@
+\chapter{Endpoints --- Communication as a First-Class Primitive}
+
+An endpoint answers one question: \textbf{``Who am I communicating with?''} It is
+the mechanism by which protection domains invoke each other. This chapter explains
+the endpoint IPC model --- CharlotteOS's primary communication primitive.
+
+\section{Server and connection model}
+
+An \textbf{endpoint} is a bounded server-side IPC receive object. A service creates
+one and receives messages on it. A \textbf{connection capability} is a client-side
+authority to send to that endpoint. Connections are minted from the endpoint
+(typically by the name service) and delegated to clients.
+
+\begin{verbatim}
+Service creates endpoint:   endpoint_create(interface="ns", capacity=16)
+Name service mints conn:    connection_mint(endpoint, SEND | CALL)
+Client receives conn:       name_service.lookup("ns") -> ConnectionCap
+\end{verbatim}
+
+Ordinary clients do not mint arbitrary connections. The name service or a policy
+service normally delegates them after an access check.
+
+\section{Message classes}
+
+CharlotteOS supports two fundamentally different kinds of messages, and the ABI
+keeps them distinct:
+
+\subsection{Scalar messages}
+
+A scalar message carries an opcode, one 64-bit argument word, and optionally a
+reply token. It fits in registers. It is suitable for:
+
+\begin{itemize}
+    \item Opcodes and request types.
+    \item Capability handles.
+    \item Status values and queue indices.
+    \item Compact control-plane operations where the payload is a single word.
+\end{itemize}
+
+Scalar messages are \textbf{fast}: they require no memory-object allocation, no
+page-table manipulation, and no TLB invalidation. The entire send/receive cycle
+is a handful of register copies.
+
+\subsection{Memory-bearing messages}
+
+A message can carry one or more \textbf{memory-object attachments} with explicit
+transfer modes (see Chapter~6). These are suitable for:
+
+\begin{itemize}
+    \item Structured requests and responses.
+    \item Strings, names, and configuration structures.
+    \item Packet payloads and block I/O buffers.
+    \item Larger replies that exceed register width.
+\end{itemize}
+
+The kernel validates each attachment: the sender must hold the referenced memory
+object with sufficient rights for the declared transfer mode. The receiver gets a
+new capability to the memory (or a temporary mapping, for borrows).
+
+\section{Message envelope}
+
+The kernel validates a fixed-width message envelope. It does not understand Rust
+enums, \texttt{serde} formats, or protocol-specific types:
+
+\begin{verbatim}
+struct MessageHeader {
+    interface: u128,       // protocol identity
+    version: u32,
+    opcode: u32,
+    flags: u32,
+    inline_len: u16,
+    segment_count: u16,
+    capability_count: u16,
+    reserved: u16,
+    user_tag: u64,
+}
+\end{verbatim}
+
+Constraints on the ABI:
+
+\begin{itemize}
+    \item Fixed-width fields --- no \texttt{usize}, no pointer-sized values.
+    \item Explicit alignment --- no compiler-dependent layout.
+    \item Checked offsets and lengths --- the kernel rejects out-of-bounds.
+    \item Explicit protocol versioning --- forward compatibility is negotiated.
+    \item Maximum attachment counts --- bounded kernel work per message.
+    \item No arbitrary userspace pointers as durable message identity.
+\end{itemize}
+
+\section{Call and reply}
+
+The most common IPC pattern is \textbf{call/reply}: a client sends a request and
+expects a response.
+
+\subsection{Synchronous-looking futures}
+
+At the Rust level, a client writes:
+
+\begin{verbatim}
+let response = network_service.connect(address).await?;
+\end{verbatim}
+
+Underneath, the runtime:
+
+\begin{enumerate}
+    \item Sends a call message through the connection capability.
+    \item The kernel creates a one-shot \textbf{reply token} bound to this call.
+    \item The caller task becomes pending (the \texttt{Future} returns
+        \texttt{Poll::Pending}).
+    \item The caller shard continues running other tasks --- no thread is
+        dedicated to this request.
+    \item The server receives the message on its endpoint.
+    \item The server replies (immediately or later).
+    \item Reply arrival wakes the client future, which returns
+        \texttt{Poll::Ready(response)}.
+\end{enumerate}
+
+No client OS thread is dedicated to the request. The shard moves on to other work.
+
+\subsection{Deferred replies}
+
+A server may retain a reply token and complete it later --- while continuing to
+serve other requests on the same shard. This is essential for device-driven
+operations:
+
+\begin{verbatim}
+async fn handle_read(pending: PendingRequest) {
+    // Submit a DMA read, retaining the reply token.
+    // Continue serving other clients while the read is in flight.
+    let buffer = device.read(address, len).await?;
+    pending.reply_with_buffer(buffer);
+}
+\end{verbatim}
+
+The server is never blocked waiting for one slow operation. The shard's executor
+polls other tasks while the read completes.
+
+\subsection{Reply token semantics}
+
+A reply token is:
+
+\begin{itemize}
+    \item \textbf{Created by the kernel} when a call message is enqueued.
+    \item \textbf{Bound to the pending call} --- it completes exactly that
+        caller's future.
+    \item \textbf{Consumable exactly once} --- a second reply attempt returns
+        an error.
+    \item \textbf{Invalidated by cancellation} --- if the caller times out or
+        aborts, the reply token becomes inert.
+    \item \textbf{Invalidated by endpoint teardown} --- if the server dies,
+        all outstanding reply tokens are invalidated, and all waiting
+        callers receive \texttt{ServiceRestarted}.
+    \item \textbf{Optionally delegable} --- a server may forward a reply token
+        to another service, allowing a chain of services to contribute to
+        a single reply.
+\end{itemize}
+
+\section{Connection delegation}
+
+A connection capability can be delegated to another domain with attenuated rights.
+This is the mechanism by which the userspace name service returns service-level
+connections:
+
+\begin{verbatim}
+// Name service:
+let full_connection = name_service.lookup("driver.nic.v1")?;
+// full_connection has SEND | CALL | DELEGATE rights
+
+// Delegate to a client with reduced rights:
+connection_delegate(full_connection, client_domain, SEND | CALL)?;
+// client_domain now holds a connection with SEND | CALL only
+\end{verbatim}
+
+The kernel mediates. The name service never sees raw endpoint identities; it
+holds connection capabilities, which it re-delegates. Each delegation step can
+only reduce rights.
+
+\section{Service identity and discovery}
+
+The kernel uses opaque endpoint identities. A userspace \textbf{name service}
+maps human-readable names to re-delegable connection capabilities:
+
+\begin{itemize}
+    \item \textbf{Registration:} a service registers as \texttt{"driver.nic.v1"}
+        with a specific endpoint. The name service stores the endpoint's
+        connection.
+    \item \textbf{Generation tracking:} each registration bumps a generation
+        counter. Stale client connections bound to the previous generation fail
+        with \texttt{ServiceRestarted}.
+    \item \textbf{Access-key gating:} a registration may specify a non-zero access
+        key. Lookups without the matching key are denied --- policy enforced by
+        a userspace service, not the kernel.
+    \item \textbf{Lookup:} a client asks for \texttt{"driver.nic.v1"} and receives
+        a connection capability (or an error). It never receives an address, a
+        port number, or a raw handle.
+\end{itemize}
+
+The name service runs in userspace. The kernel provides the endpoint and
+connection primitives; userspace provides the naming policy.
+
+\section{Two kernel data paths, not one}
+
+A critical architectural distinction: endpoint IPC is for \textbf{cross-domain
+service calls}. Completion queues are for \textbf{kernel and device operations}.
+They are not the same mechanism.
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Endpoint IPC path} & \textbf{Completion queue path} \\
+\hline
+Application $\rightarrow$ network service & Timer expiry \\
+Network service $\rightarrow$ NIC driver & DMA completion \\
+Application $\rightarrow$ filesystem service & IRQ-derived device completion \\
+Service $\rightarrow$ name service & Waiting for thread/process exit \\
+\hline
+\end{tabular}
+\end{center}
+
+A userspace driver may compose both: receive an endpoint message (data path), then
+submit a hardware operation and await a CQ entry (control path). The endpoint
+message and the hardware completion are related \emph{in the service's logic}, but
+they are different kernel abstractions with different semantics.
+
+\section{Why endpoints matter for critical software}
+
+\begin{enumerate}
+    \item \textbf{Communication is authenticated by construction.} A client that
+        holds a connection capability was authorized (at grant time, by the name
+        service or policy service) to communicate with the target. Every message
+        is implicitly authenticated --- not by an IP address, not by a UID, but
+        by possession of a kernel-mediated capability.
+
+    \item \textbf{Scalar and memory messages are distinct.} The kernel does not
+        copy arbitrary data between address spaces by default. Small control
+        messages stay small and fast. Bulk data moves as memory objects (Chapter~6)
+        with explicit ownership semantics --- no accidental copies, no buffer
+        over-reads.
+
+    \item \textbf{Deferred replies enable efficient concurrency.} A server is never
+        forced to block waiting for one slow client. It retains reply tokens for
+        in-flight work and continues serving other requests. The shard's executor
+        multiplexes naturally.
+
+    \item \textbf{Service restart is reliable.} Stale connections fail
+        deterministically with typed errors (\texttt{EndpointClosed},
+        \texttt{ServiceRestarted}). A restarted service cannot accidentally
+        inherit outstanding reply tokens from a previous instance.
+
+    \item \textbf{Name service is policy, not mechanism.} The kernel provides
+        endpoints and connections. Userspace decides who can register what name,
+        who can look up what service, and what access keys are required. The
+        kernel remains small; policy is replaceable without a kernel rebuild.
+\end{enumerate}
+
+\endinput

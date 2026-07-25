@@ -18,6 +18,8 @@ use catten_graft::{
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
+        LogStore,
+        PersistentStateStore,
     },
     node::RaftNode,
     types::{
@@ -44,6 +46,10 @@ use catten_rt::{
 use catten_services::{
     ns,
     raft,
+    disk_raft::{
+        DiskLogStore,
+        DiskPersistentStateStore,
+    },
 };
 use catten_syscall::{
     IpcRights,
@@ -238,8 +244,14 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(4, generation as u32);
 
-    let log_store = Box::new(InMemoryLogStore::new());
-    let persistent_store = Box::new(InMemoryPersistentStateStore::new());
+    // Try disk-backed stores via the object store. Fall back to in-memory
+    // if the persistent storage stack (NVMe → block → objstore) is not available.
+    let (log_store, persistent_store): (Box<dyn LogStore>, Box<dyn PersistentStateStore>) =
+        if let (Some(ls), Some(ps)) = (DiskLogStore::new(ns_conn), DiskPersistentStateStore::new(ns_conn)) {
+            (Box::new(ls), Box::new(ps))
+        } else {
+            (Box::new(InMemoryLogStore::new()), Box::new(InMemoryPersistentStateStore::new()))
+        };
     let transport = Arc::new(CharlotteTransport::new());
 
     let mut peers = Vec::new();

@@ -1,0 +1,257 @@
+\chapter{Completion Queues --- Asynchronous Operations Without Loss}
+
+A completion queue is the mechanism by which the kernel delivers results of
+asynchronous operations to userspace. This chapter explains the CQ model, the
+operation lifecycle, and the non-lossy invariant that makes CharlotteOS suitable
+for critical software.
+
+\section{When to use a completion queue}
+
+Use submission/completion when the operation belongs to the \textbf{kernel or a
+hardware-facing mechanism}, not to another userspace service:
+
+\begin{itemize}
+    \item Timer expiry.
+    \item DMA completion (disk read finished, packet transmitted).
+    \item IRQ-derived device completion (data available on UART).
+    \item Asynchronous page operations.
+    \item Waiting for thread or process exit.
+    \item Kernel-managed asynchronous object work.
+\end{itemize}
+
+Use endpoint IPC (Chapter~5) when one protection domain invokes another.
+Confusing these two paths leads to architectural mistakes: a service call is not a
+kernel operation, and a reply token is not a completion record.
+
+\section{The CQ ring --- a shared-memory completion buffer}
+
+A completion queue is a \textbf{shared-memory ring buffer} between the kernel
+(producer) and userspace (consumer). A single 4 KiB page contains a header and a
+circular array of fixed-size entries.
+
+Each entry is 32 bytes:
+
+\begin{verbatim}
+struct CompletionEntry {
+    operation: u64,    // operation identifier (e.g., timer id)
+    user_data: u64,    // opaque cookie set by the submitter
+    status: u32,       // completion status code
+    flags: u32,        // per-entry flags
+    result: i64,       // operation result (e.g., bytes read)
+    returned_capability: u64, // returned resource capability id
+}
+\end{verbatim}
+
+The ring is mapped into the user address space with read-only permissions for the
+consumer (userspace) and read-write for the producer (kernel). This means:
+
+\begin{itemize}
+    \item \textbf{Userspace drains entries without syscalls.} Advancing the
+        consumer tail is a store to a shared page; reading entries is a load.
+        No kernel crossing needed for the common fast path.
+    \item \textbf{The kernel writes entries with a release fence.} The consumer
+        sees coherent data without additional synchronization.
+    \item \textbf{Overflow is detected, not hidden.} An overflow counter in the
+        header lets userspace detect when entries were produced faster than
+        consumed.
+\end{itemize}
+
+\section{The non-lossy invariant}
+
+\begin{quote}
+\textbf{A terminal operation result must never be silently lost because the
+userspace CQ ring is full.}
+\end{quote}
+
+This is an architectural invariant, so when the ring is full, the
+kernel has several options:
+
+\begin{itemize}
+    \item \textbf{Retain overflow in a per-domain kernel backlog.} Entries that
+        cannot fit in the ring wait in a kernel-side buffer. When userspace
+        drains the ring, the backlog drains into it.
+    \item \textbf{Stop accepting new submissions.} The kernel may return
+        \texttt{WouldBlock} on \texttt{submit}, applying backpressure at the
+        submission point rather than at the completion point.
+    \item \textbf{Propagate \texttt{WouldBlock}.} The CQ's wait operation can
+        indicate that the ring is full and must be drained.
+\end{itemize}
+
+The ring's overflow counter is \textbf{pressure telemetry} indicating to the consumer 
+that ``You are falling behind.'' 
+
+In a critical system, a lost completion for a disk write or a timer
+expiry is a correctness bug with potentially severe consequences. CharlotteOS
+treats each completion as a datum that must be delivered at least once.
+
+\section{Per-shard CQ partitioning}
+
+Each address space owns a set of completion queues, keyed by \rustfn{CqId}. Queue
+0 is the default. For a service with multiple sitas shards, \textbf{per-shard CQ
+rings} enable targeted wakes:
+
+\begin{itemize}
+    \item Shard A's executor waits on CQ 0.
+    \item Shard B's executor waits on CQ 1.
+    \item A completion destined for Shard A is posted to CQ 0.
+    \item Only Shard A's executor is woken; Shard B is undisturbed.
+\end{itemize}
+
+This prevents cross-shard completion stealing (a pathological behavior where one
+busy shard drains entries intended for another) and keeps wakeup latency
+proportional to the number of entries, not the number of shards.
+
+\section{Operation lifecycle}
+
+Every asynchronous operation transitions through a defined state machine:
+
+\begin{verbatim}
+Created
+    -> Submitted
+    -> Accepted | Rejected
+    -> InFlight
+    -> Completed | Failed | Cancelled
+    -> ResultObserved
+    -> ResourcesReclaimed
+\end{verbatim}
+
+Each transition is explicit and observable:
+
+\begin{description}
+    \item[Created] The operation descriptor exists in userspace but has not been
+        submitted to the kernel.
+    \item[Submitted] \texttt{submit()} has been called. The kernel has the
+        operation record but has not yet validated it.
+    \item[Accepted / Rejected] The kernel has validated the operation. It may be
+        rejected immediately (invalid parameters, insufficient rights, queue
+        full) with a synchronous error.
+    \item[InFlight] The operation is being processed. The kernel or device owns
+        any associated buffers.
+    \item[Completed / Failed / Cancelled] A terminal state. The result is posted
+        to the CQ. Buffer ownership returns to userspace.
+    \item[ResultObserved] The consumer has read the CQ entry.
+    \item[ResourcesReclaimed] The operation's capability-table slot has been
+        freed (via \texttt{close}).
+\end{description}
+
+\section{Waiting on a CQ --- \texttt{CQ\_WAIT}}
+
+When a shard's executor has no ready tasks, it calls \texttt{CQ\_WAIT} on its
+assigned queue. The kernel blocks the calling thread until one of three things
+happens:
+
+\begin{enumerate}
+    \item A completion entry is posted to the CQ.
+    \item An explicit \texttt{CQ\_WAKE} arrives (from another shard or the
+        kernel).
+    \item A deadline elapses (timeout variant: \texttt{CQ\_WAIT\_TIMEOUT}).
+\end{enumerate}
+
+The wait is race-free. The sequence is:
+
+\begin{enumerate}
+    \item Inspect the CQ ring: if completions are pending, return immediately.
+    \item Register a waiter against the CQ's generation counter.
+    \item Re-inspect the CQ ring: if completions arrived during registration,
+        unregister and return.
+    \item Block the thread. It will be woken when the generation counter changes
+        (a new entry is posted or a \texttt{CQ\_WAKE} bumps it).
+\end{enumerate}
+
+This is the \textbf{single wait point} for the entire shard. Three event sources
+converge on it:
+
+\begin{itemize}
+    \item Kernel completions (CQ entries from \texttt{submit} operations).
+    \item Endpoint readiness (a coalesced wake when messages arrive on a bound
+        endpoint).
+    \item Device interrupts (a coalesced wake from a bound interrupt object).
+\end{itemize}
+
+The shard does not need separate wait operations for timers, IPC messages, and
+device events. One aggregated wait covers all of them.
+
+\section{LP affinity for CQ waits}
+
+A thread that blocks in \texttt{CQ\_WAIT} is assigned an affinity LP. When woken,
+the scheduler returns it to the same LP rather than scanning for the least-loaded
+one. This has three benefits:
+
+\begin{enumerate}
+    \item \textbf{Timer events stay on the same LP's queue,} eliminating
+        cross-LP migration races (observer-not-found when a completion is posted
+        on a different LP than the one where the waiter was registered).
+    \item \textbf{Cache warmth is preserved.} The waking thread finds its data
+        in the LP's local caches.
+    \item \textbf{Shard-to-LP affinity is maintained.} The sitas shard that blocked
+        on CQ 0 on LP 2 wakes up on LP 2, where its shard-local state lives.
+\end{enumerate}
+
+\section{Operation IDs versus per-operation capabilities}
+
+An earlier experimental design returned a \texttt{CompletionCap} for every
+submission. The final ABI uses \textbf{operation IDs} for the common path:
+
+\begin{itemize}
+    \item \texttt{submit()} returns an \rustfn{OperationId} (a lightweight
+        identifier).
+    \item The result arrives in the CQ with the same operation ID.
+    \item No capability-table slot is consumed for common operations.
+    \item A first-class operation capability is created only when independent
+        waiting, cancellation, delegation, inspection, or policy requires it.
+\end{itemize}
+
+This avoids capability-table pressure for high-rate operations (timer events,
+network packet completions) while preserving the capability model for operations
+that need first-class authority.
+
+\section{Cancellation and buffer ownership}
+
+When a userspace task drops a completion handle or explicitly cancels an
+in-flight operation:
+
+\begin{enumerate}
+    \item The kernel marks the operation as \texttt{Cancelling} but \textbf{retains
+        any transferred buffer.} The buffer may still be the target of DMA or
+        kernel access.
+    \item A terminal \texttt{Cancelled} completion is eventually posted to the CQ,
+        returning buffer ownership to userspace.
+    \item On domain teardown (process exit), outstanding buffers may be leaked
+        rather than freed while the kernel or a device may still touch them.
+        Reclamation goes through explicit operation and device teardown.
+\end{enumerate}
+
+This contract ensures that a buffer is never freed while still reachable by the
+kernel or a device. The safe Rust wrapper around an owned buffer consumes the
+value on submission and returns it on completion; there is no path to
+use-after-free even through cancellation.
+
+\section{Why completion queues matter for critical software}
+
+\begin{enumerate}
+    \item \textbf{Non-lossy completions are a correctness guarantee.} A disk-write
+        confirmation, a timer expiry, or a sensor reading is a fact and losing it
+        is a bug. CharlotteOS guarantees delivery.
+
+    \item \textbf{The single aggregated wait eliminates a class of race conditions.}
+        A shard that must wait on ``timer or IPC message or device interrupt'' in
+        a conventional OS must manage three separate wait objects, with potential
+        lost-wake races between checking one and arming another. One CQ means one
+        atomic check-and-arm sequence.
+
+    \item \textbf{Per-shard CQ rings enable predictable latency.} No shard wakes
+        another shard's executor to deliver a completion. Wakes are targeted,
+        bounded, and proportional to the actual work.
+
+    \item \textbf{The CQ ring is zero-syscall in the common case.} The fast path
+        --- drain entries, process results, loop --- requires no kernel
+        transitions. Only when the ring is empty and the shard must block does a
+        syscall occur.
+
+    \item \textbf{Cancellation is defined, not best-effort.} Every cancellation
+        path ends in a terminal completion. There is no ``the buffer might or
+        might not be freed'' ambiguity. The ownership contract is explicit and
+        testable.
+\end{enumerate}
+
+\endinput

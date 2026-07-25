@@ -1,0 +1,112 @@
+\chapter{Lessons Learned}
+
+Bootstrapping an async-first kernel on real hardware (QEMU) surfaced bugs that
+static analysis and self-tests never caught. This appendix records the most
+instructive, and the design insights they produced.
+
+\section{Bugs found on hardware}
+
+\subsection{Panic handler recursed through heap-dependent logging}
+
+\textbf{Symptom:} any fault during early boot silently triple-faulted instead of
+printing a panic message. \textbf{Root cause:} the panic handler used the normal
+logging path, which allocated from the kernel heap. A fault before the heap was
+ready caused the panic handler to fault, re-entering itself, recursing until
+stack overflow and triple fault. \textbf{Fix:} the panic handler now uses
+\texttt{early\_logln!} (direct serial writes, no heap dependency). This unmasked
+every subsequent bug.
+
+\subsection{Blocked threads lost their execution context}
+
+\textbf{Symptom:} a thread that blocked in \texttt{wait()} restarted from its
+entry point when woken. \textbf{Root cause:} \texttt{block\_thread} cleared the
+scheduler's \texttt{current\_handle} before \texttt{yield\_lp} saved the
+thread's context, so the save was skipped. \textbf{Fix:} a self-blocking thread
+stays \texttt{current\_handle} until the yield saves its context.
+
+\subsection{RwLock held-across-call deadlocks}
+
+\textbf{Symptom:} \texttt{sleep()} worked with logging but hung without it
+(a heisenbug). \textbf{Root cause:} an \texttt{if let} binding extended an
+RwLock read guard's lifetime across a call that tried to acquire the write lock.
+\textbf{Fix:} bind the value out of the scrutinee first, so the temporary guard
+drops before the re-locking call.
+
+\subsection{Quantum timer grew without bound}
+
+\textbf{Symptom:} the per-LP timer queue contained thousands of quantum events
+after extended operation. \textbf{Root cause:} manual yields enqueued a new
+quantum event each time. \textbf{Fix:} an \texttt{armed} flag keeps exactly one
+quantum event in flight.
+
+\subsection{A thread cannot free its own kernel stack}
+
+\textbf{Symptom:} a returning kernel thread hung during teardown. \textbf{Root
+cause:} \texttt{ThreadContext::Drop} deallocated the stack while the thread was
+still executing on it. \textbf{Fix:} a deferred reaper moves dead threads to a
+zombie list and drops them from the next thread's context after the switch.
+
+\subsection{LA57 paging-mode mismatch}
+
+\textbf{Symptom:} a \texttt{\#GP} with a non-canonical address on x86-64.
+\textbf{Root cause:} the address width was derived from CPUID (57-bit capability)
+instead of \texttt{CR4.LA57} (the active mode, 48-bit under Limine). \textbf{Fix:}
+derive from the active paging mode.
+
+\subsection{ASID-0 collision}
+
+\textbf{Symptom:} the first user thread faulted at its entry point. \textbf{Root
+cause:} the first user address space received ASID 0, which equals
+\texttt{KERNEL\_ASID}, so the thread was created as a kernel thread (EL1),
+where PXN forbade execution of user code. \textbf{Fix:} pre-populate the table
+with the kernel AS at index 0.
+
+\subsection{x86-64 trampoline halted on thread return}
+
+\textbf{Symptom:} the async demo's worker completed but the coordinator never
+resumed. \textbf{Root cause:} the x86-64 trampoline entered a \texttt{hlt} loop
+when a thread returned, instead of calling \texttt{abort()}. \textbf{Fix:} make
+the x86-64 trampoline call \texttt{abort} on return.
+
+\section{Key insights}
+
+\begin{enumerate}
+    \item \textbf{The block-yield-wake cycle is the hard problem.} Designing the
+        completion ABI was straightforward compared to making \texttt{wait()}
+        correctly save and restore thread state through the cooperative
+        scheduler. Every scheduling primitive exercised a new path and surfaced
+        a new bug.
+
+    \item \textbf{Booting on hardware finds bugs that static analysis cannot.}
+        The panic-handler recursion, ASID-0 collision, and LA57 paging
+        mismatch were invisible in self-tests and logical reasoning. Every one
+        was found by observing actual fault register values.
+
+    \item \textbf{The observer/waker pattern is the right primitive.} Once
+        \texttt{Completion} was made \texttt{Observable} and \texttt{wait()}
+        used the same path as \texttt{sleep()}, the entire completion subsystem
+        fell into place. The exit-observer mechanism is the natural endpoint:
+        a thread exiting \emph{is} the completion event.
+
+    \item \textbf{The async model genuinely removes the retrofit tax.} On
+        CharlotteOS, \texttt{wait(cap)} blocks the same way \texttt{sleep(50ms)}
+        blocks --- both register a \texttt{Waker} on an \texttt{Observable} and
+        yield. There is no emulation, no thread pool, no signal-handler
+        tightrope. The kernel and the runtime agree about what is fundamental.
+
+    \item \textbf{The sitas traits were essential for co-design.} The
+        \texttt{ReactorBackend} trait became the executable specification for
+        the async syscall ABI. The sitas-charlotte backend validates ABI shapes
+        before any kernel path exists. This bidirectional validation is the
+        core of the collaboration.
+
+    \item \textbf{The deferred reaper is necessary for any thread that exits.}
+        A thread cannot free its own stack. The reaper pattern is the minimum
+        safe discipline.
+
+    \item \textbf{\texttt{RwLock} held-across-call is a systemic hazard.} The
+        Rust pattern of \texttt{if let Some(val) = lock().method()} extends
+        the guard's lifetime across the body. Bind the value first, then use it.
+\end{enumerate}
+
+\endinput

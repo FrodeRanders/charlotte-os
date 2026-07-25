@@ -1,0 +1,189 @@
+\chapter{Userspace Drivers}
+
+In CharlotteOS, device drivers are userspace processes. They receive only the
+resources they need, they communicate through endpoints, and their failures are
+contained. This chapter explains the userspace driver model.
+
+\section{The problem with kernel drivers}
+
+In a monolithic kernel, a driver has access to everything: all physical memory,
+all interrupt vectors, all kernel data structures. A bug in a driver --- a buffer
+overflow, a use-after-free, a race condition --- can corrupt the kernel and crash
+the system. This is not merely a theoretical concern: driver bugs are the dominant cause
+of operating system crashes in most operating systems.
+
+The microkernel solution is to move drivers to userspace. But simply moving
+them is not enough: a userspace driver that can still map arbitrary physical
+memory or receive arbitrary interrupts is still dangerous. The driver must be
+\textbf{granted} only what it needs, and the grants must be mediated by the
+kernel.
+
+\section{The DriverGrant}
+
+When a driver domain is created, the supervisor delivers a \texttt{DriverGrant}
+through the config-page contract:
+
+\begin{verbatim}
+struct DriverGrant {
+    device: DeviceCap,        // identity and lifecycle of the device
+    mmio: Vec<MmioRegionCap>, // register windows, page-granular
+    interrupts: Vec<InterruptCap>, // IRQ sources for this device
+    dma_domain: Option<DmaDomainCap>, // DMA translation, if IOMMU present
+    bootstrap_endpoint: EndpointCap,  // endpoint on which to serve clients
+}
+\end{verbatim}
+
+The driver receives \textbf{exactly} the MMIO register windows and interrupt
+vectors it needs. It cannot:
+\begin{itemize}
+    \item Map arbitrary physical memory.
+    \item Receive interrupts not assigned to its device.
+    \item Access other devices' MMIO regions.
+    \item Perform DMA without explicit pinning into its DMA domain.
+\end{itemize}
+
+\section{MMIO delegation}
+
+An \texttt{MmioRegion} capability represents a page-granular device register
+window. The driver maps it into its address space as Device-nGnRnE memory
+(user-accessible, execute-never, strongly ordered on AArch64; uncacheable on
+x86-64).
+
+The mapping is a kernel-mediated operation: the driver calls
+\texttt{mmio\_map(region\_cap, virtual\_address)}. The kernel validates the
+capability, creates the page-table entries with the correct memory attributes,
+and returns. The driver then performs \textbf{direct EL0 MMIO} --- load and
+store instructions to the mapped virtual addresses, with no kernel involvement
+on the fast path.
+
+This is the key performance property: the common case (reading a device register,
+writing to a FIFO) is one CPU instruction. There is no syscall overhead per
+MMIO access.
+
+\section{Interrupt delivery}
+
+An \texttt{Interrupt} capability represents a routed interrupt source. The driver
+binds it to its completion queue:
+
+\begin{verbatim}
+interrupt_bind(int_cap, cq_id);
+\end{verbatim}
+
+When the interrupt fires:
+
+\begin{enumerate}
+    \item The IRQ dispatcher reads the per-interrupt route table atomically.
+    \item It masks the source at the interrupt controller (GICv3 on AArch64,
+        x2APIC on x86-64).
+    \item It atomically bumps a coalescing counter.
+    \item It pushes a wake onto a deferred queue. The actual
+        \texttt{completion::wake} (which takes locks) is performed from
+        thread context by \texttt{yield\_lp} and the LP idle loop.
+    \item The driver's shard wakes.
+    \item The driver reads the device's status register (direct EL0 MMIO) to
+        determine the interrupt cause.
+    \item The driver processes the interrupt and unmasks the source.
+\end{enumerate}
+
+This is a lock-free fast path: the interrupt context does very little work (atomic
+counter bump, deferred-wake enqueue), deferring the rest to thread context.
+
+\section{The reference UART driver}
+
+The PL011 UART driver demonstrates the full lifecycle:
+
+\begin{itemize}
+    \item \textbf{Direct MMIO writes to the transmit FIFO.} No syscalls.
+    \item \textbf{Interrupt-driven deferred reads.} The driver retains a reply
+        token for a pending read. When the RX interrupt fires, the driver reads
+        the receive register and completes the deferred reply.
+    \item \textbf{Cooperative shutdown.} On graceful exit, the driver unmap its
+        MMIO region and closes its interrupt.
+    \item \textbf{Crash recovery.} If the driver terminates without releasing
+        its device caps (panic, infinite loop, killed by supervisor), the
+        teardown path:
+        \begin{enumerate}
+            \item Reclaims the MMIO region (unmaps it, returns to the kernel).
+            \item Unroutes the interrupt.
+            \item Reconciles outstanding operations: any pending reply tokens
+                are invalidated; any borrowed memory is returned to lenders.
+            \item Resets the device hardware.
+        \end{enumerate}
+        A restarted instance with fresh grants resumes under a bumped
+        generation.
+\end{itemize}
+
+\section{DMA and the IOMMU}
+
+For DMA-capable devices (network cards, storage controllers), a userspace
+driver needs more: the ability to tell the device ``read from physical address
+X'' or ``write to physical address Y.'' Without an IOMMU, this is a safety
+gap: a malicious or buggy driver could program the device to DMA into kernel
+memory or another domain's pages.
+
+The architecture anticipates two levels of isolation:
+
+\begin{itemize}
+    \item \textbf{Without IOMMU:} the driver is trusted with DMA. It still
+        receives only the MMIO and interrupt it needs, and it still runs in
+        a separate address space, so a CPU-side bug cannot read kernel memory.
+        But a DMA programming bug can violate memory isolation.
+    \item \textbf{With IOMMU/SMMU:} the DMA domain capability binds the
+        device to a specific IOMMU translation table. The driver can only
+        DMA into pages explicitly pinned into its DMA domain. The kernel
+        validates every pin/unpin through the capability. The IOMMU hardware
+        enforces the rest --- even a malicious driver cannot DMA outside its
+        domain.
+\end{itemize}
+
+The driver API is the same in both cases: \texttt{dma\_pin(memory\_object)} and
+\texttt{dma\_unpin(memory\_object)}. Without an IOMMU, these are no-ops (the
+kernel trusts the driver). With an IOMMU, they manipulate the translation table.
+
+\section{Driver service layering}
+
+Complex I/O stacks decompose into separate failure and authority domains:
+
+\begin{verbatim}
+Application
+    -> socket endpoint
+Network service
+    -> packet endpoint
+NIC driver
+    -> MMIO / DMA / IRQ
+Hardware
+\end{verbatim}
+
+The NIC driver knows about hardware registers and descriptor rings, the network
+service knows about protocols and sockets, and the application knows about its
+business logic. A crash in any layer is contained: the NIC driver crashes,
+the network service sees \texttt{ServiceRestarted}, and reconnects to a fresh
+instance.
+
+\section{Why userspace drivers matter for critical software}
+
+\begin{enumerate}
+    \item \textbf{Driver bugs are contained.} A buffer overflow in a NIC driver
+        corrupts that driver's address space, not the kernel's. The driver
+        crashes (and restarts); the system stays up.
+
+    \item \textbf{The privilege model is grant-by-grant.} A driver receives
+        exactly the resources it needs. There is no ``driver has access to
+        everything because it's in the kernel'' default.
+
+    \item \textbf{Direct MMIO keeps the fast path fast.} Reading a device
+        register is one load instruction. No syscall, no kernel transition,
+        no context switch. The driver is in userspace, but the performance
+        cost is near zero.
+
+    \item \textbf{Restart is automated and defined.} The supervisor handles
+        driver restart (device reset, grant re-issuance, generation bump).
+        Driver authors do not write recovery code.
+
+    \item \textbf{Hardware-isolated DMA is planned.} The IOMMU integration path
+        is designed into the architecture from the start. When IOMMU support is
+        enabled, DMA-capable drivers gain hardware-enforced memory isolation
+        without API changes.
+\end{enumerate}
+
+\endinput

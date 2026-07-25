@@ -1,0 +1,187 @@
+\chapter{Vocabulary}
+
+This chapter establishes the terminology used throughout this manual. Many of these terms
+sound similar to concepts from other operating systems, but their CharlotteOS
+definitions are specific.
+
+\section{Protection domain}
+
+A \textbf{protection domain} is an address space and authority boundary. It owns:
+
+\begin{itemize}
+    \item A capability table.
+    \item Memory mappings.
+    \item One or more execution contexts (threads).
+    \item Resource accounting.
+    \item Failure and teardown state.
+\end{itemize}
+
+A \emph{process} is the concrete implementation of a protection domain, but
+architectural discussion prefers the semantic term.
+
+\section{Execution context}
+
+An \textbf{execution context} is a kernel-scheduled thread. It may have:
+
+\begin{itemize}
+    \item LP affinity.
+    \item Priority or scheduling class.
+    \item A current protection domain.
+    \item A wait state.
+    \item An associated userspace executor.
+\end{itemize}
+
+\section{Logical processor (LP)}
+
+A \textbf{logical processor} is CharlotteOS's representation of a schedulable
+hardware execution context --- typically one CPU core (or one hyperthread).
+
+An LP is \textbf{not} a shard (in the sitas sense). A typical mapping is:
+
+\begin{verbatim}
+one sitas shard
+    <-> one LP-affine userspace thread
+    <-> normally one logical CPU
+\end{verbatim}
+
+The architecture retains the distinction so that CPU hotplug, 
+oversubscription, migration, asymmetric CPUs, and multiple sharded processes
+remain possible.
+
+\section{Sitas shard}
+
+A \textbf{shard} is a userspace ownership and execution domain:
+
+\begin{itemize}
+    \item One executor runs its tasks.
+    \item At most one task at a time mutates shard-owned state.
+    \item Cross-shard access occurs through typed messages carrying owned values.
+    \item Placement is explicit but is not the shard's identity.
+\end{itemize}
+
+\section{Capability}
+
+A \textbf{capability} is an unforgeable reference to a kernel object, carrying
+rights. It answers: ``May I perform this operation?''
+
+Capabilities are scoped to a protection domain's capability table. A process
+cannot fabricate a capability; it can only receive one through the bootstrap
+contract or through IPC.
+
+\section{Endpoint}
+
+An \textbf{endpoint} is a bounded server-side IPC receive object. It has:
+
+\begin{itemize}
+    \item An owning protection domain.
+    \item A queue capacity.
+    \item A protocol/interface identity.
+    \item Receive rights.
+    \item Lifecycle and closure state.
+\end{itemize}
+
+\section{Connection capability}
+
+A \textbf{connection capability} is a client-side authority to send or call an
+endpoint. Possession of a service name is not authority. A name service resolves a
+name and conditionally returns a connection capability.
+
+\section{Message}
+
+A \textbf{message} is a kernel-validated IPC envelope consisting of:
+
+\begin{itemize}
+    \item Interface or protocol identifier.
+    \item Opcode.
+    \item Flags.
+    \item Inline scalar words.
+    \item Zero or more memory-object attachments.
+    \item Zero or more delegated capability attachments.
+    \item Optional reply authority.
+\end{itemize}
+
+The kernel understands the envelope structure, not arbitrary Rust types.
+
+\section{Reply token}
+
+A \textbf{reply token} is one-shot authority to complete a blocking or deferred
+call. It is:
+
+\begin{itemize}
+    \item Created by the kernel.
+    \item Bound to the caller's pending call.
+    \item Consumable exactly once.
+    \item Invalidated by cancellation, caller death, or endpoint teardown.
+    \item Optionally delegable when explicitly allowed.
+\end{itemize}
+
+\section{Resource capability}
+
+A \textbf{resource capability} authorizes operations on a kernel-managed object
+such as a memory object, endpoint, connection, interrupt, MMIO region, DMA domain,
+device, completion queue, or timer.
+
+\section{Operation and completion queue}
+
+An \textbf{operation} is submitted work whose progress may depend on the kernel,
+hardware, or a privileged service.
+
+A \textbf{completion queue (CQ)} is the aggregated, per-shard or per-process
+destination for operation results. It is waitable (with \texttt{CQ\_WAIT}) and has
+non-lossy terminal completion semantics.
+
+\section{Notification}
+
+A \textbf{notification} means: ``State may have changed; inspect the corresponding
+object or queue.'' It may be coalesced. It is not itself a result.
+
+\section{Rust Waker}
+
+A Rust \texttt{Waker} means: ``Poll this userspace future again.'' It is a
+userspace scheduling hint. It is \textbf{not} a kernel completion record and
+should not cross the ABI directly.
+
+\section{Distinctions that matter}
+
+Several concepts sound similar but must be kept separate. Confusing them leads to
+architectural mistakes.
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Concept} & \textbf{Is} & \textbf{Is not} \\
+\hline
+Capability & Unforgeable authority to act & An event, a file descriptor, a handle \\
+Endpoint & Server-side bounded receive queue & A socket, a pipe, a channel \\
+Completion & A result of an async operation & A Waker, a notification \\
+Waker & A hint to repoll a future & A kernel completion record \\
+Shard & A userspace ownership domain & An LP, a core, a thread \\
+LP & A schedulable hardware context & A shard \\
+Notification & ``Inspect state'' & A result, a data payload \\
+IPC call & Cross-domain service invocation & A kernel operation submission \\
+\hline
+\end{tabular}
+\end{center}
+
+\section{Quick reference: acronyms}
+
+\begin{description}
+    \item[ASID] Address Space Identifier. 0 = kernel; $>$0 = user address space.
+    \item[CQ] Completion Queue. Shared-memory ring buffer for async operation
+        results.
+    \item[EL0] Exception Level 0 (AArch64). Userspace execution.
+    \item[EL1] Exception Level 1 (AArch64). Kernel execution.
+    \item[HHDM] Higher Half Direct Mapping. Linear mapping of all physical memory
+        into kernel virtual address space (provided by the Limine bootloader).
+    \item[IPI] Inter-Processor Interrupt. Signal from one LP to another.
+    \item[LP] Logical Processor. One schedulable hardware execution context.
+    \item[MMU] Memory Management Unit. Hardware that enforces page-table
+        permissions.
+    \item[IOMMU / SMMU] I/O Memory Management Unit. Enforces DMA access
+        permissions from devices, analogous to the MMU for CPU access.
+\end{description}
+
+With this vocabulary established, the following chapters build the architecture
+layer by layer.
+
+\endinput

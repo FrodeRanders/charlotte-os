@@ -78,6 +78,10 @@ charlotte-smoltcp = { path = "../charlotte-smoltcp" }
 smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "socket-raw", "socket-udp", "socket-tcp"] }
 catten-syscall = { path = "../catten-syscall" }
 catten-graft = { path = "../catten-graft" }
+spin = ">=0.10.0"
+charlotte-protocol-block = { path = "../charlotte-protocol-block" }
+charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
+charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 
 [profile.dev]
 panic = "abort"
@@ -89,6 +93,30 @@ panic = "abort"
 opt-level = "s"
 lto = true
 
+
+[[bin]]
+name = "nvme"
+path = "src/bin/nvme.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "objstore"
+path = "src/bin/objstore.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "fs"
+path = "src/bin/fs.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "nvme_client"
+path = "src/bin/nvme_client.rs"
+test = false
+bench = false
 
 [[bin]]
 name = "servicemgr"

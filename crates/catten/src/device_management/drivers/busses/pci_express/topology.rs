@@ -608,9 +608,92 @@ pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
                     return Some((phys_base, irq));
                 }
             }
-            // Push bridge child buses to continue the tree walk.
             for dev in &bus.devices {
-                let _ = dev; // PcieDevice::... => PcieFunction::Bridge(child_bus)
+                let child = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Bridge(b) => Some(b),
+                        _ => None,
+                    },
+                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
+                        Some(PcieFunction::Bridge(b)) => Some(b),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(child_bus) = child {
+                    stack.push(child_bus);
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u8)> {
+    for group in &topology.segments {
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
+            for dev in &bus.devices {
+                let ep = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Endpoint(ep) => ep,
+                        _ => continue,
+                    },
+                    PcieDevice::MultiFunc(mfd) => {
+                        match mfd.functions.first().and_then(|f| {
+                            if let PcieFunction::Endpoint(ep) = f {
+                                Some(ep)
+                            } else {
+                                None
+                            }
+                        }) {
+                            Some(ep) => ep,
+                            None => continue,
+                        }
+                    }
+                    _ => continue,
+                };
+                let (class, subclass, prog_if) = (
+                    ep.identifier.class_code,
+                    ep.identifier.subclass,
+                    ep.identifier.prog_if,
+                );
+                if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
+                    continue;
+                }
+                let cfg = ep.cfg_ptr.lock();
+                let (phys_base, irq) = {
+                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    let bar0 = header.bar(0) as u64;
+                    let bar0_phys = if bar0 & 0x4 != 0 {
+                        let bar1 = header.bar(1) as u64;
+                        ((bar0 & 0xffff_fff0) as u64) | ((bar1 & 0xffff_ffff) << 32)
+                    } else {
+                        (bar0 & 0xffff_fff0) as u64
+                    };
+                    let irq = header.interrupt_line();
+                    (bar0_phys, irq)
+                };
+                drop(cfg);
+                if phys_base != 0 {
+                    return Some((phys_base, irq));
+                }
+            }
+            for dev in &bus.devices {
+                let child = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Bridge(b) => Some(b),
+                        _ => None,
+                    },
+                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
+                        Some(PcieFunction::Bridge(b)) => Some(b),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(child_bus) = child {
+                    stack.push(child_bus);
+                }
             }
         }
     }

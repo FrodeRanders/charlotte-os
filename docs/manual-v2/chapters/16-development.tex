@@ -1,0 +1,237 @@
+\chapter{Development Workflow}
+
+This chapter explains how to build, boot, and test CharlotteOS. It is a
+practical guide for developers who want to work on the kernel, write userspace
+services, or run the self-tests.
+
+\section{Prerequisites}
+
+\begin{itemize}
+    \item \textbf{Rust nightly} (2026-07-18 or later), installed via
+        \texttt{rustup}. The \texttt{rust-toolchain.toml} pins the exact
+        version.
+    \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
+        (\texttt{qemu-system-x86\_64}). On macOS, Apple Hypervisor Framework
+        (HVF) acceleration is used automatically. On Linux, KVM is required
+        for virtio-net runtime validation (HVF does not emulate EL0 MMIO
+        instructions).
+    \item \textbf{Build dependencies:} \texttt{cargo}, \texttt{just} (optional,
+        for convenience targets in the Justfile).
+\end{itemize}
+
+\section{Build targets}
+
+CharlotteOS supports three architectures via custom target JSON specs in
+\texttt{target\_specs/}:
+
+\begin{longtable}{|l|l|}
+\hline
+\textbf{Target spec} & \textbf{Status} \\
+\hline
+\texttt{aarch64-unknown-none-catten.json} & Primary development target; all
+    features and self-tests pass \\
+\texttt{x86\_64-unknown-none-catten.json} & Boots, core self-tests pass;
+    ring-3 userspace implemented but not yet exercised \\
+\texttt{riscv64gc-unknown-none-catten.json} & Planned, not actively
+    maintained \\
+\hline
+\end{longtable}
+
+\subsection{Kernel build}
+
+\begin{verbatim}
+# AArch64 (headless, serial console only):
+cargo build --package catten \
+  --target target_specs/aarch64-unknown-none-catten.json \
+  --no-default-features --features acpi
+
+# x86-64:
+cargo build --package catten \
+  --target target_specs/x86_64-unknown-none-catten.json \
+  --no-default-features --features acpi
+\end{verbatim}
+
+The \texttt{display} feature requires a C library for the flanterm
+framebuffer terminal. Headless boot uses serial output only (AArch64:
+PL011 UART; x86-64: 16550 COM1).
+
+\subsection{Userspace service programs}
+
+Service binaries are built separately because they target \texttt{no\_std} /
+\texttt{no\_main} with custom EL0 targets that depend on build-std:
+
+\begin{verbatim}
+# EL0 service programs:
+cargo build --release --package catten-services \
+  --target aarch64-unknown-none.json \
+  -Zbuild-std=core,alloc
+
+# Sitas user binary (requires external sitas crates):
+cargo +nightly build --package catten-user \
+  --target aarch64-unknown-none.json \
+  -Zbuild-std=core,alloc
+\end{verbatim}
+
+\section{Booting in QEMU}
+
+\subsection{AArch64 (macOS, HVF)}
+
+\begin{verbatim}
+# Single-core boot:
+./scripts/boot-smp1.sh
+
+# Dual-core boot:
+./scripts/boot-smp2.sh
+
+# Or specify timeout and core count directly:
+./scripts/qemu-boot-macos.sh 60 2
+\end{verbatim}
+
+\subsection{x86-64}
+
+\begin{verbatim}
+# Requires -cpu max for RDTSCP/FSGSBASE support:
+./scripts/boot-x86.sh
+\end{verbatim}
+
+\subsection{Expected output}
+
+\begin{verbatim}
+CharlotteOS booting...
+[init] BSP initialization complete.
+[init] Secondary CPUs brought online.
+[init] Starting scheduler...
+[async-demo] coordinator: submitted worker, now awaiting completion...
+[async-demo] worker: performing async work (sleep 50ms)
+[async-demo] worker: work finished, exiting (completion fires on exit)
+[async-demo] coordinator: COMPLETION RECEIVED, result Ok(42)
+[async-demo] SUCCESS: async syscall round-trip complete
+Testing Complete. All Tests Passed!
+\end{verbatim}
+
+\section{Self-tests}
+
+There is no host-side \texttt{cargo test}. All tests are \textbf{boot-time
+kernel self-tests} --- whitebox integration tests run from
+\texttt{self\_test::run\_self\_tests()} called after \texttt{INIT\_BARRIER.wait()}.
+Each test uses \texttt{assert!()} / \texttt{assert\_eq!()}; panic equals failure.
+
+Current test suites (both architectures pass on AArch64; core tests pass on
+x86-64):
+
+\begin{itemize}
+    \item \texttt{completion.rs} --- buffer ownership, cancel/deferred-reclaim,
+        backpressure.
+    \item \texttt{cq.rs} --- CQ ring write/drain/overflow.
+    \item \texttt{cq\_completion.rs} --- CQ ring integrated with completion
+        subsystem.
+    \item \texttt{syscall.rs} --- dispatch table routing via synthetic
+        TrapFrame.
+    \item \texttt{ipi.rs} --- bounded queue, backpressure, closure dispatch.
+    \item \texttt{shard.rs} --- \texttt{ShardLocal<T>} owner-check /
+        re-entrancy guard, \texttt{ShardMailbox<M>} send/recv.
+    \item \texttt{el0.rs} --- real-EL0 user thread (AArch64 only).
+    \item \texttt{el0\_demo.rs} --- EL0 userspace smoke test.
+    \item \texttt{el0\_ipc.rs} --- EL0 endpoint IPC between domains.
+    \item \texttt{el0\_net.rs} --- EL0 networking test.
+    \item \texttt{el0\_pingpong.rs} --- bidirectional EL0 IPC.
+    \item \texttt{el0\_raft.rs} --- two-node Raft election over local IPC.
+    \item \texttt{el0\_service.rs} --- EL0 service lifecycle (spawn, IPC,
+        teardown).
+    \item \texttt{el0\_uart.rs} --- userspace UART driver (delegated MMIO +
+        IRQ, crash recovery).
+    \item \texttt{el0\_sitas.rs} --- sitas executor integration.
+    \item \texttt{scheduler\_lifecycle.rs} --- spawn, block, wake, abort,
+        migration-safe migration, timer-wait affinity.
+    \item \texttt{ipc.rs} --- IPC path tests (scalar, memory, delegation,
+        reply tokens).
+    \item \texttt{memory/allocator.rs} --- heap allocator, stack allocator.
+    \item \texttt{memory/object.rs} --- memory object lifecycle tests.
+    \item \texttt{adversarial.rs} --- cancellation races, misuse paths,
+        error-path testing.
+\end{itemize}
+
+\section{The async-syscall demo}
+
+\texttt{crates/catten/src/demo.rs} is the canonical end-to-end test of the
+async model. It:
+
+\begin{enumerate}
+    \item Spawns a coordinator and worker from \texttt{bsp\_main}.
+    \item The coordinator calls \texttt{submit\_worker}, which spawns a worker
+        thread and returns a capability that fires when the worker exits.
+    \item The worker sleeps 50ms (exercising the timer and block-yield-wake
+        cycle).
+    \item The worker exits; the exit-observer fires; the capability completes.
+    \item The coordinator (blocked on \texttt{wait(cap)}) wakes and reads
+        the result.
+\end{enumerate}
+
+This exercises: thread creation, scheduling, timer events, the block-yield-wake
+cycle, the exit-observer completion path, and the wait/poll ABI. If this demo
+passes, the core async machinery is working.
+
+\section{CI pipeline}
+
+GitHub Actions (\texttt{.github/workflows/ci.yml}):
+
+\begin{enumerate}
+    \item Builds both architectures with \texttt{-D warnings} (warnings are
+        errors).
+    \item Runs formatting checks (\texttt{cargo fmt --check}).
+    \item Boots the AArch64 QEMU target and greps for ``Testing Complete. All
+        Tests Passed!''.
+    \item Builds the kernel for x86-64.
+\end{enumerate}
+
+The CI gate ensures the \texttt{dev} branch always compiles cleanly and passes
+boot tests.
+
+\section{Codebase reading guide}
+
+For new contributors, the recommended reading order:
+
+\begin{enumerate}
+    \item \texttt{crates/catten/src/main.rs} --- kernel entry point, init
+        sequence.
+    \item \texttt{crates/catten/src/completion/mod.rs} --- the completion
+        subsystem: capability table, submit/complete/poll/wait/cancel/close,
+        \texttt{submit\_worker}, exit-observer.
+    \item \texttt{crates/catten/src/completion/cq.rs} --- the CQ ring buffer.
+    \item \texttt{crates/catten/src/syscall/mod.rs} --- syscall dispatch table.
+    \item \texttt{crates/catten/src/demo.rs} --- the end-to-end async demo.
+    \item \texttt{crates/catten/src/cpu/scheduler/} --- threads, wakers,
+        \texttt{RoundRobin}, \texttt{block\_thread}.
+    \item \texttt{crates/catten/src/cpu/multiprocessor/} --- SMP: IPI,
+        \texttt{PerLp<T>}, \texttt{ShardLocal<T>}, shard mailboxes.
+    \item \texttt{crates/catten/src/cpu/isa/} --- ISA abstraction layer.
+        Start with \texttt{interface/} (traits), then \texttt{aarch64/}
+        (reference implementation).
+    \item \texttt{crates/catten/src/service/} --- supervisor, ELF loader,
+        bootstrap.
+    \item \texttt{crates/catten/src/device\_management/} --- device driver
+        framework.
+    \item \texttt{crates/catten-services/src/bin/} --- reference EL0 services.
+    \item \texttt{crates/catten-rt/src/lib.rs} --- userspace runtime.
+\end{enumerate}
+
+\section{Troubleshooting}
+
+\begin{description}
+    \item[Triple fault during boot] Check that the panic handler is working.
+        Early faults before heap initialization rely on
+        \texttt{early\_logln!} (direct serial writes). Ensure the serial port
+        is configured correctly.
+    \item[Thread hangs after blocking] The block-yield-wake cycle requires
+        that \texttt{block\_thread} not clear \texttt{current\_handle} before
+        \texttt{yield\_lp} saves the thread's context. Verify that the
+        blocked thread is still the current thread at the point of the yield.
+    \item[ASID-0 collision] The first user address space must not receive
+        ASID 0 (which equals \texttt{KERNEL\_ASID}). The address-space table
+        must be pre-populated with the kernel AS at index 0.
+    \item[x86-64 LA57 mismatch] Derive the address width from
+        \texttt{CR4.LA57} (the active paging mode), not from CPUID capability.
+        Limine boots with 4-level paging even on CPUs that support 5-level.
+\end{description}
+
+\endinput

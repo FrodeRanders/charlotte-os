@@ -1,0 +1,192 @@
+\chapter{Memory Objects --- Ownership That Crosses Boundaries}
+
+A memory object answers: \textbf{``Where is the data, and who currently owns
+it?''} It is the mechanism by which data crosses protection-domain boundaries
+without copying bytes. This chapter explains CharlotteOS's memory-object model.
+
+\section{The problem with copying}
+
+In a conventional OS, moving data between processes typically means copying:
+the kernel reads from the sender's address space and writes to the receiver's.
+For large payloads (packet buffers, file blocks, IPC messages), this copy
+dominates the cost of the operation.
+
+The alternative --- shared memory --- eliminates the copy but eliminates the
+safety. Two processes with writable mappings to the same physical pages can
+corrupt each other's data. Synchronization is advisory; enforcement is absent.
+
+CharlotteOS adopts a third approach: \textbf{ownership transfer through page-table
+manipulation.} When a memory object moves from one domain to another, the kernel
+changes the page-table mappings. The sender loses access; the receiver gains it.
+No bytes are copied. The MMU enforces the ownership.
+
+\section{First-class memory objects}
+
+A memory object is a dedicated kernel object representing page-backed storage with
+explicit ownership and capability semantics. The kernel manages:
+
+\begin{itemize}
+    \item \textbf{Physical frames} --- the backing storage.
+    \item \textbf{Mappings} --- which domains have virtual addresses pointing to
+        the pages, and with what permissions.
+    \item \textbf{Ownership} --- which domain currently holds the master
+        capability.
+    \item \textbf{Transfer state} --- whether the object is idle, in transit,
+        borrowed, or undergoing DMA.
+    \item \textbf{Lifetime} --- when the object is freed, all mappings are
+        revoked and all capabilities to it are invalidated.
+\end{itemize}
+
+Userspace never exchanges raw pointers across protection domains. Instead, IPC
+messages attach \textbf{memory-object capabilities} with declared transfer modes.
+
+\section{Four transfer modes}
+
+CharlotteOS defines four transfer modes, enforced by the MMU:
+
+\subsection{Copy}
+
+The receiver gets a byte-for-byte duplicate. The sender retains the original,
+unmodified.
+
+\begin{itemize}
+    \item \textbf{Use when:} the data is small, the sender needs to keep using it,
+        or the receiver is not trusted with the original.
+    \item \textbf{Kernel work:} allocate new physical frames, copy the contents,
+        map them into the receiver's address space.
+    \item \textbf{Semantics:} simplest; both domains can read their respective
+        copies independently.
+\end{itemize}
+
+\subsection{Move}
+
+Ownership transfers to the receiver. The sender loses all mappings and all
+capability rights. The receiver becomes the new owner, responsible for subsequent
+transfer or destruction.
+
+\begin{itemize}
+    \item \textbf{Use when:} the sender is finished with the data and wants to
+        hand it off without copying.
+    \item \textbf{Kernel work:} validate sender ownership, prepare receiver
+        mappings, remove sender mappings, perform TLB invalidation, commit
+        ownership, publish the IPC message.
+    \item \textbf{Semantics:} physical pages never move. Mappings change. After
+        the move, any attempt by the sender to access the (now unmapped) virtual
+        addresses faults.
+\end{itemize}
+
+\subsection{BorrowRead}
+
+The receiver gets a temporary read-only mapping. The sender retains ownership.
+The borrow is revoked when the receiver replies (or the call is cancelled, or
+the server dies).
+
+\begin{itemize}
+    \item \textbf{Use when:} the receiver needs to inspect data but must not
+        modify it.
+    \item \textbf{Kernel work:} map the pages into the receiver's address space
+        with read-only permissions. Track the borrow so it can be revoked.
+    \item \textbf{Semantics:} writable aliases in the receiver are forbidden by
+        the page-table permissions. The receiver cannot write even through unsafe
+        code. Revocation at reply time unmap the pages.
+\end{itemize}
+
+\subsection{BorrowWrite}
+
+The receiver gets a temporary exclusive writable mapping. The sender's access is
+revoked for the duration of the borrow. When the receiver replies, sender access
+is restored.
+
+\begin{itemize}
+    \item \textbf{Use when:} the receiver needs to write into a buffer the sender
+        will later read (e.g., a read-into-user-buffer pattern). This is
+        \emph{mutable lending}.
+    \item \textbf{Kernel work:} map the pages writable into the receiver,
+        temporarily revoke (unmap or read-protect) sender access, track the
+        borrow for reply-time revocation.
+    \item \textbf{Semantics:} the hardware enforces mutual exclusion. The sender
+        cannot access the pages while they are lended out. No amount of unsafe
+        Rust can violate this --- the MMU will fault.
+\end{itemize}
+
+\section{Why hardware enforcement matters}
+
+The transfer modes are enforced by page tables, not by Rust's type system:
+
+\begin{itemize}
+    \item A C program running in a protection domain cannot violate the
+        constraints any more than a Rust program can.
+    \item A buffer overrun cannot read pages that are not mapped.
+    \item An unsafe block cannot write to a \texttt{BorrowRead} buffer.
+    \item A use-after-drop cannot resurrect a moved memory object.
+\end{itemize}
+
+Rust's ownership complements the kernel enforcement --- it catches errors within a
+domain at compile time. But the kernel is the ultimate guarantor for cross-domain
+safety, so non-Rust or buggy-Rust processes are still contained by page tables and
+capability checks.
+
+\section{Control plane versus data plane}
+
+Endpoint IPC belongs to the \textbf{control plane}: it configures connections,
+carries opcodes, sets up device queues.
+
+Memory objects belong to the \textbf{data plane}: they carry the actual bytes
+(packets, blocks, buffers, strings).
+
+For networking specifically:
+
+\begin{itemize}
+    \item \textbf{Control plane:} endpoint IPC configures NIC queues, sets MTU,
+        registers buffer pools.
+    \item \textbf{Data plane:} descriptor rings coordinate producer/consumer
+        state; packet payloads move as memory objects.
+\end{itemize}
+
+This separation avoids turning every packet into a copied IPC payload while
+preserving strict ownership.
+
+\section{DMA as a third ownership dimension}
+
+When a device performs DMA, a memory object enters a third ownership state:
+
+\begin{itemize}
+    \item \textbf{CPU ownership:} the CPU reads and writes the pages normally.
+    \item \textbf{DMA ownership:} the device is reading or writing the pages; the
+        CPU must not access them.
+    \item \textbf{Rust/API ownership:} which domain holds the capability.
+\end{itemize}
+
+The kernel tracks DMA state per memory object. A domain that submits a memory
+object for DMA loses CPU access until the operation completes. The IOMMU/SMMU
+extends capability enforcement to DMA transactions: a device can only access
+memory objects explicitly pinned into its DMA domain.
+
+\section{Why memory objects matter for critical software}
+
+\begin{enumerate}
+    \item \textbf{Zero-copy without loss of safety.} Pages move by changing
+        mappings, not by copying bytes. This is faster than a copy and safer
+        than shared memory.
+
+    \item \textbf{Use-after-free is structurally impossible across boundaries.}
+        When a memory object is moved, the sender's mappings are removed. Any
+        access faults. When a borrow is revoked, the borrower's mappings are
+        removed. There is no window for a stale reference.
+
+    \item \textbf{Borrows have defined lifetimes.} A borrow is always tied to an
+        IPC call. When the call completes (reply, cancellation, timeout, or
+        server death), the borrow ends. There is no ``I forgot to return it.''
+
+    \item \textbf{DMA is tracked explicitly.} The kernel knows whether a memory
+        object is currently owned by the CPU or a device. It will not allow one
+        to be freed while the other is using it. This prevents the class of bugs
+        where a driver frees a DMA buffer before the device finishes writing.
+
+    \item \textbf{Hardware enforcement, not language enforcement.} The page tables
+        are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
+        bug can access pages that are not mapped. The trust boundary is
+        architectural.
+\end{enumerate}
+
+\endinput

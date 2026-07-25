@@ -28,6 +28,10 @@ hvf_compat = []
 # virtio-net PCI device and is intentionally opt-in: the ordinary AArch64
 # QEMU command only attaches the boot disk.
 virtio_net_test = []
+# Run the userspace NVMe block device integration test. This requires an
+# NVMe PCI device (QEMU: -device nvme,drive=nvme0,serial=cat0 with a raw
+# backing image). On HVF, falls back to hardcoded BAR0/INTID.
+nvme_test = []
 qemu = ["virtio_gpu"]
 
 [dependencies]

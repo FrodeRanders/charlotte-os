@@ -1,0 +1,125 @@
+\chapter{Capabilities --- Authority Without Ambiguity}
+
+A capability is the answer to one question: \textbf{``May I perform this
+operation?''} It is authority, not work. It is unforgeable, delegable, and
+attenuable. This chapter explains the capability model that secures every resource
+in CharlotteOS.
+
+\section{What a capability is}
+
+A capability is a per-address-space handle that names a kernel object and carries
+a rights mask. The kernel maintains a \textbf{capability table} for each protection
+domain. An entry in this table is the only way a userspace process can reference a
+kernel object.
+
+Key properties:
+
+\begin{itemize}
+    \item \textbf{Unforgeable.} A process cannot create a capability through
+        computation. Capabilities enter a domain only through the bootstrap
+        contract or through IPC delegation.
+    \item \textbf{Scoped.} A capability is valid only in the domain that holds it.
+        Capability index 3 in domain A refers to a different object (or nothing)
+        than capability index 3 in domain B.
+    \item \textbf{Righted.} A capability carries a rights mask specifying which
+        operations are permitted. An endpoint capability might carry only
+        \texttt{SEND | CALL} rights; it does not grant \texttt{RECEIVE}.
+    \item \textbf{Revocable.} When a kernel object is destroyed, all capabilities
+        referencing it become invalid. Subsequent use returns an error, not
+        undefined behavior.
+\end{itemize}
+
+\section{Object types and their rights}
+
+CharlotteOS defines a fixed set of kernel object types, each with its own rights
+model. A capability carries both a type tag and a rights mask.
+
+\begin{longtable}{|l|l|p{7cm}|}
+\hline
+\textbf{Type} & \textbf{Example rights} & \textbf{What it authorizes} \\
+\hline
+Endpoint & RECEIVE, MINT\_CONNECTION & Server-side IPC receive queue \\
+Connection & SEND, CALL, DELEGATE & Client-side authority to invoke a service \\
+ReplyToken & COMPLETE, DELEGATE & One-shot completion of a pending call \\
+CompletionQueue & SUBMIT, WAIT, DRAIN & Submission to / waiting on a CQ \\
+MemoryObject & MAP, UNMAP, MOVE, LEND, COPY & Page-backed memory ownership and access \\
+Interrupt & ACK, MASK, BIND\_TO\_CQ & Hardware interrupt handling \\
+MmioRegion & MAP\_DEVICE & Device register access (MMIO) \\
+DmaDomain & PIN, UNPIN & DMA buffer management \\
+Device & RESET, CONFIGURE & Device lifecycle management \\
+Timer & ARM, CANCEL, BIND\_TO\_CQ & Timer operations \\
+\hline
+\end{longtable}
+
+\section{Delegation and attenuation}
+
+Capabilities can be \textbf{delegated} to another protection domain through IPC.
+When delegating, the sender may \textbf{attenuate} the rights: the receiver gets a
+subset of the rights the sender held. A service manager that holds a connection
+with \texttt{SEND | CALL | DELEGATE} rights can delegate a client-facing
+connection with only \texttt{SEND | CALL}, keeping \texttt{DELEGATE} for itself.
+
+Delegation happens in the kernel, mediated by the IPC path. The sender specifies
+the target domain, the capability to delegate, and the reduced rights mask. The
+kernel validates that the sender actually holds the capability with at least the
+rights being transferred.
+
+\section{Generation-safe lookup}
+
+Capability tables use generation counters to prevent use-after-free through stale
+indices. When a capability is revoked, the table slot is freed and its generation
+is incremented. Any attempt to use an old index with a stale generation returns
+\texttt{InvalidCapability} rather than accessing a different object that happened
+to be allocated at the same index.
+
+\section{Bootstrap --- how capabilities enter a domain}
+
+A newly created protection domain starts with an empty capability table. It
+receives its initial capabilities through the \textbf{config-page contract}: a
+mapped page that the supervisor populates with typed entries before the domain
+begins execution. The bootstrap contract delivers at minimum:
+
+\begin{itemize}
+    \item A connection to the name service (for service lookup).
+    \item For driver domains: device capabilities (MmioRegion, Interrupt).
+    \item For service domains: an endpoint on which to listen.
+    \item A default CQ handle for submission and waiting.
+\end{itemize}
+
+After bootstrap, additional capabilities arrive through IPC: the name service
+delegates service connections; the supervisor delegates device grants; other
+services delegate whatever the protocol authorizes.
+
+\section{Why capabilities matter for critical software}
+
+\begin{enumerate}
+    \item Least privilege is architectural, not advisory: A process
+        starts with nothing. Every capability it holds was explicitly granted by
+        a trusted component (the supervisor, the name service, or another service
+        under a protocol). There is no ambient authority to strip away; the
+        default is zero.
+
+    \item The attack surface is enumerable: To determine what a process
+        can do, inspect its capability table. There is no hidden state, no global
+        filesystem, no ambient network access. Auditing is bounded.
+
+    \item Delegation is mediated: A process cannot grant authority it
+        does not hold; it cannot grant rights beyond what it possesses; and every
+        delegation crosses the kernel, which enforces both constraints.
+
+    \item Revocation is complete: When a service crashes and its domain
+        is torn down, every capability to every connection it held is invalidated
+        atomically. There is no lingering authority.
+
+    \item Capability tables are bounded: A process cannot create
+        unlimited capabilities to exhaust kernel memory. Submission backpressure
+        (\texttt{WouldBlock}) applies when a table is full, forcing the
+        application to drain completions before submitting more work.
+\end{enumerate}
+
+The capability model is the foundation on which CharlotteOS builds its security
+guarantees. Without capabilities, endpoints and memory objects would be anonymous
+resources accessible by index or address --- just a more elaborate version of the
+ambient-authority model this architecture rejects.
+
+\endinput

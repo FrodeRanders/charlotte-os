@@ -1,0 +1,149 @@
+\documentclass{techdoc}
+
+\usepackage{url}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage[table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage{graphicx}
+\usepackage[useregional]{datetime2}
+
+\usepackage{titlesec}
+\setcounter{secnumdepth}{4}
+\titleformat{\paragraph}
+{\normalfont\normalsize\bfseries}{\theparagraph}{1em}{}
+\titlespacing*{\paragraph}
+{0pt}{3.25ex plus 1ex minus .2ex}{1.5ex plus .2ex}
+
+% Code snippet helper
+\newcommand{\rustfn}[1]{\texttt{#1}}
+\newcommand{\rusttype}[1]{\texttt{#1}}
+\newcommand{\rusttrait}[1]{\texttt{#1}}
+
+\date{\today}
+\title{The Charlotte Operating System}
+\subtitle{An async-first, capability-based microkernel\\for critical and performant software}
+\editors{}
+\author{}
+
+\makeatletter
+\renewcommand{\maketitle}{%
+    \thispagestyle{empty}
+    \setlength{\parindent}{0mm}
+    \begin{center}
+    \vspace*{18mm}
+    {\huge\textsc{\@thetitle{}}\par}
+    \vspace{8mm}
+    {\Large\textsc{\@thesubtitle{}}}
+    \vspace*{18mm}
+    {\large\@theeditors{}}
+    \vfill
+        \vspace*{150mm}
+    {\large\today}
+    \end{center}
+}
+\makeatother
+
+\begin{document}
+
+    \rhead{}
+
+    \maketitle
+
+    \vfill
+
+    \newpage
+    \renewcommand\contentsname{Contents}
+    \tableofcontents
+    \newpage
+
+    % ================================================================
+    % PART I --- WHY CHARLOTTEOS
+    % ================================================================
+
+    \input{chapters/01-problem.tex}
+    \newpage
+
+    \input{chapters/02-design-philosophy.tex}
+    \newpage
+
+    \input{chapters/03-vocabulary.tex}
+    \newpage
+
+    % ================================================================
+    % PART II --- THE KERNEL ARCHITECTURE
+    % ================================================================
+
+    \input{chapters/04-capabilities.tex}
+    \newpage
+
+    \input{chapters/05-endpoints.tex}
+    \newpage
+
+    \input{chapters/06-memory-objects.tex}
+    \newpage
+
+    \input{chapters/07-completion-queues.tex}
+    \newpage
+
+    % ================================================================
+    % PART III --- THE EXECUTION DISCIPLINE
+    % ================================================================
+
+    \input{chapters/08-shards-and-lps.tex}
+    \newpage
+
+    \input{chapters/09-sitas-executor.tex}
+    \newpage
+
+    \input{chapters/10-scheduling.tex}
+    \newpage
+
+    % ================================================================
+    % PART IV --- BUILDING SYSTEMS
+    % ================================================================
+
+    \input{chapters/11-service-architecture.tex}
+    \newpage
+
+    \input{chapters/12-userspace-drivers.tex}
+    \newpage
+
+    \input{chapters/13-networking.tex}
+    \newpage
+
+    \input{chapters/14-consensus.tex}
+    \newpage
+
+    % ================================================================
+    % PART V --- WORKING WITH CHARLOTTEOS
+    % ================================================================
+
+    \input{chapters/15-programming-model.tex}
+    \newpage
+
+    \input{chapters/16-development.tex}
+    \newpage
+
+    % ================================================================
+    % APPENDICES
+    % ================================================================
+
+    \appendix
+
+    \input{chapters/appendices/glossary.tex}
+    \newpage
+
+    \input{chapters/appendices/implementation-status.tex}
+    \newpage
+
+    \input{chapters/appendices/lessons-learned.tex}
+    \newpage
+
+    \input{chapters/appendices/architectural-redirections.tex}
+
+\end{document}

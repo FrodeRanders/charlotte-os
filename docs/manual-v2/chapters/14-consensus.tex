@@ -1,0 +1,252 @@
+\chapter{Consensus and Replication}
+
+Distributed consensus is often implemented as an application-level library
+talking to sockets. CharlotteOS treats it as a \textbf{generic capability
+service}: a replicated state machine exported through the same endpoint IPC
+that local services use. This chapter explains the architecture and why it is
+a natural fit.
+
+\section{Raft as a capability service}
+
+The Raft consensus protocol provides a replicated, fault-tolerant state machine
+across a cluster of nodes. In CharlotteOS, each Raft node is an EL0 service
+process that:
+
+\begin{itemize}
+    \item \textbf{Registers with the name service} as \texttt{"raft-<id>"}.
+    \item \textbf{Obtains connection capabilities to its peers} through the name
+        service (or through seed configuration at bootstrap).
+    \item \textbf{Communicates with peers through endpoint IPC.} VoteRequest and
+        AppendEntries travel as scalar messages; log payloads travel as memory
+        objects (Move transfer for zero-copy replication).
+    \item \textbf{Uses completion queues for timers.} Election timeouts and
+        heartbeat intervals use \texttt{submit\_timer()} --- a first-class
+        completion primitive --- not polling loops or \texttt{sleep()}.
+    \item \textbf{Serves client commands through its endpoint.} A client
+        submits a command via \texttt{OP\_CLIENT\_COMMAND}; the leader
+        replicates it, commits it, applies it to the state machine, and
+        replies.
+\end{itemize}
+
+The Raft core (\texttt{catten-graft}) is a generic, transport-agnostic library.
+It implements the \texttt{RaftTransport} trait, which abstracts peer
+communication behind a few methods:
+
+\begin{verbatim}
+trait RaftTransport {
+    async fn send_vote_request(&self, peer: PeerId, req: VoteRequest)
+        -> Result<VoteResponse, TransportError>;
+    async fn send_append_entries(&self, peer: PeerId, req: AppendEntries)
+        -> Result<AppendResponse, TransportError>;
+    // ...
+}
+\end{verbatim}
+
+The CharlotteOS implementation of this trait uses endpoint IPC. A future
+implementation could use the reliable message layer for cross-machine
+communication --- the consensus core would not change.
+
+\section{Why this is better than socket-based Raft}
+
+\subsection{Authority, not addresses}
+
+Once the cluster is running, peers are identified by name service entries, not
+\texttt{IP:port}. A node that has joined the cluster receives connection caps
+for its peers through the name service:
+
+\begin{verbatim}
+let peer_1: ConnectionCap = name_service.lookup("raft-node-1")?;
+let peer_2: ConnectionCap = name_service.lookup("raft-node-2")?;
+\end{verbatim}
+
+No IP configuration. No DNS. The authority to communicate with a peer is the 
+capability; without it, you cannot even address the peer.
+
+\subsection{Transport transparency}
+
+The transport is behind the \texttt{RaftTransport} trait. A connection capability
+routes through local IPC (same machine), Ethernet frames (same network), or a
+future RDMA transport (high-performance cluster) --- the consensus core never
+changes. This means:
+
+\begin{itemize}
+    \item Development and testing can run a multi-node Raft cluster on one
+        machine with local IPC.
+    \item Deployment can switch to cross-machine networking by changing how
+        peers are resolved, not by changing the Raft code.
+    \item The cluster can be heterogeneous: some peers communicate via shared
+        memory, others via Ethernet.
+\end{itemize}
+
+\subsection{Zero-copy log replication}
+
+Locally, log payloads can transfer via Move memory objects: the kernel flips page-table
+ownership instead of copying bytes. A follower that receives a Move attachment
+gets the exact same physical pages the leader held --- no intermediate buffer,
+no copy. 
+
+When going over the network, the wire format supports this; the transport implementation 
+decides whether to use scalar IPC (small payloads) or memory-object RPC (large payloads)
+at the ends.
+
+\subsection{Capability-based security}
+
+A client invokes the Raft service only if it possesses a connection cap. The
+service manager attenuates rights: a typical client receives only
+\texttt{CALL} for \texttt{OP\_CLIENT\_COMMAND}, not for
+\texttt{OP\_ADD\_SERVER} or \texttt{OP\_REMOVE\_SERVER}. There is no ambient
+authority, no IP-based ACL, and no ``any process on the cluster network can
+propose commands.''
+
+\subsection{Failure isolation}
+
+Each Raft node runs in a separate protection domain. A crash in one node does
+not affect the others. The crashed node restarts (via the supervisor), receives
+fresh grants, recovers its durable state, and rejoins the cluster. Stale
+client connections to the old instance fail with \texttt{ServiceRestarted};
+clients re-lookup and receive connections to the new instance.
+
+\section{Cluster bootstrap --- the seed problem}
+
+Like any consensus system, a new node must contact at least one existing cluster
+member. The difference is that the seed is expressed in terms the OS already
+understands --- service names and capabilities --- rather than IP addresses.
+
+\subsection{Static seeds (current, simplest)}
+
+Launch-manifest records carry the node and seed-peer service names:
+
+\begin{verbatim}
+node-id = "r4"
+peer-id = "r1"
+peer-id = "r2"
+peer-id = "r3"
+\end{verbatim}
+
+The node calls \texttt{OP\_LOOKUP("raft-r1")} to obtain a connection cap. If
+the seed is on the same machine, the name service returns the cap directly. If
+remote, the distributed name service resolves it.
+
+\subsection{Pre-shared cluster capability (small kernel change)}
+
+A cluster administrator provisions a ``cluster capability'' --- a connection
+to a known cluster member --- and delivers it to new nodes via the config page.
+No name lookup required; the node already holds a first-class connection.
+
+\subsection{Ethernet broadcast discovery (zero-configuration)}
+
+On a single Ethernet segment, a joining node broadcasts a frame with a
+well-known EtherType carrying a ``Raft peer discovery'' payload. Existing
+members respond with their service names. The joining node looks them up
+through the name service to obtain attested connection caps. This works
+without any seed configuration.
+
+\subsection{Distributed name service (end state)}
+
+Once the cluster is running and the name service is itself replicated through
+Raft, a new node needs only a single seed to discover all peers through the
+consistent name registry. The name service is a \texttt{StateMachine}
+implementation on the Raft substrate.
+
+\section{The generic StateMachine trait}
+
+Raft replicates an opaque command log. The meaning of those commands is provided
+by a pluggable \texttt{StateMachine} trait:
+
+\begin{verbatim}
+trait StateMachine {
+    fn apply(&mut self, command: Vec<u8>) -> Result<Vec<u8>, ApplyError>;
+    fn snapshot(&self) -> Vec<u8>;
+    fn restore(&mut self, snapshot: Vec<u8>);
+}
+\end{verbatim}
+
+Different services are different state machines on the same Raft substrate:
+
+\begin{itemize}
+    \item \textbf{Distributed name service:} commands are ``register(name, endpoint)''
+        and ``unregister(name)''. The state is a map from names to endpoint
+        identities and generations. Once replicated, service discovery is
+        available cluster-wide.
+    \item \textbf{Distributed lock service:} commands are ``acquire(lock\_id)''
+        and ``release(lock\_id)''. The state is a set of held locks.
+    \item \textbf{Cluster configuration store:} commands are arbitrary
+        key-value writes. The state is a key-value map.
+\end{itemize}
+
+None of these state machines know about sockets, IP addresses, or TCP. They
+implement \texttt{apply()} and \texttt{snapshot()}. The Raft substrate handles
+replication, leader election, and fault tolerance.
+
+\section{Relationship to the name service}
+
+The existing single-node name service becomes a replicated service when it runs
+as a \texttt{StateMachine} on top of Raft:
+
+\begin{itemize}
+    \item \texttt{OP\_REGISTER} and \texttt{OP\_LOOKUP} are submitted as commands
+        through the Raft leader, replicated to the log, and applied at each node.
+    \item Service generations are replicated consistently. A restart on node 3
+        cannot create a split-brain where node 1 sees generation 5 and node 2
+        sees generation 3.
+    \item Access keys are enforced consistently. Revocation propagates through
+        the replicated log.
+\end{itemize}
+
+\section{Election timers as first-class completions}
+
+In a traditional Raft implementation, election timeouts are implemented with
+\texttt{sleep()} or a polling loop:
+
+\begin{verbatim}
+// Traditional: busy wait or sleep
+while !timeout_elapsed() {
+    sleep_ms(10); // or just spin
+}
+\end{verbatim}
+
+In CharlotteOS, they use the completion system:
+
+\begin{verbatim}
+// CharlotteOS:
+let timer_id = submit_timer(timeout_duration)?;
+let result = wait_on_cq(timer_id).await?;
+// Timer fired; start election.
+\end{verbatim}
+
+The timer is a kernel-managed operation. The shard parks on its CQ. When the
+timer fires, the executor wakes, drains the CQ entry, and resumes the election
+task. No polling loop, no thread dedicated to sleeping.
+
+\section{Why consensus as a service matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Consistency primitives are OS-level, not library-level.}
+        A service that needs replication does not integrate a Raft library and
+        manage its own sockets, timers, and persistent storage. It implements
+        \texttt{StateMachine} and the OS handles the rest.
+
+    \item \textbf{Capabilities, not IP addresses, identify peers.} The cluster
+        configuration is a set of capabilities, not a list of \texttt{host:port}
+        pairs. A network reconfiguration (new NIC, new subnet, move to RDMA)
+        does not require a cluster reconfiguration.
+
+    \item \textbf{Timers are first-class and reliable.} An election timeout
+        that is lost because the polling loop missed its window is a correctness
+        bug (it can cause spurious leader changes or extended unavailability).
+        Kernel-managed timers delivered through the non-lossy CQ guarantee
+        delivery.
+
+    \item \textbf{Failure isolation extends to the consensus layer.} A Raft
+        node is a userspace process. It can crash, restart, and recover without
+        affecting the kernel or other Raft nodes. The supervisor handles the
+        lifecycle; the Raft protocol handles the consensus.
+
+    \item \textbf{The distributed name service is a natural extension.} Once
+        Raft is available as a service, all other services that need
+        cluster-wide consistency (name service, lock service, configuration)
+        are StateMachine implementations on the same substrate. There is one
+        consensus implementation to harden and audit.
+\end{enumerate}
+
+\endinput

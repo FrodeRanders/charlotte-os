@@ -1,0 +1,222 @@
+\chapter{Scheduling and Backpressure}
+
+This chapter explains how the kernel schedules threads across LPs, how the
+block-yield-wake cycle works, and how backpressure propagates through every
+bounded layer of the system.
+
+\section{The kernel scheduler}
+
+CharlotteOS uses a pluggable scheduler architecture. The system scheduler
+(\texttt{SYSTEM\_SCHEDULER}) delegates to per-LP \texttt{LpScheduler} instances.
+The reference implementation is \texttt{RoundRobin}:
+
+\begin{itemize}
+    \item A FIFO run queue per LP.
+    \item A per-LP quantum timer (10 ms by default) that drives preemption.
+    \item Operations: \texttt{spawn\_thread}, \texttt{block\_thread},
+        \texttt{submit\_ready\_thread}, \texttt{yield\_lp}, \texttt{abort}.
+\end{itemize}
+
+The scheduler is pluggable: a different scheduling policy (EDF, CFS, fixed
+priority) can be provided by implementing the \texttt{LpScheduler} trait. The
+rest of the kernel interacts with the scheduler only through the abstract
+interface.
+
+\section{The block-yield-wake cycle}
+
+This is the fundamental mechanism by which asynchronous operations work. Every
+async primitive in CharlotteOS --- \texttt{sleep()}, \texttt{wait()},
+\texttt{CQ\_WAIT} --- is implemented through this cycle.
+
+\subsection{Block}
+
+A thread blocks by calling \texttt{block\_thread(tid, \&observable)}:
+
+\begin{enumerate}
+    \item The kernel marks the thread \texttt{Blocked} in the scheduler.
+    \item The thread's \texttt{Waker} is registered as an observer on the
+        observable event (a completion, a timer, an endpoint, or a CQ).
+    \item The thread is removed from the LP's run queue.
+    \item \texttt{yield\_lp()} saves the thread's register state and stack
+        pointer to its \texttt{ThreadContext}.
+    \item The scheduler selects the next ready thread (if any) and restores its
+        context. The blocked thread is suspended at the point of the yield.
+\end{enumerate}
+
+\subsection{Wake}
+
+An event fires (timer expired, completion posted, message arrived):
+
+\begin{enumerate}
+    \item The event's observable fires, calling \texttt{Waker::notify(tid)}.
+    \item \texttt{notify} calls \texttt{submit\_ready\_thread(tid)}, which marks
+        the thread \texttt{Ready} and adds it to its affinity LP's run queue.
+    \item If the target LP is idle, a reschedule IPI is sent to wake it.
+        If the target LP is already running, no IPI is needed --- the thread
+        will be picked up at the next scheduling point (quantum expiry or
+        voluntary yield).
+\end{enumerate}
+
+\subsection{Resume}
+
+At the next scheduling opportunity on the target LP:
+
+\begin{enumerate}
+    \item The scheduler selects the woken thread from the run queue.
+    \item The thread's saved \texttt{ThreadContext} (registers, stack pointer)
+        is restored.
+    \item Execution resumes immediately after the \texttt{yield\_lp()} call that
+        originally blocked the thread.
+    \item From the thread's perspective, \texttt{block\_thread} returned normally
+        and the event has fired.
+\end{enumerate}
+
+\section{Wake coalescing}
+
+Wakes are \textbf{idempotent}: calling \texttt{submit\_ready\_thread} on an
+already-\texttt{Ready} or \texttt{Running} thread is a no-op. This enables
+coalescing:
+
+\begin{itemize}
+    \item If 10 messages arrive on an endpoint before the shard wakes, the kernel
+        posts one wake, not 10.
+    \item If 3 timer events fire before the LP processes the timer queue, the
+        kernel delivers them in one batch during the next \texttt{process\_events}.
+    \item The unified shard wait (Chapter~9) aggregates multiple wake sources onto
+        a single thread. Re-waking that thread is harmless.
+\end{itemize}
+
+The rule is: \textbf{enqueue before signaling.} The work is placed in a queue
+(CQ ring, endpoint queue, timer queue) first; then a wake is delivered. The
+woken thread finds the work when it drains the queue.
+
+\section{The quantum timer}
+
+Each LP's \texttt{RoundRobin} scheduler arms a periodic quantum timer (10 ms
+default). When it fires:
+
+\begin{enumerate}
+    \item The timer IRQ handler sets a context-switch-pending flag.
+    \item At the next \texttt{yield\_lp()} (or at the IRQ handler's tail), the
+        scheduler checks the flag.
+    \item If set and another thread is runnable, the current thread's context is
+        saved and the next thread's is restored.
+\end{enumerate}
+
+An \texttt{armed} flag ensures exactly one quantum event is in flight at any time,
+preventing unbounded timer-queue growth from manual yields.
+
+\section{The deferred reaper}
+
+A thread cannot free its own kernel stack (it is executing on it). When a thread
+exits:
+
+\begin{enumerate}
+    \item \texttt{abort()} moves the dying thread from the thread table to a
+        \texttt{DEAD\_THREADS} list. The thread is extracted from the table
+        without being dropped.
+    \item The scheduler performs a context switch to the next thread.
+    \item \textbf{After} the switch (on the new thread's stack),
+        \texttt{reap\_dead\_threads()} drops the dead threads, freeing their
+        stacks and other resources.
+\end{enumerate}
+
+This deferred reclamation is the minimal safe discipline for a kernel where
+threads own their stacks.
+
+\section{Load rebalancing}
+
+By default, threads are pinned to their affinity LP. Migration is opt-in:
+
+\begin{itemize}
+    \item A thread must be marked \texttt{migration\_safe}.
+    \item Migration is rejected while the thread holds timer events, endpoint
+        waiters, CQ registrations, or other LP-affine ownership constraints.
+    \item Rebalancing uses a \textbf{sustained-imbalance window}: per-LP load is
+        sampled over a runtime-adjustable interval rather than reacting to a
+        single instantaneous queue-depth observation.
+\end{itemize}
+
+This conservative approach preserves cache warmth and eliminates migration races
+(observer-not-found when a completion is posted on a different LP than the one
+where the waiter was registered). Stable affinity is the correctness default where
+migration is the performance optimization.
+
+\section{Backpressure --- bounded queues at every layer}
+
+Backpressure is a design principle. Every queue in CharlotteOS is bounded, and 
+every sender must handle \texttt{WouldBlock}:
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Layer} & \textbf{Bounded object} & \textbf{Backpressure signal} \\
+\hline
+Application request & Service endpoint queue & \texttt{QueueFull} \\
+Service shard mailbox & \texttt{ShardSender<M>} & \texttt{Err(m)} returned \\
+Driver endpoint/ring & NIC descriptor ring & Descriptor exhaustion \\
+Kernel submission & Capability table & \texttt{WouldBlock} \\
+Hardware & DMA descriptor ring & Ring full \\
+\hline
+\end{tabular}
+\end{center}
+
+Each layer has an explicit backpressure policy:
+
+\begin{verbatim}
+enum SendPolicy {
+    Try,                   // Fail immediately if full.
+    Wait,                  // Block the sender until capacity is available.
+    Deadline(Instant),     // Block with a timeout.
+    DropIfCoalescible,     // Merge with a pending notification (for coalescible
+                           //   events like "data available").
+}
+\end{verbatim}
+
+Rules:
+
+\begin{itemize}
+    \item \textbf{Terminal completions are never dropped.} The CQ backlog
+        guarantees this (Chapter~7).
+    \item \textbf{Coalescible notifications may be merged.} Two ``data available''
+        signals before the consumer wakes become one.
+    \item \textbf{Control messages normally fail or wait explicitly.} A service
+        registration request that cannot be queued fails with \texttt{QueueFull}.
+    \item \textbf{Data-plane producers stop before unbounded allocation.} A NIC
+        driver stops accepting TX packets when its descriptor ring is full.
+    \item \textbf{Emergency paths require reserved capacity.} The bounded IPI
+        queue reserves slots for mandatory kernel messages (TLB shootdowns,
+        scheduler commands), ensuring they cannot be starved by user work.
+\end{itemize}
+
+\section{Why scheduling and backpressure matter for critical software}
+
+\begin{enumerate}
+    \item \textbf{The block-yield-wake cycle is proven correct.} The same
+        mechanism handles sleep, IPC wait, CQ wait, and timer wait. A bug fixed
+        in one path fixes all paths. The cycle is exercised by the async demo and
+        by every self-test that calls \texttt{wait()}.
+
+    \item \textbf{Idempotent wakes eliminate lost-wake races.} Re-waking an
+        already-ready thread is a no-op. This means the kernel can be aggressive
+        about delivering wakes without worrying about double-delivery.
+
+    \item \textbf{Bounded queues prevent resource exhaustion.} An attacker
+        (or a buggy service) cannot exhaust kernel memory by sending an unbounded
+        number of messages. Every queue has a fixed capacity; every sender must
+        handle \texttt{WouldBlock}. The system degrades gracefully --- requests
+        are rejected with backpressure, not with an out-of-memory panic.
+
+    \item \textbf{Stable LP affinity prevents migration races.} Completion
+        delivery is LP-local. A waker registered on LP 2 is signaled on LP 2.
+        There is no window where a completion is posted on LP 1 while the thread
+        is migrating to LP 2 and the observer is not found.
+
+    \item \textbf{The scheduling policy is pluggable.} The \texttt{RoundRobin}
+        scheduler is the default, but a real-time or deadline scheduler can
+        replace it without changing the rest of the kernel. This enables mixed
+        criticality: real-time shards get EDF scheduling; throughput-oriented
+        shards get round-robin.
+\end{enumerate}
+
+\endinput

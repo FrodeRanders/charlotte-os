@@ -1,0 +1,213 @@
+\chapter{The Sitas Executor}
+
+The sitas executor is the userspace runtime that drives futures on one shard. This
+chapter explains how it works, how it interacts with the completion queue, and
+why the unified wait is the central insight of the co-design.
+
+\section{One executor per shard}
+
+Each sitas shard has:
+
+\begin{itemize}
+    \item \textbf{One executor} --- a cooperative scheduler that polls ready
+        futures within a budget.
+    \item \textbf{One ready queue} --- tasks whose futures returned
+        \texttt{Poll::Pending} and whose wakers have since been invoked.
+    \item \textbf{One timer wheel} --- futures awaiting deadlines.
+    \item \textbf{One CQ partition} --- the completion queue on which this shard
+        waits (\texttt{CQ\_WAIT}).
+    \item \textbf{Shard-owned service state} --- mutable data that only this
+        executor touches.
+\end{itemize}
+
+The executor runs on one LP-affine thread. When that thread is scheduled onto its
+LP by the kernel, the executor runs. When the thread blocks (no ready tasks), the
+LP is free to run another domain's thread.
+
+\section{The polling loop}
+
+The executor's main loop is:
+
+\begin{verbatim}
+loop {
+    // 1. Poll ready tasks within a budget.
+    while budget_remaining > 0 && ready_tasks.not_empty() {
+        let task = ready_tasks.pop();
+        match task.future.poll(task.waker) {
+            Poll::Ready(output) => { /* task done */ }
+            Poll::Pending => { /* will be re-awoken by waker */ }
+        }
+        budget_remaining -= 1;
+    }
+
+    // 2. If tasks remain but budget exhausted, re-queue and yield.
+    if ready_tasks.not_empty() {
+        ready_tasks.requeue_for_next_tick();
+    }
+
+    // 3. No ready tasks? Block in the unified wait.
+    if ready_tasks.is_empty() && timer_wheel.is_empty() {
+        reactor.wait_for_events(); // -> CQ_WAIT
+    }
+}
+\end{verbatim}
+
+The budget prevents one task (or a tight loop of always-ready tasks) from
+starving other tasks on the shard. If the budget is exhausted with work remaining,
+the executor re-queues the remaining tasks and yields (either to other threads on
+the same LP via the kernel scheduler, or to idle).
+
+\section{The unified wait --- three event sources, one wait point}
+
+When the executor has no ready tasks and no pending timers, it calls
+\texttt{CQ\_WAIT} on the shard's completion queue. This is the \textbf{only}
+blocking point in the shard's execution.
+
+Three event sources converge on this one wait point:
+
+\subsection{Kernel completions (CQ entries)}
+
+When a submitted operation completes (timer expired, DMA finished, device
+interrupt processed), the kernel posts a \texttt{CompletionEntry} to the shard's
+CQ ring and wakes the blocked thread. The executor drains the ring:
+
+\begin{verbatim}
+fn drain_cq(&mut self) {
+    while let Some(entry) = self.cq_ring.read() {
+        let waker = self.waker_registry.take(entry.user_data);
+        if let Some(waker) = waker {
+            waker.wake(); // task becomes ready
+        }
+    }
+}
+\end{verbatim}
+
+\subsection{Endpoint readiness (coalesced wake)}
+
+An endpoint can be bound to a CQ. When a message arrives on the endpoint, the
+kernel posts a coalesced wake to the bound CQ. The executor, on waking, calls the
+endpoint's receive path to drain the pending messages.
+
+Coalescing means: if 10 messages arrive before the shard wakes, the kernel
+delivers one wake, not 10. The executor drains all 10 messages in one batch.
+
+\subsection{Device interrupts (coalesced wake)}
+
+A device interrupt object can be bound to a CQ. When the interrupt fires, the
+kernel posts a coalesced wake. The executor, on waking, calls the device's
+interrupt handler (or the driver's polling function).
+
+\section{Task wakeup --- from CQ entry to future poll}
+
+When the executor drains a CQ entry, it looks up the registered waker for that
+entry's \texttt{user\_data} cookie. The cookie was set by the task when it
+submitted the operation. The waker marks the task ready:
+
+\begin{verbatim}
+// Inside a task's Future::poll:
+fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u64> {
+    match self.cap.poll() {
+        Ok(Some(completed)) => Poll::Ready(completed.result),
+        Ok(None) => {
+            // Register waker so we are notified when this completes.
+            self.cap.register_waker(cx.waker().clone());
+            Poll::Pending
+        }
+        Err(e) => Poll::Ready(/* error */),
+    }
+}
+\end{verbatim}
+
+The waker is a \texttt{ShardWaker}: when invoked, it sets the task's ready flag
+and signals the reactor (if the reactor is currently blocked) to re-enter the
+polling loop. The reactor then polls the task, which finds its completion ready.
+
+\section{Cross-shard messaging without the kernel}
+
+Within one protection domain, tasks on different shards communicate through sitas
+typed mailboxes --- not through kernel endpoint IPC:
+
+\begin{verbatim}
+// Shard A: send work to Shard B.
+let sender: ShardSender<Command> = shard_b.mailbox();
+sender.try_send(Command::Process { data: owned_buffer })?;
+
+// Shard B: receive work.
+let receiver: ShardReceiver<Command> = shard_b.receiver();
+loop {
+    let cmd = receiver.recv().await?;
+    match cmd {
+        Command::Process { data } => { /* handle */ }
+    }
+}
+\end{verbatim}
+
+The \texttt{ShardSender/ShardReceiver} pair is a bounded, typed, MPSC channel
+within userspace. Sending does not cross the kernel boundary. The receiving task
+registers its waker on the channel; when a message arrives, the waker fires and
+the task re-enters the executor's polling loop.
+
+This is \textbf{internal} cross-shard communication (same protection domain,
+different shards). External communication (different protection domains) uses
+endpoint IPC (Chapter~5).
+
+\section{The ShardParker --- blocking on native state}
+
+When the executor has no ready tasks, it must block its OS thread. The mechanism
+is the \texttt{ShardParker} trait:
+
+\begin{verbatim}
+trait ShardParker {
+    fn park(&self);    // Block the current thread.
+    fn unpark(&self);  // Wake the blocked thread (from another shard).
+}
+\end{verbatim}
+
+On CharlotteOS, the implementation is:
+
+\begin{verbatim}
+fn park(&self) { syscall::cq_wait(self.cq_id); }
+fn unpark(&self) { syscall::cq_wake(self.cq_id, self.target_lp); }
+\end{verbatim}
+
+The parker maps directly to \texttt{CQ\_WAIT} / \texttt{CQ\_WAKE}. There is no
+intermediate thread pool, no \texttt{pthread\_cond\_wait}, and no busy-loop.
+The thread parks on native completion and message state.
+
+This is the heart of the ``no retrofit tax'' claim: the sitas runtime does not
+emulate async on top of a blocking kernel because the kernel's blocking primitive
+(\texttt{CQ\_WAIT}) \emph{already} understands the semantics of ``wait for any
+of several async sources.'' The executor doesn't need to build a reactor on top of
+\texttt{epoll} or a thread pool; the kernel \emph{is} the reactor.
+
+\section{Why the sitas executor matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Cooperative scheduling means no data races on shard-local state.}
+        Within a shard, only one task runs at a time. The executor polls tasks
+        sequentially. There is no preemption within the shard. This means
+        shard-local mutable state never needs locks.
+
+    \item \textbf{The single wait point eliminates a class of race conditions.}
+        The executor does not wait on ``timer or CQ or endpoint'' through three
+        separate blocking calls with three separate check-and-arm sequences. One
+        CQ, one wait, one drain loop. The kernel guarantees the wake is not lost
+        between checking and arming.
+
+    \item \textbf{No thread-pool overhead.} The executor uses exactly one kernel
+        thread per shard. When that thread blocks, it blocks on the CQ --- the
+        same object that will deliver its wake. There is no need for a pool of
+        threads to convert blocking syscalls into futures.
+
+    \item \textbf{Budgeting prevents starvation.} The polling budget ensures that
+        a shard with many ready tasks makes progress on all of them, not just the
+        one that finishes fastest. This prevents priority-inversion-like behavior
+        within a shard.
+
+    \item \textbf{Internal messaging avoids unnecessary kernel crossings.} Shards
+        within the same process communicate through typed channels in userspace.
+        Only cross-process IPC crosses the kernel boundary. This keeps the fast
+        path fast and the trusted computing base small.
+\end{enumerate}
+
+\endinput

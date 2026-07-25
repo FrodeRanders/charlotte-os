@@ -1,0 +1,125 @@
+\chapter{Glossary}
+
+\begin{description}
+    \item[AS (Address Space)] A page-table context identified by an
+        \texttt{AddressSpaceId} (0 = kernel, $>$0 = user). Contains the
+        \texttt{TTBR0\_EL1} (user) and \texttt{TTBR1\_EL1} (kernel) pointers
+        on AArch64, or \texttt{CR3} on x86-64.
+
+    \item[Block (verb)] To remove a running thread from the scheduler and
+        register its \texttt{Waker} on an \texttt{Observable}. The thread
+        yields; when the event fires the waker re-admits it.
+
+    \item[Capability] An unforgeable per-domain handle that names a kernel
+        object and carries rights. Answers: ``May I perform this operation?''
+
+    \item[Capability table] A per-AS sparse table mapping capability indices
+        to kernel objects. Used for the thread table, address-space table,
+        and per-domain capability table.
+
+    \item[Completion] A kernel object representing an in-flight or completed
+        async operation. \texttt{Observable}: threads \texttt{wait} on it,
+        \texttt{complete} signals it.
+
+    \item[Connection capability] A client-side authority to send or call an
+        endpoint. Minted from an endpoint, typically by the name service.
+
+    \item[CQ ring (Completion Queue)] A shared-memory ring buffer for
+        zero-syscall completion delivery from the kernel to userspace.
+
+    \item[EL0] Exception Level 0 (AArch64). Userspace execution.
+
+    \item[EL1] Exception Level 1 (AArch64). Kernel execution.
+
+    \item[Endpoint] A bounded server-side IPC receive object. Has an owning
+        domain, a queue capacity, and a lifecycle.
+
+    \item[Exit-observer] An \texttt{Observer} registered on a \texttt{Thread};
+        fires when the thread is dropped (exits). The ABI's intended completion
+        mechanism: \texttt{submit\_worker} registers the capability as the
+        worker's exit-observer.
+
+    \item[HHDM (Higher Half Direct Mapping)] A linear mapping of all physical
+        memory into the kernel's virtual address space, provided by the
+        bootloader (Limine).
+
+    \item[IdTable] A sparse \texttt{Vec<Option<T>>} with ID recycling. Used for
+        the thread table, address-space table, and capability table.
+
+    \item[IOMMU / SMMU] I/O Memory Management Unit. Hardware that enforces DMA
+        access permissions from devices, analogous to the MMU for CPU access.
+
+    \item[IPI (Inter-Processor Interrupt)] A signal from one LP to another.
+        The kernel's IPI queues are bounded per-LP queues carrying typed
+        commands.
+
+    \item[LP (Logical Processor)] One hardware core (or hyperthread). The unit
+        of sharding in both the kernel and sitas.
+
+    \item[Memory object] A page-backed kernel object with explicit ownership
+        and capability semantics. Can be mapped, moved, lent, or copied between
+        domains.
+
+    \item[MMU] Memory Management Unit. Hardware that enforces page-table
+        permissions for CPU access.
+
+    \item[Name service] A userspace service that maps human-readable names to
+        connection capabilities. The kernel does not understand service names.
+
+    \item[Notification] ``State may have changed; inspect the corresponding
+        object or queue.'' May be coalesced. Is not itself a result.
+
+    \item[Observable / Observer] The event-notification pattern. An
+        \texttt{Observable} holds \texttt{Weak<dyn Observer>} references;
+        when it fires, it calls \texttt{Observer::notify()}.
+
+    \item[PerLp<T>] A boxed slice of per-LP cells with lock wrapping.
+        Interrupt-safe (masks interrupts on acquire). Use for data accessed
+        from interrupt handlers or multiple LPs.
+
+    \item[Protection domain] An address space and authority boundary. Owns a
+        capability table, memory mappings, threads, and failure state. Typically
+        implemented as a process.
+
+    \item[Quantum timer] The per-LP periodic timer (10 ms default) that drives
+        preemptive context switching in the \texttt{RoundRobin} scheduler.
+
+    \item[Reaper] The deferred-thread-cleanup mechanism: dead threads are
+        moved to \texttt{DEAD\_THREADS} and dropped from the next thread's
+        context after the context switch.
+
+    \item[Reply token] One-shot authority to complete a blocking or deferred
+        endpoint call. Created by the kernel, bound to the caller's pending
+        call, consumable exactly once, invalidated by cancellation or teardown.
+
+    \item[Shard] A userspace ownership and execution domain. One executor runs
+        its tasks; at most one task at a time mutates shard-owned state;
+        cross-shard access goes through typed messages.
+
+    \item[ShardLocal<T>] A lock-free per-LP container using
+        \texttt{UnsafeCell<T>} with owner-check and borrow-flag guard.
+        sitas-derived. Use for single-LP, thread-only kernel data.
+
+    \item[ShardMailbox<M>] A typed bounded per-LP queue with
+        \texttt{ShardSender<M>} (cloneable, any LP can send) and
+        \texttt{ShardReceiver<M>} (single-consumer). First-class backpressure.
+
+    \item[Supervisor] Kernel-side component that creates and destroys
+        protection domains, loads ELF images, delivers bootstrap capabilities,
+        and handles domain teardown.
+
+    \item[TrapFrame] An architecture-specific snapshot of the user register
+        state at the moment an exception was taken. Provides the caller's
+        ASID for syscall dispatch.
+
+    \item[Waker] An \texttt{Observer} wrapping a \texttt{ThreadId}. When
+        notified, calls \texttt{submit\_ready\_thread(tid)}. In userspace,
+        a Rust \texttt{Waker} is a hint to repoll a future --- it is not a
+        kernel completion.
+
+    \item[Yield] To voluntarily give up the LP by calling
+        \texttt{yield\_lp()}. Saves the thread's context and lets the scheduler
+        run the next ready thread.
+\end{description}
+
+\endinput
