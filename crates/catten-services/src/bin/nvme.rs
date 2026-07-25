@@ -521,6 +521,7 @@ fn main(ctx: Context) -> ! {
     if endpoint == 0 {
         unsafe { thread_exit() };
     }
+    config::write::<u64>(48, endpoint); // Write endpoint cap for handoff
 
     let register = ipc_scalar_call_connection(
         ns_connection,
@@ -591,7 +592,7 @@ fn main(ctx: Context) -> ! {
                 }
                 block::OP_READ => {
                     let served = MSG_COUNT.fetch_add(1, Ordering::Relaxed);
-                    config::write::<u32>(48, served);
+                    config::write::<u32>(56, served);
                     if message.reply != 0 {
                         if io.sq_vaddr == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);

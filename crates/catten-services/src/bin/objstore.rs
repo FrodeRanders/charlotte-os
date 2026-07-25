@@ -101,7 +101,7 @@ impl BlockDev {
             if status == 0 {
                 ipc_close(info);
                 let (bs, tb) = charlotte_protocol_block::unpack_info(result as i64);
-                if bs >= 512 && tb >= METADATA_BLOCKS + 2 {
+                if bs > 0 && tb >= METADATA_BLOCKS + 2 {
                     return Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb });
                 }
                 break;
@@ -395,9 +395,32 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(0, 1); // started
 
-    let dev = match BlockDev::connect(ns_connection) {
-        Some(d) => { config::write::<u32>(0, 2); d }
-        None => { config::write::<u32>(0, 0xdead); unsafe { thread_exit() }; }
+    // Use handoff endpoint if provided, otherwise name service lookup
+    let dev = match ctx.handoff_endpoint_cap() {
+        0 => match BlockDev::connect(ns_connection) {
+            Some(d) => { config::write::<u32>(0, 2); config::write::<u32>(24, d.conn as u32); d }
+            None => { config::write::<u32>(0, 0xdead); unsafe { thread_exit() }; }
+        },
+        blk_conn => {
+            config::write::<u32>(0, 2);
+            config::write::<u32>(24, blk_conn as u32);
+            let info = ipc_scalar_call(blk_conn, block::OP_INFO, 0);
+            if info == 0 { config::write::<u32>(0, 0xbeef); unsafe { thread_exit() }; }
+            let mut s: u64 = 0;
+            let (bs, tb) = loop {
+                let (st, r, _) = ipc_reply_poll(info);
+                if st == 0 { ipc_close(info); break charlotte_protocol_block::unpack_info(r as i64); }
+                s += 1;
+                if s > 5000 { ipc_close(info); config::write::<u32>(0, 0xdddd); unsafe { thread_exit() }; }
+                core::hint::spin_loop();
+            };
+            config::write::<u32>(16, bs);
+            config::write::<u32>(20, tb);
+            if bs == 0 || tb < METADATA_BLOCKS + 2 {
+                config::write::<u32>(0, 0xeeee); unsafe { thread_exit() };
+            }
+            BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb }
+        }
     }; // block device connected
 
     let mut store = match ObjStore::mount(dev) {

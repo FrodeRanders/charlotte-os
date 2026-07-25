@@ -148,14 +148,39 @@ extern "C" fn verify_el0_nvme() {
         core::hint::spin_loop();
     }
 
-    logln!("[nvme] driver ready, spawning object store...");
+    logln!("[nvme] driver ready, creating handoff to object store...");
 
-    let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, ns, ConnectionRights::CALL);
+    // Read the NVMe driver's endpoint cap from its config page
+    let ep_cap: u64 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(12) as *const u64) };
+    logln!("[nvme] driver endpoint cap={}", ep_cap);
+
+    // Spawn the object store via the loader, then write handoff connection
+    let loaded = crate::service::loader::load_domain(OBJSTORE_ELF);
+    let handoff_conn = crate::ipc::connection_delegate(
+        driver.asid,      // source: NVMe driver's address space
+        ep_cap,            // the driver's endpoint
+        loaded.asid,       // target: object store's address space
+        crate::ipc::ConnectionRights::SEND | crate::ipc::ConnectionRights::CALL,
+    ).expect("[nvme] handoff connection failed");
+
+    // Also delegate a name service connection
+    let ns_conn = crate::ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        loaded.asid,
+        crate::ipc::ConnectionRights::CALL,
+    ).expect("[nvme] ns connection failed");
+
+    crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, ns_conn);
+    crate::service::bootstrap::write_handoff_state(loaded.config_frame, 0, 0, handoff_conn);
+    crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
+    let objstore = crate::service::supervisor::start_domain(loaded);
+
     let obj_cfg: *const u32 = {
         let base: *mut u8 = objstore.status_frame.into();
         base as *const u32
     };
-    logln!("[nvme] objstore spawned (asid={}), waiting for sentinel...", objstore.asid);
+    logln!("[nvme] objstore spawned with handoff (asid={}), waiting for sentinel...", objstore.asid);
 
     spins = 0;
     while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
