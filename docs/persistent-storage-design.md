@@ -161,13 +161,18 @@ object. It:
 **WRITE:** analogous, with an NVM Write command and a BorrowRead memory
 object.
 
+The current implementation accepts transfers up to one 4 KiB page and rejects
+larger requests with `UNALIGNED`. This keeps PRP1-only DMA safe until the
+memory-object ABI can expose page counts and per-page physical addresses for
+PRP2/PRP-list construction.
+
 **FLUSH:** submits an NVM Flush command to the I/O SQ. Completes the reply
 when the CQ entry arrives.
 
-### 3.4 Interrupt model
+### 3.4 Completion model
 
-The NVMe driver binds its interrupt capability to its CQ. When an I/O
-completion arrives:
+The intended steady-state design binds an MSI/MSI-X interrupt capability to
+the driver's CQ. When an I/O completion arrives:
 
 1. The MSI-X interrupt fires → GIC/APIC interrupt → kernel defers a wake
    to the driver's CQ.
@@ -176,6 +181,13 @@ completion arrives:
    which completions arrived.
 4. For each completion, it finds the corresponding retained reply token
    and completes it with the status.
+
+The current QEMU bring-up path reports no legacy PCI interrupt line and does
+not yet configure MSI/MSI-X. It therefore creates a polled I/O CQ and uses a
+bounded `cq_wait_timeout` so endpoint work wakes immediately while the
+completion ring is checked at 1 ms intervals. This avoids busy-spinning and
+preserves progress under TCG. MSI/MSI-X programming remains the prerequisite
+for switching the queue to fully interrupt-driven operation.
 
 ### 3.5 Memory allocation for queues
 

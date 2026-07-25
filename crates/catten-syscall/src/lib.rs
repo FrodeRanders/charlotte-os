@@ -788,7 +788,7 @@ pub fn memory_close(cap: u64) -> MemoryStatusCode {
 }
 
 /// Return the physical base address of the first frame of memory object
-/// `cap`, or 0 on error. The caller must own the cap.
+/// `cap`, or 0 on error. Owned and IPC-borrowed caps are accepted.
 #[inline(always)]
 pub fn memory_get_phys(cap: u64) -> u64 {
     unsafe { svc3(49, cap, 0, 0) }

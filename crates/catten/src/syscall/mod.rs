@@ -174,8 +174,8 @@ pub mod call_no {
     /// an interrupt). Returns a device status code in x0.
     pub const DEVICE_CLOSE: u16 = 48;
     /// Return the physical base address (PAddr) of the first frame of memory
-    /// object `x1` in `x0`, or 0 on error. The caller must own the cap and
-    /// the object must not be lent.
+    /// object `x1` in `x0`, or 0 on error. Owned and IPC-borrowed memory
+    /// capabilities both authorize this query.
     pub const MEMORY_GET_PHYS: u16 = 49;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF

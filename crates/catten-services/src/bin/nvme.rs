@@ -9,30 +9,33 @@
 //! ## Initialisation sequence
 //!
 //! 1. Reset controller: disable CC.EN, wait for CSTS.RDY=0.
-//! 2. Configure admin queues: allocate contiguous physical memory for ASQ/ACQ
-//!    (32 entries each), write AQA/ASQ/ACQ registers, enable controller.
+//! 2. Configure admin queues: allocate contiguous physical memory for ASQ/ACQ (32 entries each),
+//!    write AQA/ASQ/ACQ registers, enable controller.
 //! 3. Identify controller (CNS=1) → read CAP, VS, etc.
 //! 4. Identify namespace 1 (CNS=0) → read block size (LBAF) and total blocks (NSZE).
-//! 5. Create I/O Completion Queue (qid=1): allocate memory, submit Create I/O CQ
-//!    admin command.
-//! 6. Create I/O Submission Queue (qid=1): allocate memory, submit Create I/O SQ
-//!    admin command.
-//! 7. Register with the name service as `"blk0"`, enter the unified shard-wait
-//!    loop.  READ/WRITE commands submit NVM Read/Write to the I/O SQ and retain
-//!    reply tokens; completions arrive via the bound interrupt → CQ wake.
+//! 5. Create I/O Completion Queue (qid=1): allocate memory, submit Create I/O CQ admin command.
+//! 6. Create I/O Submission Queue (qid=1): allocate memory, submit Create I/O SQ admin command.
+//! 7. Register with the name service as `"blk0"`, enter the unified shard-wait loop.  READ/WRITE
+//!    commands submit NVM Read/Write to the I/O SQ and retain reply tokens; completions arrive via
+//!    the bound interrupt → CQ wake.
 //!
-//! ## Interrupt model
+//! ## Completion model
 //!
-//! The I/O CQ is created with the interrupt-enable flag set and interrupt vector
-//! 0 (INTx).  When an I/O command completes, the controller asserts INTx, the
-//! GIC routes it to the SPI granted at boot, the kernel posts a deferred wake to
-//! the driver's CQ ring, and the driver drains the I/O CQ doorbell to match
-//! completions with retained reply tokens.
+//! The bring-up path uses bounded CQ polling because QEMU's NVMe PCI function
+//! reports no legacy interrupt line and CharlotteOS does not yet program MSI or
+//! MSI-X. `cq_wait_timeout` provides the required VM exit without busy-spinning
+//! and also wakes immediately for endpoint work. The delegated IRQ is still
+//! bound and acknowledged when present, so enabling MSI/MSI-X later does not
+//! require changing the service loop.
 #![no_std]
 #![no_main]
 extern crate alloc;
 
-use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use core::sync::atomic::{
+    AtomicU32,
+    AtomicUsize,
+    Ordering,
+};
 
 catten_rt::entry!(main);
 
@@ -43,23 +46,32 @@ fn alloc_vaddr(pages: usize) -> usize {
     NEXT_VADDR.fetch_add(pages * PAGE_SIZE, Ordering::Relaxed)
 }
 
-use catten_rt::Context;
-use catten_rt::config;
-use catten_services::block;
-use catten_services::ns;
-use catten_syscall::ipc_status;
-use catten_syscall::*;
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    block,
+    ns,
+};
+use catten_syscall::{
+    ipc_status,
+    *,
+};
 
 const NVME_VADDR: usize = 0x0000_0000_0041_0000;
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
+const MAX_TRANSFER_BYTES: u64 = PAGE_SIZE as u64;
 const PAGE_SIZE: usize = 4096;
-
 
 fn spin_reply(call: u64) -> (i64, u64) {
     for _ in 0..500_000 {
         let (status, result, cap) = ipc_reply_poll(call);
-        if status == 0 { ipc_close(call); return (result as i64, cap); }
+        if status == 0 {
+            ipc_close(call);
+            return (result as i64, cap);
+        }
         core::hint::spin_loop();
     }
     ipc_close(call);
@@ -72,10 +84,10 @@ fn spin_reply(call: u64) -> (i64, u64) {
 mod reg {
     pub const _CAP: usize = 0x0000;
     pub const _VS: usize = 0x0008;
-    pub const _INTMS: usize = 0x000C;
+    pub const _INTMS: usize = 0x000c;
     pub const _INTMC: usize = 0x0010;
     pub const CC: usize = 0x0014;
-    pub const CSTS: usize = 0x001C;
+    pub const CSTS: usize = 0x001c;
     pub const AQA: usize = 0x0024;
     pub const ASQ: usize = 0x0028;
     pub const ACQ: usize = 0x0030;
@@ -95,7 +107,7 @@ const ADMIN_CREATE_IO_SQ: u8 = 0x01;
 const _ADMIN_DELETE_IO_CQ: u8 = 0x04;
 const ADMIN_CREATE_IO_CQ: u8 = 0x05;
 const ADMIN_IDENTIFY: u8 = 0x06;
-const ADMIN_GET_FEATURES: u8 = 0x0A;
+const ADMIN_GET_FEATURES: u8 = 0x0a;
 const ADMIN_SET_FEATURES: u8 = 0x09;
 
 // NVM command opcodes
@@ -105,17 +117,25 @@ const NVM_READ: u8 = 0x02;
 
 // Phase tag
 const _CQE_PHASE: u16 = 1 << 0;
-const _CQE_SF_MASK: u16 = 0xFF << 1;
+const _CQE_SF_MASK: u16 = 0xff << 1;
 
 // ---------------------------------------------------------------------------
 // Doorbell offsets from BAR0 base
 // ---------------------------------------------------------------------------
 static mut DOORBELL_STRIDE: usize = 4;
 
-fn sq0_tdbl() -> usize { 0x1000 }
-fn cq0_hdbl() -> usize { 0x1000 + unsafe { DOORBELL_STRIDE } }
-fn sq1_tdbl() -> usize { 0x1000 + 2 * unsafe { DOORBELL_STRIDE } }
-fn cq1_hdbl() -> usize { 0x1000 + 3 * unsafe { DOORBELL_STRIDE } }
+fn sq0_tdbl() -> usize {
+    0x1000
+}
+fn cq0_hdbl() -> usize {
+    0x1000 + unsafe { DOORBELL_STRIDE }
+}
+fn sq1_tdbl() -> usize {
+    0x1000 + 2 * unsafe { DOORBELL_STRIDE }
+}
+fn cq1_hdbl() -> usize {
+    0x1000 + 3 * unsafe { DOORBELL_STRIDE }
+}
 
 // ---------------------------------------------------------------------------
 // MMIO helpers
@@ -163,12 +183,17 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
         return None;
     }
     let phys = memory_get_phys(cap);
-    if phys == u64::MAX {
+    if phys == 0 {
         memory_unmap(cap);
         memory_close(cap);
         return None;
     }
-    Some(QueueMemory { cap, phys, vaddr, pages })
+    Some(QueueMemory {
+        cap,
+        phys,
+        vaddr,
+        pages,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -186,9 +211,17 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
 ///   [5]: CDW10 (u32 lo) | CDW11 (u32 hi)
 ///   [6]: CDW12 (u32 lo) | CDW13 (u32 hi)
 ///   [7]: CDW14 (u32 lo) | CDW15 (u32 hi)
-unsafe fn admin_sqe(base: usize, slot: u32, opcode: u8, nsid: u32, cdw10: u32, cdw11: u32, prp1: u64) {
+unsafe fn admin_sqe(
+    base: usize,
+    slot: u32,
+    opcode: u8,
+    nsid: u32,
+    cdw10: u32,
+    cdw11: u32,
+    prp1: u64,
+) {
     let off = base + (slot as usize) * 64;
-    let dw0: u32 = ((slot & 0xFFFF) << 16) | (opcode as u32 & 0xFF);
+    let dw0: u32 = ((slot & 0xffff) << 16) | (opcode as u32 & 0xff);
     unsafe {
         let p = off as *mut u64;
         p.write_volatile((nsid as u64) << 32 | dw0 as u64);
@@ -211,8 +244,8 @@ unsafe fn read_cqe(base: usize, slot: u32, expected_phase: u8) -> (bool, u16, u1
         let _rsvd = p.add(1).read_volatile();
         let _dw2 = p.add(2).read_volatile();
         let dw3 = p.add(3).read_volatile();
-        let cid = (dw3 & 0xFFFF) as u16;
-        let status_field = ((dw3 >> 16) & 0xFFFE) as u16;
+        let cid = (dw3 & 0xffff) as u16;
+        let status_field = ((dw3 >> 16) & 0xfffe) as u16;
         let phase = ((dw3 >> 16) & 0x1) as u8;
         (phase == expected_phase, status_field, cid)
     }
@@ -223,9 +256,17 @@ unsafe fn read_cqe(base: usize, slot: u32, expected_phase: u8) -> (bool, u16, u1
 // ---------------------------------------------------------------------------
 
 /// Build a 64-byte NVM SQE (Read or Write) at `base + 64*slot`.
-unsafe fn nvm_sqe(base: usize, slot: u32, opcode: u8, nsid: u32, start_lba: u64, nblocks: u16, prp1: u64) {
+unsafe fn nvm_sqe(
+    base: usize,
+    slot: u32,
+    opcode: u8,
+    nsid: u32,
+    start_lba: u64,
+    nblocks: u16,
+    prp1: u64,
+) {
     let off = base + (slot as usize) * 64;
-    let dw0: u32 = ((slot & 0xFFFF) << 16) | (opcode as u32 & 0xFF);
+    let dw0: u32 = ((slot & 0xffff) << 16) | (opcode as u32 & 0xff);
     unsafe {
         let p = off as *mut u64;
         p.write_volatile((nsid as u64) << 32 | dw0 as u64);
@@ -234,7 +275,7 @@ unsafe fn nvm_sqe(base: usize, slot: u32, opcode: u8, nsid: u32, start_lba: u64,
         p.add(3).write_volatile(prp1);
         p.add(4).write_volatile(0);
         p.add(5).write_volatile(start_lba);
-        p.add(6).write_volatile((nblocks.saturating_sub(1) as u64) & 0xFFFF);
+        p.add(6).write_volatile((nblocks.saturating_sub(1) as u64) & 0xffff);
         p.add(7).write_volatile(0);
     }
 }
@@ -249,22 +290,70 @@ static TOTAL_BLOCKS: AtomicU32 = AtomicU32::new(0);
 /// Outstanding I/O operation: a retained reply token waiting for a completion.
 const MAX_PENDING: usize = 64;
 static PENDING_REPLIES: [AtomicU32; MAX_PENDING] = [
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
-    AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
+    AtomicU32::new(0),
 ];
 
 fn store_pending(slot: u32, reply: u64) {
@@ -288,7 +377,14 @@ struct AdminQueues {
     cq_phase: u8,
 }
 
-unsafe fn admin_submit_and_wait(aq: &mut AdminQueues, opcode: u8, nsid: u32, cdw10: u32, cdw11: u32, prp1: u64) -> u32 {
+unsafe fn admin_submit_and_wait(
+    aq: &mut AdminQueues,
+    opcode: u8,
+    nsid: u32,
+    cdw10: u32,
+    cdw11: u32,
+    prp1: u64,
+) -> u32 {
     let slot = aq.sq_tail;
     unsafe {
         admin_sqe(aq.sq_base, slot, opcode, nsid, cdw10, cdw11, prp1);
@@ -306,13 +402,17 @@ unsafe fn admin_submit_and_wait(aq: &mut AdminQueues, opcode: u8, nsid: u32, cdw
     aq.sq_tail = (slot + 1) % ADMIN_QUEUE_SIZE;
     // Release barrier: ensure SQE stores are visible to DMA before doorbell
     core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
-    unsafe { doorbell_write(sq0_tdbl(), aq.sq_tail as u16); }
+    unsafe {
+        doorbell_write(sq0_tdbl(), aq.sq_tail as u16);
+    }
 
     loop {
         unsafe {
             let (phase_match, sf, _cid) = read_cqe(aq.cq_base, aq.cq_head, aq.cq_phase);
             if phase_match {
-                let raw_dw3 = core::ptr::read_volatile((aq.cq_base + (aq.cq_head as usize) * 16 + 12) as *const u32);
+                let raw_dw3 = core::ptr::read_volatile(
+                    (aq.cq_base + (aq.cq_head as usize) * 16 + 12) as *const u32,
+                );
                 config::write::<u32>(44, raw_dw3);
                 aq.cq_head = (aq.cq_head + 1) % ADMIN_QUEUE_SIZE;
                 if aq.cq_head == 0 {
@@ -335,7 +435,9 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     unsafe {
         write32(reg::CC, 0);
         for _ in 0..100_000 {
-            if read32(reg::CSTS) & CSTS_RDY == 0 { break; }
+            if read32(reg::CSTS) & CSTS_RDY == 0 {
+                break;
+            }
             core::hint::spin_loop();
         }
     }
@@ -344,12 +446,14 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     // Read CAP with two 32-bit reads, set doorbell stride from DSTRD (bits 35:32)
     let cap_lo = unsafe { read32(0x0000) };
     let cap_hi = unsafe { read32(0x0004) };
-    let dstrd = ((cap_hi as u64) & 0xF) as usize;
+    let dstrd = ((cap_hi as u64) & 0xf) as usize;
     let dbl_stride = 4usize << dstrd;
     config::write::<u32>(20, cap_lo);
     config::write::<u32>(24, cap_hi);
     config::write::<u32>(28, dbl_stride as u32);
-    unsafe { DOORBELL_STRIDE = dbl_stride; }
+    unsafe {
+        DOORBELL_STRIDE = dbl_stride;
+    }
 
     // 2. Allocate admin queues
     let asq_mem = alloc_queue_memory(ADMIN_QUEUE_SIZE as usize, 64)?;
@@ -377,7 +481,9 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     };
 
     // Zero the admin CQ entries so stale phase bits don't look like completions.
-    unsafe { core::ptr::write_bytes(acq_mem.vaddr as *mut u8, 0, ADMIN_QUEUE_SIZE as usize * 16); }
+    unsafe {
+        core::ptr::write_bytes(acq_mem.vaddr as *mut u8, 0, ADMIN_QUEUE_SIZE as usize * 16);
+    }
 
     // 3. Identify controller (CNS=1) — allocate memory for the 4096-byte data structure
     let id_ctrl_mem = alloc_queue_memory(1, PAGE_SIZE)?;
@@ -396,14 +502,16 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
 
     // Verify admin queue still works: Get Features (Arbitration, FID=1)
     let test_mem = alloc_queue_memory(1, PAGE_SIZE)?;
-    let test_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.phys) };
+    let test_sf =
+        unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.phys) };
     config::write::<u32>(48, test_sf);
 
     // Set Features: Number of Queues (FID=0x07). CDW11 = (NCQR << 16) | NSQR.
     // Request 1 I/O CQ and 1 I/O SQ.
     let nq_cdw10: u32 = 7; // FID=7
     let nq_cdw11: u32 = (1u32 << 16) | 1; // NCQR=1, NSQR=1
-    let nq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_SET_FEATURES, 0, nq_cdw10, nq_cdw11, 0) };
+    let nq_sf =
+        unsafe { admin_submit_and_wait(&mut aq, ADMIN_SET_FEATURES, 0, nq_cdw10, nq_cdw11, 0) };
     config::write::<u32>(72, nq_sf);
 
     // 4. Identify namespace 1 (CNS=0)
@@ -416,30 +524,48 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
 
     let nsze = unsafe { core::ptr::read_volatile(id_ns_mem.vaddr as *const u64) };
     let flbas = unsafe { core::ptr::read_volatile((id_ns_mem.vaddr + 26) as *const u8) };
-    let lbaf_idx = flbas & 0xF;
+    let lbaf_idx = flbas & 0xf;
     let lbaf_off = 128 + (lbaf_idx as usize) * 4;
     let lbaf_raw = unsafe { core::ptr::read_volatile((id_ns_mem.vaddr + lbaf_off) as *const u32) };
-    let lbs = 1u32 << (lbaf_raw & 0xFF);
+    // LBAF: metadata size is bits 15:0, LBA data-size exponent (LBADS)
+    // is bits 23:16, and relative performance is bits 25:24.
+    let lbads = (lbaf_raw >> 16) & 0xff;
+    if !(9..=12).contains(&lbads) {
+        return None;
+    }
+    let lbs = 1u32 << lbads;
     config::write::<u64>(32, nsze);
     config::write::<u32>(40, lbs);
 
     // 5. Create I/O CQ first. Zero CQ memory before queue creation.
     let io_cq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
-    unsafe { core::ptr::write_bytes(io_cq_mem.vaddr as *mut u8, 0, PAGE_SIZE); }
-    let cq_cdw10: u32 = (1u32 << 16) | 1;
-    let cq_cdw11: u32 = 1; // PC=1, IEN=0 (polled)
-    let cq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys) };
+    unsafe {
+        core::ptr::write_bytes(io_cq_mem.vaddr as *mut u8, 0, PAGE_SIZE);
+    }
+    let cq_cdw10: u32 = ((IO_QUEUE_SIZE - 1) << 16) | 1;
+    let cq_cdw11: u32 = 1; // PC=1, IEN=0 until PCI MSI/MSI-X is configured
+    let cq_sf = unsafe {
+        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys)
+    };
     config::write::<u32>(12, cq_sf);
-    if cq_sf != 0 { return None; }
+    if cq_sf != 0 {
+        return None;
+    }
     config::write::<u32>(4, 17);
     // 6. Create I/O SQ
     let io_sq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
-    unsafe { core::ptr::write_bytes(io_sq_mem.vaddr as *mut u8, 0, PAGE_SIZE); }
-    let sq_cdw10: u32 = (1u32 << 16) | 1;
+    unsafe {
+        core::ptr::write_bytes(io_sq_mem.vaddr as *mut u8, 0, PAGE_SIZE);
+    }
+    let sq_cdw10: u32 = ((IO_QUEUE_SIZE - 1) << 16) | 1;
     let sq_cdw11: u32 = (1u32 << 16) | 1; // CQID=1, PC=1
-    let sq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys) };
+    let sq_sf = unsafe {
+        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys)
+    };
     config::write::<u32>(16, sq_sf);
-    if sq_sf != 0 { return None; }
+    if sq_sf != 0 {
+        return None;
+    }
     config::write::<u32>(4, 18);
     Some((io_sq_mem.vaddr, io_cq_mem.vaddr, nsze, lbs, 0))
 }
@@ -458,21 +584,31 @@ struct IoState {
     nsze: u64,
     lbs: u32,
     cmd_slot: u32,
+    outstanding: u32,
 }
 
 impl IoState {
-    fn submit_io(&mut self, opcode: u8, start_lba: u64, nblocks: u16, prp1: u64) -> u32 {
+    fn submit_io(&mut self, opcode: u8, start_lba: u64, nblocks: u16, prp1: u64) -> Option<u32> {
+        // A circular SQ must always leave one entry unused so full and empty
+        // remain distinguishable.
+        if self.outstanding >= IO_QUEUE_SIZE - 1 {
+            return None;
+        }
         let slot = self.sq_tail;
         unsafe {
             nvm_sqe(self.sq_vaddr, slot, opcode, 1, start_lba, nblocks, prp1);
         }
         self.sq_tail = (slot + 1) % IO_QUEUE_SIZE;
-        unsafe { doorbell_write(sq1_tdbl(), self.sq_tail as u16); }
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+        unsafe {
+            doorbell_write(sq1_tdbl(), self.sq_tail as u16);
+        }
         self.cmd_slot = slot;
-        slot
+        self.outstanding += 1;
+        Some(slot)
     }
 
-    fn poll_completions(&mut self) -> Option<u16> {
+    fn poll_completions(&mut self) -> Option<(u16, u16)> {
         unsafe {
             let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
             let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
@@ -481,14 +617,16 @@ impl IoState {
                 return None;
             }
             core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-            let cid = (dw3 & 0xFFFF) as u16;
+            let cid = (dw3 & 0xffff) as u16;
+            let status = ((dw3 >> 17) & 0x7fff) as u16;
             self.cq_head = (self.cq_head + 1) % IO_QUEUE_SIZE;
             if self.cq_head == 0 {
                 self.cq_phase ^= 1;
             }
+            self.outstanding = self.outstanding.saturating_sub(1);
             core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
             doorbell_write(cq1_hdbl(), self.cq_head as u16);
-            Some(cid)
+            Some((cid, status))
         }
     }
 }
@@ -560,6 +698,7 @@ fn main(ctx: Context) -> ! {
         nsze,
         lbs,
         cmd_slot: 0,
+        outstanding: 0,
     };
 
     let mut irq_count: u32 = 0;
@@ -569,22 +708,41 @@ fn main(ctx: Context) -> ! {
     loop {
         // Poll I/O completions before cq_wait (catches completions from
         // commands submitted in the previous iteration)
-        while let Some(cid) = io.poll_completions() {
+        while let Some((cid, status)) = io.poll_completions() {
             let reply = take_pending(cid as u32);
-            if reply != 0 { ipc_reply(reply, 0); }
+            if reply != 0 {
+                ipc_reply(
+                    reply,
+                    if status == 0 {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
+            }
         }
 
-        // cq_wait causes VM exits on TCG, letting QEMU process I/O.
-        // Wakes on endpoint messages or (with IEN=1) interrupts.
-        cq_wait(1, 0);
+        // A bounded wait causes the VM exit TCG needs to process DMA, wakes
+        // immediately for endpoint/IRQ readiness, and polls the CQ at 1 ms
+        // intervals when the PCI function has no configured interrupt route.
+        cq_wait_timeout(1, 1, 0);
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
         }
-        while let Some(cid) = io.poll_completions() {
+        while let Some((cid, status)) = io.poll_completions() {
             let reply = take_pending(cid as u32);
-            if reply != 0 { ipc_reply(reply, 0); }
+            if reply != 0 {
+                ipc_reply(
+                    reply,
+                    if status == 0 {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
+            }
         }
 
         loop {
@@ -615,8 +773,14 @@ fn main(ctx: Context) -> ! {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
                             (l, c as u32)
                         };
-                        if count == 0 || lba + (count as u64) > nsze || count == 0 {
+                        let transfer_bytes = (count as u64).checked_mul(lbs as u64);
+                        if count == 0 || lba.checked_add(count as u64).is_none_or(|end| end > nsze)
+                        {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
+                            continue;
+                        }
+                        if transfer_bytes.is_none_or(|bytes| bytes > MAX_TRANSFER_BYTES) {
+                            ipc_reply(message.reply, block::ERR_UNALIGNED);
                             continue;
                         }
                         let mem_cap = message.memory;
@@ -625,12 +789,16 @@ fn main(ctx: Context) -> ! {
                             continue;
                         }
                         let phys = memory_get_phys(mem_cap);
-                        if phys == u64::MAX {
+                        if phys == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let slot = io.submit_io(NVM_READ, lba, count as u16, phys);
-                        store_pending(slot, message.reply);
+                        match io.submit_io(NVM_READ, lba, count as u16, phys) {
+                            Some(slot) => store_pending(slot, message.reply),
+                            None => {
+                                ipc_reply(message.reply, block::ERR_IO_ERROR);
+                            }
+                        }
                     }
                 }
                 block::OP_WRITE => {
@@ -643,8 +811,14 @@ fn main(ctx: Context) -> ! {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
                             (l, c as u32)
                         };
-                        if count == 0 || lba + (count as u64) > nsze {
+                        let transfer_bytes = (count as u64).checked_mul(lbs as u64);
+                        if count == 0 || lba.checked_add(count as u64).is_none_or(|end| end > nsze)
+                        {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
+                            continue;
+                        }
+                        if transfer_bytes.is_none_or(|bytes| bytes > MAX_TRANSFER_BYTES) {
+                            ipc_reply(message.reply, block::ERR_UNALIGNED);
                             continue;
                         }
                         let mem_cap = message.memory;
@@ -653,27 +827,31 @@ fn main(ctx: Context) -> ! {
                             continue;
                         }
                         let phys = memory_get_phys(mem_cap);
-                        if phys == u64::MAX {
+                        if phys == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let slot = io.submit_io(NVM_WRITE, lba, count as u16, phys);
-                        store_pending(slot, message.reply);
+                        match io.submit_io(NVM_WRITE, lba, count as u16, phys) {
+                            Some(slot) => store_pending(slot, message.reply),
+                            None => {
+                                ipc_reply(message.reply, block::ERR_IO_ERROR);
+                            }
+                        }
                     }
                 }
                 block::OP_FLUSH => {
                     if message.reply != 0 {
-                        io.submit_io(NVM_FLUSH, 0, 0, 0);
-                        while let Some(cid) = io.poll_completions() {
-                            let reply = take_pending(cid as u32);
-                            if reply != 0 { ipc_reply(reply, 0); }
+                        match io.submit_io(NVM_FLUSH, 0, 0, 0) {
+                            Some(slot) => store_pending(slot, message.reply),
+                            None => {
+                                ipc_reply(message.reply, block::ERR_IO_ERROR);
+                            }
                         }
-                        ipc_reply(message.reply, 0);
                     }
                 }
                 block::OP_TRIM => {
                     if message.reply != 0 {
-                        ipc_reply(message.reply, 0);
+                        ipc_reply(message.reply, block::ERR_IO_ERROR);
                     }
                 }
                 _ => {

@@ -24,13 +24,19 @@ extern crate alloc;
 
 catten_rt::entry!(main);
 
-use catten_rt::Context;
-use catten_rt::config;
-use catten_services::block;
-use catten_services::ns;
-use catten_services::objstore;
-use catten_syscall::ipc_status;
-use catten_syscall::*;
+use catten_rt::{
+    Context,
+    config,
+};
+use catten_services::{
+    block,
+    ns,
+    objstore,
+};
+use catten_syscall::{
+    ipc_status,
+    *,
+};
 
 const BUFFER_VADDR: usize = 0x0000_0000_0050_0000;
 const REPLY_SPINS: u64 = u64::MAX;
@@ -40,14 +46,17 @@ fn spin_reply(call: u64) -> (i64, u64) {
     // This yields to the scheduler and allows QEMU to process I/O.
     for _ in 0..500 {
         let (status, result, cap) = ipc_reply_poll(call);
-        if status == 0 { ipc_close(call); return (result as i64, cap); }
+        if status == 0 {
+            ipc_close(call);
+            return (result as i64, cap);
+        }
         catten_services::sleep_ms(1);
     }
     ipc_close(call);
     (-1, 0)
 }
 
-const SB_MAGIC: u64 = 0x525453424A4F;
+const SB_MAGIC: u64 = 0x525453424a4f;
 const SB_VERSION: u32 = 1;
 const DIR_ENTRIES: u32 = 512;
 const DIR_BLOCKS: u32 = 32;
@@ -65,29 +74,64 @@ impl BlockDev {
     /// Look up "blk0" from the name service. The name service defers
     /// the lookup if the driver hasn't registered yet — no retry loop.
     fn connect(ns_conn: u64) -> Option<Self> {
-        let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
-        if lookup == 0 { return None; }
+        let lookup = ipc_scalar_call_connection(
+            ns_conn,
+            ns::OP_LOOKUP,
+            block::NAME,
+            0,
+            IpcRights::SEND | IpcRights::CALL,
+        );
+        if lookup == 0 {
+            return None;
+        }
         let (generation, blk_conn) = spin_reply(lookup);
-        if generation < 1 || blk_conn == 0 { return None; }
+        if generation < 1 || blk_conn == 0 {
+            return None;
+        }
 
         let info = ipc_scalar_call(blk_conn, block::OP_INFO, 0);
-        if info == 0 { return None; }
+        if info == 0 {
+            return None;
+        }
         let (result, _) = spin_reply(info);
         let (bs, tb) = charlotte_protocol_block::unpack_info(result);
-        if bs == 0 || tb < METADATA_BLOCKS + 2 { return None; }
-        Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb })
+        if bs == 0 || tb < METADATA_BLOCKS + 2 {
+            return None;
+        }
+        Some(BlockDev {
+            conn: blk_conn,
+            block_size: bs,
+            total_blocks: tb,
+        })
     }
 
     fn write_block(&self, lba: u64, mem_cap: u64) -> bool {
-        let call = ipc_scalar_call_move(self.conn, block::OP_WRITE, charlotte_protocol_block::pack_lba_count(lba, 1), mem_cap);
-        if call == 0 { return false; }
+        let call = ipc_scalar_call_borrow_read(
+            self.conn,
+            block::OP_WRITE,
+            charlotte_protocol_block::pack_lba_count(lba, 1),
+            mem_cap,
+        );
+        if call == 0 {
+            memory_close(mem_cap);
+            return false;
+        }
         let (result, _) = spin_reply(call);
+        memory_close(mem_cap);
         result == 0
     }
 
     fn flush(&self) -> bool {
-        let call = ipc_scalar_call_connection(self.conn, block::OP_FLUSH, 0, 0, IpcRights::SEND | IpcRights::CALL);
-        if call == 0 { return false; }
+        let call = ipc_scalar_call_connection(
+            self.conn,
+            block::OP_FLUSH,
+            0,
+            0,
+            IpcRights::SEND | IpcRights::CALL,
+        );
+        if call == 0 {
+            return false;
+        }
         let (result, _) = spin_reply(call);
         result == 0
     }
@@ -102,11 +146,24 @@ struct ObjStore {
 impl ObjStore {
     fn mount(dev: BlockDev) -> Option<Self> {
         let sb = memory_alloc(1);
-        if sb == 0 { return None; }
-        let call = ipc_scalar_call_borrow_write(dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(0, 1), sb);
-        if call == 0 { memory_close(sb); return None; }
+        if sb == 0 {
+            return None;
+        }
+        let call = ipc_scalar_call_borrow_write(
+            dev.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(0, 1),
+            sb,
+        );
+        if call == 0 {
+            memory_close(sb);
+            return None;
+        }
         let (result, _) = spin_reply(call);
-        if result != 0 { memory_close(sb); return None; }
+        if result != 0 {
+            memory_close(sb);
+            return None;
+        }
         memory_map(sb, BUFFER_VADDR, false);
         let magic = unsafe { core::ptr::read_volatile(BUFFER_VADDR as *const u64) };
         let version = unsafe { core::ptr::read_volatile((BUFFER_VADDR + 8) as *const u32) };
@@ -118,11 +175,24 @@ impl ObjStore {
         }
 
         let sb2 = memory_alloc(1);
-        if sb2 == 0 { return None; }
-        let call2 = ipc_scalar_call_borrow_write(dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(0, 1), sb2);
-        if call2 == 0 { memory_close(sb2); return None; }
+        if sb2 == 0 {
+            return None;
+        }
+        let call2 = ipc_scalar_call_borrow_write(
+            dev.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(0, 1),
+            sb2,
+        );
+        if call2 == 0 {
+            memory_close(sb2);
+            return None;
+        }
         let (r2, _) = unsafe { catten_services::wait_reply(call2, REPLY_SPINS) };
-        if r2 != 0 { memory_close(sb2); return None; }
+        if r2 != 0 {
+            memory_close(sb2);
+            return None;
+        }
         memory_map(sb2, BUFFER_VADDR, false);
         let _gen = unsafe { core::ptr::read_volatile((BUFFER_VADDR + 12) as *const u32) };
         let block_size = unsafe { core::ptr::read_volatile((BUFFER_VADDR + 16) as *const u32) };
@@ -131,7 +201,11 @@ impl ObjStore {
         memory_unmap(sb2);
         memory_close(sb2);
 
-        Some(ObjStore { dev, next_id, block_size })
+        Some(ObjStore {
+            dev,
+            next_id,
+            block_size,
+        })
     }
 
     fn format(dev: BlockDev) -> Option<Self> {
@@ -140,7 +214,9 @@ impl ObjStore {
 
         // Write superblock
         let sb = memory_alloc(1);
-        if sb == 0 { return None; }
+        if sb == 0 {
+            return None;
+        }
         memory_map(sb, BUFFER_VADDR, true);
         unsafe {
             let p = BUFFER_VADDR as *mut u64;
@@ -158,13 +234,19 @@ impl ObjStore {
 
         // Write free bitmap (all bits 0, then mark metadata)
         let bm = memory_alloc(1);
-        if bm == 0 { return None; }
+        if bm == 0 {
+            return None;
+        }
         memory_map(bm, BUFFER_VADDR, true);
-        unsafe { core::ptr::write_bytes(BUFFER_VADDR as *mut u8, 0, bs as usize); }
+        unsafe {
+            core::ptr::write_bytes(BUFFER_VADDR as *mut u8, 0, bs as usize);
+        }
         for i in 0..METADATA_BLOCKS {
             let byte = (i / 8) as usize;
             let bit = (i % 8) as u8;
-            unsafe { ((BUFFER_VADDR + byte) as *mut u8).write_volatile(1u8 << bit); }
+            unsafe {
+                ((BUFFER_VADDR + byte) as *mut u8).write_volatile(1u8 << bit);
+            }
         }
         memory_unmap(bm);
         dev.write_block(1, bm);
@@ -172,30 +254,53 @@ impl ObjStore {
         // Write empty directory blocks
         for i in 0..DIR_BLOCKS {
             let db = memory_alloc(1);
-            if db == 0 { return None; }
+            if db == 0 {
+                return None;
+            }
             memory_map(db, BUFFER_VADDR, true);
-            unsafe { core::ptr::write_bytes(BUFFER_VADDR as *mut u8, 0, bs as usize); }
+            unsafe {
+                core::ptr::write_bytes(BUFFER_VADDR as *mut u8, 0, bs as usize);
+            }
             memory_unmap(db);
             dev.write_block(2 + (i as u64), db);
         }
 
         dev.flush();
 
-        Some(ObjStore { dev, next_id: 1, block_size: bs })
+        Some(ObjStore {
+            dev,
+            next_id: 1,
+            block_size: bs,
+        })
     }
 
     /// Read a single directory entry. Returns (id, flags, size_bytes, first_lba).
     fn read_dir_entry(&self, index: u32) -> Option<(u64, u32, u32, u64)> {
-        if index >= DIR_ENTRIES { return None; }
+        if index >= DIR_ENTRIES {
+            return None;
+        }
         let dir_lba = 2 + (index as u64 * 32) / self.block_size as u64;
         let dir_off = (index as usize * 32) % self.block_size as usize;
 
         let dm = memory_alloc(1);
-        if dm == 0 { return None; }
-        let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(dir_lba, 1), dm);
-        if call == 0 { memory_close(dm); return None; }
+        if dm == 0 {
+            return None;
+        }
+        let call = ipc_scalar_call_borrow_write(
+            self.dev.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(dir_lba, 1),
+            dm,
+        );
+        if call == 0 {
+            memory_close(dm);
+            return None;
+        }
         let (r, _) = spin_reply(call);
-        if r != 0 { memory_close(dm); return None; }
+        if r != 0 {
+            memory_close(dm);
+            return None;
+        }
         memory_map(dm, BUFFER_VADDR, false);
 
         let off = BUFFER_VADDR + dir_off;
@@ -210,17 +315,32 @@ impl ObjStore {
     }
 
     fn write_dir_entry(&self, index: u32, id: u64, flags: u32, size: u32, first_lba: u64) -> bool {
-        if index >= DIR_ENTRIES { return false; }
+        if index >= DIR_ENTRIES {
+            return false;
+        }
         let dir_lba = 2 + (index as u64 * 32) / self.block_size as u64;
         let dir_off = (index as usize * 32) % self.block_size as usize;
 
         // Read the block, modify it, write it back
         let dm = memory_alloc(1);
-        if dm == 0 { return false; }
-        let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(dir_lba, 1), dm);
-        if call == 0 { memory_close(dm); return false; }
+        if dm == 0 {
+            return false;
+        }
+        let call = ipc_scalar_call_borrow_write(
+            self.dev.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(dir_lba, 1),
+            dm,
+        );
+        if call == 0 {
+            memory_close(dm);
+            return false;
+        }
         let (r, _) = spin_reply(call);
-        if r != 0 { memory_close(dm); return false; }
+        if r != 0 {
+            memory_close(dm);
+            return false;
+        }
         // Write the modified entry into the block and write back
         memory_map(dm, BUFFER_VADDR, true);
         let off = BUFFER_VADDR + dir_off;
@@ -237,7 +357,9 @@ impl ObjStore {
     fn find_free_dir_slot(&self) -> Option<u32> {
         for i in 0..DIR_ENTRIES {
             if let Some((id, _, _, _)) = self.read_dir_entry(i) {
-                if id == 0 { return Some(i); }
+                if id == 0 {
+                    return Some(i);
+                }
             }
         }
         None
@@ -246,7 +368,9 @@ impl ObjStore {
     fn find_dir_index(&self, object_id: u64) -> Option<u32> {
         for i in 0..DIR_ENTRIES {
             if let Some((id, _, _, _)) = self.read_dir_entry(i) {
-                if id == object_id { return Some(i); }
+                if id == object_id {
+                    return Some(i);
+                }
             }
         }
         None
@@ -301,7 +425,9 @@ impl ObjStore {
 
         // Get physical address of the data block
         let phys = memory_get_phys(data_cap);
-        if phys == u64::MAX { return objstore::ERR_IO_ERROR; }
+        if phys == 0 {
+            return objstore::ERR_IO_ERROR;
+        }
 
         // Calculate which LBA this physical page corresponds to.
         // In QEMU, the NVMe device has a contiguous physical address space
@@ -322,15 +448,23 @@ impl ObjStore {
     /// READ returns the object's data block as a memory object moved to
     /// the caller. The caller receives a memory cap via ipc_reply_move.
     fn op_read_and_reply(&self, object_id: u64, reply: u64) {
-        if reply == 0 { return; }
+        if reply == 0 {
+            return;
+        }
 
         let idx = match self.find_dir_index(object_id) {
             Some(i) => i,
-            None => { ipc_reply(reply, objstore::ERR_NOT_FOUND); return; }
+            None => {
+                ipc_reply(reply, objstore::ERR_NOT_FOUND);
+                return;
+            }
         };
         let (_id, _flags, _size, first_lba) = match self.read_dir_entry(idx) {
             Some(v) => v,
-            None => { ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
+            None => {
+                ipc_reply(reply, objstore::ERR_IO_ERROR);
+                return;
+            }
         };
         if first_lba == 0 {
             ipc_reply(reply, objstore::ERR_NOT_FOUND);
@@ -339,17 +473,37 @@ impl ObjStore {
 
         // Read the block from disk into a new memory object
         let dm = memory_alloc(1);
-        if dm == 0 { ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
-        let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(first_lba, 1), dm);
-        if call == 0 { memory_close(dm); ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
+        if dm == 0 {
+            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            return;
+        }
+        let call = ipc_scalar_call_borrow_write(
+            self.dev.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(first_lba, 1),
+            dm,
+        );
+        if call == 0 {
+            memory_close(dm);
+            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            return;
+        }
         let (r, _) = spin_reply(call);
-        if r != 0 { memory_close(dm); ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
+        if r != 0 {
+            memory_close(dm);
+            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            return;
+        }
 
         ipc_reply_move(reply, dm, 0);
     }
 
     fn op_flush(&self) -> i64 {
-        if self.dev.flush() { 0 } else { objstore::ERR_IO_ERROR }
+        if self.dev.flush() {
+            0
+        } else {
+            objstore::ERR_IO_ERROR
+        }
     }
 }
 
@@ -363,34 +517,62 @@ fn main(ctx: Context) -> ! {
     // Use handoff endpoint if provided, otherwise name service lookup
     let dev = match ctx.handoff_endpoint_cap() {
         0 => match BlockDev::connect(ns_connection) {
-            Some(d) => { config::write::<u32>(0, 2); config::write::<u32>(24, d.conn as u32); d }
-            None => { config::write::<u32>(0, 0xdead); unsafe { thread_exit() }; }
+            Some(d) => {
+                config::write::<u32>(0, 2);
+                config::write::<u32>(24, d.conn as u32);
+                d
+            }
+            None => {
+                config::write::<u32>(0, 0xdead);
+                unsafe { thread_exit() };
+            }
         },
         blk_conn => {
             config::write::<u32>(0, 2);
             config::write::<u32>(24, blk_conn as u32);
             let info = ipc_scalar_call(blk_conn, block::OP_INFO, 0);
-            if info == 0 { config::write::<u32>(0, 0xbeef); unsafe { thread_exit() }; }
+            if info == 0 {
+                config::write::<u32>(0, 0xbeef);
+                unsafe { thread_exit() };
+            }
             let mut s: u64 = 0;
             let (bs, tb) = loop {
                 let (st, r, _) = ipc_reply_poll(info);
-                if st == 0 { ipc_close(info); break charlotte_protocol_block::unpack_info(r as i64); }
+                if st == 0 {
+                    ipc_close(info);
+                    break charlotte_protocol_block::unpack_info(r as i64);
+                }
                 s += 1;
-                if s > 5000 { ipc_close(info); config::write::<u32>(0, 0xdddd); unsafe { thread_exit() }; }
+                if s > 5000 {
+                    ipc_close(info);
+                    config::write::<u32>(0, 0xdddd);
+                    unsafe { thread_exit() };
+                }
                 core::hint::spin_loop();
             };
             config::write::<u32>(16, bs);
             config::write::<u32>(20, tb);
             if bs == 0 || tb < METADATA_BLOCKS + 2 {
-                config::write::<u32>(0, 0xeeee); unsafe { thread_exit() };
+                config::write::<u32>(0, 0xeeee);
+                unsafe { thread_exit() };
             }
-            BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb }
+            BlockDev {
+                conn: blk_conn,
+                block_size: bs,
+                total_blocks: tb,
+            }
         }
     }; // block device connected
 
     let mut store = match ObjStore::mount(dev) {
-        Some(s) => { config::write::<u32>(0, 3); s }
-        None => { config::write::<u32>(0, 0xbeef); unsafe { thread_exit() }; }
+        Some(s) => {
+            config::write::<u32>(0, 3);
+            s
+        }
+        None => {
+            config::write::<u32>(0, 0xbeef);
+            unsafe { thread_exit() };
+        }
     }; // mounted/formatted
 
     let endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 64);

@@ -17,6 +17,8 @@ const NS_ELF: &[u8] = include_bytes!("ns.elf");
 const NVME_ELF: &[u8] = include_bytes!("nvme.elf");
 #[cfg(target_arch = "aarch64")]
 const OBJSTORE_ELF: &[u8] = include_bytes!("objstore.elf");
+#[cfg(target_arch = "aarch64")]
+const NVME_CLIENT_ELF: &[u8] = include_bytes!("nvme_client.elf");
 
 #[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<NameServiceHandle> = None;
@@ -87,6 +89,19 @@ extern "C" fn verify_el0_nvme() {
         core::hint::spin_loop();
     }
     logln!("[nvme] driver ready");
+
+    // --- Verify write -> durable flush -> read round trip ---
+    let client = supervisor::spawn_with_name_service(NVME_CLIENT_ELF, ns, ConnectionRights::CALL);
+    let client_cfg: *const u32 = {
+        let base: *mut u8 = client.status_frame.into();
+        base as *const u32
+    };
+    while unsafe { core::ptr::read_volatile(client_cfg) } != 0x900d {
+        let state = unsafe { core::ptr::read_volatile(client_cfg) };
+        assert!(state < 0xdea0, "[nvme] I/O verifier failed: {:#x}", state);
+        core::hint::spin_loop();
+    }
+    logln!("[nvme] write/flush/read round trip verified");
 
     // --- Spawn object store via name service (deferred lookup) ---
     let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, ns, ConnectionRights::CALL);
