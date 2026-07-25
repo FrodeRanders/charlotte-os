@@ -55,7 +55,6 @@ const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
 const PAGE_SIZE: usize = 4096;
 
-const REPLY_SPINS: u64 = u64::MAX;
 
 fn spin_reply(call: u64) -> (i64, u64) {
     for _ in 0..500_000 {

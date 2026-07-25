@@ -146,7 +146,7 @@ fn main(ctx: Context) -> ! {
 
 /// Orchestrate the handoff and return the result code.
 fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
-    let target_conn = match unsafe { lookup(ns_conn, target_name) } {
+    let target_conn = match lookup(ns_conn, target_name) {
         Some(c) => c,
         None => {
             config::write::<u32>(ERROR_OFFSET, 1);
