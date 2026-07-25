@@ -1,0 +1,229 @@
+\chapter{Persistent Storage}
+
+CharlotteOS treats storage as a layered stack of userspace services, each
+speaking a well-defined protocol through endpoint IPC. No part of the storage
+stack runs in the kernel — the kernel grants an NVMe driver an MMIO window
+and an interrupt, and the rest is composed in userspace.
+
+\section{The storage stack}
+
+\begin{verbatim}
+Filesystem ("fs")           ← charlotte-protocol-fs
+    |
+Object store ("obj")        ← charlotte-protocol-objstore
+    |
+Block driver ("blk0")       ← charlotte-protocol-block
+    |
+NVMe controller             ← MMIO + DMA + MSI-X (granted at boot)
+\end{verbatim}
+
+\section{NVMe block driver}
+
+The NVMe driver is a userspace EL0 service implementing the NVM Express 1.4
+base specification. It receives an \texttt{MmioRegion} capability covering the
+controller's BAR0 register window and an \texttt{Interrupt} capability for I/O
+completion signalling. It never names a physical address or interrupt vector
+--- both arrive through the config-page contract.
+
+\subsection{Initialisation}
+
+The driver follows the standard NVMe initialisation sequence:
+
+\begin{enumerate}
+    \item \textbf{Controller reset:} disable CC.EN, wait for CSTS.RDY = 0.
+    \item \textbf{Admin queue setup:} allocate physically contiguous memory for the
+        Admin Submission Queue (ASQ, 32 entries) and Admin Completion Queue
+        (ACQ, 32 entries). Write AQA, ASQ, and ACQ registers. Enable the
+        controller and wait for CSTS.RDY = 1.
+    \item \textbf{Identify controller:} submit an Identify command (CNS=1) through
+        the admin SQ. Read capabilities, version, and supported features.
+    \item \textbf{Set Features (Number of Queues):} declare how many I/O queue
+        pairs the driver intends to use. QEMU's NVMe controller requires this
+        before accepting I/O queue creation commands.
+    \item \textbf{Identify namespace:} submit an Identify command (CNS=0, NSID=1)
+        to read the namespace size (NSZE) and the active LBA format (FLBAS),
+        which determines the block size.
+    \item \textbf{Create I/O Completion Queue:} allocate memory, submit a Create
+        I/O CQ admin command. The CDW11 register must set bit 0 (PC =
+        Physically Contiguous) to 1 --- this is required by the NVMe
+        specification and enforced by QEMU's device model.
+    \item \textbf{Create I/O Submission Queue:} allocate memory, submit a Create
+        I/O SQ admin command, associating it with the I/O CQ created in the
+        previous step.
+\end{enumerate}
+
+After initialisation the driver registers \texttt{"blk0"} with the name service
+and enters its main loop, blocking on \texttt{cq\_wait} for endpoint messages
+and I/O completions.
+
+\subsection{I/O path}
+
+\textbf{OP\_READ} receives a BorrowWrite memory attachment from the caller.
+The driver reads the physical address of the attached pages via
+\texttt{memory\_get\_phys}, constructs an NVM Read command with the starting
+LBA, block count, and PRP1 pointing to the caller's pages, and submits it to
+the I/O SQ. The NVMe controller DMAs the data directly into the caller's
+pages. When the completion arrives (polled via the I/O CQ), the driver replies
+and the kernel revokes the borrow, returning the now-filled buffer to the
+caller.
+
+\textbf{OP\_WRITE} receives a Move memory attachment. The driver reads the
+physical address, constructs an NVM Write command, and submits it. The
+controller DMAs from the caller's pages. On completion the driver replies; the
+buffer was moved and is consumed.
+
+\textbf{OP\_FLUSH} submits an NVM Flush command to ensure all previously
+written data reaches durable media before replying.
+
+\subsection{Lessons from bringup}
+
+The NVMe driver surfaced several non-obvious requirements:
+
+\begin{itemize}
+    \item \textbf{CDW11 bit 0 (PC) must be 1.} QEMU's NVMe device model
+        requires physically contiguous queues. Without this bit, the Create
+        I/O CQ command returns status 0x4002 regardless of all other
+        parameters.
+    \item \textbf{SQE layout is exacting.} The Command Identifier occupies
+        bits 31:16 of DW0, the opcode occupies bits 7:0. The NSID shares
+        DW0's high bits with DW0 in the first u64. PRP1 is at byte offset
+        24, CDW10-11 at byte offset 40. Getting any of these wrong produces
+        silent failures.
+    \item \textbf{Doorbell stride must be derived from CAP.DSTRD.} On QEMU
+        this is 0 (stride = 4 bytes), but the architecture supports strides
+        up to $4 \ll 15$ bytes.
+    \item \textbf{MMIO mapping must cover the doorbell region.} The NVMe
+        controller registers occupy offsets 0x0000--0x003F within BAR0, but
+        doorbell registers start at offset 0x1000. A single-page MMIO grant
+        is insufficient --- at least two pages are needed.
+    \item \textbf{On TCG, \texttt{cq\_wait} is required for VM exits.} A
+        pure spin-loop prevents QEMU from processing I/O because the guest
+        never yields. The driver must block on \texttt{cq\_wait} to let the
+        host process NVMe commands.
+\end{itemize}
+
+\section{Block device protocol}
+
+The block protocol (\texttt{charlotte-protocol-block}) is a minimal
+\texttt{no\_std} crate defining the endpoint IPC interface between block
+device consumers and drivers:
+
+\begin{longtable}{|c|l|p{7cm}|}
+\hline
+\textbf{Opcode} & \textbf{Name} & \textbf{Description} \\
+\hline
+1 & OP\_INFO & Query block size and total block count. Scalar call/reply. \\
+2 & OP\_READ & Read blocks into a BorrowWrite memory object. \\
+3 & OP\_WRITE & Write blocks from a Move memory object. \\
+4 & OP\_FLUSH & Flush write cache to durable media. \\
+5 & OP\_TRIM & Discard a block range (optional). \\
+\hline
+\end{longtable}
+
+The protocol is transport-agnostic: the same interface works for NVMe, AHCI,
+virtio-blk, or a ramdisk. Consumers speak \texttt{OP\_READ}/\texttt{OP\_WRITE}
+without knowing the underlying hardware.
+
+\section{Object store}
+
+The persistent object store (\texttt{charlotte-protocol-objstore}) provides
+crash-safe, dynamically-sized blob storage on top of a block device. Objects
+are identified by 64-bit monotonically-increasing IDs.
+
+\subsection{On-disk layout}
+
+\begin{verbatim}
+LBA 0:     superblock (magic, version, generation, next_object_id)
+LBA 1:     free block bitmap (1 bit per block)
+LBA 2--33: object directory (512 entries × 32 bytes:
+             id | flags | size_bytes | first_extent_lba)
+LBA 34+:   data extents (linked list of blocks per object)
+\end{verbatim}
+
+\subsection{Crash safety}
+
+New data extents are written to disk first, then the directory entry's
+\texttt{first\_extent\_lba} pointer is updated atomically (a single-block
+write). If a crash occurs between writing the extent and updating the
+directory, the orphaned blocks are unreachable but the object reverts
+consistently to its previous state. No journal, no double-writes --- the
+pointer swap is the commit.
+
+\subsection{Operations}
+
+\begin{itemize}
+    \item \textbf{CREATE} --- allocate a directory slot, return a new object ID.
+    \item \textbf{WRITE} --- replace the object's content. The caller moves a
+        memory object; the store writes it to a new extent and updates the
+        directory pointer.
+    \item \textbf{READ} --- return the object's data as a moved memory object.
+    \item \textbf{DELETE} --- mark the directory entry as free, return the
+        extent blocks to the free bitmap.
+    \item \textbf{FLUSH} --- flush the underlying block device.
+\end{itemize}
+
+\section{Native filesystem}
+
+The filesystem (\texttt{charlotte-protocol-fs}) builds hierarchical naming on
+top of the object store. Directories and files are stored as objects; the root
+directory is a fixed object ID (100).
+
+\subsection{Directory encoding}
+
+Each directory object stores entries as a packed sequence:
+
+\begin{verbatim}
+[name_len: u32 LE][name: UTF-8][file_id: u64 LE][flags: u32 LE][size: u64 LE]
+\end{verbatim}
+
+A \texttt{name\_len = 0} marker terminates the list. Flags distinguish
+directories (bit 0 set) from files (bit 0 clear).
+
+\subsection{Path resolution}
+
+Paths are walked client-side by chaining \texttt{OP\_LOOKUP} calls. The
+filesystem service does not understand path strings --- it only resolves
+single-component lookups within a given directory. This keeps the filesystem
+protocol minimal: six operations (LOOKUP, CREATE, READ, WRITE, DELETE, LIST)
+plus FLUSH.
+
+\subsection{Host inspection}
+
+A Python tool (\texttt{scripts/fs-inspect.py}) reads the raw disk image and
+walks the object store and filesystem on-disk structures. It provides tree
+view, hex dump, cat, and format commands, enabling post-mortem debugging
+without booting CharlotteOS:
+
+\begin{verbatim}
+python3 scripts/fs-inspect.py os-images/nvme-disk.img tree
+python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /raft/state
+\end{verbatim}
+
+\section{Why this matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Zero kernel code in the storage path.} A bug in the NVMe
+        driver, the object store, or the filesystem corrupts that service's
+        address space, not the kernel. The kernel grants MMIO and interrupts;
+        everything else is userspace.
+
+    \item \textbf{Transport independence.} The block protocol abstracts the
+        hardware. The same object store and filesystem work over NVMe, AHCI,
+        virtio-blk, or a network block device --- the kernel does not need to
+        know which.
+
+    \item \textbf{Crash-safe by construction.} The object store's atomic
+        pointer-swap commit eliminates the need for journaling at the storage
+        layer. A crash during a write leaves the previous version intact.
+
+    \item \textbf{Capability-based access.} A client that holds a connection to
+        \texttt{"blk0"} can read and write blocks. A client that does not hold
+        that connection cannot. There is no ambient filesystem namespace to
+        escape.
+
+    \item \textbf{Host-inspectable.} The disk image is a raw file that can be
+        examined with standard tools and the included Python inspector. No
+        proprietary on-disk format, no opaque blobs.
+\end{enumerate}
+
+\endinput

@@ -1,0 +1,201 @@
+\chapter{Live Service Upgrade}
+
+CharlotteOS can replace a running service without losing its state. This is
+\textbf{restart-with-state}, not true zero-downtime: in-flight requests to the
+old instance fail during the handoff window and clients must retry. But the
+new instance resumes with the old instance's state intact, and clients
+reconnect transparently through the name service's generation tracking.
+
+\section{The four primitives}
+
+Live upgrade builds on four primitives already implemented in the kernel and
+name service:
+
+\begin{enumerate}
+    \item \textbf{Memory-object ownership transfer.} The kernel's
+        \texttt{memory::object::move\_to} moves a page-backed memory object
+        from one address space to another. The sender loses access; the
+        receiver gains it. This is the vehicle for service state.
+
+    \item \textbf{Generation tracking.} The userspace name service records an
+        instance generation that increments on restart. A client calling
+        through a stale connection from the previous generation receives
+        \texttt{EndpointClosed}. Re-looking up the name returns the new
+        generation and a fresh connection to the new instance.
+
+    \item \textbf{EndpointClose and Cancelled.} When a service domain exits,
+        the kernel closes its endpoint. Queued requests that were never
+        delivered complete as \texttt{EndpointClosed}. Delivered calls whose
+        server exited before replying complete as \texttt{Cancelled}. Clients
+        see a deterministic failure, not a hung request.
+
+    \item \textbf{Bootstrap capability delivery.} The supervisor writes
+        initial capabilities to the config page before a domain starts. For a
+        live upgrade, the bootstrap contract is extended: in addition to the
+        name service connection, the new domain receives the old service's
+        state (as memory objects) and the old service's endpoint capability.
+\end{enumerate}
+
+\section{The handoff protocol}
+
+\begin{verbatim}
+     Old Service         Supervisor         New Service
+          |                    |                   |
+     OP_HANDOFF               |                   |
+          |-------------------->                   |
+          |   drain in-flight, |                   |
+          |   serialize state  |                   |
+          |   -> move_to       |                   |
+          |<-------------------|                   |
+          |  reply: "ready"    |                   |
+          |                    |  spawn_upgrade()  |
+          |  (exit)            |------------------>|
+          |                    |  bootstrap:       |
+          |                    |    ns_connection  |
+          |                    |    state_memory   |
+          |                    |    endpoint_cap   |
+          |                    |                   |
+          |                    |         new service reads state,
+          |                    |         takes over endpoint,
+          |                    |         registers (new generation)
+          |                    |                   |
+                    clients see EndpointClosed
+                    -> re-lookup -> fresh connection
+                    -> resume from where they left off
+\end{verbatim}
+
+The old service receives an \texttt{OP\_HANDOFF} request (typically from the
+supervisor or a service manager). It drains any in-flight work, serialises its
+mutable state into memory objects, moves those objects to the supervisor's
+address space, and replies ``ready'' before exiting.
+
+The supervisor then spawns the new service instance with an extended bootstrap
+contract: the name service connection, the handoff state memory objects, and
+the old service's endpoint capability. The new service deserialises the state,
+takes over the endpoint, and re-registers under the same name. The name
+service bumps the generation, invalidating all stale client connections.
+
+\section{What the supervisor provides}
+
+\begin{verbatim}
+pub struct UpgradeGrant {
+    pub state_caps: Vec<MemoryObjectCap>,
+    pub endpoint_cap: CapabilityId,
+}
+
+pub fn spawn_upgrade(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    old_domain: ServiceDomain,
+    grant: UpgradeGrant,
+) -> ServiceDomain;
+\end{verbatim}
+
+\texttt{spawn\_upgrade} loads the new service ELF, moves the state memory
+objects to the new domain, delegates the old endpoint cap to the new domain,
+writes the extended bootstrap config page, starts the new domain, and tears
+down the old domain (reclaiming all remaining resources).
+
+\section{What the service must implement}
+
+The old service must handle \texttt{OP\_HANDOFF}:
+
+\begin{verbatim}
+OP_HANDOFF => {
+    // Stop accepting new work.
+    // Serialize all mutable state into memory objects.
+    // Move those objects to the supervisor's address space
+    //   (the supervisor passes its ASID in the handoff call).
+    // Reply "ready", then exit.
+}
+\end{verbatim}
+
+The new service reads the extended bootstrap contract:
+
+\begin{verbatim}
+fn main(ctx: Context) -> ! {
+    let ns_connection = ctx.bootstrap_cap();
+    let state_count = ctx.handoff_count();
+    let state = ctx.handoff_state_cap();
+    let endpoint = ctx.handoff_endpoint_cap();
+
+    // Deserialize state, register the endpoint under the
+    // same name (NS bumps generation), start serving.
+}
+\end{verbatim}
+
+\section{What clients see}
+
+A client holding a stale connection from the previous generation sees a clean
+failure and retries:
+
+\begin{verbatim}
+// Before upgrade:
+let conn = ns.lookup("payroll")?;       // generation 3
+payroll.call(OP_CALCULATE, employee_id); // in-flight
+
+// During upgrade: call completes as EndpointClosed.
+// Client retries:
+let conn = ns.lookup("payroll")?;       // generation 4
+payroll.call(OP_CALCULATE, employee_id); // reaches new instance
+\end{verbatim}
+
+The new instance has the old instance's state, so it can resume processing
+where the old instance left off. From the client's perspective, a single
+request failed and was retried --- the rest of the session continues
+uninterrupted.
+
+\section{Restart-with-state vs.\ zero-downtime}
+
+This design is \textbf{restart-with-state}: in-flight requests to the old
+instance fail during the handoff window, and clients must retry. This is
+sufficient for the vast majority of services --- the handoff window is
+measured in milliseconds, and clients already handle transient failures
+through the name service's generation tracking.
+
+True zero-downtime would require one of:
+
+\begin{itemize}
+    \item \textbf{Queue migration:} the old service's endpoint queue would
+        need to be transferred to the new service atomically, so no request
+        is ever rejected. This is a future kernel feature.
+    \item \textbf{Sidecar model:} the new service starts alongside the old
+        one, both sharing the same endpoint, and the old service stops
+        accepting new work. The kernel does not currently support multiple
+        owners for one endpoint.
+\end{itemize}
+
+\section{Relationship to crash recovery}
+
+The live upgrade path is the graceful variant of the crash-recovery path
+already exercised by the UART driver test (Chapter~12). In both cases, the
+supervisor reclaims device authority, invalidates stale connections, and
+spawns a new instance with a bumped generation. The difference is that live
+upgrade transfers state explicitly through memory objects before the old
+instance exits, rather than starting the new instance from scratch.
+
+\section{Why this matters for critical software}
+
+\begin{enumerate}
+    \item \textbf{Services can be upgraded without losing state.} A bug fix
+        or feature update to a filesystem, network stack, or consensus node
+        does not require a system reboot. The new binary starts with the old
+        binary's state.
+
+    \item \textbf{The upgrade window is bounded.} The old service drains
+        in-flight work, serialises state, and exits. The new service starts
+        and registers. Clients retry. The entire sequence completes in
+        milliseconds.
+
+    \item \textbf{Failure during upgrade is safe.} If the new service fails to
+        start, the supervisor can restart the old service (or a fallback).
+        The state memory objects are owned by the supervisor during the
+        transition, so they are not lost.
+
+    \item \textbf{The building blocks are already proven.} Memory-object
+        transfer, generation tracking, deterministic teardown, and bootstrap
+        delivery are all exercised by the existing self-test suite. The live
+        upgrade protocol adds approximately 150 lines of orchestration code.
+\end{enumerate}
+
+\endinput
