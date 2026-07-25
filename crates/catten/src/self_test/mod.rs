@@ -81,10 +81,8 @@ pub fn run_self_tests() {
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
     #[cfg(all(not(feature = "virtio_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
-    #[cfg(all(feature = "nvme_test", target_arch = "aarch64"))]
+    #[cfg(target_arch = "aarch64")]
     el0_nvme::test_el0_nvme();
-    #[cfg(all(not(feature = "nvme_test"), target_arch = "aarch64"))]
-    logln!("Skipping EL0 NVMe test (enable nvme_test with -device nvme).");
     el0_uart::test_el0_uart();
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }
