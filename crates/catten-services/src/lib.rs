@@ -494,6 +494,21 @@ pub unsafe fn wait_reply(call: u64, max_spins: u64) -> (i64, u64) {
     }
 }
 
+/// Spin-poll a pending call until it completes. Returns (-1, 0) on timeout
+/// instead of killing the process like [`wait_reply`] does.
+pub fn spin_reply(call: u64) -> (i64, u64) {
+    for _ in 0..500 {
+        let (status, result, cap) = catten_syscall::ipc_reply_poll(call);
+        if status == 0 {
+            catten_syscall::ipc_close(call);
+            return (result as i64, cap);
+        }
+        sleep_ms(1);
+    }
+    catten_syscall::ipc_close(call);
+    (-1, 0)
+}
+
 /// Block the calling userspace thread between low-frequency reply polls.
 pub fn sleep_ms(milliseconds: u64) {
     let timer = catten_syscall::submit_timer(milliseconds);

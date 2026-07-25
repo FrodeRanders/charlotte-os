@@ -31,7 +31,6 @@ use catten_syscall::{
 
 const REPLY_SPINS: u64 = 50_000_000;
 const READ_SPINS: u64 = 400_000_000;
-const LOOKUP_ATTEMPTS: u64 = 1_000_000;
 const SENTINEL: u32 = 0xc0de;
 
 /// Config-page output words (console-client domain).
@@ -52,21 +51,10 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
-    let mut attempts: u64 = 0;
-    let console_connection = loop {
-        let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, console::NAME);
-        if lookup != 0 {
-            let (result, cap) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-            if result >= 1 && cap != 0 {
-                break cap;
-            }
-        }
-        attempts += 1;
-        if attempts >= LOOKUP_ATTEMPTS {
-            unsafe { thread_exit() };
-        }
-        core::hint::spin_loop();
-    };
+    let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, console::NAME);
+    if lookup == 0 { unsafe { thread_exit() }; }
+    let (result, console_connection) = catten_services::spin_reply(lookup);
+    if result < 1 || console_connection == 0 { unsafe { thread_exit() }; }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut last_status: i64 = 0;

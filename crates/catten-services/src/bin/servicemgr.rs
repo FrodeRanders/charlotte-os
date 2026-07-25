@@ -42,7 +42,6 @@ use catten_syscall::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const LOOKUP_ATTEMPTS: u64 = 2_000_000;
 
 const STAGE_OFFSET: usize = 0;
 const LAST_GEN_OFFSET: usize = 4;
@@ -81,22 +80,11 @@ unsafe fn spin_call(call: u64, _what: &str) -> (u64, u64) {
 }
 
 /// Look up a service by short name; return its connection cap.
-unsafe fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
-    let mut attempts = 0u64;
-    loop {
-        let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
-        if l != 0 {
-            let (generation, cap) = unsafe { spin_call(l, "lookup") };
-            if generation >= 1 && cap != 0 {
-                return Some(cap);
-            }
-        }
-        attempts += 1;
-        if attempts >= LOOKUP_ATTEMPTS {
-            return None;
-        }
-        core::hint::spin_loop();
-    }
+fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
+    let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
+    if l == 0 { return None; }
+    let (generation, cap) = catten_services::spin_reply(l);
+    if generation >= 1 && cap != 0 { Some(cap) } else { None }
 }
 
 fn main(ctx: Context) -> ! {
