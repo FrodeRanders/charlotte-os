@@ -198,8 +198,11 @@ extern "C" fn verify_el0_nvme() {
             let blk_conn = unsafe { core::ptr::read_volatile(obj_cfg.add(6)) };
             let iocq0 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(14)) };
             let iocq3 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(17)) };
-            logln!("[nvme] obj stage={} conn={:#x} blk={} info={:#x} bs={} tb={} | drv stage={} sub={} cq0={:#x} cq3={:#x} (spins={})",
-                stage, conn, blk_conn, obj_info, obj_bs, obj_tb, drv_stage, drv_sub, iocq0, iocq3, spins);
+            let sdw0 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(19)) }; // offset 76
+            let sdw3_lo = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(20)) }; // offset 80
+            let sdw5 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(22)) }; // offset 88
+            logln!("[nvme] obj stage={} conn={:#x} blk={} bs={} tb={} | cq0={:#x} cq3={:#x} sdw0={:#x} sdw5={:#x} (spins={})",
+                stage, conn, blk_conn, obj_bs, obj_tb, iocq0, iocq3, sdw0, sdw5, spins);
         }
         core::hint::spin_loop();
     }

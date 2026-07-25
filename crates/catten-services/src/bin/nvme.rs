@@ -578,17 +578,24 @@ fn main(ctx: Context) -> ! {
     let tot = total_blocks;
 
     loop {
-        // Busy-poll for I/O completions and endpoint messages.
-        // Don't block on cq_wait — the INTID may not be correct
-        // for interrupt delivery to cq_wait.
-        let mut did_work = false;
-
+        // Poll I/O completions before cq_wait (catches completions from
+        // commands submitted in the previous iteration)
         while let Some(cid) = io.poll_completions() {
-            did_work = true;
             let reply = take_pending(cid as u32);
-            if reply != 0 {
-                ipc_reply(reply, 0);
-            }
+            if reply != 0 { ipc_reply(reply, 0); }
+        }
+
+        // cq_wait causes VM exits on TCG, letting QEMU process I/O.
+        // Wakes on endpoint messages or (with IEN=1) interrupts.
+        cq_wait(1, 0);
+
+        let (status, consumed) = device_irq_ack(irq_cap);
+        if status == 0 && consumed > 0 {
+            irq_count = irq_count.saturating_add(consumed as u32);
+        }
+        while let Some(cid) = io.poll_completions() {
+            let reply = take_pending(cid as u32);
+            if reply != 0 { ipc_reply(reply, 0); }
         }
 
         loop {
@@ -670,7 +677,10 @@ fn main(ctx: Context) -> ! {
                 block::OP_FLUSH => {
                     if message.reply != 0 {
                         io.submit_io(NVM_FLUSH, 0, 0, 0);
-                        io.poll_completions();
+                        while let Some(cid) = io.poll_completions() {
+                            let reply = take_pending(cid as u32);
+                            if reply != 0 { ipc_reply(reply, 0); }
+                        }
                         ipc_reply(message.reply, 0);
                     }
                 }
@@ -684,15 +694,6 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(message.reply, -1);
                     }
                 }
-            }
-        }
-
-        // After draining messages, handle any new I/O completions and
-        // complete retained reply tokens.
-        while let Some(cid) = io.poll_completions() {
-            let reply = take_pending(cid as u32);
-            if reply != 0 {
-                ipc_reply(reply, 0);
             }
         }
     }
