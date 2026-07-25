@@ -51,12 +51,12 @@ struct BlockDev {
 
 impl BlockDev {
     fn connect(ns_conn: u64) -> Option<Self> {
-        // Retry lookup — the NVMe driver may still be initialising
+        config::write::<u32>(8, 0); // connect start
         let mut blk_conn: u64 = 0;
-        config::write::<u32>(8, 10); // connect:retry_started
-        for i in 0..200u32 {
-            config::write::<u32>(8, 11 + i); // connect:attempt
+        let mut attempt: u32 = 0;
+        while blk_conn == 0 && attempt < 50 {
             let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
+            config::write::<u32>(8, (attempt << 8) | 1); // lookup-called
             if lookup != 0 {
                 let mut s: u64 = 0;
                 loop {
@@ -65,19 +65,23 @@ impl BlockDev {
                         ipc_close(lookup);
                         if (result as i64) >= 1 && cap != 0 {
                             blk_conn = cap;
+                            config::write::<u32>(8, (attempt << 8) | 2); // found
+                        } else {
+                            config::write::<u32>(8, (attempt << 8) | 3); // not-found
                         }
                         break;
                     }
                     s += 1;
                     if s > 5000 { ipc_close(lookup); break; }
-                    catten_services::sleep_ms(1);
                 }
             }
-            if blk_conn != 0 { break; }
-            catten_services::sleep_ms(20);
+            if blk_conn == 0 {
+                config::write::<u32>(8, (attempt << 8) | 4); // retry
+            }
+            attempt += 1;
         }
         if blk_conn == 0 { config::write::<u32>(8, 0xff); return None; }
-        config::write::<u32>(8, 0x100); // connect:got_connection
+        config::write::<u32>(8, 0x100); // connected
 
         let info = ipc_scalar_call_connection(blk_conn, block::OP_INFO, 0, 0, IpcRights::SEND | IpcRights::CALL);
         if info == 0 { return None; }

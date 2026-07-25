@@ -652,8 +652,11 @@ fn scalar_call_with_connection_impl(
     if !rights.contains(ConnectionRights::CALL) {
         return Err(IpcError::PermissionDenied);
     }
-    let (delegated_endpoint, granted) =
-        mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?;
+    let (delegated_endpoint, granted) = if delegate_cap == 0 {
+        (0, ConnectionRights(0))
+    } else {
+        mintable_endpoint(&ipc, caller, delegate_cap, delegate_rights)?
+    };
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
     let server_memory_cap = if let Some(memory_cap) = copied_memory {

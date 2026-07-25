@@ -31,7 +31,7 @@ pub fn pack_lba_count(lba: u64, count: u32) -> u64 {
 #[inline]
 pub fn unpack_lba_count(arg: u64) -> (u64, u32) {
     let lba = arg >> 32;
-    let count = (arg & 0xFFFF_FFFF) as u32;
+    let count = (arg & 0xffff_ffff) as u32;
     (lba, count)
 }
 
@@ -43,7 +43,7 @@ pub fn pack_info(block_size: u32, total_blocks: u32) -> i64 {
 #[inline]
 pub fn unpack_info(reply: i64) -> (u32, u32) {
     let v = reply as u64;
-    let block_size = (v & 0xFFFF_FFFF) as u32;
+    let block_size = (v & 0xffff_ffff) as u32;
     let total_blocks = (v >> 32) as u32;
     (block_size, total_blocks)
 }

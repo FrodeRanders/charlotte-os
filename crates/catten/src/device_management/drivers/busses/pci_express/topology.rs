@@ -653,11 +653,8 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u8)> {
                     }
                     _ => continue,
                 };
-                let (class, subclass, prog_if) = (
-                    ep.identifier.class_code,
-                    ep.identifier.subclass,
-                    ep.identifier.prog_if,
-                );
+                let (class, subclass, prog_if) =
+                    (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if);
                 if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
                     continue;
                 }
