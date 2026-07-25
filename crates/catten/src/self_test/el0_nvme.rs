@@ -4,14 +4,10 @@
 use crate::{
     ipc::ConnectionRights,
     logln,
-    service::{
-        bootstrap,
-        loader,
-        supervisor::{
-            self,
-            DriverGrant,
-            NameServiceHandle,
-        },
+    service::supervisor::{
+        self,
+        DriverGrant,
+        NameServiceHandle,
     },
 };
 
@@ -92,27 +88,8 @@ extern "C" fn verify_el0_nvme() {
     }
     logln!("[nvme] driver ready");
 
-    // --- Spawn object store with handoff ---
-    let ep_cap: u64 = unsafe { core::ptr::read_volatile(driver_cfg.add(12) as *const u64) };
-    let loaded = loader::load_domain(OBJSTORE_ELF);
-    let handoff_conn = crate::ipc::connection_delegate(
-        driver.asid,
-        ep_cap,
-        loaded.asid,
-        ConnectionRights::SEND | ConnectionRights::CALL,
-    )
-    .expect("[nvme] handoff connection failed");
-    let ns_conn = crate::ipc::connection_delegate(
-        ns.domain.asid,
-        ns.endpoint_cap,
-        loaded.asid,
-        ConnectionRights::CALL,
-    )
-    .expect("[nvme] ns connection failed");
-    bootstrap::write_bootstrap_cap(loaded.config_frame, ns_conn);
-    bootstrap::write_handoff_state(loaded.config_frame, 0, 0, handoff_conn);
-    bootstrap::write_manifest(loaded.config_frame, &[]);
-    let objstore = supervisor::start_domain(loaded);
+    // --- Spawn object store via name service (deferred lookup) ---
+    let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, ns, ConnectionRights::CALL);
     let obj_cfg: *const u32 = {
         let base: *mut u8 = objstore.status_frame.into();
         base as *const u32

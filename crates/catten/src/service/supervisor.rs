@@ -66,7 +66,7 @@ pub(crate) static LIVE_NS: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
-pub fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
+fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
     let tid = spawn_thread(loaded.asid, entry);
