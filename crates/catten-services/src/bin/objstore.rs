@@ -35,6 +35,16 @@ use catten_syscall::*;
 const BUFFER_VADDR: usize = 0x0000_0000_0050_0000;
 const REPLY_SPINS: u64 = u64::MAX;
 
+fn spin_reply(call: u64) -> (i64, u64) {
+    for _ in 0..500_000 {
+        let (status, result, cap) = ipc_reply_poll(call);
+        if status == 0 { ipc_close(call); return (result as i64, cap); }
+        core::hint::spin_loop();
+    }
+    ipc_close(call);
+    (-1, 0)
+}
+
 const SB_MAGIC: u64 = 0x525453424A4F;
 const SB_VERSION: u32 = 1;
 const DIR_ENTRIES: u32 = 512;
@@ -64,7 +74,7 @@ impl BlockDev {
                     if status == 0 {
                         ipc_close(lookup);
                         if (result as i64) >= 1 && cap != 0 {
-                            blk_conn = cap;
+                            blk_conn = cap; config::write::<u32>(24, blk_conn as u32);
                             config::write::<u32>(8, (attempt << 8) | 2); // found
                         } else {
                             config::write::<u32>(8, (attempt << 8) | 3); // not-found
@@ -83,7 +93,7 @@ impl BlockDev {
         if blk_conn == 0 { config::write::<u32>(8, 0xff); return None; }
         config::write::<u32>(8, 0x100); // connected
 
-        let info = ipc_scalar_call_connection(blk_conn, block::OP_INFO, 0, 0, IpcRights::SEND | IpcRights::CALL);
+        let info = ipc_scalar_call(blk_conn, block::OP_INFO, 0);
         if info == 0 { return None; }
         let mut s: u64 = 0;
         loop {
@@ -98,7 +108,7 @@ impl BlockDev {
             }
             s += 1;
             if s > 5000 { ipc_close(info); break; }
-            catten_services::sleep_ms(1);
+            core::hint::spin_loop();
         }
         None
     }
@@ -106,14 +116,14 @@ impl BlockDev {
     fn write_block(&self, lba: u64, mem_cap: u64) -> bool {
         let call = ipc_scalar_call_move(self.conn, block::OP_WRITE, charlotte_protocol_block::pack_lba_count(lba, 1), mem_cap);
         if call == 0 { return false; }
-        let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (result, _) = spin_reply(call);
         result == 0
     }
 
     fn flush(&self) -> bool {
         let call = ipc_scalar_call_connection(self.conn, block::OP_FLUSH, 0, 0, IpcRights::SEND | IpcRights::CALL);
         if call == 0 { return false; }
-        let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (result, _) = spin_reply(call);
         result == 0
     }
 }
@@ -130,7 +140,7 @@ impl ObjStore {
         if sb == 0 { return None; }
         let call = ipc_scalar_call_borrow_write(dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(0, 1), sb);
         if call == 0 { memory_close(sb); return None; }
-        let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (result, _) = spin_reply(call);
         if result != 0 { memory_close(sb); return None; }
         memory_map(sb, BUFFER_VADDR, false);
         let magic = unsafe { core::ptr::read_volatile(BUFFER_VADDR as *const u64) };
@@ -219,7 +229,7 @@ impl ObjStore {
         if dm == 0 { return None; }
         let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(dir_lba, 1), dm);
         if call == 0 { memory_close(dm); return None; }
-        let (r, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (r, _) = spin_reply(call);
         if r != 0 { memory_close(dm); return None; }
         memory_map(dm, BUFFER_VADDR, false);
 
@@ -244,7 +254,7 @@ impl ObjStore {
         if dm == 0 { return false; }
         let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(dir_lba, 1), dm);
         if call == 0 { memory_close(dm); return false; }
-        let (r, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (r, _) = spin_reply(call);
         if r != 0 { memory_close(dm); return false; }
         // Write the modified entry into the block and write back
         memory_map(dm, BUFFER_VADDR, true);
@@ -367,7 +377,7 @@ impl ObjStore {
         if dm == 0 { ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
         let call = ipc_scalar_call_borrow_write(self.dev.conn, block::OP_READ, charlotte_protocol_block::pack_lba_count(first_lba, 1), dm);
         if call == 0 { memory_close(dm); ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
-        let (r, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+        let (r, _) = spin_reply(call);
         if r != 0 { memory_close(dm); ipc_reply(reply, objstore::ERR_IO_ERROR); return; }
 
         ipc_reply_move(reply, dm, 0);
@@ -386,16 +396,14 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1); // started
 
     let dev = match BlockDev::connect(ns_connection) {
-        Some(d) => d,
-        None => unsafe { thread_exit() },
-    };
-    config::write::<u32>(0, 2); // block device connected
+        Some(d) => { config::write::<u32>(0, 2); d }
+        None => { config::write::<u32>(0, 0xdead); unsafe { thread_exit() }; }
+    }; // block device connected
 
     let mut store = match ObjStore::mount(dev) {
-        Some(s) => s,
-        None => unsafe { thread_exit() },
-    };
-    config::write::<u32>(0, 3); // mounted/formatted
+        Some(s) => { config::write::<u32>(0, 3); s }
+        None => { config::write::<u32>(0, 0xbeef); unsafe { thread_exit() }; }
+    }; // mounted/formatted
 
     let endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 64);
     if endpoint == 0 {

@@ -236,6 +236,7 @@ unsafe fn nvm_sqe(base: usize, slot: u32, opcode: u8, nsid: u32, start_lba: u64,
 
 static BLOCK_SIZE: AtomicU32 = AtomicU32::new(0);
 static TOTAL_BLOCKS: AtomicU32 = AtomicU32::new(0);
+static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Outstanding I/O operation: a retained reply token waiting for a completion.
 const MAX_PENDING: usize = 64;
@@ -414,22 +415,24 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     config::write::<u64>(32, nsze);
     config::write::<u32>(40, lbs);
 
-    // 5. Create I/O CQ first
+    // 5. Create I/O CQ first. Zero CQ memory before queue creation.
+    let io_cq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
+    unsafe { core::ptr::write_bytes(io_cq_mem.vaddr as *mut u8, 0, PAGE_SIZE); }
     let cq_cdw10: u32 = (1u32 << 16) | 1;
-    let cq_cdw11: u32 = 1; // PC=1, IEN=0
-    let cq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, id_ctrl_mem.phys) };
+    let cq_cdw11: u32 = 1; // PC=1, IEN=0 (polled)
+    let cq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys) };
     config::write::<u32>(12, cq_sf);
     if cq_sf != 0 { return None; }
     config::write::<u32>(4, 17);
     // 6. Create I/O SQ
+    let io_sq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
     let sq_cdw10: u32 = (1u32 << 16) | 1;
-    let sq_cdw11: u32 = (1u32 << 16) | 1;
-    let sq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, id_ns_mem.phys) };
+    let sq_cdw11: u32 = (1u32 << 16) | 1; // CQID=1, PC=1
+    let sq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys) };
     config::write::<u32>(16, sq_sf);
     if sq_sf != 0 { return None; }
     config::write::<u32>(4, 18);
-
-    Some((id_ns_mem.vaddr, id_ctrl_mem.vaddr, nsze, lbs, 0))
+    Some((io_sq_mem.vaddr, io_cq_mem.vaddr, nsze, lbs, 0))
 }
 
 // ---------------------------------------------------------------------------
@@ -462,17 +465,22 @@ impl IoState {
 
     fn poll_completions(&mut self) -> Option<u16> {
         unsafe {
-            let (phase_match, _sf, cid) = read_cqe(self.cq_vaddr, self.cq_head, self.cq_phase);
-            if phase_match {
-                self.cq_head = (self.cq_head + 1) % IO_QUEUE_SIZE;
-                if self.cq_head == 0 {
-                    self.cq_phase ^= 1;
-                }
-                doorbell_write(cq1_hdbl(), self.cq_head as u16);
-                return Some(cid);
+            let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
+            let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
+            let phase = ((dw3 >> 16) & 1) as u8;
+            if phase != self.cq_phase {
+                return None;
             }
+            core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
+            let cid = (dw3 & 0xFFFF) as u16;
+            self.cq_head = (self.cq_head + 1) % IO_QUEUE_SIZE;
+            if self.cq_head == 0 {
+                self.cq_phase ^= 1;
+            }
+            core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+            doorbell_write(cq1_hdbl(), self.cq_head as u16);
+            Some(cid)
         }
-        None
     }
 }
 
@@ -550,13 +558,13 @@ fn main(ctx: Context) -> ! {
     let tot = total_blocks;
 
     loop {
-        cq_wait(1, 0);
+        // Busy-poll for I/O completions and endpoint messages.
+        // Don't block on cq_wait — the INTID may not be correct
+        // for interrupt delivery to cq_wait.
+        let mut did_work = false;
 
-        let (status, consumed) = device_irq_ack(irq_cap);
-        if status == 0 && consumed > 0 {
-            irq_count = irq_count.saturating_add(consumed as u32);
-        }
         while let Some(cid) = io.poll_completions() {
+            did_work = true;
             let reply = take_pending(cid as u32);
             if reply != 0 {
                 ipc_reply(reply, 0);
@@ -582,6 +590,8 @@ fn main(ctx: Context) -> ! {
                     }
                 }
                 block::OP_READ => {
+                    let served = MSG_COUNT.fetch_add(1, Ordering::Relaxed);
+                    config::write::<u32>(48, served);
                     if message.reply != 0 {
                         if io.sq_vaddr == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);

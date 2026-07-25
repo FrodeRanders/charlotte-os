@@ -82,8 +82,6 @@ fn wait_for_nvme() -> (usize, u32) {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_nvme() {
-    use crate::cpu::scheduler::yield_lp;
-
     let ns = unsafe { TEST_STATE.as_ref() }.expect("[nvme] test state missing");
     logln!("[nvme] verifier running, waiting for PCI topology...");
     let (bar0, intid) = wait_for_nvme();
@@ -120,7 +118,7 @@ extern "C" fn verify_el0_nvme() {
     while unsafe { core::ptr::read_volatile(sentinel_ptr) } != 0x900d {
         spins += 1;
         let ds = unsafe { core::ptr::read_volatile(driver_cfg_u32) };
-        if ds != last_stage || spins % 2_000_000 == 0 {
+        if ds != last_stage || spins % 500_000 == 0 {
             let ds_sub = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(1)) };
             let sf_sq: u32 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(4)) };
             let raw_dw3: u32 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(11)) };
@@ -147,7 +145,7 @@ extern "C" fn verify_el0_nvme() {
             last_stage = ds;
         }
         assert!(spins < MAX_SPINS, "[nvme] FAILED waiting for nvme_client");
-        yield_lp();
+        core::hint::spin_loop();
     }
 
     logln!("[nvme] driver ready, spawning object store...");
@@ -164,10 +162,19 @@ extern "C" fn verify_el0_nvme() {
         spins += 1;
         let stage = unsafe { core::ptr::read_volatile(obj_cfg) };
         let conn = unsafe { core::ptr::read_volatile(obj_cfg.add(2)) };
-        if spins % 1_000_000 == 0 {
-            logln!("[nvme] objstore stage={} conn={:#x} (spins={})", stage, conn, spins);
+        if spins % 500_000 == 0 {
+            let msgcnt = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(12)) };
+            let drv_stage = unsafe { core::ptr::read_volatile(driver_cfg_u32) };
+            let drv_sub = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(1)) };
+            let sf_sq = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(4)) };
+            let obj_info = unsafe { core::ptr::read_volatile(obj_cfg.add(3)) };
+            let obj_bs = unsafe { core::ptr::read_volatile(obj_cfg.add(4)) };
+            let obj_tb = unsafe { core::ptr::read_volatile(obj_cfg.add(5)) };
+            let blk_conn = unsafe { core::ptr::read_volatile(obj_cfg.add(6)) };
+            logln!("[nvme] obj stage={} conn={:#x} blk={} info={:#x} bs={} tb={} | drv stage={} sub={} (spins={})",
+                stage, conn, blk_conn, obj_info, obj_bs, obj_tb, drv_stage, drv_sub, spins);
         }
-        yield_lp();
+        core::hint::spin_loop();
     }
     logln!("[nvme] SUCCESS: NVMe driver and object store both initialised and registered.");
 }
