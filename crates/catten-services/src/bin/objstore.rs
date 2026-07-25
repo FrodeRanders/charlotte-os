@@ -62,58 +62,20 @@ struct BlockDev {
 }
 
 impl BlockDev {
+    /// Look up "blk0" from the name service. The name service defers
+    /// the lookup if the driver hasn't registered yet — no retry loop.
     fn connect(ns_conn: u64) -> Option<Self> {
-        config::write::<u32>(8, 0); // connect start
-        let mut blk_conn: u64 = 0;
-        let mut attempt: u32 = 0;
-        while blk_conn == 0 && attempt < 50 {
-            let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
-            config::write::<u32>(8, (attempt << 8) | 1); // lookup-called
-            if lookup != 0 {
-                let mut s: u64 = 0;
-                loop {
-                    let (status, result, cap) = ipc_reply_poll(lookup);
-                    if status == 0 {
-                        ipc_close(lookup);
-                        if (result as i64) >= 1 && cap != 0 {
-                            blk_conn = cap; config::write::<u32>(24, blk_conn as u32);
-                            config::write::<u32>(8, (attempt << 8) | 2); // found
-                        } else {
-                            config::write::<u32>(8, (attempt << 8) | 3); // not-found
-                        }
-                        break;
-                    }
-                    s += 1;
-                    if s > 5000 { ipc_close(lookup); break; }
-                }
-            }
-            if blk_conn == 0 {
-                config::write::<u32>(8, (attempt << 8) | 4); // retry
-                catten_services::sleep_ms(10);
-            }
-            attempt += 1;
-        }
-        if blk_conn == 0 { config::write::<u32>(8, 0xff); return None; }
-        config::write::<u32>(8, 0x100); // connected
+        let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
+        if lookup == 0 { return None; }
+        let (generation, blk_conn) = spin_reply(lookup);
+        if generation < 1 || blk_conn == 0 { return None; }
 
         let info = ipc_scalar_call(blk_conn, block::OP_INFO, 0);
         if info == 0 { return None; }
-        let mut s: u64 = 0;
-        loop {
-            let (status, result, _cap) = ipc_reply_poll(info);
-            if status == 0 {
-                ipc_close(info);
-                let (bs, tb) = charlotte_protocol_block::unpack_info(result as i64);
-                if bs > 0 && tb >= METADATA_BLOCKS + 2 {
-                    return Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb });
-                }
-                break;
-            }
-            s += 1;
-            if s > 5000 { ipc_close(info); break; }
-            core::hint::spin_loop();
-        }
-        None
+        let (result, _) = spin_reply(info);
+        let (bs, tb) = charlotte_protocol_block::unpack_info(result);
+        if bs == 0 || tb < METADATA_BLOCKS + 2 { return None; }
+        Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb })
     }
 
     fn write_block(&self, lba: u64, mem_cap: u64) -> bool {
