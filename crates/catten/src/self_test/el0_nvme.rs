@@ -133,5 +133,5 @@ extern "C" fn verify_el0_nvme() {
         yield_lp();
     }
 
-    logln!("[nvme] SUCCESS: userspace NVMe driver initialised and registered with name service.");
+    logln!("[nvme] SUCCESS: userspace NVMe driver initialised with I/O queues and registered.");
 }

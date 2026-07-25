@@ -25,6 +25,7 @@ extern crate alloc;
 catten_rt::entry!(main);
 
 use catten_rt::Context;
+use catten_rt::config;
 use catten_services::block;
 use catten_services::ns;
 use catten_services::objstore;
@@ -50,16 +51,52 @@ struct BlockDev {
 
 impl BlockDev {
     fn connect(ns_conn: u64) -> Option<Self> {
-        let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
-        if lookup == 0 { return None; }
-        let (generation, blk_conn) = unsafe { catten_services::wait_reply(lookup, REPLY_SPINS) };
-        if generation < 1 || blk_conn == 0 { return None; }
+        // Retry lookup — the NVMe driver may still be initialising
+        let mut blk_conn: u64 = 0;
+        config::write::<u32>(8, 10); // connect:retry_started
+        for i in 0..200u32 {
+            config::write::<u32>(8, 11 + i); // connect:attempt
+            let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, block::NAME, 0, IpcRights::SEND | IpcRights::CALL);
+            if lookup != 0 {
+                let mut s: u64 = 0;
+                loop {
+                    let (status, result, cap) = ipc_reply_poll(lookup);
+                    if status == 0 {
+                        ipc_close(lookup);
+                        if (result as i64) >= 1 && cap != 0 {
+                            blk_conn = cap;
+                        }
+                        break;
+                    }
+                    s += 1;
+                    if s > 5000 { ipc_close(lookup); break; }
+                    catten_services::sleep_ms(1);
+                }
+            }
+            if blk_conn != 0 { break; }
+            catten_services::sleep_ms(20);
+        }
+        if blk_conn == 0 { config::write::<u32>(8, 0xff); return None; }
+        config::write::<u32>(8, 0x100); // connect:got_connection
+
         let info = ipc_scalar_call_connection(blk_conn, block::OP_INFO, 0, 0, IpcRights::SEND | IpcRights::CALL);
         if info == 0 { return None; }
-        let (info_result, _) = unsafe { catten_services::wait_reply(info, REPLY_SPINS) };
-        let (bs, tb) = charlotte_protocol_block::unpack_info(info_result);
-        if bs < 512 || tb < METADATA_BLOCKS + 2 { return None; }
-        Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb })
+        let mut s: u64 = 0;
+        loop {
+            let (status, result, _cap) = ipc_reply_poll(info);
+            if status == 0 {
+                ipc_close(info);
+                let (bs, tb) = charlotte_protocol_block::unpack_info(result as i64);
+                if bs >= 512 && tb >= METADATA_BLOCKS + 2 {
+                    return Some(BlockDev { conn: blk_conn, block_size: bs, total_blocks: tb });
+                }
+                break;
+            }
+            s += 1;
+            if s > 5000 { ipc_close(info); break; }
+            catten_services::sleep_ms(1);
+        }
+        None
     }
 
     fn write_block(&self, lba: u64, mem_cap: u64) -> bool {
@@ -342,16 +379,19 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
+    config::write::<u32>(0, 1); // started
 
     let dev = match BlockDev::connect(ns_connection) {
         Some(d) => d,
         None => unsafe { thread_exit() },
     };
+    config::write::<u32>(0, 2); // block device connected
 
     let mut store = match ObjStore::mount(dev) {
         Some(s) => s,
         None => unsafe { thread_exit() },
     };
+    config::write::<u32>(0, 3); // mounted/formatted
 
     let endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 64);
     if endpoint == 0 {
@@ -374,6 +414,8 @@ fn main(ctx: Context) -> ! {
     }
 
     ipc_endpoint_bind_cq(endpoint, 0);
+    config::write::<u32>(0, 4); // registered and serving
+    config::write::<u32>(4, 0x900d); // sentinel
 
     loop {
         cq_wait(1, 0);
