@@ -477,15 +477,7 @@ impl IoState {
     fn poll_completions(&mut self) -> Option<u16> {
         unsafe {
             let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
-            // Dump raw CQE bytes for debugging
-            let dw0 = core::ptr::read_volatile(cqe_ptr);
-            let dw1 = core::ptr::read_volatile(cqe_ptr.add(1));
-            let dw2 = core::ptr::read_volatile(cqe_ptr.add(2));
             let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
-            config::write::<u32>(56, dw0);
-            config::write::<u32>(60, dw1);
-            config::write::<u32>(64, dw2);
-            config::write::<u32>(68, dw3);
             let phase = ((dw3 >> 16) & 1) as u8;
             if phase != self.cq_phase {
                 return None;
