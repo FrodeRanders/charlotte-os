@@ -157,11 +157,12 @@ extern "C" fn verify_el0_nvme() {
     // Spawn the object store via the loader, then write handoff connection
     let loaded = crate::service::loader::load_domain(OBJSTORE_ELF);
     let handoff_conn = crate::ipc::connection_delegate(
-        driver.asid,      // source: NVMe driver's address space
-        ep_cap,            // the driver's endpoint
-        loaded.asid,       // target: object store's address space
+        driver.asid, // source: NVMe driver's address space
+        ep_cap,      // the driver's endpoint
+        loaded.asid, // target: object store's address space
         crate::ipc::ConnectionRights::SEND | crate::ipc::ConnectionRights::CALL,
-    ).expect("[nvme] handoff connection failed");
+    )
+    .expect("[nvme] handoff connection failed");
 
     // Also delegate a name service connection
     let ns_conn = crate::ipc::connection_delegate(
@@ -169,7 +170,8 @@ extern "C" fn verify_el0_nvme() {
         ns.endpoint_cap,
         loaded.asid,
         crate::ipc::ConnectionRights::CALL,
-    ).expect("[nvme] ns connection failed");
+    )
+    .expect("[nvme] ns connection failed");
 
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, ns_conn);
     crate::service::bootstrap::write_handoff_state(loaded.config_frame, 0, 0, handoff_conn);
@@ -180,7 +182,10 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = objstore.status_frame.into();
         base as *const u32
     };
-    logln!("[nvme] objstore spawned with handoff (asid={}), waiting for sentinel...", objstore.asid);
+    logln!(
+        "[nvme] objstore spawned with handoff (asid={}), waiting for sentinel...",
+        objstore.asid
+    );
 
     spins = 0;
     while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
@@ -201,8 +206,20 @@ extern "C" fn verify_el0_nvme() {
             let sdw0 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(19)) }; // offset 76
             let sdw3_lo = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(20)) }; // offset 80
             let sdw5 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(22)) }; // offset 88
-            logln!("[nvme] obj stage={} conn={:#x} blk={} bs={} tb={} | cq0={:#x} cq3={:#x} sdw0={:#x} sdw5={:#x} (spins={})",
-                stage, conn, blk_conn, obj_bs, obj_tb, iocq0, iocq3, sdw0, sdw5, spins);
+            logln!(
+                "[nvme] obj stage={} conn={:#x} blk={} bs={} tb={} | cq0={:#x} cq3={:#x} \
+                 sdw0={:#x} sdw5={:#x} (spins={})",
+                stage,
+                conn,
+                blk_conn,
+                obj_bs,
+                obj_tb,
+                iocq0,
+                iocq3,
+                sdw0,
+                sdw5,
+                spins
+            );
         }
         core::hint::spin_loop();
     }
