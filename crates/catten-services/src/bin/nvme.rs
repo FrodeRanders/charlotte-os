@@ -57,6 +57,16 @@ const PAGE_SIZE: usize = 4096;
 
 const REPLY_SPINS: u64 = u64::MAX;
 
+fn spin_reply(call: u64) -> (i64, u64) {
+    for _ in 0..500_000 {
+        let (status, result, cap) = ipc_reply_poll(call);
+        if status == 0 { ipc_close(call); return (result as i64, cap); }
+        core::hint::spin_loop();
+    }
+    ipc_close(call);
+    (-1, 0)
+}
+
 // ---------------------------------------------------------------------------
 // NVMe controller register offsets (relative to BAR0)
 // ---------------------------------------------------------------------------
@@ -426,6 +436,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     config::write::<u32>(4, 17);
     // 6. Create I/O SQ
     let io_sq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
+    unsafe { core::ptr::write_bytes(io_sq_mem.vaddr as *mut u8, 0, PAGE_SIZE); }
     let sq_cdw10: u32 = (1u32 << 16) | 1;
     let sq_cdw11: u32 = (1u32 << 16) | 1; // CQID=1, PC=1
     let sq_sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys) };
@@ -466,7 +477,15 @@ impl IoState {
     fn poll_completions(&mut self) -> Option<u16> {
         unsafe {
             let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
+            // Dump raw CQE bytes for debugging
+            let dw0 = core::ptr::read_volatile(cqe_ptr);
+            let dw1 = core::ptr::read_volatile(cqe_ptr.add(1));
+            let dw2 = core::ptr::read_volatile(cqe_ptr.add(2));
             let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
+            config::write::<u32>(56, dw0);
+            config::write::<u32>(60, dw1);
+            config::write::<u32>(64, dw2);
+            config::write::<u32>(68, dw3);
             let phase = ((dw3 >> 16) & 1) as u8;
             if phase != self.cq_phase {
                 return None;
@@ -533,7 +552,7 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { catten_services::wait_reply(register, REPLY_SPINS) };
+    let (generation, _) = spin_reply(register);
     if generation < 1 {
         unsafe { thread_exit() };
     }
@@ -592,7 +611,7 @@ fn main(ctx: Context) -> ! {
                 }
                 block::OP_READ => {
                     let served = MSG_COUNT.fetch_add(1, Ordering::Relaxed);
-                    config::write::<u32>(56, served);
+                    config::write::<u32>(72, served);
                     if message.reply != 0 {
                         if io.sq_vaddr == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);

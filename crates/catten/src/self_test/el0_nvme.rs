@@ -196,8 +196,10 @@ extern "C" fn verify_el0_nvme() {
             let obj_bs = unsafe { core::ptr::read_volatile(obj_cfg.add(4)) };
             let obj_tb = unsafe { core::ptr::read_volatile(obj_cfg.add(5)) };
             let blk_conn = unsafe { core::ptr::read_volatile(obj_cfg.add(6)) };
-            logln!("[nvme] obj stage={} conn={:#x} blk={} info={:#x} bs={} tb={} | drv stage={} sub={} (spins={})",
-                stage, conn, blk_conn, obj_info, obj_bs, obj_tb, drv_stage, drv_sub, spins);
+            let iocq0 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(14)) };
+            let iocq3 = unsafe { core::ptr::read_volatile(driver_cfg_u32.add(17)) };
+            logln!("[nvme] obj stage={} conn={:#x} blk={} info={:#x} bs={} tb={} | drv stage={} sub={} cq0={:#x} cq3={:#x} (spins={})",
+                stage, conn, blk_conn, obj_info, obj_bs, obj_tb, drv_stage, drv_sub, iocq0, iocq3, spins);
         }
         core::hint::spin_loop();
     }
