@@ -19,7 +19,14 @@
 //! Controller Architecture Specification, GIC architecture version 3 and
 //! version 4.
 
-use core::arch::asm;
+use core::{
+    arch::asm,
+    sync::atomic::{
+        AtomicU32,
+        AtomicU64,
+        Ordering,
+    },
+};
 
 use spin::LazyLock;
 
@@ -51,6 +58,11 @@ const GICR_BASE: usize = 0x080a_0000;
 const GICR_STRIDE: usize = 0x2_0000;
 /// Offset from a redistributor's RD_base to its SGI_base frame.
 const GICR_SGI_OFFSET: usize = 0x1_0000;
+/// QEMU `virt,msi=gicv2m` MSI frame. Platform discovery should replace this
+/// fixed address when CharlotteOS consumes the firmware interrupt topology.
+const GICV2M_BASE: usize = 0x0802_0000;
+const GICV2M_MSI_TYPER: usize = 0x0008;
+const GICV2M_SETSPI_NS: usize = 0x0040;
 
 // Distributor register offsets.
 const GICD_CTLR: usize = 0x0000;
@@ -64,6 +76,7 @@ const GICD_ICENABLER: usize = 0x0180;
 const GICD_ISPENDR: usize = 0x0200;
 const GICD_ICPENDR: usize = 0x0280;
 const GICD_IPRIORITYR: usize = 0x0400;
+const GICD_ICFGR: usize = 0x0c00;
 const GICD_IROUTER: usize = 0x6000;
 
 // GICD_CTLR bits (when using affinity routing, ARE_NS).
@@ -247,12 +260,8 @@ impl LocalIntCtlrIfce for GicV3 {
         Self::cpu_interface_init();
         // SGIs are private interrupts too. Configure every IPI used by the
         // kernel explicitly instead of relying on firmware/reset defaults.
-        Self::enable_private_int(
-            crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR,
-        );
-        Self::enable_private_int(
-            crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR,
-        );
+        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR);
+        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR);
         Self::enable_private_int(
             crate::cpu::isa::constants::interrupt_vectors::SCHEDULER_IPI_VECTOR,
         );
@@ -335,6 +344,66 @@ pub fn record_acked_intid(intid: u32) {
 /// this are SGIs (0-15) and PPIs (16-31) handled at the redistributor.
 pub const FIRST_SPI: u32 = 32;
 
+static GICV2M_ALLOCATED: AtomicU64 = AtomicU64::new(0);
+static GICV2M_SPI_BASE: AtomicU32 = AtomicU32::new(0);
+static GICV2M_SPI_COUNT: AtomicU32 = AtomicU32::new(0);
+
+/// Allocate one SPI from the GICv2m MSI frame and return the PCI message that
+/// asserts it. The v2m frame converts a 32-bit INTID write to `SETSPI_NS` into
+/// an edge-triggered GIC SPI, so no ITS command queue is required.
+pub fn allocate_v2m_msi() -> Option<
+    crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+>{
+    use crate::{
+        cpu::isa::{
+            aarch64::memory::paging::AddressSpace,
+            interface::memory::AddressSpaceInterface,
+        },
+        device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+    };
+
+    let mut current = AddressSpace::get_current();
+    current.map_mmio_region(GICV2M_BASE, 0x1000).ok()?;
+    let typer = unsafe { mmio_read32(GICV2M_BASE, GICV2M_MSI_TYPER) };
+    let spi_base = (typer >> 16) & 0x3ff;
+    let spi_count = typer & 0x3ff;
+    if spi_count == 0 || spi_count > 64 || spi_base < FIRST_SPI {
+        return None;
+    }
+    GICV2M_SPI_BASE.store(spi_base, Ordering::Release);
+    GICV2M_SPI_COUNT.store(spi_count, Ordering::Release);
+
+    let valid_mask = if spi_count == 64 {
+        u64::MAX
+    } else {
+        (1u64 << spi_count) - 1
+    };
+    loop {
+        let allocated = GICV2M_ALLOCATED.load(Ordering::Acquire);
+        let available = (!allocated) & valid_mask;
+        if available == 0 {
+            return None;
+        }
+        let index = available.trailing_zeros();
+        let bit = 1u64 << index;
+        if GICV2M_ALLOCATED
+            .compare_exchange_weak(allocated, allocated | bit, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            let intid = spi_base + index;
+            if intid as usize >= crate::device::MAX_ROUTED_INTID {
+                GICV2M_ALLOCATED.fetch_and(!bit, Ordering::Release);
+                return None;
+            }
+            return Some(MsiMessage {
+                address: (GICV2M_BASE + GICV2M_SETSPI_NS) as u64,
+                data: intid,
+                intid,
+            });
+        }
+    }
+}
+
 /// Ensure the distributor MMIO is mapped in the *currently active* address
 /// space before an SPI configuration access. Limine does not HHDM-map MMIO
 /// (base revision 3+), and the mapping installed by [`GicV3::init_lp`] lives
@@ -350,6 +419,7 @@ fn ensure_distributor_mapped() {
     };
     let mut current = AddressSpace::get_current();
     let _ = current.map_mmio_region(GICD_BASE, 0x1_0000);
+    let _ = current.map_mmio_region(GICV2M_BASE, 0x1000);
 }
 
 /// Enable a Shared Peripheral Interrupt at the distributor and route it to
@@ -364,6 +434,20 @@ pub fn enable_spi(intid: u32, target_lp: LpId) {
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
+        // MSI vectors are edge-triggered; wired device SPIs remain level
+        // triggered. ICFGR uses two bits per INTID, with bit[1] selecting edge.
+        let msi_base = GICV2M_SPI_BASE.load(Ordering::Acquire);
+        let msi_count = GICV2M_SPI_COUNT.load(Ordering::Acquire);
+        let is_msi = intid >= msi_base && intid < msi_base.saturating_add(msi_count);
+        let cfg_word = (intid / 16) as usize;
+        let cfg_shift = (intid % 16) * 2;
+        let mut cfg = mmio_read32(GICD_BASE, GICD_ICFGR + cfg_word * 4);
+        if is_msi {
+            cfg |= 0b10 << cfg_shift;
+        } else {
+            cfg &= !(0b10 << cfg_shift);
+        }
+        mmio_write32(GICD_BASE, GICD_ICFGR + cfg_word * 4, cfg);
         // Group 1 non-secure.
         let mut group = mmio_read32(GICD_BASE, GICD_IGROUPR + word * 4);
         group |= 1 << bit;

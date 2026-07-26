@@ -102,6 +102,9 @@ extern "C" fn verify_el0_nvme() {
         core::hint::spin_loop();
     }
     logln!("[nvme] write/flush/read round trip verified");
+    let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
+    assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
+    logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);
 
     // --- Spawn object store via name service (deferred lookup) ---
     let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, ns, ConnectionRights::CALL);

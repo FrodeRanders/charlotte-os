@@ -182,12 +182,12 @@ the driver's CQ. When an I/O completion arrives:
 4. For each completion, it finds the corresponding retained reply token
    and completes it with the status.
 
-The current QEMU bring-up path reports no legacy PCI interrupt line and does
-not yet configure MSI/MSI-X. It therefore creates a polled I/O CQ and uses a
-bounded `cq_wait_timeout` so endpoint work wakes immediately while the
-completion ring is checked at 1 ms intervals. This avoids busy-spinning and
-preserves progress under TCG. MSI/MSI-X programming remains the prerequisite
-for switching the queue to fully interrupt-driven operation.
+The QEMU AArch64 bring-up path uses the GICv2m MSI frame exposed by
+`virt,gic-version=3,msi=gicv2m`. The kernel allocates an SPI from that frame,
+programs MSI-X table entry zero through the BAR named by the PCI capability,
+and delegates only the resulting interrupt capability to the driver. The NVMe
+I/O CQ enables interrupt vector zero. A bounded `cq_wait_timeout` remains as a
+compatibility fallback for platforms where MSI-X setup is unavailable.
 
 ### 3.5 Memory allocation for queues
 

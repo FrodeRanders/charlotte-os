@@ -21,12 +21,10 @@
 //!
 //! ## Completion model
 //!
-//! The bring-up path uses bounded CQ polling because QEMU's NVMe PCI function
-//! reports no legacy interrupt line and CharlotteOS does not yet program MSI or
-//! MSI-X. `cq_wait_timeout` provides the required VM exit without busy-spinning
-//! and also wakes immediately for endpoint work. The delegated IRQ is still
-//! bound and acknowledged when present, so enabling MSI/MSI-X later does not
-//! require changing the service loop.
+//! The I/O CQ uses MSI-X vector zero. PCI setup programs the device's MSI-X
+//! table to target a delegated GIC SPI before this domain starts. A bounded
+//! `cq_wait_timeout` remains as a compatibility fallback for platforms where
+//! MSI-X setup is unavailable.
 #![no_std]
 #![no_main]
 extern crate alloc;
@@ -543,7 +541,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
         core::ptr::write_bytes(io_cq_mem.vaddr as *mut u8, 0, PAGE_SIZE);
     }
     let cq_cdw10: u32 = ((IO_QUEUE_SIZE - 1) << 16) | 1;
-    let cq_cdw11: u32 = 1; // PC=1, IEN=0 until PCI MSI/MSI-X is configured
+    let cq_cdw11: u32 = 3; // PC=1, IEN=1, IV=0
     let cq_sf = unsafe {
         admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys)
     };
@@ -730,6 +728,7 @@ fn main(ctx: Context) -> ! {
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
+            config::write::<u32>(80, irq_count);
         }
         while let Some((cid, status)) = io.poll_completions() {
             let reply = take_pending(cid as u32);

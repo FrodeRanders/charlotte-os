@@ -175,7 +175,7 @@ fi
 
 # --- QEMU options ---
 QEMU_OPTS=(
-    -M virt,gic-version=3
+    -M virt,gic-version=3,msi=gicv2m
     -m 512M
     -bios "$FIRMWARE"
     -drive file="$IMAGE",format=raw,if=virtio

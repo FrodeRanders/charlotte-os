@@ -164,7 +164,7 @@ static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
 //   threads) from thread context — the idle loop and cooperative yield both drain it.
 
 /// One more than the highest INTID a driver interrupt may use.
-const MAX_ROUTED_INTID: usize = 256;
+pub(crate) const MAX_ROUTED_INTID: usize = 256;
 
 static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
 static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] = [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];

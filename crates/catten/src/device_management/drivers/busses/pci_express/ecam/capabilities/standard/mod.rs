@@ -1,4 +1,6 @@
 use super::*;
+pub mod msi;
+pub mod msix;
 /// PCI local bus capability IDs which are also used with PCI Express.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

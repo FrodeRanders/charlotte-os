@@ -1,5 +1,5 @@
 pub mod device_class;
-mod ecam;
+pub(crate) mod ecam;
 pub mod topology;
 
 #[derive(Debug)]

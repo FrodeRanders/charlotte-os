@@ -629,7 +629,10 @@ pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
     None
 }
 
-pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u8)> {
+/// Find the first NVMe controller and configure MSI-X vector zero when the
+/// platform exposes a GICv2m MSI frame. Falls back to the legacy interrupt-line
+/// value when MSI-X is unavailable.
+pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
     for group in &topology.segments {
         let mut stack = alloc::vec![&*group.root_bus];
         while let Some(bus) = stack.pop() {
@@ -659,7 +662,7 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u8)> {
                     continue;
                 }
                 let cfg = ep.cfg_ptr.lock();
-                let (phys_base, irq) = {
+                let (phys_base, legacy_irq) = {
                     let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
                     let bar0 = header.bar(0) as u64;
                     let bar0_phys = if bar0 & 0x4 != 0 {
@@ -668,12 +671,27 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u8)> {
                     } else {
                         (bar0 & 0xffff_fff0) as u64
                     };
-                    let irq = header.interrupt_line();
-                    (bar0_phys, irq)
+                    (bar0_phys, header.interrupt_line() as u32)
                 };
-                drop(cfg);
                 if phys_base != 0 {
-                    return Some((phys_base, irq));
+                    #[cfg(target_arch = "aarch64")]
+                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi() {
+                        if crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
+                            cfg.as_ptr(),
+                            message,
+                        )
+                        .is_ok()
+                        {
+                            logln!(
+                                "[nvme] MSI-X vector 0: address={:#x} data={} intid={}",
+                                message.address,
+                                message.data,
+                                message.intid
+                            );
+                            return Some((phys_base, message.intid));
+                        }
+                    }
+                    return Some((phys_base, legacy_irq));
                 }
             }
             for dev in &bus.devices {
