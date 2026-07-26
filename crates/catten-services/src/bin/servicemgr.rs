@@ -65,7 +65,7 @@ unsafe fn spin_call(call: u64, _what: &str) -> (u64, u64) {
 }
 
 /// Look up a service by short name; return its connection cap.
-fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
+fn lookup(ns_conn: u64, target: u64) -> Option<(u64, u64)> {
     let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
     if l == 0 {
         return None;
@@ -73,7 +73,7 @@ fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
     let (status, generation, cap) = ipc_reply_wait(l);
     ipc_close(l);
     if status == 0 && generation >= 1 && cap != 0 {
-        Some(cap)
+        Some((generation, cap))
     } else {
         None
     }
@@ -139,8 +139,8 @@ fn main(ctx: Context) -> ! {
 
 /// Orchestrate the handoff and return the result code.
 fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
-    let target_conn = match lookup(ns_conn, target_name) {
-        Some(c) => c,
+    let (old_generation, target_conn) = match lookup(ns_conn, target_name) {
+        Some(found) => found,
         None => {
             config::write::<u32>(ERROR_OFFSET, 1);
             return -1;
@@ -148,10 +148,34 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     };
     config::write::<u32>(STAGE_OFFSET, 11);
 
+    // Arm the generation barrier before asking the old service to hand off.
+    // OP_LOOKUP_NEXT deliberately ignores the current registration and is
+    // completed by the replacement's later OP_REGISTER. Arming first makes
+    // registration-before-wait safe without polling the name service.
+    let next_registration = ipc_scalar_call(ns_conn, ns::OP_LOOKUP_NEXT, target_name);
+    if next_registration == 0 {
+        config::write::<u32>(ERROR_OFFSET, 6);
+        return -6;
+    }
+    let barrier = ipc_scalar_call(ns_conn, ns::OP_BARRIER, 0);
+    if barrier == 0 {
+        ipc_close(next_registration);
+        config::write::<u32>(ERROR_OFFSET, 8);
+        return -8;
+    }
+    let (barrier_status, barrier_result, _) = ipc_reply_wait(barrier);
+    ipc_close(barrier);
+    if barrier_status != 0 || barrier_result != 0 {
+        ipc_close(next_registration);
+        config::write::<u32>(ERROR_OFFSET, 8);
+        return -8;
+    }
+
     // OP_HANDOFF: the target serialises state, returns (state_cap, ep_cap),
     // and exits. The wait returns the moved memory cap without polling.
     let call = ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0);
     if call == 0 {
+        ipc_close(next_registration);
         config::write::<u32>(ERROR_OFFSET, 2);
         return -2;
     }
@@ -159,12 +183,14 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     let (status, _handoff_result, _conn, state_cap) = ipc_reply_wait_with_memory(call);
     catten_syscall::ipc_close(call);
     if status != 0 {
+        ipc_close(next_registration);
         config::write::<u32>(ERROR_OFFSET, 3);
         return -3;
     }
     config::write::<u32>(STAGE_OFFSET, 12);
 
     if state_cap == 0 {
+        ipc_close(next_registration);
         config::write::<u32>(ERROR_OFFSET, 4);
         return -4;
     }
@@ -176,9 +202,26 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     config::write::<u32>(STAGE_OFFSET, 4);
     let replacement_asid = unsafe { spawn_upgrade(0, state_cap, target_conn) };
     if replacement_asid == 0 {
+        ipc_close(next_registration);
         config::write::<u32>(ERROR_OFFSET, 5);
         return -5;
     }
+
+    let (status, new_generation, replacement_connection) = ipc_reply_wait(next_registration);
+    ipc_close(next_registration);
+    if status != 0
+        || new_generation <= old_generation
+        || replacement_connection == 0
+    {
+        if replacement_connection != 0 {
+            ipc_close(replacement_connection);
+        }
+        config::write::<u32>(ERROR_OFFSET, 7);
+        return -7;
+    }
+    // The barrier connection only proves that registration completed. Normal
+    // clients obtain their own attenuated connection through a lookup.
+    ipc_close(replacement_connection);
     config::write::<u32>(STAGE_OFFSET, 5);
     replacement_asid as i64
 }

@@ -248,6 +248,16 @@ fn main(ctx: Context) -> ! {
                     0,
                 );
             }
+            ns::OP_LOOKUP_NEXT => {
+                if message.reply != 0 {
+                    waitlist.entry(scalar_key(message.arg0)).or_default().push(message.reply);
+                }
+            }
+            ns::OP_BARRIER => {
+                if message.reply != 0 {
+                    unsafe { ipc_reply(message.reply, 0); }
+                }
+            }
             ns::OP_TRY_LOOKUP => {
                 if message.reply != 0 {
                     try_lookup(&registry, &scalar_key(message.arg0), message.reply);
