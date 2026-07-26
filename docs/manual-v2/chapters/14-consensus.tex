@@ -8,9 +8,11 @@ a natural fit.
 
 The implemented scope is narrower than the architecture described below:
 a two-node leader election runs over local endpoint IPC under AArch64 QEMU.
-Cross-machine transport, replicated client commands, membership changes,
-snapshots, durable recovery, and a replicated name service are not yet
-validated end to end.
+Both peers use the one shared node-local name service also used by the service
+manager, drivers, and clients. Cross-machine transport, replicated client
+commands, membership changes, snapshots, durable recovery, and replication
+between the name-service instance on each machine are not yet validated end
+to end.
 
 \section{Raft as a capability service}
 
@@ -152,7 +154,9 @@ without any seed configuration.
 Once the cluster is running and the name service is itself replicated through
 Raft, a new node needs only a single seed to discover all peers through the
 consistent name registry. The name service is a \texttt{StateMachine}
-implementation on the Raft substrate.
+implementation on the Raft substrate. There remains one process-facing
+name-service instance per machine; those instances apply the same committed
+registry state.
 
 \section{The generic StateMachine trait}
 
@@ -170,10 +174,11 @@ trait StateMachine {
 Different services are different state machines on the same Raft substrate:
 
 \begin{itemize}
-    \item \textbf{Distributed name service:} commands are ``register(name, endpoint)''
-        and ``unregister(name)''. The state is a map from names to endpoint
-        identities and generations. Once replicated, service discovery is
-        available cluster-wide.
+    \item \textbf{Distributed name service:} commands are
+        ``register(name, owner, route, generation)'' and ``unregister(name)''.
+        The state maps names to owning-node identities, routable service
+        identities, generations, and policy metadata. Once replicated,
+        service discovery is available cluster-wide.
     \item \textbf{Distributed lock service:} commands are ``acquire(lock\_id)''
         and ``release(lock\_id)''. The state is a set of held locks.
     \item \textbf{Cluster configuration store:} commands are arbitrary
@@ -186,8 +191,8 @@ replication, leader election, and fault tolerance.
 
 \section{Relationship to the name service}
 
-The existing single-node name service becomes a replicated service when it runs
-as a \texttt{StateMachine} on top of Raft:
+Each existing node-local name service becomes a replica of one logical cluster
+service when the registry runs as a \texttt{StateMachine} on top of Raft:
 
 \begin{itemize}
     \item \texttt{OP\_REGISTER} and \texttt{OP\_LOOKUP} are submitted as commands
@@ -198,6 +203,13 @@ as a \texttt{StateMachine} on top of Raft:
     \item Access keys are enforced consistently. Revocation propagates through
         the replicated log.
 \end{itemize}
+
+Kernel capability identifiers and endpoint objects are machine-local and are
+not Raft state. For a local registration, lookup delegates a connection to the
+local endpoint. For a remote registration, the local name-service instance
+must return a local proxy connection whose transport reaches the owning node.
+Raft replicates the metadata needed to choose that route, not the capability
+object itself.
 
 \section{Election timers as first-class completions}
 

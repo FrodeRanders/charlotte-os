@@ -514,7 +514,7 @@ runnable:
 | Raft nodes (2) | `raft.elf` | `wait(timer, 25ms)` — properly blocks; ~80 wakes/sec total | Yes |
 | Echo gen-3 | `echo.elf` | `ipc_recv_block` — blocks until message arrives | Yes |
 | UART driver | `uart.elf` | Killed by teardown (does NOT persist) | Yes (10ms timer) |
-| Name services (multiple) | `ns.elf` | `ipc_recv_block` — blocks until message arrives | Already correct |
+| Node name service (one shared instance) | `ns.elf` | `ipc_recv_block` — blocks until a registration or lookup arrives | Yes |
 | Raft verifier | kernel | `sleep(10ms)` — exits after SUCCESS | Yes |
 | Other verifiers | kernel | Blocking wait or bounded polling, then return through trampoline | Exit after SUCCESS |
 

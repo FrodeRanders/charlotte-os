@@ -80,8 +80,18 @@ maps human-readable names to connection capabilities:
         service enforces it; the kernel does not participate.
 \end{description}
 
-The name service runs as a \texttt{no\_std} EL0 service process, reached through
-the bootstrap connection every domain receives at startup.
+The name service runs as a \texttt{no\_std} EL0 service process. Boot starts
+exactly one node-local instance and the supervisor retains its registry
+endpoint. Each ordinary service or application receives an attenuated
+connection to that endpoint through its bootstrap page, so all processes on
+the node observe the same registry. Registering another name does not create
+another name-service process. A separate registry is appropriate only for an
+explicitly isolated namespace, such as a test or a future tenant domain.
+
+The supervisor's endpoint handle remains kernel-private. Possessing a
+bootstrap connection permits the operations granted on that connection; it
+does not permit an application to mint arbitrary registry connections or
+inspect another process's capability table.
 
 \section{Service restart and recovery}
 
@@ -119,8 +129,9 @@ At steady state, a CharlotteOS system consists of:
         CQs, scheduling, interrupt routing.
     \item \textbf{The supervisor} (kernel-side) --- domain lifecycle, ELF
         loading, device enumeration.
-    \item \textbf{The name service} (userspace) --- service registration,
-        lookup, access-key gating, generation tracking.
+    \item \textbf{The node name service} (one userspace instance) --- the
+        shared registry for service registration, lookup, access-key gating,
+        and generation tracking.
     \item \textbf{Service processes} --- one or more per logical function:
         NIC driver, TCP/IP stack, filesystem, Raft consensus, application
         servers.

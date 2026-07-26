@@ -445,6 +445,14 @@ Notification
 
 rather than machines.
 
+**Implemented node scope.** CharlotteOS starts one userspace name-service
+process per node. The supervisor retains the registry endpoint and delegates
+an attenuated connection to each application or service that needs discovery.
+Raft peers, the service manager, drivers, and their clients therefore observe
+the same node-local registry. Adding a registration does not create another
+name-service process. Private registries are reserved for deliberately
+isolated namespaces.
+
 ---
 
 # 9. Message-Oriented Networking
@@ -728,7 +736,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 ```
 ┌──────────────────────────────────────────────┐
-│          Distributed Name Service             │  ← replicated capability→name store
+│          Distributed Name Service             │  ← replicated service metadata
 │  (a StateMachine on top of the Raft service)  │
 └──────────────────┬───────────────────────────┘
                    │ IPC (OP_CLIENT_COMMAND)
@@ -796,13 +804,15 @@ service rather than current evidence.
 
 ## 18.3 Distributed name service (design)
 
-> **Status: design only.** The existing name service (`ns.rs`) is
-> single-node. Making it distributed requires (1) cross-machine Raft
+> **Status: local node service implemented; replication is design only.**
+> Each booted node has one shared `ns.rs` registry used by its ordinary
+> services. Making those per-node replicas share cluster state requires
+> (1) cross-machine Raft
 > validated on KVM, (2) the reliable message layer implemented, and
 > (3) the name service refactored as a `StateMachine` implementation.
 
-The existing single-node name service becomes a replicated
-service by running as a `StateMachine` on top of the Raft service:
+Each existing node-local name service becomes a replica of one logical
+cluster service by running the registry as a `StateMachine` on top of Raft:
 
 - `OP_REGISTER` / `OP_LOOKUP` — submitted as commands through the Raft
   leader, replicated to the log, applied at each node's state machine
@@ -811,6 +821,13 @@ service by running as a `StateMachine` on top of the Raft service:
   sees generation 3
 - Access keys (`OP_REGISTER_KEYED`) — enforced consistently across the
   cluster; revocation propagates through the replicated log
+
+Kernel capability identifiers and endpoint objects are local to one machine
+and must not be placed in the Raft log. Replicated registrations instead
+contain a stable service name, owning node identity, routable service identity,
+generation, and policy metadata. A lookup at the owning node can return a
+delegated local connection directly; a lookup at another node must construct
+or reuse a local proxy connection backed by the reliable message layer.
 
 The Raft service itself remains **generic**: it replicates opaque
 commands against a pluggable `StateMachine` trait. A distributed name

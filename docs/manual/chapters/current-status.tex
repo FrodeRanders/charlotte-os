@@ -69,10 +69,13 @@ virt,gic-version=3}, Apple Silicon HVF or TCG).
 \section{Verified (boots on QEMU, zero panics)}
 
 \begin{itemize}
-    \item \textbf{AArch64:} boots, all self-tests pass, the full EL0 service
-        suite (name service, echo, client, UART driver, sitas executor) runs
-        through \texttt{crt0/cmain}. The sitas \texttt{basic\_kv} binary runs
-        with 2 shards on per-shard CQ rings and reports \texttt{total\_len == 3}.
+    \item \textbf{AArch64:} boots, all self-tests pass, and the full EL0 service
+        suite runs through \texttt{crt0/cmain}. Boot starts one shared
+        node-local name service and delegates connections to Raft peers, echo,
+        the service manager, drivers, and clients; registering another name
+        does not create another registry. The sitas \texttt{basic\_kv} binary
+        runs with 2 shards on per-shard CQ rings and reports
+        \texttt{total\_len == 3}.
     \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
         (x86-64 ring-3 userspace is implemented but not yet exercised with a
         user thread.)

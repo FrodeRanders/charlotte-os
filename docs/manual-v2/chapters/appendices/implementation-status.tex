@@ -60,11 +60,13 @@ authoritative record.
 
 \begin{itemize}
     \item \textbf{AArch64:} boots and the synchronous self-tests pass. The EL0
-        service suite (name service, echo, client, UART driver, sitas executor)
-        is exercised by deferred boot tests through \texttt{crt0/cmain}; the
-        harness may print its synchronous success banner before those deferred
-        tests finish. The sitas \texttt{basic\_kv} binary runs
-        with 2 shards on per-shard CQ rings.
+        service suite starts one shared node name service; Raft peers, echo,
+        the service manager, NVMe/object store, UART, and their clients receive
+        delegated connections to that registry. The deferred boot tests
+        exercise registration, waitable lookup, restart, and live upgrade
+        through \texttt{crt0/cmain}; the harness may print its synchronous
+        success banner before those deferred tests finish. The sitas
+        \texttt{basic\_kv} binary runs with 2 shards on per-shard CQ rings.
 
     \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
         Ring-3 userspace is implemented but not yet exercised.
