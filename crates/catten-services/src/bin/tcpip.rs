@@ -68,7 +68,6 @@ use smoltcp::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const LOOKUP_ATTEMPTS: u64 = 2_000_000;
 const STAGE_OFFSET: usize = 0;
 const SCRATCH_VADDR: usize = 0x0000_0000_0080_0000;
 
@@ -101,23 +100,14 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(STAGE_OFFSET, 2);
 
-    let net_conn = {
-        let mut attempts = 0u64;
-        loop {
-            let l = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
-            if l != 0 {
-                let (r, cap) = unsafe { wait_reply(l, REPLY_SPINS) };
-                if r >= 1 && cap != 0 {
-                    break cap;
-                }
-            }
-            attempts += 1;
-            if attempts >= LOOKUP_ATTEMPTS {
-                unsafe { thread_exit() };
-            }
-            core::hint::spin_loop();
-        }
-    };
+    let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
+    if lookup == 0 {
+        unsafe { thread_exit() };
+    }
+    let (generation, net_conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    if generation < 1 || net_conn == 0 {
+        unsafe { thread_exit() };
+    }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);

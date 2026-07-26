@@ -227,6 +227,7 @@ struct ReplyToken {
 struct PendingCall {
     caller: AddressSpaceId,
     result: Option<ReplyValue>,
+    observers: ConcurrentQueue<Weak<dyn Observer>>,
     /// Set once the caller has seen the result through `poll_reply`. From
     /// that point the returned connection/memory capabilities belong to the
     /// caller, and closing the pending-call cap no longer revokes them
@@ -550,6 +551,7 @@ pub fn scalar_call(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );
@@ -678,6 +680,7 @@ fn scalar_call_with_connection_impl(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );
@@ -744,6 +747,7 @@ pub fn scalar_call_with_memory_move(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );
@@ -808,6 +812,7 @@ pub fn scalar_call_with_memory_copy(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );
@@ -897,6 +902,7 @@ fn scalar_call_with_memory_borrow(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );
@@ -1139,7 +1145,10 @@ impl Observable for EndpointObservable {
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
-    complete_reply(&mut ipc, server, reply_cap, result, None, None)
+    let observers = complete_reply(&mut ipc, server, reply_cap, result, None, None)?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
 }
 
 pub fn reply_with_connection(
@@ -1151,7 +1160,11 @@ pub fn reply_with_connection(
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
     let (endpoint, granted) = mintable_endpoint(&ipc, server, endpoint_cap, rights)?;
-    complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)
+    let observers =
+        complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
 }
 
 pub fn reply_with_memory_move(
@@ -1161,7 +1174,10 @@ pub fn reply_with_memory_move(
     result: i64,
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
-    complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))
+    let observers = complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))?;
+    drop(ipc);
+    signal_observers(observers);
+    Ok(())
 }
 
 fn complete_reply(
@@ -1171,7 +1187,7 @@ fn complete_reply(
     result: i64,
     returned_connection: Option<(EndpointId, ConnectionRights)>,
     returned_memory: Option<MemoryObjectCap>,
-) -> Result<(), IpcError> {
+) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
             token,
@@ -1212,8 +1228,9 @@ fn complete_reply(
         cap: returned_cap,
         memory: returned_memory_cap,
     });
+    let observers = drain_observers(&call.observers);
     let _ = ipc.remove_cap(server, reply_cap);
-    Ok(())
+    Ok(observers)
 }
 
 pub fn poll_reply(
@@ -1237,6 +1254,75 @@ pub fn poll_reply(
         call.observed = true;
     }
     Ok(call.result)
+}
+
+pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), IpcError> {
+    let call_id = pending_call_id(caller, call_cap)?;
+    if pending_call_is_ready(call_id)? {
+        return Ok(());
+    }
+
+    let tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_tid()
+        .ok_or(IpcError::NoMessage)?;
+    let observable = PendingCallObservable {
+        call: call_id,
+    };
+    crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .block_thread_with_constraint(
+            tid,
+            &observable,
+            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+        )
+        .map_err(|_| IpcError::NoMessage)?;
+
+    if pending_call_is_ready(call_id)? {
+        let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .submit_ready_thread(tid);
+    }
+    crate::cpu::scheduler::yield_lp();
+    Ok(())
+}
+
+fn pending_call_id(
+    caller: AddressSpaceId,
+    call_cap: CapabilityId,
+) -> Result<PendingCallId, IpcError> {
+    let ipc = IPC.read();
+    let call_id = match ipc.cap(caller, call_cap)? {
+        Capability::PendingCall {
+            call,
+        } => call,
+        _ => return Err(IpcError::WrongType),
+    };
+    let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
+    if call.caller != caller {
+        return Err(IpcError::PermissionDenied);
+    }
+    Ok(call_id)
+}
+
+fn pending_call_is_ready(call_id: PendingCallId) -> Result<bool, IpcError> {
+    let ipc = IPC.read();
+    Ok(ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.result.is_some())
+}
+
+struct PendingCallObservable {
+    call: PendingCallId,
+}
+
+impl Observable for PendingCallObservable {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        let ipc = IPC.read();
+        if let Some(call) = ipc.pending_calls.get(&self.call) {
+            let _ = call.observers.push(observer);
+        }
+    }
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
@@ -1264,7 +1350,13 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             };
             for message in queued {
                 if let Some(reply_cap) = message.reply {
-                    consume_reply_cap(&mut ipc, asid, reply_cap, REPLY_ENDPOINT_CLOSED);
+                    consume_reply_cap(
+                        &mut ipc,
+                        asid,
+                        reply_cap,
+                        REPLY_ENDPOINT_CLOSED,
+                        &mut observers,
+                    );
                 }
                 for memory_cap in &message.memory {
                     let _ = crate::memory::object::close_cap(asid, *memory_cap);
@@ -1308,6 +1400,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                         cap: None,
                         memory: None,
                     });
+                    observers.extend(drain_observers(&call.observers));
                 }
             }
         }
@@ -1324,7 +1417,11 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
 }
 
 fn drain_observers(queue: &ConcurrentQueue<Weak<dyn Observer>>) -> Vec<Weak<dyn Observer>> {
-    queue.try_iter().collect()
+    let mut observers = Vec::new();
+    while let Ok(observer) = queue.pop() {
+        observers.push(observer);
+    }
+    observers
 }
 
 fn signal_observers(observers: Vec<Weak<dyn Observer>>) {
@@ -1354,6 +1451,7 @@ fn consume_reply_cap(
     server: AddressSpaceId,
     reply_cap: CapabilityId,
     result: i64,
+    observers: &mut Vec<Weak<dyn Observer>>,
 ) {
     let token = match ipc.remove_cap(server, reply_cap) {
         Ok(Capability::ReplyToken {
@@ -1371,6 +1469,7 @@ fn consume_reply_cap(
                 cap: None,
                 memory: None,
             });
+            observers.extend(drain_observers(&call.observers));
         }
     }
 }
@@ -1589,6 +1688,7 @@ pub fn vector_call(
         PendingCall {
             caller,
             result: None,
+            observers: ConcurrentQueue::unbounded(),
             observed: false,
         },
     );

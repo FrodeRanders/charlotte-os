@@ -325,7 +325,7 @@ impl Completion {
     }
 
     fn signal(&self) {
-        for observer in self.observers.try_iter() {
+        while let Ok(observer) = self.observers.pop() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();
             }
@@ -398,6 +398,19 @@ struct DetachedOp {
     /// Reduced lifecycle: `InFlight → CancelPending`; completion removes the
     /// record, so the terminal states of [`OpState`] have no analogue here.
     cancel_pending: bool,
+    /// Keeps a timer observer alive until it fires and removes this operation.
+    timer_observer: Option<Arc<DetachedTimerObserver>>,
+}
+
+struct DetachedTimerObserver {
+    asid: AddressSpaceId,
+    operation: OperationId,
+}
+
+impl Observer for DetachedTimerObserver {
+    fn notify(self: Arc<Self>) {
+        let _ = complete_detached(self.asid, self.operation, OpResult::Ok(0));
+    }
 }
 
 /// One completion queue: the shared ring plus its non-lossy backlog and a
@@ -733,9 +746,34 @@ pub fn submit_detached(
             user_data,
             cq,
             cancel_pending: false,
+            timer_observer: None,
         },
     );
     as_completions.live += 1;
+    Ok(operation)
+}
+
+/// Submit a timer delivered exclusively through a completion queue.
+pub fn submit_detached_timer(
+    asid: AddressSpaceId,
+    cq: CqId,
+    timeout_ms: u64,
+    user_data: u64,
+) -> Result<OperationId, SubmitError> {
+    let operation = submit_detached(asid, cq, OpCode::Timer, user_data)?;
+    let observer = Arc::new(DetachedTimerObserver {
+        asid,
+        operation,
+    });
+    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+    crate::timers::enqueue_event(timer_event);
+
+    let mut registry = COMPLETIONS.write();
+    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+    let detached =
+        as_completions.detached.get_mut(&operation).ok_or(SubmitError::UnknownAddressSpace)?;
+    detached.timer_observer = Some(observer);
     Ok(operation)
 }
 
@@ -810,7 +848,11 @@ fn signal_cq(asid: AddressSpaceId, cq: CqId) {
         let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) else {
             return;
         };
-        cq_state.observers.try_iter().collect::<Vec<_>>()
+        let mut observers = Vec::new();
+        while let Ok(observer) = cq_state.observers.pop() {
+            observers.push(observer);
+        }
+        observers
     };
     crate::debug_trace::trace(
         crate::debug_trace::TAG_SIGNAL_CQ,
@@ -822,6 +864,29 @@ fn signal_cq(asid: AddressSpaceId, cq: CqId) {
         if let Some(observer) = observer.upgrade() {
             observer.notify();
         }
+    }
+}
+
+/// Remove registrations whose owning blocked-thread state has already gone
+/// away (most commonly because a CQ timeout won). A timeout and a CQ wake race
+/// through different observables; without this reconciliation, every timeout
+/// leaves one dead `Weak<Waker>` in the long-lived CQ and its unbounded queue
+/// grows forever.
+fn prune_stale_cq_observers(asid: AddressSpaceId, cq: CqId) {
+    // Take the registry write lock so CqObservable::register_observer (which
+    // takes a read lock) cannot add an observer while the queue is rebuilt.
+    let mut registry = COMPLETIONS.write();
+    let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) else {
+        return;
+    };
+    let mut live = Vec::new();
+    while let Ok(observer) = cq_state.observers.pop() {
+        if observer.strong_count() != 0 {
+            live.push(observer);
+        }
+    }
+    for observer in live {
+        let _ = cq_state.observers.push(observer);
     }
 }
 
@@ -1157,6 +1222,11 @@ pub fn wait_on_cq_timeout(
     }
 
     yield_lp();
+
+    // If the timer won, block_thread's CQ registration was not consumed by a
+    // CQ signal. Its strong Waker was dropped when the thread became Ready;
+    // remove that stale weak registration before the next timed wait.
+    prune_stale_cq_observers(asid, cq);
 
     let mut registry = COMPLETIONS.write();
     if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {

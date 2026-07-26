@@ -31,7 +31,6 @@ use catten_syscall::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const LOOKUP_ATTEMPTS: u64 = 1_000_000;
 const ECHO_VALUE: u64 = 0x1234_5678;
 const SENTINEL: u32 = 0xc0de;
 
@@ -45,33 +44,26 @@ fn main(ctx: Context) -> ! {
 
     // Look up the echo service by its memory-carried (long) name. The name
     // is staged once; copy transfer preserves the client's ownership, so the
-    // same memory object serves every retry. The echo service may not have
-    // registered yet, so retry.
+    // same memory object remains owned by this client. The name service
+    // retains the reply token until the echo service registers.
     let name_cap = match unsafe { stage_name(echo::LONG_NAME) } {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let mut attempts: u64 = 0;
-    let (generation, echo_connection) = loop {
-        let lookup = ipc_scalar_call_copy(
-            ns_connection,
-            ns::OP_LOOKUP_NAMED,
-            echo::LONG_NAME.len() as u64,
-            name_cap,
-        );
-        if lookup != 0 {
-            let (result, cap) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-            if result >= 1 && cap != 0 {
-                break (result, cap);
-            }
-        }
-        attempts += 1;
-        config::write::<u32>(12, 3); // stage: lookup pending
-        if attempts >= LOOKUP_ATTEMPTS {
-            unsafe { thread_exit() };
-        }
-        core::hint::spin_loop();
-    };
+    let lookup = ipc_scalar_call_copy(
+        ns_connection,
+        ns::OP_LOOKUP_NAMED,
+        echo::LONG_NAME.len() as u64,
+        name_cap,
+    );
+    if lookup == 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(12, 3); // stage: lookup pending
+    let (generation, echo_connection) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    if generation < 1 || echo_connection == 0 {
+        unsafe { thread_exit() };
+    }
     memory_close(name_cap);
 
     config::write::<u32>(12, 4); // stage: connection obtained

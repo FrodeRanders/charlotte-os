@@ -64,16 +64,13 @@ const MAX_TRANSFER_BYTES: u64 = PAGE_SIZE as u64;
 const PAGE_SIZE: usize = 4096;
 
 fn spin_reply(call: u64) -> (i64, u64) {
-    for _ in 0..500_000 {
-        let (status, result, cap) = ipc_reply_poll(call);
-        if status == 0 {
-            ipc_close(call);
-            return (result as i64, cap);
-        }
-        core::hint::spin_loop();
-    }
+    let (status, result, cap) = ipc_reply_wait(call);
     ipc_close(call);
-    (-1, 0)
+    if status == 0 {
+        (result as i64, cap)
+    } else {
+        (-1, 0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -683,7 +680,7 @@ fn main(ctx: Context) -> ! {
     }
 
     ipc_endpoint_bind_cq(endpoint, 0);
-    device_irq_bind_cq(irq_cap, 0);
+    let irq_delivery = device_irq_bind_cq(irq_cap, 0) == 0;
     config::write::<u32>(0, 3); // registered, serving
     config::write::<u32>(20, 0x900d); // sentinel for verifier
 
@@ -720,10 +717,16 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        // A bounded wait causes the VM exit TCG needs to process DMA, wakes
-        // immediately for endpoint/IRQ readiness, and polls the CQ at 1 ms
-        // intervals when the PCI function has no configured interrupt route.
-        cq_wait_timeout(1, 1, 0);
+        if irq_delivery {
+            // MSI-X is active: endpoint readiness and device interrupts both
+            // wake this CQ, so remain asleep until real work arrives.
+            cq_wait(1, 0);
+        } else {
+            // Compatibility fallback for platforms without an interrupt
+            // route. Keep polling bounded, but do not turn an idle VM into a
+            // 1 kHz timer workload.
+            cq_wait_timeout(1, 10, 0);
+        }
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {

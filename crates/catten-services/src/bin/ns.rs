@@ -146,6 +146,22 @@ fn lookup_or_defer(
     }
 }
 
+fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
+    match registry.get(key) {
+        Some(registration) => unsafe {
+            ipc_reply_connection(
+                reply,
+                registration.connection,
+                IpcRights::SEND | IpcRights::CALL,
+                registration.generation,
+            );
+        },
+        None => unsafe {
+            ipc_reply(reply, ns::ERR_NOT_FOUND);
+        },
+    }
+}
+
 fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1);
     let endpoint = match ctx.bootstrap_cap() {
@@ -231,6 +247,11 @@ fn main(ctx: Context) -> ! {
                     message.reply,
                     0,
                 );
+            }
+            ns::OP_TRY_LOOKUP => {
+                if message.reply != 0 {
+                    try_lookup(&registry, &scalar_key(message.arg0), message.reply);
+                }
             }
             ns::OP_LOOKUP_KEYED => {
                 if message.reply == 0 { continue; }

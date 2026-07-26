@@ -33,8 +33,8 @@ use catten_syscall::{
     ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
-    ipc_reply_poll,
     ipc_reply_poll_with_memory,
+    ipc_reply_wait,
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
@@ -62,20 +62,14 @@ const fn name(s: &[u8]) -> u64 {
 
 const MGR_NAME: u64 = name(b"svcmgr");
 
-/// Spin until a pending call completes.  Returns `(result, returned_cap)`.
+/// Block until a pending call completes. Returns `(result, returned_cap)`.
 unsafe fn spin_call(call: u64, _what: &str) -> (u64, u64) {
-    let mut spins: u64 = 0;
-    loop {
-        let (status, result, cap) = ipc_reply_poll(call);
-        if status == 0 {
-            ipc_close(call);
-            return (result, cap);
-        }
-        spins += 1;
-        if spins >= REPLY_SPINS {
-            unsafe { thread_exit() };
-        }
-        core::hint::spin_loop();
+    let (status, result, cap) = ipc_reply_wait(call);
+    ipc_close(call);
+    if status == 0 {
+        (result, cap)
+    } else {
+        unsafe { thread_exit() }
     }
 }
 

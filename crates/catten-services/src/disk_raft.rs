@@ -32,7 +32,7 @@ const REPLY_SPINS: u64 = u64::MAX;
 const BUFFER_VADDR: usize = 0x0000_0000_0070_0000;
 
 fn objstore_connect(ns_conn: u64) -> Option<u64> {
-    let lookup = ipc_scalar_call_connection(ns_conn, crate::ns::OP_LOOKUP, crate::objstore::NAME, 0, IpcRights::SEND | IpcRights::CALL);
+    let lookup = ipc_scalar_call_connection(ns_conn, crate::ns::OP_TRY_LOOKUP, crate::objstore::NAME, 0, IpcRights::SEND | IpcRights::CALL);
     if lookup == 0 { return None; }
     let (generation, conn) = unsafe { crate::wait_reply(lookup, REPLY_SPINS) };
     if generation < 1 || conn == 0 { return None; }

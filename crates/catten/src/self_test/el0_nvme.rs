@@ -83,14 +83,9 @@ extern "C" fn verify_el0_nvme() {
     };
     logln!("[nvme] driver spawned (asid={})", driver.asid);
 
-    // Wait for driver to register
-    let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
-    while unsafe { core::ptr::read_volatile(sentinel_ptr) } != 0x900d {
-        core::hint::spin_loop();
-    }
-    logln!("[nvme] driver ready");
-
-    // --- Verify write -> durable flush -> read round trip ---
+    // Start the client immediately. Its single deferred lookup must be woken
+    // by the driver's later registration; verifier ordering must not mask a
+    // broken name-service synchronization path.
     let client = supervisor::spawn_with_name_service(NVME_CLIENT_ELF, ns, ConnectionRights::CALL);
     let client_cfg: *const u32 = {
         let base: *mut u8 = client.status_frame.into();
@@ -99,8 +94,17 @@ extern "C" fn verify_el0_nvme() {
     while unsafe { core::ptr::read_volatile(client_cfg) } != 0x900d {
         let state = unsafe { core::ptr::read_volatile(client_cfg) };
         assert!(state < 0xdea0, "[nvme] I/O verifier failed: {:#x}", state);
-        core::hint::spin_loop();
+        // This verifier shares scheduler capacity with the interrupt-driven
+        // driver. Sleeping both avoids burning a guest core and gives thread
+        // context a chance to drain the IRQ handler's deferred CQ wake.
+        crate::cpu::scheduler::sleep_millis(1);
     }
+    let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
+    assert_eq!(
+        unsafe { core::ptr::read_volatile(sentinel_ptr) },
+        0x900d,
+        "[nvme] client completed before driver registration"
+    );
     logln!("[nvme] write/flush/read round trip verified");
     let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
     assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
@@ -116,7 +120,7 @@ extern "C" fn verify_el0_nvme() {
 
     // Wait for object store to register
     while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
-        core::hint::spin_loop();
+        crate::cpu::scheduler::sleep_millis(1);
     }
 
     logln!("[nvme] SUCCESS: NVMe driver and object store both initialised and registered.");

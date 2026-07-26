@@ -42,18 +42,13 @@ const BUFFER_VADDR: usize = 0x0000_0000_0050_0000;
 const REPLY_SPINS: u64 = u64::MAX;
 
 fn spin_reply(call: u64) -> (i64, u64) {
-    // Use sleep_ms (which uses cq_wait internally) instead of spin_loop.
-    // This yields to the scheduler and allows QEMU to process I/O.
-    for _ in 0..500 {
-        let (status, result, cap) = ipc_reply_poll(call);
-        if status == 0 {
-            ipc_close(call);
-            return (result as i64, cap);
-        }
-        catten_services::sleep_ms(1);
-    }
+    let (status, result, cap) = ipc_reply_wait(call);
     ipc_close(call);
-    (-1, 0)
+    if status == 0 {
+        (result as i64, cap)
+    } else {
+        (-1, 0)
+    }
 }
 
 const SB_MAGIC: u64 = 0x525453424a4f;

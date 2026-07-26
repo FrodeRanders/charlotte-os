@@ -84,26 +84,14 @@ mod inner {
 
     extern "C" fn verify_raft_cluster() {
         use crate::{
-            cpu::scheduler::{
-                sleep,
-                yield_lp,
-            },
+            cpu::scheduler::sleep,
             klib::time::duration::ExtDuration,
         };
 
         let ns = unsafe { RAFT_NS }.expect("[raft] verifier name service missing");
-        let ns_stage: *const u32 = {
-            let base: *mut u8 = ns.domain.status_frame.into();
-            base as *const u32
-        };
-        while unsafe { core::ptr::read_volatile(ns_stage) } < 2 {
-            yield_lp();
-        }
-
-        // Do not start clients that synchronously register until the name
-        // service has entered its receive loop. During early boot the
-        // scheduler is cooperative, so starting all three together can let a
-        // polling client starve the server it is waiting for.
+        // Spawn both peers without imposing a registration order. Blocking
+        // reply waits yield cooperatively, while each missing peer has one
+        // deferred lookup retained by the name service.
         let r1_manifest = [
             ManifestEntry {
                 key: NODE_ID_KEY,
@@ -122,13 +110,6 @@ mod inner {
             },
         ];
         let r1_domain = spawn_raft_node(&r1_manifest, &ns);
-        let r1_stage: *const u32 = {
-            let base: *mut u8 = r1_domain.status_frame.into();
-            base as *const u32
-        };
-        while unsafe { core::ptr::read_volatile(r1_stage) } < 6 {
-            yield_lp();
-        }
         let r2_manifest = [
             ManifestEntry {
                 key: NODE_ID_KEY,
@@ -147,7 +128,7 @@ mod inner {
             },
         ];
         let r2_domain = spawn_raft_node(&r2_manifest, &ns);
-        crate::logln!("[raft] nodes spawned in registration order after name service became ready");
+        crate::logln!("[raft] nodes spawned without registration ordering");
 
         let r1_config = r1_domain.status_frame;
         let r2_config = r2_domain.status_frame;

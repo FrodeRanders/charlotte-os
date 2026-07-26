@@ -53,7 +53,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    close as completion_close,
+    cq_read,
     cq_wait,
     ipc_close,
     ipc_endpoint_bind_cq,
@@ -62,6 +62,7 @@ use catten_syscall::{
     ipc_reply,
     ipc_reply_move,
     ipc_reply_poll,
+    ipc_reply_wait,
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
@@ -69,53 +70,27 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
-    poll,
-    submit_timer,
+    submit_detached_timer,
     thread_exit,
-    wait,
 };
 
-// Registration happens while the system is still bringing up its services and
-// can legitimately take much longer than a best-effort peer lookup.  Keeping
-// these budgets separate also prevents an absent peer from stalling the Raft
-// event loop for the full registration timeout.
-const REGISTER_SPINS: u64 = 50_000_000;
-const DISCOVERY_SPINS: u64 = 50_000;
 const LOOP_TICK_MS: u64 = 25;
+const ELECTION_TIMER_COOKIE: u64 = 0x5241_4654_5449_4d45;
 
 fn fatal(stage: u64) -> ! {
     catten_syscall::el0_log(0x5241_4654, stage);
     unsafe { thread_exit() }
 }
 
-unsafe fn wait_reply_2(call: u64, max_spins: u64) -> Option<(i64, u64)> {
+unsafe fn wait_reply_2(call: u64) -> Option<(i64, u64)> {
     // Keep the capability in memory across the multi-register reply-poll
     // syscall. This guards against the returned x1 result being confused
     // with the x1 input capability by aggressive inlining/register reuse.
     let saved_call = call;
-    let mut spins: u64 = 0;
-    loop {
-        let call_cap = unsafe { core::ptr::read_volatile(&saved_call) };
-        let (status, result, connection) = ipc_reply_poll(call_cap);
-        if status == 0 {
-            ipc_close(unsafe { core::ptr::read_volatile(&saved_call) });
-            return Some((result as i64, connection));
-        }
-        // IPC_REPLY_POLL has its own compact ABI: 0=ready, 1=pending.
-        // This is not the IPC receive-status enum (whose PENDING value is 3).
-        if status != 1 {
-            return None;
-        }
-        spins += 1;
-        if spins >= max_spins {
-            return None;
-        }
-        let timer = submit_timer(1);
-        if timer != u64::MAX {
-            wait(timer);
-            completion_close(timer);
-        }
-    }
+    let call_cap = unsafe { core::ptr::read_volatile(&saved_call) };
+    let (status, result, connection) = ipc_reply_wait(call_cap);
+    ipc_close(unsafe { core::ptr::read_volatile(&saved_call) });
+    (status == 0).then_some((result as i64, connection))
 }
 
 fn write_payload_to_mem(payload: &[u8]) -> Option<u64> {
@@ -164,33 +139,35 @@ fn reply_payload(reply: u64, payload: Result<Vec<u8>, catten_graft::wire::WireEr
     ipc_reply(reply, -1);
 }
 
-fn discover_peer(
+fn poll_peer_discovery(
     ns_conn: u64,
     peer_id: &str,
     peer_name: u64,
+    pending: &mut u64,
     transport: &CharlotteTransport,
-) -> bool {
+) {
     if transport.has_peer(peer_id) {
-        return true;
+        return;
     }
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, peer_name);
-    if lookup == 0 {
-        let timer = submit_timer(1);
-        if timer != u64::MAX {
-            wait(timer);
-            completion_close(timer);
+    if *pending == 0 {
+        *pending = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, peer_name);
+        return;
+    }
+    let (status, generation, connection) = ipc_reply_poll(*pending);
+    match status {
+        0 => {
+            ipc_close(*pending);
+            *pending = 0;
+            if generation >= 1 && connection != 0 {
+                transport.add_peer(peer_id, connection);
+            }
         }
-        return false;
+        1 => {}
+        _ => {
+            ipc_close(*pending);
+            *pending = 0;
+        }
     }
-    let Some((generation, connection)) = (unsafe { wait_reply_2(lookup, DISCOVERY_SPINS) }) else {
-        ipc_close(lookup);
-        return false;
-    };
-    if generation < 1 || connection == 0 {
-        return false;
-    }
-    transport.add_peer(peer_id, connection);
-    true
 }
 
 const NODE_ID_KEY: u64 = manifest_key(b"node-id");
@@ -238,7 +215,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 4);
 
-    let (generation, _) = unsafe { wait_reply_2(register, REGISTER_SPINS).unwrap_or((-1, 0)) };
+    let (generation, _) = unsafe { wait_reply_2(register).unwrap_or((-1, 0)) };
     if generation < 1 {
         fatal(4);
     }
@@ -258,7 +235,7 @@ fn main(ctx: Context) -> ! {
     let me = Peer::voter(node_id.to_string(), name_u64);
     peers.push(me.clone());
 
-    let mut peer_specs: Vec<(String, u64)> = Vec::new();
+    let mut peer_specs: Vec<(String, u64, u64)> = Vec::new();
     for entry in ctx.manifest().filter(|entry| entry.key == PEER_ID_KEY) {
         let ManifestValue::Bytes(peer_bytes) = entry.value else {
             continue;
@@ -270,8 +247,7 @@ fn main(ctx: Context) -> ! {
 
         let peer_name = catten_services::name(alloc::format!("raft-{}", peer_id).as_bytes());
         peers.push(Peer::voter(peer_id.to_string(), peer_name));
-        peer_specs.push((peer_id.to_string(), peer_name));
-        let _ = discover_peer(ns_conn, peer_id, peer_name, &transport);
+        peer_specs.push((peer_id.to_string(), peer_name, 0));
     }
 
     config::write::<u32>(0, 5);
@@ -291,10 +267,20 @@ fn main(ctx: Context) -> ! {
 
     let mut served: u32 = 0;
 
-    let mut election_timer: u64 = submit_timer(LOOP_TICK_MS);
+    let cq = ctx.completion_queue_layout();
+    if submit_detached_timer(LOOP_TICK_MS, 0, ELECTION_TIMER_COOKIE) == u64::MAX {
+        fatal(7);
+    }
 
     loop {
         cq_wait(1, 0);
+
+        let mut timer_fired = false;
+        while let Some(entry) = unsafe { cq_read(cq.base, cq.entries) } {
+            if entry.cookie == ELECTION_TIMER_COOKIE && entry.status == 0 {
+                timer_fired = true;
+            }
+        }
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
@@ -309,24 +295,12 @@ fn main(ctx: Context) -> ! {
             },
         );
 
-        // Registration order is nondeterministic. Keep all configured voters
-        // in the cluster and retry name-service discovery until their
-        // connection becomes available.
-        for (peer_id, peer_name) in &peer_specs {
-            let _ = discover_peer(ns_conn, peer_id, *peer_name, &transport);
+        // Keep one deferred name-service lookup outstanding for each missing
+        // peer. Registration completes that call; the reactor only polls the
+        // existing call and never creates retry storms or blocks on a peer.
+        for (peer_id, peer_name, pending) in &mut peer_specs {
+            poll_peer_discovery(ns_conn, peer_id, *peer_name, pending, &transport);
         }
-
-        // Poll the timer regardless of cap value — cap 0 is a valid
-        // completion handle when the IdTable reuses slot 0.
-        let timer_fired = {
-            let (status, _result) = poll(election_timer);
-            if status == 0 {
-                completion_close(election_timer);
-                true
-            } else {
-                false
-            }
-        };
 
         // Drain inbound Raft traffic after processing the timer tick.
         loop {
@@ -423,7 +397,9 @@ fn main(ctx: Context) -> ! {
             if node.check_timeout() {
                 node.start_election(node.millis());
             }
-            election_timer = submit_timer(LOOP_TICK_MS);
+            if submit_detached_timer(LOOP_TICK_MS, 0, ELECTION_TIMER_COOKIE) == u64::MAX {
+                fatal(8);
+            }
         }
 
         if node.state == NodeState::Leader {

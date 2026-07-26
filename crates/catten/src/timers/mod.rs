@@ -152,7 +152,7 @@ impl TimerEvent {
     }
 
     fn signal(&self) {
-        for observer in self.observers.try_iter() {
+        while let Ok(observer) = self.observers.pop() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();
             }

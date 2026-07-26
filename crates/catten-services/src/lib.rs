@@ -81,6 +81,10 @@ pub mod ns {
     /// access key; the stored registration's key must match (or be 0 for
     /// a public service).  Reply = generation + attenuated connection.
     pub const OP_LOOKUP_KEYED: u32 = 6;
+    /// Best-effort short-name lookup for optional dependencies. Unlike
+    /// [`OP_LOOKUP`], this replies with [`ERR_NOT_FOUND`] immediately rather
+    /// than retaining the call until a future registration.
+    pub const OP_TRY_LOOKUP: u32 = 7;
 
     /// Read a u64 access key from a memory object, or 0 if none.
     /// Consumes (unmaps and closes) the memory cap on success.
@@ -467,46 +471,30 @@ pub mod relmsg {
     pub const MAX_RETRIES: u32 = 5;
 }
 
-/// Spin-poll a pending call until it completes, returning
+/// Block until a pending call completes, returning
 /// `(result, returned_connection_cap)`.
 ///
-/// Exits the protection domain via [`thread_exit`] after `max_spins`
-/// iterations so a lost reply fails loudly under test rather than hanging.
-///
-/// # Safety
-/// Calls [`thread_exit`] on timeout — the caller must not hold resources
-/// that require explicit cleanup before domain teardown.
-pub unsafe fn wait_reply(call: u64, max_spins: u64) -> (i64, u64) {
-    let mut spins: u64 = 0;
-    loop {
-        let (status, result, cap) = catten_syscall::ipc_reply_poll(call);
-        if status == 0 {
-            catten_syscall::ipc_close(call);
-            return (result as i64, cap);
-        }
-        spins += 1;
-        if spins >= max_spins {
-            unsafe {
-                catten_syscall::thread_exit();
-            }
-        }
-        sleep_ms(1);
+/// `max_spins` is retained for source compatibility; reply waiting is now
+/// scheduler-backed and has no arbitrary boot-time deadline.
+pub unsafe fn wait_reply(call: u64, _max_spins: u64) -> (i64, u64) {
+    let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
+    catten_syscall::ipc_close(call);
+    if status == 0 {
+        (result as i64, cap)
+    } else {
+        (-1, 0)
     }
 }
 
-/// Spin-poll a pending call until it completes. Returns (-1, 0) on timeout
-/// instead of killing the process like [`wait_reply`] does.
+/// Block until a pending call completes.
 pub fn spin_reply(call: u64) -> (i64, u64) {
-    for _ in 0..500 {
-        let (status, result, cap) = catten_syscall::ipc_reply_poll(call);
-        if status == 0 {
-            catten_syscall::ipc_close(call);
-            return (result as i64, cap);
-        }
-        sleep_ms(1);
-    }
+    let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
     catten_syscall::ipc_close(call);
-    (-1, 0)
+    if status == 0 {
+        (result as i64, cap)
+    } else {
+        (-1, 0)
+    }
 }
 
 /// Block the calling userspace thread between low-frequency reply polls.

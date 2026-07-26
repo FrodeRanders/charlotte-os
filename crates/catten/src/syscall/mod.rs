@@ -20,6 +20,8 @@
 
 use alloc::collections::BTreeMap;
 
+pub use catten_syscall::SyscallNumber;
+
 use crate::{
     cpu::isa::{
         interface::memory::AddressSpaceInterface,
@@ -58,147 +60,153 @@ pub struct TrapFrame {
 
 /// Syscall numbers.
 pub mod call_no {
-    pub const LOG: u16 = 0;
-    pub const COMPLETION_SUBMIT: u16 = 1;
-    pub const COMPLETION_COMPLETE: u16 = 2;
-    pub const COMPLETION_POLL: u16 = 3;
-    pub const COMPLETION_WAIT: u16 = 4;
-    pub const COMPLETION_CANCEL: u16 = 5;
-    pub const COMPLETION_CLOSE: u16 = 6;
-    pub const SPAWN_THREAD: u16 = 7;
+    use super::SyscallNumber;
+
+    pub const LOG: u16 = SyscallNumber::Log as u16;
+    pub const COMPLETION_SUBMIT: u16 = SyscallNumber::CompletionSubmit as u16;
+    pub const COMPLETION_COMPLETE: u16 = SyscallNumber::CompletionComplete as u16;
+    pub const COMPLETION_POLL: u16 = SyscallNumber::CompletionPoll as u16;
+    pub const COMPLETION_WAIT: u16 = SyscallNumber::CompletionWait as u16;
+    pub const COMPLETION_CANCEL: u16 = SyscallNumber::CompletionCancel as u16;
+    pub const COMPLETION_CLOSE: u16 = SyscallNumber::CompletionClose as u16;
+    pub const SPAWN_THREAD: u16 = SyscallNumber::SpawnThread as u16;
     /// Terminate the calling EL0 thread.
-    pub const THREAD_EXIT: u16 = 8;
+    pub const THREAD_EXIT: u16 = SyscallNumber::ThreadExit as u16;
     /// Send a 64-bit message to a specific LP's mailbox.
-    pub const MAILBOX_SEND: u16 = 9;
+    pub const MAILBOX_SEND: u16 = SyscallNumber::MailboxSend as u16;
     /// Receive a 64-bit message from the calling LP's mailbox.
-    pub const MAILBOX_RECV: u16 = 10;
+    pub const MAILBOX_RECV: u16 = SyscallNumber::MailboxRecv as u16;
     /// Block on a completion with a timeout (milliseconds in x2).
-    pub const COMPLETION_WAIT_TIMEOUT: u16 = 11;
+    pub const COMPLETION_WAIT_TIMEOUT: u16 = SyscallNumber::CompletionWaitTimeout as u16;
     /// Block until CQ `x2` of the caller has at least `x1` pending entries or
     /// an explicit wake is posted to it.
-    pub const CQ_WAIT: u16 = 12;
+    pub const CQ_WAIT: u16 = SyscallNumber::CqWait as u16;
     /// Open a sender capability targeting LP `x1`. Returns cap in `x0`.
-    pub const MAILBOX_OPEN_SEND: u16 = 13;
+    pub const MAILBOX_OPEN_SEND: u16 = SyscallNumber::MailboxOpenSend as u16;
     /// Open a receiver capability for the caller's current LP. Returns cap in `x0`.
-    pub const MAILBOX_OPEN_RECV: u16 = 14;
+    pub const MAILBOX_OPEN_RECV: u16 = SyscallNumber::MailboxOpenRecv as u16;
     /// Send `x2` through sender capability `x1`. Returns status in `x0`.
-    pub const MAILBOX_SEND_CAP: u16 = 15;
+    pub const MAILBOX_SEND_CAP: u16 = SyscallNumber::MailboxSendCap as u16;
     /// Receive through receiver capability `x1`. Returns msg in `x0`, status in `x1`.
-    pub const MAILBOX_RECV_CAP: u16 = 16;
+    pub const MAILBOX_RECV_CAP: u16 = SyscallNumber::MailboxRecvCap as u16;
     /// Close mailbox capability `x1`. Returns status in `x0`.
-    pub const MAILBOX_CLOSE: u16 = 17;
+    pub const MAILBOX_CLOSE: u16 = SyscallNumber::MailboxClose as u16;
     /// Create an endpoint owned by the caller. x1=interface, x2=version,
     /// x3=queue capacity. Returns endpoint cap in x0, or 0 on failure.
-    pub const IPC_ENDPOINT_CREATE: u16 = 18;
+    pub const IPC_ENDPOINT_CREATE: u16 = SyscallNumber::IpcEndpointCreate as u16;
     /// Mint a same-address-space connection from endpoint cap x1 with rights x2.
-    pub const IPC_CONNECT: u16 = 19;
+    pub const IPC_CONNECT: u16 = SyscallNumber::IpcConnect as u16;
     /// Send scalar message through connection x1. x2=opcode, x3=arg0.
-    pub const IPC_SCALAR_SEND: u16 = 20;
+    pub const IPC_SCALAR_SEND: u16 = SyscallNumber::IpcScalarSend as u16;
     /// Call through connection x1. x2=opcode, x3=arg0. Returns pending-call cap.
-    pub const IPC_SCALAR_CALL: u16 = 21;
+    pub const IPC_SCALAR_CALL: u16 = SyscallNumber::IpcScalarCall as u16;
     /// Receive from endpoint x1. Returns status in x0 and message fields in x1+.
-    pub const IPC_RECV: u16 = 22;
+    pub const IPC_RECV: u16 = SyscallNumber::IpcRecv as u16;
     /// Reply via reply-token x1 with signed result x2.
-    pub const IPC_REPLY: u16 = 23;
+    pub const IPC_REPLY: u16 = SyscallNumber::IpcReply as u16;
     /// Poll pending-call x1. Returns 0+result when ready, 1 when pending.
-    pub const IPC_REPLY_POLL: u16 = 24;
+    pub const IPC_REPLY_POLL: u16 = SyscallNumber::IpcReplyPoll as u16;
     /// Close an endpoint IPC cap x1.
-    pub const IPC_CLOSE: u16 = 25;
+    pub const IPC_CLOSE: u16 = SyscallNumber::IpcClose as u16;
     /// Reply with a delegated connection cap. x1=reply cap, x2=endpoint cap,
     /// x3=connection rights. Returns status in x0.
-    pub const IPC_REPLY_CONNECTION: u16 = 26;
+    pub const IPC_REPLY_CONNECTION: u16 = SyscallNumber::IpcReplyConnection as u16;
     /// Block until endpoint x1 is readable, then receive one message. Returns
     /// the same register shape as IPC_RECV.
-    pub const IPC_RECV_BLOCK: u16 = 27;
+    pub const IPC_RECV_BLOCK: u16 = SyscallNumber::IpcRecvBlock as u16;
     /// Allocate a memory object owned by the caller. x1=pages. Returns cap in x0.
-    pub const MEMORY_ALLOC: u16 = 28;
+    pub const MEMORY_ALLOC: u16 = SyscallNumber::MemoryAlloc as u16;
     /// Map memory object x1 at user VA x2. x3=1 writable, 0 read-only.
-    pub const MEMORY_MAP: u16 = 29;
+    pub const MEMORY_MAP: u16 = SyscallNumber::MemoryMap as u16;
     /// Unmap memory object x1 from the caller.
-    pub const MEMORY_UNMAP: u16 = 30;
+    pub const MEMORY_UNMAP: u16 = SyscallNumber::MemoryUnmap as u16;
     /// Close memory object cap x1.
-    pub const MEMORY_CLOSE: u16 = 31;
+    pub const MEMORY_CLOSE: u16 = SyscallNumber::MemoryClose as u16;
     /// Send scalar message with moved memory cap x4.
-    pub const IPC_SCALAR_SEND_MOVE: u16 = 32;
+    pub const IPC_SCALAR_SEND_MOVE: u16 = SyscallNumber::IpcScalarSendMove as u16;
     /// Call with moved memory cap x4. Returns pending-call cap.
-    pub const IPC_SCALAR_CALL_MOVE: u16 = 33;
+    pub const IPC_SCALAR_CALL_MOVE: u16 = SyscallNumber::IpcScalarCallMove as u16;
     /// Reply and move memory cap x2 back to caller. x3=result.
-    pub const IPC_REPLY_MOVE: u16 = 34;
+    pub const IPC_REPLY_MOVE: u16 = SyscallNumber::IpcReplyMove as u16;
     /// Call with read-borrowed memory cap x4.
-    pub const IPC_SCALAR_CALL_BORROW_READ: u16 = 35;
+    pub const IPC_SCALAR_CALL_BORROW_READ: u16 = SyscallNumber::IpcScalarCallBorrowRead as u16;
     /// Call with writable borrowed memory cap x4.
-    pub const IPC_SCALAR_CALL_BORROW_WRITE: u16 = 36;
+    pub const IPC_SCALAR_CALL_BORROW_WRITE: u16 = SyscallNumber::IpcScalarCallBorrowWrite as u16;
     /// Send scalar message with copied memory cap x4.
-    pub const IPC_SCALAR_SEND_COPY: u16 = 37;
+    pub const IPC_SCALAR_SEND_COPY: u16 = SyscallNumber::IpcScalarSendCopy as u16;
     /// Call with copied memory cap x4. Returns pending-call cap.
-    pub const IPC_SCALAR_CALL_COPY: u16 = 38;
+    pub const IPC_SCALAR_CALL_COPY: u16 = SyscallNumber::IpcScalarCallCopy as u16;
     /// Call carrying a delegated connection. x1=connection, x2=opcode,
     /// x3=arg0, x4=mintable endpoint/connection cap, x5=delegated rights.
     /// Returns pending-call cap in x0. The receiver observes the minted
     /// connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
-    pub const IPC_SCALAR_CALL_CONNECTION: u16 = 39;
+    pub const IPC_SCALAR_CALL_CONNECTION: u16 = SyscallNumber::IpcScalarCallConnection as u16;
     /// Call carrying a delegated connection *and* a copied memory object.
     /// x1=connection, x2=opcode, x3=arg0, x4=mintable endpoint/connection
     /// cap, x5=delegated rights, x6=memory cap to copy. Returns pending-call
     /// cap in x0. The receiver observes the copied memory cap in x7 and the
     /// minted connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
-    pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 = 40;
+    pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 =
+        SyscallNumber::IpcScalarCallConnectionCopy as u16;
     /// Post an explicit wake to CQ `x1`'s waiters (cross-shard reactor wake).
     /// Returns 0.
-    pub const CQ_WAKE: u16 = 41;
+    pub const CQ_WAKE: u16 = SyscallNumber::CqWake as u16;
     /// Block until CQ `x3` of the caller has at least `x1` entries, an
     /// explicit wake is posted to it, or `x2` milliseconds elapse. Returns the
     /// pending entry count in x0 and 1 in x1 if the deadline fired first, 0
     /// otherwise.
-    pub const CQ_WAIT_TIMEOUT: u16 = 42;
+    pub const CQ_WAIT_TIMEOUT: u16 = SyscallNumber::CqWaitTimeout as u16;
     /// Bind endpoint `x1`'s readiness to the caller's CQ `x2`: the kernel
     /// posts a coalesced wake to that queue on the endpoint's
     /// empty-to-nonempty transition and on closure. Returns status in x0.
-    pub const IPC_ENDPOINT_BIND_CQ: u16 = 43;
+    pub const IPC_ENDPOINT_BIND_CQ: u16 = SyscallNumber::IpcEndpointBindCq as u16;
     /// Map MMIO region capability `x1` into the caller's address space at user
     /// virtual address `x2`; `x3`=1 writable, 0 read-only. Returns a device
     /// status code in x0.
-    pub const DEVICE_MMIO_MAP: u16 = 44;
+    pub const DEVICE_MMIO_MAP: u16 = SyscallNumber::DeviceMmioMap as u16;
     /// Unmap MMIO region capability `x1` from the caller. Returns a device
     /// status code in x0.
-    pub const DEVICE_MMIO_UNMAP: u16 = 45;
+    pub const DEVICE_MMIO_UNMAP: u16 = SyscallNumber::DeviceMmioUnmap as u16;
     /// Bind interrupt capability `x1` to the caller's CQ `x2` and arm the
     /// source. Delivered interrupts post a coalesced readiness wake to that
     /// queue. Returns a device status code in x0.
-    pub const DEVICE_IRQ_BIND_CQ: u16 = 46;
+    pub const DEVICE_IRQ_BIND_CQ: u16 = SyscallNumber::DeviceIrqBindCq as u16;
     /// Acknowledge interrupt capability `x1`: clear its pending count and
     /// re-arm the source. Returns a device status code in x0 and the number
     /// of coalesced interrupts consumed in x1.
-    pub const DEVICE_IRQ_ACK: u16 = 47;
+    pub const DEVICE_IRQ_ACK: u16 = SyscallNumber::DeviceIrqAck as u16;
     /// Close device capability `x1` (unmap an MMIO region or mask and unroute
     /// an interrupt). Returns a device status code in x0.
-    pub const DEVICE_CLOSE: u16 = 48;
+    pub const DEVICE_CLOSE: u16 = SyscallNumber::DeviceClose as u16;
     /// Return the physical base address (PAddr) of the first frame of memory
     /// object `x1` in `x0`, or 0 on error. Owned and IPC-borrowed memory
     /// capabilities both authorize this query.
-    pub const MEMORY_GET_PHYS: u16 = 49;
+    pub const MEMORY_GET_PHYS: u16 = SyscallNumber::MemoryGetPhys as u16;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF
     /// selector (0 = echo service ELF), x3 = state memory cap (0 if none),
     /// x4 = old endpoint cap (in the old service's cap table — the
     /// supervisor finds the owner ASID).  Returns the new generation in x0,
     /// or 0 on failure.
-    pub const SPAWN_UPGRADE: u16 = 50;
+    pub const SPAWN_UPGRADE: u16 = SyscallNumber::SpawnUpgrade as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
     /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
-    pub const IPC_VECTOR_SEND: u16 = 51;
+    pub const IPC_VECTOR_SEND: u16 = SyscallNumber::IpcVectorSend as u16;
     /// Call carrying a vector of memory-object caps. x1=connection,
     /// x2=opcode, x3=arg0, x4=cap_vector_page. Returns pending-call cap
     /// in x0, or 0 on error.
-    pub const IPC_VECTOR_CALL: u16 = 52;
+    pub const IPC_VECTOR_CALL: u16 = SyscallNumber::IpcVectorCall as u16;
     /// Receive a message and fill the caller's result page at x1 with
     /// cap IDs of delivered memory objects. Returns the same register
     /// shape as IPC_RECV, plus the result page contents.
-    pub const IPC_RECV_VEC: u16 = 53;
+    pub const IPC_RECV_VEC: u16 = SyscallNumber::IpcRecvVec as u16;
+    /// Block until pending-call x1 has a reply, then return the same register
+    /// shape as IPC_REPLY_POLL.
+    pub const IPC_REPLY_WAIT: u16 = SyscallNumber::IpcReplyWait as u16;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = call_no::IPC_RECV_VEC;
+pub const MAX_SYSCALL: u16 = catten_syscall::MAX_SYSCALL_NUMBER;
 
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
@@ -211,58 +219,60 @@ pub const EC_SVC_AARCH64: u8 = 0x15;
 /// The single entry point from the ISA-specific [`sync_dispatcher`]. Panics on
 /// an unknown syscall.
 pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
-    match syscall_no {
-        call_no::LOG => sys_log(frame),
-        call_no::COMPLETION_SUBMIT => sys_completion_submit(frame),
-        call_no::COMPLETION_COMPLETE => sys_completion_complete(frame),
-        call_no::COMPLETION_POLL => sys_completion_poll(frame),
-        call_no::COMPLETION_WAIT => sys_completion_wait(frame),
-        call_no::COMPLETION_CANCEL => sys_completion_cancel(frame),
-        call_no::COMPLETION_CLOSE => sys_completion_close(frame),
-        call_no::SPAWN_THREAD => sys_spawn_thread(frame),
-        call_no::THREAD_EXIT => sys_thread_exit(frame),
-        call_no::MAILBOX_SEND => sys_mailbox_send(frame),
-        call_no::MAILBOX_RECV => sys_mailbox_recv(frame),
-        call_no::COMPLETION_WAIT_TIMEOUT => sys_completion_wait_timeout(frame),
-        call_no::CQ_WAIT => sys_cq_wait(frame),
-        call_no::MAILBOX_OPEN_SEND => sys_mailbox_open_send(frame),
-        call_no::MAILBOX_OPEN_RECV => sys_mailbox_open_recv(frame),
-        call_no::MAILBOX_SEND_CAP => sys_mailbox_send_cap(frame),
-        call_no::MAILBOX_RECV_CAP => sys_mailbox_recv_cap(frame),
-        call_no::MAILBOX_CLOSE => sys_mailbox_close(frame),
-        call_no::IPC_ENDPOINT_CREATE => sys_ipc_endpoint_create(frame),
-        call_no::IPC_CONNECT => sys_ipc_connect(frame),
-        call_no::IPC_SCALAR_SEND => sys_ipc_scalar_send(frame),
-        call_no::IPC_SCALAR_CALL => sys_ipc_scalar_call(frame),
-        call_no::IPC_RECV => sys_ipc_recv(frame),
-        call_no::IPC_REPLY => sys_ipc_reply(frame),
-        call_no::IPC_REPLY_POLL => sys_ipc_reply_poll(frame),
-        call_no::IPC_CLOSE => sys_ipc_close(frame),
-        call_no::IPC_REPLY_CONNECTION => sys_ipc_reply_connection(frame),
-        call_no::IPC_RECV_BLOCK => sys_ipc_recv_block(frame),
-        call_no::MEMORY_ALLOC => sys_memory_alloc(frame),
-        call_no::MEMORY_MAP => sys_memory_map(frame),
-        call_no::MEMORY_UNMAP => sys_memory_unmap(frame),
-        call_no::MEMORY_CLOSE => sys_memory_close(frame),
-        call_no::IPC_SCALAR_SEND_MOVE => sys_ipc_scalar_send_move(frame),
-        call_no::IPC_SCALAR_CALL_MOVE => sys_ipc_scalar_call_move(frame),
-        call_no::IPC_REPLY_MOVE => sys_ipc_reply_move(frame),
-        call_no::IPC_SCALAR_CALL_BORROW_READ => sys_ipc_scalar_call_borrow_read(frame),
-        call_no::IPC_SCALAR_CALL_BORROW_WRITE => sys_ipc_scalar_call_borrow_write(frame),
-        call_no::IPC_SCALAR_SEND_COPY => sys_ipc_scalar_send_copy(frame),
-        call_no::IPC_SCALAR_CALL_COPY => sys_ipc_scalar_call_copy(frame),
-        call_no::IPC_SCALAR_CALL_CONNECTION => sys_ipc_scalar_call_connection(frame),
-        call_no::IPC_SCALAR_CALL_CONNECTION_COPY => sys_ipc_scalar_call_connection_copy(frame),
-        call_no::CQ_WAKE => sys_cq_wake(frame),
-        call_no::CQ_WAIT_TIMEOUT => sys_cq_wait_timeout(frame),
-        call_no::IPC_ENDPOINT_BIND_CQ => sys_ipc_endpoint_bind_cq(frame),
-        call_no::DEVICE_MMIO_MAP => sys_device_mmio_map(frame),
-        call_no::DEVICE_MMIO_UNMAP => sys_device_mmio_unmap(frame),
-        call_no::DEVICE_IRQ_BIND_CQ => sys_device_irq_bind_cq(frame),
-        call_no::DEVICE_IRQ_ACK => sys_device_irq_ack(frame),
-        call_no::DEVICE_CLOSE => sys_device_close(frame),
-        call_no::MEMORY_GET_PHYS => sys_memory_get_phys(frame),
-        call_no::SPAWN_UPGRADE => {
+    let syscall = SyscallNumber::try_from(syscall_no).expect("unknown syscall number");
+    match syscall {
+        SyscallNumber::Log => sys_log(frame),
+        SyscallNumber::CompletionSubmit => sys_completion_submit(frame),
+        SyscallNumber::CompletionComplete => sys_completion_complete(frame),
+        SyscallNumber::CompletionPoll => sys_completion_poll(frame),
+        SyscallNumber::CompletionWait => sys_completion_wait(frame),
+        SyscallNumber::CompletionCancel => sys_completion_cancel(frame),
+        SyscallNumber::CompletionClose => sys_completion_close(frame),
+        SyscallNumber::SpawnThread => sys_spawn_thread(frame),
+        SyscallNumber::ThreadExit => sys_thread_exit(frame),
+        SyscallNumber::MailboxSend => sys_mailbox_send(frame),
+        SyscallNumber::MailboxRecv => sys_mailbox_recv(frame),
+        SyscallNumber::CompletionWaitTimeout => sys_completion_wait_timeout(frame),
+        SyscallNumber::CqWait => sys_cq_wait(frame),
+        SyscallNumber::MailboxOpenSend => sys_mailbox_open_send(frame),
+        SyscallNumber::MailboxOpenRecv => sys_mailbox_open_recv(frame),
+        SyscallNumber::MailboxSendCap => sys_mailbox_send_cap(frame),
+        SyscallNumber::MailboxRecvCap => sys_mailbox_recv_cap(frame),
+        SyscallNumber::MailboxClose => sys_mailbox_close(frame),
+        SyscallNumber::IpcEndpointCreate => sys_ipc_endpoint_create(frame),
+        SyscallNumber::IpcConnect => sys_ipc_connect(frame),
+        SyscallNumber::IpcScalarSend => sys_ipc_scalar_send(frame),
+        SyscallNumber::IpcScalarCall => sys_ipc_scalar_call(frame),
+        SyscallNumber::IpcRecv => sys_ipc_recv(frame),
+        SyscallNumber::IpcReply => sys_ipc_reply(frame),
+        SyscallNumber::IpcReplyPoll => sys_ipc_reply_poll(frame),
+        SyscallNumber::IpcReplyWait => sys_ipc_reply_wait(frame),
+        SyscallNumber::IpcClose => sys_ipc_close(frame),
+        SyscallNumber::IpcReplyConnection => sys_ipc_reply_connection(frame),
+        SyscallNumber::IpcRecvBlock => sys_ipc_recv_block(frame),
+        SyscallNumber::MemoryAlloc => sys_memory_alloc(frame),
+        SyscallNumber::MemoryMap => sys_memory_map(frame),
+        SyscallNumber::MemoryUnmap => sys_memory_unmap(frame),
+        SyscallNumber::MemoryClose => sys_memory_close(frame),
+        SyscallNumber::IpcScalarSendMove => sys_ipc_scalar_send_move(frame),
+        SyscallNumber::IpcScalarCallMove => sys_ipc_scalar_call_move(frame),
+        SyscallNumber::IpcReplyMove => sys_ipc_reply_move(frame),
+        SyscallNumber::IpcScalarCallBorrowRead => sys_ipc_scalar_call_borrow_read(frame),
+        SyscallNumber::IpcScalarCallBorrowWrite => sys_ipc_scalar_call_borrow_write(frame),
+        SyscallNumber::IpcScalarSendCopy => sys_ipc_scalar_send_copy(frame),
+        SyscallNumber::IpcScalarCallCopy => sys_ipc_scalar_call_copy(frame),
+        SyscallNumber::IpcScalarCallConnection => sys_ipc_scalar_call_connection(frame),
+        SyscallNumber::IpcScalarCallConnectionCopy => sys_ipc_scalar_call_connection_copy(frame),
+        SyscallNumber::CqWake => sys_cq_wake(frame),
+        SyscallNumber::CqWaitTimeout => sys_cq_wait_timeout(frame),
+        SyscallNumber::IpcEndpointBindCq => sys_ipc_endpoint_bind_cq(frame),
+        SyscallNumber::DeviceMmioMap => sys_device_mmio_map(frame),
+        SyscallNumber::DeviceMmioUnmap => sys_device_mmio_unmap(frame),
+        SyscallNumber::DeviceIrqBindCq => sys_device_irq_bind_cq(frame),
+        SyscallNumber::DeviceIrqAck => sys_device_irq_ack(frame),
+        SyscallNumber::DeviceClose => sys_device_close(frame),
+        SyscallNumber::MemoryGetPhys => sys_memory_get_phys(frame),
+        SyscallNumber::SpawnUpgrade => {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
             #[cfg(not(target_arch = "aarch64"))]
@@ -270,10 +280,10 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
                 frame.regs[0] = 0;
             }
         }
-        call_no::IPC_VECTOR_SEND => sys_ipc_vector_send(frame),
-        call_no::IPC_VECTOR_CALL => sys_ipc_vector_call(frame),
-        call_no::IPC_RECV_VEC => sys_ipc_recv_vec(frame),
-        _ => panic!("Unknown syscall number: {}", syscall_no),
+        SyscallNumber::IpcVectorSend => sys_ipc_vector_send(frame),
+        SyscallNumber::IpcVectorCall => sys_ipc_vector_call(frame),
+        SyscallNumber::IpcRecvVec => sys_ipc_recv_vec(frame),
+        SyscallNumber::CompletionSubmitDetachedTimer => sys_completion_submit_detached_timer(frame),
     }
 }
 
@@ -367,6 +377,15 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         }
         Err(_) => panic!("syscall completion submit failed"),
     }
+}
+
+fn sys_completion_submit_detached_timer(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let timeout_ms = frame.regs[1];
+    let cq = frame.regs[2] as u32;
+    let user_data = frame.regs[3];
+    frame.regs[0] = crate::completion::submit_detached_timer(asid, cq, timeout_ms, user_data)
+        .unwrap_or(u64::MAX);
 }
 
 fn sys_completion_complete(frame: &mut TrapFrame) {
@@ -818,6 +837,19 @@ fn sys_ipc_reply_poll(frame: &mut TrapFrame) {
             frame.regs[3] = 0;
         }
     }
+}
+
+fn sys_ipc_reply_wait(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let call = frame.regs[1];
+    if let Err(error) = ipc::wait_reply(asid, call) {
+        frame.regs[0] = ipc_status(error);
+        frame.regs[1] = 0;
+        frame.regs[2] = 0;
+        frame.regs[3] = 0;
+        return;
+    }
+    sys_ipc_reply_poll(frame);
 }
 
 fn sys_ipc_close(frame: &mut TrapFrame) {
