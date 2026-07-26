@@ -173,6 +173,28 @@ fn poll_peer_discovery(
 const NODE_ID_KEY: u64 = manifest_key(b"node-id");
 const PEER_ID_KEY: u64 = manifest_key(b"peer-id");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
+const CLUSTER_KEY: u64 = manifest_key(b"cluster");
+const STORAGE_KEY: u64 = manifest_key(b"storage");
+
+const STORAGE_MEMORY: u64 = 0;
+const STORAGE_OPTIONAL: u64 = 1;
+const STORAGE_REQUIRED: u64 = 2;
+
+fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
+    // Stable FNV-1a over the cluster/node tuple. This is an object-store
+    // namespace, not a security boundary; ownership policy remains external.
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in cluster_id
+        .iter()
+        .copied()
+        .chain(core::iter::once(0xff))
+        .chain(node_id.iter().copied())
+    {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
 
 fn main(ctx: Context) -> ! {
     let node_id = match ctx.manifest_value(NODE_ID_KEY) {
@@ -182,6 +204,16 @@ fn main(ctx: Context) -> ! {
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 150,
+    };
+    let cluster_id = match ctx.manifest_value(CLUSTER_KEY) {
+        Some(ManifestValue::Bytes(bytes)) if !bytes.is_empty() => bytes,
+        _ => b"default",
+    };
+    let storage_policy = match ctx.manifest_value(STORAGE_KEY) {
+        Some(ManifestValue::Unsigned(STORAGE_MEMORY)) => STORAGE_MEMORY,
+        Some(ManifestValue::Unsigned(STORAGE_OPTIONAL)) => STORAGE_OPTIONAL,
+        Some(ManifestValue::Unsigned(STORAGE_REQUIRED)) => STORAGE_REQUIRED,
+        _ => STORAGE_MEMORY,
     };
 
     config::write::<u32>(0, 1);
@@ -221,14 +253,37 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(4, generation as u32);
 
-    // Try disk-backed stores via the object store. Fall back to in-memory
-    // if the persistent storage stack (NVMe → block → objstore) is not available.
-    let (log_store, persistent_store): (Box<dyn LogStore>, Box<dyn PersistentStateStore>) =
-        if let (Some(ls), Some(ps)) = (DiskLogStore::new(ns_conn), DiskPersistentStateStore::new(ns_conn)) {
-            (Box::new(ls), Box::new(ps))
-        } else {
-            (Box::new(InMemoryLogStore::new()), Box::new(InMemoryPersistentStateStore::new()))
-        };
+    // Storage is launch policy. The ordinary local Raft service test uses
+    // memory and remains independent of NVMe. A durability deployment can
+    // require the object store and wait for its name-service registration;
+    // optional mode may fall back, but never does so silently.
+    let namespace = persistent_namespace(cluster_id, node_id.as_bytes());
+    let disk_stores = if storage_policy == STORAGE_MEMORY {
+        None
+    } else {
+        let wait_for_service = storage_policy == STORAGE_REQUIRED;
+        match (
+            DiskLogStore::new(ns_conn, namespace, wait_for_service),
+            DiskPersistentStateStore::new(ns_conn, namespace, wait_for_service),
+        ) {
+            (Some(log), Some(state)) => Some((log, state)),
+            _ if storage_policy == STORAGE_REQUIRED => fatal(9),
+            _ => None,
+        }
+    };
+    let (log_store, persistent_store, durable): (
+        Box<dyn LogStore>,
+        Box<dyn PersistentStateStore>,
+        bool,
+    ) = match disk_stores {
+        Some((log, state)) => (Box::new(log), Box::new(state), true),
+        None => (
+            Box::new(InMemoryLogStore::new()),
+            Box::new(InMemoryPersistentStateStore::new()),
+            false,
+        ),
+    };
+    config::write::<u32>(24, durable as u32);
     let transport = Arc::new(CharlotteTransport::new());
 
     let mut peers = Vec::new();
@@ -252,8 +307,6 @@ fn main(ctx: Context) -> ! {
 
     config::write::<u32>(0, 5);
 
-    config::write::<u32>(0, 6);
-
     let mut node = RaftNode::new(
         me,
         election_timeout_ms,
@@ -264,6 +317,8 @@ fn main(ctx: Context) -> ! {
         transport.clone(),
         0,
     );
+    config::write::<u32>(20, node.current_term as u32);
+    config::write::<u32>(0, 6);
 
     let mut served: u32 = 0;
 
@@ -294,6 +349,7 @@ fn main(ctx: Context) -> ! {
                 NodeState::Follower => 1,
             },
         );
+        config::write::<u32>(20, node.current_term as u32);
 
         // Keep one deferred name-service lookup outstanding for each missing
         // peer. Registration completes that call; the reactor only polls the

@@ -57,6 +57,10 @@ pub const OP_READ: u32 = 4;
 pub const OP_RESIZE: u32 = 5;
 pub const OP_FLUSH: u32 = 6;
 pub const OP_INFO: u32 = 7;
+/// Create an object with the caller-supplied stable ID in `arg0`.
+///
+/// Returns [`ERR_EXISTS`] when the object is already present.
+pub const OP_CREATE_AT: u32 = 8;
 
 pub const ERR_OK: i64 = 0;
 pub const ERR_NOT_FOUND: i64 = 1;

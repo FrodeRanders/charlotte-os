@@ -6,10 +6,13 @@
 //!
 //! ## Object ID layout
 //!
-//! ID 1: persistent state (current_term + voted_for)
-//! ID 2: snapshot metadata (last_included_index + last_included_term)
-//! ID 3: snapshot data blob
-//! ID 4: log entries (all entries serialised as a single blob)
+//! Each Raft node derives a private four-object range from its cluster and
+//! node identity. Within that range:
+//!
+//! - slot 0: persistent state (current_term + voted_for)
+//! - slot 1: snapshot metadata (last_included_index + last_included_term)
+//! - slot 2: snapshot data blob
+//! - slot 3: log entries (all entries serialised as a single blob)
 //!
 //! ## Persistence model
 //!
@@ -24,19 +27,62 @@ use catten_graft::types::LogEntry;
 use catten_syscall::*;
 use spin::Mutex;
 
-const OBJ_STATE: u64 = 1;
-const OBJ_SNAPSHOT_META: u64 = 2;
-const OBJ_SNAPSHOT_DATA: u64 = 3;
-const OBJ_LOG: u64 = 4;
 const REPLY_SPINS: u64 = u64::MAX;
 const BUFFER_VADDR: usize = 0x0000_0000_0070_0000;
 
-fn objstore_connect(ns_conn: u64) -> Option<u64> {
-    let lookup = ipc_scalar_call_connection(ns_conn, crate::ns::OP_TRY_LOOKUP, crate::objstore::NAME, 0, IpcRights::SEND | IpcRights::CALL);
+#[derive(Clone, Copy)]
+struct ObjectIds {
+    state: u64,
+    snapshot_meta: u64,
+    snapshot_data: u64,
+    log: u64,
+}
+
+impl ObjectIds {
+    fn new(namespace: u64) -> Self {
+        // The high bit keeps stable service-owned IDs away from the object
+        // store's monotonically allocated low-numbered IDs.
+        let base = 0x8000_0000_0000_0000 | ((namespace & 0x1fff_ffff_ffff_ffff) << 2);
+        Self {
+            state: base,
+            snapshot_meta: base + 1,
+            snapshot_data: base + 2,
+            log: base + 3,
+        }
+    }
+}
+
+fn objstore_connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
+    let opcode = if wait_for_service {
+        crate::ns::OP_LOOKUP
+    } else {
+        crate::ns::OP_TRY_LOOKUP
+    };
+    let lookup = ipc_scalar_call_connection(
+        ns_conn,
+        opcode,
+        crate::objstore::NAME,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
     if lookup == 0 { return None; }
     let (generation, conn) = unsafe { crate::wait_reply(lookup, REPLY_SPINS) };
     if generation < 1 || conn == 0 { return None; }
     Some(conn)
+}
+
+fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
+    let call = ipc_scalar_call(
+        obj_conn,
+        charlotte_protocol_objstore::OP_CREATE_AT,
+        object_id,
+    );
+    if call == 0 {
+        return false;
+    }
+    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
+    result == charlotte_protocol_objstore::ERR_OK
+        || result == charlotte_protocol_objstore::ERR_EXISTS
 }
 
 fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
@@ -52,17 +98,29 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
 }
 
 fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
-    let mem = memory_alloc(1);
-    if mem == 0 { return None; }
-    let call = ipc_scalar_call_borrow_write(obj_conn, crate::objstore::OP_READ, object_id, mem);
-    if call == 0 { memory_close(mem); return None; }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    if result != 0 { memory_close(mem); return None; }
-    if memory_map(mem, BUFFER_VADDR, false) != 0 { memory_close(mem); return None; }
+    let call = ipc_scalar_call(obj_conn, crate::objstore::OP_READ, object_id);
+    if call == 0 {
+        return None;
+    }
+    let (status, result, returned_connection, memory) = ipc_reply_wait_with_memory(call);
+    ipc_close(call);
+    if returned_connection != 0 {
+        ipc_close(returned_connection);
+    }
+    if status != 0 || result != 0 || memory == 0 {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        return None;
+    }
+    if memory_map(memory, BUFFER_VADDR, false) != 0 {
+        memory_close(memory);
+        return None;
+    }
     let mut buf = alloc::vec![0u8; 4096];
     unsafe { core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096); }
-    memory_unmap(mem);
-    memory_close(mem);
+    memory_unmap(memory);
+    memory_close(memory);
     Some(buf)
 }
 
@@ -121,14 +179,19 @@ fn serialize_entries(entries: &[LogEntry]) -> Vec<u8> {
 
 pub struct DiskPersistentStateStore {
     obj_conn: u64,
+    object_id: u64,
     current_term: Mutex<u64>,
     voted_for: Mutex<Option<String>>,
 }
 
 impl DiskPersistentStateStore {
-    pub fn new(ns_conn: u64) -> Option<Self> {
-        let obj_conn = objstore_connect(ns_conn)?;
-        let (current_term, voted_for) = if let Some(buf) = obj_read(obj_conn, OBJ_STATE) {
+    pub fn new(ns_conn: u64, namespace: u64, wait_for_service: bool) -> Option<Self> {
+        let obj_conn = objstore_connect(ns_conn, wait_for_service)?;
+        let object_id = ObjectIds::new(namespace).state;
+        if !obj_create_at(obj_conn, object_id) {
+            return None;
+        }
+        let (current_term, voted_for) = if let Some(buf) = obj_read(obj_conn, object_id) {
             if buf.len() < 8 { (0, None) }
             else {
                 let term = u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8]));
@@ -141,7 +204,12 @@ impl DiskPersistentStateStore {
         } else {
             (0, None)
         };
-        Some(Self { obj_conn, current_term: Mutex::new(current_term), voted_for: Mutex::new(voted_for) })
+        Some(Self {
+            obj_conn,
+            object_id,
+            current_term: Mutex::new(current_term),
+            voted_for: Mutex::new(voted_for),
+        })
     }
 
     fn persist(&self) {
@@ -155,8 +223,10 @@ impl DiskPersistentStateStore {
         if vf_len > 0 {
             data[12..].copy_from_slice(&vf_bytes[..vf_len as usize]);
         }
-        obj_write(self.obj_conn, OBJ_STATE, &data);
-        obj_flush(self.obj_conn);
+        assert!(
+            obj_write(self.obj_conn, self.object_id, &data) && obj_flush(self.obj_conn),
+            "failed to persist Raft term/vote state"
+        );
     }
 }
 
@@ -182,6 +252,7 @@ impl PersistentStateStore for DiskPersistentStateStore {
 
 pub struct DiskLogStore {
     obj_conn: u64,
+    objects: ObjectIds,
     entries: Mutex<Vec<LogEntry>>,
     snapshot_idx: Mutex<u64>,
     snapshot_term: Mutex<u64>,
@@ -189,10 +260,18 @@ pub struct DiskLogStore {
 }
 
 impl DiskLogStore {
-    pub fn new(ns_conn: u64) -> Option<Self> {
-        let obj_conn = objstore_connect(ns_conn)?;
+    pub fn new(ns_conn: u64, namespace: u64, wait_for_service: bool) -> Option<Self> {
+        let obj_conn = objstore_connect(ns_conn, wait_for_service)?;
+        let objects = ObjectIds::new(namespace);
+        if !obj_create_at(obj_conn, objects.snapshot_meta)
+            || !obj_create_at(obj_conn, objects.snapshot_data)
+            || !obj_create_at(obj_conn, objects.log)
+        {
+            return None;
+        }
 
-        let (snapshot_idx, snapshot_term) = if let Some(buf) = obj_read(obj_conn, OBJ_SNAPSHOT_META) {
+        let (snapshot_idx, snapshot_term) =
+            if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
             if buf.len() < 16 { (0, 0) }
             else {
                 (u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8])),
@@ -200,9 +279,9 @@ impl DiskLogStore {
             }
         } else { (0, 0) };
 
-        let snapshot_data = obj_read(obj_conn, OBJ_SNAPSHOT_DATA).unwrap_or_default();
+        let snapshot_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
 
-        let entries = if let Some(buf) = obj_read(obj_conn, OBJ_LOG) {
+        let entries = if let Some(buf) = obj_read(obj_conn, objects.log) {
             deserialize_entries(&buf)
         } else {
             Vec::new()
@@ -210,6 +289,7 @@ impl DiskLogStore {
 
         Some(Self {
             obj_conn,
+            objects,
             entries: Mutex::new(entries),
             snapshot_idx: Mutex::new(snapshot_idx),
             snapshot_term: Mutex::new(snapshot_term),
@@ -220,8 +300,10 @@ impl DiskLogStore {
     fn persist_log(&self) {
         let entries = self.entries.lock();
         let data = serialize_entries(&entries);
-        obj_write(self.obj_conn, OBJ_LOG, &data);
-        obj_flush(self.obj_conn);
+        assert!(
+            obj_write(self.obj_conn, self.objects.log, &data) && obj_flush(self.obj_conn),
+            "failed to persist Raft log"
+        );
     }
 }
 
@@ -295,7 +377,10 @@ impl LogStore for DiskLogStore {
         let mut meta = [0u8; 16];
         meta[0..8].copy_from_slice(&index.to_le_bytes());
         meta[8..16].copy_from_slice(&compacted_term.to_le_bytes());
-        obj_write(self.obj_conn, OBJ_SNAPSHOT_META, &meta);
+        assert!(
+            obj_write(self.obj_conn, self.objects.snapshot_meta, &meta),
+            "failed to persist Raft snapshot metadata"
+        );
         self.persist_log();
     }
 
@@ -309,8 +394,11 @@ impl LogStore for DiskLogStore {
         let mut meta = [0u8; 16];
         meta[0..8].copy_from_slice(&index.to_le_bytes());
         meta[8..16].copy_from_slice(&term.to_le_bytes());
-        obj_write(self.obj_conn, OBJ_SNAPSHOT_META, &meta);
-        obj_write(self.obj_conn, OBJ_SNAPSHOT_DATA, &data);
+        assert!(
+            obj_write(self.obj_conn, self.objects.snapshot_meta, &meta)
+                && obj_write(self.obj_conn, self.objects.snapshot_data, &data),
+            "failed to persist Raft snapshot"
+        );
         self.persist_log();
     }
 }

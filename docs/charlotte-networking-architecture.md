@@ -715,7 +715,9 @@ machine exported as a native CharlotteOS IPC endpoint.
 > A two-node cluster in one CharlotteOS instance repeatedly elects one
 > leader over local endpoint IPC on four-LP QEMU/HVF. Election timers use
 > completion events, and verifier/test domains terminate rather than polling
-> forever; the settled system reaches the idle/WFI path. Cross-machine leader
+> forever; the settled system reaches the idle/WFI path. A separate
+> single-voter test requires the NVMe-backed object store, restarts the Raft
+> process, and verifies that its recovered term advances. Cross-machine leader
 > election remains blocked on two dependencies: (1) the NIC driver and TCP/IP
 > service need runtime validation on Linux KVM because HVF cannot safely
 > exercise the required EL0 MMIO path, and (2) the reliable-message service
@@ -730,7 +732,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Election timer (`submit_timer`) | Implemented (SVC #1, OpCode::Timer, CNTV hardware) |
 | Scalar RPCs over endpoint IPC | Local VoteRequest/AppendEntries path boot-validated via endpoint calls |
 | Memory-object RPC payloads (zero-copy log replication) | Wire format defined; transport uses scalar calls only |
-| Durable log (survives service restart) | In-memory `LogStore` exists; page-backed not yet implemented |
+| Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter, with a 4 KiB object limit |
 | Cross-machine Raft (NIC driver + reliable message layer) | Blocked on NIC runtime validation (KVM) |
 | Distributed name service (on top of Raft) | Design only; depends on cross-machine Raft |
 
@@ -760,7 +762,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Inter-node RPC (scalar) | Endpoint IPC (`ipc_scalar_call`) | Works: VoteRequest, AppendEntries travel as scalar messages |
 | Inter-node RPC (zero-copy) | Memory objects (`Move` transfer) | Wire format defined; transport currently scalar-only |
 | Election timer | `submit_timer()` (SVC #1, OpCode::Timer) | Implemented: CNTV hardware → CQ completion |
-| Durable log | Memory objects | In-memory `LogStore` implemented; page-backed planned |
+| Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
 | Client command submission | Capability-based endpoint call | `OP_CLIENT_COMMAND` opcode defined; not yet wired to state machine |
 | Linearizable reads | Reply tokens + read barrier | Supported by `RaftNode` logic; untested end-to-end |
 
@@ -797,10 +799,10 @@ authority, no IP-based ACLs.
 
 **Failure isolation (partly implemented).** Each local Raft node runs in a
 separate protection domain, and generic service/UART lifecycle tests validate
-generation changes and stale-connection failure. Automatic Raft-node restart,
-durable state recovery, and continued quorum operation after a node crash have
-not yet been validated. Those remain requirements for the cross-machine
-service rather than current evidence.
+generation changes and stale-connection failure. A separate storage test
+validates Raft term recovery across explicit process teardown and restart.
+Automatic supervisor restart, durable recovery inside a live quorum, and
+continued operation after a remote-node crash have not yet been validated.
 
 ## 18.3 Distributed name service (design)
 

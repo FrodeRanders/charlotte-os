@@ -1,6 +1,6 @@
 # CharlotteOS Persistent Storage Architecture
 
-**Status:** Architectural Proposal\
+**Status:** Implemented prototype; power-loss atomicity remains unvalidated\
 **Audience:** CharlotteOS contributors\
 **Purpose:** Define the persistent storage subsystem: block device protocol,
 NVMe driver, and integration with Raft consensus.
@@ -9,11 +9,13 @@ NVMe driver, and integration with Raft consensus.
 
 ## 1. Executive Summary
 
-CharlotteOS currently has no persistent storage. All four storage device
-classes (NVMe, AHCI, USB MSC, SDHCI) are marked `[Planned]` in the README.
-The Raft consensus `PersistentStateStore` and `LogStore` traits have only
-in-memory implementations, so a restarted Raft node forgets its current term,
-voted-for candidate, and all log entries.
+CharlotteOS now has a userspace NVMe driver, block protocol, object-store
+prototype, and disk-backed implementations of Raft's `PersistentStateStore`
+and `LogStore`. A QEMU boot test starts a single-voter Raft process, stops and
+tears it down, then starts the same node identity again and verifies that its
+term advances from the value recovered through the NVMe-backed object store.
+This proves process-restart persistence in the test environment; it does not
+yet prove power-loss atomicity or multi-machine recovery.
 
 The persistent storage subsystem addresses this in layers:
 
@@ -28,8 +30,8 @@ The persistent storage subsystem addresses this in layers:
    DMA-capable, and supported by QEMU.
 
 3. **Disk-backed Raft state** — implementations of `PersistentStateStore`
-   and `LogStore` that use the block device protocol, giving Raft nodes
-   durable state that survives restart.
+   and `LogStore` use stable, namespaced object IDs and flush mutations before
+   returning, giving a Raft node state that survives process restart.
 
 4. **Filesystem service** (future) — a userspace server that consumes the
    block device protocol and exports file-level operations through its own
@@ -234,31 +236,43 @@ trait PersistentStateStore {
 }
 ```
 
-Both have only `InMemory` implementations.
+Both have in-memory implementations for storage-independent local testing and
+object-store-backed implementations for durable deployments.
 
-### 4.2 Disk-backed design
+### 4.2 Disk-backed implementation
 
-A `BlockPersistentStateStore` stores the current term and voted-for value
-in a fixed "superblock" at a known LBA (e.g., LBA 0). On construction, it
-reads the superblock via the block device connection. On mutation, it
-writes it back and issues FLUSH to ensure durability.
+`DiskPersistentStateStore` and `DiskLogStore` connect to the `"obj"` service.
+The cluster and node identities are hashed into a stable namespace containing
+four object IDs: term/vote state, snapshot metadata, snapshot data, and log
+entries. Stable creation (`OP_CREATE_AT`) means a replacement process opens
+the same objects instead of allocating new ones. Each mutation writes its
+serialized object and calls `FLUSH` before returning.
 
-A `BlockLogStore` stores log entries in a contiguous region starting at
-some offset LBA. Each entry is prefixed with a u64 length. The log is
-append-only; truncation rewinds the tail pointer. An index in memory
-maps log positions to LBAs for fast lookup. On restart, the index is
-rebuilt by scanning the log region — the on-disk format is self-describing.
+The Raft launch manifest selects the backend:
 
-Crash safety: writes are issued to the block device, then FLUSH is called.
-Only after FLUSH completes is the write considered durable. This matches
-Raft's requirement that `current_term`, `voted_for`, and committed log
-entries survive a crash.
+- `storage = 0` (or omitted): in-memory, used by the ordinary local multicore
+  two-node election test;
+- `storage = 1`: try persistent storage, with an explicit in-memory fallback;
+- `storage = 2`: require persistent storage and wait for the object-store
+  service through the name service.
+
+Node ID, peer list, election timing, and storage policy remain supervisor-owned
+launch configuration. They are not copied into the Raft log. The durable store
+contains Raft protocol state and log/snapshot data, not the deployment
+manifest.
+
+The current object-store prototype assigns one deterministic 4 KiB data extent
+to each directory slot. Consequently the serialized Raft log and snapshot are
+bounded to one page. Writes followed by NVMe FLUSH survive a process restart,
+as exercised at boot, but the implementation does not yet provide a
+journalled or copy-on-write commit protocol. Sudden power-loss behavior is
+therefore not yet claimed.
 
 ---
 
 ## 5. Implementation Sequence
 
-### Phase 1 — Protocol and skeleton (this branch)
+### Phase 1 — Protocol and skeleton (complete)
 
 1. Create `charlotte-protocol-block` crate with the interface constants,
    opcodes, error codes, and helper functions.
@@ -272,7 +286,7 @@ entries survive a crash.
 5. Wire up the driver spawn in kernel init.
 6. Build and verify.
 
-### Phase 2 — NVMe functional bringup
+### Phase 2 — NVMe functional bringup (complete for QEMU prototype)
 
 1. Implement controller reset and admin queue setup.
 2. Implement Identify (controller + namespace).
@@ -281,13 +295,20 @@ entries survive a crash.
 5. Implement FLUSH.
 6. Boot-validate in QEMU (`-device nvme,serial=...`).
 
-### Phase 3 — Raft integration
+### Phase 3 — Raft integration (complete for process-restart prototype)
 
-1. Implement `BlockPersistentStateStore`.
-2. Implement `BlockLogStore`.
-3. Replace the in-memory stores in the Raft service binary with the
-   disk-backed versions.
-4. Validate with a Raft cluster that survives node restart.
+1. Implement object-store-backed `DiskPersistentStateStore`.
+2. Implement object-store-backed `DiskLogStore`.
+3. Select memory, optional-disk, or required-disk storage through the launch
+   manifest.
+4. Boot-validate durable term recovery across teardown and restart of one
+   Raft process.
+
+This test is deliberately separate from the local two-node election test. The
+generic Raft service can be exercised on a multicore local machine without
+NVMe. A name service replicated among several physical or virtual machines is
+a later consumer of that generic service and still requires a cross-machine
+transport and multi-node validation.
 
 ### Phase 4 — Filesystem service (future)
 

@@ -293,6 +293,7 @@ if [ -n "$TIMEOUT" ]; then
         REQUIRED_MARKERS=(
             "[EL0] SUCCESS:"
             "[raft] SUCCESS:"
+            "[raft-storage] SUCCESS:"
             "[EL0 IPC] SUCCESS:"
             "[EL0 IPC block] SUCCESS:"
             "[EL0 IPC cross-AS] SUCCESS:"

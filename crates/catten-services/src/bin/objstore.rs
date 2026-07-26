@@ -24,6 +24,7 @@ extern crate alloc;
 
 catten_rt::entry!(main);
 
+use alloc::collections::BTreeMap;
 use catten_rt::{
     Context,
     config,
@@ -101,10 +102,14 @@ impl BlockDev {
     }
 
     fn write_block(&self, lba: u64, mem_cap: u64) -> bool {
+        self.write_blocks(lba, 1, mem_cap)
+    }
+
+    fn write_blocks(&self, lba: u64, count: u32, mem_cap: u64) -> bool {
         let call = ipc_scalar_call_borrow_read(
             self.conn,
             block::OP_WRITE,
-            charlotte_protocol_block::pack_lba_count(lba, 1),
+            charlotte_protocol_block::pack_lba_count(lba, count),
             mem_cap,
         );
         if call == 0 {
@@ -136,6 +141,7 @@ struct ObjStore {
     dev: BlockDev,
     next_id: u32,
     block_size: u32,
+    index_cache: spin::Mutex<BTreeMap<u64, u32>>,
 }
 
 impl ObjStore {
@@ -200,6 +206,7 @@ impl ObjStore {
             dev,
             next_id,
             block_size,
+            index_cache: spin::Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -266,6 +273,7 @@ impl ObjStore {
             dev,
             next_id: 1,
             block_size: bs,
+            index_cache: spin::Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -361,9 +369,13 @@ impl ObjStore {
     }
 
     fn find_dir_index(&self, object_id: u64) -> Option<u32> {
+        if let Some(index) = self.index_cache.lock().get(&object_id).copied() {
+            return Some(index);
+        }
         for i in 0..DIR_ENTRIES {
             if let Some((id, _, _, _)) = self.read_dir_entry(i) {
                 if id == object_id {
+                    self.index_cache.lock().insert(object_id, i);
                     return Some(i);
                 }
             }
@@ -379,6 +391,7 @@ impl ObjStore {
         let id = self.next_id as u64;
         self.next_id += 1;
         self.write_dir_entry(slot, id, FLAG_ALLOCATED, 0, 0);
+        self.index_cache.lock().insert(id, slot);
 
         // Persist next_id in superblock
         let sb = memory_alloc(1);
@@ -398,46 +411,66 @@ impl ObjStore {
         id
     }
 
+    fn op_create_at(&self, object_id: u64) -> i64 {
+        if object_id == 0 {
+            return objstore::ERR_INVALID_ID;
+        }
+        if self.find_dir_index(object_id).is_some() {
+            return objstore::ERR_EXISTS;
+        }
+        let slot = match self.find_free_dir_slot() {
+            Some(slot) => slot,
+            None => return objstore::ERR_NO_SPACE,
+        };
+        if self.write_dir_entry(slot, object_id, FLAG_ALLOCATED, 0, 0) {
+            self.index_cache.lock().insert(object_id, slot);
+            objstore::ERR_OK
+        } else {
+            objstore::ERR_IO_ERROR
+        }
+    }
+
     fn op_delete(&self, object_id: u64) -> i64 {
         match self.find_dir_index(object_id) {
             Some(idx) => {
                 self.write_dir_entry(idx, 0, 0, 0, 0);
+                self.index_cache.lock().remove(&object_id);
                 objstore::ERR_OK
             }
             None => objstore::ERR_NOT_FOUND,
         }
     }
 
-    /// WRITE replaces the entire object content. The caller's memory cap
-    /// is moved to the object store and written as a contiguous block region.
-    /// The object stores the starting LBA; the data starts at offset 0 of
-    /// the moved block.
+    /// WRITE replaces the entire object content with one memory-object page.
+    ///
+    /// Each directory slot owns a deterministic 4 KiB extent. The disk
+    /// location must not be derived from the caller's RAM physical address:
+    /// that address names DMA memory, not an LBA in the NVMe namespace.
     fn op_write(&self, object_id: u64, data_cap: u64) -> i64 {
         let idx = match self.find_dir_index(object_id) {
             Some(i) => i,
             None => return objstore::ERR_NOT_FOUND,
         };
 
-        // Get physical address of the data block
-        let phys = memory_get_phys(data_cap);
-        if phys == 0 {
+        if memory_get_phys(data_cap) == 0 {
             return objstore::ERR_IO_ERROR;
         }
 
-        // Calculate which LBA this physical page corresponds to.
-        // In QEMU, the NVMe device has a contiguous physical address space
-        // starting at 0. The block LBA = phys_addr / block_size.
-        let lba = phys / self.block_size as u64;
-        if lba < METADATA_BLOCKS as u64 || lba >= self.dev.total_blocks as u64 {
+        let blocks_per_object = 4096u32.div_ceil(self.block_size);
+        let lba = METADATA_BLOCKS as u64 + idx as u64 * blocks_per_object as u64;
+        if lba + blocks_per_object as u64 > self.dev.total_blocks as u64 {
             return objstore::ERR_NO_SPACE;
         }
 
-        // Write the data block to disk and update directory
-        self.dev.write_block(lba, data_cap);
+        if !self.dev.write_blocks(lba, blocks_per_object, data_cap) {
+            return objstore::ERR_IO_ERROR;
+        }
 
-        let size = self.block_size;
-        self.write_dir_entry(idx, object_id, FLAG_ALLOCATED, size, lba);
-        0
+        if self.write_dir_entry(idx, object_id, FLAG_ALLOCATED, 4096, lba) {
+            objstore::ERR_OK
+        } else {
+            objstore::ERR_IO_ERROR
+        }
     }
 
     /// READ returns the object's data block as a memory object moved to
@@ -472,10 +505,11 @@ impl ObjStore {
             ipc_reply(reply, objstore::ERR_IO_ERROR);
             return;
         }
+        let blocks_per_object = 4096u32.div_ceil(self.block_size);
         let call = ipc_scalar_call_borrow_write(
             self.dev.conn,
             block::OP_READ,
-            charlotte_protocol_block::pack_lba_count(first_lba, 1),
+            charlotte_protocol_block::pack_lba_count(first_lba, blocks_per_object),
             dm,
         );
         if call == 0 {
@@ -614,6 +648,12 @@ fn main(ctx: Context) -> ! {
                     let id = store.op_create();
                     if message.reply != 0 {
                         ipc_reply(message.reply, id as i64);
+                    }
+                }
+                objstore::OP_CREATE_AT => {
+                    let result = store.op_create_at(message.arg0);
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
                     }
                 }
                 objstore::OP_DELETE => {

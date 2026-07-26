@@ -9,10 +9,12 @@ a natural fit.
 The implemented scope is narrower than the architecture described below:
 a two-node leader election runs over local endpoint IPC under AArch64 QEMU.
 Both peers use the one shared node-local name service also used by the service
-manager, drivers, and clients. Cross-machine transport, replicated client
-commands, membership changes, snapshots, durable recovery, and replication
-between the name-service instance on each machine are not yet validated end
-to end.
+manager, drivers, and clients. Separately, a single-voter test uses the
+NVMe-backed object store, tears down the Raft process, restarts the same node
+identity, and verifies that its recovered term advances. Cross-machine
+transport, replicated client commands, membership changes, snapshot recovery,
+power-loss behavior, and replication between the name-service instance on
+each machine are not yet validated end to end.
 
 \section{Raft as a capability service}
 
@@ -109,10 +111,29 @@ propose commands.''
 \subsection{Failure isolation}
 
 Each Raft node runs in a separate protection domain. A crash in one node does
-not affect the others. The crashed node restarts (via the supervisor), receives
-fresh grants, recovers its durable state, and rejoins the cluster. Stale
-client connections to the old instance fail with \texttt{ServiceRestarted};
-clients re-lookup and receive connections to the new instance.
+not affect the others. The storage integration test demonstrates recovery of
+term/vote state across explicit process teardown and restart. Automatic
+supervisor restart, recovery of a replicated log within a live quorum, and
+rejoining a remote cluster remain future integration work. The generic
+service lifecycle separately demonstrates that stale connections fail and
+clients can re-lookup a replacement generation.
+
+\section{Persistence and launch configuration}
+
+The service supports three launch policies: in-memory storage, optional
+persistent storage with an explicit fallback, and required persistent storage.
+Required mode performs a waitable lookup of the object-store service rather
+than spinning during boot. Stable object identifiers derived from cluster and
+node identity hold term/vote state, log entries, and snapshot data; mutations
+are followed by an NVMe flush.
+
+The node identity, peer list, election timeout, and storage policy themselves
+remain in the launch manifest. They are deployment configuration owned by the
+supervisor, not replicated Raft protocol state. The ordinary two-node local
+test remains in-memory so the generic Raft service is testable on a multicore
+machine without storage hardware. The distinct durability test verifies one
+node across process restart. Neither test should be read as evidence that the
+name service is already replicated across multiple computers.
 
 \section{Cluster bootstrap --- the seed problem}
 

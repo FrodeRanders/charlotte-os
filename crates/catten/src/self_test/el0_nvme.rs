@@ -121,5 +121,7 @@ extern "C" fn verify_el0_nvme() {
         crate::cpu::scheduler::sleep_millis(1);
     }
 
-    logln!("[nvme] SUCCESS: NVMe driver and object store both initialised and registered.");
+    logln!("[nvme] NVMe driver and object store both initialised and registered.");
+    crate::self_test::el0_raft::test_persistent_raft(ns);
+    logln!("[nvme] SUCCESS: storage stack and persistent Raft recovery verified.");
 }

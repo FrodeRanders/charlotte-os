@@ -132,8 +132,10 @@ and network block drivers would require separate implementations.
 \section{Object store}
 
 The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
-provides dynamically-sized blob storage on top of a block device. Objects
-are identified by 64-bit monotonically-increasing IDs.
+provides page-sized blob storage on top of a block device. Ordinary objects
+receive monotonically increasing 64-bit IDs; service-owned objects can use
+stable IDs through \texttt{OP\_CREATE\_AT}. Stable IDs let a replacement Raft
+process reopen state derived from its cluster and node identity.
 
 \subsection{On-disk layout}
 
@@ -142,31 +144,54 @@ LBA 0:     superblock (magic, version, generation, next_object_id)
 LBA 1:     free block bitmap (1 bit per block)
 LBA 2--33: object directory (512 entries × 32 bytes:
              id | flags | size_bytes | first_extent_lba)
-LBA 34+:   data extents (linked list of blocks per object)
+LBA 34+:   one deterministic 4 KiB extent per directory slot
 \end{verbatim}
 
-\subsection{Crash-safety design}
+\subsection{Current durability boundary}
 
-The intended update protocol writes new data extents first, then updates the
-directory entry's \texttt{first\_extent\_lba} pointer with a single-block
-write. This assumes that the device provides the required atomicity and
-ordering after a flush. If a crash occurs between writing the extent and updating the
-directory, the orphaned blocks are unreachable but the object reverts
-consistently to its previous state. No journal, no double-writes --- the
-pointer swap is the commit.
+The prototype overwrites the slot's fixed data extent, updates its directory
+entry, and exposes \texttt{FLUSH}. This is sufficient for the tested
+process-restart path, where the NVMe device and object-store service remain
+alive while a Raft process is torn down and replaced. It is not a journalled
+or copy-on-write update protocol. Atomic recovery after sudden power loss is
+not yet implemented or claimed, and each object is currently limited to one
+4 KiB page.
 
 \subsection{Operations}
 
 \begin{itemize}
     \item \textbf{CREATE} --- allocate a directory slot, return a new object ID.
+    \item \textbf{CREATE\_AT} --- create a caller-selected stable object ID, or
+        report that it already exists.
     \item \textbf{WRITE} --- replace the object's content. The caller moves a
-        memory object; the store writes it to a new extent and updates the
-        directory pointer.
+        memory object; the store writes one page to the slot's fixed extent.
     \item \textbf{READ} --- return the object's data as a moved memory object.
     \item \textbf{DELETE} --- mark the directory entry as free, return the
         extent blocks to the free bitmap.
     \item \textbf{FLUSH} --- flush the underlying block device.
 \end{itemize}
+
+\section{Raft persistence}
+
+The Raft service can use in-memory stores, optionally try persistent stores,
+or require the object store. Required mode waits for \texttt{"obj"} through
+the name service; it does not use a boot-time polling range. Four stable
+objects per cluster/node namespace contain term and vote state, snapshot
+metadata, snapshot data, and serialized log entries. Mutations write the
+object and flush the underlying NVMe device before returning.
+
+The ordinary two-node local election test deliberately uses memory stores, so
+the generic consensus service remains testable on a multicore machine without
+NVMe. A separate storage test starts a single voter with required persistence,
+records its elected term, tears down that process, restarts the same identity,
+and requires the new election term to be greater. A repeated term 1 would
+fail, so the test distinguishes recovery from a fresh in-memory start.
+
+Launch configuration---node identity, peers, election timeout, cluster name,
+and storage policy---remains in the supervisor-provided manifest. The
+persistent objects hold Raft protocol state, log entries, and snapshots. This
+does not yet implement a name service shared among several computers; that
+requires cross-machine Raft transport and a replicated registry state machine.
 
 \section{Native filesystem}
 
@@ -217,10 +242,10 @@ python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /raft/state
         to let the object store and filesystem work over other block drivers.
         Those alternative drivers have not yet been implemented.
 
-    \item \textbf{Crash-safety mechanism under development.} The pointer-swap
-        design aims to preserve the previous version across an interrupted
-        write. Power-loss testing and validation of device atomicity and flush
-        ordering are still required.
+    \item \textbf{Crash-safety mechanism under development.} Process-restart
+        persistence is boot-validated. Power-loss safety still requires a
+        journalled or copy-on-write object update plus validation of device
+        atomicity and flush ordering.
 
     \item \textbf{Capability-based access.} A client that holds a connection to
         \texttt{"blk0"} can read and write blocks. A client that does not hold
