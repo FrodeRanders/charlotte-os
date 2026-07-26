@@ -1,5 +1,60 @@
 # The Charlotte Operating System (CharlotteOS)
 
+This repository is a development fork of the
+[CharlotteOS project](https://github.com/charlotte-os/charlotte-os). CharlotteOS,
+its original architecture, and the substantial foundation on which this work
+builds were created by the upstream project and its contributors.
+
+The purpose of this fork is to explore and implement additional operating-system
+mechanisms while retaining CharlotteOS's Rust, capability-oriented, and
+service-based direction. It is not a replacement for upstream, and features
+described below should not be assumed to be present or supported in the
+upstream repository.
+
+## Contributions in this fork
+
+The main additions and extensions currently maintained here are:
+
+- **AArch64 QEMU bring-up and SMP execution:** boot on QEMU's `virt` machine,
+  secondary-processor startup, GICv3 and generic-timer support, PCIe ECAM
+  enumeration, preemptive scheduling, and serial-first development tooling.
+- **Capability-based userspace services:** EL0 service loading, typed launch
+  manifests, endpoint IPC, transferable memory objects, completion queues,
+  device capabilities, service supervision, and stale-connection handling.
+- **Scheduler and completion work:** interrupt-safe per-processor state,
+  blocking completion waits, timer-affinity preservation, constrained runtime
+  rebalancing, lifecycle cleanup, and idle operation without steady-state
+  polling.
+- **One shared node-local name service:** services register in a common
+  registry; waitable lookup blocks until registration instead of relying on
+  arbitrary boot-time spin ranges. Replication of this registry across
+  computers remains future work.
+- **Generic Raft service:** a transport-independent Raft core and EL0 service,
+  with a local two-node election test that can run on a multicore development
+  machine. This is distinct from the planned use of Raft to replicate the name
+  service across several physical or virtual machines.
+- **Userspace persistent-storage prototype:** an NVMe block driver using DMA
+  and MSI-X, a block protocol, an object store, and namespaced Raft
+  term/vote/log/snapshot storage. Process-restart recovery is boot-tested;
+  power-loss atomicity and unrestricted object sizes are not yet provided.
+- **Experimental live service upgrade:** an EL0 service manager can spawn a
+  replacement generation, transfer state, synchronize registration, and
+  invalidate stale connections. This remains prototype work rather than a
+  production upgrade framework.
+- **Architecture and implementation documentation:** Markdown design notes and
+  the LaTeX manual in [`docs/manual-v2`](docs/manual-v2) distinguish implemented
+  behavior from intended architecture and record known limitations.
+
+The automated AArch64 boot path exercises these mechanisms under QEMU, but this
+is an experimental research and development system. A successful self-test is
+evidence for the tested configuration, not a general reliability, security, or
+hardware-compatibility claim.
+
+For the upstream project, its history, and its community, please visit
+<https://github.com/charlotte-os/charlotte-os>. Changes from upstream are kept
+as ordinary Git history so that upstream updates can continue to be merged into
+this fork.
+
 ---
 
 ## Programming Languages
@@ -72,7 +127,7 @@ PC and Server:
 - Recommended: ≥ 64 GiB
 - Minimum: 4 GiB
 - Supported device classes:
-  - [Planned] NVMe (PCIe)
+  - [Prototype in this fork] NVMe (PCIe, QEMU-tested)
   - [Planned] USB Mass Storage Device Class (MSC)
   - [Planned] AHCI (SATA)
   - [Planned] SDHCI (PCIe SD card reader)
@@ -106,10 +161,16 @@ PC and Server:
 
 ## Contributing
 
-We welcome contributions of all forms—code, design proposals, documentation, and testing.  
-Please join our Discord or Matrix communities if you’d like to get involved.
+The CharlotteOS upstream project welcomes contributions of all forms—code,
+design proposals, documentation, and testing. Please use the upstream
+repository and the community links below when contributing to CharlotteOS
+itself. Issues or changes specifically concerning the experimental additions
+listed above may instead be discussed in this fork.
 
-Community contributions for new hardware support will only be accepted when they include inline documentation comments with references to publicly available hardware documentation which may include community reverse engineered documentation along with clean, maintainable code.
+Upstream's contribution guidance requires new hardware support to include
+inline documentation comments with references to publicly available hardware
+documentation. This may include community reverse-engineered documentation,
+along with clean, maintainable code.
 
 ---
 
