@@ -8,6 +8,11 @@
 
 #[cfg(target_arch = "aarch64")]
 const ECHO_UPGRADE_ELF: &[u8] = include_bytes!("../self_test/echo.elf");
+#[cfg(target_arch = "aarch64")]
+const NODE_NAME_SERVICE_ELF: &[u8] = include_bytes!("../self_test/ns.elf");
+const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
+const NODE_NAME_SERVICE_VERSION: u32 = 1;
+const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
 
 use alloc::vec::Vec;
 
@@ -59,10 +64,22 @@ pub struct NameServiceHandle {
     pub endpoint_cap: CapabilityId,
 }
 
-/// The live name-service handle, populated by `spawn_name_service` so
-/// the SPAWN_UPGRADE syscall handler can delegate bootstrap connections
-/// without needing access to the test harness.
-pub(crate) static LIVE_NS: spin::LazyLock<
+/// The node-local name service shared by ordinary service domains.
+///
+/// Applications receive delegated connections to this registry; they do not
+/// receive the endpoint capability itself.  A node has exactly one such
+/// registry.  Tests or future namespace managers that deliberately need an
+/// isolated registry must use [`spawn_private_name_service`].
+static NODE_NAME_SERVICE: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+/// Name-service handle bound to the authorized live-upgrade manager.
+///
+/// Multiple independent registries may exist. The upgrade syscall must use
+/// the manager's registry rather than whichever registry happened to be
+/// spawned most recently.
+pub(crate) static LIVE_UPGRADE_NS: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
@@ -99,7 +116,7 @@ fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
 /// through the bootstrap slot. This keeps bootstrap authority flowing
 /// strictly downward: the name service never learns kernel identifiers, and
 /// no other domain can mint registry connections.
-pub fn spawn_name_service(
+fn spawn_name_service(
     image: &[u8],
     interface: u64,
     version: u32,
@@ -115,9 +132,46 @@ pub fn spawn_name_service(
         domain,
         endpoint_cap,
     };
-    // Store for the SPAWN_UPGRADE syscall handler.
-    *LIVE_NS.lock() = Some(handle);
     handle
+}
+
+/// Start the single node-local name service.
+///
+/// This is a boot operation and intentionally fails if a second node
+/// registry is requested. Adding a name or another service domain must use
+/// the existing handle returned by [`node_name_service`].
+pub fn start_node_name_service() -> NameServiceHandle {
+    let mut node = NODE_NAME_SERVICE.lock();
+    assert!(node.is_none(), "[supervisor] node name service already started");
+    let handle = spawn_name_service(
+        NODE_NAME_SERVICE_ELF,
+        NODE_NAME_SERVICE_INTERFACE,
+        NODE_NAME_SERVICE_VERSION,
+        NODE_NAME_SERVICE_QUEUE_CAPACITY,
+    );
+    *node = Some(handle);
+    handle
+}
+
+/// Obtain the running node-local name service.
+///
+/// The handle remains kernel-private. Callers use it only to delegate a
+/// suitably attenuated connection into a newly loaded protection domain.
+pub fn node_name_service() -> NameServiceHandle {
+    NODE_NAME_SERVICE.lock().expect("[supervisor] node name service has not been started")
+}
+
+/// Start an intentionally isolated registry.
+///
+/// Normal node services must not use this function. It exists for namespace
+/// isolation tests and, eventually, explicitly managed tenant namespaces.
+pub fn spawn_private_name_service(
+    image: &[u8],
+    interface: u64,
+    version: u32,
+    capacity: usize,
+) -> NameServiceHandle {
+    spawn_name_service(image, interface, version, capacity)
 }
 
 /// Load and start a service or client domain, delivering a connection to
@@ -143,6 +197,7 @@ pub fn spawn_with_name_service(
 /// Spawn the single userspace service manager and grant it upgrade authority.
 pub fn spawn_service_manager(image: &[u8], name_service: &NameServiceHandle) -> ServiceDomain {
     let domain = spawn_with_name_service(image, name_service, ConnectionRights::CALL);
+    *LIVE_UPGRADE_NS.lock() = Some(*name_service);
     *LIVE_UPGRADE_MANAGER_ASID.lock() = Some(domain.asid);
     domain
 }

@@ -1,9 +1,8 @@
 //! Self-test: Phase 8 userspace UART driver.
 //!
-//! Spawns three isolated EL0 protection domains from Rust-compiled ELFs:
+//! Uses the node name service and spawns EL0 protection domains from
+//! Rust-compiled ELFs:
 //!
-//! - `ns.elf` — the userspace name service (registry endpoint delivered by the supervisor through
-//!   the bootstrap slot);
 //! - `uart.elf` — the reference userspace UART driver, granted a PL011 MMIO register window and the
 //!   PL011 interrupt as *capabilities* (plus a bootstrap connection to the name service);
 //! - `cclient.elf` — a console client that looks up "uart" by name and writes a short message
@@ -39,8 +38,6 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NS_ELF: &[u8] = include_bytes!("ns.elf");
-#[cfg(target_arch = "aarch64")]
 const UART_ELF: &[u8] = include_bytes!("uart.elf");
 #[cfg(target_arch = "aarch64")]
 const CCLIENT_ELF: &[u8] = include_bytes!("cclient.elf");
@@ -57,8 +54,6 @@ const fn packed_name(bytes: &[u8]) -> u64 {
 }
 
 #[cfg(target_arch = "aarch64")]
-const NS_INTERFACE: u64 = packed_name(b"NAME");
-
 /// QEMU `virt` PL011 UART: MMIO base and its GIC SPI (INTID 33 = SPI 1).
 #[cfg(target_arch = "aarch64")]
 const PL011_BASE: usize = 0x0900_0000;
@@ -104,9 +99,9 @@ pub fn test_el0_uart() {
     {
         logln!("Testing EL0 userspace UART driver (delegated MMIO + interrupt)...");
 
-        let name_service = supervisor::spawn_name_service(NS_ELF, NS_INTERFACE, 1, 8);
+        let name_service = supervisor::node_name_service();
         let ns_asid = name_service.domain.asid;
-        logln!("[uart] name service spawned (asid={})", ns_asid);
+        logln!("[uart] using node name service (asid={})", ns_asid);
 
         let driver = supervisor::spawn_driver_with_name_service(
             UART_ELF,

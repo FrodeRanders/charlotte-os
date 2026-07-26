@@ -1246,7 +1246,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         }
     };
 
-    let ns_handle = match *crate::service::supervisor::LIVE_NS.lock() {
+    let ns_handle = match *crate::service::supervisor::LIVE_UPGRADE_NS.lock() {
         Some(handle) => handle,
         None => {
             frame.regs[0] = 0;

@@ -123,6 +123,15 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
+    #[cfg(target_arch = "aarch64")]
+    {
+        let name_service = crate::service::supervisor::start_node_name_service();
+        logln!(
+            "[node] name service started (asid={}, tid={})",
+            name_service.domain.asid,
+            name_service.domain.tid
+        );
+    }
     self_test::run_self_tests();
     logln!("System Information:");
     logln!("CPU Vendor: {}", (CpuInfo::get_vendor()));

@@ -34,7 +34,7 @@ pub fn run_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {
         el0_service::test_el0_service();
-        logln!("Isolated live-upgrade verifier is pending.");
+        logln!("Live-upgrade verifier is pending.");
         return;
     }
     // These raw probes target specific x86-64 HHDM/heap virtual addresses used

@@ -19,21 +19,7 @@ mod inner {
     const PEER_ID_KEY: u64 = charlotte_launch::manifest_key(b"peer-id");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
 
-    const NS_ELF: &[u8] = include_bytes!("ns.elf");
     const RAFT_ELF: &[u8] = include_bytes!("raft.elf");
-
-    const fn packed_name(bytes: &[u8]) -> u64 {
-        let mut packed = [0u8; 8];
-        let mut i = 0;
-        while i < bytes.len() && i < 8 {
-            packed[i] = bytes[i];
-            i += 1;
-        }
-        u64::from_le_bytes(packed)
-    }
-
-    const NS_INTERFACE: u64 = packed_name(b"NAME");
-    const _RAFT_INTERFACE: u64 = packed_name(b"RAFT");
 
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 
@@ -71,8 +57,8 @@ mod inner {
     pub(super) fn test_el0_raft() {
         crate::logln!("[raft] two-node boot test");
 
-        let ns = supervisor::spawn_name_service(NS_ELF, NS_INTERFACE, 1, 8);
-        crate::logln!("[raft] ns ok asid={} tid={}", ns.domain.asid, ns.domain.tid);
+        let ns = supervisor::node_name_service();
+        crate::logln!("[raft] node name service ok asid={} tid={}", ns.domain.asid, ns.domain.tid);
 
         unsafe {
             RAFT_NS = Some(ns);

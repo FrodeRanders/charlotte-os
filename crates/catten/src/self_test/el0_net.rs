@@ -5,8 +5,8 @@
 //! below; starting it in the ordinary disk-only QEMU configuration leaves
 //! its deferred verifier waiting forever and keeps guest CPUs runnable.
 //!
-//! Spawns the name service synchronously during self-tests; a deferred kernel
-//! verifier thread (which runs after the scheduler and the topology probe
+//! Uses the node name service; a deferred kernel verifier thread (which runs
+//! after the scheduler and the topology probe
 //! become active) discovers the virtio-net PCI device, grants its BAR0 + IRQ
 //! to the driver domain, spawns a client that queries status, and verifies
 //! the MAC and link state.
@@ -23,25 +23,10 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NS_ELF: &[u8] = include_bytes!("ns.elf");
-#[cfg(target_arch = "aarch64")]
 const NET_ELF: &[u8] = include_bytes!("net.elf");
 #[cfg(target_arch = "aarch64")]
 const NCLIENT_ELF: &[u8] = include_bytes!("nclient.elf");
 
-#[cfg(target_arch = "aarch64")]
-const fn packed_name(bytes: &[u8]) -> u64 {
-    let mut packed = [0u8; 8];
-    let mut i = 0;
-    while i < bytes.len() && i < 8 {
-        packed[i] = bytes[i];
-        i += 1;
-    }
-    u64::from_le_bytes(packed)
-}
-
-#[cfg(target_arch = "aarch64")]
-const NS_INTERFACE: u64 = packed_name(b"NAME");
 #[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
@@ -55,9 +40,9 @@ pub fn test_el0_net() {
     {
         logln!("Testing EL0 userspace virtio-net driver...");
 
-        let name_service = supervisor::spawn_name_service(NS_ELF, NS_INTERFACE, 1, 8);
+        let name_service = supervisor::node_name_service();
         let ns_asid = name_service.domain.asid;
-        logln!("[net] name service spawned (asid={})", ns_asid);
+        logln!("[net] using node name service (asid={})", ns_asid);
 
         unsafe { TEST_STATE = Some(name_service) };
 

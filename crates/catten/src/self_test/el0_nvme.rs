@@ -12,8 +12,6 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NS_ELF: &[u8] = include_bytes!("ns.elf");
-#[cfg(target_arch = "aarch64")]
 const NVME_ELF: &[u8] = include_bytes!("nvme.elf");
 #[cfg(target_arch = "aarch64")]
 const OBJSTORE_ELF: &[u8] = include_bytes!("objstore.elf");
@@ -27,7 +25,7 @@ pub fn test_el0_nvme() {
     #[cfg(target_arch = "aarch64")]
     {
         logln!("Testing EL0 userspace NVMe block device driver and object store...");
-        let name_service = supervisor::spawn_name_service(NS_ELF, 0x4e414d45, 1, 8);
+        let name_service = supervisor::node_name_service();
         unsafe { TEST_STATE = Some(name_service) };
         let _vtid =
             crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_nvme);

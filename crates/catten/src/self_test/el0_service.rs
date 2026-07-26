@@ -1,10 +1,9 @@
 #![allow(unused_assignments)]
 //! Self-test: Phase 3 userspace name service and service manager.
 //!
-//! Spawns three isolated EL0 protection domains from Rust-compiled ELFs:
+//! Uses the node name service and spawns EL0 protection domains from
+//! Rust-compiled ELFs:
 //!
-//! - `ns.elf` — the userspace name service (registry endpoint created and delivered by the
-//!   supervisor through the bootstrap slot);
 //! - `echo.elf` — a service that creates its own endpoint and registers it by name, attaching a
 //!   re-delegable connection at call time;
 //! - `client.elf` — a client that looks up "echo" by name and calls it through the returned
@@ -37,8 +36,6 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NS_ELF: &[u8] = include_bytes!("ns.elf");
-#[cfg(target_arch = "aarch64")]
 const ECHO_ELF: &[u8] = include_bytes!("echo.elf");
 #[cfg(target_arch = "aarch64")]
 const CLIENT_ELF: &[u8] = include_bytes!("client.elf");
@@ -56,8 +53,6 @@ const fn packed_name(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(packed)
 }
 
-#[cfg(target_arch = "aarch64")]
-const NS_INTERFACE: u64 = packed_name(b"NAME");
 #[cfg(target_arch = "aarch64")]
 const NAME_ECHO: u64 = packed_name(b"echo");
 #[cfg(target_arch = "aarch64")]
@@ -96,10 +91,10 @@ pub fn test_el0_service() {
     {
         logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
 
-        let name_service = supervisor::spawn_name_service(NS_ELF, NS_INTERFACE, 1, 8);
+        let name_service = supervisor::node_name_service();
         let ns_asid = name_service.domain.asid;
         let ns_tid = name_service.domain.tid;
-        logln!("[service] name service spawned (asid={}, tid={})", ns_asid, ns_tid);
+        logln!("[service] using node name service (asid={}, tid={})", ns_asid, ns_tid);
 
         let echo =
             supervisor::spawn_with_name_service(ECHO_ELF, &name_service, ConnectionRights::CALL);
