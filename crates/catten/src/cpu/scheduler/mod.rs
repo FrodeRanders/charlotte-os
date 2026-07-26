@@ -56,6 +56,22 @@ pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Threa
     spawn_thread_with_migration(asid, entry_point, false)
 }
 
+/// Spawn non-migratable work on a specific LP.
+///
+/// This is used when the creator is about to block on the new thread's
+/// startup handshake: placing both on one LP makes that block hand execution
+/// directly to the child without depending on a remote admission IPI.
+pub fn spawn_thread_on_lp(
+    asid: AddressSpaceId,
+    entry_point: extern "C" fn(),
+    lp: crate::cpu::isa::lp::LpId,
+) -> ThreadId {
+    let thread = Thread::new(asid, entry_point);
+    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    SYSTEM_SCHEDULER.read().submit_to_lp(tid, lp).expect("Error submitting thread to requested LP");
+    tid
+}
+
 /// Spawn work whose creator explicitly certifies that it owns no LP-local
 /// resources while Ready. This is intentionally separate from `spawn_thread`:
 /// migration must be opt-in, never inferred from scheduler state alone.

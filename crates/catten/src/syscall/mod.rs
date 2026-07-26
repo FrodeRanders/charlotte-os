@@ -1291,7 +1291,15 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let entry_vaddr = loaded.entry_vaddr;
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
-    crate::cpu::scheduler::spawn_thread(loaded.asid, entry);
+    crate::cpu::scheduler::spawn_thread_on_lp(
+        loaded.asid,
+        entry,
+        crate::cpu::isa::lp::ops::get_lp_id(),
+    );
+    // The replacement was deliberately queued on this LP. Yield once before
+    // returning to the manager so the child reaches its startup/registration
+    // path ahead of the parent issuing the publication lookup.
+    crate::cpu::scheduler::yield_lp();
 
     // Report the new domain's ASID as evidence.
     frame.regs[0] = loaded.asid as u64;

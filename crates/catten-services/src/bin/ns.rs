@@ -91,7 +91,9 @@ fn register(
 ) -> i64 {
     let generation = match registry.get(&key) {
         Some(previous) => {
-            unsafe { ipc_close(previous.connection); }
+            if previous.connection != 0 {
+                unsafe { ipc_close(previous.connection); }
+            }
             previous.generation + 1
         }
         None => 1,
@@ -125,7 +127,7 @@ fn lookup_or_defer(
     caller_key: u64,
 ) {
     match registry.get(key) {
-        Some(registration) => {
+        Some(registration) if registration.connection != 0 => {
             if registration.access_key != 0 && registration.access_key != caller_key {
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
@@ -139,7 +141,7 @@ fn lookup_or_defer(
                 );
             }
         }
-        None => {
+        _ => {
             // Defer: retain the reply token until the service registers.
             waitlist.entry(key.to_vec()).or_default().push(reply);
         }
@@ -148,7 +150,7 @@ fn lookup_or_defer(
 
 fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
     match registry.get(key) {
-        Some(registration) => unsafe {
+        Some(registration) if registration.connection != 0 => unsafe {
             ipc_reply_connection(
                 reply,
                 registration.connection,
@@ -156,7 +158,7 @@ fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
                 registration.generation,
             );
         },
-        None => unsafe {
+        _ => unsafe {
             ipc_reply(reply, ns::ERR_NOT_FOUND);
         },
     }
@@ -225,7 +227,13 @@ fn main(ctx: Context) -> ! {
                 let key = read_named_key(&message);
                 let result = match (key, message.connection) {
                     (Some(key), connection) if connection != 0 => {
-                        register(&mut registry, &mut waitlist, key, connection, 0)
+                        register(
+                            &mut registry,
+                            &mut waitlist,
+                            key,
+                            connection,
+                            0,
+                        )
                     }
                     (_, connection) => {
                         if connection != 0 {
@@ -248,14 +256,18 @@ fn main(ctx: Context) -> ! {
                     0,
                 );
             }
-            ns::OP_LOOKUP_NEXT => {
+            ns::OP_UNREGISTER => {
+                let key = scalar_key(message.arg0);
+                let result = match registry.get_mut(&key) {
+                    Some(registration) if registration.connection != 0 => {
+                        unsafe { ipc_close(registration.connection); }
+                        registration.connection = 0;
+                        registration.generation
+                    }
+                    _ => ns::ERR_NOT_FOUND,
+                };
                 if message.reply != 0 {
-                    waitlist.entry(scalar_key(message.arg0)).or_default().push(message.reply);
-                }
-            }
-            ns::OP_BARRIER => {
-                if message.reply != 0 {
-                    unsafe { ipc_reply(message.reply, 0); }
+                    unsafe { ipc_reply(message.reply, result); }
                 }
             }
             ns::OP_TRY_LOOKUP => {

@@ -85,17 +85,11 @@ pub mod ns {
     /// [`OP_LOOKUP`], this replies with [`ERR_NOT_FOUND`] immediately rather
     /// than retaining the call until a future registration.
     pub const OP_TRY_LOOKUP: u32 = 7;
-    /// Wait for the *next* registration of a short name. `arg0` = packed
-    /// name. Unlike [`OP_LOOKUP`], an existing registration does not satisfy
-    /// this call: the reply is retained until a subsequent [`OP_REGISTER`]
-    /// publishes a newer generation. Upgrade managers issue this before
-    /// starting a replacement, closing the spawn-versus-registration race.
-    pub const OP_LOOKUP_NEXT: u32 = 8;
-    /// FIFO synchronization barrier. The name service replies immediately
-    /// after all earlier messages on its endpoint have been processed. An
-    /// upgrade manager uses this after [`OP_LOOKUP_NEXT`] to prove that the
-    /// deferred generation watch is armed before it starts the replacement.
-    pub const OP_BARRIER: u32 = 9;
+    /// Unpublish a short-named service while retaining its generation
+    /// tombstone. `arg0` = packed name. Subsequent lookups defer until the
+    /// replacement registers, at which point the generation advances
+    /// normally. Existing connections retain their normal endpoint lifetime.
+    pub const OP_UNREGISTER: u32 = 8;
 
     /// Read a u64 access key from a memory object, or 0 if none.
     /// Consumes (unmaps and closes) the memory cap on success.
