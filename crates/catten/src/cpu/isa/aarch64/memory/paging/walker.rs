@@ -202,6 +202,16 @@ impl<'vas> Walker<'vas> {
     /// Limine; freshly created user address spaces may not.
     fn ensure_root(&mut self) -> *mut PageTable {
         if self.root_table_base().is_none() {
+            // Creating a root for an inactive address space must not install
+            // that address space on the CPU doing the construction. Remember
+            // whether this walker actually targets the currently selected
+            // half before changing the in-memory TTBR value.
+            let current = AddressSpace::get_current();
+            let was_active = if self.is_higher_half() {
+                current.get_ttbr1() == self.address_space.get_ttbr1()
+            } else {
+                current.get_ttbr0() == self.address_space.get_ttbr0()
+            };
             let new_root = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
             unsafe {
                 let new_root_ptr: *mut PageTable = new_root.into();
@@ -213,7 +223,9 @@ impl<'vas> Walker<'vas> {
             } else {
                 self.address_space.set_ttbr0(base);
             }
-            self.address_space.load().expect("Failed to load new root translation table");
+            if was_active {
+                self.address_space.load().expect("Failed to load new root translation table");
+            }
         }
         self.l0_ptr = self.root_table_ptr().unwrap();
         self.l0_ptr
