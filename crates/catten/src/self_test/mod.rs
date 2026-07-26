@@ -32,6 +32,11 @@ use crate::logln;
 
 pub fn run_self_tests() {
     logln!("Running self tests...");
+    if cfg!(feature = "live_upgrade_test") {
+        el0_service::test_el0_service();
+        logln!("Isolated live-upgrade verifier is pending.");
+        return;
+    }
     // These raw probes target specific x86-64 HHDM/heap virtual addresses used
     // during heap debugging; they are not valid on other architectures.
     #[cfg(target_arch = "x86_64")]

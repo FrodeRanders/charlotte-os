@@ -303,6 +303,14 @@ extern "C" fn verify_el0_service() {
         service_manager.asid,
         service_manager.tid
     );
+    let manager_status: *const u32 = {
+        let base: *mut u8 = service_manager.status_frame.into();
+        base as *const u32
+    };
+    spin_until(
+        || unsafe { core::ptr::read_volatile(manager_status) == 3 },
+        "service-manager registration",
+    );
     let kclient2_asid = crate::service::loader::create_user_address_space();
     let ns2 = ipc::connection_delegate(
         state.name_service.domain.asid,
@@ -321,7 +329,31 @@ extern "C" fn verify_el0_service() {
     // authorized SpawnUpgrade syscall itself.
     let upgrade = ipc::scalar_call(kclient2_asid, mgr_conn, 1, NAME_ECHO)
         .expect("[service] manager upgrade call failed");
-    let upgrade_reply = wait_reply_k2(kclient2_asid, upgrade, "manager upgrade reply");
+    let mut upgrade_value = None;
+    let mut upgrade_polls = 0u64;
+    spin_until(
+        || {
+            upgrade_polls += 1;
+            if upgrade_polls.is_multiple_of(1_000) {
+                logln!(
+                    "[service] waiting for manager: stage={}, error={}",
+                    unsafe { core::ptr::read_volatile(manager_status) },
+                    unsafe { core::ptr::read_volatile(manager_status.add(2)) }
+                );
+            }
+            match ipc::poll_reply(kclient2_asid, upgrade) {
+                Ok(Some(reply)) => {
+                    upgrade_value = Some(reply);
+                    true
+                }
+                Ok(None) => false,
+                Err(error) => panic!("[service] manager reply failed: {:?}", error),
+            }
+        },
+        "manager upgrade reply",
+    );
+    ipc::close_cap(kclient2_asid, upgrade).expect("manager upgrade pending-call close");
+    let upgrade_reply = upgrade_value.expect("manager upgrade reply missing");
     assert!(upgrade_reply.result > 0, "EL0 manager failed to spawn replacement");
     let replacement_asid = upgrade_reply.result as usize;
 

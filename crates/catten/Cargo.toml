@@ -28,6 +28,9 @@ hvf_compat = []
 # virtio-net PCI device and is intentionally opt-in: the ordinary AArch64
 # QEMU command only attaches the boot disk.
 virtio_net_test = []
+# Run only the EL0 service lifecycle/live-upgrade deferred integration test.
+# Synchronous kernel subsystem tests still run.
+live_upgrade_test = []
 qemu = ["virtio_gpu"]
 
 [dependencies]

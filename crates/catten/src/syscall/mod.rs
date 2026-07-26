@@ -52,8 +52,9 @@ pub struct TrapFrame {
     pub spsr_el1: u64,
     pub sp_el0: u64,
     pub lp_id: LpId,
-    /// Address-space id of the calling thread, looked up from the scheduler at
-    /// exception entry.  For the real SVC path this is the EL0 thread's AS;
+    /// Address-space id of the calling thread, resolved from the active
+    /// hardware translation context at exception entry. For the real SVC path
+    /// this is the EL0 thread's AS;
     /// self-tests that call `syscall_dispatch` directly may set it manually.
     pub asid: AddressSpaceId,
 }

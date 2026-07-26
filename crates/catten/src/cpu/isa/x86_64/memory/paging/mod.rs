@@ -63,6 +63,43 @@ impl AddressSpace {
     pub fn get_cr3(&self) -> u64 {
         self.cr3
     }
+
+    /// Ensure an MMIO region is reachable through its kernel HHDM alias.
+    ///
+    /// Limine may already have installed the mapping; in that case this is
+    /// idempotent. New mappings use the architecture-neutral MMIO page type
+    /// (writable, supervisor-only, execute-disabled).
+    pub fn map_mmio_region(
+        &mut self,
+        phys_base: usize,
+        size: usize,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        use crate::cpu::isa::interface::memory::address::{
+            PhysicalAddress,
+            VirtualAddress,
+        };
+        use crate::memory::linear::PageType;
+
+        let start = phys_base & !(PAGE_SIZE - 1);
+        let end = phys_base
+            .checked_add(size)
+            .and_then(|end| end.checked_add(PAGE_SIZE - 1))
+            .ok_or(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable)?
+            & !(PAGE_SIZE - 1);
+        for phys in (start..end).step_by(PAGE_SIZE) {
+            let frame = PAddr::from(phys as u64);
+            let mapping = MemoryMapping {
+                vaddr: VAddr::from_ptr(unsafe { frame.into_hhdm_ptr::<u8>() }),
+                paddr: frame,
+                page_type: PageType::Mmio,
+            };
+            match self.map_page(mapping) {
+                Ok(()) | Err(<MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
 }
 
 impl AddressSpaceInterface for AddressSpace {

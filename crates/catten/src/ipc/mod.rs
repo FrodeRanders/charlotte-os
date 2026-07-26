@@ -342,9 +342,10 @@ pub fn endpoint_create(
 
 /// Binds an endpoint's readiness to one of the owner's completion queues.
 ///
-/// After binding, the kernel posts a coalesced wake to that queue whenever
-/// the endpoint's message queue transitions from empty to nonempty, and when
-/// the endpoint closes. This lets a shard block on a single CQ wait for both
+/// Binding also posts a wake when the endpoint is already readable. After
+/// binding, the kernel posts a coalesced wake whenever the endpoint's message
+/// queue transitions from empty to nonempty, and when the endpoint closes.
+/// This lets a shard block on a single CQ wait for both
 /// kernel/device completions and endpoint work (architecture doc §7,
 /// Phase 7); readiness is a notification to inspect the endpoint, not a
 /// completion record (§16.3).
@@ -366,6 +367,15 @@ pub fn endpoint_bind_cq(
         return Err(IpcError::PermissionDenied);
     }
     endpoint.notify_cq = Some(cq);
+    let already_readable = endpoint.closed || !endpoint.queue.is_empty();
+    drop(ipc);
+    // Close the bind-versus-enqueue race. An enqueue before the binding could
+    // not signal this CQ; an enqueue after it observes `notify_cq`. If the
+    // queue was already non-empty while holding IPC's write lock, publish the
+    // missing readiness edge now.
+    if already_readable {
+        crate::completion::wake(owner, cq);
+    }
     Ok(())
 }
 

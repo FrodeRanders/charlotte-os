@@ -1,4 +1,5 @@
 //! PCI MSI-X capability and table programming.
+#![cfg_attr(target_arch = "x86_64", allow(dead_code))]
 
 use core::sync::atomic::{
     Ordering,

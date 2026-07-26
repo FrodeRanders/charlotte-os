@@ -25,16 +25,14 @@ use catten_syscall::{
     ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
-    ipc_reply_poll_with_memory,
     ipc_reply_wait,
+    ipc_reply_wait_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
     spawn_upgrade,
     thread_exit,
 };
-
-const REPLY_SPINS: u64 = 50_000_000;
 
 const STAGE_OFFSET: usize = 0;
 const LAST_GEN_OFFSET: usize = 4;
@@ -69,9 +67,16 @@ unsafe fn spin_call(call: u64, _what: &str) -> (u64, u64) {
 /// Look up a service by short name; return its connection cap.
 fn lookup(ns_conn: u64, target: u64) -> Option<u64> {
     let l = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, target);
-    if l == 0 { return None; }
-    let (generation, cap) = catten_services::spin_reply(l);
-    if generation >= 1 && cap != 0 { Some(cap) } else { None }
+    if l == 0 {
+        return None;
+    }
+    let (status, generation, cap) = ipc_reply_wait(l);
+    ipc_close(l);
+    if status == 0 && generation >= 1 && cap != 0 {
+        Some(cap)
+    } else {
+        None
+    }
 }
 
 fn main(ctx: Context) -> ! {
@@ -121,6 +126,7 @@ fn main(ctx: Context) -> ! {
             }
 
             if m.opcode == 1 && m.reply != 0 {
+                config::write::<u32>(STAGE_OFFSET, 10);
                 let result = do_upgrade(ns_connection, m.arg0);
                 config::write::<u32>(LAST_GEN_OFFSET, result as u32);
                 ipc_reply(m.reply, result);
@@ -140,32 +146,23 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
             return -1;
         }
     };
+    config::write::<u32>(STAGE_OFFSET, 11);
 
     // OP_HANDOFF: the target serialises state, returns (state_cap, ep_cap),
-    // and exits.  We use ipc_reply_poll_with_memory to capture the moved
-    // memory cap.
+    // and exits. The wait returns the moved memory cap without polling.
     let call = ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0);
     if call == 0 {
         config::write::<u32>(ERROR_OFFSET, 2);
         return -2;
     }
 
-    let (state_cap, _handoff_result) = {
-        let mut spins: u64 = 0;
-        loop {
-            let (status, result, _conn, mem) = ipc_reply_poll_with_memory(call);
-            if status == 0 {
-                break (mem, result);
-            }
-            spins += 1;
-            if spins >= REPLY_SPINS {
-                config::write::<u32>(ERROR_OFFSET, 3);
-                return -3;
-            }
-            core::hint::spin_loop();
-        }
-    };
+    let (status, _handoff_result, _conn, state_cap) = ipc_reply_wait_with_memory(call);
     catten_syscall::ipc_close(call);
+    if status != 0 {
+        config::write::<u32>(ERROR_OFFSET, 3);
+        return -3;
+    }
+    config::write::<u32>(STAGE_OFFSET, 12);
 
     if state_cap == 0 {
         config::write::<u32>(ERROR_OFFSET, 4);

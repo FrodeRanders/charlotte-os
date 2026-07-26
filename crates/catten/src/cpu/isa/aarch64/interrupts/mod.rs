@@ -92,21 +92,40 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             asid: crate::memory::KERNEL_ASID, // overwritten below if a user thread
         };
 
-        // Derive the caller's address space from the running thread's context
-        // rather than trusting a user-supplied register.  This makes ASID
-        // authority correct: a thread cannot operate on an address space other
-        // than its own.
-        if let Some(tid) = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-            .read()
-            .get_lp_scheduler()
-            .lock()
-            .get_tid()
-        {
-            if let Ok(thread) = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE.read().get(tid)
-            {
-                frame.asid = thread.asid;
-            }
+        // An SVC accepted by this ABI must have originated at EL0t. Derive
+        // authority from the translation context that was active at exception
+        // entry, not from the scheduler's current_handle: exit/reaping can
+        // update that software handle while the outgoing EL0 context is still
+        // executing its final syscall.
+        assert_eq!(
+            spsr & 0xf,
+            0,
+            "userspace syscall SVC originated outside EL0t (SPSR={spsr:#x}, ELR={elr_el1:#x})"
+        );
+        let active_ttbr0: u64;
+        unsafe {
+            asm!(
+                "mrs {}, ttbr0_el1",
+                out(reg) active_ttbr0,
+                options(nomem, nostack, preserves_flags)
+            );
         }
+        frame.asid = crate::memory::ADDRESS_SPACE_TABLE
+            .lock()
+            .iter()
+            .enumerate()
+            .find_map(|(asid, address_space)| {
+                address_space
+                    .as_ref()
+                    .filter(|address_space| address_space.get_ttbr0() == active_ttbr0)
+                    .map(|_| asid)
+            })
+            .filter(|asid| *asid != crate::memory::KERNEL_ASID)
+            .unwrap_or_else(|| {
+                panic!(
+                    "SVC from EL0t has no live address space (TTBR0={active_ttbr0:#x}, ELR={elr_el1:#x})"
+                )
+            });
 
         // Read the saved volatile registers from the kernel stack. `frame_base`
         // is the stack pointer captured by the vector entry immediately after

@@ -138,11 +138,18 @@ impl LpScheduler for RoundRobin {
     }
 
     fn get_tid(&self) -> Option<ThreadId> {
-        if let Some(th) = self.current_handle {
-            Some(th.tid)
-        } else {
-            None
-        }
+        let handle = self.current_handle?;
+        // Numeric thread-table slots are reused. An LP may retain the handle
+        // of a thread that exited on its last syscall until its next
+        // scheduling pass; never let that stale handle alias the new occupant
+        // of the same slot. In particular, cond_yield_lp uses this result to
+        // choose whose saved stack pointer to overwrite.
+        MASTER_THREAD_TABLE
+            .read()
+            .get(handle.tid)
+            .ok()
+            .filter(|thread| thread.generation == handle.generation)
+            .map(|_| handle.tid)
     }
 
     fn is_ctx_switch_pending(&self) -> bool {

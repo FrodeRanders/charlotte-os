@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test] [--live-upgrade-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -19,6 +19,7 @@
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --net-test     Build the KVM-only virtio-net test (requires separately configured matching PCI hardware)
+#   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
 #
@@ -30,6 +31,7 @@ GDB=""
 DISPLAY_MODE="0"
 USE_HVF="0"
 NET_TEST="0"
+LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -46,6 +48,7 @@ while [ "$#" -gt 0 ]; do
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
+        --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
             SMP="$2"; shift 2 ;;
@@ -117,6 +120,10 @@ if [ "$NET_TEST" = "1" ]; then
         exit 1
     fi
     FEATURES="${FEATURES},virtio_net_test"
+fi
+
+if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
+    FEATURES="${FEATURES},live_upgrade_test"
 fi
 
 if [ "$SCHEDULER_TRACE" = "1" ]; then
@@ -280,25 +287,29 @@ if [ -n "$TIMEOUT" ]; then
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
-    REQUIRED_MARKERS=(
-        "[EL0] SUCCESS:"
-        "[raft] SUCCESS:"
-        "[EL0 IPC] SUCCESS:"
-        "[EL0 IPC block] SUCCESS:"
-        "[EL0 IPC cross-AS] SUCCESS:"
-        "[EL0 IPC memory] SUCCESS:"
-        "[EL0 IPC memory cancel] SUCCESS:"
-        "[EL0 IPC memory copy] SUCCESS:"
-        "[EL0 xLP] SUCCESS:"
-        "[PP] SUCCESS:"
-        "[sitas] SUCCESS:"
-        "[service] SUCCESS:"
-        "[cq wait] SUCCESS:"
-        "[device] SUCCESS:"
-        "[uart] SUCCESS:"
-        "[scheduler lifecycle] SUCCESS:"
-    )
-    REQUIRED_MARKERS+=("[nvme] SUCCESS:")
+    if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
+        REQUIRED_MARKERS=("[service] SUCCESS:")
+    else
+        REQUIRED_MARKERS=(
+            "[EL0] SUCCESS:"
+            "[raft] SUCCESS:"
+            "[EL0 IPC] SUCCESS:"
+            "[EL0 IPC block] SUCCESS:"
+            "[EL0 IPC cross-AS] SUCCESS:"
+            "[EL0 IPC memory] SUCCESS:"
+            "[EL0 IPC memory cancel] SUCCESS:"
+            "[EL0 IPC memory copy] SUCCESS:"
+            "[EL0 xLP] SUCCESS:"
+            "[PP] SUCCESS:"
+            "[sitas] SUCCESS:"
+            "[service] SUCCESS:"
+            "[cq wait] SUCCESS:"
+            "[device] SUCCESS:"
+            "[uart] SUCCESS:"
+            "[scheduler lifecycle] SUCCESS:"
+            "[nvme] SUCCESS:"
+        )
+    fi
     missing=0
     for marker in "${REQUIRED_MARKERS[@]}"; do
         if ! grep -Fq "$marker" "$LOG"; then
