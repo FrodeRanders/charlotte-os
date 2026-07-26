@@ -2,8 +2,8 @@
 
 A capability is the answer to one question: \textbf{``May I perform this
 operation?''} It is authority, not work. It is unforgeable, delegable, and
-attenuable. This chapter explains the capability model that secures every resource
-in CharlotteOS.
+attenuable. This chapter explains the capability model used for kernel-mediated
+resources in CharlotteOS.
 
 \section{What a capability is}
 
@@ -99,17 +99,19 @@ services delegate whatever the protocol authorizes.
         under a protocol). There is no ambient authority to strip away; the
         default is zero.
 
-    \item The attack surface is enumerable: To determine what a process
-        can do, inspect its capability table. There is no hidden state, no global
-        filesystem, no ambient network access. Auditing is bounded.
+    \item Kernel-mediated authority is enumerable: A process's capability table
+        records the kernel objects it may use. This makes authority easier to
+        audit, but does not by itself account for device side effects, protocol
+        state, or implementation defects.
 
     \item Delegation is mediated: A process cannot grant authority it
         does not hold; it cannot grant rights beyond what it possesses; and every
         delegation crosses the kernel, which enforces both constraints.
 
-    \item Revocation is complete: When a service crashes and its domain
-        is torn down, every capability to every connection it held is invalidated
-        atomically. There is no lingering authority.
+    \item Teardown revokes the destroyed domain's capabilities and closes its
+        endpoint relationships. Existing tests cover stale connections and
+        pending-call reconciliation; this is not a claim of system-wide atomic
+        revocation for every future object type or external device effect.
 
     \item Capability tables are bounded: A process cannot create
         unlimited capabilities to exhaust kernel memory. Submission backpressure
@@ -118,7 +120,7 @@ services delegate whatever the protocol authorizes.
 \end{enumerate}
 
 The capability model is the foundation on which CharlotteOS builds its security
-guarantees. Without capabilities, endpoints and memory objects would be anonymous
+properties. Without capabilities, endpoints and memory objects would be anonymous
 resources accessible by index or address --- just a more elaborate version of the
 ambient-authority model this architecture rejects.
 

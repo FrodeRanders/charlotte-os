@@ -279,13 +279,15 @@ in \texttt{crates/catten/src/syscall/mod.rs}.
         Shared memory with locks is the exception and not the rule. This reduces
         the number of places where concurrency bugs can hide.
 
-    \item \textbf{The ABI is auditable.} 49 syscalls across completion, IPC,
-        memory, device, and CQ operations. Each has defined semantics,
-        fixed-width arguments, and explicit error returns.
+    \item \textbf{The ABI is auditable.} The current typed
+        \texttt{SyscallNumber} enum contains 56 variants across completion,
+        IPC, memory, device, upgrade, and CQ operations. Userspace wrappers and
+        the kernel dispatcher share this enum, and the dispatch match is
+        exhaustive.
 
-    \item \textbf{The programming model is testable.} Every invariant
-        (owner-check, re-entrancy guard, backpressure, cancellation contract)
-        has a corresponding self-test. The test suite exercises the rules.
+    \item \textbf{The programming model is testable.} Self-tests exercise
+        owner checks, re-entrancy guards, selected backpressure paths, and
+        cancellation behavior. Coverage is substantial but not exhaustive.
 \end{enumerate}
 
 \endinput

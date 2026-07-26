@@ -1,9 +1,10 @@
 \chapter{Persistent Storage}
 
 CharlotteOS treats storage as a layered stack of userspace services, each
-speaking a well-defined protocol through endpoint IPC. No part of the storage
-stack runs in the kernel — the kernel grants an NVMe driver an MMIO window
-and an interrupt, and the rest is composed in userspace.
+speaking a well-defined protocol through endpoint IPC. The block driver,
+object store, and filesystem services run in userspace. The kernel still
+participates through capability, memory-mapping, physical-address, interrupt,
+and PCI/MSI-X setup paths.
 
 \section{The storage stack}
 
@@ -19,11 +20,14 @@ NVMe controller             ← MMIO + DMA + MSI-X (granted at boot)
 
 \section{NVMe block driver}
 
-The NVMe driver is a userspace EL0 service implementing the NVM Express 1.4
-base specification. It receives an \texttt{MmioRegion} capability covering the
+The NVMe driver is a userspace EL0 prototype implementing the subset needed for
+QEMU bring-up: controller and namespace identification, queue creation, and
+basic read, write, and flush operations. It is not a claim of NVMe 1.4
+compliance. It receives an \texttt{MmioRegion} capability covering the
 controller's BAR0 register window and an \texttt{Interrupt} capability for I/O
-completion signalling. It never names a physical address or interrupt vector
---- both arrive through the config-page contract.
+completion signalling. The service calls \texttt{memory\_get\_phys} for DMA
+buffers; BAR and interrupt routing are prepared by the kernel and delivered
+through the bootstrap contract.
 
 \subsection{Initialisation}
 
@@ -120,14 +124,15 @@ device consumers and drivers:
 \hline
 \end{longtable}
 
-The protocol is transport-agnostic: the same interface works for NVMe, AHCI,
-virtio-blk, or a ramdisk. Consumers speak \texttt{OP\_READ}/\texttt{OP\_WRITE}
-without knowing the underlying hardware.
+The protocol is device-independent: consumers speak
+\texttt{OP\_READ}/\texttt{OP\_WRITE} without knowing the underlying hardware.
+Only the NVMe implementation is currently present; AHCI, virtio-blk, ramdisk,
+and network block drivers would require separate implementations.
 
 \section{Object store}
 
-The persistent object store (\texttt{charlotte-protocol-objstore}) provides
-crash-safe, dynamically-sized blob storage on top of a block device. Objects
+The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
+provides dynamically-sized blob storage on top of a block device. Objects
 are identified by 64-bit monotonically-increasing IDs.
 
 \subsection{On-disk layout}
@@ -140,11 +145,12 @@ LBA 2--33: object directory (512 entries × 32 bytes:
 LBA 34+:   data extents (linked list of blocks per object)
 \end{verbatim}
 
-\subsection{Crash safety}
+\subsection{Crash-safety design}
 
-New data extents are written to disk first, then the directory entry's
-\texttt{first\_extent\_lba} pointer is updated atomically (a single-block
-write). If a crash occurs between writing the extent and updating the
+The intended update protocol writes new data extents first, then updates the
+directory entry's \texttt{first\_extent\_lba} pointer with a single-block
+write. This assumes that the device provides the required atomicity and
+ordering after a flush. If a crash occurs between writing the extent and updating the
 directory, the orphaned blocks are unreachable but the object reverts
 consistently to its previous state. No journal, no double-writes --- the
 pointer swap is the commit.
@@ -202,19 +208,19 @@ python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /raft/state
 \section{Why this matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Zero kernel code in the storage path.} A bug in the NVMe
+    \item \textbf{Storage policy lives in userspace.} A bug in the NVMe
         driver, the object store, or the filesystem corrupts that service's
         address space, not the kernel. The kernel grants MMIO and interrupts;
         everything else is userspace.
 
-    \item \textbf{Transport independence.} The block protocol abstracts the
-        hardware. The same object store and filesystem work over NVMe, AHCI,
-        virtio-blk, or a network block device --- the kernel does not need to
-        know which.
+    \item \textbf{Device-independent protocol.} The block protocol is intended
+        to let the object store and filesystem work over other block drivers.
+        Those alternative drivers have not yet been implemented.
 
-    \item \textbf{Crash-safe by construction.} The object store's atomic
-        pointer-swap commit eliminates the need for journaling at the storage
-        layer. A crash during a write leaves the previous version intact.
+    \item \textbf{Crash-safety mechanism under development.} The pointer-swap
+        design aims to preserve the previous version across an interrupted
+        write. Power-loss testing and validation of device atomicity and flush
+        ordering are still required.
 
     \item \textbf{Capability-based access.} A client that holds a connection to
         \texttt{"blk0"} can read and write blocks. A client that does not hold

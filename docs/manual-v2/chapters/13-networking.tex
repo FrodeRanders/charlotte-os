@@ -39,6 +39,12 @@ foundation for a capability-based microkernel:
 CharlotteOS replaces all of this with a layered model where each layer has a
 single responsibility.
 
+The stack below is the target architecture. The current repository contains a
+userspace virtio-net driver, a smoltcp adapter, a TCP/IP service, and a local
+reliable-message prototype. The NIC/TCP path has compile-time coverage but has
+not been runtime-validated on the present macOS/HVF development setup, and
+remote capability RPC is not yet implemented.
+
 \section{The native protocol stack}
 
 \begin{verbatim}
@@ -123,8 +129,8 @@ detail.
 
 \section{TCP/IP as a compatibility service}
 
-TCP/IP remains fully supported --- as a userspace compatibility service, not the
-native programming model. A smoltcp adapter implements the \texttt{phy::Device}
+TCP/IP is intended to be supported as a userspace compatibility service, not
+the native programming model. A smoltcp adapter implements the \texttt{phy::Device}
 trait over the NIC driver endpoint:
 
 \begin{verbatim}
@@ -138,14 +144,15 @@ fn transmit(&mut self, now: Instant) -> Option<...> {
 }
 \end{verbatim}
 
-The TCP/IP stack itself --- a standard smoltcp 0.13 instance --- needs no
-modification. It is wrapped in a userspace service that registers as
+The TCP/IP stack itself uses smoltcp 0.13. It is wrapped in a userspace service
+that is intended to register as
 \texttt{"tcpip"} and serves clients through endpoint IPC. Legacy software
 that requires TCP/IP connects to this service.
 
 \section{Transport independence}
 
-The reliable message layer is transport-agnostic. It can run over:
+The reliable-message interface is designed to be transport-agnostic. Candidate
+transports include:
 
 \begin{itemize}
     \item \textbf{Ethernet} --- for inter-machine communication.
@@ -158,13 +165,14 @@ The reliable message layer is transport-agnostic. It can run over:
         systems.
 \end{itemize}
 
-The RPC layer and everything above it are unchanged regardless of the transport.
+The intended RPC layer and everything above it should remain unchanged across
+transports.
 This is the same principle that makes local IPC transparent to the application
 when it moves from same-process to same-machine to different-machine.
 
 \section{Zero-copy networking}
 
-The network stack avoids copying whenever possible:
+The intended network stack avoids copying whenever practical:
 
 \begin{itemize}
     \item \textbf{Receive path:} the NIC driver receives a buffer from hardware.
@@ -177,7 +185,8 @@ The network stack avoids copying whenever possible:
         application's pages.
     \item \textbf{Buffer recycling:} after the application consumes a received
         buffer, it returns the (now empty) memory object to the driver's RX pool.
-        The driver re-pins it for DMA and the cycle repeats.
+        The driver reuses it for DMA and the cycle repeats. IOMMU-backed pinning
+        is not yet implemented.
 \end{itemize}
 
 This is the memory-object transfer model (Chapter~6) applied to networking.
@@ -191,8 +200,9 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
         \begin{itemize}
             \item Services can be relocated without application changes.
             \item Testing can substitute a local mock for a remote service.
-            \item The network boundary is not a source of bugs that only
-                appear in production.
+            \item A common interface can reduce environment-specific application
+                code, although the network boundary still introduces failures
+                absent from local IPC.
         \end{itemize}
 
     \item \textbf{Capability-based, not address-based.} An application invokes
@@ -201,15 +211,15 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
         reach the network cannot fabricate a connection to a service it was
         not granted.
 
-    \item \textbf{Zero-copy without loss of safety.} Pages move by changing
-        ownership, not by copying. The MMU (and IOMMU) enforce that the sender
-        cannot access moved data. This is faster than a socket and safer than
-        shared memory.
+    \item \textbf{Copy avoidance is a design goal.} Page ownership transfer can
+        avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
+        isolation awaits IOMMU/SMMU support. No performance comparison with
+        sockets has yet been established.
 
     \item \textbf{Message boundaries are preserved.} The native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no
-        need for framing protocols on top of TCP streams. This simplifies
-        protocol implementations and eliminates framing bugs.
+        need for an additional stream-framing layer. This can simplify protocol
+        implementations, but does not eliminate parsing or framing defects.
 
     \item \textbf{TCP/IP is available but not mandatory.} Legacy software
         connects to the TCP/IP service. Native software uses the capability-based

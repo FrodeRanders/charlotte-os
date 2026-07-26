@@ -73,10 +73,10 @@ systems, hope is a poor strategy.
 
 \section{Why Rust ownership is not enough}
 
-Rust's type system eliminates data races, use-after-free, and null-pointer
-dereferences at compile time. This is a transformative improvement for systems
-programming, but Rust programs still run on operating systems that do not share
-Rust's ownership discipline.
+Safe Rust prevents many data races, use-after-free errors, and null-pointer
+dereferences. Unsafe code, hardware interfaces, and logic errors remain. This
+is still a transformative improvement for systems programming, but Rust
+programs run on operating systems that do not share Rust's ownership discipline.
 
 \begin{itemize}
     \item A Rust program cannot protect itself from a C driver that

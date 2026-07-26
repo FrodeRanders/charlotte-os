@@ -6,6 +6,12 @@ service}: a replicated state machine exported through the same endpoint IPC
 that local services use. This chapter explains the architecture and why it is
 a natural fit.
 
+The implemented scope is narrower than the architecture described below:
+a two-node leader election runs over local endpoint IPC under AArch64 QEMU.
+Cross-machine transport, replicated client commands, membership changes,
+snapshots, durable recovery, and a replicated name service are not yet
+validated end to end.
+
 \section{Raft as a capability service}
 
 The Raft consensus protocol provides a replicated, fault-tolerant state machine
@@ -46,7 +52,7 @@ The CharlotteOS implementation of this trait uses endpoint IPC. A future
 implementation could use the reliable message layer for cross-machine
 communication --- the consensus core would not change.
 
-\section{Why this is better than socket-based Raft}
+\section{Intended properties relative to socket-based Raft}
 
 \subsection{Authority, not addresses}
 
@@ -221,7 +227,7 @@ task. No polling loop, no thread dedicated to sleeping.
 \section{Why consensus as a service matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Consistency primitives are OS-level, not library-level.}
+    \item \textbf{Consistency primitives can be exposed as OS services.}
         A service that needs replication does not integrate a Raft library and
         manage its own sockets, timers, and persistent storage. It implements
         \texttt{StateMachine} and the OS handles the rest.
@@ -234,15 +240,15 @@ task. No polling loop, no thread dedicated to sleeping.
     \item \textbf{Timers are first-class and reliable.} An election timeout
         that is lost because the polling loop missed its window is a correctness
         bug (it can cause spurious leader changes or extended unavailability).
-        Kernel-managed timers delivered through the non-lossy CQ guarantee
-        delivery.
+        Kernel-managed timers use the non-lossy CQ delivery path exercised by
+        the local-election test.
 
-    \item \textbf{Failure isolation extends to the consensus layer.} A Raft
+    \item \textbf{Failure isolation can extend to the consensus layer.} A Raft
         node is a userspace process. It can crash, restart, and recover without
         affecting the kernel or other Raft nodes. The supervisor handles the
         lifecycle; the Raft protocol handles the consensus.
 
-    \item \textbf{The distributed name service is a natural extension.} Once
+    \item \textbf{A distributed name service is a possible extension.} Once
         Raft is available as a service, all other services that need
         cluster-wide consistency (name service, lock service, configuration)
         are StateMachine implementations on the same substrate. There is one

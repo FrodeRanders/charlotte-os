@@ -59,9 +59,11 @@ authoritative record.
 \section{Verified (boots on QEMU, zero panics)}
 
 \begin{itemize}
-    \item \textbf{AArch64:} boots, all self-tests pass, the full EL0 service
-        suite (name service, echo, client, UART driver, sitas executor) runs
-        through \texttt{crt0/cmain}. The sitas \texttt{basic\_kv} binary runs
+    \item \textbf{AArch64:} boots and the synchronous self-tests pass. The EL0
+        service suite (name service, echo, client, UART driver, sitas executor)
+        is exercised by deferred boot tests through \texttt{crt0/cmain}; the
+        harness may print its synchronous success banner before those deferred
+        tests finish. The sitas \texttt{basic\_kv} binary runs
         with 2 shards on per-shard CQ rings.
 
     \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
@@ -84,8 +86,9 @@ authoritative record.
         delegated MMIO + IRQ, interrupt-driven deferred reads, crash-test
         restart with device reset and operation reconciliation.
 
-    \item \textbf{Syscall dispatch:} AArch64 SVC handler dispatches 49 syscalls.
-        Caller ASID is derived from the trap frame, never a userspace parameter.
+    \item \textbf{Syscall dispatch:} AArch64 SVC dispatch uses the shared,
+        56-variant \texttt{SyscallNumber} enum. Caller ASID is derived from the
+        trap frame, never a userspace parameter.
 
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
         idempotent wakes, deferred reaper, per-LP thread pinning.
@@ -125,6 +128,11 @@ authoritative record.
     \item \textbf{Cross-machine Raft:} blocked on NIC runtime validation (KVM)
         and the reliable message layer implementation.
     \item \textbf{IOMMU/SMMU integration:} designed but not implemented.
+    \item \textbf{Live upgrade:} the kernel-side reference handoff is tested,
+        but the EL0 service manager cannot yet spawn the replacement domain
+        without kernel/self-test assistance.
+    \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
+        the non-lossy CQ overflow backlog has no hard memory bound.
 \end{itemize}
 
 \endinput

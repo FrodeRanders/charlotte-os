@@ -142,10 +142,11 @@ This conservative approach preserves cache warmth and eliminates migration races
 where the waiter was registered). Stable affinity is the correctness default where
 migration is the performance optimization.
 
-\section{Backpressure --- bounded queues at every layer}
+\section{Backpressure and queue bounds}
 
-Backpressure is a design principle. Every queue in CharlotteOS is bounded, and 
-every sender must handle \texttt{WouldBlock}:
+Backpressure is a design principle. Endpoint and hardware rings are bounded,
+but not every internal queue currently has a hard memory bound. In particular,
+the non-lossy CQ overflow backlog may grow until its consumer drains it.
 
 \begin{center}
 \begin{tabular}{|l|l|l|}
@@ -182,8 +183,9 @@ Rules:
         signals before the consumer wakes become one.
     \item \textbf{Control messages normally fail or wait explicitly.} A service
         registration request that cannot be queued fails with \texttt{QueueFull}.
-    \item \textbf{Data-plane producers stop before unbounded allocation.} A NIC
-        driver stops accepting TX packets when its descriptor ring is full.
+    \item \textbf{Data-plane producers should stop before unbounded allocation.}
+        A NIC driver should stop accepting TX packets when its descriptor ring
+        is full.
     \item \textbf{Emergency paths require reserved capacity.} The bounded IPI
         queue reserves slots for mandatory kernel messages (TLB shootdowns,
         scheduler commands), ensuring they cannot be starved by user work.
@@ -192,20 +194,21 @@ Rules:
 \section{Why scheduling and backpressure matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{The block-yield-wake cycle is proven correct.} The same
+    \item \textbf{The block-yield-wake cycle is exercised across subsystems.} The same
         mechanism handles sleep, IPC wait, CQ wait, and timer wait. A bug fixed
         in one path fixes all paths. The cycle is exercised by the async demo and
-        by every self-test that calls \texttt{wait()}.
+        by self-tests that call \texttt{wait()}; this is test evidence, not a
+        formal proof.
 
     \item \textbf{Idempotent wakes eliminate lost-wake races.} Re-waking an
         already-ready thread is a no-op. This means the kernel can be aggressive
         about delivering wakes without worrying about double-delivery.
 
-    \item \textbf{Bounded queues prevent resource exhaustion.} An attacker
-        (or a buggy service) cannot exhaust kernel memory by sending an unbounded
-        number of messages. Every queue has a fixed capacity; every sender must
-        handle \texttt{WouldBlock}. The system degrades gracefully --- requests
-        are rejected with backpressure, not with an out-of-memory panic.
+    \item \textbf{Bounded ingress limits some exhaustion paths.} Endpoint and
+        descriptor-ring capacities reject excess work with backpressure.
+        Resource quotas and a hard bound for all completion backlog memory are
+        not yet implemented, so this is not a general denial-of-service
+        guarantee.
 
     \item \textbf{Stable LP affinity prevents migration races.} Completion
         delivery is LP-local. A waker registered on LP 2 is signaled on LP 2.

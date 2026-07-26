@@ -157,36 +157,39 @@ When a device performs DMA, a memory object enters a third ownership state:
     \item \textbf{Rust/API ownership:} which domain holds the capability.
 \end{itemize}
 
-The kernel tracks DMA state per memory object. A domain that submits a memory
-object for DMA loses CPU access until the operation completes. The IOMMU/SMMU
-extends capability enforcement to DMA transactions: a device can only access
-memory objects explicitly pinned into its DMA domain.
+The architecture calls for tracking DMA state per memory object and removing
+CPU access while a device owns a buffer. The current prototype exposes physical
+addresses to trusted userspace drivers and does not yet implement IOMMU/SMMU
+isolation. Consequently, capability isolation does not currently constrain a
+misbehaving DMA-capable device or driver.
 
 \section{Why memory objects matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Zero-copy without loss of safety.} Pages move by changing
-        mappings, not by copying bytes. This is faster than a copy and safer
-        than shared memory.
+    \item \textbf{Page transfer without payload copying.} For aligned,
+        page-backed objects, ownership can move by changing mappings rather than
+        copying bytes. Whether this is faster depends on payload size and
+        mapping/TLB costs.
 
-    \item \textbf{Use-after-free is structurally impossible across boundaries.}
+    \item \textbf{Cross-domain stale access is constrained by mappings.}
         When a memory object is moved, the sender's mappings are removed. Any
-        access faults. When a borrow is revoked, the borrower's mappings are
-        removed. There is no window for a stale reference.
+        later access through those mappings faults. When a borrow is revoked,
+        the borrower's mappings are removed. This does not rule out bugs in
+        unsafe code, page-table maintenance, or DMA.
 
     \item \textbf{Borrows have defined lifetimes.} A borrow is always tied to an
         IPC call. When the call completes (reply, cancellation, timeout, or
         server death), the borrow ends. There is no ``I forgot to return it.''
 
-    \item \textbf{DMA is tracked explicitly.} The kernel knows whether a memory
-        object is currently owned by the CPU or a device. It will not allow one
-        to be freed while the other is using it. This prevents the class of bugs
-        where a driver frees a DMA buffer before the device finishes writing.
+    \item \textbf{DMA ownership is an architectural requirement.} Full
+        kernel-tracked pinning and IOMMU enforcement remain future work; current
+        drivers are trusted to retain buffers until hardware completion.
 
     \item \textbf{Hardware enforcement, not language enforcement.} The page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
-        bug can access pages that are not mapped. The trust boundary is
-        architectural.
+        bug should access CPU pages that are not mapped, assuming correct MMU
+        setup and TLB maintenance. DMA requires the not-yet-implemented IOMMU
+        path for an equivalent boundary.
 \end{enumerate}
 
 \endinput
