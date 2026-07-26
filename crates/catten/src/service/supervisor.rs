@@ -66,6 +66,14 @@ pub(crate) static LIVE_NS: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+/// ASID authorized to invoke the privileged live-upgrade syscall.
+///
+/// This is assigned only by `spawn_service_manager`; merely registering the
+/// name "svcmgr" does not grant process-creation authority.
+pub(crate) static LIVE_UPGRADE_MANAGER_ASID: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceId>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
 fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
@@ -130,6 +138,13 @@ pub fn spawn_with_name_service(
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_manifest(loaded.config_frame, &[]);
     start_domain(loaded)
+}
+
+/// Spawn the single userspace service manager and grant it upgrade authority.
+pub fn spawn_service_manager(image: &[u8], name_service: &NameServiceHandle) -> ServiceDomain {
+    let domain = spawn_with_name_service(image, name_service, ConnectionRights::CALL);
+    *LIVE_UPGRADE_MANAGER_ASID.lock() = Some(domain.asid);
+    domain
 }
 
 /// The device authority a driver manager grants to a driver protection
@@ -232,6 +247,10 @@ pub fn teardown_domain(domain: ServiceDomain) {
         "[supervisor] refusing to tear down a domain whose thread still runs"
     );
     close_user_address_space(domain.asid).expect("[supervisor] address-space close failed");
+    let mut manager = LIVE_UPGRADE_MANAGER_ASID.lock();
+    if *manager == Some(domain.asid) {
+        *manager = None;
+    }
 }
 
 /// Load and start a replacement service domain, handing it the old

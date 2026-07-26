@@ -128,9 +128,10 @@ authoritative record.
     \item \textbf{Cross-machine Raft:} blocked on NIC runtime validation (KVM)
         and the reliable message layer implementation.
     \item \textbf{IOMMU/SMMU integration:} designed but not implemented.
-    \item \textbf{Live upgrade:} the kernel-side reference handoff is tested,
-        but the EL0 service manager cannot yet spawn the replacement domain
-        without kernel/self-test assistance.
+    \item \textbf{Live upgrade:} the EL0 service manager performs handoff and
+        invokes the capability-checked replacement-domain spawn path for the
+        embedded echo image. General image capabilities, multiple state
+        objects, and manager-owned teardown remain future work.
     \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
         the non-lossy CQ overflow backlog has no hard memory bound.
 \end{itemize}

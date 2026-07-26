@@ -34,7 +34,8 @@ service:
         initial capabilities to the config page before a domain starts. For a
         live upgrade, the bootstrap contract is extended: in addition to the
         name service connection, the new domain receives the old service's
-        state (as memory objects) and the old service's endpoint capability.
+        state as a memory object. The current reference replacement creates and
+        registers a fresh endpoint.
 \end{enumerate}
 
 \section{The handoff protocol}
@@ -54,7 +55,6 @@ service:
           |                    |  bootstrap:       |
           |                    |    ns_connection  |
           |                    |    state_memory   |
-          |                    |    endpoint_cap   |
           |                    |                   |
           |                    |         new service reads state,
           |                    |         takes over endpoint,
@@ -71,17 +71,16 @@ mutable state into memory objects, moves those objects to the supervisor's
 address space, and replies ``ready'' before exiting.
 
 The supervisor then spawns the new service instance with an extended bootstrap
-contract: the name service connection, the handoff state memory objects, and
-the old service's endpoint capability. The new service deserialises the state,
-takes over the endpoint, and re-registers under the same name. The name
-service bumps the generation, invalidating all stale client connections.
+contract containing the name service connection and handoff state. The new
+service deserialises the state, creates a fresh endpoint, and re-registers under
+the same name. The name service bumps the generation. Teardown of the stopped
+old domain invalidates its stale client connections.
 
 \section{What the supervisor prototype provides}
 
 \begin{verbatim}
 pub struct UpgradeGrant {
     pub state_caps: Vec<MemoryObjectCap>,
-    pub endpoint_cap: CapabilityId,
 }
 
 pub fn spawn_upgrade(
@@ -92,13 +91,14 @@ pub fn spawn_upgrade(
 ) -> ServiceDomain;
 \end{verbatim}
 
-\texttt{spawn\_upgrade} is currently a kernel-side supervisor operation used by
-the self-test. It loads the new service ELF, moves the state memory
-objects to the new domain, delegates the old endpoint cap to the new domain,
-writes the extended bootstrap config page, starts the new domain, and tears
-down the old domain. The EL0 service manager can orchestrate
-\texttt{OP\_HANDOFF}, but it cannot yet spawn the replacement domain without
-kernel/self-test assistance.
+\texttt{spawn\_upgrade} is a privileged kernel operation invoked by the
+userspace service manager. It validates that the manager holds a callable
+connection to the target, loads the new service ELF, moves the state memory
+object to the new domain, writes the bootstrap config page, and starts the new
+domain. The replacement registers a fresh endpoint and the name service advances
+its generation. The current reference path supports the embedded echo image and
+one state object. General image capabilities, multiple state objects, and
+manager-owned teardown remain future work.
 
 \section{What the service must implement}
 
@@ -121,10 +121,9 @@ fn main(ctx: Context) -> ! {
     let ns_connection = ctx.bootstrap_cap();
     let state_count = ctx.handoff_count();
     let state = ctx.handoff_state_cap();
-    let endpoint = ctx.handoff_endpoint_cap();
 
-    // Deserialize state, register the endpoint under the
-    // same name (NS bumps generation), start serving.
+    // Deserialize state, create and register a fresh endpoint
+    // under the same name (NS bumps generation), start serving.
 }
 \end{verbatim}
 

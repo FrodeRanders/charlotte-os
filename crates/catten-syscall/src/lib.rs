@@ -312,6 +312,7 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
             36 => asm!("svc #36", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             37 => asm!("svc #37", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             38 => asm!("svc #38", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
+            50 => asm!("svc #50", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             51 => asm!("svc #51", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             52 => asm!("svc #52", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc4 emitter", imm),
@@ -327,7 +328,6 @@ unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, a
     unsafe {
         match imm as u16 {
             39 => asm!("svc #39", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, options(nostack, nomem, preserves_flags)),
-            50 => asm!("svc #50", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc5 emitter", imm),
         }
     }
@@ -1035,15 +1035,18 @@ pub fn memory_get_phys(cap: u64) -> u64 {
 }
 
 /// Request the supervisor to spawn a replacement domain (syscall 50).
-/// elf_selector (0=echo), state_cap (0=none), endpoint_cap (0=none).
+/// `elf_selector` selects an embedded replacement image (currently 0=echo),
+/// `state_cap` is moved to the replacement, and `target_connection` proves
+/// that the authorized service manager can address the service being replaced.
 /// Returns the new domain's ASID or 0 on failure.
 ///
 /// # Safety
-/// The `state_cap` must be valid memory-object capabilities, and
-/// `endpoint_cap` must be a valid endpoint owned by the caller.
+/// `state_cap` must be a valid transferable memory-object capability and
+/// `target_connection` must be a live callable connection held by the
+/// authorized service-manager domain.
 #[inline(always)]
-pub unsafe fn spawn_upgrade(elf_selector: u64, state_cap: u64, endpoint_cap: u64) -> u64 {
-    unsafe { svc4(SyscallNumber::SpawnUpgrade, 0, elf_selector, state_cap, endpoint_cap) }
+pub unsafe fn spawn_upgrade(elf_selector: u64, state_cap: u64, target_connection: u64) -> u64 {
+    unsafe { svc4(SyscallNumber::SpawnUpgrade, 0, elf_selector, state_cap, target_connection) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.

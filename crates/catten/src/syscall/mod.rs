@@ -1222,7 +1222,20 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     let elf_selector = frame.regs[2];
     let state_cap = frame.regs[3];
-    let _endpoint_cap = frame.regs[4];
+    let target_connection = frame.regs[4];
+
+    if *crate::service::supervisor::LIVE_UPGRADE_MANAGER_ASID.lock() != Some(caller_asid) {
+        frame.regs[0] = 0;
+        return;
+    }
+    let _old_service_asid =
+        match crate::ipc::connection_endpoint_owner(caller_asid, target_connection) {
+            Ok(asid) => asid,
+            Err(_) => {
+                frame.regs[0] = 0;
+                return;
+            }
+        };
 
     let elf = match crate::service::supervisor::elf_for_selector(elf_selector) {
         Some(image) => image,
@@ -1232,15 +1245,14 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         }
     };
 
-    let loaded = crate::service::loader::load_domain(elf);
-    let ns_guard = crate::service::supervisor::LIVE_NS.lock();
-    let ns_handle = match ns_guard.as_ref() {
-        Some(h) => h,
+    let ns_handle = match *crate::service::supervisor::LIVE_NS.lock() {
+        Some(handle) => handle,
         None => {
             frame.regs[0] = 0;
             return;
         }
     };
+    let loaded = crate::service::loader::load_domain(elf);
 
     // Delegate a bootstrap connection from the name service to the new domain.
     let bootstrap_conn = match crate::ipc::connection_delegate(
@@ -1251,6 +1263,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     ) {
         Ok(cap) => cap,
         Err(_) => {
+            let _ = crate::memory::close_user_address_space(loaded.asid);
             frame.regs[0] = 0;
             return;
         }
@@ -1258,10 +1271,19 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
     crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
 
-    // Move the state cap from the caller to the new domain.
+    // Move the state cap from the caller to the new domain. Capability ids are
+    // address-space local, so publish the id returned by move_to, not the
+    // manager's now-invalid source id.
     if state_cap != 0 {
-        let _ = crate::memory::object::move_to(caller_asid, state_cap, loaded.asid);
-        crate::service::bootstrap::write_handoff_state(loaded.config_frame, 1, state_cap, 0);
+        let moved_cap = match crate::memory::object::move_to(caller_asid, state_cap, loaded.asid) {
+            Ok(cap) => cap,
+            Err(_) => {
+                let _ = crate::memory::close_user_address_space(loaded.asid);
+                frame.regs[0] = 0;
+                return;
+            }
+        };
+        crate::service::bootstrap::write_handoff_state(loaded.config_frame, 1, moved_cap, 0);
     }
 
     // Start the replacement domain.

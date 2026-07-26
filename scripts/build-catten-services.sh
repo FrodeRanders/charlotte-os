@@ -24,7 +24,7 @@ OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
     cargo clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
-    rm -f crates/catten/src/self_test/{ns,echo,client,uart,cclient,raft,nvme,nvme_client,objstore,fs}.elf
+    rm -f crates/catten/src/self_test/{ns,echo,client,uart,cclient,servicemgr,raft,nvme,nvme_client,objstore,fs}.elf
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
@@ -32,14 +32,14 @@ cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
     --release -Z build-std=core,alloc
 
 if [ "$MODE" = "embed" ]; then
-    for service in ns echo client uart cclient raft nvme nvme_client objstore fs; do
+    for service in ns echo client uart cclient servicemgr raft nvme nvme_client objstore fs; do
         install -m 0755 "$OUTPUT/$service" \
             "crates/catten/src/self_test/$service.elf"
     done
-    echo ">>> Refreshed embedded service bundle (ns, echo, client, uart, cclient, raft)."
+    echo ">>> Refreshed embedded EL0 service bundle."
 elif [ "$MODE" = "check" ]; then
     stale=0
-    for service in ns echo client uart cclient raft nvme nvme_client objstore fs; do
+    for service in ns echo client uart cclient servicemgr raft nvme nvme_client objstore fs; do
         if ! cmp -s "$OUTPUT/$service" \
             "crates/catten/src/self_test/$service.elf"; then
             echo "error: embedded $service.elf is stale" >&2

@@ -108,6 +108,17 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 6); // stage: registered and event-driven, serving
 
     let mut served: u32 = 0;
+    let handoff_state = ctx.handoff_state_cap();
+    if handoff_state != 0 {
+        const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
+        if memory_map(handoff_state, STATE_VADDR, false) != 0 {
+            unsafe { thread_exit() };
+        }
+        served = unsafe { core::ptr::read_volatile(STATE_VADDR as *const u32) };
+        memory_unmap(handoff_state);
+        memory_close(handoff_state);
+        config::write::<u32>(8, served);
+    }
 
     loop {
         // 1. Block on the single wait point. Releases on endpoint readiness, kernel completions, or
@@ -159,13 +170,11 @@ fn main(ctx: Context) -> ! {
                             memory_unmap(state_cap);
                         }
                         if message.reply != 0 {
-                            // Encode the endpoint cap in the reply's result
-                            // so the supervisor can delegate it to the
-                            // replacement service. Upper 48 bits carry
-                            // the endpoint cap id; lower 16 bits carry
-                            // the served counter.
-                            let packed = (endpoint << 16) | (served as u64 & 0xffff);
-                            ipc_reply_move(message.reply, state_cap, packed as i64);
+                            // Capability ids are address-space-local and must
+                            // not be exported as scalar data. The manager's
+                            // existing connection proves which endpoint is
+                            // being upgraded; the scalar result is diagnostic.
+                            ipc_reply_move(message.reply, state_cap, served as i64);
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);

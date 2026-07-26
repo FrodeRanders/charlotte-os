@@ -15,6 +15,7 @@ build-el0-services:
     cp crates/catten-services/target/aarch64-unknown-none/release/client crates/catten/src/self_test/client.elf
     cp crates/catten-services/target/aarch64-unknown-none/release/uart crates/catten/src/self_test/uart.elf
     cp crates/catten-services/target/aarch64-unknown-none/release/cclient crates/catten/src/self_test/cclient.elf
+    cp crates/catten-services/target/aarch64-unknown-none/release/servicemgr crates/catten/src/self_test/servicemgr.elf
 
 image_dir := "./os-images"
 temp_mnt_dir := "~/temp-mnt"

@@ -2,16 +2,8 @@
 //!
 //! Bootstraps, registers as "svcmgr", and serves OP_UPGRADE requests.
 //! An upgrade drains the target service, receives its handoff state
-//! (memory objects + endpoint cap), records them in the config page, and
-//! notifies the kernel supervisor to spawn the replacement.
-//!
-//! ## Current prototype scope
-//!
-//! The orchestration through OP_HANDOFF is implemented.  The domain-spawn
-//! step is not yet exposed to EL0 (there is no SPAWN_DOMAIN syscall); the
-//! manager writes the handoff state to its config page and the kernel
-//! self-test verifier picks it up.  A future `SPAWN_DOMAIN` syscall or a
-//! supervisor endpoint would complete the EL0-only path.
+//! (memory object), then invokes the capability-checked kernel upgrade
+//! operation to load and start the replacement.
 #![no_std]
 #![no_main]
 
@@ -38,6 +30,7 @@ use catten_syscall::{
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
+    spawn_upgrade,
     thread_exit,
 };
 
@@ -157,7 +150,7 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
         return -2;
     }
 
-    let (state_cap, handoff_result) = {
+    let (state_cap, _handoff_result) = {
         let mut spins: u64 = 0;
         loop {
             let (status, result, _conn, mem) = ipc_reply_poll_with_memory(call);
@@ -179,20 +172,18 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
         return -4;
     }
 
-    // Decode the endpoint cap from the handoff result.
-    let ep_cap = handoff_result >> 16;
-
-    // Record the handoff state for the kernel supervisor/verifier.
+    // Record the handoff state for diagnostics, then ask the kernel
+    // supervisor to move it into and start the replacement echo image.
     config::write::<u64>(STATE_CAP_OFFSET, state_cap);
-    config::write::<u64>(ENDPOINT_CAP_OFFSET, ep_cap);
-    config::write::<u32>(STAGE_OFFSET, 4); // handoff complete, awaiting replacement
-
-    // The state cap is now in our address space.  The kernel verifier
-    // reads the cap ID from our config page and moves it to the
-    // replacement domain.  Do NOT close it here — the verifier needs it.
-    config::write::<u32>(STAGE_OFFSET, 5); // state delivered
-
-    0 // success
+    config::write::<u64>(ENDPOINT_CAP_OFFSET, target_conn);
+    config::write::<u32>(STAGE_OFFSET, 4);
+    let replacement_asid = unsafe { spawn_upgrade(0, state_cap, target_conn) };
+    if replacement_asid == 0 {
+        config::write::<u32>(ERROR_OFFSET, 5);
+        return -5;
+    }
+    config::write::<u32>(STAGE_OFFSET, 5);
+    replacement_asid as i64
 }
 
 catten_rt::entry!(main);

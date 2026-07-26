@@ -391,6 +391,35 @@ pub fn connection_delegate(
     }))
 }
 
+/// Resolve the owner of the endpoint named by a connection capability.
+///
+/// This is used by the kernel supervisor to bind an upgrade request to the
+/// service the requesting manager can actually call. The caller must hold a
+/// live connection with CALL authority; raw ASIDs supplied by userspace are
+/// never trusted.
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn connection_endpoint_owner(
+    caller: AddressSpaceId,
+    connection_cap: CapabilityId,
+) -> Result<AddressSpaceId, IpcError> {
+    let ipc = IPC.read();
+    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
+        Capability::Connection {
+            endpoint,
+            rights,
+        } => (endpoint, rights),
+        _ => return Err(IpcError::WrongType),
+    };
+    if !rights.contains(ConnectionRights::CALL) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.closed {
+        return Err(IpcError::EndpointClosed);
+    }
+    Ok(endpoint.owner)
+}
+
 /// Resolves a capability usable as a connection-minting source.
 ///
 /// Both endpoint caps and connection caps qualify, provided they carry
