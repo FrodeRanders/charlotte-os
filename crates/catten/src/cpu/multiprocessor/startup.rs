@@ -52,6 +52,8 @@ pub fn start_secondary_lps() -> Result<(), MpError> {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
+use core::sync::atomic::AtomicU64;
 use core::sync::atomic::{
     AtomicU32,
     Ordering,
@@ -61,9 +63,29 @@ use crate::cpu::isa::lp::ops::*;
 
 pub static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
+#[cfg(target_arch = "aarch64")]
+const MAX_TRACKED_LPS: usize = 256;
+#[cfg(target_arch = "aarch64")]
+const UNKNOWN_MPIDR: u64 = u64::MAX;
+/// Hardware affinity indexed by Charlotte's scheduler-local LP id.
+///
+/// Secondary processors enter concurrently, so their logical ids need not
+/// match MPIDR.Aff0. GIC routing must translate rather than assume equality.
+#[cfg(target_arch = "aarch64")]
+static LP_MPIDRS: [AtomicU64; MAX_TRACKED_LPS] =
+    [const { AtomicU64::new(UNKNOWN_MPIDR) }; MAX_TRACKED_LPS];
+
+#[cfg(target_arch = "aarch64")]
+pub fn mpidr_for_lp(lp_id: crate::cpu::isa::lp::LpId) -> Option<u64> {
+    let value = LP_MPIDRS.get(lp_id as usize)?.load(Ordering::Acquire);
+    (value != UNKNOWN_MPIDR).then_some(value)
+}
+
 pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     store_lp_id(lp_id);
+    #[cfg(target_arch = "aarch64")]
+    LP_MPIDRS[lp_id as usize].store(mpidr(), Ordering::Release);
     if lp_id == 0 {
         early_logln!(
             "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",

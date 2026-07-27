@@ -273,12 +273,11 @@ impl LocalIntCtlrIfce for GicV3 {
     /// Send a unicast IPI to `target_lp` by generating the SGI whose INTID is
     /// `target_vector` through `ICC_SGI1R_EL1`.
     ///
-    /// The target is addressed by affinity: the Aff1-Aff3 fields are derived
-    /// from the target LP's MPIDR, and Aff0 is represented as a single-bit
-    /// in the TargetList. On a standard QEMU `virt` machine with `-smp 2`,
-    /// the MPIDRs are `0x80000000` (LP0) and `0x80000001` (LP1), so this
-    /// reduces to `(1 << lp_id)`, but the full encoding works for any
-    /// cluster/socket layout.
+    /// The scheduler-local LP id is translated through the MPIDR recorded
+    /// during startup. Aff1-Aff3 select the target cluster and Aff0 is
+    /// represented as a single bit in TargetList. This translation matters
+    /// because secondary processors can acquire logical ids in a different
+    /// order from their hardware affinities.
     ///
     /// Cross-core SGI delivery is exercised by the SMP2 boot gate: kernel
     /// ShardMailbox fan-out, EL0 cross-LP completion, and EL0 ping-pong all
@@ -288,10 +287,22 @@ impl LocalIntCtlrIfce for GicV3 {
         if target_vector > 15 {
             return Err(Error::InvalidLpId);
         }
-        let aff0 = target_lp & 0xff;
+        let mpidr =
+            crate::cpu::multiprocessor::startup::mpidr_for_lp(target_lp).ok_or(Error::InvalidLpId)?;
+        let aff0 = mpidr & 0xff;
+        let aff1 = (mpidr >> 8) & 0xff;
+        let aff2 = (mpidr >> 16) & 0xff;
+        let aff3 = (mpidr >> 32) & 0xff;
         // ICC_SGI1R_EL1 layout: INTID in bits [27:24], TargetList in [15:0]
         // (a bitmask of affinity-0 values within the addressed cluster).
-        let sgi1r: u64 = ((target_vector as u64 & 0xf) << 24) | (1u64 << (aff0 as u64));
+        if aff0 >= 16 {
+            return Err(Error::InvalidLpId);
+        }
+        let sgi1r: u64 = (aff3 << 48)
+            | (aff2 << 32)
+            | ((target_vector as u64 & 0xf) << 24)
+            | (aff1 << 16)
+            | (1u64 << aff0);
         unsafe {
             asm!("dsb ishst", options(nomem, nostack, preserves_flags));
             asm!("msr ICC_SGI1R_EL1, {}", in(reg) sgi1r, options(nomem, nostack, preserves_flags));
@@ -454,9 +465,13 @@ pub fn enable_spi(intid: u32, target_lp: LpId) {
         mmio_write32(GICD_BASE, GICD_IGROUPR + word * 4, group);
         // Runnable priority (numerically below the PMR threshold).
         mmio_write8(GICD_BASE, GICD_IPRIORITYR + intid as usize, DEFAULT_PRIORITY);
-        // Affinity routing (ARE_NS): deliver to a specific PE. For the QEMU
-        // `virt` layout Aff0 is the LP id and the higher affinities are 0.
-        mmio_write64(GICD_BASE, GICD_IROUTER + intid as usize * 8, (target_lp as u64) & 0xff);
+        // Affinity routing (ARE_NS): translate the scheduler's logical LP id
+        // to the PE's MPIDR affinity. AP startup order is nondeterministic, so
+        // LP ids and Aff0 values are not interchangeable.
+        let mpidr = crate::cpu::multiprocessor::startup::mpidr_for_lp(target_lp)
+            .expect("SPI target LP has no registered MPIDR");
+        let affinity = mpidr & 0x0000_00ff_00ff_ffff;
+        mmio_write64(GICD_BASE, GICD_IROUTER + intid as usize * 8, affinity);
         // Ensure the routing/config writes are observable before enabling.
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
         mmio_write32(GICD_BASE, GICD_ISENABLER + word * 4, 1 << bit);
@@ -483,6 +498,32 @@ pub fn set_spi_pending(intid: u32) {
     unsafe {
         mmio_write32(GICD_BASE, GICD_ISPENDR + word * 4, 1 << bit);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
+    }
+}
+
+/// Configure a synthetic SPI as edge-triggered.
+///
+/// This is used by the device-capability self-test, whose interrupt source is
+/// a write to `GICD_ISPENDR` rather than a physical level held by a device.
+/// Treating that source as level-triggered makes delivery dependent on
+/// implementation-specific emulation of a level that does not actually
+/// exist. Disable the source while changing `ICFGR`, as required by the GIC
+/// architecture, then re-enable it with its existing route.
+pub fn configure_synthetic_spi_edge(intid: u32) {
+    debug_assert!(intid >= FIRST_SPI, "synthetic interrupt must be an SPI");
+    ensure_distributor_mapped();
+    let enable_word = (intid / 32) as usize;
+    let enable_bit = intid % 32;
+    let cfg_word = (intid / 16) as usize;
+    let cfg_shift = (intid % 16) * 2;
+    unsafe {
+        mmio_write32(GICD_BASE, GICD_ICENABLER + enable_word * 4, 1 << enable_bit);
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+        let mut cfg = mmio_read32(GICD_BASE, GICD_ICFGR + cfg_word * 4);
+        cfg |= 0b10 << cfg_shift;
+        mmio_write32(GICD_BASE, GICD_ICFGR + cfg_word * 4, cfg);
+        asm!("dsb ish", options(nomem, nostack, preserves_flags));
+        mmio_write32(GICD_BASE, GICD_ISENABLER + enable_word * 4, 1 << enable_bit);
     }
 }
 

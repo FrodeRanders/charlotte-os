@@ -106,6 +106,10 @@ pub fn test_device_capabilities() {
 
         // --- Interrupt delivery to a completion queue ----------------------
         device::interrupt_bind_cq(DEV_ASID, irq, 0).expect("[device] interrupt_bind_cq failed");
+        // TEST_SPI has no physical line behind it: round 2 asserts it solely
+        // through GICD_ISPENDR. Model that synthetic source as an edge rather
+        // than relying on a nonexistent device to hold a level asserted.
+        crate::cpu::isa::interrupts::gic::configure_synthetic_spi_edge(TEST_SPI);
         assert_eq!(
             device::interrupt_bind_cq(DEV_ASID, irq, 0),
             Err(DeviceError::AlreadyBound),
@@ -219,13 +223,10 @@ extern "C" fn irq_driver() {
     let irq = IRQ_CAP.load(Ordering::Acquire);
     device_phase(10, irq, 0);
 
-    // Give the waiter a chance to block first; the fast path covers the case
-    // where it has not.
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
-
     // Round 1: simulate exactly what the IRQ dispatcher does for this INTID.
+    // Delivery is intentionally unordered with the waiter: CQ readiness and
+    // the pending count are persistent, so the wait fast path must cover an
+    // interrupt that arrives first.
     assert!(
         device::deliver_interrupt(TEST_SPI),
         "[device] deliver_interrupt must claim the bound INTID"
@@ -237,9 +238,6 @@ extern "C" fn irq_driver() {
     // Round 2: pend the SPI in the real GIC and let the hardware path deliver
     // it. The prior ack re-armed the source.
     ROUND2_START.store(1, Ordering::Release);
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
     let _ = irq; // cap consumed by the waiter; keep symmetry with round 1
     crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
     device_phase(13, irq, TEST_SPI as u64);

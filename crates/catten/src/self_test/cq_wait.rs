@@ -110,11 +110,10 @@ extern "C" fn cq_waiter() {
 }
 
 extern "C" fn cq_driver() {
-    // Give the waiter a chance to block first; the fast path covers the case
-    // where it has not.
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
+    // Deliberately do not order the driver behind the waiter. Every release
+    // condition is persistent (ring entry, work generation, or queued IPC),
+    // so this also exercises the wait fast path without depending on timer
+    // wakeups or an arbitrary scheduling delay.
     // Round 1: a capability-free operation completes and posts a CQ entry.
     let operation = completion::submit_detached(CQW_ASID, 0, OpCode::Nop, 0xd1)
         .expect("[cq wait] detached submit failed");
@@ -128,23 +127,14 @@ extern "C" fn cq_driver() {
     assert_eq!(completion::cq_pending(CQW_ASID, 0), 0);
 
     ROUND2_START.store(1, Ordering::Release);
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
     completion::wake(CQW_ASID, 0);
     spin_until(&ROUND2_RELEASED, "wake release");
 
     ROUND3_START.store(1, Ordering::Release);
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
     completion::wake(CQW_ASID, 1);
     spin_until(&ROUND3_RELEASED, "per-queue wake release");
 
     ROUND4_START.store(1, Ordering::Release);
-    for _ in 0..64 {
-        crate::cpu::scheduler::sleep_millis(1);
-    }
     let connection = SENDER_CONN.load(Ordering::Acquire);
     ipc::scalar_send(CQW_SENDER_ASID, connection, 0x77, 0x1234)
         .expect("[cq wait] endpoint readiness send failed");

@@ -50,6 +50,7 @@ extern "C" fn worker() {
     MASTER_THREAD_TABLE.write().get_mut(tid).expect("lifecycle worker vanished").migration_safe =
         false;
     let home = get_lp_id();
+    logln!("[scheduler lifecycle] worker tid={} running on LP{}", tid, home);
     for _ in 0..128 {
         sleep_millis(1);
         assert_eq!(get_lp_id(), home);
@@ -60,6 +61,7 @@ extern "C" fn worker() {
         drop(table);
         SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
     }
+    logln!("[scheduler lifecycle] worker tid={} completed on LP{}", tid, home);
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
         let migrations = REBALANCE_SUCCESSES.load(Ordering::Relaxed);
         if get_lp_count() > 1 {
