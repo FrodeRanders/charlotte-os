@@ -99,7 +99,7 @@ jobs:
     name: Test (${{ matrix.target }})
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -120,75 +120,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-arm mtools
 
-      - name: Build kernel
-        run: |
-          cargo build --package catten \
-            --target "target_specs/${{ matrix.target }}.json" \
-            --no-default-features --features acpi
-
-      - name: Boot QEMU (smp=1) and verify self-tests
-        run: |
-          set -euo pipefail
-          KERNEL="target/${{ matrix.target }}/debug/catten"
-          IMAGE="/tmp/catten-boot.img"
-          # Create bootable image
-          dd if=/dev/zero of="$IMAGE" bs=1M count=64 status=none
-          mformat -i "$IMAGE" -F -v CATOS ::
-          mmd -i "$IMAGE" ::/EFI
-          mmd -i "$IMAGE" ::/EFI/BOOT
-          mcopy -i "$IMAGE" limine-binary/BOOTAA64.EFI ::/EFI/BOOT/BOOTAA64.EFI
-          mcopy -i "$IMAGE" "$KERNEL" ::/catten
-          mcopy -i "$IMAGE" limine.conf ::/limine.conf
-          # Boot QEMU, capture serial output
-          qemu-system-aarch64 \
-            -M virt,gic-version=3 \
-            -cpu cortex-a710 \
-            -smp 1 \
-            -m 512M \
-            -bios /usr/share/AAVMF/AAVMF_CODE.fd \
-            -drive "if=none,file=$IMAGE,format=raw,id=drive0" \
-            -device virtio-blk-device,drive=drive0 \
-            -serial file:/tmp/serial.log \
-            -display none \
-            -no-reboot &
-          QPID=$!
-          required_markers=(
-            "[EL0] SUCCESS:"
-            "[raft] SUCCESS:"
-            "[EL0 IPC] SUCCESS:"
-            "[EL0 IPC block] SUCCESS:"
-            "[EL0 IPC cross-AS] SUCCESS:"
-            "[EL0 IPC memory] SUCCESS:"
-            "[EL0 IPC memory cancel] SUCCESS:"
-            "[EL0 IPC memory copy] SUCCESS:"
-            "[sitas] SUCCESS:"
-            "[service] SUCCESS:"
-            "[cq wait] SUCCESS:"
-            "[device] SUCCESS:"
-            "[uart] SUCCESS:"
-          )
-          all_markers_present() {
-            for marker in "${required_markers[@]}"; do
-              grep -Fq "$marker" /tmp/serial.log || return 1
-            done
-          }
-          # Wait up to 180s for all deferred verifiers to complete.
-          for i in $(seq 180); do
-            if all_markers_present 2>/dev/null; then
-              echo "=== ALL SELF-TESTS PASSED ==="
-              cat /tmp/serial.log
-              kill $QPID 2>/dev/null || true
-              exit 0
-            fi
-            if grep -q "panicked at" /tmp/serial.log 2>/dev/null; then
-              echo "=== TEST FAILURE ==="
-              cat /tmp/serial.log
-              kill $QPID 2>/dev/null || true
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "=== TIMEOUT (180s) ==="
-          cat /tmp/serial.log
-          kill $QPID 2>/dev/null || true
-          exit 1
+      # Keep CI on the same multicore, MSI-X/NVMe configuration and marker
+      # list used by developers. This also rebuilds the embedded EL0 bundle.
+      - name: Boot QEMU and verify self-tests
+        run: scripts/run-aarch64.sh debug --smp 4 --timeout 180
