@@ -163,7 +163,7 @@ echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
 # --- Build a FAT32 EFI System Partition image with mtools. ---
 echo ">>> Creating boot image ${IMAGE}..."
 mkdir -p "$IMAGE_DIR"
-dd if=/dev/zero of="$IMAGE" bs=1m count=128 status=none
+dd if=/dev/zero of="$IMAGE" bs=1048576 count=128 status=none
 mformat -i "$IMAGE" -F ::
 mmd -i "$IMAGE" ::/EFI
 mmd -i "$IMAGE" ::/EFI/BOOT
@@ -175,7 +175,7 @@ mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 NVME_IMAGE="${IMAGE_DIR}/nvme-disk.img"
 if [ ! -f "$NVME_IMAGE" ]; then
     echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
-    dd if=/dev/zero of="$NVME_IMAGE" bs=1m count=16 status=none
+    dd if=/dev/zero of="$NVME_IMAGE" bs=1048576 count=16 status=none
 else
     echo ">>> Reusing existing NVMe disk image ${NVME_IMAGE}"
 fi
