@@ -19,11 +19,18 @@
 //! Mutations write the full blob to the object store and call FLUSH before
 //! returning. This is simple and correct: a crash between two mutations
 //! leaves the store in a consistent state (the last flushed version).
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{
+    string::String,
+    vec::Vec,
+};
 
-use catten_graft::log_store::{LogStore, PersistentStateStore};
-use catten_graft::types::LogEntry;
+use catten_graft::{
+    log_store::{
+        LogStore,
+        PersistentStateStore,
+    },
+    types::LogEntry,
+};
 use catten_syscall::*;
 use spin::Mutex;
 
@@ -65,18 +72,18 @@ fn objstore_connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
         0,
         IpcRights::SEND | IpcRights::CALL,
     );
-    if lookup == 0 { return None; }
+    if lookup == 0 {
+        return None;
+    }
     let (generation, conn) = unsafe { crate::wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || conn == 0 { return None; }
+    if generation < 1 || conn == 0 {
+        return None;
+    }
     Some(conn)
 }
 
 fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
-    let call = ipc_scalar_call(
-        obj_conn,
-        charlotte_protocol_objstore::OP_CREATE_AT,
-        object_id,
-    );
+    let call = ipc_scalar_call(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id);
     if call == 0 {
         return false;
     }
@@ -87,12 +94,25 @@ fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
 
 fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     let mem = memory_alloc(1);
-    if mem == 0 { return false; }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 { memory_close(mem); return false; }
-    unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len().min(4096)); }
+    if mem == 0 {
+        return false;
+    }
+    if memory_map(mem, BUFFER_VADDR, true) != 0 {
+        memory_close(mem);
+        return false;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            data.as_ptr(),
+            BUFFER_VADDR as *mut u8,
+            data.len().min(4096),
+        );
+    }
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
-    if call == 0 { return false; }
+    if call == 0 {
+        return false;
+    }
     let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
     result == 0
 }
@@ -118,15 +138,25 @@ fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
         return None;
     }
     let mut buf = alloc::vec![0u8; 4096];
-    unsafe { core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096); }
+    unsafe {
+        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096);
+    }
     memory_unmap(memory);
     memory_close(memory);
     Some(buf)
 }
 
 fn obj_flush(obj_conn: u64) -> bool {
-    let call = ipc_scalar_call_connection(obj_conn, crate::objstore::OP_FLUSH, 0, 0, IpcRights::SEND | IpcRights::CALL);
-    if call == 0 { return false; }
+    let call = ipc_scalar_call_connection(
+        obj_conn,
+        crate::objstore::OP_FLUSH,
+        0,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if call == 0 {
+        return false;
+    }
     let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
     result == 0
 }
@@ -149,16 +179,26 @@ fn deserialize_entries(buf: &[u8]) -> Vec<LogEntry> {
     let mut pos = 0;
     while pos + 16 <= buf.len() {
         let term = u64::from_le_bytes(buf[pos..pos + 8].try_into().unwrap_or([0; 8]));
-        let peer_len = u32::from_le_bytes(buf[pos + 8..pos + 12].try_into().unwrap_or([0; 4])) as usize;
-        let data_len = u32::from_le_bytes(buf[pos + 12..pos + 16].try_into().unwrap_or([0; 4])) as usize;
-        if peer_len > 255 || term == 0 && peer_len == 0 && data_len == 0 { break; }
-        if pos + 16 + peer_len + data_len > buf.len() { break; }
+        let peer_len =
+            u32::from_le_bytes(buf[pos + 8..pos + 12].try_into().unwrap_or([0; 4])) as usize;
+        let data_len =
+            u32::from_le_bytes(buf[pos + 12..pos + 16].try_into().unwrap_or([0; 4])) as usize;
+        if peer_len > 255 || term == 0 && peer_len == 0 && data_len == 0 {
+            break;
+        }
+        if pos + 16 + peer_len + data_len > buf.len() {
+            break;
+        }
         let peer_id = core::str::from_utf8(&buf[pos + 16..pos + 16 + peer_len])
             .ok()
             .map(String::from)
             .unwrap_or_default();
         let data = buf[pos + 16 + peer_len..pos + 16 + peer_len + data_len].to_vec();
-        entries.push(LogEntry { term, peer_id, data });
+        entries.push(LogEntry {
+            term,
+            peer_id,
+            data,
+        });
         pos += 16 + peer_len + data_len;
     }
     entries
@@ -192,13 +232,16 @@ impl DiskPersistentStateStore {
             return None;
         }
         let (current_term, voted_for) = if let Some(buf) = obj_read(obj_conn, object_id) {
-            if buf.len() < 8 { (0, None) }
-            else {
+            if buf.len() < 8 {
+                (0, None)
+            } else {
                 let term = u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8]));
                 let vf_len = u32::from_le_bytes(buf[8..12].try_into().unwrap_or([0; 4])) as usize;
                 let vf = if vf_len > 0 && vf_len <= 256 && 12 + vf_len <= buf.len() {
                     core::str::from_utf8(&buf[12..12 + vf_len]).ok().map(String::from)
-                } else { None };
+                } else {
+                    None
+                };
                 (term, vf)
             }
         } else {
@@ -231,14 +274,18 @@ impl DiskPersistentStateStore {
 }
 
 impl PersistentStateStore for DiskPersistentStateStore {
-    fn current_term(&self) -> u64 { *self.current_term.lock() }
+    fn current_term(&self) -> u64 {
+        *self.current_term.lock()
+    }
 
     fn set_current_term(&self, term: u64) {
         *self.current_term.lock() = term;
         self.persist();
     }
 
-    fn voted_for(&self) -> Option<String> { self.voted_for.lock().clone() }
+    fn voted_for(&self) -> Option<String> {
+        self.voted_for.lock().clone()
+    }
 
     fn set_voted_for(&self, peer_id: Option<String>) {
         *self.voted_for.lock() = peer_id;
@@ -272,12 +319,17 @@ impl DiskLogStore {
 
         let (snapshot_idx, snapshot_term) =
             if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
-            if buf.len() < 16 { (0, 0) }
-            else {
-                (u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8])),
-                 u64::from_le_bytes(buf[8..16].try_into().unwrap_or([0; 8])))
-            }
-        } else { (0, 0) };
+                if buf.len() < 16 {
+                    (0, 0)
+                } else {
+                    (
+                        u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8])),
+                        u64::from_le_bytes(buf[8..16].try_into().unwrap_or([0; 8])),
+                    )
+                }
+            } else {
+                (0, 0)
+            };
 
         let snapshot_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
 
@@ -308,35 +360,56 @@ impl DiskLogStore {
 }
 
 impl LogStore for DiskLogStore {
-    fn snapshot_index(&self) -> u64 { *self.snapshot_idx.lock() }
-    fn snapshot_term(&self) -> u64 { *self.snapshot_term.lock() }
+    fn snapshot_index(&self) -> u64 {
+        *self.snapshot_idx.lock()
+    }
+
+    fn snapshot_term(&self) -> u64 {
+        *self.snapshot_term.lock()
+    }
 
     fn last_index(&self) -> u64 {
         let base = *self.snapshot_idx.lock();
         let entries = self.entries.lock();
-        if entries.is_empty() { base } else { base + entries.len() as u64 }
+        if entries.is_empty() {
+            base
+        } else {
+            base + entries.len() as u64
+        }
     }
 
     fn last_term(&self) -> u64 {
         let entries = self.entries.lock();
-        if entries.is_empty() { *self.snapshot_term.lock() } else { entries[entries.len() - 1].term }
+        if entries.is_empty() {
+            *self.snapshot_term.lock()
+        } else {
+            entries[entries.len() - 1].term
+        }
     }
 
     fn term_at(&self, index: u64) -> u64 {
         let base = *self.snapshot_idx.lock();
-        if index == 0 { return 0; }
-        if index == base { return *self.snapshot_term.lock(); }
+        if index == 0 {
+            return 0;
+        }
+        if index == base {
+            return *self.snapshot_term.lock();
+        }
         if index > base {
             let entries = self.entries.lock();
             let offset = (index - base - 1) as usize;
-            if offset < entries.len() { return entries[offset].term; }
+            if offset < entries.len() {
+                return entries[offset].term;
+            }
         }
         0
     }
 
     fn entry_at(&self, index: u64) -> Option<LogEntry> {
         let base = *self.snapshot_idx.lock();
-        if index <= base { return None; }
+        if index <= base {
+            return None;
+        }
         let entries = self.entries.lock();
         let offset = (index - base - 1) as usize;
         entries.get(offset).cloned()
@@ -349,7 +422,9 @@ impl LogStore for DiskLogStore {
 
     fn truncate_from(&self, index: u64) {
         let base = *self.snapshot_idx.lock();
-        if index <= base { return; }
+        if index <= base {
+            return;
+        }
         let offset = (index - base - 1) as usize;
         self.entries.lock().truncate(offset);
         self.persist_log();
@@ -358,18 +433,32 @@ impl LogStore for DiskLogStore {
     fn entries_from(&self, index: u64) -> Vec<LogEntry> {
         let base = *self.snapshot_idx.lock();
         let entries = self.entries.lock();
-        let last = if entries.is_empty() { base } else { base + entries.len() as u64 };
-        if index > last { return Vec::new(); }
-        let offset = if index <= base { 0 } else { (index - base - 1) as usize };
+        let last = if entries.is_empty() {
+            base
+        } else {
+            base + entries.len() as u64
+        };
+        if index > last {
+            return Vec::new();
+        }
+        let offset = if index <= base {
+            0
+        } else {
+            (index - base - 1) as usize
+        };
         entries[offset..].to_vec()
     }
 
     fn compact_up_to(&self, index: u64) {
         let base = *self.snapshot_idx.lock();
-        if index <= base { return; }
+        if index <= base {
+            return;
+        }
         let offset = (index - base) as usize;
         let mut entries = self.entries.lock();
-        if offset == 0 || offset > entries.len() { return; }
+        if offset == 0 || offset > entries.len() {
+            return;
+        }
         let compacted_term = entries[offset - 1].term;
         entries.drain(0..offset);
         *self.snapshot_idx.lock() = index;
@@ -384,7 +473,9 @@ impl LogStore for DiskLogStore {
         self.persist_log();
     }
 
-    fn snapshot_data(&self) -> Vec<u8> { self.snapshot_data.lock().clone() }
+    fn snapshot_data(&self) -> Vec<u8> {
+        self.snapshot_data.lock().clone()
+    }
 
     fn install_snapshot(&self, index: u64, term: u64, data: Vec<u8>) {
         self.entries.lock().clear();

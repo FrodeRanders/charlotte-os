@@ -25,6 +25,7 @@ extern crate alloc;
 catten_rt::entry!(main);
 
 use alloc::collections::BTreeMap;
+
 use catten_rt::{
     Context,
     config,

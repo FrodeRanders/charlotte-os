@@ -22,12 +22,17 @@ extern crate alloc;
 catten_rt::entry!(main);
 
 use alloc::vec::Vec;
+
 use catten_rt::Context;
-use catten_services::fs;
-use catten_services::ns;
-use catten_services::objstore;
-use catten_syscall::ipc_status;
-use catten_syscall::*;
+use catten_services::{
+    fs,
+    ns,
+    objstore,
+};
+use catten_syscall::{
+    ipc_status,
+    *,
+};
 
 const REPLY_SPINS: u64 = u64::MAX;
 const BUFFER_VADDR: usize = 0x0000_0000_0050_0000;
@@ -35,51 +40,103 @@ const ROOT_ID: u64 = 100;
 const MAX_DIR_SIZE: usize = 4096;
 
 fn objstore_connect(ns_conn: u64) -> Option<u64> {
-    let lookup = ipc_scalar_call_connection(ns_conn, ns::OP_LOOKUP, objstore::NAME, 0, IpcRights::SEND | IpcRights::CALL);
-    if lookup == 0 { return None; }
+    let lookup = ipc_scalar_call_connection(
+        ns_conn,
+        ns::OP_LOOKUP,
+        objstore::NAME,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if lookup == 0 {
+        return None;
+    }
     let (generation, conn) = unsafe { catten_services::wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || conn == 0 { return None; }
+    if generation < 1 || conn == 0 {
+        return None;
+    }
     Some(conn)
 }
 
 fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     let len = data.len().min(4096);
     let mem = memory_alloc(1);
-    if mem == 0 { return false; }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 { memory_close(mem); return false; }
-    unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, len); }
+    if mem == 0 {
+        return false;
+    }
+    if memory_map(mem, BUFFER_VADDR, true) != 0 {
+        memory_close(mem);
+        return false;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, len);
+    }
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, mem);
-    if call == 0 { return false; }
+    if call == 0 {
+        return false;
+    }
     let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
     result == 0
 }
 
 fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
     let mem = memory_alloc(1);
-    if mem == 0 { return None; }
+    if mem == 0 {
+        return None;
+    }
     let call = ipc_scalar_call_borrow_write(obj_conn, objstore::OP_READ, object_id, mem);
-    if call == 0 { memory_close(mem); return None; }
+    if call == 0 {
+        memory_close(mem);
+        return None;
+    }
     let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
-    if result != 0 { memory_close(mem); return None; }
-    if memory_map(mem, BUFFER_VADDR, false) != 0 { memory_close(mem); return None; }
+    if result != 0 {
+        memory_close(mem);
+        return None;
+    }
+    if memory_map(mem, BUFFER_VADDR, false) != 0 {
+        memory_close(mem);
+        return None;
+    }
     let mut buf = alloc::vec![0u8; 4096];
-    unsafe { core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096); }
+    unsafe {
+        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096);
+    }
     memory_unmap(mem);
     memory_close(mem);
     Some(buf)
 }
 
 fn obj_create(obj_conn: u64) -> u64 {
-    let call = ipc_scalar_call_connection(obj_conn, objstore::OP_CREATE, 0, 0, IpcRights::SEND | IpcRights::CALL);
-    if call == 0 { return 0; }
+    let call = ipc_scalar_call_connection(
+        obj_conn,
+        objstore::OP_CREATE,
+        0,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if call == 0 {
+        return 0;
+    }
     let (id, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
-    if id <= 0 { 0 } else { id as u64 }
+    if id <= 0 {
+        0
+    } else {
+        id as u64
+    }
 }
 
 fn obj_flush(obj_conn: u64) -> bool {
-    let call = ipc_scalar_call_connection(obj_conn, objstore::OP_FLUSH, 0, 0, IpcRights::SEND | IpcRights::CALL);
-    if call == 0 { return false; }
+    let call = ipc_scalar_call_connection(
+        obj_conn,
+        objstore::OP_FLUSH,
+        0,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if call == 0 {
+        return false;
+    }
     let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
     result == 0
 }
@@ -94,15 +151,25 @@ fn decode_dir(data: &[u8]) -> Vec<(alloc::string::String, u64, u32, u64)> {
     let mut pos = 0;
     while pos + 4 <= data.len() {
         let name_len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap_or([0; 4])) as usize;
-        if name_len == 0 { break; }
-        if pos + 4 + name_len + 20 > data.len() { break; }
+        if name_len == 0 {
+            break;
+        }
+        if pos + 4 + name_len + 20 > data.len() {
+            break;
+        }
         let name = core::str::from_utf8(&data[pos + 4..pos + 4 + name_len])
             .ok()
             .map(|s| alloc::string::String::from(s))
             .unwrap_or_default();
-        let file_id = u64::from_le_bytes(data[pos + 4 + name_len..pos + 4 + name_len + 8].try_into().unwrap_or([0; 8]));
-        let flags = u32::from_le_bytes(data[pos + 4 + name_len + 8..pos + 4 + name_len + 12].try_into().unwrap_or([0; 4]));
-        let size = u64::from_le_bytes(data[pos + 4 + name_len + 12..pos + 4 + name_len + 20].try_into().unwrap_or([0; 8]));
+        let file_id = u64::from_le_bytes(
+            data[pos + 4 + name_len..pos + 4 + name_len + 8].try_into().unwrap_or([0; 8]),
+        );
+        let flags = u32::from_le_bytes(
+            data[pos + 4 + name_len + 8..pos + 4 + name_len + 12].try_into().unwrap_or([0; 4]),
+        );
+        let size = u64::from_le_bytes(
+            data[pos + 4 + name_len + 12..pos + 4 + name_len + 20].try_into().unwrap_or([0; 8]),
+        );
         if !name.is_empty() {
             entries.push((name, file_id, flags, size));
         }
@@ -119,9 +186,12 @@ fn encode_dir(entries: &[(alloc::string::String, u64, u32, u64)]) -> Vec<u8> {
         let mut entry = alloc::vec![0u8; 4 + name_len as usize + 20];
         entry[0..4].copy_from_slice(&name_len.to_le_bytes());
         entry[4..4 + name_len as usize].copy_from_slice(&name_bytes[..name_len as usize]);
-        entry[4 + name_len as usize..4 + name_len as usize + 8].copy_from_slice(&file_id.to_le_bytes());
-        entry[4 + name_len as usize + 8..4 + name_len as usize + 12].copy_from_slice(&flags.to_le_bytes());
-        entry[4 + name_len as usize + 12..4 + name_len as usize + 20].copy_from_slice(&size.to_le_bytes());
+        entry[4 + name_len as usize..4 + name_len as usize + 8]
+            .copy_from_slice(&file_id.to_le_bytes());
+        entry[4 + name_len as usize + 8..4 + name_len as usize + 12]
+            .copy_from_slice(&flags.to_le_bytes());
+        entry[4 + name_len as usize + 12..4 + name_len as usize + 20]
+            .copy_from_slice(&size.to_le_bytes());
         buf.extend_from_slice(&entry);
     }
     buf
@@ -142,7 +212,9 @@ impl FileSystem {
             let empty_dir = [0u8; 4]; // name_len=0 terminator
             obj_write(obj_conn, ROOT_ID, &empty_dir);
         }
-        FileSystem { obj_conn }
+        FileSystem {
+            obj_conn,
+        }
     }
 
     fn lookup(&self, parent_id: u64, name: &str) -> Option<(u64, u32, u64)> {
@@ -157,7 +229,7 @@ impl FileSystem {
 
     fn op_lookup(&self, parent_id: u64, name: &str) -> i64 {
         if let Some((file_id, flags, _size)) = self.lookup(parent_id, name) {
-            ((file_id as i64) << 32) | ((flags as i64) & 0xFFFF_FFFF)
+            ((file_id as i64) << 32) | ((flags as i64) & 0xffff_ffff)
         } else {
             fs::ERR_NOT_FOUND
         }
@@ -168,7 +240,9 @@ impl FileSystem {
             return fs::ERR_EXISTS;
         }
         let new_id = obj_create(self.obj_conn);
-        if new_id == 0 { return fs::ERR_NO_SPACE; }
+        if new_id == 0 {
+            return fs::ERR_NO_SPACE;
+        }
 
         // If directory, write an empty directory entry
         if is_dir {
@@ -179,7 +253,11 @@ impl FileSystem {
         // Add entry to parent directory
         let dir_data = obj_read(self.obj_conn, parent_id).unwrap_or_default();
         let mut entries = decode_dir(&dir_data);
-        let flags = if is_dir { fs::FLAG_DIR } else { 0 };
+        let flags = if is_dir {
+            fs::FLAG_DIR
+        } else {
+            0
+        };
         entries.push((alloc::string::String::from(name), new_id, flags, 0));
         let new_dir = encode_dir(&entries);
         if new_dir.len() > MAX_DIR_SIZE {
@@ -195,7 +273,9 @@ impl FileSystem {
 
     fn op_write(&self, file_id: u64, data: &[u8]) -> bool {
         // Update the object content
-        if !obj_write(self.obj_conn, file_id, data) { return false; }
+        if !obj_write(self.obj_conn, file_id, data) {
+            return false;
+        }
         // Update size in parent directory
         true
     }
@@ -244,7 +324,9 @@ fn main(ctx: Context) -> ! {
     let ffs = FileSystem::mount(obj_conn);
 
     let endpoint = ipc_endpoint_create(fs::INTERFACE, fs::VERSION, 64);
-    if endpoint == 0 { unsafe { thread_exit() }; }
+    if endpoint == 0 {
+        unsafe { thread_exit() };
+    }
 
     let register = ipc_scalar_call_connection(
         ns_connection,
@@ -253,9 +335,13 @@ fn main(ctx: Context) -> ! {
         endpoint,
         IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
     );
-    if register == 0 { unsafe { thread_exit() }; }
+    if register == 0 {
+        unsafe { thread_exit() };
+    }
     let (generation, _) = unsafe { catten_services::wait_reply(register, REPLY_SPINS) };
-    if generation < 1 { unsafe { thread_exit() }; }
+    if generation < 1 {
+        unsafe { thread_exit() };
+    }
 
     ipc_endpoint_bind_cq(endpoint, 0);
 
@@ -264,25 +350,38 @@ fn main(ctx: Context) -> ! {
 
         loop {
             let message = ipc_recv(endpoint);
-            if message.status == ipc_status::NO_MESSAGE { break; }
-            if message.status == ipc_status::ENDPOINT_CLOSED { unsafe { thread_exit() }; }
-            if !message.is_ok() { break; }
+            if message.status == ipc_status::NO_MESSAGE {
+                break;
+            }
+            if message.status == ipc_status::ENDPOINT_CLOSED {
+                unsafe { thread_exit() };
+            }
+            if !message.is_ok() {
+                break;
+            }
 
             match message.opcode {
                 fs::OP_LOOKUP => {
                     let parent_id = message.arg0 >> 32;
-                    let name_len = (message.arg0 & 0xFF) as usize;
+                    let name_len = (message.arg0 & 0xff) as usize;
                     if message.reply != 0 {
                         let name = if message.memory != 0 && name_len > 0 {
                             if memory_map(message.memory, BUFFER_VADDR, false) == 0 {
                                 let nm = unsafe {
-                                    let bytes = core::slice::from_raw_parts(BUFFER_VADDR as *const u8, name_len);
+                                    let bytes = core::slice::from_raw_parts(
+                                        BUFFER_VADDR as *const u8,
+                                        name_len,
+                                    );
                                     core::str::from_utf8(bytes).ok().unwrap_or("")
                                 };
                                 memory_unmap(message.memory);
                                 nm
-                            } else { "" }
-                        } else { "" };
+                            } else {
+                                ""
+                            }
+                        } else {
+                            ""
+                        };
                         if name.is_empty() {
                             ipc_reply(message.reply, fs::ERR_NOT_FOUND);
                         } else {
@@ -308,7 +407,13 @@ fn main(ctx: Context) -> ! {
                             let mem = memory_alloc(1);
                             if mem != 0 {
                                 memory_map(mem, BUFFER_VADDR, true);
-                                unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len().min(4096)); }
+                                unsafe {
+                                    core::ptr::copy_nonoverlapping(
+                                        data.as_ptr(),
+                                        BUFFER_VADDR as *mut u8,
+                                        data.len().min(4096),
+                                    );
+                                }
                                 memory_unmap(mem);
                                 ipc_reply_move(message.reply, mem, data.len() as i64);
                             } else {
@@ -324,18 +429,28 @@ fn main(ctx: Context) -> ! {
                     if message.reply != 0 {
                         let result = if message.memory != 0 {
                             if memory_map(message.memory, BUFFER_VADDR, false) == 0 {
-                                let data = unsafe { core::slice::from_raw_parts(BUFFER_VADDR as *const u8, 4096) };
+                                let data = unsafe {
+                                    core::slice::from_raw_parts(BUFFER_VADDR as *const u8, 4096)
+                                };
                                 let ok = ffs.op_write(file_id, data);
                                 memory_unmap(message.memory);
-                                if ok { 0 } else { fs::ERR_IO_ERROR }
-                            } else { fs::ERR_IO_ERROR }
-                        } else { fs::ERR_IO_ERROR };
+                                if ok {
+                                    0
+                                } else {
+                                    fs::ERR_IO_ERROR
+                                }
+                            } else {
+                                fs::ERR_IO_ERROR
+                            }
+                        } else {
+                            fs::ERR_IO_ERROR
+                        };
                         ipc_reply(message.reply, result);
                     }
                 }
                 fs::OP_DELETE => {
                     let parent_id = message.arg0 >> 32;
-                    let name_len = (message.arg0 & 0xFF) as usize;
+                    let name_len = (message.arg0 & 0xff) as usize;
                     if message.reply != 0 {
                         let name = read_name_from_msg(message.memory, name_len);
                         let result = ffs.op_delete(parent_id, &name);
@@ -349,7 +464,13 @@ fn main(ctx: Context) -> ! {
                         let mem = memory_alloc(1);
                         if mem != 0 {
                             memory_map(mem, BUFFER_VADDR, true);
-                            unsafe { core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len().min(4096)); }
+                            unsafe {
+                                core::ptr::copy_nonoverlapping(
+                                    data.as_ptr(),
+                                    BUFFER_VADDR as *mut u8,
+                                    data.len().min(4096),
+                                );
+                            }
                             memory_unmap(mem);
                             ipc_reply_move(message.reply, mem, data.len() as i64);
                         } else {
@@ -359,10 +480,14 @@ fn main(ctx: Context) -> ! {
                 }
                 fs::OP_FLUSH => {
                     obj_flush(ffs.obj_conn);
-                    if message.reply != 0 { ipc_reply(message.reply, 0); }
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, 0);
+                    }
                 }
                 _ => {
-                    if message.reply != 0 { ipc_reply(message.reply, -1); }
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, -1);
+                    }
                 }
             }
         }
@@ -370,8 +495,12 @@ fn main(ctx: Context) -> ! {
 }
 
 fn read_name_from_msg(memory: u64, name_len: usize) -> alloc::string::String {
-    if memory == 0 || name_len == 0 { return alloc::string::String::new(); }
-    if memory_map(memory, BUFFER_VADDR, false) != 0 { return alloc::string::String::new(); }
+    if memory == 0 || name_len == 0 {
+        return alloc::string::String::new();
+    }
+    if memory_map(memory, BUFFER_VADDR, false) != 0 {
+        return alloc::string::String::new();
+    }
     let s = unsafe {
         let bytes = core::slice::from_raw_parts(BUFFER_VADDR as *const u8, name_len.min(128));
         core::str::from_utf8(bytes).ok().unwrap_or("")

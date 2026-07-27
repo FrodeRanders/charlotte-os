@@ -63,11 +63,15 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     }
     let len = message.arg0 as usize;
     if len == 0 || len > MAX_NAME_LEN {
-        unsafe { memory_close(message.memory); }
+        unsafe {
+            memory_close(message.memory);
+        }
         return None;
     }
     if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
-        unsafe { memory_close(message.memory); }
+        unsafe {
+            memory_close(message.memory);
+        }
         return None;
     }
     let mut key = Vec::with_capacity(len);
@@ -92,7 +96,9 @@ fn register(
     let generation = match registry.get(&key) {
         Some(previous) => {
             if previous.connection != 0 {
-                unsafe { ipc_close(previous.connection); }
+                unsafe {
+                    ipc_close(previous.connection);
+                }
             }
             previous.generation + 1
         }
@@ -100,7 +106,11 @@ fn register(
     };
     registry.insert(
         key.clone(),
-        Registration { connection, generation, access_key },
+        Registration {
+            connection,
+            generation,
+            access_key,
+        },
     );
 
     // Wake all callers waiting for this service.
@@ -203,7 +213,9 @@ fn main(ctx: Context) -> ! {
                     )
                 };
                 if message.reply != 0 {
-                    unsafe { ipc_reply(message.reply, result); }
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
                 }
             }
             ns::OP_REGISTER_KEYED => {
@@ -220,34 +232,36 @@ fn main(ctx: Context) -> ! {
                     )
                 };
                 if message.reply != 0 {
-                    unsafe { ipc_reply(message.reply, result); }
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
                 }
             }
             ns::OP_REGISTER_NAMED => {
                 let key = read_named_key(&message);
                 let result = match (key, message.connection) {
                     (Some(key), connection) if connection != 0 => {
-                        register(
-                            &mut registry,
-                            &mut waitlist,
-                            key,
-                            connection,
-                            0,
-                        )
+                        register(&mut registry, &mut waitlist, key, connection, 0)
                     }
                     (_, connection) => {
                         if connection != 0 {
-                            unsafe { ipc_close(connection); }
+                            unsafe {
+                                ipc_close(connection);
+                            }
                         }
                         ns::ERR_INVALID
                     }
                 };
                 if message.reply != 0 {
-                    unsafe { ipc_reply(message.reply, result); }
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
                 }
             }
             ns::OP_LOOKUP => {
-                if message.reply == 0 { continue; }
+                if message.reply == 0 {
+                    continue;
+                }
                 lookup_or_defer(
                     &registry,
                     &mut waitlist,
@@ -260,14 +274,18 @@ fn main(ctx: Context) -> ! {
                 let key = scalar_key(message.arg0);
                 let result = match registry.get_mut(&key) {
                     Some(registration) if registration.connection != 0 => {
-                        unsafe { ipc_close(registration.connection); }
+                        unsafe {
+                            ipc_close(registration.connection);
+                        }
                         registration.connection = 0;
                         registration.generation
                     }
                     _ => ns::ERR_NOT_FOUND,
                 };
                 if message.reply != 0 {
-                    unsafe { ipc_reply(message.reply, result); }
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
                 }
             }
             ns::OP_TRY_LOOKUP => {
@@ -276,7 +294,9 @@ fn main(ctx: Context) -> ! {
                 }
             }
             ns::OP_LOOKUP_KEYED => {
-                if message.reply == 0 { continue; }
+                if message.reply == 0 {
+                    continue;
+                }
                 let caller_key = unsafe { ns::read_access_key(message.memory) };
                 lookup_or_defer(
                     &registry,
@@ -288,16 +308,32 @@ fn main(ctx: Context) -> ! {
             }
             ns::OP_LOOKUP_NAMED => {
                 let key = read_named_key(&message);
-                if message.reply == 0 { continue; }
+                if message.reply == 0 {
+                    continue;
+                }
                 match key {
                     Some(key) => lookup_or_defer(&registry, &mut waitlist, &key, message.reply, 0),
-                    None => unsafe { ipc_reply(message.reply, ns::ERR_INVALID); },
+                    None => unsafe {
+                        ipc_reply(message.reply, ns::ERR_INVALID);
+                    },
                 }
             }
             _ => {
-                if message.memory != 0 { unsafe { memory_close(message.memory); } }
-                if message.connection != 0 { unsafe { ipc_close(message.connection); } }
-                if message.reply != 0 { unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE); } }
+                if message.memory != 0 {
+                    unsafe {
+                        memory_close(message.memory);
+                    }
+                }
+                if message.connection != 0 {
+                    unsafe {
+                        ipc_close(message.connection);
+                    }
+                }
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, ns::ERR_BAD_OPCODE);
+                    }
+                }
             }
         }
     }

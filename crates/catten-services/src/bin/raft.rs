@@ -44,12 +44,12 @@ use catten_rt::{
     manifest_key,
 };
 use catten_services::{
-    ns,
-    raft,
     disk_raft::{
         DiskLogStore,
         DiskPersistentStateStore,
     },
+    ns,
+    raft,
 };
 use catten_syscall::{
     IpcRights,
@@ -184,11 +184,8 @@ fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
     // Stable FNV-1a over the cluster/node tuple. This is an object-store
     // namespace, not a security boundary; ownership policy remains external.
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    for byte in cluster_id
-        .iter()
-        .copied()
-        .chain(core::iter::once(0xff))
-        .chain(node_id.iter().copied())
+    for byte in
+        cluster_id.iter().copied().chain(core::iter::once(0xff)).chain(node_id.iter().copied())
     {
         hash ^= byte as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);

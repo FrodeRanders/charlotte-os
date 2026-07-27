@@ -52,9 +52,13 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 2);
 
     let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, console::NAME);
-    if lookup == 0 { unsafe { thread_exit() }; }
+    if lookup == 0 {
+        unsafe { thread_exit() };
+    }
     let (result, console_connection) = catten_services::spin_reply(lookup);
-    if result < 1 || console_connection == 0 { unsafe { thread_exit() }; }
+    if result < 1 || console_connection == 0 {
+        unsafe { thread_exit() };
+    }
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut last_status: i64 = 0;
