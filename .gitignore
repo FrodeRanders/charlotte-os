@@ -10,3 +10,4 @@ os-images/
 *.synctex.gz
 *.toc
 .idea/
+tmp/

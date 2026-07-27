@@ -338,15 +338,6 @@ fn main(ctx: Context) -> ! {
         if completed > 0 {
             config::write::<u32>(16, completed as u32);
         }
-        config::write::<u32>(
-            8,
-            match node.state {
-                NodeState::Candidate => 2,
-                NodeState::Leader => 3,
-                NodeState::Follower => 1,
-            },
-        );
-        config::write::<u32>(20, node.current_term as u32);
 
         // Keep one deferred name-service lookup outstanding for each missing
         // peer. Registration completes that call; the reactor only polls the
@@ -459,6 +450,10 @@ fn main(ctx: Context) -> ! {
             node.broadcast_heartbeat(node.millis());
         }
 
+        // Publish one coherent observation after all state transitions in
+        // this reactor iteration. Write the term first so a verifier that
+        // observes Leader cannot still see the preceding election term.
+        config::write::<u32>(20, node.current_term as u32);
         config::write::<u32>(
             8,
             match node.state {
