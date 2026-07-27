@@ -217,7 +217,18 @@ if [ -n "$TIMEOUT" ]; then
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
-    sleep "$TIMEOUT"
+    for ((elapsed = 0; elapsed < TIMEOUT; elapsed++)); do
+        sleep 1
+        if ! kill -0 "$QPID" 2>/dev/null; then
+            wait "$QPID" 2>/dev/null || true
+            echo "error: QEMU exited before the ${TIMEOUT}s test window elapsed" >&2
+            if [ -f "$LOG" ]; then
+                echo ">>> Serial log (${LOG}):"
+                cat "$LOG"
+            fi
+            exit 1
+        fi
+    done
     if [ "$SCHEDULER_TRACE" = "1" ]; then
         TRACE_RAW="/tmp/charlotte-scheduler-trace.bin"
         TRACE_TEXT="/tmp/charlotte-scheduler-trace.log"

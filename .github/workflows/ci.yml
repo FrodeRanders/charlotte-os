@@ -97,7 +97,10 @@ jobs:
 
   test:
     name: Test (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 ships QEMU 8.2, which cannot request a GICv2m MSI frame
+    # alongside GICv3. The macOS ARM image uses current Homebrew QEMU, matching
+    # the supported development configuration.
+    runs-on: macos-15
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
@@ -116,9 +119,7 @@ jobs:
           components: rust-src
 
       - name: Install QEMU
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-arm mtools
+        run: brew install qemu mtools
 
       # Keep CI on the same multicore, MSI-X/NVMe configuration and marker
       # list used by developers. This also rebuilds the embedded EL0 bundle.
