@@ -487,6 +487,13 @@ the kernel (`ns`, `echo`, `client`, `uart`, and `cclient`) are now rebuilt and
 refreshed as one bundle. A new `scripts/build-catten-services.sh --embed`
 command provides a single reproducible path for doing so.
 
+**Follow-up (2026-07-28):** generated ELFs are no longer checked into the
+architecture-neutral `self_test` source directory. The service and sitas build
+scripts stage AArch64 images under
+`target/embedded-services/aarch64-unknown-none/`, and AArch64 kernel builds
+receive that directory explicitly. Other kernel architectures do not embed
+AArch64 executables.
+
 The kernel compiles these programs with `include_bytes!`, but its ordinary
 build does not rebuild them. The checked-in name-service, echo, and service
 client happened to match one release build while UART and its console client

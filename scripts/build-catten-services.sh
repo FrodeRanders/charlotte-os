@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the AArch64 EL0 service bundle and optionally refresh the kernel's
-# embedded lifecycle-test images as one coherent ABI set.
+# Build the AArch64 EL0 service bundle and optionally stage it as an
+# architecture-qualified, generated kernel input.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,11 +20,13 @@ done
 MANIFEST="crates/catten-services/Cargo.toml"
 TARGET="crates/catten-services/aarch64-unknown-none.json"
 OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
+BUNDLE="$ROOT/target/embedded-services/aarch64-unknown-none"
+SERVICES=(ns echo client uart cclient servicemgr raft nvme nvme_client objstore fs net nclient tcpip)
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
     cargo clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
-    rm -f crates/catten/src/self_test/{ns,echo,client,uart,cclient,servicemgr,raft,nvme,nvme_client,objstore,fs}.elf
+    rm -rf "$BUNDLE"
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
@@ -32,17 +34,18 @@ cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
     --release -Z build-std=core,alloc
 
 if [ "$MODE" = "embed" ]; then
-    for service in ns echo client uart cclient servicemgr raft nvme nvme_client objstore fs; do
+    mkdir -p "$BUNDLE"
+    for service in "${SERVICES[@]}"; do
         install -m 0755 "$OUTPUT/$service" \
-            "crates/catten/src/self_test/$service.elf"
+            "$BUNDLE/$service.elf"
     done
-    echo ">>> Refreshed embedded EL0 service bundle."
+    echo ">>> Staged AArch64 EL0 service bundle at $BUNDLE."
 elif [ "$MODE" = "check" ]; then
     stale=0
-    for service in ns echo client uart cclient servicemgr raft nvme nvme_client objstore fs; do
+    for service in "${SERVICES[@]}"; do
         if ! cmp -s "$OUTPUT/$service" \
-            "crates/catten/src/self_test/$service.elf"; then
-            echo "error: embedded $service.elf is stale" >&2
+            "$BUNDLE/$service.elf"; then
+            echo "error: staged AArch64 $service.elf is absent or stale" >&2
             stale=1
         fi
     done
@@ -50,5 +53,5 @@ elif [ "$MODE" = "check" ]; then
         echo "run scripts/build-catten-services.sh --embed" >&2
         exit 1
     fi
-    echo ">>> Embedded service bundle matches the current release build."
+    echo ">>> Staged AArch64 service bundle matches the current release build."
 fi

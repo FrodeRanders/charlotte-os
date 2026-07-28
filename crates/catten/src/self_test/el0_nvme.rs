@@ -12,11 +12,13 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NVME_ELF: &[u8] = include_bytes!("nvme.elf");
+const NVME_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme.elf"));
 #[cfg(target_arch = "aarch64")]
-const OBJSTORE_ELF: &[u8] = include_bytes!("objstore.elf");
+const OBJSTORE_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore.elf"));
 #[cfg(target_arch = "aarch64")]
-const NVME_CLIENT_ELF: &[u8] = include_bytes!("nvme_client.elf");
+const NVME_CLIENT_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme_client.elf"));
 
 #[cfg(target_arch = "aarch64")]
 static TEST_STATE: spin::LazyLock<

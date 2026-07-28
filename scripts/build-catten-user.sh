@@ -6,8 +6,8 @@
 # Usage:
 #   scripts/build-catten-user.sh [--embed]
 #
-#   --embed   Also copy the stripped ELF into the kernel's self_test/
-#             directory.
+#   --embed   Also stage the stripped ELF in the generated, architecture-
+#             qualified kernel bundle.
 #
 # Requirements: the pinned repository toolchain with aarch64-unknown-none target,
 #               llvm-objcopy (included with rustup component llvm-tools).
@@ -41,6 +41,11 @@ SYSROOT="$(rustc --print sysroot)"
 HOST_TRIPLE="$(rustc -vV | awk '/^host:/ {print $2}')"
 OBJCOPY="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-objcopy"
 READOBJ="$SYSROOT/lib/rustlib/$HOST_TRIPLE/bin/llvm-readobj"
+if [ ! -x "$OBJCOPY" ] || [ ! -x "$READOBJ" ]; then
+    echo "error: llvm-tools is required to stage the AArch64 catten-user image" >&2
+    echo "       run: rustup component add llvm-tools" >&2
+    exit 1
+fi
 "$OBJCOPY" --strip-all "$TARGET_DIR/$BIN_NAME" /tmp/catten-user.elf
 
 SIZE=$(wc -c < /tmp/catten-user.elf)
@@ -87,7 +92,8 @@ fi
 echo ">>> LOAD segments verified ($LOAD_COUNT segments, no W+X or page overlap)."
 
 if [ "$EMBED" -eq 1 ]; then
-    DEST="crates/catten/src/self_test/sitas-user.elf"
+    DEST="$ROOT/target/embedded-services/aarch64-unknown-none/sitas-user.elf"
+    mkdir -p "$(dirname "$DEST")"
     cp /tmp/catten-user.elf "$DEST"
     echo ">>> Copied ELF to $DEST"
 
@@ -97,11 +103,6 @@ if [ "$EMBED" -eq 1 ]; then
         echo ">>> ELF entry verified ($ENTRY)."
     fi
 
-    echo ""
-    echo ">>> Rebuilding the kernel ('cargo build -p catten --target ...') ..."
-    cargo build --package catten \
-        --target target_specs/aarch64-unknown-none-catten.json \
-        --no-default-features --features acpi 2>&1 | tail -3
 fi
 
 echo ""

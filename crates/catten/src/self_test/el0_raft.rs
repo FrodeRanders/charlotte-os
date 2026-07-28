@@ -22,7 +22,8 @@ mod inner {
     const STORAGE_KEY: u64 = charlotte_launch::manifest_key(b"storage");
     const STORAGE_REQUIRED: u64 = 2;
 
-    const RAFT_ELF: &[u8] = include_bytes!("raft.elf");
+    const RAFT_ELF: &[u8] =
+        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/raft.elf"));
 
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 

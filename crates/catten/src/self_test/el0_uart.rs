@@ -38,9 +38,10 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const UART_ELF: &[u8] = include_bytes!("uart.elf");
+const UART_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/uart.elf"));
 #[cfg(target_arch = "aarch64")]
-const CCLIENT_ELF: &[u8] = include_bytes!("cclient.elf");
+const CCLIENT_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/cclient.elf"));
 
 #[cfg(target_arch = "aarch64")]
 const fn packed_name(bytes: &[u8]) -> u64 {

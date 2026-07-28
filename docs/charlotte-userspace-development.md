@@ -74,5 +74,24 @@ scripts/run-aarch64.sh debug --hvf --timeout 10
 ```
 
 The build scripts use Charlotte's AArch64 target specification and linker
-script, validate the generated ELF layout, and refresh the images embedded in
-the kernel self-tests.
+script and validate the generated ELF layout. Generated programs are staged
+under `target/embedded-services/aarch64-unknown-none/`; they are not source
+files and are not version-controlled. `scripts/run-aarch64.sh` exports that
+architecture-qualified bundle path while compiling the kernel. A direct
+AArch64 kernel build must do the same:
+
+```sh
+export CATTEN_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-none"
+cargo build --package catten \
+  --target target_specs/aarch64-unknown-none-catten.json \
+  --no-default-features --features acpi
+```
+
+Non-AArch64 kernel builds neither require nor embed this bundle. Each future
+EL0-capable architecture must provide its own native service build and
+qualified bundle directory.
+
+`catten-user` currently integrates the sibling `sitas` checkout. CI obtains
+`FrodeRanders/sitas` at the pinned revision recorded in the workflow and places
+it at the path expected by `crates/catten-user/Cargo.toml`; developer checkouts
+may provide the same sibling repository locally.

@@ -7,9 +7,11 @@
 #![cfg(target_arch = "aarch64")]
 
 #[cfg(target_arch = "aarch64")]
-const ECHO_UPGRADE_ELF: &[u8] = include_bytes!("../self_test/echo.elf");
+const ECHO_UPGRADE_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
 #[cfg(target_arch = "aarch64")]
-const NODE_NAME_SERVICE_ELF: &[u8] = include_bytes!("../self_test/ns.elf");
+const NODE_NAME_SERVICE_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/ns.elf"));
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
 const NODE_NAME_SERVICE_VERSION: u32 = 1;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;

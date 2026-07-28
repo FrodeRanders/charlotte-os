@@ -14,12 +14,16 @@ pub mod device;
 pub mod el0;
 pub mod el0_demo;
 pub mod el0_ipc;
+#[cfg(target_arch = "aarch64")]
 pub mod el0_net;
+#[cfg(target_arch = "aarch64")]
 pub mod el0_nvme;
 pub mod el0_pingpong;
 pub mod el0_raft;
+#[cfg(target_arch = "aarch64")]
 pub mod el0_service;
 pub mod el0_sitas;
+#[cfg(target_arch = "aarch64")]
 pub mod el0_uart;
 pub mod ipc;
 pub mod ipi;
@@ -34,10 +38,15 @@ use crate::logln;
 pub fn run_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {
-        results::register(results::TestId::Service);
-        el0_service::test_el0_service();
-        logln!("Live-upgrade verifier is pending.");
-        return;
+        #[cfg(not(target_arch = "aarch64"))]
+        panic!("live_upgrade_test requires AArch64 EL0 service images");
+        #[cfg(target_arch = "aarch64")]
+        {
+            results::register(results::TestId::Service);
+            el0_service::test_el0_service();
+            logln!("Live-upgrade verifier is pending.");
+            return;
+        }
     }
     results::register_boot_suite();
     // These raw probes target specific x86-64 HHDM/heap virtual addresses used
@@ -78,6 +87,7 @@ pub fn run_self_tests() {
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
     el0_sitas::test_el0_sitas();
+    #[cfg(target_arch = "aarch64")]
     el0_service::test_el0_service();
     cq::test_cq_ring();
     cq_completion::test_cq_ring_in_completion();
@@ -91,6 +101,7 @@ pub fn run_self_tests() {
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
     #[cfg(target_arch = "aarch64")]
     el0_nvme::test_el0_nvme();
+    #[cfg(target_arch = "aarch64")]
     el0_uart::test_el0_uart();
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }

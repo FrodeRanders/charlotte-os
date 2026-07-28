@@ -23,9 +23,10 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NET_ELF: &[u8] = include_bytes!("net.elf");
+const NET_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/net.elf"));
 #[cfg(target_arch = "aarch64")]
-const NCLIENT_ELF: &[u8] = include_bytes!("nclient.elf");
+const NCLIENT_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nclient.elf"));
 
 #[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;

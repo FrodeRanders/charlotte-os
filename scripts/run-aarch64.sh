@@ -90,6 +90,8 @@ else
     echo ">>> Rebuilding embedded EL0 service bundle..."
     "${ROOT_DIR}/scripts/build-catten-services.sh" --embed
 fi
+"${ROOT_DIR}/scripts/build-catten-user.sh" --embed
+export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
 
 # Feature selection.
 FEATURES="acpi"

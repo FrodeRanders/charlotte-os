@@ -36,11 +36,13 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const ECHO_ELF: &[u8] = include_bytes!("echo.elf");
+const ECHO_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
 #[cfg(target_arch = "aarch64")]
-const CLIENT_ELF: &[u8] = include_bytes!("client.elf");
+const CLIENT_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/client.elf"));
 #[cfg(target_arch = "aarch64")]
-const SERVICEMGR_ELF: &[u8] = include_bytes!("servicemgr.elf");
+const SERVICEMGR_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/servicemgr.elf"));
 
 #[cfg(target_arch = "aarch64")]
 const fn packed_name(bytes: &[u8]) -> u64 {
