@@ -149,7 +149,7 @@ jobs:
         with:
           toolchain: nightly-2026-07-27
           targets: aarch64-unknown-none
-          components: rust-src
+          components: rust-src,llvm-tools
 
       - name: Install QEMU
         run: brew install qemu mtools
