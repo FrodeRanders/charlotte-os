@@ -137,8 +137,10 @@ pub fn test_el0_uart() {
             });
         }
 
-        let _vtid =
-            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_uart);
+        let _vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Uart,
+            verify_el0_uart,
+        );
         logln!("[uart] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]

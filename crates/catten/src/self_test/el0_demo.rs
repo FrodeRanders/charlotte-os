@@ -212,7 +212,10 @@ pub fn test_el0_cross_lp_async() {
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
         logln!("[EL0 xLP] coordinator spawned tid={} asid={}", tid, asid);
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_demo);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0CrossLp,
+            verify_el0_demo,
+        );
         logln!("[EL0 xLP] verifier thread tid={}; assertion deferred to scheduler.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]

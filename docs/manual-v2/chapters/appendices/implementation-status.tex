@@ -139,8 +139,10 @@ authoritative record.
         fetch a replacement ELF from a well-known NVMe object, pass it as a
         memory capability, and fall back to the embedded recovery image.
         Structural ELF validation and immutable kernel snapshotting are
-        implemented; signed packages, rollback policy, multiple state objects,
-        and manager-owned teardown remain future work.
+        implemented. In the absence of signed packages, persistent images must
+        exactly match the embedded build-authenticated image; signed package
+        policy, rollback policy, multiple state objects, and manager-owned
+        teardown remain future work.
     \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
         the non-lossy CQ overflow backlog has no hard memory bound.
 \end{itemize}

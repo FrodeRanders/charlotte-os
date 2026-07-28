@@ -10,6 +10,7 @@ use crate::{
     cpu::scheduler::{
         monotonic_millis,
         spawn_thread,
+        threads::ThreadId,
         yield_lp,
     },
     logln,
@@ -114,6 +115,9 @@ static EXPECTED: AtomicU64 = AtomicU64::new(0);
 static PASSED: AtomicU64 = AtomicU64::new(0);
 static FAILED: AtomicU64 = AtomicU64::new(0);
 static FINALIZED: AtomicBool = AtomicBool::new(false);
+const NO_VERIFIER: u64 = u64::MAX;
+static VERIFIER_TIDS: [AtomicU64; TestId::ALL.len()] =
+    [const { AtomicU64::new(NO_VERIFIER) }; TestId::ALL.len()];
 
 const fn bit(id: TestId) -> u64 {
     1 << id as u8
@@ -167,6 +171,7 @@ pub fn pass(id: TestId) {
         "failed deferred self-test later reported success"
     );
     PASSED.fetch_or(test_bit, Ordering::AcqRel);
+    VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
 }
 
 pub fn has_passed(id: TestId) -> bool {
@@ -185,6 +190,30 @@ pub fn fail(id: TestId) {
         "passed deferred self-test later reported failure"
     );
     FAILED.fetch_or(test_bit, Ordering::AcqRel);
+    VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
+}
+
+/// Spawn a deferred verifier and associate its kernel TID with its result bit.
+///
+/// Boot-time verifiers are admitted before the scheduler starts, so the
+/// mapping is published before the new thread can run.
+pub fn spawn_verifier(id: TestId, entry: extern "C" fn()) -> ThreadId {
+    let tid = spawn_thread(KERNEL_ASID, entry);
+    VERIFIER_TIDS[id as usize].store(tid as u64, Ordering::Release);
+    tid
+}
+
+/// Panic-handler hook: atomically fail the test owned by `tid`.
+///
+/// This deliberately performs no allocation, logging, or locking.
+pub fn fail_verifier_tid(tid: u64) {
+    for (index, verifier) in VERIFIER_TIDS.iter().enumerate() {
+        if verifier.compare_exchange(tid, NO_VERIFIER, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        {
+            FAILED.fetch_or(1 << index, Ordering::AcqRel);
+            return;
+        }
+    }
 }
 
 /// Freeze the expected test set and start the sole authoritative reporter.

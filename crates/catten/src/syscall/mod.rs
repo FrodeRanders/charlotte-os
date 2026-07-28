@@ -1320,7 +1320,9 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
                 return;
             }
         };
-        if !crate::service::loader::validate_user_elf(&persistent_elf) {
+        if !crate::service::supervisor::persistent_elf_is_trusted(&persistent_elf)
+            || !crate::service::loader::validate_user_elf(&persistent_elf)
+        {
             let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
             frame.regs[0] = 0;
             return;

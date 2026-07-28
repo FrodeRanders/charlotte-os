@@ -89,14 +89,16 @@ The kernel snapshots the capability-backed bytes into kernel-owned memory
 before parsing them, then checks the ELF class, architecture, program-header
 bounds, segment bounds, page congruence, W\^{}X, integer overflow, and that the
 entry point lies in an executable load segment. This prevents a mutable
-userspace image from changing between validation and mapping. The test suite
-installs \texttt{echo.elf} as a known NVMe object and verifies that a later
-generation is loaded from that object.
+userspace image from changing between validation and mapping.
 
-This is structural validation, not package authentication. The current
-prototype does not verify a signature, publisher identity, rollback version,
-or measured-boot policy. Consequently, write authority to the executable
-object store is update authority and must be delegated narrowly.
+The prototype does not yet have signed packages. Until it does, a persistent
+image is accepted only when it is byte-for-byte identical to an embedded image
+authenticated by the kernel build. Thus the FNV-1a object checksum is used only
+for corruption detection and object-store write authority is not executable
+update authority. The test suite installs that known \texttt{echo.elf} image
+as an NVMe object and verifies that a later generation is loaded from it.
+Publisher identity, rollback versions, and measured-boot policy remain future
+package-format work.
 
 \section{What the supervisor prototype provides}
 

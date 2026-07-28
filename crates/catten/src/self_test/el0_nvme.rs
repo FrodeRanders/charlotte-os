@@ -36,8 +36,10 @@ pub fn test_el0_nvme() {
         logln!("Testing EL0 userspace NVMe block device driver and object store...");
         let name_service = supervisor::node_name_service();
         *TEST_STATE.lock() = Some(name_service);
-        let _vtid =
-            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_nvme);
+        let _vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Nvme,
+            verify_el0_nvme,
+        );
         logln!("[nvme] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]

@@ -144,10 +144,10 @@ process reopen state derived from its cluster and node identity.
 \begin{verbatim}
 LBA 0--1:  checksummed superblock slots
 next:      device-sized allocation bitmap
-next:      512-entry directory:
+next:      two device-scaled directory banks:
              id | flags | generation | header_lba |
              header_blocks | crc32
-data:      object header followed by its data extent
+data:      object headers and up to 16 data extents per object
 \end{verbatim}
 
 \subsection{Current durability boundary}
@@ -155,8 +155,8 @@ data:      object header followed by its data extent
 Each object header is versioned and carries explicit header length and block
 count, object generation, exact and allocated data lengths, data offset,
 extent information, and a mandatory FNV-1a content hash. The header can grow
-without moving the data offset contract; the current implementation has one
-contiguous data extent.
+without moving the data offset contract. The current format records up to 16
+extents, so fragmented free space does not require one large contiguous run.
 
 Replacement is copy-on-write. New data, header, and allocation state are
 flushed before the directory locator changes, and the old allocation is freed
@@ -165,9 +165,12 @@ reclaiming pre-commit allocations. Whole-object transfers use multi-page
 memory objects and are divided into block requests of at most 512 KiB, so the
 NVMe request limit is not an object or file limit. The current service API's
 32-bit length limits an individual object to 4 GiB and available disk space.
-Directory records are checksummed but not journalled; torn-sector recovery and
-full sudden-power-loss atomicity are not yet claimed. FNV-1a detects accidental
-corruption, but is not cryptographic authentication.
+Directory records are checksummed and mirrored. Each update goes to the
+generation-selected bank, and mount chooses the newest valid copy per record;
+versioned tombstones prevent deleted records from reappearing. This recovers
+from one torn directory-sector write. Full device-level sudden-power-loss
+guarantees still depend on truthful flush/FUA behaviour. FNV-1a detects
+accidental corruption, but is not cryptographic authentication.
 
 \subsection{Operations}
 

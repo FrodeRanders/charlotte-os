@@ -390,7 +390,10 @@ pub fn test_el0_sitas() {
             unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
         let _tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
 
-        let _vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_sitas);
+        let _vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Sitas,
+            verify_el0_sitas,
+        );
         logln!("[sitas] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]

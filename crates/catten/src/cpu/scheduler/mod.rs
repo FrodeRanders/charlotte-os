@@ -210,6 +210,16 @@ pub fn abort() -> ! {
     unsafe { unreachable_unchecked() }
 }
 
+/// Return the current kernel thread without waiting on scheduler locks.
+///
+/// Panic handling uses this best-effort path to avoid deadlocking if the panic
+/// occurred while scheduler state was already locked.
+pub fn current_tid_nonblocking() -> Option<ThreadId> {
+    let scheduler = SYSTEM_SCHEDULER.try_read()?;
+    let local = scheduler.get_lp_scheduler();
+    local.try_lock()?.get_tid()
+}
+
 /// Blocks the current thread for at least the specified duration.
 pub fn sleep(duration: ExtDuration) {
     let mut timer_event = TimerEvent::from(duration);

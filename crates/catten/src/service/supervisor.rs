@@ -424,3 +424,13 @@ pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
         _ => None,
     }
 }
+
+/// Persistent service images are not yet signed, so only accept an exact copy
+/// of an image that was authenticated as part of the kernel build.
+///
+/// This deliberately treats the object-store checksum as corruption detection,
+/// not as executable provenance. A signed service-package format can broaden
+/// this policy without weakening the current bootstrap trust boundary.
+pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
+    image == ECHO_UPGRADE_ELF
+}

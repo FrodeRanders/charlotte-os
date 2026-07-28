@@ -269,13 +269,16 @@ launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment
 manifest.
 
-On-disk format v2 has two checksummed superblock slots, a device-sized
-allocation bitmap, and a fixed 512-entry directory of atomic object locators.
-Every allocation begins with a versioned header containing `header_len`,
-`header_blocks`, object generation, exact and allocated lengths, data offset,
-extent information, and a mandatory FNV-1a content hash. The reserved header
-space permits compatible metadata growth; the current implementation uses one
-contiguous data extent.
+On-disk format v3 has two checksummed superblock slots, a device-sized
+allocation bitmap, and two mirrored banks of atomic object locators. Directory
+capacity scales with the device (each bank uses about 1/2048 of its blocks,
+bounded to 4,096 blocks). Each record has its own generation and checksum;
+mount selects the newest valid copy. Versioned tombstones ensure that an older
+live record cannot reappear after deletion. Every allocation begins with a
+versioned header containing `header_len`, `header_blocks`, object generation,
+exact and allocated lengths, data offset, up to 16 extent descriptors, and a
+mandatory FNV-1a content hash. The reserved header space permits compatible
+metadata growth.
 
 Replacement is copy-on-write: the new data, header, and allocation state are
 flushed before the directory locator changes; the old allocation is released
@@ -284,10 +287,11 @@ which reclaims allocations abandoned before commit. Whole-object transfers
 are split into NVMe requests of at most 512 KiB, so the NVMe request ceiling
 is not a file, object, Raft-log, or snapshot-size limit. The service API
 currently supplies lengths as 32-bit values, limiting one object to 4 GiB and
-available disk space. Directory sectors are checksummed but not journalled,
-so torn-sector recovery and full sudden-power-loss atomicity are not yet
-claimed. The content hash detects accidental corruption; it does not
-authenticate executable objects or other data.
+available disk space. The mirrored per-record directory resolves a torn write
+by retaining the other valid generation; full device-level sudden-power-loss
+guarantees still depend on truthful flush/FUA behaviour below the service. The
+content hash detects accidental corruption; it does not authenticate
+executable objects or other data.
 
 ---
 

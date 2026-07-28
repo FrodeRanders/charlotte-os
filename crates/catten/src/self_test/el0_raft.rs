@@ -172,8 +172,10 @@ mod inner {
         unsafe {
             RAFT_NS = Some(ns);
         }
-        let _verifier =
-            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_raft_cluster);
+        let _verifier = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Raft,
+            verify_raft_cluster,
+        );
         crate::logln!("[raft] verifier deferred");
     }
 

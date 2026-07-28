@@ -22,7 +22,6 @@ use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::memory::paging::AddressSpace;
 #[cfg(target_arch = "aarch64")]
-use crate::cpu::scheduler::spawn_thread;
 use crate::logln;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
@@ -244,7 +243,10 @@ pub fn test_el0_ping_pong() {
             logln!("[PP] Pong spawned tid={}, pinned to LP1", tid);
         }
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_ping_pong);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::PingPong,
+            verify_ping_pong,
+        );
         logln!("[PP] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]

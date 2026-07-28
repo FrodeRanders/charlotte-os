@@ -367,7 +367,10 @@ pub fn test_el0_endpoint_ipc() {
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, entry);
         logln!("[EL0 IPC] user thread spawned tid={} asid={}", tid, asid);
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0Ipc,
+            verify_el0_endpoint_ipc,
+        );
         logln!("[EL0 IPC] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -415,7 +418,10 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
         let client_tid = spawn_thread(asid as crate::memory::AddressSpaceId, client_entry);
         logln!("[EL0 IPC block] server tid={} client tid={} asid={}", server_tid, client_tid, asid);
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_blocking);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0IpcBlocking,
+            verify_el0_endpoint_ipc_blocking,
+        );
         logln!("[EL0 IPC block] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -477,7 +483,10 @@ pub fn test_el0_endpoint_ipc_cross_address_space() {
             client_asid
         );
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_cross_as);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0IpcCrossAs,
+            verify_el0_endpoint_ipc_cross_as,
+        );
         logln!("[EL0 IPC cross-AS] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -539,7 +548,10 @@ pub fn test_el0_endpoint_ipc_memory_move() {
             IPC_MEMORY_OBJECT_VADDR
         );
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_move);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0IpcMemory,
+            verify_el0_endpoint_ipc_memory_move,
+        );
         logln!("[EL0 IPC memory] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -608,7 +620,10 @@ pub fn test_el0_endpoint_ipc_memory_cancel() {
             client_asid
         );
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_cancel);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0IpcMemoryCancel,
+            verify_el0_endpoint_ipc_memory_cancel,
+        );
         logln!("[EL0 IPC memory cancel] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -677,7 +692,10 @@ pub fn test_el0_endpoint_ipc_memory_copy() {
             client_asid
         );
 
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_endpoint_ipc_memory_copy);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0IpcMemoryCopy,
+            verify_el0_endpoint_ipc_memory_copy,
+        );
         logln!("[EL0 IPC memory copy] verifier tid={}; assertion deferred.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]

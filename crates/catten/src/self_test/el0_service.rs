@@ -116,8 +116,10 @@ pub fn test_el0_service() {
             });
         }
 
-        let _vtid =
-            crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_service);
+        let _vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Service,
+            verify_el0_service,
+        );
         logln!("[service] verifier deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]

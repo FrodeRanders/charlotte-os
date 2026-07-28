@@ -45,7 +45,10 @@ pub fn test_el0_net() {
 
         unsafe { TEST_STATE = Some(name_service) };
 
-        let _vtid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_net);
+        let _vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::Net,
+            verify_el0_net,
+        );
         logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
     }
     #[cfg(not(target_arch = "aarch64"))]

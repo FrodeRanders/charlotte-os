@@ -269,7 +269,10 @@ pub fn test_el0_syscall_round_trip() {
         // HHDM, and asserts the sentinel + returned cap. It panics on timeout or
         // mismatch, so a broken EL0/submit path fails the boot rather than
         // silently logging success.
-        let vtid = spawn_thread(crate::memory::KERNEL_ASID, verify_el0_result);
+        let vtid = crate::self_test::results::spawn_verifier(
+            crate::self_test::results::TestId::El0,
+            verify_el0_result,
+        );
         logln!("EL0 verifier thread spawned with tid={}; assertion deferred to scheduler.", vtid);
     }
     #[cfg(not(target_arch = "aarch64"))]
