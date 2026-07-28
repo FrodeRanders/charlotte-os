@@ -63,8 +63,6 @@ const PL011_INTID: u32 = 33;
 #[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
-const MAX_SPINS: u64 = 80_000_000;
-
 #[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<TestState> = None;
 
@@ -163,6 +161,7 @@ extern "C" fn verify_el0_uart() {
     // deferred read (stage 5) that only a device interrupt can complete. ---
     {
         let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(client_cfg.add(3)) } < 5 {
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
@@ -176,7 +175,7 @@ extern "C" fn verify_el0_uart() {
                     client_stage
                 );
             }
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for console client writes");
+            deadline.assert_pending("UART console client writes");
             crate::cpu::scheduler::sleep_millis(1);
         }
     }
@@ -196,22 +195,23 @@ extern "C" fn verify_el0_uart() {
     // wait, so a single pend suffices; a rare re-pend guards against a dropped
     // delivery without storming the scheduler with wakes. ---
     {
-        let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
-            spins += 1;
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for driver to arm the deferred read");
+            deadline.assert_pending("UART driver deferred-read arm");
             crate::cpu::scheduler::sleep_millis(1);
         }
     }
     crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
     {
-        let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+        let mut next_repend = crate::cpu::scheduler::monotonic_millis().saturating_add(250);
         while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
-            spins += 1;
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for interrupt-driven deferred read");
+            deadline.assert_pending("UART interrupt-driven deferred read");
             // Rare safety-net re-pend if the first delivery did not land.
-            if spins.is_multiple_of(20_000_000) {
+            let now = crate::cpu::scheduler::monotonic_millis();
+            if now >= next_repend {
                 crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+                next_repend = now.saturating_add(250);
             }
             crate::cpu::scheduler::sleep_millis(1);
         }
@@ -259,10 +259,9 @@ extern "C" fn verify_el0_uart() {
     let orphan_read = ipc::scalar_call(KCLIENT_ASID, stale_conn, OP_READ_DEFERRED, 0)
         .expect("[uart] verifier deferred-read call failed");
     {
-        let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
-            spins += 1;
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for verifier read to arm");
+            deadline.assert_pending("UART verifier deferred-read arm");
             crate::cpu::scheduler::sleep_millis(1);
         }
     }
@@ -275,7 +274,7 @@ extern "C" fn verify_el0_uart() {
     // Crash the driver: uncooperative exit, nothing released.
     ipc::scalar_send(KCLIENT_ASID, stale_conn, OP_CRASH, 0).expect("[uart] crash send failed");
     let driver1 = state.driver.take().expect("[uart] driver domain handle missing");
-    supervisor::wait_domain_exit(&driver1, MAX_SPINS);
+    supervisor::wait_domain_exit(&driver1, 10_000);
     logln!("[uart] driver crashed (uncooperative exit) with a deferred read outstanding");
     // Tear down promptly: `domain_exited` is true only once the thread has
     // been reaped (and thus switched away from), and reusable thread ids make
@@ -327,7 +326,7 @@ extern "C" fn verify_el0_uart() {
     #[allow(unused_assignments)]
     let mut fresh_conn = 0u64;
     {
-        let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         loop {
             let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_UART)
                 .expect("[uart] verifier re-lookup call failed");
@@ -339,8 +338,7 @@ extern "C" fn verify_el0_uart() {
             if let Some(cap) = reply.cap {
                 let _ = ipc::close_cap(KCLIENT_ASID, cap);
             }
-            spins += 1;
-            assert!(spins < MAX_SPINS, "[uart] FAILED waiting for generation-2 registration");
+            deadline.assert_pending("UART generation-2 registration");
             crate::cpu::scheduler::sleep_millis(1);
         }
     }
@@ -372,7 +370,7 @@ extern "C" fn verify_el0_uart() {
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
     #[allow(unused_assignments)]
     let mut value = None;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         match ipc::poll_reply(KCLIENT_ASID, call) {
             Ok(Some(reply)) => {
@@ -382,8 +380,7 @@ fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
             Ok(None) => {}
             Err(error) => panic!("[uart] poll_reply failed for {}: {:?}", what, error),
         }
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[uart] FAILED waiting for {}", what);
+        deadline.assert_pending(what);
         crate::cpu::scheduler::sleep_millis(1);
     }
     ipc::close_cap(KCLIENT_ASID, call).expect("[uart] pending-call close failed");

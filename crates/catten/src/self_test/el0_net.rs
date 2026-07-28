@@ -30,8 +30,6 @@ const NCLIENT_ELF: &[u8] = include_bytes!("nclient.elf");
 #[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
-const MAX_SPINS: u64 = 80_000_000;
-
 #[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<NameServiceHandle> = None;
 
@@ -108,6 +106,7 @@ extern "C" fn verify_el0_net() {
     // --- wait for client sentinel ---
     {
         let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
@@ -115,7 +114,7 @@ extern "C" fn verify_el0_net() {
                 let cs = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
                 logln!("[net] waiting: driver stage {} client stage {}", ds, cs);
             }
-            assert!(spins < MAX_SPINS, "[net] FAILED waiting for net client");
+            deadline.assert_pending("EL0 network client");
             yield_lp();
         }
     }

@@ -260,7 +260,7 @@ extern "C" fn verify_ping_pong() {
     let frame = unsafe { PP_RESULT_FRAME }.expect("PP: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let s0 = unsafe { core::ptr::read_volatile(result) };
         let s1 = unsafe { core::ptr::read_volatile(result.add(4)) };
@@ -300,13 +300,7 @@ extern "C" fn verify_ping_pong() {
             crate::self_test::results::pass(crate::self_test::results::TestId::PingPong);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 80_000_000,
-            "[PP] FAILED: ping-pong did not complete (ping={:#x}, pong={:#x})",
-            s0,
-            s1
-        );
+        deadline.assert_pending("EL0 ping-pong completion");
         yield_lp();
     }
 }

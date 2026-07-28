@@ -8,12 +8,35 @@ use core::sync::atomic::{
 
 use crate::{
     cpu::scheduler::{
+        monotonic_millis,
         sleep_millis,
         spawn_thread,
     },
     logln,
     memory::KERNEL_ASID,
 };
+
+#[derive(Clone, Copy)]
+pub struct Deadline {
+    expires_at: u64,
+}
+
+impl Deadline {
+    pub fn after_millis(timeout: u64) -> Self {
+        Self {
+            expires_at: monotonic_millis().saturating_add(timeout),
+        }
+    }
+
+    #[track_caller]
+    pub fn assert_pending(self, what: &str) {
+        assert!(
+            monotonic_millis() < self.expires_at,
+            "self-test deadline expired while waiting for {}",
+            what
+        );
+    }
+}
 
 #[repr(u8)]
 #[derive(Clone, Copy)]

@@ -74,8 +74,6 @@ const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = 0x7100;
 #[cfg(target_arch = "aarch64")]
-const MAX_SPINS: u64 = 80_000_000;
-
 #[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<TestState> = None;
 
@@ -128,10 +126,9 @@ pub fn test_el0_service() {
 
 #[cfg(target_arch = "aarch64")]
 fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while !condition() {
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[service] FAILED waiting for {}", what);
+        deadline.assert_pending(what);
         crate::cpu::scheduler::sleep_millis(1);
     }
 }
@@ -196,6 +193,7 @@ extern "C" fn verify_el0_service() {
     };
     {
         let mut spins: u64 = 0;
+        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(config) } != CLIENT_SENTINEL {
             spins += 1;
             if spins.is_multiple_of(1_000_000) {
@@ -214,9 +212,7 @@ extern "C" fn verify_el0_service() {
                     client_stage
                 );
             }
-            if spins >= MAX_SPINS {
-                panic!("[service] FAILED waiting for EL0 client");
-            }
+            deadline.assert_pending("EL0 service client");
             crate::cpu::scheduler::sleep_millis(1);
         }
     }
@@ -247,7 +243,7 @@ extern "C" fn verify_el0_service() {
     logln!("[service] echo acknowledged shutdown");
 
     let echo1 = state.echo.take().expect("[service] echo domain handle missing");
-    supervisor::wait_domain_exit(&echo1, MAX_SPINS);
+    supervisor::wait_domain_exit(&echo1, 10_000);
     logln!("[service] echo generation 1 exited");
     // `wait_domain_exit` observes removal from the master thread table, which
     // occurs only after the thread has switched away and is safe to tear down.
@@ -353,7 +349,7 @@ extern "C" fn verify_el0_service() {
     let replacement_asid = upgrade_reply.result as usize;
 
     let e2 = state.echo.take().unwrap();
-    supervisor::wait_domain_exit(&e2, MAX_SPINS);
+    supervisor::wait_domain_exit(&e2, 10_000);
     supervisor::teardown_domain(e2);
     logln!("[service] EL0 manager spawned generation-3 echo (asid={})", replacement_asid);
 

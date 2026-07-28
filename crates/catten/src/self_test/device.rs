@@ -37,8 +37,6 @@ const DEV_ASID: usize = 0x000d_e71c;
 const TEST_SPI: u32 = 42;
 
 #[cfg(target_arch = "aarch64")]
-const MAX_SPINS: u64 = 80_000_000;
-
 #[cfg(target_arch = "aarch64")]
 static IRQ_CAP: AtomicU64 = AtomicU64::new(0);
 #[cfg(target_arch = "aarch64")]
@@ -268,9 +266,10 @@ extern "C" fn irq_driver() {
     // a modest interval. Never re-pend after delivery, since doing so while the
     // source is masked would create an artificial second interrupt on ack.
     let mut waits = 0u32;
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     while ROUND2_RELEASED.load(Ordering::Acquire) == 0 {
         waits += 1;
-        assert!(waits < 2_000, "[device] FAILED waiting for round 2 GIC delivery");
+        deadline.assert_pending("round 2 GIC delivery");
         crate::cpu::scheduler::sleep_millis(1);
         if waits.is_multiple_of(16) {
             let (pending, _) = device::interrupt_status(DEV_ASID, irq)
@@ -303,10 +302,9 @@ fn device_phase(phase: u64, a: u64, b: u64) {
 
 #[cfg(target_arch = "aarch64")]
 fn spin_until(flag: &AtomicU32, what: &str) {
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while flag.load(Ordering::Acquire) == 0 {
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[device] FAILED waiting for {}", what);
+        deadline.assert_pending(what);
         crate::cpu::scheduler::sleep_millis(1);
     }
 }

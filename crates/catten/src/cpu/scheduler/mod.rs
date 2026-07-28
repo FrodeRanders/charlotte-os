@@ -50,6 +50,17 @@ const REBALANCE_SAMPLE_MILLIS: u64 = 10;
 #[cfg(target_arch = "aarch64")]
 static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
 
+/// Current monotonic time in milliseconds since the architecture counter's
+/// epoch. Suitable for deadlines; it is not wall-clock time.
+pub fn monotonic_millis() -> u64 {
+    use crate::cpu::isa::{
+        interface::timers::LpTimerIfce,
+        timers::LpTimer,
+    };
+
+    ((LpTimer::now() as u128 * LpTimer::get_ts_cycle_period().as_picos()) / 1_000_000_000) as u64
+}
+
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
@@ -112,17 +123,12 @@ fn spawn_thread_with_migration(
 
 #[cfg(target_arch = "aarch64")]
 pub fn maybe_sample_rebalance() {
-    use crate::cpu::isa::{
-        interface::timers::LpTimerIfce,
-        lp::ops::get_lp_id,
-        timers::LpTimer,
-    };
+    use crate::cpu::isa::lp::ops::get_lp_id;
 
     if get_lp_id() != 0 {
         return;
     }
-    let now_millis = ((LpTimer::now() as u128 * LpTimer::get_ts_cycle_period().as_picos())
-        / 1_000_000_000) as u64;
+    let now_millis = monotonic_millis();
     let previous = LAST_REBALANCE_SAMPLE_MILLIS.load(Ordering::Relaxed);
     if now_millis.saturating_sub(previous) < REBALANCE_SAMPLE_MILLIS
         || LAST_REBALANCE_SAMPLE_MILLIS

@@ -34,8 +34,6 @@ use crate::{
 
 const CQW_ASID: usize = 0x000c_9a17;
 const CQW_SENDER_ASID: usize = 0x000c_9a18;
-const MAX_SPINS: u64 = 80_000_000;
-
 /// Phase flags: waiter released by completion / driver started round 2 /
 /// waiter released by wake / round 3 (second queue) start and release /
 /// round 4 (endpoint readiness) start and release.
@@ -52,11 +50,10 @@ static ENDPOINT_CAP: AtomicU64 = AtomicU64::new(0);
 static SENDER_CONN: AtomicU64 = AtomicU64::new(0);
 
 fn spin_until(flag: &AtomicU32, what: &str) {
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while flag.load(Ordering::Acquire) == 0 {
-        spins += 1;
-        assert!(spins < MAX_SPINS, "[cq wait] FAILED waiting for {}", what);
-        crate::cpu::scheduler::sleep_millis(1);
+        deadline.assert_pending(what);
+        crate::cpu::scheduler::yield_lp();
     }
 }
 

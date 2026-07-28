@@ -291,7 +291,7 @@ extern "C" fn verify_el0_result() {
     let frame = unsafe { TEST_RESULT_FRAME }.expect("EL0 test: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
         if sentinel == 0xdead {
@@ -327,11 +327,7 @@ extern "C" fn verify_el0_result() {
             }
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 20_000_000,
-            "[EL0] FAILED: user thread did not write the result-page sentinel",
-        );
+        deadline.assert_pending("EL0 result-page sentinel");
         yield_lp();
     }
 }

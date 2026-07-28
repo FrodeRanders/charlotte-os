@@ -278,15 +278,18 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
         .any(|thread| thread.asid == domain.asid)
 }
 
-/// Spin (yielding) until the domain's initial thread exits.
+/// Yield until the domain's initial thread exits.
 ///
-/// Panics after `max_spins` yields, so a wedged service fails tests loudly
+/// Panics after `timeout_millis`, so a wedged service fails tests loudly
 /// instead of hanging the boot.
-pub fn wait_domain_exit(domain: &ServiceDomain, max_spins: u64) {
-    let mut spins: u64 = 0;
+pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
+    let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(timeout_millis);
     while !domain_exited(domain) {
-        spins += 1;
-        assert!(spins < max_spins, "[supervisor] domain did not exit (asid={})", domain.asid);
+        assert!(
+            crate::cpu::scheduler::monotonic_millis() < deadline,
+            "[supervisor] domain did not exit before deadline (asid={})",
+            domain.asid
+        );
         yield_lp();
     }
 }

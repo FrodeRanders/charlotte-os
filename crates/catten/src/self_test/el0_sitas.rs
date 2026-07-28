@@ -405,7 +405,7 @@ extern "C" fn verify_el0_sitas() {
     let frame = unsafe { SITAS_RESULT_FRAME }.expect("[sitas] result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
         if sentinel == 0xc0de {
@@ -432,12 +432,7 @@ extern "C" fn verify_el0_sitas() {
             teardown_sitas_domain();
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 80_000_000,
-            "[sitas] FAILED: basic_kv_test did not post result (got {:#x})",
-            sentinel,
-        );
+        deadline.assert_pending("SITAS result");
         yield_lp();
     }
 }

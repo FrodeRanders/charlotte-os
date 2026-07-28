@@ -693,7 +693,7 @@ extern "C" fn verify_el0_endpoint_ipc() {
     let frame = unsafe { IPC_RESULT_FRAME }.expect("EL0 IPC: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
         if sentinel == IPC_SENTINEL {
@@ -740,11 +740,7 @@ extern "C" fn verify_el0_endpoint_ipc() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0Ipc);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 20_000_000,
-            "[EL0 IPC] FAILED: user thread did not write the result-page sentinel",
-        );
+        deadline.assert_pending("EL0 IPC result-page sentinel");
         yield_lp();
     }
 }
@@ -757,7 +753,7 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
         unsafe { IPC_BLOCK_RESULT_FRAME }.expect("EL0 IPC block: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let ready = unsafe { core::ptr::read_volatile(result) };
         let server_done = unsafe { core::ptr::read_volatile(result.add(8)) };
@@ -800,15 +796,7 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcBlocking);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 40_000_000,
-            "[EL0 IPC block] FAILED: blocking receive flow did not complete (ready={:#x}, \
-             server={:#x}, client={:#x})",
-            ready,
-            server_done,
-            client_done
-        );
+        deadline.assert_pending("EL0 IPC blocking receive flow");
         yield_lp();
     }
 }
@@ -822,7 +810,7 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
     let client_asid = unsafe { IPC_CROSS_CLIENT_ASID };
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let ready = unsafe { core::ptr::read_volatile(result) };
         let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
@@ -867,15 +855,7 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcCrossAs);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 40_000_000,
-            "[EL0 IPC cross-AS] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
-             client={:#x})",
-            ready,
-            server_done,
-            client_done
-        );
+        deadline.assert_pending("EL0 IPC cross-address-space flow");
         yield_lp();
     }
 }
@@ -888,7 +868,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
         unsafe { IPC_MEMORY_RESULT_FRAME }.expect("EL0 IPC memory: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let ready = unsafe { core::ptr::read_volatile(result) };
         let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
@@ -1139,15 +1119,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemory);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 60_000_000,
-            "[EL0 IPC memory] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
-             client={:#x})",
-            ready,
-            server_done,
-            client_done
-        );
+        deadline.assert_pending("EL0 IPC memory move/borrow flow");
         yield_lp();
     }
 }
@@ -1160,7 +1132,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
         .expect("EL0 IPC memory cancel: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let ready = unsafe { core::ptr::read_volatile(result) };
         let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
@@ -1330,15 +1302,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemoryCancel);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 40_000_000,
-            "[EL0 IPC memory cancel] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
-             client={:#x})",
-            ready,
-            server_done,
-            client_done
-        );
+        deadline.assert_pending("EL0 IPC memory cancellation flow");
         yield_lp();
     }
 }
@@ -1351,7 +1315,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
         .expect("EL0 IPC memory copy: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let mut spins: u64 = 0;
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     loop {
         let ready = unsafe { core::ptr::read_volatile(result) };
         let server_done = unsafe { core::ptr::read_volatile(result.add(1)) };
@@ -1446,15 +1410,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemoryCopy);
             return;
         }
-        spins += 1;
-        assert!(
-            spins < 40_000_000,
-            "[EL0 IPC memory copy] FAILED: flow did not complete (ready={:#x}, server={:#x}, \
-             client={:#x})",
-            ready,
-            server_done,
-            client_done
-        );
+        deadline.assert_pending("EL0 IPC memory copy flow");
         yield_lp();
     }
 }
