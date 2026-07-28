@@ -61,6 +61,9 @@ static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 /// Numeric TID plus one; zero means the payload has not been spawned.
 #[cfg(target_arch = "aarch64")]
 static EL0_USER_TID: AtomicUsize = AtomicUsize::new(0);
+/// Address-space id plus one, used by the deferred verifier.
+#[cfg(target_arch = "aarch64")]
+static EL0_USER_ASID: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(target_arch = "aarch64")]
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
@@ -246,9 +249,10 @@ pub fn test_el0_syscall_round_trip() {
         let head = unsafe { core::ptr::read_volatile(&ring.head) };
         assert_eq!(head, 1, "kernel must see head == 1 after one completion");
 
-        // Free this cap so the freed id (0) is what the user thread's own
-        // COMPLETION_SUBMIT will be assigned. A returned cap of 0 proves the
-        // kernel actually wrote x0 on the way out.
+        // Revoke the kernel-side probe capability before the user submits its
+        // own operation. Unified capability handles are monotonic and are not
+        // reused, so the EL0 result is validated by table membership below
+        // rather than by assuming a particular integer.
         completion::close(asid, cap).unwrap();
 
         // Spawn the EL0 user thread. The completion table + phys-mapped CQ that
@@ -258,6 +262,7 @@ pub fn test_el0_syscall_round_trip() {
         let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
         logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
         EL0_USER_TID.store(tid + 1, Ordering::Release);
+        EL0_USER_ASID.store(asid + 1, Ordering::Release);
 
         // The verification thread runs after `yield_lp()` (self-tests run on the
         // boot path before the scheduler is entered), polls the result page via
@@ -291,9 +296,17 @@ extern "C" fn verify_el0_result() {
         let sentinel = unsafe { core::ptr::read_volatile(result) };
         if sentinel == 0xdead {
             let cap = unsafe { core::ptr::read_volatile(result.add(1)) };
-            assert_eq!(
-                cap, 0,
-                "EL0: COMPLETION_SUBMIT must return the kernel cap (0) in x0, got {}",
+            let asid = EL0_USER_ASID
+                .load(Ordering::Acquire)
+                .checked_sub(1)
+                .expect("EL0 test: address space not recorded");
+            assert!(
+                crate::capability::contains(
+                    asid,
+                    cap as u64,
+                    crate::capability::ObjectKind::Completion
+                ),
+                "EL0: COMPLETION_SUBMIT returned invalid completion cap {}",
                 cap
             );
             logln!(

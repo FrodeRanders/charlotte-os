@@ -96,6 +96,10 @@ pub enum DeviceError {
     InvalidInterrupt,
     /// Another live capability already owns the interrupt source.
     InterruptInUse,
+    /// The address-space id cannot be represented in the lock-free route table.
+    InvalidAddressSpace,
+    /// The requested MMIO range overflows the physical address representation.
+    InvalidRange,
 }
 
 /// A device register window granted to a driver domain.
@@ -128,21 +132,18 @@ enum DeviceObject {
 
 #[derive(Debug)]
 struct AsDeviceCaps {
-    next: DeviceCap,
     caps: BTreeMap<DeviceCap, DeviceObject>,
 }
 
 impl AsDeviceCaps {
     fn new() -> Self {
         Self {
-            next: 1,
             caps: BTreeMap::new(),
         }
     }
 
-    fn insert(&mut self, object: DeviceObject) -> DeviceCap {
-        let id = self.next;
-        self.next = self.next.checked_add(1).expect("device capability id overflow");
+    fn insert(&mut self, owner: AddressSpaceId, object: DeviceObject) -> DeviceCap {
+        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Device);
         self.caps.insert(id, object);
         id
     }
@@ -191,7 +192,7 @@ pub fn prepare_interrupt_ingress() {
 }
 
 fn pack_route(asid: AddressSpaceId, cq: CqId) -> u64 {
-    debug_assert!(asid != 0 && asid <= u32::MAX as usize, "driver asid must pack into 32 bits");
+    debug_assert!(asid != 0 && u32::try_from(asid).is_ok(), "driver asid must pack into 32 bits");
     ((asid as u64) << 32) | cq as u64
 }
 
@@ -269,19 +270,27 @@ pub fn grant_mmio(
     if pages == 0 {
         return Err(DeviceError::MapFailed);
     }
+    let byte_len = pages.checked_mul(PAGE_SIZE).ok_or(DeviceError::InvalidRange)?;
+    phys_base.checked_add(byte_len).ok_or(DeviceError::InvalidRange)?;
     let mut devices = DEVICES.lock();
     let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert(DeviceObject::Mmio(MmioRegion {
-        phys_base,
-        pages,
-        mapped: None,
-    })))
+    Ok(caps.insert(
+        owner,
+        DeviceObject::Mmio(MmioRegion {
+            phys_base,
+            pages,
+            mapped: None,
+        }),
+    ))
 }
 
 /// Grant an interrupt source to `owner`. The driver binds it to a completion
 /// queue with [`interrupt_bind_cq`], which arms and routes the interrupt.
 pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, DeviceError> {
     let mut devices = DEVICES.lock();
+    if owner == 0 || u32::try_from(owner).is_err() {
+        return Err(DeviceError::InvalidAddressSpace);
+    }
     if intid < MIN_ROUTED_INTID || intid as usize >= MAX_ROUTED_INTID {
         return Err(DeviceError::InvalidInterrupt);
     }
@@ -293,11 +302,14 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
         return Err(DeviceError::InterruptInUse);
     }
     let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert(DeviceObject::Interrupt(InterruptObject {
-        intid,
-        cq: None,
-        target_lp: 0,
-    })))
+    Ok(caps.insert(
+        owner,
+        DeviceObject::Interrupt(InterruptObject {
+            intid,
+            cq: None,
+            target_lp: 0,
+        }),
+    ))
 }
 
 // ---- MMIO operations -------------------------------------------------------
@@ -448,6 +460,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
             .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(DeviceError::UnknownCapability)?
     };
+    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
+    debug_assert!(revoked);
     match object {
         DeviceObject::Mmio(region) => {
             if let Some(base) = region.mapped {
@@ -488,6 +502,9 @@ pub fn close_address_space(asid: AddressSpaceId) {
             None => return,
         }
     };
+    for cap in objects.keys() {
+        crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Device);
+    }
     for object in objects.values() {
         match object {
             DeviceObject::Mmio(region) => {
@@ -573,6 +590,9 @@ fn lookup_mut<'a>(
     asid: AddressSpaceId,
     cap: DeviceCap,
 ) -> Result<&'a mut DeviceObject, DeviceError> {
+    if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Device) {
+        return Err(DeviceError::UnknownCapability);
+    }
     devices
         .get_mut(&asid)
         .and_then(|caps| caps.caps.get_mut(&cap))

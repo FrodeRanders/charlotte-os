@@ -391,7 +391,7 @@ fn sys_completion_submit_detached_timer(frame: &mut TrapFrame) {
 
 fn sys_completion_complete(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     let result_code = frame.regs[2] as i64;
     let result = if result_code >= 0 {
         crate::completion::OpResult::Ok(result_code)
@@ -403,7 +403,7 @@ fn sys_completion_complete(frame: &mut TrapFrame) {
 
 fn sys_completion_poll(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     match crate::completion::poll(asid, cap) {
         Ok(Some(completed)) => {
             frame.regs[0] = 0;
@@ -421,19 +421,19 @@ fn sys_completion_poll(frame: &mut TrapFrame) {
 
 fn sys_completion_wait(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     let _ = crate::completion::wait(asid, cap);
 }
 
 fn sys_completion_cancel(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     let _ = crate::completion::cancel(asid, cap);
 }
 
 fn sys_completion_close(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     let _ = crate::completion::close(asid, cap);
 }
 
@@ -515,26 +515,23 @@ enum MailboxEndpoint {
 }
 
 struct AsMailboxCaps {
-    next: MailboxCap,
     endpoints: BTreeMap<MailboxCap, MailboxEndpoint>,
 }
 
 impl AsMailboxCaps {
     fn new() -> Self {
         Self {
-            next: 1,
             endpoints: BTreeMap::new(),
         }
     }
 
-    fn insert(&mut self, endpoint: MailboxEndpoint) -> MailboxCap {
-        let cap = self.next;
-        self.next = self.next.checked_add(1).expect("mailbox capability id overflow");
+    fn insert(&mut self, owner: AddressSpaceId, endpoint: MailboxEndpoint) -> MailboxCap {
+        let cap = crate::capability::allocate(owner, crate::capability::ObjectKind::Mailbox);
         self.endpoints.insert(cap, endpoint);
         cap
     }
 
-    fn receiver_for_or_insert(&mut self, lp: LpId) -> MailboxCap {
+    fn receiver_for_or_insert(&mut self, owner: AddressSpaceId, lp: LpId) -> MailboxCap {
         if let Some((cap, _)) = self.endpoints.iter().find(|(_, endpoint)| {
             matches!(
                 endpoint,
@@ -545,9 +542,12 @@ impl AsMailboxCaps {
         }) {
             return *cap;
         }
-        self.insert(MailboxEndpoint::Receiver {
-            lp,
-        })
+        self.insert(
+            owner,
+            MailboxEndpoint::Receiver {
+                lp,
+            },
+        )
     }
 }
 
@@ -555,7 +555,11 @@ static USER_MAILBOX_CAPS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsMailboxCaps
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
 pub fn close_mailbox_address_space(asid: AddressSpaceId) {
-    USER_MAILBOX_CAPS.write().remove(&asid);
+    if let Some(caps) = USER_MAILBOX_CAPS.write().remove(&asid) {
+        for cap in caps.endpoints.keys() {
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Mailbox);
+        }
+    }
 }
 
 fn sys_mailbox_send(frame: &mut TrapFrame) {
@@ -591,9 +595,12 @@ fn sys_mailbox_open_send(frame: &mut TrapFrame) {
     }
     let mut tables = USER_MAILBOX_CAPS.write();
     let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
-    frame.regs[0] = caps.insert(MailboxEndpoint::Sender {
-        target_lp,
-    });
+    frame.regs[0] = caps.insert(
+        asid,
+        MailboxEndpoint::Sender {
+            target_lp,
+        },
+    );
 }
 
 fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
@@ -601,10 +608,13 @@ fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
     let lp = get_lp_id();
     let mut tables = USER_MAILBOX_CAPS.write();
     let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
-    frame.regs[0] = caps.receiver_for_or_insert(lp);
+    frame.regs[0] = caps.receiver_for_or_insert(asid, lp);
 }
 
 fn mailbox_endpoint(asid: AddressSpaceId, cap: MailboxCap) -> Option<MailboxEndpoint> {
+    if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Mailbox) {
+        return None;
+    }
     USER_MAILBOX_CAPS.read().get(&asid).and_then(|caps| caps.endpoints.get(&cap).copied())
 }
 
@@ -651,7 +661,10 @@ fn sys_mailbox_close(frame: &mut TrapFrame) {
     let cap = frame.regs[1] as MailboxCap;
     let mut tables = USER_MAILBOX_CAPS.write();
     frame.regs[0] = match tables.get_mut(&asid).and_then(|caps| caps.endpoints.remove(&cap)) {
-        Some(_) => 0,
+        Some(_) => {
+            crate::capability::remove(asid, cap, crate::capability::ObjectKind::Mailbox);
+            0
+        }
         None => 1,
     };
 }
@@ -1041,7 +1054,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     };
 
     let asid = caller_asid(frame);
-    let cap = frame.regs[1] as usize;
+    let cap = frame.regs[1];
     let timeout_ms = frame.regs[2] as u64;
 
     // Structure that wakes the blocked thread when signalled (by either the
@@ -1162,6 +1175,8 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::NotPageAligned => 8,
         DeviceError::InvalidInterrupt => 9,
         DeviceError::InterruptInUse => 10,
+        DeviceError::InvalidAddressSpace => 11,
+        DeviceError::InvalidRange => 12,
     }
 }
 

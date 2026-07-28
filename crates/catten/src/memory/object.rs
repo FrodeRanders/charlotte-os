@@ -130,21 +130,18 @@ struct MemoryCap {
 
 #[derive(Debug)]
 struct AddressSpaceCaps {
-    next: MemoryObjectCap,
     caps: BTreeMap<MemoryObjectCap, MemoryCap>,
 }
 
 impl AddressSpaceCaps {
     fn new() -> Self {
         Self {
-            next: 1,
             caps: BTreeMap::new(),
         }
     }
 
-    fn insert(&mut self, cap: MemoryCap) -> MemoryObjectCap {
-        let id = self.next;
-        self.next += 1;
+    fn insert(&mut self, owner: AddressSpaceId, cap: MemoryCap) -> MemoryObjectCap {
+        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Memory);
         self.caps.insert(id, cap);
         id
     }
@@ -175,6 +172,9 @@ impl MemoryObjectRegistry {
         asid: AddressSpaceId,
         cap: MemoryObjectCap,
     ) -> Result<MemoryCap, MemoryObjectError> {
+        if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Memory) {
+            return Err(MemoryObjectError::UnknownCapability);
+        }
         self.caps
             .get(&asid)
             .and_then(|caps| caps.caps.get(&cap))
@@ -228,10 +228,13 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             lend_state: LendState::None,
         },
     );
-    let cap = registry.caps_for_mut(owner).insert(MemoryCap {
-        object: object_id,
-        rights: MemoryObjectRights::ALL,
-    });
+    let cap = registry.caps_for_mut(owner).insert(
+        owner,
+        MemoryCap {
+            object: object_id,
+            rights: MemoryObjectRights::ALL,
+        },
+    );
     Ok(cap)
 }
 
@@ -367,10 +370,15 @@ pub fn move_to(
         .get_mut(&cap_entry.object)
         .ok_or(MemoryObjectError::UnknownCapability)?
         .owner = target;
-    let target_cap = registry.caps_for_mut(target).insert(MemoryCap {
-        object: cap_entry.object,
-        rights: cap_entry.rights,
-    });
+    let target_cap = registry.caps_for_mut(target).insert(
+        target,
+        MemoryCap {
+            object: cap_entry.object,
+            rights: cap_entry.rights,
+        },
+    );
+    let revoked = crate::capability::remove(owner, cap, crate::capability::ObjectKind::Memory);
+    debug_assert!(revoked);
     Ok(target_cap)
 }
 
@@ -400,12 +408,18 @@ pub(crate) fn rollback_move_to(
         .get_mut(&target)
         .and_then(|caps| caps.caps.remove(&target_cap))
         .ok_or(MemoryObjectError::UnknownCapability)?;
+    let revoked =
+        crate::capability::remove(target, target_cap, crate::capability::ObjectKind::Memory);
+    debug_assert!(revoked);
     registry
         .objects
         .get_mut(&cap_entry.object)
         .ok_or(MemoryObjectError::UnknownCapability)?
         .owner = owner;
     registry.caps_for_mut(owner).caps.insert(original_cap, cap_entry);
+    let restored =
+        crate::capability::restore(owner, original_cap, crate::capability::ObjectKind::Memory);
+    debug_assert!(restored);
     Ok(())
 }
 
@@ -476,10 +490,13 @@ pub fn copy_to(
             lend_state: LendState::None,
         },
     );
-    let target_cap = registry.caps_for_mut(target).insert(MemoryCap {
-        object: object_id,
-        rights: MemoryObjectRights::ALL,
-    });
+    let target_cap = registry.caps_for_mut(target).insert(
+        target,
+        MemoryCap {
+            object: object_id,
+            rights: MemoryObjectRights::ALL,
+        },
+    );
     Ok(target_cap)
 }
 
@@ -520,10 +537,13 @@ pub fn lend_read(
         }
     }
 
-    let borrower_cap = registry.caps_for_mut(borrower).insert(MemoryCap {
-        object: cap_entry.object,
-        rights: MemoryObjectRights::MAP_READ,
-    });
+    let borrower_cap = registry.caps_for_mut(borrower).insert(
+        borrower,
+        MemoryCap {
+            object: cap_entry.object,
+            rights: MemoryObjectRights::MAP_READ,
+        },
+    );
     let object =
         registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
     match &mut object.lend_state {
@@ -575,12 +595,15 @@ pub fn lend_write(
         }
     }
 
-    let borrower_cap = registry.caps_for_mut(borrower).insert(MemoryCap {
-        object: cap_entry.object,
-        rights: MemoryObjectRights(
-            MemoryObjectRights::MAP_READ.0 | MemoryObjectRights::MAP_WRITE.0,
-        ),
-    });
+    let borrower_cap = registry.caps_for_mut(borrower).insert(
+        borrower,
+        MemoryCap {
+            object: cap_entry.object,
+            rights: MemoryObjectRights(
+                MemoryObjectRights::MAP_READ.0 | MemoryObjectRights::MAP_WRITE.0,
+            ),
+        },
+    );
     registry
         .objects
         .get_mut(&cap_entry.object)
@@ -647,6 +670,9 @@ pub fn revoke_lend(
         .caps
         .remove(&borrower_cap)
         .ok_or(MemoryObjectError::UnknownCapability)?;
+    let revoked =
+        crate::capability::remove(borrower, borrower_cap, crate::capability::ObjectKind::Memory);
+    debug_assert!(revoked);
     Ok(())
 }
 
@@ -690,6 +716,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
             allocator.deallocate_frame(frame).map_err(|_| MemoryObjectError::FrameFreeFailed)?;
         }
     }
+    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
+    debug_assert!(revoked);
     Ok(())
 }
 
@@ -745,7 +773,11 @@ pub fn close_address_space(asid: AddressSpaceId) {
             }
         }
 
-        registry.caps.remove(&asid);
+        if let Some(caps) = registry.caps.remove(&asid) {
+            for cap in caps.caps.keys() {
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Memory);
+            }
+        }
     }
 
     if !frames_to_free.is_empty() {
@@ -800,7 +832,7 @@ fn validate_address_space(asid: AddressSpaceId) -> Result<(), MemoryObjectError>
 }
 
 fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: MemoryObjectId) {
-    for caps in registry.caps.values_mut() {
+    for (asid, caps) in &mut registry.caps {
         let caps_to_remove = caps
             .caps
             .iter()
@@ -814,6 +846,7 @@ fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: Memory
             .collect::<Vec<_>>();
         for cap_id in caps_to_remove {
             caps.caps.remove(&cap_id);
+            crate::capability::remove(*asid, cap_id, crate::capability::ObjectKind::Memory);
         }
     }
 }

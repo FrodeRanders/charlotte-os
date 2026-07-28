@@ -1169,8 +1169,11 @@ pub fn ipc_vector_call(connection: u64, opcode: u32, arg0: u64, cap_vector: u64)
 /// Returns the same 9-register shape as [`ipc_recv`], and the result
 /// page contents are updated with the cap IDs.
 #[cfg(target_arch = "aarch64")]
-#[cfg(target_arch = "aarch64")]
 #[inline(always)]
+/// # Safety
+///
+/// `result_page` must name a writable memory-object capability containing
+/// enough space for the kernel's packed capability-vector result.
 pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;

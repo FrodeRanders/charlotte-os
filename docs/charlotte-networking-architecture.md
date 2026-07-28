@@ -831,6 +831,13 @@ generation, and policy metadata. A lookup at the owning node can return a
 delegated local connection directly; a lookup at another node must construct
 or reuse a local proxy connection backed by the reliable message layer.
 
+Locally, those identifiers come from one authoritative per-address-space
+tagged object-capability namespace shared by IPC, memory, completion, device,
+and mailbox objects. The table entry's object-family tag catches category
+mistakes; possession is validated against the table and remains machine-local. A future
+remote proxy capability must therefore name a local proxy object in this same
+table rather than treating a remote integer as authority.
+
 The Raft service itself remains **generic**: it replicates opaque
 commands against a pluggable `StateMachine` trait. A distributed name
 service, a distributed lock service, and a cluster configuration store

@@ -61,23 +61,23 @@ pub fn test_completion_caps() {
 
     let first_operation = completion::operation_id(asid, cap).unwrap();
 
-    // --- close frees the slot ------------------------------------------------
+    // --- close revokes the handle --------------------------------------------
     completion::close(asid, cap).unwrap();
     assert!(completion::poll(asid, cap).is_err());
 
-    // --- operation ids are stable identity across capability-slot reuse ------
-    let cap_reused = completion::submit(asid, OpCode::Nop, None).unwrap();
-    assert_eq!(cap_reused, cap, "IdTable should reuse the freed capability slot");
+    // --- stale handles never alias a later operation -------------------------
+    let next_cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    assert_ne!(next_cap, cap, "unified capability handles must not be reused");
     assert_ne!(
-        completion::operation_id(asid, cap_reused).unwrap(),
+        completion::operation_id(asid, next_cap).unwrap(),
         first_operation,
-        "a reused capability slot must name a fresh operation id"
+        "a fresh capability must name a fresh operation id"
     );
 
     // --- close rejects in-flight caps (must complete or be drained first) ----
-    assert!(completion::close(asid, cap_reused).is_err()); // NotComplete
-    completion::complete(asid, cap_reused, OpResult::Ok(0)).unwrap();
-    completion::close(asid, cap_reused).unwrap(); // now it works
+    assert!(completion::close(asid, next_cap).is_err()); // NotComplete
+    completion::complete(asid, next_cap, OpResult::Ok(0)).unwrap();
+    completion::close(asid, next_cap).unwrap(); // now it works
 
     // --- cancel: InFlight -> CancelPending -> Completed(Cancelled) -----------
     let cap2 = completion::submit(asid, OpCode::Write, Some(alloc::vec![1u8, 2, 3])).unwrap();

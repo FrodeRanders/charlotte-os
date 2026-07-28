@@ -46,7 +46,7 @@ impl DeferredWorkManager {
     }
 
     extern "C" fn do_work() {
-        while let Ok(task) = DWM.queue.pop() {
+        if let Ok(task) = DWM.queue.pop() {
             match task {
                 // Handle each task type here
             }

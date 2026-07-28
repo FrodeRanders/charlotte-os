@@ -84,6 +84,7 @@ pub fn close_user_address_space(asid: AddressSpaceId) -> Result<(), AddressSpace
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);
     crate::device::close_address_space(asid);
+    crate::capability::close_address_space(asid);
 
     ADDRESS_SPACE_TABLE
         .lock()

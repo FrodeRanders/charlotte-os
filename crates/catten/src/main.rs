@@ -22,6 +22,7 @@
 
 extern crate alloc;
 
+pub mod capability;
 pub mod completion;
 pub mod cpu;
 pub mod debug_trace;

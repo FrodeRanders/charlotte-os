@@ -69,16 +69,15 @@ use crate::{
 ///
 /// This is the kernel realization of the ABI's `Handle` — the value that would
 /// cross the syscall boundary. It is an index into the owning address space's
-/// capability table. Slot indices are **reused** after [`close`]; see
-/// [`OperationId`] for the stable identity of one operation.
-pub type CompletionCap = usize;
+/// unified object-capability table. Values are never reused within an address
+/// space, so a stale handle cannot alias a later operation.
+pub type CompletionCap = u64;
 
 /// The stable identity of one submitted operation (architecture doc §8.2).
 ///
-/// Unlike [`CompletionCap`] (a reusable table index), an operation id is
-/// allocated monotonically and never reused, so completion records remain
-/// unambiguous even after capability slots are recycled. This is the
-/// identity a capability-free submission path keys on.
+/// Operation ids are independent of capability handles and also identify
+/// capability-free submissions. They remain the identity recorded in
+/// completion queues even when no first-class capability was requested.
 pub type OperationId = u64;
 
 static NEXT_OPERATION_ID: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(1);
@@ -441,7 +440,7 @@ struct CqState {
 }
 
 struct AsCompletions {
-    table: crate::klib::collections::id_table::IdTable<Arc<Completion>>,
+    table: BTreeMap<CompletionCap, Arc<Completion>>,
     capacity: usize,
     live: usize,
     /// Live capability-free operations, keyed by their stable operation id.
@@ -466,7 +465,7 @@ static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
 
 fn empty_as(capacity: usize) -> AsCompletions {
     AsCompletions {
-        table: crate::klib::collections::id_table::IdTable::new(),
+        table: BTreeMap::new(),
         capacity,
         live: 0,
         detached: BTreeMap::new(),
@@ -474,10 +473,18 @@ fn empty_as(capacity: usize) -> AsCompletions {
     }
 }
 
+fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
+    if let Some(previous) = COMPLETIONS.write().insert(asid, replacement) {
+        for cap in previous.table.keys() {
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion);
+        }
+    }
+}
+
 /// Opens a bounded capability table for an address space. `capacity` bounds the
 /// number of concurrently in-flight capabilities (submission backpressure).
 pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
-    COMPLETIONS.write().insert(asid, empty_as(capacity));
+    replace_address_space(asid, empty_as(capacity));
 }
 
 /// Like [`open_address_space`] but also allocates and attaches the default
@@ -489,7 +496,7 @@ pub fn open_address_space_with_cq(
     cap_table_capacity: usize,
     cq_entries: u32,
 ) {
-    COMPLETIONS.write().insert(asid, empty_as(cap_table_capacity));
+    replace_address_space(asid, empty_as(cap_table_capacity));
     open_cq(asid, DEFAULT_CQ, cq_entries);
 }
 
@@ -502,7 +509,7 @@ pub fn open_address_space_with_cq_phys(
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
 ) {
-    COMPLETIONS.write().insert(asid, empty_as(cap_table_capacity));
+    replace_address_space(asid, empty_as(cap_table_capacity));
     open_cq_phys(asid, DEFAULT_CQ, ring_frame, cq_entries);
 }
 
@@ -566,16 +573,23 @@ pub fn cq_ring_of(
 
 /// Closes an address space's capability table and frees its CQ ring (if any).
 pub fn close_address_space(asid: AddressSpaceId) {
-    COMPLETIONS.write().remove(&asid);
+    if let Some(completions) = COMPLETIONS.write().remove(&asid) {
+        for cap in completions.table.keys() {
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion);
+        }
+    }
 }
 
 pub fn completion_of(
     asid: AddressSpaceId,
     cap: CompletionCap,
 ) -> Result<Arc<Completion>, CapError> {
+    if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Completion) {
+        return Err(CapError::UnknownCap);
+    }
     let registry = COMPLETIONS.read();
     let as_completions = registry.get(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    let completion = as_completions.table.get(cap).map_err(|_| CapError::UnknownCap)?;
+    let completion = as_completions.table.get(&cap).ok_or(CapError::UnknownCap)?;
     Ok(completion.clone())
 }
 
@@ -592,7 +606,8 @@ pub fn submit(
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
-    let cap = as_completions.table.add_element(Completion::new(buffer));
+    let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
+    as_completions.table.insert(cap, Completion::new(buffer));
     as_completions.live += 1;
     Ok(cap)
 }
@@ -949,7 +964,7 @@ pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, C
     Ok(completion.cancel())
 }
 
-/// Releases a completed or already-drained capability slot. Fails with
+/// Revokes a completed or already-drained capability. Fails with
 /// [`CapError::NotComplete`] if the operation is still in flight (neither
 /// completed nor drained).
 pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
@@ -959,7 +974,9 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     }
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    as_completions.table.remove_element(cap).map_err(|_| CapError::UnknownCap)?;
+    as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
+    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion);
+    debug_assert!(revoked);
     as_completions.live = as_completions.live.saturating_sub(1);
     Ok(())
 }

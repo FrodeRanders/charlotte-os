@@ -476,13 +476,17 @@ impl SystemScheduler {
                 Err(_) => return Err(Error::InvalidThread),
             }
         };
-        let current_lp = state_lp.or_else(|| self.current_lp_for_thread(tid));
-        let remove_lp = state_lp.or(current_lp);
+        // The LP scheduler is the authority for a currently executing thread.
+        // A migration/context-switch boundary can leave the separately stored
+        // ThreadState snapshot briefly pointing at the previous LP; preferring
+        // that stale snapshot makes self-abort remove from the wrong scheduler.
+        let current_lp = self.current_lp_for_thread(tid).or(state_lp);
+        let remove_lp = current_lp.or(state_lp);
         if let Some(lp_id) = remove_lp {
             self.lp_schedulers[&lp_id]
                 .lock()
                 .remove_thread(tid)
-                .expect("Error removing thread from LP scheduler while aborting");
+                .map_err(|_| Error::InvalidThread)?;
         }
         // Move the thread out of the table WITHOUT dropping it: a thread cannot
         // free its own kernel stack while still executing on it. Stage it for

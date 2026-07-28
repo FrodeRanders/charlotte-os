@@ -29,7 +29,7 @@ is in the repository history and earlier revisions of this document.
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Capability table, rights masks, object teardown | Done |
+| 1 | Unified per-address-space tagged object-capability table, rights masks, stale/wrong-type rejection, object teardown | Done |
 | 2 | Endpoint IPC v1: scalar send/call/receive/reply, connection delegation, reply tokens | Done |
 | 3 | Userspace name/service manager, bootstrap delivery, ELF loader, supervisor, generation tracking, long names via memory objects | Done |
 | 4 | First-class memory objects: allocate, map, unmap, close, ownership accounting | Done |
@@ -38,7 +38,7 @@ is in the repository history and earlier revisions of this document.
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
 | 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation is blocked by HVF's EL0-MMIO limitation and remains pending on Linux KVM. | Driver built, not yet runtime-validated |
-| 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Done |
+| 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Implemented; intermittent SMP timer/lifecycle validation remains |
 | 11 | Userspace startup ABI: ELF `_start`, `entry!(main)`, typed `Context`, fixed-width/versioned launch header, explicit startup input | Done |
 
 ### Success criteria met and boot-validated
@@ -190,6 +190,15 @@ Examples include:
 -   timer capabilities
 
 The capability model should remain independent of scheduling and IPC.
+
+The current kernel uses one authoritative per-address-space namespace for
+IPC, memory, completion, device, and mailbox capabilities. Handles are opaque;
+each authoritative table entry carries an object-family tag used for
+wrong-type rejection. Every operation must find the handle in the caller's table.
+Subsystem registries retain typed object payloads and rights, while allocation,
+ownership validation, revocation, and whole-address-space namespace teardown
+are centralised. Handles are monotonic within an address space and are not
+reused, preventing a stale handle from naming a later object.
 
 ## 2.2 Endpoints
 
@@ -2064,13 +2073,11 @@ For each phase, append:
 
 ## 19.1 CharlotteOS
 
-Suggested modules:
+Current module boundary (the implementation is kept in one file until the
+rights and object variants justify further splitting):
 
 ``` text
-crates/catten/src/capability/
-    table.rs
-    rights.rs
-    object.rs
+crates/catten/src/capability.rs
 
 crates/catten/src/ipc/
     endpoint.rs
@@ -2315,7 +2322,10 @@ Relevant Xous concepts to inspect in source:
 
 ## 23. Working summary for Codex
 
-The architecture is substantially complete through Phase 10. The
+The architecture is substantially implemented through Phase 10. Boot
+validation still includes timing-sensitive SMP coverage, so “done” here means
+the documented mechanisms exist and their normal integration path passes; it
+does not claim that every scheduler/timer race has been eliminated. The
 implementation order below shows status:
 ```
 

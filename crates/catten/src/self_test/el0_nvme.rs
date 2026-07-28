@@ -19,14 +19,16 @@ const OBJSTORE_ELF: &[u8] = include_bytes!("objstore.elf");
 const NVME_CLIENT_ELF: &[u8] = include_bytes!("nvme_client.elf");
 
 #[cfg(target_arch = "aarch64")]
-static mut TEST_STATE: Option<NameServiceHandle> = None;
+static TEST_STATE: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 pub fn test_el0_nvme() {
     #[cfg(target_arch = "aarch64")]
     {
         logln!("Testing EL0 userspace NVMe block device driver and object store...");
         let name_service = supervisor::node_name_service();
-        unsafe { TEST_STATE = Some(name_service) };
+        *TEST_STATE.lock() = Some(name_service);
         let _vtid =
             crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, verify_el0_nvme);
         logln!("[nvme] verifier deferred");
@@ -65,14 +67,14 @@ fn wait_for_nvme() -> (usize, u32) {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_nvme() {
-    let ns = unsafe { TEST_STATE.as_ref() }.expect("[nvme] test state missing");
+    let ns = TEST_STATE.lock().as_ref().copied().expect("[nvme] test state missing");
     logln!("[nvme] verifier running, discovering NVMe...");
     let (bar0, intid) = wait_for_nvme();
 
     // --- Spawn NVMe driver ---
     let driver = supervisor::spawn_driver_with_name_service(
         NVME_ELF,
-        ns,
+        &ns,
         ConnectionRights::CALL,
         DriverGrant {
             mmio_phys_base: bar0,
@@ -89,7 +91,7 @@ extern "C" fn verify_el0_nvme() {
     // Start the client immediately. Its single deferred lookup must be woken
     // by the driver's later registration; verifier ordering must not mask a
     // broken name-service synchronization path.
-    let client = supervisor::spawn_with_name_service(NVME_CLIENT_ELF, ns, ConnectionRights::CALL);
+    let client = supervisor::spawn_with_name_service(NVME_CLIENT_ELF, &ns, ConnectionRights::CALL);
     let client_cfg: *const u32 = {
         let base: *mut u8 = client.status_frame.into();
         base as *const u32
@@ -114,7 +116,7 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);
 
     // --- Spawn object store via name service (deferred lookup) ---
-    let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, ns, ConnectionRights::CALL);
+    let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, &ns, ConnectionRights::CALL);
     let obj_cfg: *const u32 = {
         let base: *mut u8 = objstore.status_frame.into();
         base as *const u32
@@ -127,6 +129,6 @@ extern "C" fn verify_el0_nvme() {
     }
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
-    crate::self_test::el0_raft::test_persistent_raft(ns);
+    crate::self_test::el0_raft::test_persistent_raft(&ns);
     logln!("[nvme] SUCCESS: storage stack and persistent Raft recovery verified.");
 }

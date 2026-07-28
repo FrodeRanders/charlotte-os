@@ -101,8 +101,15 @@ pub fn test_syscall_dispatch() {
     let cap = {
         let mut f = synthetic_trap_frame_in(asid, 0, OpCode::Nop as u64, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_SUBMIT);
-        f.regs[0] as usize
+        f.regs[0]
     };
+    assert!(crate::capability::contains(asid, cap, crate::capability::ObjectKind::Completion));
+    assert!(!crate::capability::contains(asid, cap, crate::capability::ObjectKind::Ipc));
+    assert_eq!(
+        crate::ipc::receive(asid, cap),
+        Err(crate::ipc::IpcError::UnknownCapability),
+        "a completion capability must not be accepted as IPC authority"
+    );
     // COMPLETION_COMPLETE
     {
         let mut f = synthetic_trap_frame_in(asid, 0, cap as u64, 42, 0);

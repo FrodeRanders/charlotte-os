@@ -75,6 +75,16 @@ pub fn test_device_capabilities() {
             "[device] private interrupts must not be delegated"
         );
         assert_eq!(
+            device::grant_interrupt(0, TEST_SPI + 1),
+            Err(DeviceError::InvalidAddressSpace),
+            "[device] kernel ASID must not be packed as a driver route"
+        );
+        assert_eq!(
+            device::grant_mmio(DEV_ASID, usize::MAX & !(4096 - 1), 2),
+            Err(DeviceError::InvalidRange),
+            "[device] overflowing MMIO grants must be rejected"
+        );
+        assert_eq!(
             device::grant_interrupt(DEV_ASID + 1, TEST_SPI),
             Err(DeviceError::InterruptInUse),
             "[device] an INTID must have a single capability owner"

@@ -20,7 +20,7 @@ jobs:
       - name: Install pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-07-18
+          toolchain: nightly-2026-07-27
           components: rustfmt
 
       - name: Check workspace and standalone EL0 crates
@@ -38,7 +38,7 @@ jobs:
       - name: Install pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-07-18
+          toolchain: nightly-2026-07-27
 
       - name: Run host-testable library suites
         run: |
@@ -61,7 +61,7 @@ jobs:
       - name: Install pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-07-18
+          toolchain: nightly-2026-07-27
           targets: aarch64-unknown-none
           components: rust-src,llvm-tools
 
@@ -85,7 +85,7 @@ jobs:
       - name: Install pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-07-18
+          toolchain: nightly-2026-07-27
           targets: ${{ matrix.target == 'aarch64-unknown-none-catten' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
           components: rust-src
 
@@ -114,7 +114,7 @@ jobs:
       - name: Install pinned Rust nightly
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2026-07-18
+          toolchain: nightly-2026-07-27
           targets: aarch64-unknown-none
           components: rust-src
 

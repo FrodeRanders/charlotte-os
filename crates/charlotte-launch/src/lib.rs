@@ -106,7 +106,6 @@ impl LaunchHeader {
         );
         self.magic == LAUNCH_MAGIC
             && self.abi_major == LAUNCH_ABI_MAJOR
-            && self.abi_minor >= LAUNCH_ABI_MINOR
             && self.header_size as usize >= core::mem::size_of::<Self>()
             && self.config_size == CONFIG_PAGE_SIZE
             && self.manifest_offset as usize >= MANIFEST_VECTOR_OFFSET
@@ -125,6 +124,12 @@ impl LaunchHeader {
             && self.status_base != 0
             && self.status_size != 0
             && self.status_size <= STATUS_PAGE_SIZE
+    }
+}
+
+impl Default for LaunchHeader {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

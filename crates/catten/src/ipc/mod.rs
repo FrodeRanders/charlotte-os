@@ -160,21 +160,18 @@ enum Capability {
 
 #[derive(Debug)]
 struct AsIpcCaps {
-    next: CapabilityId,
     caps: BTreeMap<CapabilityId, Capability>,
 }
 
 impl AsIpcCaps {
     fn new() -> Self {
         Self {
-            next: 1,
             caps: BTreeMap::new(),
         }
     }
 
-    fn insert(&mut self, cap: Capability) -> CapabilityId {
-        let id = self.next;
-        self.next = self.next.checked_add(1).expect("IPC capability id overflow");
+    fn insert(&mut self, owner: AddressSpaceId, cap: Capability) -> CapabilityId {
+        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Ipc);
         self.caps.insert(id, cap);
         id
     }
@@ -282,6 +279,9 @@ impl IpcRegistry {
     }
 
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
+        if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Ipc) {
+            return Err(IpcError::UnknownCapability);
+        }
         self.caps
             .get(&asid)
             .and_then(|caps| caps.caps.get(&cap))
@@ -294,15 +294,24 @@ impl IpcRegistry {
         asid: AddressSpaceId,
         cap: CapabilityId,
     ) -> Result<Capability, IpcError> {
-        self.caps
+        let removed = self
+            .caps
             .get_mut(&asid)
             .and_then(|caps| caps.caps.remove(&cap))
-            .ok_or(IpcError::UnknownCapability)
+            .ok_or(IpcError::UnknownCapability)?;
+        let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Ipc);
+        debug_assert!(revoked);
+        Ok(removed)
     }
 
     fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
         if let Some(caps) = self.caps.get_mut(&asid) {
-            caps.caps.retain(|_, cap| *cap != target);
+            let removed: Vec<_> =
+                caps.caps.iter().filter_map(|(id, cap)| (*cap == target).then_some(*id)).collect();
+            for id in removed {
+                caps.caps.remove(&id);
+                crate::capability::remove(asid, id, crate::capability::ObjectKind::Ipc);
+            }
         }
     }
 }
@@ -334,10 +343,13 @@ pub fn endpoint_create(
             notify_cq: None,
         },
     );
-    Ok(ipc.as_caps(owner).insert(Capability::Endpoint {
-        endpoint,
-        rights: ConnectionRights::ALL,
-    }))
+    Ok(ipc.as_caps(owner).insert(
+        owner,
+        Capability::Endpoint {
+            endpoint,
+            rights: ConnectionRights::ALL,
+        },
+    ))
 }
 
 /// Binds an endpoint's readiness to one of the owner's completion queues.
@@ -395,10 +407,13 @@ pub fn connection_delegate(
 ) -> Result<CapabilityId, IpcError> {
     let mut ipc = IPC.write();
     let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
-    Ok(ipc.as_caps(target).insert(Capability::Connection {
-        endpoint,
-        rights: granted,
-    }))
+    Ok(ipc.as_caps(target).insert(
+        target,
+        Capability::Connection {
+            endpoint,
+            rights: granted,
+        },
+    ))
 }
 
 /// Resolve the owner of the endpoint named by a connection capability.
@@ -594,9 +609,12 @@ pub fn scalar_call(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -608,9 +626,12 @@ pub fn scalar_call(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
     drop(ipc);
@@ -708,10 +729,13 @@ fn scalar_call_with_connection_impl(
     } else {
         None
     };
-    let attached_cap = ipc.as_caps(server).insert(Capability::Connection {
-        endpoint: delegated_endpoint,
-        rights: granted,
-    });
+    let attached_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::Connection {
+            endpoint: delegated_endpoint,
+            rights: granted,
+        },
+    );
 
     let call = ipc.alloc_call();
     ipc.pending_calls.insert(
@@ -723,9 +747,12 @@ fn scalar_call_with_connection_impl(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -737,9 +764,12 @@ fn scalar_call_with_connection_impl(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let server_memory_vec: Vec<MemoryObjectCap> = server_memory_cap.into_iter().collect();
     let delivery = enqueue_message(
@@ -790,9 +820,12 @@ pub fn scalar_call_with_memory_move(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -804,9 +837,12 @@ pub fn scalar_call_with_memory_move(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
@@ -855,9 +891,12 @@ pub fn scalar_call_with_memory_copy(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -869,9 +908,12 @@ pub fn scalar_call_with_memory_copy(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
@@ -945,9 +987,12 @@ fn scalar_call_with_memory_borrow(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -964,9 +1009,12 @@ fn scalar_call_with_memory_borrow(
             }),
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
@@ -1255,10 +1303,13 @@ fn complete_reply(
         revoke_memory_borrow(borrow).map_err(|_| IpcError::MemoryTransferFailed)?;
     }
     let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
-        ipc.as_caps(caller).insert(Capability::Connection {
-            endpoint,
-            rights: endpoint_rights,
-        })
+        ipc.as_caps(caller).insert(
+            caller,
+            Capability::Connection {
+                endpoint,
+                rights: endpoint_rights,
+            },
+        )
     });
     ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
@@ -1482,7 +1533,11 @@ pub fn close_address_space(asid: AddressSpaceId) {
     for cap in caps {
         let _ = close_cap(asid, cap);
     }
-    IPC.write().caps.remove(&asid);
+    if let Some(caps) = IPC.write().caps.remove(&asid) {
+        for cap in caps.caps.keys() {
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Ipc);
+        }
+    }
 }
 
 fn consume_reply_cap(
@@ -1590,6 +1645,11 @@ fn cancel_queued_message_with_reply(
                 if let Some(connection_cap) = message.connection {
                     if let Some(caps) = ipc.caps.get_mut(&server) {
                         caps.caps.remove(&connection_cap);
+                        crate::capability::remove(
+                            server,
+                            connection_cap,
+                            crate::capability::ObjectKind::Ipc,
+                        );
                     }
                 }
             }
@@ -1731,9 +1791,12 @@ pub fn vector_call(
             observed: false,
         },
     );
-    let call_cap = ipc.as_caps(caller).insert(Capability::PendingCall {
-        call,
-    });
+    let call_cap = ipc.as_caps(caller).insert(
+        caller,
+        Capability::PendingCall {
+            call,
+        },
+    );
 
     let token = ipc.alloc_reply();
     ipc.reply_tokens.insert(
@@ -1745,9 +1808,12 @@ pub fn vector_call(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(Capability::ReplyToken {
-        token,
-    });
+    let token_cap = ipc.as_caps(server).insert(
+        server,
+        Capability::ReplyToken {
+            token,
+        },
+    );
 
     let delivery = match enqueue_message(
         &mut ipc,
@@ -1762,8 +1828,10 @@ pub fn vector_call(
         Ok(delivery) => delivery,
         Err(error) => {
             let _ = ipc.as_caps(caller).caps.remove(&call_cap);
+            crate::capability::remove(caller, call_cap, crate::capability::ObjectKind::Ipc);
             ipc.pending_calls.remove(&call);
             let _ = ipc.as_caps(server).caps.remove(&token_cap);
+            crate::capability::remove(server, token_cap, crate::capability::ObjectKind::Ipc);
             ipc.reply_tokens.remove(&token);
             rollback_vector_transfers(caller, server, &mut applied);
             return Err(error);
