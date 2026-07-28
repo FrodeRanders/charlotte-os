@@ -147,6 +147,11 @@ pub extern "C" fn bsp_main() -> ! {
     mask_interrupts!();
     #[cfg(all(not(feature = "hvf_compat"), not(feature = "live_upgrade_test")))]
     {
+        // Construct and publish the immutable topology while boot is still
+        // single-threaded. Deferred driver verifiers run as soon as the
+        // scheduler starts; allowing one of them to race this LazyLock's first
+        // initialization made device discovery depend on scheduling order.
+        spin::LazyLock::force(&DEVICE_TOPOLOGY);
         logln!("Spawning initial kernel thread to probe device topology...");
         let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
         logln!("Initial thread spawned with ID = {thread_id}.");

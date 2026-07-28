@@ -38,24 +38,29 @@ pub fn test_el0_nvme() {
 }
 
 fn wait_for_nvme() -> (usize, u32) {
-    // The PCI topology probe runs asynchronously on a kernel thread.
-    // Spin until it completes and an NVMe device is found.
-    for _ in 0..200 {
+    #[cfg(not(feature = "hvf_compat"))]
+    {
+        // Normal boot publishes the immutable topology before the scheduler
+        // starts, so absence here is a real discovery failure rather than a
+        // reason to guess platform addresses.
         let topo = &crate::device_management::topology::DEVICE_TOPOLOGY;
-        if let Some((bar0, irq)) =
+        let (bar0, irq) =
             crate::device_management::drivers::busses::pci_express::topology::lookup_first_nvme(
                 &topo.pcie,
             )
-        {
-            logln!("[nvme] PCI topology: BAR0={:#x} intid={}", bar0, irq);
-            return (bar0 as usize, irq as u32);
-        }
-        crate::cpu::scheduler::yield_lp();
+            .expect("[nvme] no NVMe controller in the published PCI topology");
+        logln!("[nvme] PCI topology: BAR0={:#x} intid={}", bar0, irq);
+        (bar0 as usize, irq as u32)
     }
-    let bar0: usize = 0x1000_0000;
-    let intid: u32 = 44;
-    logln!("[nvme] fallback: BAR0={:#x} intid={}", bar0, intid);
-    (bar0, intid)
+    #[cfg(feature = "hvf_compat")]
+    {
+        // HVF cannot safely map the QEMU ECAM window, so this development mode
+        // retains the known fixed test-device placement.
+        let bar0: usize = 0x1000_0000;
+        let intid: u32 = 44;
+        logln!("[nvme] HVF fallback: BAR0={:#x} intid={}", bar0, intid);
+        (bar0, intid)
+    }
 }
 
 #[cfg(target_arch = "aarch64")]

@@ -69,6 +69,16 @@ pub fn test_device_capabilities() {
             device::grant_mmio(DEV_ASID, 0x0900_0000, 1).expect("[device] grant_mmio failed");
         let irq =
             device::grant_interrupt(DEV_ASID, TEST_SPI).expect("[device] grant_interrupt failed");
+        assert_eq!(
+            device::grant_interrupt(DEV_ASID, 31),
+            Err(DeviceError::InvalidInterrupt),
+            "[device] private interrupts must not be delegated"
+        );
+        assert_eq!(
+            device::grant_interrupt(DEV_ASID + 1, TEST_SPI),
+            Err(DeviceError::InterruptInUse),
+            "[device] an INTID must have a single capability owner"
+        );
 
         assert_eq!(
             device::mmio_map(DEV_ASID, 0xdead_beef, crate::memory::VAddr::from(0x4000usize), true),
@@ -265,6 +275,9 @@ extern "C" fn irq_driver() {
     // Tear down the interrupt cap: mask and unroute the source.
     device::close_cap(DEV_ASID, IRQ_CAP.load(Ordering::Acquire))
         .expect("[device] close_cap(irq) failed");
+    let recycled = device::grant_interrupt(DEV_ASID + 1, TEST_SPI)
+        .expect("[device] closed INTID must become grantable");
+    device::close_cap(DEV_ASID + 1, recycled).expect("[device] recycled interrupt close failed");
 
     logln!(
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \

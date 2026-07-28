@@ -94,6 +94,8 @@ pub enum DeviceError {
     NotPageAligned,
     /// The interrupt id is not a routable device interrupt.
     InvalidInterrupt,
+    /// Another live capability already owns the interrupt source.
+    InterruptInUse,
 }
 
 /// A device register window granted to a driver domain.
@@ -165,6 +167,9 @@ static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
 
 /// One more than the highest INTID a driver interrupt may use.
 pub(crate) const MAX_ROUTED_INTID: usize = 256;
+/// The first GIC Shared Peripheral Interrupt. SGIs and PPIs are private to a
+/// processor and cannot be delegated as device interrupts.
+const MIN_ROUTED_INTID: u32 = 32;
 
 static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
 static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] = [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
@@ -277,6 +282,16 @@ pub fn grant_mmio(
 /// queue with [`interrupt_bind_cq`], which arms and routes the interrupt.
 pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, DeviceError> {
     let mut devices = DEVICES.lock();
+    if intid < MIN_ROUTED_INTID || intid as usize >= MAX_ROUTED_INTID {
+        return Err(DeviceError::InvalidInterrupt);
+    }
+    if devices.values().any(|caps| {
+        caps.caps
+            .values()
+            .any(|object| matches!(object, DeviceObject::Interrupt(irq) if irq.intid == intid))
+    }) {
+        return Err(DeviceError::InterruptInUse);
+    }
     let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
     Ok(caps.insert(DeviceObject::Interrupt(InterruptObject {
         intid,
@@ -358,26 +373,23 @@ pub fn interrupt_bind_cq(
     cap: DeviceCap,
     cq: CqId,
 ) -> Result<(), DeviceError> {
-    let intid;
     let target_lp = get_lp_id();
-    {
-        let mut devices = DEVICES.lock();
-        let object = lookup_mut(&mut devices, asid, cap)?;
-        let DeviceObject::Interrupt(irq) = object else {
-            return Err(DeviceError::WrongType);
-        };
-        if irq.cq.is_some() {
-            return Err(DeviceError::AlreadyBound);
-        }
-        if irq.intid as usize >= MAX_ROUTED_INTID {
-            return Err(DeviceError::InvalidInterrupt);
-        }
-        irq.cq = Some(cq);
-        irq.target_lp = target_lp;
-        intid = irq.intid;
+    let mut devices = DEVICES.lock();
+    let object = lookup_mut(&mut devices, asid, cap)?;
+    let DeviceObject::Interrupt(irq) = object else {
+        return Err(DeviceError::WrongType);
+    };
+    if irq.cq.is_some() {
+        return Err(DeviceError::AlreadyBound);
     }
+    let intid = irq.intid;
+    irq.cq = Some(cq);
+    irq.target_lp = target_lp;
+
     // Publish the route and reset the coalescing counter before arming, so a
-    // delivery that races the enable observes a consistent route.
+    // delivery that races the enable observes a consistent route. Keep the
+    // capability-table lock through the architecture operation so a concurrent
+    // close cannot remove the capability and leave an orphaned route.
     IRQ_PENDING[intid as usize].store(0, Ordering::Release);
     ROUTE_TABLE[intid as usize].store(pack_route(asid, cq), Ordering::Release);
     arch_enable_irq(intid, target_lp);
@@ -388,19 +400,18 @@ pub fn interrupt_bind_cq(
 /// (unmask) the source so the next interrupt can be delivered. Returns the
 /// number of coalesced interrupts consumed since the last acknowledgement.
 pub fn interrupt_ack(asid: AddressSpaceId, cap: DeviceCap) -> Result<u32, DeviceError> {
-    let (intid, target_lp) = {
-        let mut devices = DEVICES.lock();
-        let object = lookup_mut(&mut devices, asid, cap)?;
-        let DeviceObject::Interrupt(irq) = object else {
-            return Err(DeviceError::WrongType);
-        };
-        if irq.cq.is_none() {
-            return Err(DeviceError::NotBound);
-        }
-        (irq.intid, irq.target_lp)
+    let mut devices = DEVICES.lock();
+    let object = lookup_mut(&mut devices, asid, cap)?;
+    let DeviceObject::Interrupt(irq) = object else {
+        return Err(DeviceError::WrongType);
     };
+    if irq.cq.is_none() {
+        return Err(DeviceError::NotBound);
+    }
+    let (intid, target_lp) = (irq.intid, irq.target_lp);
     let consumed = IRQ_PENDING[intid as usize].swap(0, Ordering::AcqRel);
-    // Re-arm the source (it was masked on delivery).
+    // Re-arm the source (it was masked on delivery). Holding DEVICES prevents
+    // close from racing this operation and re-enabling a reclaimed source.
     arch_enable_irq(intid, target_lp);
     Ok(consumed)
 }
@@ -431,11 +442,10 @@ fn unroute_interrupt(intid: u32) {
 /// unmapped, an interrupt source is masked and its route removed.
 pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
     let object = {
-        let devices = DEVICES.lock();
+        let mut devices = DEVICES.lock();
         devices
-            .get(&asid)
-            .and_then(|caps| caps.caps.get(&cap))
-            .copied()
+            .get_mut(&asid)
+            .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(DeviceError::UnknownCapability)?
     };
     match object {
@@ -448,12 +458,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
         }
         DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
     }
-    let mut devices = DEVICES.lock();
-    devices
-        .get_mut(&asid)
-        .and_then(|caps| caps.caps.remove(&cap))
-        .map(|_| ())
-        .ok_or(DeviceError::UnknownCapability)
+    Ok(())
 }
 
 /// Inspection: the owning address space of the interrupt route for `intid`,

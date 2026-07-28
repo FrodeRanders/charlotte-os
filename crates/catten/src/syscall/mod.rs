@@ -1161,6 +1161,7 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::AlreadyBound => 7,
         DeviceError::NotPageAligned => 8,
         DeviceError::InvalidInterrupt => 9,
+        DeviceError::InterruptInUse => 10,
     }
 }
 

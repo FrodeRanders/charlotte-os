@@ -85,7 +85,15 @@ pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     store_lp_id(lp_id);
     #[cfg(target_arch = "aarch64")]
-    LP_MPIDRS[lp_id as usize].store(mpidr(), Ordering::Release);
+    LP_MPIDRS
+        .get(lp_id as usize)
+        .unwrap_or_else(|| {
+            panic!(
+                "logical processor id {lp_id} exceeds the AArch64 MPIDR routing table capacity \
+                 ({MAX_TRACKED_LPS})"
+            )
+        })
+        .store(mpidr(), Ordering::Release);
     if lp_id == 0 {
         early_logln!(
             "Logical Processor with local interrupt controller ID = {} has been designated LP {}.",
