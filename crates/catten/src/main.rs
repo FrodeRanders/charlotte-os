@@ -168,6 +168,7 @@ pub extern "C" fn bsp_main() -> ! {
     // co-location cannot be cancelled out by later least-loaded admissions.
     #[cfg(not(feature = "live_upgrade_test"))]
     crate::self_test::scheduler_lifecycle::test_scheduler_lifecycle();
+    crate::self_test::results::finalize_and_start_coordinator();
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from
     // overloaded LPs before any of those contexts begin executing.

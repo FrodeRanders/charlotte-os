@@ -74,6 +74,7 @@ extern "C" fn worker() {
             WORKER_COUNT,
             migrations
         );
+        crate::self_test::results::pass(crate::self_test::results::TestId::SchedulerLifecycle);
         spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
     }
 }

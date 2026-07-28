@@ -297,6 +297,7 @@ extern "C" fn verify_ping_pong() {
                 ping_result_raw,
                 pong_buf_val
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::PingPong);
             return;
         }
         spins += 1;

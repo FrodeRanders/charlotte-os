@@ -373,4 +373,5 @@ extern "C" fn verify_el0_service() {
         "[service] SUCCESS: bootstrap delivery, name lookup, stale-connection failure, and \
          restart generation all verified."
     );
+    crate::self_test::results::pass(crate::self_test::results::TestId::Service);
 }

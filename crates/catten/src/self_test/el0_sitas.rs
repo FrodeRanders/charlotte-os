@@ -417,6 +417,7 @@ extern "C" fn verify_el0_sitas() {
                 expected, sum
             );
             logln!("[sitas] SUCCESS: adder program computed the correct sum.");
+            crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
             teardown_sitas_domain();
             return;
         }
@@ -427,6 +428,7 @@ extern "C" fn verify_el0_sitas() {
                 sentinel
             );
             logln!("[sitas] SUCCESS: basic_kv ran at EL0, produced total_len {:#x}.", sentinel);
+            crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
             teardown_sitas_domain();
             return;
         }

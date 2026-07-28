@@ -737,6 +737,7 @@ extern "C" fn verify_el0_endpoint_ipc() {
                 call_cap,
                 poll_result
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0Ipc);
             return;
         }
         spins += 1;
@@ -796,6 +797,7 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
                 call_cap,
                 poll_result
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcBlocking);
             return;
         }
         spins += 1;
@@ -862,6 +864,7 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
                 call_cap,
                 poll_result
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcCrossAs);
             return;
         }
         spins += 1;
@@ -1133,6 +1136,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
                 server_read_borrow_value,
                 client_write_borrow_returned_value
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemory);
             return;
         }
         spins += 1;
@@ -1323,6 +1327,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
                 server_first_recv,
                 server_second_recv
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemoryCancel);
             return;
         }
         spins += 1;
@@ -1438,6 +1443,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
                 client_after_value,
                 IPC_MEMORY_COPY_SERVER_VALUE
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0IpcMemoryCopy);
             return;
         }
         spins += 1;

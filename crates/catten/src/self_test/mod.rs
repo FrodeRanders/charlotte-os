@@ -24,6 +24,7 @@ pub mod el0_uart;
 pub mod ipc;
 pub mod ipi;
 pub mod memory;
+pub mod results;
 pub mod scheduler_lifecycle;
 pub mod shard;
 pub mod syscall;
@@ -33,10 +34,12 @@ use crate::logln;
 pub fn run_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {
+        results::register(results::TestId::Service);
         el0_service::test_el0_service();
         logln!("Live-upgrade verifier is pending.");
         return;
     }
+    results::register_boot_suite();
     // These raw probes target specific x86-64 HHDM/heap virtual addresses used
     // during heap debugging; they are not valid on other architectures.
     #[cfg(target_arch = "x86_64")]

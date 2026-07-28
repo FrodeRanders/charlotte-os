@@ -235,6 +235,7 @@ mod inner {
         let _ = (r1, r2);
         wait_for_election(&r1_domain, &r2_domain, "local two-node cluster");
         crate::logln!("[raft] SUCCESS: local two-node service elected one leader.");
+        crate::self_test::results::pass(crate::self_test::results::TestId::Raft);
         // Keep the shared node name service alive; only the Raft domains are
         // test fixtures.
         stop_domains(r1_domain, r2_domain);
@@ -279,6 +280,7 @@ mod inner {
         crate::logln!(
             "[raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe."
         );
+        crate::self_test::results::pass(crate::self_test::results::TestId::RaftStorage);
     }
 }
 

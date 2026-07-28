@@ -144,6 +144,7 @@ extern "C" fn cq_driver() {
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \
          per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
     );
+    crate::self_test::results::pass(crate::self_test::results::TestId::CqWait);
 }
 
 pub fn test_cq_wait_wake() {

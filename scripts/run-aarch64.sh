@@ -210,6 +210,7 @@ fi
 
 if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte-serial.log"
+    : >"$LOG"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     if [ "$SCHEDULER_TRACE" = "1" ] || [ "$DEBUG_SNAPSHOT" = "1" ]; then
@@ -217,8 +218,10 @@ if [ -n "$TIMEOUT" ]; then
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
-    for ((elapsed = 0; elapsed < TIMEOUT; elapsed++)); do
-        sleep 1
+    SELFTEST_COMPLETE=0
+    MAX_TICKS=$((TIMEOUT * 10))
+    for ((tick = 0; tick < MAX_TICKS; tick++)); do
+        sleep 0.1
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
             echo "error: QEMU exited before the ${TIMEOUT}s test window elapsed" >&2
@@ -227,6 +230,13 @@ if [ -n "$TIMEOUT" ]; then
                 cat "$LOG"
             fi
             exit 1
+        fi
+        if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
+            SELFTEST_COMPLETE=1
+            if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ]; then
+                echo ">>> Authoritative self-test result observed after $(((tick + 1) / 10))s."
+                break
+            fi
         fi
     done
     if [ "$SCHEDULER_TRACE" = "1" ]; then
@@ -298,41 +308,19 @@ if [ -n "$TIMEOUT" ]; then
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
-    if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
-        REQUIRED_MARKERS=("[service] SUCCESS:")
-    else
-        REQUIRED_MARKERS=(
-            "[EL0] SUCCESS:"
-            "[raft] SUCCESS:"
-            "[raft-storage] SUCCESS:"
-            "[EL0 IPC] SUCCESS:"
-            "[EL0 IPC block] SUCCESS:"
-            "[EL0 IPC cross-AS] SUCCESS:"
-            "[EL0 IPC memory] SUCCESS:"
-            "[EL0 IPC memory cancel] SUCCESS:"
-            "[EL0 IPC memory copy] SUCCESS:"
-            "[EL0 xLP] SUCCESS:"
-            "[PP] SUCCESS:"
-            "[sitas] SUCCESS:"
-            "[service] SUCCESS:"
-            "[cq wait] SUCCESS:"
-            "[device] SUCCESS:"
-            "[uart] SUCCESS:"
-            "[scheduler lifecycle] SUCCESS:"
-            "[nvme] SUCCESS:"
-        )
-    fi
-    missing=0
-    for marker in "${REQUIRED_MARKERS[@]}"; do
-        if ! grep -Fq "$marker" "$LOG"; then
-            echo "error: deferred self-test marker missing: ${marker}" >&2
-            missing=1
-        fi
-    done
-    if [ "$missing" -ne 0 ]; then
+    if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
+        echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    echo ">>> All required deferred self-test markers observed."
+    if ! grep -Eq \
+        'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0 passed_bitmap=0x[0-9a-f]+ failed_bitmap=0x0 pending_bitmap=0x0' \
+        "$LOG"
+    then
+        echo "error: malformed or unsuccessful authoritative self-test result" >&2
+        grep -E 'SELFTEST (FAILED|PENDING):' "$LOG" >&2 || true
+        exit 1
+    fi
+    echo ">>> All registered deferred self-tests passed."
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then

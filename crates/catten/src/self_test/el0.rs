@@ -314,6 +314,7 @@ extern "C" fn verify_el0_result() {
                  verified.",
                 cap
             );
+            crate::self_test::results::pass(crate::self_test::results::TestId::El0);
             // Teardown belongs to the verifier: once the observable result is
             // committed, the payload has no further role. This is idempotent
             // when svc #8 already removed it and prevents a failed exit path

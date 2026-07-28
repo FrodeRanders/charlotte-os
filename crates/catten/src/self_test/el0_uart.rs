@@ -363,6 +363,7 @@ extern "C" fn verify_el0_uart() {
          and interrupt, cancelled the outstanding deferred read, invalidated stale connections, \
          and a restarted generation-2 instance serves with fresh device grants."
     );
+    crate::self_test::results::pass(crate::self_test::results::TestId::Uart);
 }
 
 /// Poll a pending call created through the direct kernel API until it

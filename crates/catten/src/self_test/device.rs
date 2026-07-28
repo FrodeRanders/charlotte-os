@@ -293,6 +293,7 @@ extern "C" fn irq_driver() {
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \
          a completion queue via both the kernel path and a real GIC SPI all verified."
     );
+    crate::self_test::results::pass(crate::self_test::results::TestId::Device);
 }
 
 #[cfg(target_arch = "aarch64")]

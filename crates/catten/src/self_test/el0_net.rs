@@ -154,4 +154,5 @@ extern "C" fn verify_el0_net() {
         m4,
         m5
     );
+    crate::self_test::results::pass(crate::self_test::results::TestId::Net);
 }
