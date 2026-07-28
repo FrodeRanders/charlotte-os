@@ -311,6 +311,11 @@ pub extern "C" fn irq_dispatcher() {
                 .set_ctx_switch_pending();
         }
         _ => {
+            if crate::device::smmu::handle_interrupt(intid) {
+                gic::end_of_int(intid);
+                cond_yield_lp();
+                return;
+            }
             // Shared Peripheral Interrupts (INTID >= 32) from devices are
             // routed to the owning userspace driver domain: the device
             // capability layer masks the source, marks its interrupt object

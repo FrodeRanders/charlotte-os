@@ -631,20 +631,22 @@ pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
 /// Find the first NVMe controller and configure MSI-X vector zero when the
 /// platform exposes a GICv2m MSI frame. Falls back to the legacy interrupt-line
 /// value when MSI-X is unavailable.
-pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
+pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
     for group in &topology.segments {
         let mut stack = alloc::vec![&*group.root_bus];
         while let Some(bus) = stack.pop() {
             for dev in &bus.devices {
-                let ep = match dev {
+                let (ep, device, function) = match dev {
                     PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Endpoint(ep) => ep,
+                        PcieFunction::Endpoint(ep) => {
+                            (ep, sfd.number.get_inner(), ep.number.get_inner())
+                        }
                         _ => continue,
                     },
                     PcieDevice::MultiFunc(mfd) => {
                         match mfd.functions.first().and_then(|f| {
                             if let PcieFunction::Endpoint(ep) = f {
-                                Some(ep)
+                                Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
                             } else {
                                 None
                             }
@@ -655,6 +657,8 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
                     }
                     _ => continue,
                 };
+                let requester_id =
+                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                 let (class, subclass, prog_if) =
                     (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if);
                 if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
@@ -687,9 +691,14 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
                                 message.data,
                                 message.intid
                             );
-                            return Some((phys_base, message.intid));
+                            return Some((
+                                phys_base,
+                                message.intid,
+                                requester_id,
+                                Some(message.address),
+                            ));
                         }
-                    return Some((phys_base, legacy_irq));
+                    return Some((phys_base, legacy_irq, requester_id, None));
                 }
             }
             for dev in &bus.devices {

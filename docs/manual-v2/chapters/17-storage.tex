@@ -24,10 +24,12 @@ The NVMe driver is a userspace EL0 prototype implementing the subset needed for
 QEMU bring-up: controller and namespace identification, queue creation, and
 basic read, write, and flush operations. It is not a claim of NVMe 1.4
 compliance. It receives an \texttt{MmioRegion} capability covering the
-controller's BAR0 register window and an \texttt{Interrupt} capability for I/O
-completion signalling. The service calls \texttt{memory\_get\_phys} for DMA
-buffers; BAR and interrupt routing are prepared by the kernel and delivered
-through the bootstrap contract.
+controller's BAR0 register window, an \texttt{Interrupt} capability for I/O
+completion signalling, and a \texttt{DmaDomain} capability bound to the
+controller's PCI requester ID. Queue and data memory are mapped with
+\texttt{dma\_map}; the driver receives contiguous IOVAs rather than physical
+addresses. The kernel pins the backing frames and removes each translation
+with a synchronous SMMU invalidation before unpinning.
 
 \subsection{Initialisation}
 

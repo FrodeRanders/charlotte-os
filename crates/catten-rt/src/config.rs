@@ -121,6 +121,12 @@ pub fn irq_cap() -> Option<u64> {
     capability(CapabilityKind::Interrupt)
 }
 
+/// Read the delegated DMA-domain capability, or `None` when the device is not
+/// behind a supported IOMMU/SMMU.
+pub fn dma_domain_cap() -> Option<u64> {
+    capability(CapabilityKind::DmaDomain)
+}
+
 /// The per-shard CQ ring base virtual address slot.
 pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 

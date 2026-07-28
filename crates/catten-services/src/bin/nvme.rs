@@ -40,6 +40,7 @@ catten_rt::entry!(main);
 
 // Simple bump allocator for queue virtual addresses
 static NEXT_VADDR: AtomicUsize = AtomicUsize::new(0x0000_0000_0050_0000);
+static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
 
 fn alloc_vaddr(pages: usize) -> usize {
     NEXT_VADDR.fetch_add(pages * PAGE_SIZE, Ordering::Relaxed)
@@ -171,7 +172,7 @@ struct QueueMemory {
 /// Allocate physically contiguous, page-aligned memory for a queue.
 fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> {
     let total_bytes = entries * entry_size;
-    let pages = (total_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+    let pages = total_bytes.div_ceil(PAGE_SIZE);
     let cap = memory_alloc(pages);
     if cap == 0 {
         return None;
@@ -181,7 +182,7 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
         memory_close(cap);
         return None;
     }
-    let phys = memory_get_phys(cap);
+    let phys = dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional);
     if phys == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -255,27 +256,27 @@ unsafe fn read_cqe(base: usize, slot: u32, expected_phase: u8) -> (bool, u16, u1
 // ---------------------------------------------------------------------------
 
 /// Build a 64-byte NVM SQE (Read or Write) at `base + 64*slot`.
-unsafe fn nvm_sqe(
-    base: usize,
-    slot: u32,
+struct NvmCommand {
     opcode: u8,
     nsid: u32,
     start_lba: u64,
     nblocks: u16,
     prp1: u64,
     prp2: u64,
-) {
+}
+
+unsafe fn nvm_sqe(base: usize, slot: u32, command: NvmCommand) {
     let off = base + (slot as usize) * 64;
-    let dw0: u32 = ((slot & 0xffff) << 16) | (opcode as u32 & 0xff);
+    let dw0: u32 = ((slot & 0xffff) << 16) | (command.opcode as u32 & 0xff);
     unsafe {
         let p = off as *mut u64;
-        p.write_volatile((nsid as u64) << 32 | dw0 as u64);
+        p.write_volatile((command.nsid as u64) << 32 | dw0 as u64);
         p.add(1).write_volatile(0);
         p.add(2).write_volatile(0);
-        p.add(3).write_volatile(prp1);
-        p.add(4).write_volatile(prp2);
-        p.add(5).write_volatile(start_lba);
-        p.add(6).write_volatile((nblocks.saturating_sub(1) as u64) & 0xffff);
+        p.add(3).write_volatile(command.prp1);
+        p.add(4).write_volatile(command.prp2);
+        p.add(5).write_volatile(command.start_lba);
+        p.add(6).write_volatile((command.nblocks.saturating_sub(1) as u64) & 0xffff);
         p.add(7).write_volatile(0);
     }
 }
@@ -293,22 +294,29 @@ static PENDING_REPLIES: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) };
 /// Capability retaining an optional PRP-list page until the matching command
 /// completes. The borrowed data capability is retained by the reply token.
 static PENDING_PRP_LISTS: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) }; MAX_PENDING];
+static PENDING_PRP_IOVAS: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) }; MAX_PENDING];
+static PENDING_DATA_IOVAS: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) }; MAX_PENDING];
 
-fn store_pending(slot: u32, reply: u64, prp_list_cap: u64) {
+fn store_pending(slot: u32, reply: u64, prp_list_cap: u64, prp_iova: u64, data_iova: u64) {
     let index = (slot as usize) % MAX_PENDING;
     PENDING_PRP_LISTS[index].store(prp_list_cap, Ordering::Relaxed);
+    PENDING_PRP_IOVAS[index].store(prp_iova, Ordering::Relaxed);
+    PENDING_DATA_IOVAS[index].store(data_iova, Ordering::Relaxed);
     PENDING_REPLIES[index].store(reply, Ordering::Release);
 }
 
-fn take_pending(slot: u32) -> (u64, u64) {
+fn take_pending(slot: u32) -> (u64, u64, u64, u64) {
     let index = (slot as usize) % MAX_PENDING;
     let reply = PENDING_REPLIES[index].swap(0, Ordering::AcqRel);
     let prp_list = PENDING_PRP_LISTS[index].swap(0, Ordering::Relaxed);
-    (reply, prp_list)
+    let prp_iova = PENDING_PRP_IOVAS[index].swap(0, Ordering::Relaxed);
+    let data_iova = PENDING_DATA_IOVAS[index].swap(0, Ordering::Relaxed);
+    (reply, prp_list, prp_iova, data_iova)
 }
 
-fn release_prp_list(cap: u64) {
+fn release_prp_list(cap: u64, iova: u64) {
     if cap != 0 {
+        let _ = dma_unmap(DMA_DOMAIN.load(Ordering::Acquire), iova);
         let _ = memory_unmap(cap);
         let _ = memory_close(cap);
     }
@@ -318,6 +326,8 @@ struct Prps {
     first: u64,
     second: u64,
     list_cap: u64,
+    list_iova: u64,
+    data_iova: u64,
 }
 
 /// Translate a page-backed borrowed memory object into an NVMe PRP chain.
@@ -325,12 +335,12 @@ struct Prps {
 /// A one-page request uses PRP1 only, a two-page request uses PRP1+PRP2, and a
 /// larger request uses PRP2 to point at a temporary list containing every
 /// remaining physical page. No physical-contiguity assumption is made.
-fn prepare_prps(memory: u64, bytes: u64) -> Option<Prps> {
+fn prepare_prps(memory: u64, bytes: u64, direction: DmaDirection) -> Option<Prps> {
     let pages = usize::try_from(bytes).ok()?.div_ceil(PAGE_SIZE);
     if pages == 0 || pages > MAX_TRANSFER_PAGES {
         return None;
     }
-    let first = memory_get_phys_page(memory, 0);
+    let first = dma_map(DMA_DOMAIN.load(Ordering::Acquire), memory, direction);
     if first == 0 {
         return None;
     }
@@ -339,31 +349,30 @@ fn prepare_prps(memory: u64, bytes: u64) -> Option<Prps> {
             first,
             second: 0,
             list_cap: 0,
+            list_iova: 0,
+            data_iova: first,
         });
     }
-    let second_page = memory_get_phys_page(memory, 1);
-    if second_page == 0 {
-        return None;
-    }
+    let second_page = first + PAGE_SIZE as u64;
     if pages == 2 {
         return Some(Prps {
             first,
             second: second_page,
             list_cap: 0,
+            list_iova: 0,
+            data_iova: first,
         });
     }
 
-    let list = alloc_queue_memory(1, PAGE_SIZE)?;
+    let Some(list) = alloc_queue_memory(1, PAGE_SIZE) else {
+        let _ = dma_unmap(DMA_DOMAIN.load(Ordering::Acquire), first);
+        return None;
+    };
     unsafe {
         let entries = list.vaddr as *mut u64;
         entries.write_volatile(second_page);
         for page in 2..pages {
-            let phys = memory_get_phys_page(memory, page);
-            if phys == 0 {
-                release_prp_list(list.cap);
-                return None;
-            }
-            entries.add(page - 1).write_volatile(phys);
+            entries.add(page - 1).write_volatile(first + (page * PAGE_SIZE) as u64);
         }
     }
     core::sync::atomic::fence(Ordering::Release);
@@ -371,6 +380,8 @@ fn prepare_prps(memory: u64, bytes: u64) -> Option<Prps> {
         first,
         second: list.phys,
         list_cap: list.cap,
+        list_iova: list.phys,
+        data_iova: first,
     })
 }
 
@@ -612,7 +623,18 @@ impl IoState {
         }
         let slot = self.sq_tail;
         unsafe {
-            nvm_sqe(self.sq_vaddr, slot, opcode, 1, start_lba, nblocks, prp1, prp2);
+            nvm_sqe(
+                self.sq_vaddr,
+                slot,
+                NvmCommand {
+                    opcode,
+                    nsid: 1,
+                    start_lba,
+                    nblocks,
+                    prp1,
+                    prp2,
+                },
+            );
         }
         self.sq_tail = (slot + 1) % IO_QUEUE_SIZE;
         core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
@@ -664,6 +686,11 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
+    let dma_domain = match config::dma_domain_cap() {
+        Some(cap) => cap,
+        None => unsafe { thread_exit() },
+    };
+    DMA_DOMAIN.store(dma_domain, Ordering::Release);
 
     if device_mmio_map(mmio_cap, NVME_VADDR, true) != 0 {
         unsafe { thread_exit() };
@@ -725,8 +752,11 @@ fn main(ctx: Context) -> ! {
         // Poll I/O completions before cq_wait (catches completions from
         // commands submitted in the previous iteration)
         while let Some((cid, status)) = io.poll_completions() {
-            let (reply, prp_list) = take_pending(cid as u32);
-            release_prp_list(prp_list);
+            let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
+            release_prp_list(prp_list, prp_iova);
+            if data_iova != 0 {
+                let _ = dma_unmap(dma_domain, data_iova);
+            }
             if reply != 0 {
                 ipc_reply(
                     reply,
@@ -756,8 +786,11 @@ fn main(ctx: Context) -> ! {
             config::write::<u32>(80, irq_count);
         }
         while let Some((cid, status)) = io.poll_completions() {
-            let (reply, prp_list) = take_pending(cid as u32);
-            release_prp_list(prp_list);
+            let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
+            release_prp_list(prp_list, prp_iova);
+            if data_iova != 0 {
+                let _ = dma_unmap(dma_domain, data_iova);
+            }
             if reply != 0 {
                 ipc_reply(
                     reply,
@@ -796,7 +829,7 @@ fn main(ctx: Context) -> ! {
                         }
                         let (lba, count) = {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
-                            (l, c as u32)
+                            (l, c)
                         };
                         let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
@@ -816,14 +849,23 @@ fn main(ctx: Context) -> ! {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let Some(prps) = prepare_prps(mem_cap, transfer_bytes) else {
+                        let Some(prps) =
+                            prepare_prps(mem_cap, transfer_bytes, DmaDirection::DeviceWrite)
+                        else {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         };
                         match io.submit_io(NVM_READ, lba, count as u16, prps.first, prps.second) {
-                            Some(slot) => store_pending(slot, message.reply, prps.list_cap),
+                            Some(slot) => store_pending(
+                                slot,
+                                message.reply,
+                                prps.list_cap,
+                                prps.list_iova,
+                                prps.data_iova,
+                            ),
                             None => {
-                                release_prp_list(prps.list_cap);
+                                release_prp_list(prps.list_cap, prps.list_iova);
+                                let _ = dma_unmap(dma_domain, prps.data_iova);
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }
                         }
@@ -837,7 +879,7 @@ fn main(ctx: Context) -> ! {
                         }
                         let (lba, count) = {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
-                            (l, c as u32)
+                            (l, c)
                         };
                         let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
@@ -857,14 +899,23 @@ fn main(ctx: Context) -> ! {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let Some(prps) = prepare_prps(mem_cap, transfer_bytes) else {
+                        let Some(prps) =
+                            prepare_prps(mem_cap, transfer_bytes, DmaDirection::DeviceRead)
+                        else {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         };
                         match io.submit_io(NVM_WRITE, lba, count as u16, prps.first, prps.second) {
-                            Some(slot) => store_pending(slot, message.reply, prps.list_cap),
+                            Some(slot) => store_pending(
+                                slot,
+                                message.reply,
+                                prps.list_cap,
+                                prps.list_iova,
+                                prps.data_iova,
+                            ),
                             None => {
-                                release_prp_list(prps.list_cap);
+                                release_prp_list(prps.list_cap, prps.list_iova);
+                                let _ = dma_unmap(dma_domain, prps.data_iova);
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }
                         }
@@ -873,7 +924,7 @@ fn main(ctx: Context) -> ! {
                 block::OP_FLUSH => {
                     if message.reply != 0 {
                         match io.submit_io(NVM_FLUSH, 0, 0, 0, 0) {
-                            Some(slot) => store_pending(slot, message.reply, 0),
+                            Some(slot) => store_pending(slot, message.reply, 0, 0, 0),
                             None => {
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }

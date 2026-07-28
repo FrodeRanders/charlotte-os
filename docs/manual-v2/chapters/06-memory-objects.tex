@@ -157,11 +157,12 @@ When a device performs DMA, a memory object enters a third ownership state:
     \item \textbf{Rust/API ownership:} which domain holds the capability.
 \end{itemize}
 
-The architecture calls for tracking DMA state per memory object and removing
-CPU access while a device owns a buffer. The current prototype exposes physical
-addresses to trusted userspace drivers and does not yet implement IOMMU/SMMU
-isolation. Consequently, capability isolation does not currently constrain a
-misbehaving DMA-capable device or driver.
+The AArch64 SMMUv3 path tracks an explicit DMA pin per mapped memory object.
+The kernel validates access direction, installs only the object's frames in a
+device-private translation context, and releases the pin only after a
+synchronous IOTLB invalidation. Drivers receive IOVAs rather than physical
+addresses. CPU mappings are not yet automatically revoked for the duration of
+DMA, so callers must still obey the borrow protocol.
 
 \section{Why memory objects matter for critical software}
 

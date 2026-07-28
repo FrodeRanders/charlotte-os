@@ -148,6 +148,8 @@ pub enum AcpiTableType {
     SPCR, /* Serial Port Console Redirection Table, used to describe a serial port that can be
            * used for console redirection => Unused by Catten, may be used in the
            * future for early boot logging */
+    IORT, /* I/O Remapping Table. Describes PCI requester-ID routing through an
+           * Arm SMMU and onward to interrupt translation services. */
     DSDT, /* Differentiated System Description Table, contains AML bytecode that describes the
            * system's devices and their configuration => Used to build and
            * use the ACPI Namespace and execute AML methods to configure devices and
@@ -186,6 +188,7 @@ impl TryFrom<[u8; 4]> for AcpiTableType {
             [b'R', b'H', b'C', b'T'] => Ok(Self::RHCT),
             [b'G', b'T', b'D', b'T'] => Ok(Self::GTDT),
             [b'S', b'P', b'C', b'R'] => Ok(Self::SPCR),
+            [b'I', b'O', b'R', b'T'] => Ok(Self::IORT),
             [b'D', b'S', b'D', b'T'] => Ok(Self::DSDT),
             [b'S', b'S', b'D', b'T'] => Ok(Self::SSDT),
             _ => Err(Error::InvalidTableSignature),

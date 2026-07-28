@@ -110,6 +110,8 @@ pub fn test_el0_uart() {
                 mmio_phys_base: PL011_BASE,
                 mmio_pages: 1,
                 intid: PL011_INTID,
+                dma_requester_id: None,
+                dma_msi_address: None,
             },
         );
         let driver_config = driver.status_frame;
@@ -318,6 +320,8 @@ extern "C" fn verify_el0_uart() {
             mmio_phys_base: PL011_BASE,
             mmio_pages: 1,
             intid: PL011_INTID,
+            dma_requester_id: None,
+            dma_msi_address: None,
         },
     );
     let driver2_asid = driver2.asid;

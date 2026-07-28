@@ -79,6 +79,21 @@ struct MemoryObject {
     frames: Vec<PAddr>,
     mappings: BTreeMap<AddressSpaceId, MemoryMappingState>,
     lend_state: LendState,
+    dma_pins: usize,
+    destroy_when_unpinned: bool,
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(crate) struct DmaPin {
+    object: MemoryObjectId,
+    frames: Vec<PAddr>,
+}
+
+#[cfg(target_arch = "aarch64")]
+impl DmaPin {
+    pub(crate) fn frames(&self) -> &[PAddr] {
+        &self.frames
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -226,6 +241,8 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             frames,
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
+            dma_pins: 0,
+            destroy_when_unpinned: false,
         },
     );
     let cap = registry.caps_for_mut(owner).insert(
@@ -488,6 +505,8 @@ pub fn copy_to(
             frames: copied_frames,
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
+            dma_pins: 0,
+            destroy_when_unpinned: false,
         },
     );
     let target_cap = registry.caps_for_mut(target).insert(
@@ -694,7 +713,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
                 return Err(MemoryObjectError::LendingActive);
             }
             false
-        } else if object.lend_state.is_active() {
+        } else if object.lend_state.is_active() || object.dma_pins != 0 {
             registry.caps_for_mut(asid).caps.insert(cap, cap_entry);
             return Err(MemoryObjectError::LendingActive);
         } else if !object.mappings.is_empty() {
@@ -737,6 +756,14 @@ pub fn close_address_space(asid: AddressSpaceId) {
             .collect::<Vec<_>>();
 
         for object_id in owned_objects {
+            if registry.objects.get(&object_id).is_some_and(|object| object.dma_pins != 0) {
+                let object = registry.objects.get_mut(&object_id).unwrap();
+                object.destroy_when_unpinned = true;
+                for (mapped_asid, mapping) in core::mem::take(&mut object.mappings) {
+                    let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
+                }
+                continue;
+            }
             if let Some(object) = registry.objects.remove(&object_id) {
                 for (mapped_asid, mapping) in object.mappings {
                     let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
@@ -885,4 +912,56 @@ pub fn get_phys_page(asid: AddressSpaceId, cap: MemoryObjectCap, page_index: usi
         .and_then(|object| object.frames.get(page_index).copied())
         .map(<PAddr as Into<u64>>::into)
         .unwrap_or(0)
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn pin_for_dma(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    device_reads: bool,
+    device_writes: bool,
+) -> Result<DmaPin, MemoryObjectError> {
+    if !device_reads && !device_writes {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(asid, cap)?;
+    if device_reads && !cap_entry.rights.contains(MemoryObjectRights::MAP_READ)
+        || device_writes && !cap_entry.rights.contains(MemoryObjectRights::MAP_WRITE)
+    {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object =
+        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if object.destroy_when_unpinned {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    object.dma_pins = object.dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
+    Ok(DmaPin {
+        object: cap_entry.object,
+        frames: object.frames.clone(),
+    })
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn unpin_dma(pin: DmaPin) {
+    let frames = {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let Some(object) = registry.objects.get_mut(&pin.object) else {
+            return;
+        };
+        debug_assert!(object.dma_pins != 0);
+        object.dma_pins = object.dma_pins.saturating_sub(1);
+        if object.dma_pins != 0 || !object.destroy_when_unpinned {
+            return;
+        }
+        remove_caps_for_object(&mut registry, pin.object);
+        registry.objects.remove(&pin.object).map(|object| object.frames)
+    };
+    if let Some(frames) = frames {
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        for frame in frames {
+            let _ = allocator.deallocate_frame(frame);
+        }
+    }
 }

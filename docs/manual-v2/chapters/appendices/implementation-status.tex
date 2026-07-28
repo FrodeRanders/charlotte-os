@@ -129,7 +129,11 @@ authoritative record.
         implemented; capability-table capacity is fixed.
     \item \textbf{Cross-machine Raft:} blocked on NIC runtime validation (KVM)
         and the reliable message layer implementation.
-    \item \textbf{IOMMU/SMMU integration:} designed but not implemented.
+    \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
+        ACPI IORT, per-requester DMA-domain capabilities, memory pinning,
+        IOVA map/unmap, synchronous invalidation, fault reporting, teardown,
+        and NVMe integration are implemented and QEMU-tested. Non-coherent
+        systems, ATS/PRI, multiple SMMUs, and other IOMMU architectures remain.
     \item \textbf{Live upgrade:} the EL0 service manager performs handoff and
         invokes the capability-checked replacement-domain spawn path for the
         embedded echo image. General image capabilities, multiple state

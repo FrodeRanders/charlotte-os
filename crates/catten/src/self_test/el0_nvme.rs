@@ -41,20 +41,20 @@ pub fn test_el0_nvme() {
     }
 }
 
-fn wait_for_nvme() -> (usize, u32) {
+fn wait_for_nvme() -> (usize, u32, u32, Option<u64>) {
     #[cfg(not(feature = "hvf_compat"))]
     {
         // Normal boot publishes the immutable topology before the scheduler
         // starts, so absence here is a real discovery failure rather than a
         // reason to guess platform addresses.
         let topo = &crate::device_management::topology::DEVICE_TOPOLOGY;
-        let (bar0, irq) =
+        let (bar0, irq, requester_id, msi_address) =
             crate::device_management::drivers::busses::pci_express::topology::lookup_first_nvme(
                 &topo.pcie,
             )
             .expect("[nvme] no NVMe controller in the published PCI topology");
         logln!("[nvme] PCI topology: BAR0={:#x} intid={}", bar0, irq);
-        (bar0 as usize, irq)
+        (bar0 as usize, irq, requester_id, msi_address)
     }
     #[cfg(feature = "hvf_compat")]
     {
@@ -63,7 +63,7 @@ fn wait_for_nvme() -> (usize, u32) {
         let bar0: usize = 0x1000_0000;
         let intid: u32 = 44;
         logln!("[nvme] HVF fallback: BAR0={:#x} intid={}", bar0, intid);
-        (bar0, intid)
+        (bar0, intid, 0x10, None)
     }
 }
 
@@ -71,7 +71,7 @@ fn wait_for_nvme() -> (usize, u32) {
 extern "C" fn verify_el0_nvme() {
     let ns = TEST_STATE.lock().as_ref().copied().expect("[nvme] test state missing");
     logln!("[nvme] verifier running, discovering NVMe...");
-    let (bar0, intid) = wait_for_nvme();
+    let (bar0, intid, requester_id, msi_address) = wait_for_nvme();
 
     // --- Spawn NVMe driver ---
     let driver = supervisor::spawn_driver_with_name_service(
@@ -82,6 +82,8 @@ extern "C" fn verify_el0_nvme() {
             mmio_phys_base: bar0,
             mmio_pages: 2,
             intid,
+            dma_requester_id: Some(requester_id),
+            dma_msi_address: msi_address,
         },
     );
     let driver_cfg: *const u32 = {
@@ -116,6 +118,12 @@ extern "C" fn verify_el0_nvme() {
     let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
     assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
     logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);
+    assert_eq!(
+        crate::device::smmu::fault_count(),
+        0,
+        "[nvme] valid DMA traffic caused an SMMU fault"
+    );
+    logln!("[nvme] SMMU domain completed the transfer without translation faults");
 
     // --- Spawn object store via name service (deferred lookup) ---
     let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, &ns, ConnectionRights::CALL);

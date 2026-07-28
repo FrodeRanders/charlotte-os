@@ -121,7 +121,7 @@ X'' or ``write to physical address Y.'' Without an IOMMU, this is a safety
 gap: a malicious or buggy driver could program the device to DMA into kernel
 memory or another domain's pages.
 
-The architecture anticipates two levels of isolation:
+The implementation has two platform levels:
 
 \begin{itemize}
     \item \textbf{Without IOMMU:} the driver is trusted with DMA. It still
@@ -136,9 +136,14 @@ The architecture anticipates two levels of isolation:
         domain.
 \end{itemize}
 
-The driver API is the same in both cases: \texttt{dma\_pin(memory\_object)} and
-\texttt{dma\_unpin(memory\_object)}. Without an IOMMU, these are no-ops (the
-kernel trusts the driver). With an IOMMU, they manipulate the translation table.
+On the implemented AArch64 ACPI path, \texttt{dma\_map(domain, memory,
+direction)} returns an IOVA and \texttt{dma\_unmap(domain, iova)}
+synchronously invalidates the IOTLB before releasing the memory pin. QEMU's
+coherent SMMUv3 is boot-tested with the userspace NVMe driver. Each PCI
+requester receives a private stage-1 context containing only explicitly mapped
+memory objects and its MSI doorbell page. SMMU event-queue faults are handled
+by the kernel. Non-coherent SMMUs, ATS/PRI, multiple SMMUs, and non-AArch64
+IOMMUs remain unsupported.
 
 \section{Driver service layering}
 
@@ -180,10 +185,9 @@ instance.
         driver restart (device reset, grant re-issuance, generation bump).
         Driver authors do not write recovery code.
 
-    \item \textbf{Hardware-isolated DMA is planned.} The IOMMU integration path
-        is designed into the architecture from the start. When IOMMU support is
-        enabled, DMA-capable drivers gain hardware-enforced memory isolation
-        without API changes.
+    \item \textbf{Hardware-isolated DMA is implemented on the reference
+        AArch64 SMMUv3 platform.} Other IOMMU implementations and advanced
+        SMMU facilities remain future work.
 \end{enumerate}
 
 \endinput

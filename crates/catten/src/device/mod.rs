@@ -27,6 +27,9 @@
 //! by the supervisor and delivered downward, exactly like bootstrap
 //! endpoints, so there is no user-facing grant syscall.
 
+#[cfg(target_arch = "aarch64")]
+pub mod smmu;
+
 use alloc::collections::BTreeMap;
 use core::sync::atomic::{
     AtomicU32,
@@ -100,6 +103,8 @@ pub enum DeviceError {
     InvalidAddressSpace,
     /// The requested MMIO range overflows the physical address representation.
     InvalidRange,
+    DmaUnavailable,
+    DmaInvalid,
 }
 
 /// A device register window granted to a driver domain.
@@ -128,6 +133,10 @@ struct InterruptObject {
 enum DeviceObject {
     Mmio(MmioRegion),
     Interrupt(InterruptObject),
+    #[cfg(target_arch = "aarch64")]
+    DmaDomain {
+        id: u64,
+    },
 }
 
 #[derive(Debug)]
@@ -312,6 +321,66 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     ))
 }
 
+#[cfg(target_arch = "aarch64")]
+pub fn grant_dma_domain(
+    owner: AddressSpaceId,
+    requester_id: u32,
+    msi_address: Option<u64>,
+) -> Result<DeviceCap, DeviceError> {
+    let sid = smmu::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
+    let id = smmu::create_domain(sid, msi_address).map_err(|_| DeviceError::DmaUnavailable)?;
+    let mut devices = DEVICES.lock();
+    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
+    Ok(caps.insert(
+        owner,
+        DeviceObject::DmaDomain {
+            id,
+        },
+    ))
+}
+
+#[cfg(target_arch = "aarch64")]
+pub fn dma_map(
+    asid: AddressSpaceId,
+    domain_cap: DeviceCap,
+    memory_cap: u64,
+    direction: u32,
+) -> Result<u64, DeviceError> {
+    let direction = smmu::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
+    let id = {
+        let mut devices = DEVICES.lock();
+        let object = lookup_mut(&mut devices, asid, domain_cap)?;
+        let DeviceObject::DmaDomain {
+            id,
+        } = object
+        else {
+            return Err(DeviceError::WrongType);
+        };
+        *id
+    };
+    smmu::map(id, asid, memory_cap, direction).map_err(|_| DeviceError::DmaInvalid)
+}
+
+#[cfg(target_arch = "aarch64")]
+pub fn dma_unmap(
+    asid: AddressSpaceId,
+    domain_cap: DeviceCap,
+    iova: u64,
+) -> Result<(), DeviceError> {
+    let id = {
+        let mut devices = DEVICES.lock();
+        let object = lookup_mut(&mut devices, asid, domain_cap)?;
+        let DeviceObject::DmaDomain {
+            id,
+        } = object
+        else {
+            return Err(DeviceError::WrongType);
+        };
+        *id
+    };
+    smmu::unmap(id, iova).map_err(|_| DeviceError::DmaInvalid)
+}
+
 // ---- MMIO operations -------------------------------------------------------
 
 /// Map an MMIO region capability into the caller's address space at `base`,
@@ -469,6 +538,10 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
             }
         }
         DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
+        #[cfg(target_arch = "aarch64")]
+        DeviceObject::DmaDomain {
+            id,
+        } => smmu::destroy_domain(id),
     }
     Ok(())
 }
@@ -513,6 +586,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 }
             }
             DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
+            #[cfg(target_arch = "aarch64")]
+            DeviceObject::DmaDomain {
+                id,
+            } => smmu::destroy_domain(*id),
         }
     }
 }

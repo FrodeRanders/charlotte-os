@@ -197,20 +197,25 @@ compatibility fallback for platforms where MSI-X setup is unavailable.
 ### 3.5 Memory allocation for queues
 
 NVMe queue pages are page-aligned and currently fit in one page each. The
-driver allocates them using `memory_alloc` and obtains their DMA address with
-`memory_get_phys`. Data buffers do not assume physical contiguity:
-`memory_get_phys_page` supplies the individual frame addresses used to build
-PRP entries. The kernel's physical memory manager is already used by the
-virtio-net driver for virtqueue setup, so this pattern is established.
+driver allocates them using `memory_alloc`, then maps them through its
+delegated `DmaDomain` capability. The returned IOVA range is contiguous even
+when the backing frames are not, so the driver builds PRP entries without
+learning physical addresses.
 
 ### 3.6 DMA
 
 The NVMe controller performs DMA directly to/from the caller's memory
 objects (for READ/WRITE) and to/from the driver's queue memory (for SQ/CQ
-entries). On systems with an IOMMU, the DMA domain capability would be
-granted alongside the MMIO/IRQ caps, and all DMA addresses would be
-translated through the IOMMU. Without an IOMMU, the physical addresses
-are used directly — this is acceptable for initial bringup on QEMU.
+entries). On the AArch64 ACPI path, the supervisor grants a `DmaDomain`
+alongside MMIO and IRQ capabilities. `dma_map` validates the memory
+capability's direction, pins every frame, installs SMMUv3 translations, and
+returns an IOVA. `dma_unmap` synchronously invalidates the IOTLB before
+unpinning. The device stream can otherwise address no RAM; its one additional
+mapping is the page containing its MSI-X doorbell.
+
+The current implementation targets coherent SMMUv3 systems described by ACPI
+IORT. Non-coherent table walks, ATS/PRI, and multi-SMMU topologies are not yet
+supported.
 
 ---
 

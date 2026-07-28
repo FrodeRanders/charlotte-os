@@ -214,6 +214,11 @@ pub struct DriverGrant {
     pub mmio_pages: usize,
     /// The device interrupt id (a GIC SPI, INTID >= 32).
     pub intid: u32,
+    /// PCI requester ID (bus << 8 | device << 3 | function) for a DMA-capable
+    /// device. When present, the supervisor creates a private SMMU domain.
+    pub dma_requester_id: Option<u32>,
+    /// MSI/MSI-X doorbell address the requester is allowed to write.
+    pub dma_msi_address: Option<u64>,
 }
 
 /// The state and authority a supervisor passes from an old service instance
@@ -262,6 +267,11 @@ pub fn spawn_driver_with_name_service(
         .expect("[supervisor] interrupt grant failed");
     bootstrap::write_mmio_cap(loaded.config_frame, mmio);
     bootstrap::write_irq_cap(loaded.config_frame, irq);
+    if let Some(requester_id) = grant.dma_requester_id {
+        let dma = crate::device::grant_dma_domain(loaded.asid, requester_id, grant.dma_msi_address)
+            .expect("[supervisor] DMA-domain grant failed");
+        bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
+    }
     start_domain(loaded)
 }
 

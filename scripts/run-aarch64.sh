@@ -183,8 +183,12 @@ else
 fi
 
 # --- QEMU options ---
+MACHINE="virt,gic-version=3,msi=gicv2m"
+if [ "$USE_HVF" != "1" ]; then
+    MACHINE="${MACHINE},iommu=smmuv3,default-bus-bypass-iommu=off"
+fi
 QEMU_OPTS=(
-    -M virt,gic-version=3,msi=gicv2m
+    -M "$MACHINE"
     -m 512M
     -bios "$FIRMWARE"
     -drive file="$IMAGE",format=raw,if=virtio

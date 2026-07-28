@@ -82,6 +82,8 @@ extern "C" fn verify_el0_net() {
             mmio_phys_base: bar0,
             mmio_pages: 1,
             intid,
+            dma_requester_id: None,
+            dma_msi_address: None,
         },
     );
     let driver_config = driver.status_frame;

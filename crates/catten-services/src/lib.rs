@@ -93,6 +93,10 @@ pub mod ns {
 
     /// Read a u64 access key from a memory object, or 0 if none.
     /// Consumes (unmaps and closes) the memory cap on success.
+    /// # Safety
+    ///
+    /// `memory_cap` must name a mapped request object whose first word follows
+    /// the service protocol's access-key layout.
     pub unsafe fn read_access_key(memory_cap: u64) -> u64 {
         if memory_cap == 0 {
             return 0;
@@ -482,6 +486,9 @@ pub mod relmsg {
 ///
 /// `max_spins` is retained for source compatibility; reply waiting is now
 /// scheduler-backed and has no arbitrary boot-time deadline.
+/// # Safety
+///
+/// `call` must be a live pending-call capability owned by the caller.
 pub unsafe fn wait_reply(call: u64, _max_spins: u64) -> (i64, u64) {
     let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
     catten_syscall::ipc_close(call);

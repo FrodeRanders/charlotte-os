@@ -173,6 +173,7 @@ pub enum CapabilityKind {
     Interrupt = 3,
     HandoffState = 4,
     HandoffEndpoint = 5,
+    DmaDomain = 6,
 }
 
 impl CapabilityKind {
@@ -183,6 +184,7 @@ impl CapabilityKind {
             3 => Some(Self::Interrupt),
             4 => Some(Self::HandoffState),
             5 => Some(Self::HandoffEndpoint),
+            6 => Some(Self::DmaDomain),
             _ => None,
         }
     }

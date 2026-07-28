@@ -94,6 +94,8 @@ pub enum SyscallNumber {
     IpcReplyWait = 54,
     CompletionSubmitDetachedTimer = 55,
     MemoryGetPhysPage = 56,
+    DmaMap = 57,
+    DmaUnmap = 58,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -158,12 +160,14 @@ impl TryFrom<u16> for SyscallNumber {
             54 => Ok(Self::IpcReplyWait),
             55 => Ok(Self::CompletionSubmitDetachedTimer),
             56 => Ok(Self::MemoryGetPhysPage),
+            57 => Ok(Self::DmaMap),
+            58 => Ok(Self::DmaUnmap),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::MemoryGetPhysPage as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::DmaUnmap as u16;
 
 // ---- op codes --------------------------------------------------------------
 
@@ -296,6 +300,8 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             49 => asm!("svc #49", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             55 => asm!("svc #55", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             56 => asm!("svc #56", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
+            57 => asm!("svc #57", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            58 => asm!("svc #58", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -1045,6 +1051,26 @@ pub fn memory_get_phys_page(cap: u64, page_index: usize) -> u64 {
     unsafe { svc3(SyscallNumber::MemoryGetPhysPage, cap, page_index as u64, 0) }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum DmaDirection {
+    DeviceRead = 1,
+    DeviceWrite = 2,
+    Bidirectional = 3,
+}
+
+/// Pin `memory` into `domain` and return its base I/O virtual address.
+#[inline(always)]
+pub fn dma_map(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
+    unsafe { svc3(SyscallNumber::DmaMap, domain, memory, direction as u64) }
+}
+
+/// Remove an IOVA mapping, synchronously invalidate the IOTLB, and unpin it.
+#[inline(always)]
+pub fn dma_unmap(domain: u64, iova: u64) -> DeviceStatusCode {
+    unsafe { svc3(SyscallNumber::DmaUnmap, domain, iova, 0) }
+}
+
 /// Request the supervisor to spawn a replacement domain (syscall 50).
 /// `elf_selector` selects an embedded replacement image (currently 0=echo),
 /// `state_cap` is moved to the replacement, and `target_connection` proves
@@ -1224,6 +1250,10 @@ pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
 }
 
 #[cfg(not(target_arch = "aarch64"))]
+/// # Safety
+///
+/// Mirrors the AArch64 ABI: `result_page` must identify a writable result
+/// page when this syscall is implemented on the target architecture.
 pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
     IpcMessage {
         status: ipc_status::NO_MESSAGE,

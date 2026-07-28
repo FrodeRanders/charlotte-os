@@ -918,8 +918,12 @@ DMA introduces a third ownership dimension:
 -   DMA ownership;
 -   Rust/API ownership.
 
-Future IOMMU/SMMU integration should extend capability enforcement to
-DMA transactions.
+On AArch64 systems exposing a coherent SMMUv3 through ACPI IORT,
+CharlotteOS extends capability enforcement to DMA transactions. A
+`DmaDomain` capability binds one PCI requester stream to a private
+kernel-owned translation context. Mapping a memory object pins its frames
+and returns an IOVA; unmapping synchronously invalidates the IOTLB before
+the pin is released.
 
 ## 6A.6 Why this section comes before request/reply
 
@@ -1242,9 +1246,12 @@ Strong userspace-driver isolation requires an IOMMU/SMMU:
 -   IOMMU/SMMU protects against device DMA;
 -   Rust ownership protects safe client code from accidental reuse.
 
-Without an IOMMU/SMMU, userspace drivers still improve fault containment
-and architecture, but a malicious or broken DMA device can violate
-memory isolation.
+The AArch64 QEMU `virt` path implements this model with ACPI IORT and
+SMMUv3 stage-1 translation. The implementation maps only explicitly
+authorized memory objects plus the device's MSI doorbell page, reports
+translation faults through the SMMU event queue, and revokes all mappings
+on driver-domain teardown. Non-coherent SMMUs, ATS/PRI, multiple remapping
+units, and other architectures remain future work.
 
 ## 10.4 Driver service layering
 

@@ -187,6 +187,8 @@ pub mod call_no {
     /// or 0 on error. The capability retains the complete object while a DMA
     /// driver constructs a scatter/gather descriptor.
     pub const MEMORY_GET_PHYS_PAGE: u16 = SyscallNumber::MemoryGetPhysPage as u16;
+    pub const DMA_MAP: u16 = SyscallNumber::DmaMap as u16;
+    pub const DMA_UNMAP: u16 = SyscallNumber::DmaUnmap as u16;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF
     /// selector (0 = echo service ELF), x3 = state memory cap (0 if none),
@@ -278,6 +280,8 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::DeviceClose => sys_device_close(frame),
         SyscallNumber::MemoryGetPhys => sys_memory_get_phys(frame),
         SyscallNumber::MemoryGetPhysPage => sys_memory_get_phys_page(frame),
+        SyscallNumber::DmaMap => sys_dma_map(frame),
+        SyscallNumber::DmaUnmap => sys_dma_unmap(frame),
         SyscallNumber::SpawnUpgrade => {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
@@ -755,6 +759,33 @@ fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
     frame.regs[0] = object::get_phys_page(asid, cap, page_index);
 }
 
+fn sys_dma_map(frame: &mut TrapFrame) {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let asid = caller_asid(frame);
+        frame.regs[0] =
+            crate::device::dma_map(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
+                .unwrap_or(0);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        frame.regs[0] = 0;
+    }
+}
+
+fn sys_dma_unmap(frame: &mut TrapFrame) {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let asid = caller_asid(frame);
+        frame.regs[0] =
+            crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2]).map_or(1, |()| 0);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        frame.regs[0] = 1;
+    }
+}
+
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let interface = frame.regs[1];
@@ -1186,6 +1217,8 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::InterruptInUse => 10,
         DeviceError::InvalidAddressSpace => 11,
         DeviceError::InvalidRange => 12,
+        DeviceError::DmaUnavailable => 13,
+        DeviceError::DmaInvalid => 14,
     }
 }
 
