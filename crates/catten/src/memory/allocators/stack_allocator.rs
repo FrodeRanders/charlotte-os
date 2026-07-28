@@ -153,7 +153,6 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
     let stack_region_base = KERNEL_AS.lock().find_free_region(
         n_pages + NUM_GUARD_PAGES,
         (*LA_MAP.get_region(crate::memory::linear::address_map::RegionType::KernelStackArena))
-            .clone()
             .into(),
     )?;
     // One guard page below the usable region, then `n_pages` usable, then one

@@ -33,3 +33,9 @@ impl<T: Clone> VecQueue<T> {
         }
     }
 }
+
+impl<T: Clone> Default for VecQueue<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}

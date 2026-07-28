@@ -62,3 +62,9 @@ impl DeferredWorkManager {
             .expect("Failed to submit DWM worker thread to the system scheduler");
     }
 }
+
+impl Default for DeferredWorkManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}

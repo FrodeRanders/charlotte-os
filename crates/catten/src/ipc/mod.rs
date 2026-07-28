@@ -1642,15 +1642,15 @@ fn cancel_queued_message_with_reply(
                         let _ = crate::memory::object::close_cap(server, *memory_cap);
                     }
                 }
-                if let Some(connection_cap) = message.connection {
-                    if let Some(caps) = ipc.caps.get_mut(&server) {
-                        caps.caps.remove(&connection_cap);
-                        crate::capability::remove(
-                            server,
-                            connection_cap,
-                            crate::capability::ObjectKind::Ipc,
-                        );
-                    }
+                if let Some(connection_cap) = message.connection
+                    && let Some(caps) = ipc.caps.get_mut(&server)
+                {
+                    caps.caps.remove(&connection_cap);
+                    crate::capability::remove(
+                        server,
+                        connection_cap,
+                        crate::capability::ObjectKind::Ipc,
+                    );
                 }
             }
             return;
@@ -1699,16 +1699,16 @@ pub fn receive_vec(
     };
 
     let phys = crate::memory::object::get_phys(receiver, result_page);
-    if phys != 0 {
-        if let Ok(paddr) = crate::memory::PAddr::try_from(phys as usize) {
-            let ptr: *mut u8 = paddr.into();
-            let n = message.memory.len().min(CAP_VECTOR_MAX);
-            unsafe {
-                core::ptr::write_volatile(ptr as *mut u16, n as u16);
-                let caps_ptr = ptr.add(2) as *mut u64;
-                for i in 0..n {
-                    core::ptr::write_unaligned(caps_ptr.add(i), message.memory[i] as u64);
-                }
+    if phys != 0
+        && let Ok(paddr) = crate::memory::PAddr::try_from(phys as usize)
+    {
+        let ptr: *mut u8 = paddr.into();
+        let n = message.memory.len().min(CAP_VECTOR_MAX);
+        unsafe {
+            core::ptr::write_volatile(ptr as *mut u16, n as u16);
+            let caps_ptr = ptr.add(2) as *mut u64;
+            for i in 0..n {
+                core::ptr::write_unaligned(caps_ptr.add(i), message.memory[i]);
             }
         }
     }

@@ -107,7 +107,7 @@ mod inner {
                 }
             }
             polls += 1;
-            if polls % 100 == 0 {
+            if polls.is_multiple_of(100) {
                 let first_stage = unsafe { core::ptr::read_volatile(first_status) };
                 let second_stage = unsafe { core::ptr::read_volatile(second_status) };
                 crate::logln!(

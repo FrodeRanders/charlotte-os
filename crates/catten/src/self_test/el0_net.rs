@@ -110,7 +110,7 @@ extern "C" fn verify_el0_net() {
         let mut spins: u64 = 0;
         while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
             spins += 1;
-            if spins % 2_000_000 == 0 {
+            if spins.is_multiple_of(2_000_000) {
                 let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
                 let cs = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
                 logln!("[net] waiting: driver stage {} client stage {}", ds, cs);

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 #[allow(dead_code)]
 pub mod aer;
 pub mod rsbar;
@@ -73,7 +72,7 @@ struct PcieExtCapIter {
 
 impl PcieExtCapIter {
     fn try_new(cfg_space: *const PcieCfgSpace) -> Result<Self, Error> {
-        if let Ok(_) = find_capability(cfg_space, PciCapabilityId::PciExpress) {
+        if find_capability(cfg_space, PciCapabilityId::PciExpress).is_ok() {
             let starting_offset = PcieExtCapVerOffset::new(PCIE_EXT_CAP_RANGE_BASE);
             Ok(Self {
                 cfg_space,
@@ -121,9 +120,9 @@ pub fn find_extended_capabilities(
     cfg_space: *const PcieCfgSpace,
     req_id: PcieExtCapId,
 ) -> Vec<*mut PcieExtCapabilityHeader> {
-    if let Ok(mut iter) = PcieExtCapIter::try_new(cfg_space) {
+    if let Ok(iter) = PcieExtCapIter::try_new(cfg_space) {
         let mut matches = Vec::new();
-        while let Some(cap) = iter.next() {
+        for cap in iter {
             unsafe {
                 let ext_cap_id = cap.read_unaligned().id;
                 if ext_cap_id == req_id {

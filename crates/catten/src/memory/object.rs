@@ -527,10 +527,9 @@ pub fn lend_read(
         if let LendState::Read {
             borrowers,
         } = &object.lend_state
+            && borrowers.contains_key(&borrower)
         {
-            if borrowers.contains_key(&borrower) {
-                return Err(MemoryObjectError::LendingActive);
-            }
+            return Err(MemoryObjectError::LendingActive);
         }
         if object.mappings.values().any(|mapping| mapping.writable) {
             return Err(MemoryObjectError::AlreadyMapped);
@@ -874,6 +873,6 @@ pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
         .objects
         .get(&cap_entry.object)
         .and_then(|object| object.frames.first().copied())
-        .map(|paddr| <PAddr as Into<u64>>::into(paddr))
+        .map(<PAddr as Into<u64>>::into)
         .unwrap_or(0)
 }

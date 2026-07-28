@@ -7,8 +7,8 @@ use crate::cpu::isa::aarch64::system_info::CpuInfo;
 pub use crate::cpu::isa::common::memory::address::*;
 use crate::cpu::isa::interface::system_info::CpuInfoIfce;
 
-pub static PADDR_SIG_BITS: LazyLock<u8> = LazyLock::new(|| CpuInfo::get_paddr_sig_bits() as u8);
-pub static VADDR_SIG_BITS: LazyLock<u8> = LazyLock::new(|| CpuInfo::get_vaddr_sig_bits() as u8);
+pub static PADDR_SIG_BITS: LazyLock<u8> = LazyLock::new(CpuInfo::get_paddr_sig_bits);
+pub static VADDR_SIG_BITS: LazyLock<u8> = LazyLock::new(CpuInfo::get_vaddr_sig_bits);
 pub static PADDR_MASK: LazyLock<usize> =
     LazyLock::new(|| (1 << CpuInfo::get_paddr_sig_bits() as usize) - 1);
 pub static VADDR_MASK: LazyLock<usize> =

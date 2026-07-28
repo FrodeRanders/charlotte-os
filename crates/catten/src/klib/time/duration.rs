@@ -13,31 +13,31 @@ pub struct ExtDuration {
 impl ExtDuration {
     pub fn from_secs(secs: u128) -> Self {
         ExtDuration {
-            picos: secs as u128 * PICOS_PER_SEC as u128,
+            picos: secs * PICOS_PER_SEC,
         }
     }
 
     pub fn from_millis(millis: u128) -> Self {
         ExtDuration {
-            picos: millis as u128 * 1_000_000_000u128,
+            picos: millis * 1_000_000_000u128,
         }
     }
 
     pub fn from_micros(micros: u128) -> Self {
         ExtDuration {
-            picos: micros as u128 * 1_000_000u128,
+            picos: micros * 1_000_000u128,
         }
     }
 
     pub fn from_nanos(nanos: u128) -> Self {
         ExtDuration {
-            picos: nanos as u128 * 1_000u128,
+            picos: nanos * 1_000u128,
         }
     }
 
     pub fn from_picos(picos: u128) -> Self {
         ExtDuration {
-            picos: picos as u128,
+            picos,
         }
     }
 

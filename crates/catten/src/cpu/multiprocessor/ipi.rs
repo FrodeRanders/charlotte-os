@@ -14,7 +14,6 @@
 
 use alloc::{
     collections::vec_deque::VecDeque,
-    format,
     sync::Arc,
     vec::Vec,
 };
@@ -55,8 +54,9 @@ pub static IPI_CMD_QUEUES: spin::LazyLock<IpiCmdQueues> =
 
 #[inline(always)]
 pub fn send_ipi(target_lp: LpId) {
-    LocalIntCtlr::send_unicast_ipi(target_lp, ASYNC_IPI_VECTOR)
-        .expect(&format!("Failed to send an IPI from LP {} to LP {target_lp}", get_lp_id()));
+    LocalIntCtlr::send_unicast_ipi(target_lp, ASYNC_IPI_VECTOR).unwrap_or_else(|_| {
+        panic!("Failed to send an IPI from LP {} to LP {target_lp}", get_lp_id())
+    });
 }
 
 pub struct IpiCmdQueues {

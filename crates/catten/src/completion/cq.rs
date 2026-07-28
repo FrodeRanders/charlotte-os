@@ -93,6 +93,10 @@ impl CompletionQueueRing {
         Ok((buf, ptr))
     }
 
+    /// # Safety
+    ///
+    /// `frame` must identify an exclusively owned, writable 4 KiB physical
+    /// frame that remains allocated for the returned ring's lifetime.
     pub unsafe fn init_at_phys(frame: PAddr, num_entries: u32) -> Result<*mut Self, CqRingError> {
         if num_entries < 2 {
             return Err(CqRingError::CapacityTooSmall);
@@ -104,9 +108,7 @@ impl CompletionQueueRing {
         let ptr: *mut Self = frame.into();
         for i in 0..ps {
             unsafe {
-                (crate::memory::physical::PAddr::from(frame).into_hhdm_mut::<u8>())
-                    .add(i)
-                    .write_volatile(0);
+                (frame.into_hhdm_mut::<u8>()).add(i).write_volatile(0);
             }
         }
         unsafe {
@@ -134,6 +136,10 @@ impl CompletionQueueRing {
     /// the shared ring must drain it before calling `cq_wait` again;
     /// otherwise the undrained entries make `pending()` non-zero, causing
     /// `cq_wait` to return immediately without blocking.
+    ///
+    /// # Safety
+    ///
+    /// No other agent may concurrently consume the ring or update its tail.
     pub unsafe fn drain(&mut self) {
         // SAFETY: &mut self guarantees exclusive access.
         let h = unsafe { core::ptr::read_volatile(&self.head) };

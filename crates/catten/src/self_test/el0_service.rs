@@ -198,7 +198,7 @@ extern "C" fn verify_el0_service() {
         let mut spins: u64 = 0;
         while unsafe { core::ptr::read_volatile(config) } != CLIENT_SENTINEL {
             spins += 1;
-            if spins % 1_000_000 == 0 {
+            if spins.is_multiple_of(1_000_000) {
                 let ns_stage = unsafe { core::ptr::read_volatile(ns_config) };
                 let ns_handled = unsafe { core::ptr::read_volatile(ns_config.add(1)) };
                 let ns_opcode = unsafe { core::ptr::read_volatile(ns_config.add(2)) };

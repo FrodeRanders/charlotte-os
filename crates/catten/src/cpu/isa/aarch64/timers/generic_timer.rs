@@ -164,7 +164,7 @@ impl LpTimerIfce for ArmGenericTimer {
     fn set_duration(&mut self, duration: ExtDuration) -> Result<(), LpTimerError> {
         let period_ps = TIMER_CYCLE_PERIOD.as_picos();
         let ticks = duration.as_picos() / period_ps
-            + if duration.as_picos() % period_ps > 0 {
+            + if !duration.as_picos().is_multiple_of(period_ps) {
                 1
             } else {
                 0

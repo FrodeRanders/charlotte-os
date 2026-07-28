@@ -768,7 +768,7 @@ pub fn test_endpoint_ipc_connection_attach() {
         service,
         service_ns_conn,
         1,
-        0x6c6f_67, // "log"
+        0x006c_6f67, // "log"
         service_endpoint,
         ConnectionRights::SEND | ConnectionRights::MINT_CONNECTION,
     )

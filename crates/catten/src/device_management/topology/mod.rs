@@ -36,6 +36,12 @@ impl DeviceTopology {
     }
 }
 
+impl Default for DeviceTopology {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl core::fmt::Display for DeviceTopology {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         writeln!(f, "PCIe:")?;

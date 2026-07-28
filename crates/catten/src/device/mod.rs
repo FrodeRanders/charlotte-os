@@ -264,7 +264,7 @@ pub fn grant_mmio(
     phys_base: usize,
     pages: usize,
 ) -> Result<DeviceCap, DeviceError> {
-    if phys_base % PAGE_SIZE != 0 {
+    if !phys_base.is_multiple_of(PAGE_SIZE) {
         return Err(DeviceError::NotPageAligned);
     }
     if pages == 0 {
@@ -335,17 +335,15 @@ pub fn mmio_map(
     }
     let (phys_base, pages) = (region.phys_base, region.pages);
 
-    let mut mapped = 0usize;
     for index in 0..pages {
         let vaddr = base + (index * PAGE_SIZE);
         let frame = PAddr::from((phys_base + index * PAGE_SIZE) as u64);
         if arch_map_user_mmio(asid, vaddr, frame, writable).is_err() {
-            for cleanup in 0..mapped {
+            for cleanup in 0..index {
                 let _ = arch_unmap(asid, base + (cleanup * PAGE_SIZE));
             }
             return Err(DeviceError::MapFailed);
         }
-        mapped += 1;
     }
 
     // Re-borrow to record the mapping (the map may have taken the AS table lock).
@@ -585,11 +583,11 @@ pub fn drain_deferred_wakes() {
 
 // ---- helpers ---------------------------------------------------------------
 
-fn lookup_mut<'a>(
-    devices: &'a mut BTreeMap<AddressSpaceId, AsDeviceCaps>,
+fn lookup_mut(
+    devices: &mut BTreeMap<AddressSpaceId, AsDeviceCaps>,
     asid: AddressSpaceId,
     cap: DeviceCap,
-) -> Result<&'a mut DeviceObject, DeviceError> {
+) -> Result<&mut DeviceObject, DeviceError> {
     if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Device) {
         return Err(DeviceError::UnknownCapability);
     }

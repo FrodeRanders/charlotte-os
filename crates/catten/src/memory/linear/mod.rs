@@ -27,47 +27,37 @@ pub enum PageType {
 
 impl PageType {
     pub fn is_user_accessible(&self) -> bool {
-        match *self {
+        matches!(
+            *self,
             PageType::UserCode
-            | PageType::UserFlatImage
-            | PageType::UserData
-            | PageType::UserRoData => true,
-            _ => false,
-        }
+                | PageType::UserFlatImage
+                | PageType::UserData
+                | PageType::UserRoData
+        )
     }
 
     pub fn is_writable(&self) -> bool {
-        match *self {
+        matches!(
+            *self,
             PageType::KernelData
-            | PageType::UserFlatImage
-            | PageType::UserData
-            | PageType::Mmio
-            | PageType::DirectMemoryAccess
-            | PageType::Framebuffer => true,
-            _ => false,
-        }
+                | PageType::UserFlatImage
+                | PageType::UserData
+                | PageType::Mmio
+                | PageType::DirectMemoryAccess
+                | PageType::Framebuffer
+        )
     }
 
     pub fn is_no_execute(&self) -> bool {
-        match *self {
-            PageType::KernelCode | PageType::UserCode | PageType::UserFlatImage => false,
-            _ => true,
-        }
+        !matches!(*self, PageType::KernelCode | PageType::UserCode | PageType::UserFlatImage)
     }
 
     pub fn is_uncacheable(&self) -> bool {
-        match *self {
-            PageType::Mmio | PageType::DirectMemoryAccess | PageType::Framebuffer => true,
-            _ => false,
-        }
+        matches!(*self, PageType::Mmio | PageType::DirectMemoryAccess | PageType::Framebuffer)
     }
 
     pub fn should_combine_writes(&self) -> bool {
-        if *self == PageType::Framebuffer {
-            true
-        } else {
-            false
-        }
+        *self == PageType::Framebuffer
     }
 }
 #[derive(Debug, Clone)]

@@ -47,6 +47,12 @@ impl InMemoryLogStore {
     }
 }
 
+impl Default for InMemoryLogStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LogStore for InMemoryLogStore {
     fn snapshot_index(&self) -> u64 {
         *self.snapshot_idx.lock()
@@ -178,6 +184,12 @@ impl InMemoryPersistentStateStore {
             current_term: spin::Mutex::new(0),
             voted_for: spin::Mutex::new(None),
         }
+    }
+}
+
+impl Default for InMemoryPersistentStateStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

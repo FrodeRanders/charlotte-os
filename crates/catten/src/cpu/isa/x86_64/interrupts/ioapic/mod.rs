@@ -77,7 +77,6 @@ impl IoApic {
         let high = self.read32(reg_idx + 1) as u64;
         let mut result = low;
         splice_into(&mut result, high, mask_from_len(Self::REG_BITS), Self::REG_BITS)
-            .expect("Error synthesizing 64 bit IOAPIC register value from 32 bit subregisters.")
     }
 
     fn write64(&mut self, reg_idx: IoApicRegIdx, value: u64) {

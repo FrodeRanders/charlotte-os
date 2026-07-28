@@ -61,7 +61,7 @@ fn find_msix(cfg: *const u8) -> Result<usize, Error> {
     let mut offset = unsafe { read_u8(cfg, 0x34) } as usize;
     let mut visited = [false; 256];
     while offset != 0 {
-        if offset < 0x40 || offset > 0xfc || offset & 0x3 != 0 || visited[offset] {
+        if !(0x40..=0xfc).contains(&offset) || offset & 0x3 != 0 || visited[offset] {
             return Err(Error::MalformedCapabilityList);
         }
         visited[offset] = true;

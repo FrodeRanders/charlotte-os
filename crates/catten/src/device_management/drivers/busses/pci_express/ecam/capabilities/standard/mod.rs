@@ -84,7 +84,7 @@ impl Iterator for PciCapabilityIter {
         let curr_hdr = unsafe { self.cfg_space.byte_add(self.current_offset as usize) }
             as *const PciCapabilityHeader;
         if curr_hdr.is_null() || self.seen_offsets.contains(&self.current_offset) {
-            return None;
+            None
         } else {
             self.seen_offsets.push(self.current_offset);
             self.current_offset = unsafe { (*curr_hdr).next };

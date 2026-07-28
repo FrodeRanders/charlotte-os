@@ -15,7 +15,6 @@ use crate::{
     types::{
         AppendEntriesRequest,
         InstallSnapshotRequest,
-        LogEntry,
         Peer,
         VoteRequest,
     },
@@ -144,16 +143,16 @@ impl RaftTransport for CharlotteTransport {
         }
     }
 
-    fn send_append_entries(
-        &self,
-        peer: &Peer,
-        term: u64,
-        leader_id: &str,
-        prev_log_index: u64,
-        prev_log_term: u64,
-        leader_commit: u64,
-        entries: Vec<LogEntry>,
-    ) {
+    fn send_append_entries(&self, rpc: crate::transport::AppendEntriesRpc<'_>) {
+        let crate::transport::AppendEntriesRpc {
+            peer,
+            term,
+            leader_id,
+            prev_log_index,
+            prev_log_term,
+            leader_commit,
+            entries,
+        } = rpc;
         let request = AppendEntriesRequest {
             term,
             leader_id: leader_id.to_string(),
@@ -173,17 +172,17 @@ impl RaftTransport for CharlotteTransport {
         }
     }
 
-    fn send_install_snapshot(
-        &self,
-        peer: &Peer,
-        term: u64,
-        leader_id: &str,
-        last_included_index: u64,
-        last_included_term: u64,
-        offset: u64,
-        data: Vec<u8>,
-        done: bool,
-    ) {
+    fn send_install_snapshot(&self, rpc: crate::transport::InstallSnapshotRpc<'_>) {
+        let crate::transport::InstallSnapshotRpc {
+            peer,
+            term,
+            leader_id,
+            last_included_index,
+            last_included_term,
+            offset,
+            data,
+            done,
+        } = rpc;
         let request = InstallSnapshotRequest {
             term,
             leader_id: leader_id.to_string(),

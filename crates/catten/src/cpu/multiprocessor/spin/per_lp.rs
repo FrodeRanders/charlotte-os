@@ -59,6 +59,10 @@ impl<'a, T> PerLp<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure non-local access cannot violate the target LP's
+    /// interrupt-context or lock-order invariants.
     pub unsafe fn get_nonlocal(&'a self, lp_id: LpId) -> RwLockReadGuard<'a, T> {
         let lp_index = lp_id as usize;
         if lp_index >= self.data.len() {
@@ -67,6 +71,10 @@ impl<'a, T> PerLp<T> {
         self.data[lp_index].read()
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure exclusive non-local access is permitted and
+    /// cannot deadlock with work running on the target LP.
     pub unsafe fn get_nonlocal_mut(&'a self, lp_id: LpId) -> RwLockWriteGuard<'a, T> {
         let lp_index = lp_id as usize;
         if lp_index >= self.data.len() {
@@ -75,6 +83,9 @@ impl<'a, T> PerLp<T> {
         self.data[lp_index].write()
     }
 
+    /// # Safety
+    ///
+    /// The caller must uphold the target LP's non-local access invariants.
     pub unsafe fn try_get_nonlocal(&'a self, lp_id: LpId) -> Result<RwLockReadGuard<'a, T>, Error> {
         let lp_index = lp_id as usize;
         if lp_index >= self.data.len() {
@@ -86,6 +97,10 @@ impl<'a, T> PerLp<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must uphold the target LP's exclusive non-local access and
+    /// lock-order invariants.
     pub unsafe fn try_get_nonlocal_mut(
         &'a self,
         lp_id: LpId,

@@ -165,7 +165,7 @@ extern "C" fn verify_el0_uart() {
         let mut spins: u64 = 0;
         while unsafe { core::ptr::read_volatile(client_cfg.add(3)) } < 5 {
             spins += 1;
-            if spins % 2_000_000 == 0 {
+            if spins.is_multiple_of(2_000_000) {
                 let driver_stage = unsafe { core::ptr::read_volatile(driver_cfg) };
                 let served = unsafe { core::ptr::read_volatile(driver_cfg.add(3)) };
                 let client_stage = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
@@ -210,7 +210,7 @@ extern "C" fn verify_el0_uart() {
             spins += 1;
             assert!(spins < MAX_SPINS, "[uart] FAILED waiting for interrupt-driven deferred read");
             // Rare safety-net re-pend if the first delivery did not land.
-            if spins % 20_000_000 == 0 {
+            if spins.is_multiple_of(20_000_000) {
                 crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
             }
             crate::cpu::scheduler::sleep_millis(1);

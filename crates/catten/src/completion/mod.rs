@@ -436,7 +436,7 @@ struct CqState {
     /// Threads blocked waiting for this queue to become readable.
     observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
-    _buf: Option<alloc::boxed::Box<alloc::vec::Vec<u8>>>,
+    _buf: Option<alloc::vec::Vec<u8>>,
 }
 
 struct AsCompletions {
@@ -529,7 +529,7 @@ pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
                 work_generation: 0,
                 last_seen_generation: 0,
                 observers: ConcurrentQueue::unbounded(),
-                _buf: Some(alloc::boxed::Box::new(buf)),
+                _buf: Some(buf),
             },
         );
     }
@@ -696,18 +696,18 @@ pub fn complete(
     // are delivered to the default queue.
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(as_completions) = registry.get_mut(&asid) {
-            if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
-                let op = completion.operation_id();
-                post_to_cq(cq_state, op, cap as u64, &effective);
-                cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_COMPLETE,
-                    asid as u64,
-                    cq_state.work_generation,
-                    cap as u64,
-                );
-            }
+        if let Some(as_completions) = registry.get_mut(&asid)
+            && let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ)
+        {
+            let op = completion.operation_id();
+            post_to_cq(cq_state, op, cap, &effective);
+            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_COMPLETE,
+                asid as u64,
+                cq_state.work_generation,
+                cap,
+            );
         }
     }
 
@@ -1062,17 +1062,17 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
     // Fast path: work arrived before the first cq_wait call.
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-            if cq_state.work_generation != cq_state.last_seen_generation {
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_CQ_WAIT_FAST,
-                    asid as u64,
-                    cq_state.work_generation,
-                    cq_state.last_seen_generation,
-                );
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return;
-            }
+        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
+            && cq_state.work_generation != cq_state.last_seen_generation
+        {
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_CQ_WAIT_FAST,
+                asid as u64,
+                cq_state.work_generation,
+                cq_state.last_seen_generation,
+            );
+            cq_state.last_seen_generation = cq_state.work_generation;
+            return;
         }
     }
 
@@ -1082,11 +1082,11 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
         // last_seen would make the following wait report the same work again.
         {
             let mut registry = COMPLETIONS.write();
-            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-                if cq_state.work_generation != cq_state.last_seen_generation {
-                    cq_state.last_seen_generation = cq_state.work_generation;
-                    return;
-                }
+            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
+                && cq_state.work_generation != cq_state.last_seen_generation
+            {
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return;
             }
         }
 
@@ -1127,16 +1127,16 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
         // registered, re-admit the thread before it yields.
         {
             let registry = COMPLETIONS.read();
-            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
-                if cq_state.work_generation != cq_state.last_seen_generation {
-                    crate::debug_trace::trace(
-                        crate::debug_trace::TAG_CQ_WAIT_GUARD,
-                        asid as u64,
-                        cq_state.work_generation,
-                        cq_state.last_seen_generation,
-                    );
-                    let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
-                }
+            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq))
+                && cq_state.work_generation != cq_state.last_seen_generation
+            {
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_CQ_WAIT_GUARD,
+                    asid as u64,
+                    cq_state.work_generation,
+                    cq_state.last_seen_generation,
+                );
+                let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
             }
         }
 
@@ -1195,11 +1195,11 @@ pub fn wait_on_cq_timeout(
 
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-            if cq_state.work_generation != cq_state.last_seen_generation {
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return true;
-            }
+        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
+            && cq_state.work_generation != cq_state.last_seen_generation
+        {
+            cq_state.last_seen_generation = cq_state.work_generation;
+            return true;
         }
     }
 
@@ -1231,10 +1231,10 @@ pub fn wait_on_cq_timeout(
 
     {
         let registry = COMPLETIONS.read();
-        if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) {
-            if cq_state.work_generation != cq_state.last_seen_generation {
-                let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
-            }
+        if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq))
+            && cq_state.work_generation != cq_state.last_seen_generation
+        {
+            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
         }
     }
 
@@ -1246,11 +1246,11 @@ pub fn wait_on_cq_timeout(
     prune_stale_cq_observers(asid, cq);
 
     let mut registry = COMPLETIONS.write();
-    if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-        if cq_state.work_generation != cq_state.last_seen_generation {
-            cq_state.last_seen_generation = cq_state.work_generation;
-            return true;
-        }
+    if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
+        && cq_state.work_generation != cq_state.last_seen_generation
+    {
+        cq_state.last_seen_generation = cq_state.work_generation;
+        return true;
     }
     false
 }

@@ -19,6 +19,8 @@ use crate::{
     },
     state_machine::StateMachine,
     transport::{
+        AppendEntriesRpc,
+        InstallSnapshotRpc,
         RaftTransport,
         RpcCompletion,
     },
@@ -72,17 +74,29 @@ pub struct RaftNode {
     granted_votes: BTreeSet<String>,
 }
 
+pub struct RaftNodeConfig {
+    pub me: Peer,
+    pub timeout_millis: u64,
+    pub log_store: Box<dyn LogStore>,
+    pub persistent_state: Box<dyn PersistentStateStore>,
+    pub state_machine: Option<Box<dyn StateMachine>>,
+    pub cluster_configuration: Vec<Peer>,
+    pub transport: Arc<dyn RaftTransport>,
+    pub current_millis: u64,
+}
+
 impl RaftNode {
-    pub fn new(
-        me: Peer,
-        timeout_millis: u64,
-        log_store: Box<dyn LogStore>,
-        persistent_state: Box<dyn PersistentStateStore>,
-        state_machine: Option<Box<dyn StateMachine>>,
-        cluster_configuration: Vec<Peer>,
-        transport: Arc<dyn RaftTransport>,
-        current_millis: u64,
-    ) -> Self {
+    pub fn new(config: RaftNodeConfig) -> Self {
+        let RaftNodeConfig {
+            me,
+            timeout_millis,
+            log_store,
+            persistent_state,
+            state_machine,
+            cluster_configuration,
+            transport,
+            current_millis,
+        } = config;
         let current_term = persistent_state.current_term();
         let voted_for = persistent_state.voted_for();
         let snapshot_index = log_store.snapshot_index();
@@ -254,7 +268,7 @@ impl RaftNode {
             .iter()
             .filter(|peer| peer.is_voter() && self.granted_votes.contains(&peer.id))
             .count();
-        granted >= voter_count / 2 + 1
+        granted > voter_count / 2
     }
 
     fn step_down(&mut self, term: u64, current_millis: u64) {
@@ -405,10 +419,10 @@ impl RaftNode {
             self.next_index.insert(peer_id.to_string(), new_match + 1);
             self.advance_commit_index();
         } else {
-            if let Some(ni) = self.next_index.get_mut(peer_id) {
-                if *ni > 1 {
-                    *ni -= 1;
-                }
+            if let Some(ni) = self.next_index.get_mut(peer_id)
+                && *ni > 1
+            {
+                *ni -= 1;
             }
         }
     }
@@ -509,11 +523,7 @@ impl RaftNode {
             }
 
             let ni = *self.next_index.get(&peer.id).unwrap_or(&1);
-            let prev_log_index = if ni > 1 {
-                ni - 1
-            } else {
-                0
-            };
+            let prev_log_index = ni.saturating_sub(1);
             let prev_log_term = if prev_log_index > 0 {
                 self.log_store.term_at(prev_log_index)
             } else {
@@ -527,16 +537,16 @@ impl RaftNode {
                 let offset = self.snapshot_offsets.get(&peer.id).copied().unwrap_or(0) as usize;
                 let end = (offset + SNAPSHOT_CHUNK).min(snapshot.len());
                 if offset <= end {
-                    self.transport.send_install_snapshot(
+                    self.transport.send_install_snapshot(InstallSnapshotRpc {
                         peer,
-                        self.current_term,
-                        &self.me.id,
-                        snapshot_index,
-                        self.log_store.snapshot_term(),
-                        offset as u64,
-                        snapshot[offset..end].to_vec(),
-                        end == snapshot.len(),
-                    );
+                        term: self.current_term,
+                        leader_id: &self.me.id,
+                        last_included_index: snapshot_index,
+                        last_included_term: self.log_store.snapshot_term(),
+                        offset: offset as u64,
+                        data: snapshot[offset..end].to_vec(),
+                        done: end == snapshot.len(),
+                    });
                 }
                 continue;
             }
@@ -547,15 +557,15 @@ impl RaftNode {
                 Vec::new()
             };
 
-            self.transport.send_append_entries(
+            self.transport.send_append_entries(AppendEntriesRpc {
                 peer,
-                self.current_term,
-                &self.me.id,
+                term: self.current_term,
+                leader_id: &self.me.id,
                 prev_log_index,
                 prev_log_term,
-                self.commit_index,
+                leader_commit: self.commit_index,
                 entries,
-            );
+            });
         }
 
         self.transport.broadcast_heartbeat_complete();
@@ -659,12 +669,11 @@ impl RaftNode {
     fn apply_committed(&mut self) {
         while self.last_applied < self.commit_index {
             self.last_applied += 1;
-            if let Some(entry) = self.log_store.entry_at(self.last_applied) {
-                if !entry.is_noop() {
-                    if let Some(ref sm) = self.state_machine {
-                        sm.apply(entry.term, &entry.data);
-                    }
-                }
+            if let Some(entry) = self.log_store.entry_at(self.last_applied)
+                && !entry.is_noop()
+                && let Some(ref sm) = self.state_machine
+            {
+                sm.apply(entry.term, &entry.data);
             }
         }
     }
@@ -685,10 +694,10 @@ impl RaftNode {
             return Err((ERR_NOT_LEADER, self.known_leader_id.clone()));
         }
 
-        if let Some(ref sm) = self.state_machine {
-            if let Some(qs) = sm.as_queryable() {
-                return Ok(qs.query(&query));
-            }
+        if let Some(ref sm) = self.state_machine
+            && let Some(qs) = sm.as_queryable()
+        {
+            return Ok(qs.query(&query));
         }
 
         Ok(Vec::new())
@@ -717,14 +726,12 @@ impl RaftNode {
                     return true;
                 }
             }
-            Some(&"REMOVE") => {
-                if parts.len() >= 2 {
-                    let peer_id = parts[1];
-                    self.cluster_configuration.retain(|p| p.id != peer_id);
-                    self.next_index.remove(peer_id);
-                    self.match_index.remove(peer_id);
-                    return true;
-                }
+            Some(&"REMOVE") if parts.len() >= 2 => {
+                let peer_id = parts[1];
+                self.cluster_configuration.retain(|p| p.id != peer_id);
+                self.next_index.remove(peer_id);
+                self.match_index.remove(peer_id);
+                return true;
             }
             _ => {}
         }
@@ -743,7 +750,10 @@ mod tests {
         vec::Vec,
     };
 
-    use super::RaftNode;
+    use super::{
+        RaftNode,
+        RaftNodeConfig,
+    };
     use crate::{
         log_store::{
             InMemoryLogStore,
@@ -762,16 +772,16 @@ mod tests {
 
     fn node_with_voters(ids: &[&str]) -> RaftNode {
         let peers: Vec<Peer> = ids.iter().map(|id| Peer::voter((*id).to_string(), 0)).collect();
-        RaftNode::new(
-            peers[0].clone(),
-            150,
-            Box::new(InMemoryLogStore::new()),
-            Box::new(InMemoryPersistentStateStore::new()),
-            None,
-            peers,
-            Arc::new(NoopTransport),
-            0,
-        )
+        RaftNode::new(RaftNodeConfig {
+            me: peers[0].clone(),
+            timeout_millis: 150,
+            log_store: Box::new(InMemoryLogStore::new()),
+            persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+            state_machine: None,
+            cluster_configuration: peers,
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+        })
     }
 
     #[test]

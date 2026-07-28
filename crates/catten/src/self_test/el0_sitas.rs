@@ -53,8 +53,6 @@ const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
-#[cfg(target_arch = "aarch64")]
-
 /// The Rust-compiled sitas-based catten-user ELF.
 #[cfg(target_arch = "aarch64")]
 const SITAS_ELF: &[u8] = include_bytes!("sitas-user.elf");

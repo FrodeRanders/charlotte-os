@@ -37,9 +37,9 @@ impl Display for PciIdentifier {
     }
 }
 
-impl Into<HwDeviceIfce> for PciIdentifier {
-    fn into(self) -> HwDeviceIfce {
-        match (self.vendor_id, self.device_id, (self.class_code, self.subclass, self.prog_if)) {
+impl From<PciIdentifier> for HwDeviceIfce {
+    fn from(val: PciIdentifier) -> Self {
+        match (val.vendor_id, val.device_id, (val.class_code, val.subclass, val.prog_if)) {
             /* AMD */
             (vendor_id::AMD, _, device_class::VGA_COMPATIBLE) => HwDeviceIfce::AmdGpu,
             #[cfg(target_arch = "x86_64")]

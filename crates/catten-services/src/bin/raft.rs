@@ -304,16 +304,16 @@ fn main(ctx: Context) -> ! {
 
     config::write::<u32>(0, 5);
 
-    let mut node = RaftNode::new(
+    let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me,
-        election_timeout_ms,
+        timeout_millis: election_timeout_ms,
         log_store,
-        persistent_store,
-        None,
-        peers,
-        transport.clone(),
-        0,
-    );
+        persistent_state: persistent_store,
+        state_machine: None,
+        cluster_configuration: peers,
+        transport: transport.clone(),
+        current_millis: 0,
+    });
     config::write::<u32>(20, node.current_term as u32);
     config::write::<u32>(0, 6);
 

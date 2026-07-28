@@ -77,8 +77,8 @@ impl Ns16x50 {
     #[allow(dead_code)]
     fn try_new(ifce: IfceType, base: IoReg8) -> Result<Self, Error> {
         let port = Ns16x50 {
-            ifce: ifce, // Use the provided interface type
-            base: base,
+            ifce, // Use the provided interface type
+            base,
         };
         unsafe {
             (port.base + 1).write(0x00); // Disable all interrupts
@@ -114,8 +114,8 @@ impl Write for Ns16x50 {
         if c.is_ascii() {
             if c == '\n' {
                 unsafe {
-                    (self.base).write('\r' as u8);
-                    (self.base).write('\n' as u8);
+                    (self.base).write(b'\r');
+                    (self.base).write(b'\n');
                 }
             } else {
                 unsafe {
@@ -131,8 +131,8 @@ impl Write for Ns16x50 {
 
 impl Read for Ns16x50 {
     fn read(&mut self, buf: &mut [u8]) -> usize {
-        for i in 0..buf.len() {
-            buf[i] = self.read_char() as u8;
+        for byte in buf.iter_mut() {
+            *byte = self.read_char() as u8;
         }
         buf.len()
     }

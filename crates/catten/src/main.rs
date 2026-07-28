@@ -206,6 +206,11 @@ pub extern "C" fn bsp_main() -> ! {
 /// then hands it off to the scheduler. It is made C ABI compatible so that it can work with the
 /// Limine Boot Protocol MP feature. Other boot protocols may require alternate implementations of
 /// `ap_main`.
+///
+/// # Safety
+///
+/// The bootloader must invoke this exactly once per application processor
+/// with valid Limine MP state after BSP-owned global initialization.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     #[cfg(target_arch = "aarch64")]

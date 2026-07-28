@@ -178,8 +178,8 @@ impl LinearMemoryRegion {
     }
 }
 
-impl Into<(VAddr, VAddr)> for LinearMemoryRegion {
-    fn into(self) -> (VAddr, VAddr) {
-        (self.base, self.base + self.length)
+impl From<LinearMemoryRegion> for (VAddr, VAddr) {
+    fn from(val: LinearMemoryRegion) -> Self {
+        (val.base, val.base + val.length)
     }
 }

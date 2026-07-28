@@ -23,6 +23,27 @@ pub enum RpcCompletion {
     },
 }
 
+pub struct AppendEntriesRpc<'a> {
+    pub peer: &'a Peer,
+    pub term: u64,
+    pub leader_id: &'a str,
+    pub prev_log_index: u64,
+    pub prev_log_term: u64,
+    pub leader_commit: u64,
+    pub entries: Vec<LogEntry>,
+}
+
+pub struct InstallSnapshotRpc<'a> {
+    pub peer: &'a Peer,
+    pub term: u64,
+    pub leader_id: &'a str,
+    pub last_included_index: u64,
+    pub last_included_term: u64,
+    pub offset: u64,
+    pub data: Vec<u8>,
+    pub done: bool,
+}
+
 pub trait RaftTransport {
     fn send_vote_request(
         &self,
@@ -33,28 +54,9 @@ pub trait RaftTransport {
         last_log_term: u64,
     );
 
-    fn send_append_entries(
-        &self,
-        peer: &Peer,
-        term: u64,
-        leader_id: &str,
-        prev_log_index: u64,
-        prev_log_term: u64,
-        leader_commit: u64,
-        entries: Vec<LogEntry>,
-    );
+    fn send_append_entries(&self, rpc: AppendEntriesRpc<'_>);
 
-    fn send_install_snapshot(
-        &self,
-        peer: &Peer,
-        term: u64,
-        leader_id: &str,
-        last_included_index: u64,
-        last_included_term: u64,
-        offset: u64,
-        data: Vec<u8>,
-        done: bool,
-    );
+    fn send_install_snapshot(&self, rpc: InstallSnapshotRpc<'_>);
 
     fn broadcast_heartbeat_complete(&self);
 
@@ -76,30 +78,9 @@ impl RaftTransport for NoopTransport {
     ) {
     }
 
-    fn send_append_entries(
-        &self,
-        _peer: &Peer,
-        _term: u64,
-        _leader_id: &str,
-        _prev_log_index: u64,
-        _prev_log_term: u64,
-        _leader_commit: u64,
-        _entries: Vec<LogEntry>,
-    ) {
-    }
+    fn send_append_entries(&self, _rpc: AppendEntriesRpc<'_>) {}
 
-    fn send_install_snapshot(
-        &self,
-        _peer: &Peer,
-        _term: u64,
-        _leader_id: &str,
-        _last_included_index: u64,
-        _last_included_term: u64,
-        _offset: u64,
-        _data: Vec<u8>,
-        _done: bool,
-    ) {
-    }
+    fn send_install_snapshot(&self, _rpc: InstallSnapshotRpc<'_>) {}
 
     fn broadcast_heartbeat_complete(&self) {}
 }

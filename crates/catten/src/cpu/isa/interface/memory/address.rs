@@ -25,6 +25,9 @@ pub trait Address:
     fn is_valid(value: usize) -> bool;
     fn is_null(&self) -> bool;
 
+    /// # Safety
+    ///
+    /// `addr` must satisfy the architecture's validity requirements.
     unsafe fn from_unchecked(addr: usize) -> Self;
 }
 
@@ -36,6 +39,13 @@ pub trait VirtualAddress: Address {
 }
 
 pub trait PhysicalAddress: Address {
+    /// # Safety
+    ///
+    /// The physical address must be mapped by the HHDM and valid for `T`.
     unsafe fn into_hhdm_ptr<T>(self) -> *const T;
+    /// # Safety
+    ///
+    /// The physical address must be exclusively writable through the HHDM,
+    /// correctly aligned, and valid for `T`.
     unsafe fn into_hhdm_mut<T>(self) -> *mut T;
 }

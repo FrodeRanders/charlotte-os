@@ -349,10 +349,10 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
                 crate::debug_trace::trace(
                     crate::debug_trace::TAG_SUBMIT_TIMER_OK,
                     asid as u64,
-                    cap as u64,
+                    cap,
                     timeout_ms,
                 );
-                frame.regs[0] = cap as u64;
+                frame.regs[0] = cap;
             }
             // Capability zero is valid. Use the same unambiguous sentinel as
             // completion polling instead of conflating failure with slot 0.
@@ -374,7 +374,7 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
                     crate::completion::OpResult::Ok(len as i64),
                 );
             }
-            frame.regs[0] = cap as u64;
+            frame.regs[0] = cap;
         }
         Err(_) => panic!("syscall completion submit failed"),
     }
@@ -1026,8 +1026,8 @@ fn sys_ipc_recv_vec(frame: &mut TrapFrame) {
             frame.regs[4] = msg.sender as u64;
             frame.regs[5] = msg.interface;
             frame.regs[6] = msg.version as u64;
-            frame.regs[7] = msg.memory.unwrap_or(0) as u64;
-            frame.regs[8] = msg.connection.unwrap_or(0) as u64;
+            frame.regs[7] = msg.memory.unwrap_or(0);
+            frame.regs[8] = msg.connection.unwrap_or(0);
         }
         Err(error) => {
             frame.regs[0] = error as u64;
@@ -1055,7 +1055,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
 
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
-    let timeout_ms = frame.regs[2] as u64;
+    let timeout_ms = frame.regs[2];
 
     // Structure that wakes the blocked thread when signalled (by either the
     // timer firing or the completion finishing).
@@ -1069,13 +1069,10 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     }
 
     // Fast path: completion already posted.
-    match crate::completion::poll(asid, cap) {
-        Ok(Some(completed)) => {
-            frame.regs[0] = 0;
-            frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
-            return;
-        }
-        _ => {}
+    if let Ok(Some(completed)) = crate::completion::poll(asid, cap) {
+        frame.regs[0] = 0;
+        frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
+        return;
     }
 
     let tid = SYSTEM_SCHEDULER

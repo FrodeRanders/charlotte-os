@@ -112,12 +112,12 @@ pub fn test_syscall_dispatch() {
     );
     // COMPLETION_COMPLETE
     {
-        let mut f = synthetic_trap_frame_in(asid, 0, cap as u64, 42, 0);
+        let mut f = synthetic_trap_frame_in(asid, 0, cap, 42, 0);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_COMPLETE);
     }
     // COMPLETION_POLL
     {
-        let mut f = synthetic_trap_frame_in(asid, 0, cap as u64, 0, 0);
+        let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_POLL);
         assert_eq!(f.regs[0], 0, "poll should report completed");
         assert_eq!(f.regs[1] as i64, 42, "poll should return result code");
@@ -128,13 +128,13 @@ pub fn test_syscall_dispatch() {
     assert!(done.is_none(), "cap already drained by syscall dispatch");
     // CLOSE
     {
-        let mut f = synthetic_trap_frame_in(asid, 0, cap as u64, 0, 0);
+        let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CLOSE);
     }
     // CANCEL (on a fresh cap)
     let cap2 = completion::submit(asid, OpCode::Write, None).unwrap();
     {
-        let mut f = synthetic_trap_frame_in(asid, 0, cap2 as u64, 0, 0);
+        let mut f = synthetic_trap_frame_in(asid, 0, cap2, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::COMPLETION_CANCEL);
     }
     completion::complete(asid, cap2, OpResult::Cancelled).unwrap();

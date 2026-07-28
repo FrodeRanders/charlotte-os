@@ -16,7 +16,7 @@ use crate::cpu::isa::{
 };
 
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct VAddr {
     raw: usize,
 }
@@ -40,8 +40,7 @@ const PT_INDEX_MASK: usize = PAGE_TABLE_INDEX_MASK << PT_INDEX_SHIFT;
 const OFFSET_MASK: usize = 0xfff;
 
 impl VAddr {
-    /// Convenience functions to get the index for each level of the page table hierarchy
-
+    /// Convenience functions to get the index for each level of the page table hierarchy.
     pub fn pml4_index(&self) -> usize {
         (self.raw & PML4_INDEX_MASK) >> PML4_INDEX_SHIFT
     }
@@ -63,6 +62,9 @@ impl VAddr {
     }
 
     /// Safety: The address must be valid and in canonical form
+    /// # Safety
+    ///
+    /// `raw` must be a valid virtual address for the active architecture.
     pub const unsafe fn from_raw_unchecked(raw: usize) -> Self {
         VAddr {
             raw,
@@ -82,7 +84,7 @@ impl Address for VAddr {
     };
 
     fn is_aligned_to(&self, alignment: usize) -> bool {
-        self.raw % alignment == 0
+        self.raw.is_multiple_of(alignment)
     }
 
     fn next_aligned_to(&self, alignment: usize) -> Self {
@@ -93,7 +95,7 @@ impl Address for VAddr {
 
     fn prev_aligned_to(&self, alignment: usize) -> Self {
         VAddr {
-            raw: if alignment % 2 == 0 {
+            raw: if alignment.is_multiple_of(2) {
                 self.raw & !(alignment - 1)
             } else {
                 self.raw - (self.raw % alignment)
@@ -152,9 +154,9 @@ impl From<usize> for VAddr {
     }
 }
 
-impl Into<usize> for VAddr {
-    fn into(self) -> usize {
-        self.raw
+impl From<VAddr> for usize {
+    fn from(val: VAddr) -> Self {
+        val.raw
     }
 }
 
@@ -163,9 +165,9 @@ impl From<u64> for VAddr {
         VAddr::from(value as usize)
     }
 }
-impl Into<u64> for VAddr {
-    fn into(self) -> u64 {
-        self.raw as u64
+impl From<VAddr> for u64 {
+    fn from(val: VAddr) -> Self {
+        val.raw as u64
     }
 }
 
@@ -267,13 +269,5 @@ impl Step for VAddr {
             },
             overflow,
         )
-    }
-}
-
-impl Default for VAddr {
-    fn default() -> Self {
-        VAddr {
-            raw: 0,
-        }
     }
 }

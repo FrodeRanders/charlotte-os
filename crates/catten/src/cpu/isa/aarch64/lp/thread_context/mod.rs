@@ -136,11 +136,10 @@ pub struct ThreadContext {
 
 impl Drop for ThreadContext {
     fn drop(&mut self) {
-        if let Some(user_stack) = self._user_stack {
-            if !deallocate_user_stack(user_stack) {
+        if let Some(user_stack) = self._user_stack
+            && !deallocate_user_stack(user_stack) {
                 crate::early_logln!("WARNING: failed to free user stack on thread teardown");
             }
-        }
         if deallocate_stack(self._kernel_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
             crate::early_logln!("WARNING: failed to free kernel stack on thread teardown");
         }
@@ -229,12 +228,12 @@ impl ThreadContext {
         {
             let mut as_table = ADDRESS_SPACE_TABLE.lock();
             let user_as = as_table.get_mut(asid).expect("Address space not found in AS table");
-            for i in 0..USER_STACK_PAGES {
+            for (i, frame) in stack_frames.iter().copied().enumerate() {
                 let vaddr = VAddr::from(stack_base + i * PAGE_SIZE);
                 user_as
                     .map_page(MemoryMapping {
                         vaddr,
-                        paddr: stack_frames[i],
+                        paddr: frame,
                         page_type: PageType::UserData,
                     })
                     .expect("Failed to map user stack page");

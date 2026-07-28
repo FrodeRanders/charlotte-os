@@ -106,7 +106,7 @@ pub fn test_completion_caps() {
     completion::close_address_space(asid);
 
     // --- CQ overflow is retained in a kernel backlog, not lost --------------
-    let cq_asid = 0xc0_ffee_01;
+    let cq_asid = 0xc0ff_ee01;
     completion::open_address_space_with_cq(cq_asid, 4, 2);
     let cap_a = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
     let cap_b = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
@@ -119,7 +119,7 @@ pub fn test_completion_caps() {
     assert_eq!(unsafe { &*ring_ptr }.overflow, 1, "second entry should hit a full ring");
 
     let first = unsafe { &mut *ring_ptr }.read().expect("first CQ entry must be present");
-    assert_eq!(first.cookie, cap_a as u64);
+    assert_eq!(first.cookie, cap_a);
 
     assert_eq!(
         completion::cq_pending(cq_asid, 0),
@@ -127,7 +127,7 @@ pub fn test_completion_caps() {
         "cq_pending should flush the retained backlog entry"
     );
     let second = unsafe { &mut *ring_ptr }.read().expect("backlogged CQ entry must be posted");
-    assert_eq!(second.cookie, cap_b as u64);
+    assert_eq!(second.cookie, cap_b);
 
     // --- a duplicate completion must not post a duplicate CQ entry -----------
     completion::complete(cq_asid, cap_a, OpResult::Ok(11)).unwrap();
@@ -142,7 +142,7 @@ pub fn test_completion_caps() {
     assert_eq!(completion::cancel(cq_asid, cap_c).unwrap(), CancelState::CancelRequested);
     completion::complete(cq_asid, cap_c, OpResult::Ok(30)).unwrap();
     let third = unsafe { &mut *ring_ptr }.read().expect("cancelled CQ entry must be posted");
-    assert_eq!(third.cookie, cap_c as u64);
+    assert_eq!(third.cookie, cap_c);
     assert_eq!(
         crate::completion::cq::fields_to_op_result(third.status, third.result),
         OpResult::Cancelled,
@@ -170,7 +170,7 @@ pub fn test_detached_operations() {
     logln!("Testing capability-free (detached) completion path...");
 
     // Detached submission requires a CQ delivery channel.
-    let no_cq_asid = 0xde7ac4_00;
+    let no_cq_asid = 0xde7a_c400;
     completion::open_address_space(no_cq_asid, 2);
     assert_eq!(
         completion::submit_detached(no_cq_asid, 0, OpCode::Nop, 0x1111),
@@ -179,7 +179,7 @@ pub fn test_detached_operations() {
     );
     completion::close_address_space(no_cq_asid);
 
-    let asid = 0xde7ac4_01;
+    let asid = 0xde7a_c401;
     completion::open_address_space_with_cq(asid, 3, 8);
     let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
 

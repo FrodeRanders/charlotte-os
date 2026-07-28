@@ -24,7 +24,7 @@ impl Add<u16> for IoReg8 {
 
     fn add(self, rhs: u16) -> Self::Output {
         IoReg8 {
-            address: unsafe { (self.address as *mut u8).add(rhs as usize) as *mut u8 },
+            address: unsafe { self.address.add(rhs as usize) },
         }
     }
 }

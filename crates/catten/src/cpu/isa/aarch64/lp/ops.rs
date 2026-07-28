@@ -277,6 +277,12 @@ pub extern "C" fn cond_yield_lp() {
 /// resume the interrupted `cond_yield_lp` in the outgoing thread. Restoring x30
 /// and executing `ret` returns into the incoming thread exactly where it last
 /// called `switch_ctx` (or into a trampoline for a freshly created thread).
+///
+/// # Safety
+///
+/// All non-null pointers must reference live scheduler-owned context fields.
+/// The incoming stack must contain the documented saved-frame layout, and the
+/// caller must ensure the outgoing and incoming threads are distinct.
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn switch_ctx(
@@ -360,6 +366,11 @@ pub unsafe extern "C" fn switch_ctx(
 /// saved frame; when `switch_ctx` restores that frame and returns here, we
 /// unmask interrupts, call the entry point, and abort the thread cleanly if it
 /// ever returns.
+///
+/// # Safety
+///
+/// Must be entered only by `switch_ctx` with a freshly constructed kernel
+/// thread frame whose x19 value is a valid entry point.
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
@@ -381,6 +392,11 @@ pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
 ///
 /// `SPSR_EL1` is set to zero, which selects EL0t (EL0 using `SP_EL0`) with all
 /// interrupts unmasked, and `eret` then drops to the user entry point.
+///
+/// # Safety
+///
+/// Must be entered only by `switch_ctx` with x19 and x20 containing a valid
+/// EL0 entry point and mapped user stack respectively.
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
 pub unsafe extern "C" fn user_trampoline() -> ! {

@@ -19,7 +19,7 @@ use crate::cpu::{
     multiprocessor::get_lp_count,
 };
 
-pub static INT_STATE: LazyLock<IntState> = LazyLock::new(|| IntState::new());
+pub static INT_STATE: LazyLock<IntState> = LazyLock::new(IntState::new);
 
 pub struct IntState {
     raw_locks: Vec<AtomicBool>,
@@ -96,5 +96,11 @@ impl IntState {
         if restore_saved_int {
             unmask_interrupts!();
         }
+    }
+}
+
+impl Default for IntState {
+    fn default() -> Self {
+        Self::new()
     }
 }

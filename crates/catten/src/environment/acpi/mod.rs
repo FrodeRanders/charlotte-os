@@ -319,7 +319,7 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
 
 fn get_table_signature(table_addr: PAddr) -> Option<[u8; 4]> {
     if table_addr.is_null() {
-        return None;
+        None
     } else {
         let header = unsafe { (table_addr.into_hhdm_ptr::<SdtHeader>()).read() };
         Some(header.signature)

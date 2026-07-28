@@ -81,6 +81,10 @@ pub fn mpidr_for_lp(lp_id: crate::cpu::isa::lp::LpId) -> Option<u64> {
     (value != UNKNOWN_MPIDR).then_some(value)
 }
 
+/// # Safety
+///
+/// Must be called exactly once by each logical processor during bootstrap,
+/// after the global ID counter is initialized and before scheduler admission.
 pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
     store_lp_id(lp_id);

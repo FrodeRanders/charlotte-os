@@ -16,21 +16,20 @@ pub trait Read {
     }
     #[inline]
     fn read_until(&mut self, buf: &mut [u8], delim: u8) -> usize {
-        let n_bytes = buf.len();
-        for i in 0..n_bytes {
+        for (i, byte) in buf.iter_mut().enumerate() {
             let c = self.read_byte();
             if c == delim {
                 return i;
             }
-            buf[i] = c;
+            *byte = c;
         }
-        n_bytes
+        buf.len()
     }
     #[inline]
     fn read_n(&mut self, buf: &mut [u8], n: usize) -> usize {
-        let n_bytes = core::cmp::max(n, buf.len());
-        for i in 0..n_bytes {
-            buf[i] = self.read_byte();
+        let n_bytes = core::cmp::min(n, buf.len());
+        for byte in buf.iter_mut().take(n_bytes) {
+            *byte = self.read_byte();
         }
         n_bytes
     }

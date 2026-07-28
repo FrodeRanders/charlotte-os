@@ -128,11 +128,11 @@ fn spawn_name_service(
     bootstrap::write_bootstrap_cap(loaded.config_frame, endpoint_cap);
     bootstrap::write_manifest(loaded.config_frame, &[]);
     let domain = start_domain(loaded);
-    let handle = NameServiceHandle {
+
+    NameServiceHandle {
         domain,
         endpoint_cap,
-    };
-    handle
+    }
 }
 
 /// Start the single node-local name service.
@@ -266,10 +266,10 @@ pub fn spawn_driver_with_name_service(
 /// Returns true once the domain's initial thread has exited and been reaped
 /// from the master thread table.
 pub fn domain_exited(domain: &ServiceDomain) -> bool {
-    if let Ok(thread) = MASTER_THREAD_TABLE.read().get(domain.tid) {
-        if thread.generation == domain.generation {
-            return false;
-        }
+    if let Ok(thread) = MASTER_THREAD_TABLE.read().get(domain.tid)
+        && thread.generation == domain.generation
+    {
+        return false;
     }
     !crate::cpu::scheduler::threads::DEAD_THREADS
         .read()

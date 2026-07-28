@@ -26,7 +26,7 @@ where
 }
 /// write a bitfield into a larger word size.
 #[inline(always)]
-pub fn splice_into<T>(dest: &mut T, val: T, mask: T, shift: u8) -> Result<T, ()>
+pub fn splice_into<T>(dest: &mut T, val: T, mask: T, shift: u8) -> T
 where
     T: core::ops::Not<Output = T>
         + core::ops::Shl<u8, Output = T>
@@ -38,7 +38,7 @@ where
     dest.bitand_assign(!mask);
     // set the bits in dest
     dest.bitor_assign((val << shift) & mask);
-    Ok(*dest)
+    *dest
 }
 #[inline(always)]
 pub fn mask_from_len<T>(len: u8) -> T

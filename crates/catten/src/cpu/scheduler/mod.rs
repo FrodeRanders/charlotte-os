@@ -206,7 +206,7 @@ pub fn abort() -> ! {
 
 /// Blocks the current thread for at least the specified duration.
 pub fn sleep(duration: ExtDuration) {
-    let mut timer_event = TimerEvent::from(duration);
+    let timer_event = TimerEvent::from(duration);
     // Bind `tid` first so the read guard + LP scheduler lock in the scrutinee
     // are released before `block_thread` (which takes SYSTEM_SCHEDULER.write());
     // holding the read guard across the write would deadlock the RwLock.
@@ -216,7 +216,7 @@ pub fn sleep(duration: ExtDuration) {
             .read()
             .block_thread_with_constraint(
                 tid,
-                &mut timer_event,
+                &timer_event,
                 threads::MigrationConstraint::TimerWait,
             )
             .expect("Error putting thread to sleep");

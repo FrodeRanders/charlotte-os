@@ -110,10 +110,11 @@ impl SystemScheduler {
         }
     }
 
+    /// # Safety
+    ///
+    /// Call exactly once per LP during BSP/AP initialization, after that LP's
+    /// logical ID has been assigned.
     pub unsafe fn set_lp_scheduler(&mut self, lp_sched: Box<dyn LpScheduler>) {
-        //! Safety: This function should only be called once per LP at boot during the BSP and AP
-        //! init processes and it must be called in the same order that LP IDs were assigned
-        //! otherwise the wrong LP will use the wrong local scheduler.
         let ls_sync_ptr = Mutex::new(lp_sched);
         self.lp_schedulers.insert(get_lp_id(), ls_sync_ptr);
     }
@@ -130,10 +131,10 @@ impl SystemScheduler {
             let table = MASTER_THREAD_TABLE.read();
             table.get(tid).ok().and_then(|t| t.affinity_lp)
         };
-        if let Some(lp) = existing {
-            if let Some(sched) = self.lp_schedulers.get(&lp) {
-                return sched;
-            }
+        if let Some(lp) = existing
+            && let Some(sched) = self.lp_schedulers.get(&lp)
+        {
+            return sched;
         }
         self.get_least_loaded_lp()
     }
@@ -156,10 +157,10 @@ impl SystemScheduler {
         // lock to honour the lp_scheduler → MASTER_THREAD_TABLE lock order.
         {
             let mut table = MASTER_THREAD_TABLE.write();
-            if let Ok(thread) = table.get_mut(tid) {
-                if thread.affinity_lp.is_none() {
-                    thread.affinity_lp = Some(lp_id);
-                }
+            if let Ok(thread) = table.get_mut(tid)
+                && thread.affinity_lp.is_none()
+            {
+                thread.affinity_lp = Some(lp_id);
             }
         }
         drop(lp_guard);
@@ -392,18 +393,18 @@ impl SystemScheduler {
     }
 
     /// Block the specified thread at least until the given event notifies its observers
-    pub fn block_thread<'a>(
+    pub fn block_thread(
         &self,
         tid: ThreadId,
-        event: &'a dyn crate::klib::observer::Observable,
+        event: &dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
         self.block_thread_with_constraint(tid, event, MigrationConstraint::GeneralWait)
     }
 
-    pub fn block_thread_with_constraint<'a>(
+    pub fn block_thread_with_constraint(
         &self,
         tid: ThreadId,
-        event: &'a dyn crate::klib::observer::Observable,
+        event: &dyn crate::klib::observer::Observable,
         constraint: MigrationConstraint,
     ) -> Result<(), Error> {
         let state = {
@@ -505,10 +506,10 @@ impl SystemScheduler {
     pub fn abort_as_threads(&self, asid: AddressSpaceId) {
         let mut threads_to_abort = Vec::new();
         for (id, thread) in MASTER_THREAD_TABLE.read().iter().enumerate() {
-            if let Some(thread) = thread {
-                if thread.asid == asid {
-                    threads_to_abort.push(id);
-                }
+            if let Some(thread) = thread
+                && thread.asid == asid
+            {
+                threads_to_abort.push(id);
             }
         }
         for tid in threads_to_abort {
@@ -531,6 +532,12 @@ impl SystemScheduler {
                 None
             }
         })
+    }
+}
+
+impl Default for SystemScheduler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

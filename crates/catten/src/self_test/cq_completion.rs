@@ -53,15 +53,15 @@ pub fn test_cq_ring_in_completion() {
 
     let ring = unsafe { &mut *completion::cq_ring_of(asid, 0).unwrap() };
     let e1 = ring.read().unwrap();
-    assert_eq!(e1.cookie, c1 as u64);
+    assert_eq!(e1.cookie, c1);
     assert_eq!(e1.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(1)));
 
     let e2 = ring.read().unwrap();
-    assert_eq!(e2.cookie, c2 as u64);
+    assert_eq!(e2.cookie, c2);
     assert_eq!(e2.result, crate::completion::cq::op_result_to_i64(OpResult::Cancelled));
 
     let e3 = ring.read().unwrap();
-    assert_eq!(e3.cookie, c3 as u64);
+    assert_eq!(e3.cookie, c3);
     assert_eq!(e3.result, crate::completion::cq::op_result_to_i64(OpResult::Err(2)));
 
     // Clean up — closes the AS and frees the CQ ring allocation.

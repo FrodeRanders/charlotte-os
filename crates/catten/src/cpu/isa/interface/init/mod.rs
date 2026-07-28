@@ -1,5 +1,4 @@
-///! # Interface for ISA specific initialization
-
+//! # Interface for ISA-specific initialization.
 pub trait InitInterface {
     type Error: core::fmt::Debug;
     /// Perform ISA specific processor and system initialization

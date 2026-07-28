@@ -36,7 +36,7 @@ pub fn test_vmem() {
     let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
     crate::early_logln!(
         "[HEAPDBG] vmem frame={:#x}",
-        (<crate::memory::PAddr as Into<usize>>::into(frame.clone()))
+        (<crate::memory::PAddr as Into<usize>>::into(frame))
     );
     logln!("Physical frame allocated");
     logln!("Obtaining current address space");

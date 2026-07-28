@@ -59,14 +59,14 @@ impl RwLockCore {
 
 impl RwLockCore {
     fn wake_next(&self) {
-        if self.waitlist_exclusive.len() > 0 {
-            if let Ok(observer) = self.waitlist_exclusive.pop() {
-                if let Some(observer) = observer.upgrade() {
-                    observer.notify();
-                }
+        if !self.waitlist_exclusive.is_empty() {
+            if let Ok(observer) = self.waitlist_exclusive.pop()
+                && let Some(observer) = observer.upgrade()
+            {
+                observer.notify();
             }
         } else {
-            while self.waitlist_shared.len() > 0 {
+            while !self.waitlist_shared.is_empty() {
                 while let Ok(observer) = self.waitlist_shared.pop() {
                     if let Some(observer) = observer.upgrade() {
                         observer.notify();
@@ -97,11 +97,7 @@ unsafe impl RawRwLock for RwLockCore {
     }
 
     fn try_lock_exclusive(&self) -> bool {
-        if self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_err() {
-            false
-        } else {
-            true
-        }
+        !self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_err()
     }
 
     unsafe fn unlock_exclusive(&self) {

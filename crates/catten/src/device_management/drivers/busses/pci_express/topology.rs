@@ -216,8 +216,8 @@ impl PcieBusSegment {
             bus_num,
             segment_group_num
         );
-        for i in 0..MAX_DEVICES_PER_BUS {
-            devices[i] = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, i as u8);
+        for (i, device) in devices.iter_mut().enumerate() {
+            *device = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, i as u8);
         }
 
         PcieBusSegment {
@@ -312,8 +312,8 @@ impl PcieMultiFuncDevice {
     ) -> Self {
         let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE] =
             [const { PcieFunction::Empty }; MAX_FUNCTIONS_PER_DEVICE];
-        for i in 0..MAX_FUNCTIONS_PER_DEVICE {
-            functions[i] = PcieFunction::new(
+        for (i, function) in functions.iter_mut().enumerate() {
+            *function = PcieFunction::new(
                 ecam_vaddr,
                 segment_group_num,
                 bus_num,
@@ -428,7 +428,7 @@ impl PcieEndpoint {
                 function_num,
             )
             .get_ecam_offset();
-        let cfg_space = *&cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
+        let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
         let identifier = unsafe { (*cfg_space).header.common.get_identifier() };
 
         PcieEndpoint {
@@ -486,11 +486,10 @@ impl PcieBusSegment {
         if self.devices.iter().any(|device| !matches!(device, PcieDevice::Empty)) {
             writeln!(
                 f,
-                "{:indent$}{:<7}  {:<9}  {}",
+                "{:indent$}{:<7}  {:<9}  Class (cc:sc:pi)",
                 "",
                 "B:D.F",
                 "VID:DID",
-                "Class (cc:sc:pi)",
                 indent = child_indent
             )?;
         }
@@ -667,16 +666,16 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
                     let bar0 = header.bar(0) as u64;
                     let bar0_phys = if bar0 & 0x4 != 0 {
                         let bar1 = header.bar(1) as u64;
-                        ((bar0 & 0xffff_fff0) as u64) | ((bar1 & 0xffff_ffff) << 32)
+                        (bar0 & 0xffff_fff0) | ((bar1 & 0xffff_ffff) << 32)
                     } else {
-                        (bar0 & 0xffff_fff0) as u64
+                        bar0 & 0xffff_fff0
                     };
                     (bar0_phys, header.interrupt_line() as u32)
                 };
                 if phys_base != 0 {
                     #[cfg(target_arch = "aarch64")]
-                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi() {
-                        if crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
+                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi()
+                        && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
                             message,
                         )
@@ -690,7 +689,6 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32)> {
                             );
                             return Some((phys_base, message.intid));
                         }
-                    }
                     return Some((phys_base, legacy_irq));
                 }
             }

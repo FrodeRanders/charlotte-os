@@ -22,7 +22,7 @@ pub enum PAddrError {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct PAddr {
     raw: usize,
 }
@@ -39,7 +39,7 @@ impl Address for PAddr {
     };
 
     fn is_aligned_to(&self, alignment: usize) -> bool {
-        self.raw % alignment == 0
+        self.raw.is_multiple_of(alignment)
     }
 
     fn is_valid(value: usize) -> bool {
@@ -56,7 +56,7 @@ impl Address for PAddr {
 
     fn prev_aligned_to(&self, alignment: usize) -> Self {
         PAddr {
-            raw: if alignment % 2 == 0 {
+            raw: if alignment.is_multiple_of(2) {
                 self.raw & !(alignment - 1)
             } else {
                 self.raw - (self.raw % alignment)
@@ -81,15 +81,15 @@ impl PhysicalAddress for PAddr {
     }
 }
 
-impl<T> Into<*const T> for PAddr {
-    fn into(self) -> *const T {
-        (*HHDM_BASE).into_ptr::<T>().wrapping_byte_add(self.raw)
+impl<T> From<PAddr> for *const T {
+    fn from(val: PAddr) -> Self {
+        (*HHDM_BASE).into_ptr::<T>().wrapping_byte_add(val.raw)
     }
 }
 
-impl<T> Into<*mut T> for PAddr {
-    fn into(self) -> *mut T {
-        (*HHDM_BASE).into_mut::<T>().wrapping_byte_add(self.raw)
+impl<T> From<PAddr> for *mut T {
+    fn from(val: PAddr) -> Self {
+        (*HHDM_BASE).into_mut::<T>().wrapping_byte_add(val.raw)
     }
 }
 
@@ -107,9 +107,9 @@ impl TryFrom<usize> for PAddr {
     }
 }
 
-impl Into<usize> for PAddr {
-    fn into(self) -> usize {
-        self.raw
+impl From<PAddr> for usize {
+    fn from(val: PAddr) -> Self {
+        val.raw
     }
 }
 
@@ -121,9 +121,9 @@ impl From<u64> for PAddr {
     }
 }
 
-impl Into<u64> for PAddr {
-    fn into(self) -> u64 {
-        self.raw as u64
+impl From<PAddr> for u64 {
+    fn from(val: PAddr) -> Self {
+        val.raw as u64
     }
 }
 
@@ -165,13 +165,5 @@ impl Sub<usize> for PAddr {
 
     fn sub(self, rhs: usize) -> Self::Output {
         PAddr::try_from(self.raw.wrapping_sub(rhs)).unwrap()
-    }
-}
-
-impl Default for PAddr {
-    fn default() -> Self {
-        PAddr {
-            raw: 0,
-        }
     }
 }

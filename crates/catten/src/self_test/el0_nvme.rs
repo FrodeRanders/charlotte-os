@@ -52,7 +52,7 @@ fn wait_for_nvme() -> (usize, u32) {
             )
             .expect("[nvme] no NVMe controller in the published PCI topology");
         logln!("[nvme] PCI topology: BAR0={:#x} intid={}", bar0, irq);
-        (bar0 as usize, irq as u32)
+        (bar0 as usize, irq)
     }
     #[cfg(feature = "hvf_compat")]
     {
