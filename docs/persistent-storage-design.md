@@ -293,6 +293,33 @@ guarantees still depend on truthful flush/FUA behaviour below the service. The
 content hash detects accidental corruption; it does not authenticate
 executable objects or other data.
 
+### 4.3 Offline inspection
+
+`scripts/fs-inspect.py` understands the v3 superblock, both directory banks,
+versioned object headers, and multi-extent data. It selects the newest valid
+copy of each directory record using the same generation rule as the service,
+checks CRCs, rejects overlapping allocations, compares reachable blocks with
+the allocation bitmap, and verifies every object read against its FNV-1a hash.
+It can also create a blank v3 image:
+
+```text
+python3 scripts/fs-inspect.py os-images/nvme-disk.img info
+python3 scripts/fs-inspect.py os-images/nvme-disk.img objects
+python3 scripts/fs-inspect.py os-images/nvme-disk.img metadata
+python3 scripts/fs-inspect.py os-images/nvme-disk.img metadata 0x7fffffffffffff00
+python3 scripts/fs-inspect.py os-images/nvme-disk.img metadata /path/to/file
+python3 scripts/fs-inspect.py os-images/nvme-disk.img dump OBJECT_ID
+python3 scripts/fs-inspect.py os-images/nvme-disk.img raw OBJECT_ID
+python3 scripts/fs-inspect.py os-images/nvme-disk.img tree
+python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /path/to/file
+```
+
+The `metadata` command prints the numeric and symbolic object/filesystem flags,
+directory generation, header placement, logical and allocated lengths, hash,
+and every extent. Unknown flag bits are retained as `UNKNOWN(...)` rather than
+silently discarded. `format` is destructive and should only be used on an
+image whose contents may be replaced.
+
 ---
 
 ## 5. Implementation Sequence

@@ -36,10 +36,13 @@ The main additions and extensions currently maintained here are:
 - **Userspace persistent-storage prototype:** an NVMe block driver using DMA
   and MSI-X, a block protocol, an object store, and namespaced Raft
   term/vote/log/snapshot storage. Process-restart recovery is boot-tested;
-  objects and files can exceed a single NVMe request. Object-store v2 adds
-  extensible per-object metadata, integrity hashes, allocation reconstruction,
-  and copy-on-write replacement (individual objects use 32-bit lengths);
-  torn-sector recovery and full power-loss atomicity are not yet provided.
+  objects and files can exceed a single NVMe request. Object-store v3 adds
+  mirrored generation-selected directory records, device-scaled directory
+  capacity, up to 16 extents per object, integrity hashes, allocation
+  reconstruction, and copy-on-write replacement (individual objects use
+  32-bit lengths). One torn directory-record write is recoverable; full
+  device-level power-loss guarantees still depend on truthful flush/FUA
+  behaviour.
 - **Experimental live service upgrade:** an EL0 service manager can spawn a
   replacement generation, transfer state, synchronize registration, and
   invalidate stale connections. This remains prototype work rather than a

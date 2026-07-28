@@ -238,14 +238,27 @@ plus FLUSH.
 \subsection{Host inspection}
 
 A Python tool (\texttt{scripts/fs-inspect.py}) reads the raw disk image and
-walks the object store and filesystem on-disk structures. It provides tree
-view, hex dump, cat, and format commands, enabling post-mortem debugging
-without booting CharlotteOS:
+walks the object store and filesystem on-disk structures. It understands both
+v3 directory banks and multi-extent headers, selects the newest valid directory
+record, checks CRCs and allocation overlap, compares reachable blocks with the
+bitmap, and verifies object contents against their FNV-1a hashes. It provides
+tree, dump, raw, cat, object-list, metadata, information, and format commands,
+enabling post-mortem debugging without booting CharlotteOS:
 
 \begin{verbatim}
-python3 scripts/fs-inspect.py os-images/nvme-disk.img tree
-python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /raft/state
+scripts/fs-inspect.py <image> info
+scripts/fs-inspect.py <image> objects
+scripts/fs-inspect.py <image> metadata
+scripts/fs-inspect.py <image> metadata OBJECT_ID
+scripts/fs-inspect.py <image> metadata /path/to/file
+scripts/fs-inspect.py <image> tree
+scripts/fs-inspect.py <image> cat /raft/state
 \end{verbatim}
+
+Metadata output includes numeric and symbolic object/filesystem flags,
+generation, header location, logical and allocated lengths, integrity hash, and
+every extent. Unknown flag bits remain visible. The \texttt{format} command
+creates a blank v3 store and destructively replaces the image contents.
 
 \section{Why this matters for critical software}
 
@@ -260,9 +273,10 @@ python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /raft/state
         Those alternative drivers have not yet been implemented.
 
     \item \textbf{Crash-safety mechanism under development.} Process-restart
-        persistence is boot-validated. Power-loss safety still requires a
-        journalled or copy-on-write object update plus validation of device
-        atomicity and flush ordering.
+        persistence is boot-validated. Copy-on-write object replacement and
+        mirrored directory records recover from one torn directory-record
+        write. Broader power-loss guarantees still require validation of
+        device atomicity and truthful flush/FUA ordering.
 
     \item \textbf{Capability-based access.} A client that holds a connection to
         \texttt{"blk0"} can read and write blocks. A client that does not hold

@@ -116,6 +116,15 @@ kernel self-tests} --- whitebox integration tests run from
 \texttt{self\_test::run\_self\_tests()} called after \texttt{INIT\_BARRIER.wait()}.
 Each test uses \texttt{assert!()} / \texttt{assert\_eq!()}; panic equals failure.
 
+Deferred tests register an expected result bit and spawn their verifier through
+\texttt{results::spawn\_verifier}. The result subsystem associates that
+single verifier thread with the test in a fixed atomic table. If the verifier
+panics, the panic handler uses a best-effort non-blocking scheduler lookup and
+marks the associated test failed before emitting the panic. Consequently the
+authoritative reporter names the failed test instead of leaving it pending
+until the runner timeout. The panic path neither allocates nor waits for a
+scheduler lock.
+
 Current test suites (both architectures pass on AArch64; core tests pass on
 x86-64):
 

@@ -296,6 +296,15 @@ terminal success markers for every supported deferred test and return failure
 when any marker is absent. The virtio-net marker is intentionally excluded from
 TCG/HVF aggregation pending the separate Linux KVM milestone.
 
+**Follow-up (2026-07-28):** each single-threaded deferred verifier is now
+spawned through `results::spawn_verifier`, which records the verifier TID in a
+fixed atomic table. If such a thread panics, the panic handler performs a
+best-effort, non-blocking current-TID lookup and atomically marks the owning
+test failed before printing the panic. The authoritative reporter therefore
+terminates with a named failure instead of leaving that test pending until the
+external timeout. This panic path allocates nothing and does not wait for a
+scheduler lock.
+
 Several functions called by `run_self_tests` spawn verifier threads and return
 immediately; the boot log itself says "verifier deferred." Nevertheless,
 `run_self_tests` prints `Testing Complete. All Tests Passed!` immediately after
