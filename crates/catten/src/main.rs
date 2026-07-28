@@ -133,6 +133,18 @@ pub extern "C" fn bsp_main() -> ! {
             name_service.domain.tid
         );
     }
+    #[cfg(all(
+        target_arch = "aarch64",
+        not(feature = "hvf_compat"),
+        not(feature = "live_upgrade_test")
+    ))]
+    match crate::device::smmu::initialize_early() {
+        Ok(()) => logln!("[smmu] early initialization complete."),
+        Err(crate::device::smmu::Error::Unsupported) => {
+            logln!("[smmu] no supported SMMUv3 discovered; DMA isolation unavailable.")
+        }
+        Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
+    }
     self_test::run_self_tests();
     logln!("System Information:");
     logln!("CPU Vendor: {}", (CpuInfo::get_vendor()));

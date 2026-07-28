@@ -142,25 +142,32 @@ process reopen state derived from its cluster and node identity.
 \subsection{On-disk layout}
 
 \begin{verbatim}
-LBA 0:     superblock (magic, version, generation, next_object_id)
-LBA 1:     reserved allocation metadata
-LBA 2--33: object directory (512 entries × 32 bytes:
-             id | flags | size_bytes | first_extent_lba)
-LBA 34+:   variable-sized contiguous object extents
+LBA 0--1:  checksummed superblock slots
+next:      device-sized allocation bitmap
+next:      512-entry directory:
+             id | flags | generation | header_lba |
+             header_blocks | crc32
+data:      object header followed by its data extent
 \end{verbatim}
 
 \subsection{Current durability boundary}
 
-The prototype writes replacement data to a newly selected extent, updates its
-directory entry, and exposes \texttt{FLUSH}. Whole-object transfers use
-multi-page memory objects and are divided into block requests of at most
-2 MiB, so the NVMe PRP-list limit is not an object or file limit. The
-directory's 32-bit byte length limits an individual object to 4 GiB and
-available disk space. This is sufficient for the tested
-process-restart path, where the NVMe device and object-store service remain
-alive while a Raft process is torn down and replaced. It is not a journalled
-commit protocol. Atomic recovery after sudden power loss is not yet
-implemented or claimed.
+Each object header is versioned and carries explicit header length and block
+count, object generation, exact and allocated data lengths, data offset,
+extent information, and a mandatory FNV-1a content hash. The header can grow
+without moving the data offset contract; the current implementation has one
+contiguous data extent.
+
+Replacement is copy-on-write. New data, header, and allocation state are
+flushed before the directory locator changes, and the old allocation is freed
+afterward. Mount reconstructs the bitmap from validated reachable headers,
+reclaiming pre-commit allocations. Whole-object transfers use multi-page
+memory objects and are divided into block requests of at most 512 KiB, so the
+NVMe request limit is not an object or file limit. The current service API's
+32-bit length limits an individual object to 4 GiB and available disk space.
+Directory records are checksummed but not journalled; torn-sector recovery and
+full sudden-power-loss atomicity are not yet claimed. FNV-1a detects accidental
+corruption, but is not cryptographic authentication.
 
 \subsection{Operations}
 

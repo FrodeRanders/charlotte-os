@@ -44,6 +44,7 @@ fn main(ctx: Context) -> ! {
     }
 
     let create = ipc_scalar_call(connection, objstore::OP_CREATE_AT, OBJECT_ID);
+    config::write::<u32>(0, 1);
     if create == 0 {
         fail(0xdea3);
     }
@@ -62,6 +63,7 @@ fn main(ctx: Context) -> ! {
     memory_unmap(size_cap);
     let set_size =
         ipc_scalar_call_borrow_read(connection, objstore::OP_SET_SIZE, OBJECT_ID, size_cap);
+    config::write::<u32>(0, 2);
     if set_size == 0 || catten_services::spin_reply(set_size).0 != objstore::ERR_OK {
         fail(0xdea6);
     }
@@ -84,6 +86,7 @@ fn main(ctx: Context) -> ! {
     }
     memory_unmap(data);
     let write = ipc_scalar_call_move(connection, objstore::OP_WRITE, OBJECT_ID, data);
+    config::write::<u32>(0, 3);
     if write == 0 {
         fail(0xdea9);
     }
@@ -93,11 +96,13 @@ fn main(ctx: Context) -> ! {
         fail(0xdea9);
     }
     let flush = ipc_scalar_call(connection, objstore::OP_FLUSH, 0);
+    config::write::<u32>(0, 4);
     if flush == 0 || catten_services::spin_reply(flush).0 != objstore::ERR_OK {
         fail(0xdeaa);
     }
 
     let read = ipc_scalar_call(connection, objstore::OP_READ, OBJECT_ID);
+    config::write::<u32>(0, 5);
     if read == 0 {
         fail(0xdeab);
     }
@@ -112,6 +117,7 @@ fn main(ctx: Context) -> ! {
     if memory_map(returned_memory, DATA_VADDR, false) != 0 {
         fail(0xdead);
     }
+    config::write::<u32>(0, 6);
     for offset in 0..BYTES {
         let actual = unsafe { ((DATA_VADDR + offset) as *const u8).read_volatile() };
         let expected = (offset as u8).wrapping_mul(29) ^ 0x6d;
@@ -172,5 +178,19 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(4, BYTES as u32);
     config::write::<u32>(0, 0x900d);
+    let done_endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 1);
+    if done_endpoint == 0 {
+        fail(0xdeb6);
+    }
+    let register = ipc_scalar_call_connection(
+        ns_connection,
+        ns::OP_REGISTER,
+        objstore::TEST_DONE_NAME,
+        done_endpoint,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+    );
+    if register == 0 || catten_services::spin_reply(register).0 < 1 {
+        fail(0xdeb7);
+    }
     unsafe { thread_exit() }
 }

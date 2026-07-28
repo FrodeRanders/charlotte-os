@@ -475,6 +475,17 @@ fn with_smmu<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Erro
     f(guard.as_mut().expect("SMMU initialized"))
 }
 
+/// Initialize the platform SMMU before driver domains begin competing for
+/// physical memory.
+///
+/// A linear stream table can require a large aligned contiguous allocation
+/// (4 MiB on QEMU's 16-bit StreamID implementation). Deferring this until an
+/// EL0 driver happens to request its first DMA domain made success depend on
+/// how earlier boot allocations fragmented physical memory.
+pub fn initialize_early() -> Result<(), Error> {
+    with_smmu(|_| Ok(()))
+}
+
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
     let config =
         crate::environment::acpi::sdt::iort::discover_smmuv3().ok_or(Error::Unsupported)?;

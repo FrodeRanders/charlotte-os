@@ -9,8 +9,8 @@ use core::sync::atomic::{
 use crate::{
     cpu::scheduler::{
         monotonic_millis,
-        sleep_millis,
         spawn_thread,
+        yield_lp,
     },
     logln,
     memory::KERNEL_ASID,
@@ -197,7 +197,7 @@ pub fn finalize_and_start_coordinator() {
 }
 
 extern "C" fn coordinator() {
-    let mut observations = 0u64;
+    let mut next_report = 0u64;
     loop {
         let expected = EXPECTED.load(Ordering::Acquire);
         let passed = PASSED.load(Ordering::Acquire);
@@ -224,7 +224,8 @@ extern "C" fn coordinator() {
             );
             return;
         }
-        if observations.is_multiple_of(100) {
+        let now = monotonic_millis();
+        if now >= next_report {
             let pending = expected & !passed;
             logln!(
                 "SELFTEST WAITING: passed={} pending={} passed_bitmap={:#x} pending_bitmap={:#x}",
@@ -238,8 +239,12 @@ extern "C" fn coordinator() {
                     logln!("SELFTEST PENDING: {}", test.name());
                 }
             }
+            next_report = now.saturating_add(1_000);
         }
-        observations += 1;
-        sleep_millis(10);
+        // This reporter exists only during boot and exits as soon as all
+        // registered tests resolve. A timer sleep made the authoritative
+        // result itself vulnerable to the timer-wake path under test; yielding
+        // keeps it schedulable without depending on that same mechanism.
+        yield_lp();
     }
 }

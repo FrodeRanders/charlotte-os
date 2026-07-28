@@ -20,6 +20,7 @@ const OBJSTORE_CLIENT_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore_client.elf"));
 const ECHO_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
 const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
+const OBJSTORE_TEST_DONE_NAME: u64 = u64::from_le_bytes(*b"objdone\0");
 #[cfg(target_arch = "aarch64")]
 const NVME_CLIENT_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme_client.elf"));
@@ -143,6 +144,20 @@ extern "C" fn verify_el0_nvme() {
     }
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
+    let completion_ns = crate::ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        crate::memory::KERNEL_ASID,
+        ConnectionRights::CALL,
+    )
+    .expect("[nvme] object-client completion name-service connection");
+    let completion_lookup = crate::ipc::scalar_call(
+        crate::memory::KERNEL_ASID,
+        completion_ns,
+        2,
+        OBJSTORE_TEST_DONE_NAME,
+    )
+    .expect("[nvme] object-client completion lookup");
     let object_client = supervisor::spawn_with_name_service_and_data(
         OBJSTORE_CLIENT_ELF,
         &ns,
@@ -153,19 +168,28 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = object_client.status_frame.into();
         base as *const u32
     };
-    loop {
-        let state = unsafe { core::ptr::read_volatile(object_cfg) };
-        if state == 0x900d {
-            break;
-        }
-        assert!(
-            state < 0xdea0,
-            "[nvme] large-object verifier failed: {:#x}, detail={:#x}",
-            state,
-            unsafe { core::ptr::read_volatile(object_cfg.add(1)) }
-        );
-        crate::cpu::scheduler::sleep_millis(1);
+    crate::ipc::wait_reply(crate::memory::KERNEL_ASID, completion_lookup)
+        .expect("[nvme] blocking object-client completion lookup");
+    let completion = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup)
+        .expect("[nvme] object-client completion reply")
+        .expect("[nvme] object-client completion missing");
+    assert!(completion.result >= 1, "[nvme] invalid object-client completion generation");
+    if let Some(connection) = completion.cap {
+        crate::ipc::close_cap(crate::memory::KERNEL_ASID, connection)
+            .expect("[nvme] close object-client completion connection");
     }
+    crate::ipc::close_cap(crate::memory::KERNEL_ASID, completion_lookup)
+        .expect("[nvme] close object-client completion lookup");
+    crate::ipc::close_cap(crate::memory::KERNEL_ASID, completion_ns)
+        .expect("[nvme] close completion name-service connection");
+    let state = unsafe { core::ptr::read_volatile(object_cfg) };
+    assert_eq!(
+        state,
+        0x900d,
+        "[nvme] large-object verifier failed: {:#x}, detail={:#x}",
+        state,
+        unsafe { core::ptr::read_volatile(object_cfg.add(1)) }
+    );
     assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(1)) }, 2 * 1024 * 1024 + 4096);
     assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(2)) }, ECHO_ELF.len() as u32);
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");

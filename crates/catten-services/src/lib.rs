@@ -414,6 +414,7 @@ pub mod objstore {
     pub const INTERFACE: u64 = super::name(b"OBJSTR ");
     pub const VERSION: u32 = 1;
     pub const NAME: u64 = super::name(b"obj");
+    pub const TEST_DONE_NAME: u64 = super::name(b"objdone");
 
     pub const OP_CREATE: u32 = 1;
     pub const OP_DELETE: u32 = 2;

@@ -1,47 +1,47 @@
-//! Persistent object store protocol v1.
+//! Persistent object store protocol v1, backed by on-disk format v2.
 //!
 //! The object store is a userspace service that provides crash-safe,
-//! dynamically-sized blob storage on top of a block device. Objects are
-//! identified by 64-bit monotonically-increasing IDs and stored in contiguous
-//! extents on disk.
+//! dynamically-sized blob storage on top of a block device. Objects have
+//! 64-bit IDs and an extensible metadata header followed by their data extent.
 //!
 //! ## On-disk format
 //!
-//! Superblock (LBA 0, one block):
+//! Two checksummed superblock slots occupy LBAs 0 and 1. The valid slot with
+//! the newest generation selects the bitmap and fixed 512-entry directory.
+//! Directory entries are atomic locators:
 //! ```
-//! [0..8):   magic: u64 = 0x525453424A4F43 ("COBJSTR" LE)
-//! [8..12):  version: u32 = 1
-//! [12..16): generation: u32
-//! [16..20): block_size: u32
-//! [20..24): total_blocks: u32
-//! [24..28): object_count: u32
-//! [28..32): next_object_id: u32  (monotonically increasing)
-//! [32..40): object_dir_lba: u64  (LBA of the object directory)
-//! [40..48): free_bitmap_lba: u64
-//! [48..56): free_bitmap_blocks: u64
+//! id: u64 | flags: u32 | generation: u32 |
+//! header_lba: u64 | header_blocks: u32 | crc32: u32
 //! ```
 //!
-//! Object directory (linked list of directory blocks):
-//! Each entry is 32 bytes:
+//! Each object allocation begins with a versioned header. `header_len` and
+//! `header_blocks` reserve room for compatible metadata growth:
 //! ```
-//! [0..8):   id: u64
-//! [8..12):  flags: u32 (bit 0 = allocated, bit 1 = deleted)
-//! [12..16): size_bytes: u32
-//! [16..24): first_extent_lba: u64
-//! [24..32): reserved
+//! magic/version/header_len/flags
+//! id/generation
+//! data_len/allocated_len/data_offset
+//! extent_count/hash_algorithm/header_blocks
+//! data_lba/data_blocks
+//! mandatory content hash
+//! header crc32
 //! ```
-//! A directory block holds N entries, then a next_dir_block_lba (or 0).
-//! Slots with id==0 are free.
 //!
-//! Extents contain object bytes directly. Replacement data is written to a
-//! newly selected extent before the directory entry is changed; unreachable
-//! extents are implicitly reclaimed by rebuilding allocation state from the
-//! directory. Durable atomicity across sudden power loss is not yet promised.
+//! The current implementation uses one contiguous data extent, but the header
+//! is explicitly extensible. Replacement is copy-on-write: new data, header,
+//! and allocation state are flushed before the directory locator changes.
+//! Mount rebuilds allocation state from reachable validated headers, reclaiming
+//! abandoned pre-commit allocations. The FNV-1a content hash detects accidental
+//! corruption; it is not cryptographic authentication.
 #![no_std]
 
 pub const INTERFACE: u64 = 0x525453424a4f; // "OBJSTR" packed LE (6 chars)
 pub const VERSION: u32 = 1;
 pub const NAME: u64 = 0x6a626f; // "obj" LE
+/// One-shot self-test completion publication ("objdone").
+///
+/// Registration is the synchronization event; the client's status page is
+/// retained only for diagnostics and result values.
+pub const TEST_DONE_NAME: u64 = u64::from_le_bytes(*b"objdone\0");
 
 pub const OP_CREATE: u32 = 1;
 pub const OP_DELETE: u32 = 2;

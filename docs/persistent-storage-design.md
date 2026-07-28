@@ -269,15 +269,25 @@ launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment
 manifest.
 
-The object store now records a byte length and contiguous extent for each
-object. Whole-object transfers use multi-page memory objects and are split
-into NVMe requests of at most 2 MiB; the NVMe PRP-list ceiling is therefore
-not a file, object, Raft-log, or snapshot-size limit. The on-disk length is
-currently 32 bits, so a single object is limited to 4 GiB and available disk
-space. Replacement data is placed before its directory pointer is changed,
-but directory updates are not journalled. Writes followed by NVMe FLUSH
-survive the tested process-restart path; sudden power-loss atomicity is not
-yet claimed.
+On-disk format v2 has two checksummed superblock slots, a device-sized
+allocation bitmap, and a fixed 512-entry directory of atomic object locators.
+Every allocation begins with a versioned header containing `header_len`,
+`header_blocks`, object generation, exact and allocated lengths, data offset,
+extent information, and a mandatory FNV-1a content hash. The reserved header
+space permits compatible metadata growth; the current implementation uses one
+contiguous data extent.
+
+Replacement is copy-on-write: the new data, header, and allocation state are
+flushed before the directory locator changes; the old allocation is released
+afterward. Mount validates reachable headers and reconstructs the bitmap,
+which reclaims allocations abandoned before commit. Whole-object transfers
+are split into NVMe requests of at most 512 KiB, so the NVMe request ceiling
+is not a file, object, Raft-log, or snapshot-size limit. The service API
+currently supplies lengths as 32-bit values, limiting one object to 4 GiB and
+available disk space. Directory sectors are checksummed but not journalled,
+so torn-sector recovery and full sudden-power-loss atomicity are not yet
+claimed. The content hash detects accidental corruption; it does not
+authenticate executable objects or other data.
 
 ---
 
