@@ -40,7 +40,8 @@ use catten_syscall::{
     *,
 };
 
-const BUFFER_VADDR: usize = 0x0000_0000_0050_0000;
+const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
+const CHUNK_VADDR: usize = 0x0000_0000_3000_0000;
 const REPLY_SPINS: u64 = u64::MAX;
 
 fn spin_reply(call: u64) -> (i64, u64) {
@@ -58,6 +59,11 @@ const SB_VERSION: u32 = 1;
 const DIR_ENTRIES: u32 = 512;
 const DIR_BLOCKS: u32 = 32;
 const METADATA_BLOCKS: u32 = 1 + 1 + DIR_BLOCKS;
+const PAGE_SIZE: usize = 4096;
+// Stay within the controller MDTS used by the QEMU reference device. The
+// block protocol permits larger requests, but object size must not depend on
+// any one controller's maximum transfer size.
+const MAX_IO_BYTES: usize = 512 * 1024;
 
 const FLAG_ALLOCATED: u32 = 1 << 0;
 
@@ -122,6 +128,20 @@ impl BlockDev {
         result == 0
     }
 
+    fn read_blocks_keep(&self, lba: u64, count: u32, mem_cap: u64) -> bool {
+        let call = ipc_scalar_call_borrow_write(
+            self.conn,
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(lba, count),
+            mem_cap,
+        );
+        if call == 0 {
+            return false;
+        }
+        let (result, _) = spin_reply(call);
+        result == 0
+    }
+
     fn flush(&self) -> bool {
         let call = ipc_scalar_call_connection(
             self.conn,
@@ -143,6 +163,7 @@ struct ObjStore {
     next_id: u32,
     block_size: u32,
     index_cache: spin::Mutex<BTreeMap<u64, u32>>,
+    pending_sizes: spin::Mutex<BTreeMap<u64, u32>>,
 }
 
 impl ObjStore {
@@ -208,6 +229,7 @@ impl ObjStore {
             next_id,
             block_size,
             index_cache: spin::Mutex::new(BTreeMap::new()),
+            pending_sizes: spin::Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -275,6 +297,7 @@ impl ObjStore {
             next_id: 1,
             block_size: bs,
             index_cache: spin::Mutex::new(BTreeMap::new()),
+            pending_sizes: spin::Mutex::new(BTreeMap::new()),
         })
     }
 
@@ -360,10 +383,10 @@ impl ObjStore {
 
     fn find_free_dir_slot(&self) -> Option<u32> {
         for i in 0..DIR_ENTRIES {
-            if let Some((id, _, _, _)) = self.read_dir_entry(i) {
-                if id == 0 {
-                    return Some(i);
-                }
+            if let Some((id, _, _, _)) = self.read_dir_entry(i)
+                && id == 0
+            {
+                return Some(i);
             }
         }
         None
@@ -374,11 +397,11 @@ impl ObjStore {
             return Some(index);
         }
         for i in 0..DIR_ENTRIES {
-            if let Some((id, _, _, _)) = self.read_dir_entry(i) {
-                if id == object_id {
-                    self.index_cache.lock().insert(object_id, i);
-                    return Some(i);
-                }
+            if let Some((id, _, _, _)) = self.read_dir_entry(i)
+                && id == object_id
+            {
+                self.index_cache.lock().insert(object_id, i);
+                return Some(i);
             }
         }
         None
@@ -442,32 +465,52 @@ impl ObjStore {
         }
     }
 
-    /// WRITE replaces the entire object content with one memory-object page.
+    fn op_set_size(&self, object_id: u64, size_cap: u64) -> i64 {
+        if self.find_dir_index(object_id).is_none() {
+            return objstore::ERR_NOT_FOUND;
+        }
+        if size_cap == 0 || memory_map(size_cap, BUFFER_VADDR, false) != 0 {
+            return objstore::ERR_IO_ERROR;
+        }
+        let size = unsafe { core::ptr::read_unaligned(BUFFER_VADDR as *const u64) };
+        memory_unmap(size_cap);
+        let Ok(size) = u32::try_from(size) else {
+            return objstore::ERR_TOO_LARGE;
+        };
+        self.pending_sizes.lock().insert(object_id, size);
+        objstore::ERR_OK
+    }
+
+    /// WRITE replaces the complete object using a contiguous disk extent.
     ///
-    /// Each directory slot owns a deterministic 4 KiB extent. The disk
-    /// location must not be derived from the caller's RAM physical address:
-    /// that address names DMA memory, not an LBA in the NVMe namespace.
+    /// The exact byte length is supplied by OP_SET_SIZE. I/O is split into
+    /// bounded transfers, so the NVMe PRP-list limit is not an object limit.
     fn op_write(&self, object_id: u64, data_cap: u64) -> i64 {
         let idx = match self.find_dir_index(object_id) {
             Some(i) => i,
             None => return objstore::ERR_NOT_FOUND,
         };
 
-        if memory_get_phys(data_cap) == 0 {
+        let size = self.pending_sizes.lock().remove(&object_id).unwrap_or(PAGE_SIZE as u32);
+        if size == 0 {
+            return if self.write_dir_entry(idx, object_id, FLAG_ALLOCATED, 0, 0) {
+                objstore::ERR_OK
+            } else {
+                objstore::ERR_IO_ERROR
+            };
+        }
+        let last_page = (size as usize).div_ceil(PAGE_SIZE) - 1;
+        if memory_get_phys_page(data_cap, last_page) == 0 {
             return objstore::ERR_IO_ERROR;
         }
-
-        let blocks_per_object = 4096u32.div_ceil(self.block_size);
-        let lba = METADATA_BLOCKS as u64 + idx as u64 * blocks_per_object as u64;
-        if lba + blocks_per_object as u64 > self.dev.total_blocks as u64 {
+        let blocks = size.div_ceil(self.block_size);
+        let Some(lba) = self.find_free_extent(blocks) else {
             return objstore::ERR_NO_SPACE;
-        }
-
-        if !self.dev.write_blocks(lba, blocks_per_object, data_cap) {
+        };
+        if !self.transfer_object(data_cap, lba, size, true) {
             return objstore::ERR_IO_ERROR;
         }
-
-        if self.write_dir_entry(idx, object_id, FLAG_ALLOCATED, 4096, lba) {
+        if self.write_dir_entry(idx, object_id, FLAG_ALLOCATED, size, lba) {
             objstore::ERR_OK
         } else {
             objstore::ERR_IO_ERROR
@@ -488,44 +531,128 @@ impl ObjStore {
                 return;
             }
         };
-        let (_id, _flags, _size, first_lba) = match self.read_dir_entry(idx) {
+        let (_id, _flags, size, first_lba) = match self.read_dir_entry(idx) {
             Some(v) => v,
             None => {
                 ipc_reply(reply, objstore::ERR_IO_ERROR);
                 return;
             }
         };
-        if first_lba == 0 {
-            ipc_reply(reply, objstore::ERR_NOT_FOUND);
+        if size == 0 {
+            let dm = memory_alloc(1);
+            if dm == 0 {
+                ipc_reply(reply, objstore::ERR_IO_ERROR);
+            } else {
+                ipc_reply_move(reply, dm, 0);
+            }
             return;
         }
-
-        // Read the block from disk into a new memory object
-        let dm = memory_alloc(1);
+        if first_lba == 0 {
+            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            return;
+        }
+        let pages = (size as usize).div_ceil(PAGE_SIZE);
+        let dm = memory_alloc(pages);
         if dm == 0 {
             ipc_reply(reply, objstore::ERR_IO_ERROR);
             return;
         }
-        let blocks_per_object = 4096u32.div_ceil(self.block_size);
-        let call = ipc_scalar_call_borrow_write(
-            self.dev.conn,
-            block::OP_READ,
-            charlotte_protocol_block::pack_lba_count(first_lba, blocks_per_object),
-            dm,
-        );
-        if call == 0 {
+        if !self.transfer_object(dm, first_lba, size, false) {
             memory_close(dm);
             ipc_reply(reply, objstore::ERR_IO_ERROR);
             return;
         }
-        let (r, _) = spin_reply(call);
-        if r != 0 {
-            memory_close(dm);
-            ipc_reply(reply, objstore::ERR_IO_ERROR);
-            return;
-        }
+        ipc_reply_move(reply, dm, size as i64);
+    }
 
-        ipc_reply_move(reply, dm, 0);
+    fn find_free_extent(&self, blocks: u32) -> Option<u64> {
+        if blocks == 0 {
+            return Some(0);
+        }
+        let mut occupied = alloc::vec![(0u64, METADATA_BLOCKS as u64)];
+        for index in 0..DIR_ENTRIES {
+            let (id, flags, size, lba) = self.read_dir_entry(index)?;
+            if id != 0 && flags & FLAG_ALLOCATED != 0 && size != 0 && lba != 0 {
+                occupied.push((lba, lba + size.div_ceil(self.block_size) as u64));
+            }
+        }
+        occupied.sort_unstable_by_key(|range| range.0);
+        let mut candidate = METADATA_BLOCKS as u64;
+        for (start, end) in occupied {
+            if candidate + blocks as u64 <= start {
+                return Some(candidate);
+            }
+            candidate = candidate.max(end);
+        }
+        (candidate + blocks as u64 <= self.dev.total_blocks as u64).then_some(candidate)
+    }
+
+    fn transfer_object(&self, object_cap: u64, lba: u64, size: u32, write: bool) -> bool {
+        if memory_map(object_cap, BUFFER_VADDR, !write) != 0 {
+            return false;
+        }
+        let chunk_bytes = MAX_IO_BYTES.min((u16::MAX as usize) * self.block_size as usize);
+        let mut offset = 0usize;
+        let mut ok = true;
+        while offset < size as usize {
+            let bytes = (size as usize - offset).min(chunk_bytes);
+            let blocks = bytes.div_ceil(self.block_size as usize) as u32;
+            let chunk_pages = bytes.div_ceil(PAGE_SIZE);
+            let chunk = memory_alloc(chunk_pages);
+            if chunk == 0 || memory_map(chunk, CHUNK_VADDR, true) != 0 {
+                if chunk != 0 {
+                    memory_close(chunk);
+                }
+                ok = false;
+                break;
+            }
+            unsafe {
+                if write {
+                    core::ptr::copy_nonoverlapping(
+                        (BUFFER_VADDR + offset) as *const u8,
+                        CHUNK_VADDR as *mut u8,
+                        bytes,
+                    );
+                }
+            }
+            memory_unmap(chunk);
+            let io_ok = if write {
+                self.dev.write_blocks(
+                    lba + (offset / self.block_size as usize) as u64,
+                    blocks,
+                    chunk,
+                )
+            } else {
+                self.dev.read_blocks_keep(
+                    lba + (offset / self.block_size as usize) as u64,
+                    blocks,
+                    chunk,
+                )
+            };
+            if !io_ok {
+                ok = false;
+                break;
+            }
+            if !write {
+                if memory_map(chunk, CHUNK_VADDR, false) != 0 {
+                    memory_close(chunk);
+                    ok = false;
+                    break;
+                }
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        CHUNK_VADDR as *const u8,
+                        (BUFFER_VADDR + offset) as *mut u8,
+                        bytes,
+                    );
+                }
+                memory_unmap(chunk);
+                memory_close(chunk);
+            }
+            offset += bytes;
+        }
+        memory_unmap(object_cap);
+        ok
     }
 
     fn op_flush(&self) -> i64 {
@@ -678,6 +805,12 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(message.reply, 0);
                     }
                 }
+                objstore::OP_SET_SIZE => {
+                    let result = store.op_set_size(message.arg0, message.memory);
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
                 objstore::OP_FLUSH => {
                     let result = store.op_flush();
                     if message.reply != 0 {
@@ -686,7 +819,12 @@ fn main(ctx: Context) -> ! {
                 }
                 objstore::OP_INFO => {
                     if message.reply != 0 {
-                        ipc_reply(message.reply, 0);
+                        let result = store
+                            .find_dir_index(message.arg0)
+                            .and_then(|idx| store.read_dir_entry(idx))
+                            .map(|(_, _, size, _)| size as i64)
+                            .unwrap_or(objstore::ERR_NOT_FOUND);
+                        ipc_reply(message.reply, result);
                     }
                 }
                 _ => {

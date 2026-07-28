@@ -269,12 +269,15 @@ launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment
 manifest.
 
-The current object-store prototype assigns one deterministic 4 KiB data extent
-to each directory slot. Consequently the serialized Raft log and snapshot are
-bounded to one page. Writes followed by NVMe FLUSH survive a process restart,
-as exercised at boot, but the implementation does not yet provide a
-journalled or copy-on-write commit protocol. Sudden power-loss behavior is
-therefore not yet claimed.
+The object store now records a byte length and contiguous extent for each
+object. Whole-object transfers use multi-page memory objects and are split
+into NVMe requests of at most 2 MiB; the NVMe PRP-list ceiling is therefore
+not a file, object, Raft-log, or snapshot-size limit. The on-disk length is
+currently 32 bits, so a single object is limited to 4 GiB and available disk
+space. Replacement data is placed before its directory pointer is changed,
+but directory updates are not journalled. Writes followed by NVMe FLUSH
+survive the tested process-restart path; sudden power-loss atomicity is not
+yet claimed.
 
 ---
 

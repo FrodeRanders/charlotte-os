@@ -76,6 +76,28 @@ service deserialises the state, creates a fresh endpoint, and re-registers under
 the same name. The name service bumps the generation. Teardown of the stopped
 old domain invalidates its stale client connections.
 
+\section{Executable source}
+
+Embedded service images are bootstrap and recovery inputs. They are not the
+only executable source. The service manager first tries the object store and
+reads the well-known executable object for the target service. The returned
+multi-page memory-object capability and exact byte length are passed to
+\texttt{spawn\_upgrade}. If storage is absent or the object is not installed,
+the manager selects the embedded recovery image.
+
+The kernel snapshots the capability-backed bytes into kernel-owned memory
+before parsing them, then checks the ELF class, architecture, program-header
+bounds, segment bounds, page congruence, W\^{}X, integer overflow, and that the
+entry point lies in an executable load segment. This prevents a mutable
+userspace image from changing between validation and mapping. The test suite
+installs \texttt{echo.elf} as a known NVMe object and verifies that a later
+generation is loaded from that object.
+
+This is structural validation, not package authentication. The current
+prototype does not verify a signature, publisher identity, rollback version,
+or measured-boot policy. Consequently, write authority to the executable
+object store is update authority and must be delegated narrowly.
+
 \section{What the supervisor prototype provides}
 
 \begin{verbatim}
@@ -95,9 +117,10 @@ pub fn spawn_upgrade(
 userspace service manager. It validates that the manager holds a callable
 connection to the target, loads the new service ELF, moves the state memory
 object to the new domain, writes the bootstrap config page, and starts the new
-domain. The replacement registers a fresh endpoint and the name service advances
-its generation. The current reference path supports the embedded echo image and
-one state object. General image capabilities, multiple state objects, and
+domain. The replacement registers a fresh endpoint and the name service
+advances its generation. The reference path supports both a persistent
+capability-backed echo image and its embedded fallback, plus one state object.
+Multiple state objects, signed package manifests, rollback policy, and
 manager-owned teardown remain future work.
 
 \section{What the service must implement}

@@ -127,6 +127,48 @@ pub fn test_el0_service() {
 }
 
 #[cfg(target_arch = "aarch64")]
+pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
+    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Service) {
+        crate::cpu::scheduler::sleep_millis(1);
+    }
+    let client_asid = crate::service::loader::create_user_address_space();
+    let ns = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        client_asid,
+        ConnectionRights::CALL,
+    )
+    .expect("[service] persistent-upgrade bootstrap failed");
+    let echo_lookup =
+        ipc::scalar_call(client_asid, ns, OP_LOOKUP, NAME_ECHO).expect("persistent echo lookup");
+    let echo_reply = wait_reply_k2(client_asid, echo_lookup, "persistent echo generation");
+    let old_generation = echo_reply.result;
+    let old_connection = echo_reply.cap.expect("persistent echo connection");
+    ipc::close_cap(client_asid, old_connection).expect("persistent echo connection close");
+
+    let manager_lookup = ipc::scalar_call(client_asid, ns, OP_LOOKUP, NAME_SVCMGR)
+        .expect("persistent manager lookup");
+    let manager_reply = wait_reply_k2(client_asid, manager_lookup, "persistent manager reply");
+    let manager = manager_reply.cap.expect("persistent manager connection");
+    let upgrade =
+        ipc::scalar_call(client_asid, manager, 1, NAME_ECHO).expect("persistent manager upgrade");
+    let upgraded = wait_reply_k2(client_asid, upgrade, "persistent upgrade completion");
+    assert!(upgraded.result > 0, "persistent ELF upgrade failed");
+
+    let lookup =
+        ipc::scalar_call(client_asid, ns, OP_LOOKUP, NAME_ECHO).expect("persistent replacement");
+    let replacement = wait_reply_k2(client_asid, lookup, "persistent replacement lookup");
+    assert_eq!(replacement.result, old_generation + 1, "persistent replacement generation");
+    let connection = replacement.cap.expect("persistent replacement connection");
+    let call = ipc::scalar_call(client_asid, connection, OP_ECHO, 0x51a5)
+        .expect("persistent replacement call");
+    assert_eq!(wait_reply_k2(client_asid, call, "persistent replacement echo").result, 0x51a5);
+    crate::memory::close_user_address_space(client_asid)
+        .expect("[service] persistent-upgrade client cleanup failed");
+    logln!("[service] persistent NVMe ELF reload verified.");
+}
+
+#[cfg(target_arch = "aarch64")]
 fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while !condition() {

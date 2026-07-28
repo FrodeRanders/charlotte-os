@@ -1072,7 +1072,8 @@ pub fn dma_unmap(domain: u64, iova: u64) -> DeviceStatusCode {
 }
 
 /// Request the supervisor to spawn a replacement domain (syscall 50).
-/// `elf_selector` selects an embedded replacement image (currently 0=echo),
+/// `elf_cap` and `elf_size` identify a persistent ELF memory object. When
+/// `elf_cap` is zero, `elf_size` is interpreted as an embedded-image selector,
 /// `state_cap` is moved to the replacement, and `target_connection` proves
 /// that the authorized service manager can address the service being replaced.
 /// Returns the new domain's ASID or 0 on failure.
@@ -1082,8 +1083,13 @@ pub fn dma_unmap(domain: u64, iova: u64) -> DeviceStatusCode {
 /// `target_connection` must be a live callable connection held by the
 /// authorized service-manager domain.
 #[inline(always)]
-pub unsafe fn spawn_upgrade(elf_selector: u64, state_cap: u64, target_connection: u64) -> u64 {
-    unsafe { svc4(SyscallNumber::SpawnUpgrade, 0, elf_selector, state_cap, target_connection) }
+pub unsafe fn spawn_upgrade(
+    elf_cap: u64,
+    elf_size: u64,
+    state_cap: u64,
+    target_connection: u64,
+) -> u64 {
+    unsafe { svc4(SyscallNumber::SpawnUpgrade, elf_cap, elf_size, state_cap, target_connection) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.

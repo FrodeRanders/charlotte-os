@@ -109,6 +109,89 @@ fn align_up(value: usize, align: usize) -> usize {
     (value + align - 1) & !(align - 1)
 }
 
+/// Validate an untrusted AArch64 service ELF without allocating or mapping.
+///
+/// The loader's internal assertions remain useful invariants for embedded
+/// images; persistent images must pass this non-panicking gate first.
+pub fn validate_user_elf(image: &[u8]) -> bool {
+    if image.len() < 64
+        || image.get(0..4) != Some(ELF_MAGIC)
+        || image[4] != ELFCLASS64
+        || image[5] != ELFDATA2LSB
+        || read_u16_le(image, 16) != ET_EXEC
+        || read_u16_le(image, 18) != EM_AARCH64
+    {
+        return false;
+    }
+    let entry = read_u64_le(image, 24) as usize;
+    let phoff = read_u64_le(image, 32) as usize;
+    let phentsize = read_u16_le(image, 54) as usize;
+    let phnum = read_u16_le(image, 56) as usize;
+    if phentsize != 56
+        || phnum == 0
+        || phoff.checked_add(phentsize.saturating_mul(phnum)).is_none_or(|end| end > image.len())
+    {
+        return false;
+    }
+    let mut loads = 0usize;
+    let mut entry_is_executable = false;
+    let mut mapped_ranges = alloc::vec::Vec::<(usize, usize)>::new();
+    for index in 0..phnum {
+        let offset = phoff + index * phentsize;
+        if read_u32_le(image, offset) != PT_LOAD {
+            continue;
+        }
+        let flags = read_u32_le(image, offset + 4);
+        let file_offset = read_u64_le(image, offset + 8) as usize;
+        let vaddr = read_u64_le(image, offset + 16) as usize;
+        let filesz = read_u64_le(image, offset + 32) as usize;
+        let memsz = read_u64_le(image, offset + 40) as usize;
+        if flags & (PF_X | PF_W) == (PF_X | PF_W)
+            || filesz > memsz
+            || file_offset.checked_add(filesz).is_none_or(|end| end > image.len())
+            || vaddr.checked_add(memsz).is_none()
+            || file_offset & (PAGE_SIZE - 1) != vaddr & (PAGE_SIZE - 1)
+        {
+            return false;
+        }
+        if memsz == 0 {
+            continue;
+        }
+        loads += 1;
+        let map_start = align_down(vaddr, PAGE_SIZE);
+        let Some(map_end) = vaddr
+            .checked_add(memsz)
+            .and_then(|end| end.checked_add(PAGE_SIZE - 1))
+            .map(|end| align_down(end, PAGE_SIZE))
+        else {
+            return false;
+        };
+        if map_start < PAGE_SIZE || map_end > (1usize << 48) {
+            return false;
+        }
+        let reserved = [
+            (CONFIG_VADDR, CONFIG_VADDR + PAGE_SIZE),
+            (CQ_VADDR, CQ_VADDR + PAGE_SIZE),
+            (INPUT_VADDR, INPUT_VADDR + PAGE_SIZE),
+            (HEAP_VADDR, HEAP_VADDR + HEAP_PAGES * PAGE_SIZE),
+            (STATUS_VADDR, STATUS_VADDR + PAGE_SIZE),
+            (SHARD_CQ_VADDR_BASE, SHARD_CQ_VADDR_BASE + SHARD_CQ_COUNT * PAGE_SIZE),
+        ];
+        if reserved
+            .iter()
+            .chain(mapped_ranges.iter())
+            .any(|&(start, end)| map_start < end && start < map_end)
+        {
+            return false;
+        }
+        mapped_ranges.push((map_start, map_end));
+        if flags & PF_X != 0 && entry >= vaddr && entry < vaddr.saturating_add(memsz) {
+            entry_is_executable = true;
+        }
+    }
+    loads != 0 && entry_is_executable
+}
+
 fn segment_page_type(flags: u32) -> PageType {
     let executable = flags & PF_X != 0;
     let writable = flags & PF_W != 0;

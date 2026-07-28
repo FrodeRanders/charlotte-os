@@ -36,7 +36,8 @@ The main additions and extensions currently maintained here are:
 - **Userspace persistent-storage prototype:** an NVMe block driver using DMA
   and MSI-X, a block protocol, an object store, and namespaced Raft
   term/vote/log/snapshot storage. Process-restart recovery is boot-tested;
-  power-loss atomicity and unrestricted object sizes are not yet provided.
+  objects and files can exceed a single NVMe request (individual objects use
+  32-bit lengths); power-loss atomicity is not yet provided.
 - **Experimental live service upgrade:** an EL0 service manager can spawn a
   replacement generation, transfer state, synchronize registration, and
   invalidate stale connections. This remains prototype work rather than a

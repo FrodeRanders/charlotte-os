@@ -35,7 +35,7 @@ use catten_syscall::*;
 use spin::Mutex;
 
 const REPLY_SPINS: u64 = u64::MAX;
-const BUFFER_VADDR: usize = 0x0000_0000_0070_0000;
+const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
 
 #[derive(Clone, Copy)]
 struct ObjectIds {
@@ -93,7 +93,31 @@ fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
 }
 
 fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
-    let mem = memory_alloc(1);
+    let size_mem = memory_alloc(1);
+    if size_mem == 0 || memory_map(size_mem, BUFFER_VADDR, true) != 0 {
+        if size_mem != 0 {
+            memory_close(size_mem);
+        }
+        return false;
+    }
+    unsafe {
+        (BUFFER_VADDR as *mut u64).write_unaligned(data.len() as u64);
+    }
+    memory_unmap(size_mem);
+    let size_call =
+        ipc_scalar_call_borrow_read(obj_conn, crate::objstore::OP_SET_SIZE, object_id, size_mem);
+    if size_call == 0 {
+        memory_close(size_mem);
+        return false;
+    }
+    let (size_result, _) = unsafe { crate::wait_reply(size_call, REPLY_SPINS) };
+    memory_close(size_mem);
+    if size_result != 0 {
+        return false;
+    }
+
+    let pages = data.len().max(1).div_ceil(4096);
+    let mem = memory_alloc(pages);
     if mem == 0 {
         return false;
     }
@@ -102,11 +126,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
         return false;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(
-            data.as_ptr(),
-            BUFFER_VADDR as *mut u8,
-            data.len().min(4096),
-        );
+        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len());
     }
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
@@ -127,7 +147,7 @@ fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
     if returned_connection != 0 {
         ipc_close(returned_connection);
     }
-    if status != 0 || result != 0 || memory == 0 {
+    if status != 0 || memory == 0 {
         if memory != 0 {
             memory_close(memory);
         }
@@ -137,9 +157,10 @@ fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
         memory_close(memory);
         return None;
     }
-    let mut buf = alloc::vec![0u8; 4096];
+    let size = result as usize;
+    let mut buf = alloc::vec![0u8; size];
     unsafe {
-        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), 4096);
+        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), size);
     }
     memory_unmap(memory);
     memory_close(memory);

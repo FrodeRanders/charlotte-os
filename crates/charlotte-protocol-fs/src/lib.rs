@@ -16,6 +16,8 @@ pub const OP_WRITE: u32 = 4;
 pub const OP_DELETE: u32 = 5;
 pub const OP_LIST: u32 = 6;
 pub const OP_FLUSH: u32 = 7;
+/// Set the exact byte length used by the next `OP_WRITE`.
+pub const OP_SET_SIZE: u32 = 8;
 
 pub const FLAG_DIR: u32 = 1 << 0;
 pub const FLAG_FILE: u32 = 0;

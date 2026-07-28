@@ -72,6 +72,7 @@ bench = false
 
 [dependencies]
 catten-rt = { path = "../catten-rt" }
+charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }
 charlotte-protocol-msg = { path = "../charlotte-protocol-msg" }
 charlotte-smoltcp = { path = "../charlotte-smoltcp" }
@@ -103,6 +104,12 @@ bench = false
 [[bin]]
 name = "objstore"
 path = "src/bin/objstore.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "objstore_client"
+path = "src/bin/objstore_client.rs"
 test = false
 bench = false
 

@@ -255,6 +255,31 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     Ok(cap)
 }
 
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn allocate_with_bytes(
+    owner: AddressSpaceId,
+    bytes: &[u8],
+) -> Result<MemoryObjectCap, MemoryObjectError> {
+    let cap = allocate(owner, bytes.len().max(1).div_ceil(PAGE_SIZE))?;
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(owner, cap)?;
+    let object =
+        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    let mut offset = 0usize;
+    for frame in &object.frames {
+        let count = (bytes.len() - offset).min(PAGE_SIZE);
+        if count == 0 {
+            break;
+        }
+        let destination: *mut u8 = (*frame).into();
+        unsafe {
+            core::ptr::copy_nonoverlapping(bytes.as_ptr().add(offset), destination, count);
+        }
+        offset += count;
+    }
+    Ok(cap)
+}
+
 pub fn info(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -269,6 +294,44 @@ pub fn info(
         mapped: object.mappings.contains_key(&asid),
         lent: object.lend_state.is_active(),
     })
+}
+
+/// Copy `len` bytes from a readable memory object into kernel-owned memory.
+///
+/// This is used at trust boundaries such as executable loading: the complete
+/// image is snapshotted before validation so userspace cannot mutate bytes
+/// between ELF validation and segment mapping.
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn snapshot_bytes(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    len: usize,
+) -> Result<Vec<u8>, MemoryObjectError> {
+    let registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(asid, cap)?;
+    if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object =
+        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if len == 0 || len > object.frames.len().saturating_mul(PAGE_SIZE) {
+        return Err(MemoryObjectError::InvalidLength);
+    }
+    let mut bytes = Vec::with_capacity(len);
+    for frame in &object.frames {
+        let remaining = len - bytes.len();
+        if remaining == 0 {
+            break;
+        }
+        let count = remaining.min(PAGE_SIZE);
+        let source: *const u8 = (*frame).into();
+        let old_len = bytes.len();
+        bytes.resize(old_len + count, 0);
+        unsafe {
+            core::ptr::copy_nonoverlapping(source, bytes.as_mut_ptr().add(old_len), count);
+        }
+    }
+    Ok(bytes)
 }
 
 pub fn map(

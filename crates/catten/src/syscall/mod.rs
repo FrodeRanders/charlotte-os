@@ -190,8 +190,9 @@ pub mod call_no {
     pub const DMA_MAP: u16 = SyscallNumber::DmaMap as u16;
     pub const DMA_UNMAP: u16 = SyscallNumber::DmaUnmap as u16;
     /// Request the supervisor to spawn a replacement domain for a live
-    /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF
-    /// selector (0 = echo service ELF), x3 = state memory cap (0 if none),
+    /// upgrade. x1 = persistent ELF memory cap (0 for embedded fallback),
+    /// x2 = ELF byte length, or embedded selector when x1 is 0; x3 = state
+    /// memory cap (0 if none),
     /// x4 = old endpoint cap (in the old service's cap table — the
     /// supervisor finds the owner ASID).  Returns the new generation in x0,
     /// or 0 on failure.
@@ -1279,7 +1280,8 @@ fn sys_device_close(frame: &mut TrapFrame) {
 #[cfg(target_arch = "aarch64")]
 fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
-    let elf_selector = frame.regs[2];
+    let elf_cap = frame.regs[1];
+    let elf_size_or_selector = frame.regs[2];
     let state_cap = frame.regs[3];
     let target_connection = frame.regs[4];
 
@@ -1296,12 +1298,34 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
             }
         };
 
-    let elf = match crate::service::supervisor::elf_for_selector(elf_selector) {
-        Some(image) => image,
-        None => {
+    let persistent_elf;
+    let elf = if elf_cap == 0 {
+        match crate::service::supervisor::elf_for_selector(elf_size_or_selector) {
+            Some(image) => image,
+            None => {
+                frame.regs[0] = 0;
+                return;
+            }
+        }
+    } else {
+        let Ok(size) = usize::try_from(elf_size_or_selector) else {
+            frame.regs[0] = 0;
+            return;
+        };
+        persistent_elf = match crate::memory::object::snapshot_bytes(caller_asid, elf_cap, size) {
+            Ok(image) => image,
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+                frame.regs[0] = 0;
+                return;
+            }
+        };
+        if !crate::service::loader::validate_user_elf(&persistent_elf) {
+            let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
             frame.regs[0] = 0;
             return;
         }
+        persistent_elf.as_slice()
     };
 
     let ns_handle = match *crate::service::supervisor::LIVE_UPGRADE_NS.lock() {
@@ -1312,6 +1336,9 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         }
     };
     let loaded = crate::service::loader::load_domain(elf);
+    if elf_cap != 0 {
+        let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+    }
 
     // Delegate a bootstrap connection from the name service to the new domain.
     let bootstrap_conn = match crate::ipc::connection_delegate(

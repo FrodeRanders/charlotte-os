@@ -196,6 +196,39 @@ pub fn spawn_with_name_service(
     start_domain(loaded)
 }
 
+/// Spawn a service with a bootstrap name-service connection and one
+/// kernel-provided read-only data object.
+pub fn spawn_with_name_service_and_data(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    data: &[u8],
+    size_key: u64,
+) -> ServiceDomain {
+    let loaded = loader::load_domain(image);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        ConnectionRights::CALL,
+    )
+    .expect("[supervisor] bootstrap connection delegation failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    let source = crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, data)
+        .expect("[supervisor] bootstrap data allocation failed");
+    let moved = crate::memory::object::move_to(crate::memory::KERNEL_ASID, source, loaded.asid)
+        .expect("[supervisor] bootstrap data move failed");
+    bootstrap::write_handoff_state(loaded.config_frame, 1, moved, 0);
+    bootstrap::write_manifest(
+        loaded.config_frame,
+        &[bootstrap::ManifestEntry {
+            key: size_key,
+            flags: 0,
+            value: bootstrap::ManifestValue::Unsigned(data.len() as u64),
+        }],
+    );
+    start_domain(loaded)
+}
+
 /// Spawn the single userspace service manager and grant it upgrade authority.
 pub fn spawn_service_manager(image: &[u8], name_service: &NameServiceHandle) -> ServiceDomain {
     let domain = spawn_with_name_service(image, name_service, ConnectionRights::CALL);

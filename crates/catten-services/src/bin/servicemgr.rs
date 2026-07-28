@@ -16,6 +16,7 @@ use catten_rt::{
 use catten_services::{
     echo,
     ns,
+    objstore,
 };
 use catten_syscall::{
     IpcRights,
@@ -190,7 +191,8 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     config::write::<u64>(STATE_CAP_OFFSET, state_cap);
     config::write::<u64>(ENDPOINT_CAP_OFFSET, target_conn);
     config::write::<u32>(STAGE_OFFSET, 4);
-    let replacement_asid = unsafe { spawn_upgrade(0, state_cap, target_conn) };
+    let (elf_cap, elf_size) = persistent_replacement(ns_conn);
+    let replacement_asid = unsafe { spawn_upgrade(elf_cap, elf_size, state_cap, target_conn) };
     if replacement_asid == 0 {
         config::write::<u32>(ERROR_OFFSET, 5);
         return -5;
@@ -216,6 +218,48 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     ipc_close(replacement_connection);
     config::write::<u32>(STAGE_OFFSET, 5);
     replacement_asid as i64
+}
+
+/// Fetch the installed replacement image when persistent storage is online.
+///
+/// Returning `(0, 0)` selects the embedded echo image as a bootstrap/recovery
+/// fallback. A malformed stored ELF is rejected by the kernel loader rather
+/// than silently falling back, so a corrupt or unauthenticated update cannot
+/// masquerade as a successful installation.
+fn persistent_replacement(ns_conn: u64) -> (u64, u64) {
+    let lookup = ipc_scalar_call_connection(
+        ns_conn,
+        ns::OP_TRY_LOOKUP,
+        objstore::NAME,
+        0,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if lookup == 0 {
+        return (0, 0);
+    }
+    let (status, _generation, object_connection) = ipc_reply_wait(lookup);
+    ipc_close(lookup);
+    if status != 0 || object_connection == 0 {
+        return (0, 0);
+    }
+    let read = ipc_scalar_call(object_connection, objstore::OP_READ, objstore::EXECUTABLE_ECHO_ID);
+    ipc_close(object_connection);
+    if read == 0 {
+        return (0, 0);
+    }
+    let (read_status, size, returned_connection, memory) = ipc_reply_wait_with_memory(read);
+    ipc_close(read);
+    if returned_connection != 0 {
+        ipc_close(returned_connection);
+    }
+    if read_status != 0 || memory == 0 || size == 0 {
+        if memory != 0 {
+            catten_syscall::memory_close(memory);
+        }
+        (0, 0)
+    } else {
+        (memory, size)
+    }
 }
 
 catten_rt::entry!(main);

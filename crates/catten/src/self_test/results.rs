@@ -169,6 +169,10 @@ pub fn pass(id: TestId) {
     PASSED.fetch_or(test_bit, Ordering::AcqRel);
 }
 
+pub fn has_passed(id: TestId) -> bool {
+    PASSED.load(Ordering::Acquire) & bit(id) != 0
+}
+
 pub fn fail(id: TestId) {
     let test_bit = bit(id);
     assert!(

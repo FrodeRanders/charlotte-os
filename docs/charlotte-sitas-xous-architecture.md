@@ -2203,7 +2203,8 @@ The combined architecture adopts the following decisions.
 -   scheduling-context donation;
 -   full priority/deadline propagation;
 -   zero-copy shared data planes beyond registered memory objects;
--   live service upgrade;
+-   production live-upgrade policy (signed packages, rollback protection,
+    multi-object state, and manager-owned teardown);
 -   distributed capability revocation;
 -   formal verification of IPC state machines;
 -   production SMMU/IOMMU support on every platform.

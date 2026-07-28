@@ -134,7 +134,7 @@ and network block drivers would require separate implementations.
 \section{Object store}
 
 The persistent object-store prototype (\texttt{charlotte-protocol-objstore})
-provides page-sized blob storage on top of a block device. Ordinary objects
+provides dynamically sized blob storage on top of a block device. Ordinary objects
 receive monotonically increasing 64-bit IDs; service-owned objects can use
 stable IDs through \texttt{OP\_CREATE\_AT}. Stable IDs let a replacement Raft
 process reopen state derived from its cluster and node identity.
@@ -143,21 +143,24 @@ process reopen state derived from its cluster and node identity.
 
 \begin{verbatim}
 LBA 0:     superblock (magic, version, generation, next_object_id)
-LBA 1:     free block bitmap (1 bit per block)
+LBA 1:     reserved allocation metadata
 LBA 2--33: object directory (512 entries × 32 bytes:
              id | flags | size_bytes | first_extent_lba)
-LBA 34+:   one deterministic 4 KiB extent per directory slot
+LBA 34+:   variable-sized contiguous object extents
 \end{verbatim}
 
 \subsection{Current durability boundary}
 
-The prototype overwrites the slot's fixed data extent, updates its directory
-entry, and exposes \texttt{FLUSH}. This is sufficient for the tested
+The prototype writes replacement data to a newly selected extent, updates its
+directory entry, and exposes \texttt{FLUSH}. Whole-object transfers use
+multi-page memory objects and are divided into block requests of at most
+2 MiB, so the NVMe PRP-list limit is not an object or file limit. The
+directory's 32-bit byte length limits an individual object to 4 GiB and
+available disk space. This is sufficient for the tested
 process-restart path, where the NVMe device and object-store service remain
 alive while a Raft process is torn down and replaced. It is not a journalled
-or copy-on-write update protocol. Atomic recovery after sudden power loss is
-not yet implemented or claimed, and each object is currently limited to one
-4 KiB page.
+commit protocol. Atomic recovery after sudden power loss is not yet
+implemented or claimed.
 
 \subsection{Operations}
 
@@ -166,7 +169,9 @@ not yet implemented or claimed, and each object is currently limited to one
     \item \textbf{CREATE\_AT} --- create a caller-selected stable object ID, or
         report that it already exists.
     \item \textbf{WRITE} --- replace the object's content. The caller moves a
-        memory object; the store writes one page to the slot's fixed extent.
+        suitably sized memory object; the store writes it in bounded chunks.
+    \item \textbf{SET\_SIZE} --- set the exact byte length consumed by the next
+        whole-object write.
     \item \textbf{READ} --- return the object's data as a moved memory object.
     \item \textbf{DELETE} --- mark the directory entry as free, return the
         extent blocks to the free bitmap.

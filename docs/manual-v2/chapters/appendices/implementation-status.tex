@@ -135,9 +135,12 @@ authoritative record.
         and NVMe integration are implemented and QEMU-tested. Non-coherent
         systems, ATS/PRI, multiple SMMUs, and other IOMMU architectures remain.
     \item \textbf{Live upgrade:} the EL0 service manager performs handoff and
-        invokes the capability-checked replacement-domain spawn path for the
-        embedded echo image. General image capabilities, multiple state
-        objects, and manager-owned teardown remain future work.
+        invokes the capability-checked replacement-domain spawn path. It can
+        fetch a replacement ELF from a well-known NVMe object, pass it as a
+        memory capability, and fall back to the embedded recovery image.
+        Structural ELF validation and immutable kernel snapshotting are
+        implemented; signed packages, rollback policy, multiple state objects,
+        and manager-owned teardown remain future work.
     \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
         the non-lossy CQ overflow backlog has no hard memory bound.
 \end{itemize}

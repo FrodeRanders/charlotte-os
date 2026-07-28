@@ -2,8 +2,8 @@
 //!
 //! The object store is a userspace service that provides crash-safe,
 //! dynamically-sized blob storage on top of a block device. Objects are
-//! identified by 64-bit monotonically-increasing IDs and stored as linked
-//! lists of extents on disk.
+//! identified by 64-bit monotonically-increasing IDs and stored in contiguous
+//! extents on disk.
 //!
 //! ## On-disk format
 //!
@@ -33,17 +33,10 @@
 //! A directory block holds N entries, then a next_dir_block_lba (or 0).
 //! Slots with id==0 are free.
 //!
-//! Extent (each extent is one or more blocks, linked list):
-//! First block of extent:
-//! ```
-//! [0..8):   next_extent_lba: u64 (0 = end)
-//! [8..12):  extent_blocks: u32
-//! [12..block_size): data
-//! ```
-//!
-//! Crash safety: extents are written first, then the directory entry
-//! pointer is updated atomically. On mount, extents not reachable from
-//! any directory entry are reclaimed.
+//! Extents contain object bytes directly. Replacement data is written to a
+//! newly selected extent before the directory entry is changed; unreachable
+//! extents are implicitly reclaimed by rebuilding allocation state from the
+//! directory. Durable atomicity across sudden power loss is not yet promised.
 #![no_std]
 
 pub const INTERFACE: u64 = 0x525453424a4f; // "OBJSTR" packed LE (6 chars)
@@ -62,9 +55,23 @@ pub const OP_INFO: u32 = 7;
 /// Returns [`ERR_EXISTS`] when the object is already present.
 pub const OP_CREATE_AT: u32 = 8;
 
+/// Set the exact byte length used by the next whole-object write.
+///
+/// `arg0` is the object ID and the attached read-only memory object contains
+/// an eight-byte little-endian length. A separate operation is used because
+/// object IDs occupy the complete scalar argument.
+pub const OP_SET_SIZE: u32 = 9;
+
 pub const ERR_OK: i64 = 0;
 pub const ERR_NOT_FOUND: i64 = 1;
 pub const ERR_NO_SPACE: i64 = 2;
 pub const ERR_INVALID_ID: i64 = 3;
 pub const ERR_IO_ERROR: i64 = 4;
 pub const ERR_EXISTS: i64 = 5;
+pub const ERR_TOO_LARGE: i64 = 6;
+
+/// Well-known object containing the installed AArch64 `echo` service ELF.
+///
+/// The high namespace is reserved for executable packages and does not
+/// collide with monotonically allocated application objects.
+pub const EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;

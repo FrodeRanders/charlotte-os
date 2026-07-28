@@ -16,6 +16,10 @@ const NVME_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUND
 #[cfg(target_arch = "aarch64")]
 const OBJSTORE_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore.elf"));
+const OBJSTORE_CLIENT_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore_client.elf"));
+const ECHO_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
+const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 #[cfg(target_arch = "aarch64")]
 const NVME_CLIENT_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme_client.elf"));
@@ -139,6 +143,34 @@ extern "C" fn verify_el0_nvme() {
     }
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
+    let object_client = supervisor::spawn_with_name_service_and_data(
+        OBJSTORE_CLIENT_ELF,
+        &ns,
+        ECHO_ELF,
+        ELF_SIZE_KEY,
+    );
+    let object_cfg: *const u32 = {
+        let base: *mut u8 = object_client.status_frame.into();
+        base as *const u32
+    };
+    loop {
+        let state = unsafe { core::ptr::read_volatile(object_cfg) };
+        if state == 0x900d {
+            break;
+        }
+        assert!(
+            state < 0xdea0,
+            "[nvme] large-object verifier failed: {:#x}, detail={:#x}",
+            state,
+            unsafe { core::ptr::read_volatile(object_cfg.add(1)) }
+        );
+        crate::cpu::scheduler::sleep_millis(1);
+    }
+    assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(1)) }, 2 * 1024 * 1024 + 4096);
+    assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(2)) }, ECHO_ELF.len() as u32);
+    logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");
+    supervisor::teardown_domain(object_client);
+    crate::self_test::el0_service::verify_persistent_upgrade(&ns);
     crate::self_test::el0_raft::test_persistent_raft(&ns);
     logln!("[nvme] SUCCESS: storage stack and persistent Raft recovery verified.");
     crate::self_test::results::pass(crate::self_test::results::TestId::Nvme);

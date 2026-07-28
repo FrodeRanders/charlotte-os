@@ -423,6 +423,7 @@ pub mod objstore {
     pub const OP_FLUSH: u32 = 6;
     pub const OP_INFO: u32 = 7;
     pub const OP_CREATE_AT: u32 = 8;
+    pub const OP_SET_SIZE: u32 = 9;
 
     pub const ERR_OK: i64 = 0;
     pub const ERR_NOT_FOUND: i64 = 1;
@@ -430,6 +431,8 @@ pub mod objstore {
     pub const ERR_INVALID_ID: i64 = 3;
     pub const ERR_IO_ERROR: i64 = 4;
     pub const ERR_EXISTS: i64 = 5;
+    pub const ERR_TOO_LARGE: i64 = 6;
+    pub const EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 }
 
 /// Native filesystem protocol (`charlotte-protocol-fs` v1).
@@ -437,6 +440,7 @@ pub mod fs {
     pub const INTERFACE: u64 = super::name(b"FFS");
     pub const VERSION: u32 = 1;
     pub const NAME: u64 = super::name(b"fs");
+    pub const OP_SET_SIZE: u32 = 8;
 
     pub const OP_LOOKUP: u32 = 1;
     pub const OP_CREATE: u32 = 2;
