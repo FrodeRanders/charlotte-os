@@ -865,6 +865,16 @@ fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), Me
 /// need the DMA address of an IPC-borrowed buffer without taking ownership.
 /// Returns 0 on any error.
 pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
+    get_phys_page(asid, cap, 0)
+}
+
+/// Return the physical address of one frame named by `cap`.
+///
+/// Memory-object frames are deliberately not assumed to be physically
+/// contiguous. DMA drivers use this indexed query to construct scatter/gather
+/// descriptors such as NVMe PRP lists while the borrowed capability keeps all
+/// queried frames alive.
+pub fn get_phys_page(asid: AddressSpaceId, cap: MemoryObjectCap, page_index: usize) -> u64 {
     let registry = MEMORY_OBJECTS.lock();
     let Ok(cap_entry) = registry.lookup(asid, cap) else {
         return 0;
@@ -872,7 +882,7 @@ pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
     registry
         .objects
         .get(&cap_entry.object)
-        .and_then(|object| object.frames.first().copied())
+        .and_then(|object| object.frames.get(page_index).copied())
         .map(<PAddr as Into<u64>>::into)
         .unwrap_or(0)
 }

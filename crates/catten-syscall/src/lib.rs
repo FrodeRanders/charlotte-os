@@ -93,6 +93,7 @@ pub enum SyscallNumber {
     IpcRecvVec = 53,
     IpcReplyWait = 54,
     CompletionSubmitDetachedTimer = 55,
+    MemoryGetPhysPage = 56,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -156,12 +157,13 @@ impl TryFrom<u16> for SyscallNumber {
             53 => Ok(Self::IpcRecvVec),
             54 => Ok(Self::IpcReplyWait),
             55 => Ok(Self::CompletionSubmitDetachedTimer),
+            56 => Ok(Self::MemoryGetPhysPage),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::CompletionSubmitDetachedTimer as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::MemoryGetPhysPage as u16;
 
 // ---- op codes --------------------------------------------------------------
 
@@ -293,6 +295,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             48 => asm!("svc #48", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             49 => asm!("svc #49", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             55 => asm!("svc #55", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            56 => asm!("svc #56", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -1031,7 +1034,15 @@ pub fn memory_close(cap: u64) -> MemoryStatusCode {
 /// `cap`, or 0 on error. Owned and IPC-borrowed caps are accepted.
 #[inline(always)]
 pub fn memory_get_phys(cap: u64) -> u64 {
-    unsafe { svc3(SyscallNumber::MemoryGetPhys, cap, 0, 0) }
+    memory_get_phys_page(cap, 0)
+}
+
+/// Return the physical address of page `page_index` in memory object `cap`,
+/// or 0 if the capability is invalid or the index is out of bounds. Owned and
+/// IPC-borrowed capabilities are accepted.
+#[inline(always)]
+pub fn memory_get_phys_page(cap: u64, page_index: usize) -> u64 {
+    unsafe { svc3(SyscallNumber::MemoryGetPhysPage, cap, page_index as u64, 0) }
 }
 
 /// Request the supervisor to spawn a replacement domain (syscall 50).

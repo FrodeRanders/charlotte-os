@@ -64,11 +64,19 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(4, block_size);
     config::write::<u32>(8, total_blocks);
 
-    // Use the final namespace block so the object-store metadata formatter
-    // cannot overwrite the test pattern.
-    let test_lba = (total_blocks - 1) as u64;
-    let write_mem = memory_alloc(1);
-    let read_mem = memory_alloc(1);
+    // Exercise PRP-list DMA, not merely PRP1: three pages require PRP1 plus a
+    // PRP2 list containing the second and third physical frames. Use the final
+    // namespace blocks so object-store formatting cannot overwrite the pattern.
+    const TEST_PAGES: usize = 3;
+    let transfer_bytes = TEST_PAGES * 4096;
+    let block_count = (transfer_bytes / block_size as usize) as u32;
+    if block_count == 0 || block_count > total_blocks {
+        config::write::<u32>(0, 0xdea0);
+        unsafe { thread_exit() };
+    }
+    let test_lba = (total_blocks - block_count) as u64;
+    let write_mem = memory_alloc(TEST_PAGES);
+    let read_mem = memory_alloc(TEST_PAGES);
     if write_mem == 0 || read_mem == 0 {
         config::write::<u32>(0, 0xdea1);
         unsafe { thread_exit() };
@@ -78,7 +86,7 @@ fn main(ctx: Context) -> ! {
         config::write::<u32>(0, 0xdea2);
         unsafe { thread_exit() };
     }
-    for i in 0..block_size as usize {
+    for i in 0..transfer_bytes {
         unsafe {
             ((WRITE_VADDR + i) as *mut u8).write_volatile((i as u8).wrapping_mul(37) ^ 0xa5);
         }
@@ -88,7 +96,7 @@ fn main(ctx: Context) -> ! {
     let write_call = ipc_scalar_call_borrow_read(
         blk_conn,
         block::OP_WRITE,
-        charlotte_protocol_block::pack_lba_count(test_lba, 1),
+        charlotte_protocol_block::pack_lba_count(test_lba, block_count),
         write_mem,
     );
     if write_call == 0 || catten_services::spin_reply(write_call).0 != block::ERR_OK {
@@ -105,7 +113,7 @@ fn main(ctx: Context) -> ! {
     let read_call = ipc_scalar_call_borrow_write(
         blk_conn,
         block::OP_READ,
-        charlotte_protocol_block::pack_lba_count(test_lba, 1),
+        charlotte_protocol_block::pack_lba_count(test_lba, block_count),
         read_mem,
     );
     if read_call == 0 || catten_services::spin_reply(read_call).0 != block::ERR_OK {
@@ -117,7 +125,7 @@ fn main(ctx: Context) -> ! {
         config::write::<u32>(0, 0xdea6);
         unsafe { thread_exit() };
     }
-    for i in 0..block_size as usize {
+    for i in 0..transfer_bytes {
         let actual = unsafe { ((READ_VADDR + i) as *const u8).read_volatile() };
         let expected = (i as u8).wrapping_mul(37) ^ 0xa5;
         if actual != expected {

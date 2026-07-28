@@ -31,6 +31,7 @@ extern crate alloc;
 
 use core::sync::atomic::{
     AtomicU32,
+    AtomicU64,
     AtomicUsize,
     Ordering,
 };
@@ -60,8 +61,11 @@ use catten_syscall::{
 const NVME_VADDR: usize = 0x0000_0000_0041_0000;
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
-const MAX_TRANSFER_BYTES: u64 = PAGE_SIZE as u64;
 const PAGE_SIZE: usize = 4096;
+/// One PRP-list page holds 512 physical page addresses. We deliberately cap
+/// transfers at 512 data pages so a request never needs chained PRP lists.
+const MAX_TRANSFER_PAGES: usize = PAGE_SIZE / core::mem::size_of::<u64>();
+const MAX_TRANSFER_BYTES: u64 = (MAX_TRANSFER_PAGES * PAGE_SIZE) as u64;
 
 fn spin_reply(call: u64) -> (i64, u64) {
     let (status, result, cap) = ipc_reply_wait(call);
@@ -259,6 +263,7 @@ unsafe fn nvm_sqe(
     start_lba: u64,
     nblocks: u16,
     prp1: u64,
+    prp2: u64,
 ) {
     let off = base + (slot as usize) * 64;
     let dw0: u32 = ((slot & 0xffff) << 16) | (opcode as u32 & 0xff);
@@ -268,7 +273,7 @@ unsafe fn nvm_sqe(
         p.add(1).write_volatile(0);
         p.add(2).write_volatile(0);
         p.add(3).write_volatile(prp1);
-        p.add(4).write_volatile(0);
+        p.add(4).write_volatile(prp2);
         p.add(5).write_volatile(start_lba);
         p.add(6).write_volatile((nblocks.saturating_sub(1) as u64) & 0xffff);
         p.add(7).write_volatile(0);
@@ -284,80 +289,89 @@ static TOTAL_BLOCKS: AtomicU32 = AtomicU32::new(0);
 
 /// Outstanding I/O operation: a retained reply token waiting for a completion.
 const MAX_PENDING: usize = 64;
-static PENDING_REPLIES: [AtomicU32; MAX_PENDING] = [
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-    AtomicU32::new(0),
-];
+static PENDING_REPLIES: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) }; MAX_PENDING];
+/// Capability retaining an optional PRP-list page until the matching command
+/// completes. The borrowed data capability is retained by the reply token.
+static PENDING_PRP_LISTS: [AtomicU64; MAX_PENDING] = [const { AtomicU64::new(0) }; MAX_PENDING];
 
-fn store_pending(slot: u32, reply: u64) {
-    PENDING_REPLIES[(slot as usize) % MAX_PENDING].store(reply as u32, Ordering::Release);
+fn store_pending(slot: u32, reply: u64, prp_list_cap: u64) {
+    let index = (slot as usize) % MAX_PENDING;
+    PENDING_PRP_LISTS[index].store(prp_list_cap, Ordering::Relaxed);
+    PENDING_REPLIES[index].store(reply, Ordering::Release);
 }
 
-fn take_pending(slot: u32) -> u64 {
-    let prev = PENDING_REPLIES[(slot as usize) % MAX_PENDING].swap(0, Ordering::AcqRel);
-    prev as u64
+fn take_pending(slot: u32) -> (u64, u64) {
+    let index = (slot as usize) % MAX_PENDING;
+    let reply = PENDING_REPLIES[index].swap(0, Ordering::AcqRel);
+    let prp_list = PENDING_PRP_LISTS[index].swap(0, Ordering::Relaxed);
+    (reply, prp_list)
+}
+
+fn release_prp_list(cap: u64) {
+    if cap != 0 {
+        let _ = memory_unmap(cap);
+        let _ = memory_close(cap);
+    }
+}
+
+struct Prps {
+    first: u64,
+    second: u64,
+    list_cap: u64,
+}
+
+/// Translate a page-backed borrowed memory object into an NVMe PRP chain.
+///
+/// A one-page request uses PRP1 only, a two-page request uses PRP1+PRP2, and a
+/// larger request uses PRP2 to point at a temporary list containing every
+/// remaining physical page. No physical-contiguity assumption is made.
+fn prepare_prps(memory: u64, bytes: u64) -> Option<Prps> {
+    let pages = usize::try_from(bytes).ok()?.div_ceil(PAGE_SIZE);
+    if pages == 0 || pages > MAX_TRANSFER_PAGES {
+        return None;
+    }
+    let first = memory_get_phys_page(memory, 0);
+    if first == 0 {
+        return None;
+    }
+    if pages == 1 {
+        return Some(Prps {
+            first,
+            second: 0,
+            list_cap: 0,
+        });
+    }
+    let second_page = memory_get_phys_page(memory, 1);
+    if second_page == 0 {
+        return None;
+    }
+    if pages == 2 {
+        return Some(Prps {
+            first,
+            second: second_page,
+            list_cap: 0,
+        });
+    }
+
+    let list = alloc_queue_memory(1, PAGE_SIZE)?;
+    unsafe {
+        let entries = list.vaddr as *mut u64;
+        entries.write_volatile(second_page);
+        for page in 2..pages {
+            let phys = memory_get_phys_page(memory, page);
+            if phys == 0 {
+                release_prp_list(list.cap);
+                return None;
+            }
+            entries.add(page - 1).write_volatile(phys);
+        }
+    }
+    core::sync::atomic::fence(Ordering::Release);
+    Some(Prps {
+        first,
+        second: list.phys,
+        list_cap: list.cap,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +597,14 @@ struct IoState {
 }
 
 impl IoState {
-    fn submit_io(&mut self, opcode: u8, start_lba: u64, nblocks: u16, prp1: u64) -> Option<u32> {
+    fn submit_io(
+        &mut self,
+        opcode: u8,
+        start_lba: u64,
+        nblocks: u16,
+        prp1: u64,
+        prp2: u64,
+    ) -> Option<u32> {
         // A circular SQ must always leave one entry unused so full and empty
         // remain distinguishable.
         if self.outstanding >= IO_QUEUE_SIZE - 1 {
@@ -591,7 +612,7 @@ impl IoState {
         }
         let slot = self.sq_tail;
         unsafe {
-            nvm_sqe(self.sq_vaddr, slot, opcode, 1, start_lba, nblocks, prp1);
+            nvm_sqe(self.sq_vaddr, slot, opcode, 1, start_lba, nblocks, prp1, prp2);
         }
         self.sq_tail = (slot + 1) % IO_QUEUE_SIZE;
         core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
@@ -704,7 +725,8 @@ fn main(ctx: Context) -> ! {
         // Poll I/O completions before cq_wait (catches completions from
         // commands submitted in the previous iteration)
         while let Some((cid, status)) = io.poll_completions() {
-            let reply = take_pending(cid as u32);
+            let (reply, prp_list) = take_pending(cid as u32);
+            release_prp_list(prp_list);
             if reply != 0 {
                 ipc_reply(
                     reply,
@@ -734,7 +756,8 @@ fn main(ctx: Context) -> ! {
             config::write::<u32>(80, irq_count);
         }
         while let Some((cid, status)) = io.poll_completions() {
-            let reply = take_pending(cid as u32);
+            let (reply, prp_list) = take_pending(cid as u32);
+            release_prp_list(prp_list);
             if reply != 0 {
                 ipc_reply(
                     reply,
@@ -775,13 +798,16 @@ fn main(ctx: Context) -> ! {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
                             (l, c as u32)
                         };
-                        let transfer_bytes = (count as u64).checked_mul(lbs as u64);
+                        let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {
+                            ipc_reply(message.reply, block::ERR_INVALID_RANGE);
+                            continue;
+                        };
                         if count == 0 || lba.checked_add(count as u64).is_none_or(|end| end > nsze)
                         {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                             continue;
                         }
-                        if transfer_bytes.is_none_or(|bytes| bytes > MAX_TRANSFER_BYTES) {
+                        if transfer_bytes > MAX_TRANSFER_BYTES {
                             ipc_reply(message.reply, block::ERR_UNALIGNED);
                             continue;
                         }
@@ -790,14 +816,14 @@ fn main(ctx: Context) -> ! {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let phys = memory_get_phys(mem_cap);
-                        if phys == 0 {
+                        let Some(prps) = prepare_prps(mem_cap, transfer_bytes) else {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
-                        }
-                        match io.submit_io(NVM_READ, lba, count as u16, phys) {
-                            Some(slot) => store_pending(slot, message.reply),
+                        };
+                        match io.submit_io(NVM_READ, lba, count as u16, prps.first, prps.second) {
+                            Some(slot) => store_pending(slot, message.reply, prps.list_cap),
                             None => {
+                                release_prp_list(prps.list_cap);
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }
                         }
@@ -813,13 +839,16 @@ fn main(ctx: Context) -> ! {
                             let (l, c) = charlotte_protocol_block::unpack_lba_count(message.arg0);
                             (l, c as u32)
                         };
-                        let transfer_bytes = (count as u64).checked_mul(lbs as u64);
+                        let Some(transfer_bytes) = (count as u64).checked_mul(lbs as u64) else {
+                            ipc_reply(message.reply, block::ERR_INVALID_RANGE);
+                            continue;
+                        };
                         if count == 0 || lba.checked_add(count as u64).is_none_or(|end| end > nsze)
                         {
                             ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                             continue;
                         }
-                        if transfer_bytes.is_none_or(|bytes| bytes > MAX_TRANSFER_BYTES) {
+                        if transfer_bytes > MAX_TRANSFER_BYTES {
                             ipc_reply(message.reply, block::ERR_UNALIGNED);
                             continue;
                         }
@@ -828,14 +857,14 @@ fn main(ctx: Context) -> ! {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
-                        let phys = memory_get_phys(mem_cap);
-                        if phys == 0 {
+                        let Some(prps) = prepare_prps(mem_cap, transfer_bytes) else {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
-                        }
-                        match io.submit_io(NVM_WRITE, lba, count as u16, phys) {
-                            Some(slot) => store_pending(slot, message.reply),
+                        };
+                        match io.submit_io(NVM_WRITE, lba, count as u16, prps.first, prps.second) {
+                            Some(slot) => store_pending(slot, message.reply, prps.list_cap),
                             None => {
+                                release_prp_list(prps.list_cap);
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }
                         }
@@ -843,8 +872,8 @@ fn main(ctx: Context) -> ! {
                 }
                 block::OP_FLUSH => {
                     if message.reply != 0 {
-                        match io.submit_io(NVM_FLUSH, 0, 0, 0) {
-                            Some(slot) => store_pending(slot, message.reply),
+                        match io.submit_io(NVM_FLUSH, 0, 0, 0, 0) {
+                            Some(slot) => store_pending(slot, message.reply, 0),
                             None => {
                                 ipc_reply(message.reply, block::ERR_IO_ERROR);
                             }

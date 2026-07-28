@@ -46,6 +46,13 @@ pub fn test_memory_objects() {
     assert_eq!(initial.owner, owner);
     assert_eq!(initial.pages, 2);
     assert!(!initial.mapped);
+    let first_phys = object::get_phys_page(owner, cap, 0);
+    let second_phys = object::get_phys_page(owner, cap, 1);
+    assert_ne!(first_phys, 0);
+    assert_ne!(second_phys, 0);
+    assert_ne!(first_phys, second_phys);
+    assert_eq!(object::get_phys(owner, cap), first_phys);
+    assert_eq!(object::get_phys_page(owner, cap, 2), 0);
 
     let owner_base = VAddr::from(0x33000usize);
     object::map(owner, cap, owner_base, true).expect("memory object: owner map failed");
@@ -70,6 +77,8 @@ pub fn test_memory_objects() {
     let target_info = object::info(target, target_cap).expect("memory object: target cap missing");
     assert_eq!(target_info.owner, target);
     assert!(!target_info.mapped);
+    assert_eq!(object::get_phys_page(target, target_cap, 0), first_phys);
+    assert_eq!(object::get_phys_page(target, target_cap, 1), second_phys);
 
     let target_base = VAddr::from(0x44000usize);
     object::map(target, target_cap, target_base, true).expect("memory object: target map failed");

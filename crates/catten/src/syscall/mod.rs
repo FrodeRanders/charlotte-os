@@ -183,6 +183,10 @@ pub mod call_no {
     /// object `x1` in `x0`, or 0 on error. Owned and IPC-borrowed memory
     /// capabilities both authorize this query.
     pub const MEMORY_GET_PHYS: u16 = SyscallNumber::MemoryGetPhys as u16;
+    /// Return the physical address of page index `x2` in memory object `x1`,
+    /// or 0 on error. The capability retains the complete object while a DMA
+    /// driver constructs a scatter/gather descriptor.
+    pub const MEMORY_GET_PHYS_PAGE: u16 = SyscallNumber::MemoryGetPhysPage as u16;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade.  x1 = name-service connection cap (caller's AS), x2 = ELF
     /// selector (0 = echo service ELF), x3 = state memory cap (0 if none),
@@ -273,6 +277,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::DeviceIrqAck => sys_device_irq_ack(frame),
         SyscallNumber::DeviceClose => sys_device_close(frame),
         SyscallNumber::MemoryGetPhys => sys_memory_get_phys(frame),
+        SyscallNumber::MemoryGetPhysPage => sys_memory_get_phys_page(frame),
         SyscallNumber::SpawnUpgrade => {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
@@ -741,6 +746,13 @@ fn sys_memory_get_phys(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
     frame.regs[0] = object::get_phys(asid, cap);
+}
+
+fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    let page_index = frame.regs[2] as usize;
+    frame.regs[0] = object::get_phys_page(asid, cap, page_index);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {

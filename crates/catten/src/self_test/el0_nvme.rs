@@ -112,7 +112,7 @@ extern "C" fn verify_el0_nvme() {
         0x900d,
         "[nvme] client completed before driver registration"
     );
-    logln!("[nvme] write/flush/read round trip verified");
+    logln!("[nvme] 12 KiB PRP-list write/flush/read round trip verified");
     let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
     assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
     logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);

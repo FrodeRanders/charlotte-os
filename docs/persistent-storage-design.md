@@ -163,10 +163,13 @@ object. It:
 **WRITE:** analogous, with an NVM Write command and a BorrowRead memory
 object.
 
-The current implementation accepts transfers up to one 4 KiB page and rejects
-larger requests with `UNALIGNED`. This keeps PRP1-only DMA safe until the
-memory-object ABI can expose page counts and per-page physical addresses for
-PRP2/PRP-list construction.
+The implementation accepts transfers up to 512 pages (2 MiB with 4 KiB
+pages). `memory_get_phys_page` exposes each frame authorized and retained by
+the borrowed memory-object capability; the driver uses PRP1 for the first
+frame, direct PRP2 for a two-page request, and a temporary one-page PRP list
+for larger scatter/gather requests. The PRP-list capability is retained until
+the matching command completion. Larger requests are rejected rather than
+requiring chained PRP lists.
 
 **FLUSH:** submits an NVM Flush command to the I/O SQ. Completes the reply
 when the CQ entry arrives.
@@ -193,12 +196,12 @@ compatibility fallback for platforms where MSI-X setup is unavailable.
 
 ### 3.5 Memory allocation for queues
 
-The NVMe specification requires physically contiguous, page-aligned memory
-for admin and I/O queue pairs. The driver allocates this using
-`memory_alloc` (allocates page-backed memory objects) and
-`memory_get_phys` (queries physical addresses). The kernel's physical
-memory manager is already used by the virtio-net driver for virtqueue
-setup, so this pattern is established.
+NVMe queue pages are page-aligned and currently fit in one page each. The
+driver allocates them using `memory_alloc` and obtains their DMA address with
+`memory_get_phys`. Data buffers do not assume physical contiguity:
+`memory_get_phys_page` supplies the individual frame addresses used to build
+PRP entries. The kernel's physical memory manager is already used by the
+virtio-net driver for virtqueue setup, so this pattern is established.
 
 ### 3.6 DMA
 
