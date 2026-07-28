@@ -151,6 +151,15 @@ impl TimerEvent {
         event
     }
 
+    /// Rebase a relative event after its observer and blocked state have been
+    /// installed. This is used by scheduler sleep, whose contract is to block
+    /// for at least the requested duration; computing the deadline before
+    /// contended scheduler locks can make a short sleep expire before its
+    /// caller has actually parked.
+    pub(crate) fn reset_after(&mut self, duration: ExtDuration) {
+        self.deadline = deadline_after(duration);
+    }
+
     fn signal(&self) {
         while let Ok(observer) = self.observers.pop() {
             if let Some(observer) = observer.upgrade() {
@@ -172,14 +181,16 @@ impl From<Timestamp> for TimerEvent {
 
 impl From<ExtDuration> for TimerEvent {
     fn from(duration: ExtDuration) -> Self {
-        let deadline = LpTimer::now()
-            + (duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos()) as Timestamp;
         Self {
-            deadline,
+            deadline: deadline_after(duration),
             key: None,
             observers: ConcurrentQueue::unbounded(),
         }
     }
+}
+
+fn deadline_after(duration: ExtDuration) -> Timestamp {
+    LpTimer::now() + (duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos()) as Timestamp
 }
 
 impl Observable for TimerEvent {

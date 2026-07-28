@@ -212,7 +212,7 @@ pub fn abort() -> ! {
 
 /// Blocks the current thread for at least the specified duration.
 pub fn sleep(duration: ExtDuration) {
-    let timer_event = TimerEvent::from(duration);
+    let mut timer_event = TimerEvent::from(duration);
     // Bind `tid` first so the read guard + LP scheduler lock in the scrutinee
     // are released before `block_thread` (which takes SYSTEM_SCHEDULER.write());
     // holding the read guard across the write would deadlock the RwLock.
@@ -226,6 +226,10 @@ pub fn sleep(duration: ExtDuration) {
                 threads::MigrationConstraint::TimerWait,
             )
             .expect("Error putting thread to sleep");
+        // Start the requested interval only after the blocked state and waker
+        // are installed. In particular, a 1 ms boot-time sleep must not arrive
+        // already expired after contending on the global scheduler locks.
+        timer_event.reset_after(duration);
         crate::timers::enqueue_event(timer_event);
         // Yield so the sleep takes effect: `block_thread` marks the thread
         // Blocked and registers its waker on the timer event; this yield saves

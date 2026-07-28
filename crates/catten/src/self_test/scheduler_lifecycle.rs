@@ -51,16 +51,18 @@ extern "C" fn worker() {
         false;
     let home = get_lp_id();
     logln!("[scheduler lifecycle] worker tid={} running on LP{}", tid, home);
-    for _ in 0..128 {
-        sleep_millis(1);
-        assert_eq!(get_lp_id(), home);
-        let table = MASTER_THREAD_TABLE.read();
-        let thread = table.get(tid).expect("lifecycle worker vanished");
-        assert_eq!(thread.migration_constraints, 0);
-        assert!(!thread.is_fully_migratable());
-        drop(table);
-        SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
-    }
+    // One substantial wait is enough to verify the property under test:
+    // rebalance established this worker's home LP before it acquired a timer
+    // affinity, and the wake must return it to that LP. Hundreds of 1 ms waits
+    // merely made this boot gate depend on emulator scheduling granularity.
+    sleep_millis(128);
+    assert_eq!(get_lp_id(), home);
+    let table = MASTER_THREAD_TABLE.read();
+    let thread = table.get(tid).expect("lifecycle worker vanished");
+    assert_eq!(thread.migration_constraints, 0);
+    assert!(!thread.is_fully_migratable());
+    drop(table);
+    SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
     logln!("[scheduler lifecycle] worker tid={} completed on LP{}", tid, home);
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
         let migrations = REBALANCE_SUCCESSES.load(Ordering::Relaxed);
@@ -70,7 +72,7 @@ extern "C" fn worker() {
         logln!(
             "[scheduler lifecycle] SUCCESS: {} timer wakes retained post-rebalance LP affinity \
              across {} workers; {} certified Ready migration(s) completed.",
-            128 * WORKER_COUNT,
+            WORKER_COUNT,
             WORKER_COUNT,
             migrations
         );

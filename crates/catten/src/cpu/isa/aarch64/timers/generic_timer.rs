@@ -91,7 +91,17 @@ fn read_cntv_ctl() -> u64 {
 #[inline]
 fn write_cntv_ctl(ctl: u64) {
     unsafe {
-        asm!("msr cntv_ctl_el0, {}", in(reg) ctl, options(nomem, nostack, preserves_flags));
+        // Timer control is followed by WFI in the idle path and by interrupt
+        // unmasking in ordinary thread context.  The MSR alone is not a
+        // context-synchronizing operation: without the ISB, either subsequent
+        // action may be observed before the comparator enable/disable takes
+        // effect, occasionally leaving a queued sleep with no useful wakeup.
+        asm!(
+            "msr cntv_ctl_el0, {}",
+            "isb",
+            in(reg) ctl,
+            options(nomem, nostack, preserves_flags)
+        );
     }
 }
 
