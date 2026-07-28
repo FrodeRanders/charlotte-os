@@ -138,6 +138,10 @@ impl Context {
         config::irq_cap()
     }
 
+    pub fn system_observer_cap(&self) -> Option<u64> {
+        config::system_observer_cap()
+    }
+
     pub fn shard_cq_base(&self) -> Option<usize> {
         config::shard_cq_base()
     }

@@ -29,6 +29,7 @@ use crate::{
                 Error,
                 LpScheduler,
             },
+            monotonic_ticks,
             system_scheduler::LP_LOAD_SUMMARIES,
             threads::{
                 MASTER_THREAD_TABLE,
@@ -235,6 +236,14 @@ impl LpScheduler for RoundRobin {
         self.is_idle = became_idle;
 
         let mut tt_guard = MASTER_THREAD_TABLE.write();
+        let now = monotonic_ticks();
+        if let Some(previous) = previous_handle
+            && let Ok(thread) = tt_guard.get_mut(previous.tid)
+            && thread.generation == previous.generation
+            && let Some(started_at) = thread.last_dispatch_tick.take()
+        {
+            thread.runtime_ticks.add_sample(now.saturating_sub(started_at));
+        }
         if requeue_previous {
             tt_guard
                 .get_mut(unsafe { previous_handle.unwrap_unchecked() }.tid)
@@ -242,7 +251,10 @@ impl LpScheduler for RoundRobin {
                 .unwrap()
                 .state = ThreadState::Ready(self.lp_id);
         }
-        tt_guard.get_mut(next_tid).as_mut().unwrap().state = ThreadState::Running(self.lp_id);
+        let next = tt_guard.get_mut(next_tid).unwrap();
+        next.state = ThreadState::Running(self.lp_id);
+        next.dispatch_count = next.dispatch_count.saturating_add(1);
+        next.last_dispatch_tick = Some(now);
         let next_thread = tt_guard.get(next_tid).unwrap();
         record_dispatch(self.lp_id, next_tid, next_thread.generation, next_thread.asid);
 

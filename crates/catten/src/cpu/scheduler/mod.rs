@@ -61,6 +61,28 @@ pub fn monotonic_millis() -> u64 {
     ((LpTimer::now() as u128 * LpTimer::get_ts_cycle_period().as_picos()) / 1_000_000_000) as u64
 }
 
+/// Raw architecture-counter ticks used for low-overhead interval statistics.
+///
+/// Snapshots carry the counter frequency so userspace can convert ticks to
+/// seconds without requiring floating point in the kernel.
+pub fn monotonic_ticks() -> u64 {
+    use crate::cpu::isa::{
+        interface::timers::LpTimerIfce,
+        timers::LpTimer,
+    };
+
+    LpTimer::now()
+}
+
+pub fn counter_frequency_hz() -> u64 {
+    use crate::cpu::isa::{
+        interface::timers::LpTimerIfce,
+        timers::LpTimer,
+    };
+
+    1_000_000_000_000 / LpTimer::get_ts_cycle_period().as_picos() as u64
+}
+
 /// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
 /// and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {

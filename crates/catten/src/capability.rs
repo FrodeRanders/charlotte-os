@@ -23,6 +23,8 @@ pub enum ObjectKind {
     Completion = 3,
     Device = 4,
     Mailbox = 5,
+    /// Authority to inspect system-wide, non-secret kernel telemetry.
+    SystemObserver = 6,
 }
 
 #[derive(Debug)]

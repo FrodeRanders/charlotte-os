@@ -189,6 +189,10 @@ pub mod call_no {
     pub const MEMORY_GET_PHYS_PAGE: u16 = SyscallNumber::MemoryGetPhysPage as u16;
     pub const DMA_MAP: u16 = SyscallNumber::DmaMap as u16;
     pub const DMA_UNMAP: u16 = SyscallNumber::DmaUnmap as u16;
+    /// Snapshot scheduler statistics. x1=0 limits the snapshot to the caller;
+    /// x1 naming a system-observer capability authorizes all threads. Returns
+    /// a memory-object capability in x0 and its exact length in x1.
+    pub const THREAD_STATISTICS: u16 = SyscallNumber::ThreadStatistics as u16;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade. x1 = persistent ELF memory cap (0 for embedded fallback),
     /// x2 = ELF byte length, or embedded selector when x1 is 0; x3 = state
@@ -283,6 +287,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MemoryGetPhysPage => sys_memory_get_phys_page(frame),
         SyscallNumber::DmaMap => sys_dma_map(frame),
         SyscallNumber::DmaUnmap => sys_dma_unmap(frame),
+        SyscallNumber::ThreadStatistics => sys_thread_statistics(frame),
         SyscallNumber::SpawnUpgrade => {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
@@ -299,6 +304,88 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 }
 
 // ---- individual syscall implementations ------------------------------------
+
+#[cfg(target_arch = "aarch64")]
+fn push_u64(bytes: &mut alloc::vec::Vec<u8>, value: u64) {
+    bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+#[cfg(target_arch = "aarch64")]
+fn sys_thread_statistics(frame: &mut TrapFrame) {
+    use catten_syscall::{
+        OBSERVABILITY_NONE,
+        THREAD_STATISTICS_HEADER_U64S,
+        THREAD_STATISTICS_MAGIC,
+        THREAD_STATISTICS_RECORD_U64S,
+        THREAD_STATISTICS_VERSION,
+    };
+
+    let asid = caller_asid(frame);
+    let observer_cap = frame.regs[1];
+    let snapshots = if observer_cap == 0 {
+        crate::cpu::scheduler::threads::statistics_for_asid(asid)
+    } else if crate::capability::contains(
+        asid,
+        observer_cap,
+        crate::capability::ObjectKind::SystemObserver,
+    ) {
+        crate::cpu::scheduler::threads::system_statistics()
+    } else {
+        frame.regs[0] = 0;
+        frame.regs[1] = 0;
+        return;
+    };
+    let exact_len = (THREAD_STATISTICS_HEADER_U64S
+        + snapshots.len() * THREAD_STATISTICS_RECORD_U64S)
+        * core::mem::size_of::<u64>();
+    let pages = exact_len.div_ceil(4096);
+    let Ok(cap) = object::allocate(asid, pages) else {
+        frame.regs[0] = 0;
+        frame.regs[1] = 0;
+        return;
+    };
+
+    let mut bytes = alloc::vec::Vec::with_capacity(exact_len);
+    push_u64(&mut bytes, THREAD_STATISTICS_MAGIC);
+    push_u64(&mut bytes, THREAD_STATISTICS_VERSION);
+    push_u64(&mut bytes, (THREAD_STATISTICS_RECORD_U64S * 8) as u64);
+    push_u64(&mut bytes, snapshots.len() as u64);
+    push_u64(&mut bytes, crate::cpu::scheduler::counter_frequency_hz());
+    push_u64(&mut bytes, crate::cpu::scheduler::monotonic_ticks());
+    for snapshot in snapshots {
+        let statistics = snapshot.runtime_ticks;
+        push_u64(&mut bytes, snapshot.tid as u64);
+        push_u64(&mut bytes, snapshot.generation);
+        push_u64(&mut bytes, snapshot.asid as u64);
+        push_u64(&mut bytes, snapshot.state as u64);
+        push_u64(&mut bytes, snapshot.affinity_lp.map_or(OBSERVABILITY_NONE, u64::from));
+        push_u64(&mut bytes, snapshot.pinned_lp.map_or(OBSERVABILITY_NONE, u64::from));
+        push_u64(&mut bytes, snapshot.dispatch_count);
+        push_u64(&mut bytes, statistics.count);
+        push_u64(&mut bytes, statistics.min.unwrap_or(OBSERVABILITY_NONE));
+        push_u64(&mut bytes, statistics.max.unwrap_or(OBSERVABILITY_NONE));
+        push_u64(&mut bytes, statistics.total as u64);
+        push_u64(&mut bytes, (statistics.total >> 64) as u64);
+        push_u64(&mut bytes, statistics.sum_of_squares as u64);
+        push_u64(&mut bytes, (statistics.sum_of_squares >> 64) as u64);
+        push_u64(&mut bytes, u64::from(statistics.saturated));
+        push_u64(&mut bytes, snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE));
+    }
+    if object::write_bytes(asid, cap, &bytes).is_err() {
+        let _ = object::close_cap(asid, cap);
+        frame.regs[0] = 0;
+        frame.regs[1] = 0;
+        return;
+    }
+    frame.regs[0] = cap;
+    frame.regs[1] = exact_len as u64;
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn sys_thread_statistics(frame: &mut TrapFrame) {
+    frame.regs[0] = 0;
+    frame.regs[1] = 0;
+}
 
 fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
     assert_ne!(

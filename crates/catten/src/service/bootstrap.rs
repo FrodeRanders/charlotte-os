@@ -89,6 +89,11 @@ pub fn write_dma_domain_cap(config_frame: PAddr, cap: u64) {
     append_capability(config_frame, CapabilityKind::DmaDomain, cap);
 }
 
+/// Deliver the explicitly delegated system-wide observability authority.
+pub fn write_system_observer_cap(config_frame: PAddr, cap: u64) {
+    append_capability(config_frame, CapabilityKind::SystemObserver, cap);
+}
+
 /// Write the per-shard CQ ring layout (base virtual address and count) into a
 /// domain's config page, so a user-space runtime can place each shard's
 /// executor on its own completion queue (queue id `i + 1`, ring at

@@ -59,6 +59,10 @@ use crate::{
             Observable,
             Observer,
         },
+        statistics::{
+            RunningStatistics,
+            StatisticsSnapshot,
+        },
     },
     memory::{
         AddressSpaceId,
@@ -202,6 +206,28 @@ pub enum ThreadState {
     Blocked(Arc<Waker>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ThreadStateKind {
+    Running = 1,
+    Ready = 2,
+    NeedsLpAssignment = 3,
+    Blocked = 4,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThreadStatisticsSnapshot {
+    pub tid: ThreadId,
+    pub generation: ThreadGeneration,
+    pub asid: AddressSpaceId,
+    pub state: ThreadStateKind,
+    pub affinity_lp: Option<LpId>,
+    pub pinned_lp: Option<LpId>,
+    pub dispatch_count: u64,
+    pub runtime_ticks: StatisticsSnapshot,
+    pub current_slice_started_at: Option<u64>,
+}
+
 #[derive(Debug)]
 pub struct Thread {
     /// Boxed so the context (and therefore its `saved_sp`/`rsp_cpl0` field) has
@@ -232,6 +258,10 @@ pub struct Thread {
     pub migration_safe: bool,
     /// Active temporary or permanent reasons why the thread must remain local.
     pub migration_constraints: u32,
+    /// Completed on-CPU intervals, measured in raw architectural counter ticks.
+    pub runtime_ticks: RunningStatistics,
+    pub dispatch_count: u64,
+    pub last_dispatch_tick: Option<u64>,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -256,7 +286,30 @@ impl Thread {
             pinned_lp: None,
             migration_safe: false,
             migration_constraints: 0,
+            runtime_ticks: RunningStatistics::new(),
+            dispatch_count: 0,
+            last_dispatch_tick: None,
             exit_observers: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn statistics_snapshot(&self, tid: ThreadId) -> ThreadStatisticsSnapshot {
+        let state = match self.state {
+            ThreadState::Running(_) => ThreadStateKind::Running,
+            ThreadState::Ready(_) => ThreadStateKind::Ready,
+            ThreadState::NeedsLpAssignment => ThreadStateKind::NeedsLpAssignment,
+            ThreadState::Blocked(_) => ThreadStateKind::Blocked,
+        };
+        ThreadStatisticsSnapshot {
+            tid,
+            generation: self.generation,
+            asid: self.asid,
+            state,
+            affinity_lp: self.affinity_lp,
+            pinned_lp: self.pinned_lp,
+            dispatch_count: self.dispatch_count,
+            runtime_ticks: self.runtime_ticks.snapshot(),
+            current_slice_started_at: self.last_dispatch_tick,
         }
     }
 
@@ -281,6 +334,36 @@ impl Thread {
             && self.migration_constraints == 0
             && !self.context.is_on_cpu()
     }
+}
+
+/// Return owned snapshots for threads in one address space.
+///
+/// The filter is intentional: an eventual userspace export syscall can expose
+/// the caller's own scheduler data without granting ambient visibility into
+/// other protection domains.
+pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot> {
+    MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .enumerate()
+        .filter_map(|(tid, thread)| {
+            thread
+                .as_ref()
+                .filter(|thread| thread.asid == asid)
+                .map(|thread| thread.statistics_snapshot(tid))
+        })
+        .collect()
+}
+
+/// Snapshot all scheduler-visible threads. Callers must enforce the
+/// system-observer capability before invoking this function.
+pub(crate) fn system_statistics() -> Vec<ThreadStatisticsSnapshot> {
+    MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .enumerate()
+        .filter_map(|(tid, thread)| thread.as_ref().map(|thread| thread.statistics_snapshot(tid)))
+        .collect()
 }
 
 /// The `Observable` trait is implemented for `Thread` to notify observers when a thread exits and

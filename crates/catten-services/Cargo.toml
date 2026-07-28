@@ -70,6 +70,12 @@ path = "src/bin/relmsg.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "observe"
+path = "src/bin/observe.rs"
+test = false
+bench = false
+
 [dependencies]
 catten-rt = { path = "../catten-rt" }
 charlotte-launch = { path = "../charlotte-launch" }

@@ -222,4 +222,35 @@ Rules:
         shards get round-robin.
 \end{enumerate}
 
+\section{Scheduler observability}
+
+The prototype records integer running statistics for each thread at scheduler
+context switches. A snapshot includes the thread identity and generation,
+address-space owner, scheduler state, LP affinity, dispatch count, and the
+count, minimum, maximum, total, and sum of squares of completed on-CPU slices.
+The active slice start tick is reported separately. The counter frequency in
+the snapshot header permits conversion from ticks to time.
+
+The accumulator uses integer arithmetic and reports saturation. Mean and sample
+variance are exported as exact rational components; standard deviation and
+coefficient of variation are calculated in userspace. This avoids using
+floating-point/SIMD state in the kernel. Accumulators are mergeable so future
+hot-path metrics can be gathered per LP rather than through a global lock.
+
+The \texttt{THREAD\_STATISTICS} syscall is address-space-scoped by default:
+callers see only their own threads and receive the snapshot as a memory-object
+capability. At boot the supervisor starts exactly one \texttt{observe} EL0
+service and delegates a typed system-observer capability through its launch
+vector. Presenting that capability authorizes a machine-wide snapshot; a
+fabricated or wrong-type handle fails closed. The service publishes snapshots
+through endpoint IPC and registers itself with the node name service.
+Machine-wide observation is therefore explicit authority rather than an
+ambient privilege.
+
+An HTTP \texttt{GET /metrics} adapter is a reasonable userspace consumer of
+this IPC protocol, but it is not implemented yet. The present TCP/IP service
+does not supply the complete server-side bind/listen/accept path needed to host
+it. See \texttt{docs/observability.md} for the wire format, security boundary,
+and suggested next metrics.
+
 \endinput

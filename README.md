@@ -61,6 +61,65 @@ For the upstream project, its history, and its community, please visit
 as ordinary Git history so that upstream updates can continue to be merged into
 this fork.
 
+## Architectural optimisations
+
+This specific architecture is primarily optimised for controlled, understandable
+behaviour in systems composed of isolated asynchronous services rather than peak
+benchmark throughput:
+
+- **Fault containment:** Drivers and services live in separate address spaces.
+  A failed component should lose its capabilities, have outstanding operations
+  cancelled, and be restartable without taking down the machine.
+
+- **Predictability and boundedness:** Queues, messages, capability tables, and
+  most communication paths are explicit and bounded. Overload should produce
+  visible backpressure rather than hidden memory growth.
+
+- **Low tail latency:** Shard-local ownership avoids shared locks and cache-line
+  contention. Work normally stays on its assigned LP, reducing migration, interference,
+  and latency variance.
+
+- **Efficient asynchronous workloads:** Completion queues, waitable IPC, interrupts,
+  and timers allow services to block when idle and resume from events. The 0%
+  steady-state CPU behaviour is an important architectural outcome.
+
+- **Capability-oriented security:** Authority is conveyed through typed object
+  capabilities rather than ambient process privileges, global device access, or
+  freely chosen syscall numbers. Components receive only the resources required
+  for their role.
+
+- **Lifecycle control:** Services are expected to start, stop, crash, restart,
+  and eventually upgrade. Stale connections are invalidated, device authority is
+  reclaimed, and clients can rediscover a replacement through the name service.
+
+- **Composability:** Storage, networking, consensus, naming, and drivers are
+  services connected through stable protocols. Implementations can be replaced
+  without moving policy into the kernel.
+
+- **Multicore locality:** The Sitas/shard model assigns mutable state to one
+  owner and uses explicit messages for cross-shard communication. It is intended
+  to scale by partitioning ownership rather than increasing shared-memory locking.
+
+- **Operational observability:** Explicit capability transfers, completion
+  records, service generations, named tests, and well-defined ownership make
+  failures easier to diagnose than systems built from implicit global state.
+
+- **A small kernel trust boundary:** The kernel supplies isolation, scheduling,
+  memory objects, capabilities, IPC, interrupts, and DMA protection.
+  Filesystems, drivers, consensus, and higher-level policy remain outside it.
+
+In short, it optimises for dependable service execution: isolated authority,
+explicit ownership, bounded asynchronous communication, predictable multicore
+locality, and rapid recovery.
+
+That should make it particularly interesting for:
+- Control systems and appliances.
+- Storage or network services with strict latency requirements.
+- Long-running systems that must replace or recover components.
+- Multi-tenant service machines with narrowly delegated authority.
+- Systems where auditable failure behaviour matters more than POSIX compatibility.
+- Distributed machines whose local services participate in replicated naming or state.
+
 ---
 
 ## Programming Languages

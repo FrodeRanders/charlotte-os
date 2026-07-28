@@ -293,7 +293,11 @@ Its main value for CharlotteOS is:
 -   explicit placement;
 -   typed command/reply APIs;
 -   structured shutdown and cancellation;
--   observability through owned snapshots.
+-   observability through owned snapshots. The implemented thread-statistics
+    syscall follows this rule by returning only the caller's address-space
+    records in a memory object by default. The supervisor delegates one typed
+    system-observer capability to the node observability service; presenting
+    it authorizes cross-domain aggregation. It is not ambient kernel authority.
 
 ### 2.3 Xous
 

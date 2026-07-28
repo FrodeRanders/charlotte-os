@@ -174,6 +174,7 @@ pub enum CapabilityKind {
     HandoffState = 4,
     HandoffEndpoint = 5,
     DmaDomain = 6,
+    SystemObserver = 7,
 }
 
 impl CapabilityKind {
@@ -185,6 +186,7 @@ impl CapabilityKind {
             4 => Some(Self::HandoffState),
             5 => Some(Self::HandoffEndpoint),
             6 => Some(Self::DmaDomain),
+            7 => Some(Self::SystemObserver),
             _ => None,
         }
     }

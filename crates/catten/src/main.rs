@@ -132,6 +132,12 @@ pub extern "C" fn bsp_main() -> ! {
             name_service.domain.asid,
             name_service.domain.tid
         );
+        let observer = crate::service::supervisor::start_observability_service(&name_service);
+        logln!(
+            "[node] observability service started (asid={}, tid={})",
+            observer.asid,
+            observer.tid
+        );
     }
     #[cfg(all(
         target_arch = "aarch64",

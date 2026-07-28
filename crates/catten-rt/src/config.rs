@@ -127,6 +127,11 @@ pub fn dma_domain_cap() -> Option<u64> {
     capability(CapabilityKind::DmaDomain)
 }
 
+/// Read the system-observer capability when the supervisor delegated one.
+pub fn system_observer_cap() -> Option<u64> {
+    capability(CapabilityKind::SystemObserver)
+}
+
 /// The per-shard CQ ring base virtual address slot.
 pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 

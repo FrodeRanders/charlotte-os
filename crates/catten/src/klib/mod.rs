@@ -11,4 +11,5 @@ pub mod integer;
 pub mod io;
 pub mod observer;
 pub mod size;
+pub mod statistics;
 pub mod time;

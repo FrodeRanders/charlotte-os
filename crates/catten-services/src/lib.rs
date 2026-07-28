@@ -409,6 +409,25 @@ pub mod socket {
     pub const MAX_SOCKETS: usize = 16;
 }
 
+/// Owned-snapshot observability protocol.
+///
+/// The initial service exports scheduler statistics for its own protection
+/// domain. Other services can expose or voluntarily publish their own
+/// snapshots without granting an observer ambient cross-domain authority.
+pub mod observability {
+    pub const INTERFACE: u64 = super::name(b"OBSERVE");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"observe");
+
+    /// Reply moves a memory object containing the
+    /// `catten_syscall::THREAD_STATISTICS_*` wire format. The scalar result is
+    /// its exact byte length.
+    pub const OP_THREAD_SNAPSHOT: u32 = 1;
+
+    pub const ERR_UNAVAILABLE: i64 = -1;
+    pub const ERR_BAD_OPCODE: i64 = -2;
+}
+
 /// Persistent object store protocol (`charlotte-protocol-objstore` v1).
 pub mod objstore {
     pub const INTERFACE: u64 = super::name(b"OBJSTR ");

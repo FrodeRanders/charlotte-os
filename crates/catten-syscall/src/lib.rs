@@ -96,6 +96,7 @@ pub enum SyscallNumber {
     MemoryGetPhysPage = 56,
     DmaMap = 57,
     DmaUnmap = 58,
+    ThreadStatistics = 59,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -162,12 +163,21 @@ impl TryFrom<u16> for SyscallNumber {
             56 => Ok(Self::MemoryGetPhysPage),
             57 => Ok(Self::DmaMap),
             58 => Ok(Self::DmaUnmap),
+            59 => Ok(Self::ThreadStatistics),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::DmaUnmap as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::ThreadStatistics as u16;
+
+// ---- observability wire format ---------------------------------------------
+
+pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
+pub const THREAD_STATISTICS_VERSION: u64 = 1;
+pub const THREAD_STATISTICS_HEADER_U64S: usize = 6;
+pub const THREAD_STATISTICS_RECORD_U64S: usize = 16;
+pub const OBSERVABILITY_NONE: u64 = u64::MAX;
 
 // ---- op codes --------------------------------------------------------------
 
@@ -1272,4 +1282,13 @@ pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
         memory: 0,
         connection: 0,
     }
+}
+
+/// Snapshot scheduler statistics. With capability zero, the result contains
+/// only threads owned by the caller. A delegated system-observer capability
+/// authorizes a machine-wide snapshot. Returns
+/// `(memory_object_capability, exact_byte_length)`.
+#[inline]
+pub fn thread_statistics_snapshot(system_observer: u64) -> (u64, u64) {
+    unsafe { svc3_x1(SyscallNumber::ThreadStatistics, system_observer, 0, 0) }
 }

@@ -548,6 +548,81 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 0, "owner MEMORY_CLOSE should close original copy source");
     }
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        use catten_syscall::{
+            THREAD_STATISTICS_HEADER_U64S,
+            THREAD_STATISTICS_MAGIC,
+            THREAD_STATISTICS_VERSION,
+        };
+
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::THREAD_STATISTICS);
+        let statistics_cap = f.regs[0];
+        let length = usize::try_from(f.regs[1]).expect("statistics length exceeds usize");
+        assert_ne!(statistics_cap, 0, "THREAD_STATISTICS should return a memory object");
+        assert!(
+            length >= THREAD_STATISTICS_HEADER_U64S * size_of::<u64>(),
+            "THREAD_STATISTICS should return a complete header"
+        );
+        let bytes = crate::memory::object::snapshot_bytes(memory_owner, statistics_cap, length)
+            .expect("statistics snapshot should be readable by its owner");
+        let field = |index: usize| {
+            u64::from_le_bytes(
+                bytes[index * size_of::<u64>()..(index + 1) * size_of::<u64>()]
+                    .try_into()
+                    .expect("statistics field should contain one u64"),
+            )
+        };
+        assert_eq!(field(0), THREAD_STATISTICS_MAGIC);
+        assert_eq!(field(1), THREAD_STATISTICS_VERSION);
+        assert_eq!(
+            usize::try_from(field(3)).expect("record count exceeds usize")
+                * usize::try_from(field(2)).expect("record size exceeds usize")
+                + THREAD_STATISTICS_HEADER_U64S * size_of::<u64>(),
+            length,
+            "THREAD_STATISTICS exact length should match its header"
+        );
+        assert_ne!(field(4), 0, "statistics counter frequency should be reported");
+        crate::memory::object::close_cap(memory_owner, statistics_cap)
+            .expect("statistics memory object should close");
+
+        let mut invalid = synthetic_trap_frame_in(memory_owner, 0, u64::MAX, 0, 0);
+        syscall::syscall_dispatch(&mut invalid, call_no::THREAD_STATISTICS);
+        assert_eq!(
+            (invalid.regs[0], invalid.regs[1]),
+            (0, 0),
+            "an ungranted observer capability must not widen the snapshot"
+        );
+
+        let observer_cap = crate::capability::allocate(
+            memory_owner,
+            crate::capability::ObjectKind::SystemObserver,
+        );
+        let mut system = synthetic_trap_frame_in(memory_owner, 0, observer_cap, 0, 0);
+        syscall::syscall_dispatch(&mut system, call_no::THREAD_STATISTICS);
+        assert_ne!(system.regs[0], 0, "delegated observer should receive a snapshot");
+        let system_bytes = crate::memory::object::snapshot_bytes(
+            memory_owner,
+            system.regs[0],
+            usize::try_from(system.regs[1]).expect("system statistics length exceeds usize"),
+        )
+        .expect("system statistics snapshot should be readable");
+        let system_count = u64::from_le_bytes(
+            system_bytes[3 * size_of::<u64>()..4 * size_of::<u64>()]
+                .try_into()
+                .expect("system statistics count should contain one u64"),
+        );
+        assert_ne!(system_count, 0, "system observer should see scheduler threads");
+        crate::memory::object::close_cap(memory_owner, system.regs[0])
+            .expect("system statistics memory object should close");
+        assert!(crate::capability::remove(
+            memory_owner,
+            observer_cap,
+            crate::capability::ObjectKind::SystemObserver
+        ));
+    }
+
     close_user_address_space(memory_owner).expect("syscall memory owner AS close failed");
     close_user_address_space(memory_server).expect("syscall memory server AS close failed");
 

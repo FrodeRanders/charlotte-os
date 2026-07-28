@@ -334,6 +334,38 @@ pub(crate) fn snapshot_bytes(
     Ok(bytes)
 }
 
+/// Copy kernel-owned bytes into a writable memory object.
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn write_bytes(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    bytes: &[u8],
+) -> Result<(), MemoryObjectError> {
+    let registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(asid, cap)?;
+    if !cap_entry.rights.contains(MemoryObjectRights::MAP_WRITE) {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object =
+        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if bytes.is_empty() || bytes.len() > object.frames.len().saturating_mul(PAGE_SIZE) {
+        return Err(MemoryObjectError::InvalidLength);
+    }
+    let mut copied = 0;
+    for frame in &object.frames {
+        let count = (bytes.len() - copied).min(PAGE_SIZE);
+        if count == 0 {
+            break;
+        }
+        let target: *mut u8 = (*frame).into();
+        unsafe {
+            core::ptr::copy_nonoverlapping(bytes.as_ptr().add(copied), target, count);
+        }
+        copied += count;
+    }
+    Ok(())
+}
+
 pub fn map(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,

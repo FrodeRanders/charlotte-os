@@ -12,6 +12,9 @@ const ECHO_UPGRADE_ELF: &[u8] =
 #[cfg(target_arch = "aarch64")]
 const NODE_NAME_SERVICE_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/ns.elf"));
+#[cfg(target_arch = "aarch64")]
+const OBSERVABILITY_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/observe.elf"));
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
 const NODE_NAME_SERVICE_VERSION: u32 = 1;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
@@ -74,6 +77,12 @@ pub struct NameServiceHandle {
 /// isolated registry must use [`spawn_private_name_service`].
 static NODE_NAME_SERVICE: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+/// The only domain to which the boot supervisor delegates system-wide
+/// telemetry inspection authority.
+static SYSTEM_OBSERVER_ASID: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceId>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// Name-service handle bound to the authorized live-upgrade manager.
@@ -194,6 +203,30 @@ pub fn spawn_with_name_service(
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_manifest(loaded.config_frame, &[]);
     start_domain(loaded)
+}
+
+/// Start the node observability service and delegate the unique
+/// system-observer capability to it.
+pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceDomain {
+    let mut observer = SYSTEM_OBSERVER_ASID.lock();
+    assert!(observer.is_none(), "[supervisor] system observer already started");
+
+    let loaded = loader::load_domain(OBSERVABILITY_ELF);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        ConnectionRights::CALL,
+    )
+    .expect("[supervisor] observer name-service delegation failed");
+    let observer_cap =
+        crate::capability::allocate(loaded.asid, crate::capability::ObjectKind::SystemObserver);
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    bootstrap::write_system_observer_cap(loaded.config_frame, observer_cap);
+    bootstrap::write_manifest(loaded.config_frame, &[]);
+    let domain = start_domain(loaded);
+    *observer = Some(domain.asid);
+    domain
 }
 
 /// Spawn a service with a bootstrap name-service connection and one
