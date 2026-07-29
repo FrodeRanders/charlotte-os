@@ -230,6 +230,7 @@ mod tests {
         vec,
     };
 
+    use crate::types::Peer;
     use super::{
         decode_snapshot_payload,
         wrap_snapshot_payload,
