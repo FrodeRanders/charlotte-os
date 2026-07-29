@@ -142,8 +142,9 @@ a separately delivered detached-timer completion.
 
 This first Raft layer checks election safety only. It represents loss by
 withholding an action and duplication through idempotent same-candidate voting.
-It does not model the transport queue, snapshot installation, membership
-changes, storage write failures, fairness, or eventual election.
+It does not model the transport queue, snapshot installation, storage write
+failures, fairness, or eventual election. Joint membership is checked by the
+separate membership layer below.
 
 ## Raft log replication and commit
 
@@ -159,9 +160,25 @@ changes, storage write failures, fairness, or eventual election.
 The second layer checks log matching, committed-entry agreement, and leader
 completeness under bounded conflict repair and restart. It relies on the first
 layer for election safety rather than reimplementing durable one-vote-per-term
-inside the log model. Snapshots, joint membership, failed storage operations,
-state-machine application, transport framing, and temporal liveness are
-outside this abstraction.
+inside the log model. Snapshots and joint membership are checked by separate
+layers. Failed storage operations, state-machine application, transport
+framing, and temporal liveness are outside this abstraction.
+
+## Raft membership and joint consensus
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must be a current voter and must obtain both current and next voter majorities while joint. Durable voting remains in the election model. |
+| `SubmitJoint` | `submit_joint_configuration`, `submit_command` | Direct for appending the encoded `JOINT` command while the old configuration is authoritative. |
+| `Replicate` | append-response handling and `match_index` | Abstract monotonic replication progress for active voters and learners. Log contents and conflict repair remain in the log model. |
+| `CommitJoint` | `advance_commit_index`, then `apply_configuration_command(Joint)` | The `JOINT` entry commits under its preceding configuration; applying it activates the old/new union and records the finalization fence. |
+| `SubmitFinalize` | `maybe_auto_finalize_joint_configuration` | Direct: every proposed voter and learner must reach the committed joint-entry fence before `FINALIZE` is submitted. |
+| `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. |
+| `Crash` / `Restart` | service-domain exit and `RaftNode::new` | Abstract volatile availability. Durable configuration recovery is checked in the snapshot layer. |
+
+The model represents peer identity and role as voter/learner sets. Peer
+addresses, protobuf encoding, join-request admission, transport retries, and
+temporal availability are outside this abstraction.
 
 ## Raft snapshot installation and recovery
 
@@ -169,14 +186,15 @@ outside this abstraction.
 |---|---|---|
 | `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Direct for ordered chunk accumulation. A mismatched offset is rejected without changing the durable image. |
 | `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. |
-| `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
-| `ActivateSnapshot` | commit/last-applied update and `StateMachine::restore` | Abstract split after durable publication so a crash between persistence and activation is explored. |
+| `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
+| `ActivateSnapshot` | commit/last-applied update, membership reconstruction, and `StateMachine::restore` | Abstract split after durable publication so a crash between persistence and activation is explored. Membership activation also recomputes local decommissioning. |
 | `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
-| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes before exposing its index as committed and applied. |
+| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes and current/next membership before exposing its index as committed and applied. |
 
-The model abstracts snapshot contents to one value and chunks to a bounded
-count. It omits checksums below the object-store interface, network framing,
-storage exhaustion, and state-machine-specific validation of snapshot bytes.
+The model abstracts snapshot contents to one value, membership to peer-ID sets,
+and chunks to a bounded count. It omits peer roles and addresses within those
+sets, checksums below the object-store interface, network framing, storage
+exhaustion, and state-machine-specific validation of snapshot bytes.
 
 ## Unified capability namespace
 

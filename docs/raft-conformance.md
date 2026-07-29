@@ -21,6 +21,13 @@ NVMe object store at the platform boundary.
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
 
+The executable TLA+ suite checks this behavior in complementary bounded
+layers: durable election safety, log replication, joint voter/learner
+membership and automatic finalization, and atomic snapshot recovery of both
+application state and membership. See
+[`tla/README.md`](tla/README.md#raft-election-model) and
+[`tla/CONFORMANCE.md`](tla/CONFORMANCE.md#raft-membership-and-joint-consensus).
+
 ## Intentional platform differences
 
 - The general runtimes frame protobuf envelopes over TCP. CharlotteOS passes
