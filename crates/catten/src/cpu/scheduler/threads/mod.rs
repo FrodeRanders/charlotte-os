@@ -357,6 +357,7 @@ pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot
 
 /// Snapshot all scheduler-visible threads. Callers must enforce the
 /// system-observer capability before invoking this function.
+#[allow(dead_code)]
 pub(crate) fn system_statistics() -> Vec<ThreadStatisticsSnapshot> {
     MASTER_THREAD_TABLE
         .read()
