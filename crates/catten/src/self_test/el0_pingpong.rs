@@ -21,7 +21,6 @@ use crate::completion;
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::memory::paging::AddressSpace;
-#[cfg(target_arch = "aarch64")]
 use crate::logln;
 #[cfg(target_arch = "aarch64")]
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
