@@ -117,6 +117,7 @@ pub fn test_device_capabilities() {
 
         // --- MMIO map / unmap against a real address space -----------------
         test_mmio_map_unmap();
+        test_failed_dma_map_releases_pin();
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
         // the delivery rounds below.
@@ -150,6 +151,32 @@ fn completion_open() {
     // A completion-queue address space so interrupt readiness has somewhere
     // to be delivered (queue 0).
     crate::completion::open_address_space_with_cq(DEV_ASID, 8, 8);
+}
+
+/// A DMA map pins the object before acquiring the SMMU registry. Even when the
+/// domain lookup fails, the pin must be rolled back so the owner can close and
+/// reclaim the object.
+#[cfg(target_arch = "aarch64")]
+fn test_failed_dma_map_releases_pin() {
+    use crate::{
+        device::smmu,
+        memory::{
+            close_user_address_space,
+            object,
+        },
+        service::loader,
+    };
+
+    let asid = loader::create_user_address_space();
+    let memory = object::allocate(asid, 1).expect("[device] DMA rollback object allocation failed");
+    assert_eq!(
+        smmu::map(u64::MAX, asid, memory, smmu::Direction::DEVICE_READ),
+        Err(smmu::Error::UnknownDomain),
+        "[device] invalid DMA domain must reject mapping"
+    );
+    object::close_cap(asid, memory).expect("[device] failed DMA map leaked its memory pin");
+    close_user_address_space(asid).expect("[device] DMA rollback address-space cleanup failed");
+    logln!("[device] failed DMA map released its memory pin");
 }
 
 /// Map an MMIO region capability into a real (non-running) address space as

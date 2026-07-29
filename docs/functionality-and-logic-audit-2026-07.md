@@ -723,6 +723,24 @@ completion still release the wait immediately; only an actual timeout advances
 Raft time. This removes the detached timer completion as a second wake path and
 keeps an otherwise quiet node able to start an election.
 
+### Follow-up: modeled DMA teardown
+
+The executable `CharlotteDMA` model separates object pinning, translation
+publication, translation revocation, pin release, driver exit, and delayed
+memory reclamation. It requires an acknowledged aborting SMMU stream-table
+entry before a domain's mappings can release their pins.
+
+Mapping those transitions to `smmu.rs` found two error paths that violated the
+intended ownership protocol. A map failure after `pin_for_dma` could lose the
+pin token without decrementing the object's pin count. Domain teardown also
+ignored failure to install and acknowledge the aborting stream entry, then
+released pins even though hardware translation state was uncertain. Failed
+maps now remove partial PTEs and explicitly unpin. An invalidation timeout
+after PTE installation instead retains an unpublished internal mapping and pin
+until an acknowledged domain shutdown can reclaim it. Failed teardown retains
+a quarantined domain and its pins; this may leak memory after a broken SMMU,
+but cannot make potentially DMA-reachable frames available for reuse.
+
 The long-term networking document remains a proposal rather than a description
 of current behavior. The code presently provides a frame protocol, compile-only
 smoltcp integration, a local-loopback reliable-message prototype, and an early

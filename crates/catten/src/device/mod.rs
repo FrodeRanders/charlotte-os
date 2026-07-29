@@ -527,8 +527,6 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
             .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(DeviceError::UnknownCapability)?
     };
-    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
-    assert!(revoked, "device payload capability was absent from unified table");
     match object {
         DeviceObject::Mmio(region) => {
             if let Some(base) = region.mapped {
@@ -541,8 +539,16 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
         #[cfg(target_arch = "aarch64")]
         DeviceObject::DmaDomain {
             id,
-        } => smmu::destroy_domain(id),
+        } => {
+            if smmu::destroy_domain(id).is_err() {
+                let mut devices = DEVICES.lock();
+                devices.entry(asid).or_insert_with(AsDeviceCaps::new).caps.insert(cap, object);
+                return Err(DeviceError::DmaInvalid);
+            }
+        }
     }
+    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
+    assert!(revoked, "device payload capability was absent from unified table");
     Ok(())
 }
 
@@ -592,7 +598,15 @@ pub fn close_address_space(asid: AddressSpaceId) {
             #[cfg(target_arch = "aarch64")]
             DeviceObject::DmaDomain {
                 id,
-            } => smmu::destroy_domain(*id),
+            } => {
+                if let Err(error) = smmu::destroy_domain(*id) {
+                    crate::logln!(
+                        "[smmu] quarantining DMA domain {} after teardown failure: {:?}",
+                        id,
+                        error
+                    );
+                }
+            }
         }
     }
 }

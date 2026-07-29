@@ -264,22 +264,36 @@ impl Domain {
         Ok(parent)
     }
 
-    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, Error> {
+    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
         let pages = pin.frames().len();
-        let bytes = (pages as u64).checked_mul(PAGE_SIZE as u64).ok_or(Error::OutOfIova)?;
+        let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
+            return Err((Error::OutOfIova, pin));
+        };
         let iova = self.next_iova;
-        self.next_iova = self
+        let Some(next_iova) = self
             .next_iova
             .checked_add(bytes)
             .and_then(|next| next.checked_add(PAGE_SIZE as u64 - 1))
             .map(|next| next & !(PAGE_SIZE as u64 - 1))
-            .ok_or(Error::OutOfIova)?;
+        else {
+            return Err((Error::OutOfIova, pin));
+        };
         let writable = direction.device_writes();
         for (index, frame) in pin.frames().iter().copied().enumerate() {
             let address = iova + (index * PAGE_SIZE) as u64;
-            self.map_page(address, frame, writable)?;
+            if let Err(error) = self.map_page(address, frame, writable) {
+                for rollback_index in 0..index {
+                    let rollback_address = iova + (rollback_index * PAGE_SIZE) as u64;
+                    let l3 = self.l3_tables[&(rollback_address >> 21)];
+                    let slot = ((rollback_address >> 12) & 0x1ff) as usize;
+                    unsafe { (*l3.into_hhdm_mut::<PageTable>())[slot].clear() };
+                }
+                barrier();
+                return Err((error, pin));
+            }
         }
         barrier();
+        self.next_iova = next_iova;
         self.mappings.insert(
             iova,
             Mapping {
@@ -309,9 +323,10 @@ impl Domain {
         let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
         for index in 0..mapping.pages {
             let address = iova + (index * PAGE_SIZE) as u64;
-            let Some(l3) = self.l3_tables.get(&(address >> 21)).copied() else {
-                return Err(Error::MapFailed);
-            };
+            let l3 = *self
+                .l3_tables
+                .get(&(address >> 21))
+                .expect("tracked SMMU mapping lost its page table");
             let slot = ((address >> 12) & 0x1ff) as usize;
             unsafe { (*l3.into_hhdm_mut::<PageTable>())[slot].clear() };
         }
@@ -522,14 +537,30 @@ pub fn map(
         direction.device_writes(),
     )
     .map_err(|_| Error::Memory)?;
-    with_smmu(|smmu| {
+    let mut pending_pin = Some(pin);
+    let result = with_smmu(|smmu| {
         let (iova, asid) = {
             let domain = smmu.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
-            (domain.map(pin, direction)?, domain.asid)
+            let pin = pending_pin.take().expect("DMA pin consumed twice");
+            match domain.map(pin, direction) {
+                Ok(iova) => (iova, domain.asid),
+                Err((error, pin)) => {
+                    pending_pin = Some(pin);
+                    return Err(error);
+                }
+            }
         };
+        // If hardware does not acknowledge this invalidation, keep the
+        // internal mapping and its pin until domain destruction successfully
+        // installs an aborting STE. Returning no IOVA makes the failed mapping
+        // unreachable to the driver.
         smmu.invalidate_asid(asid)?;
         Ok(iova)
-    })
+    });
+    if let Some(pin) = pending_pin {
+        object::unpin_dma(pin);
+    }
+    result
 }
 
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
@@ -545,15 +576,19 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn destroy_domain(domain_id: u64) {
+pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     let mappings = with_smmu(|smmu| {
-        let Some(mut domain) = smmu.domains.remove(&domain_id) else {
+        let Some(domain) = smmu.domains.get(&domain_id) else {
             return Ok(Vec::new());
         };
         let sid = domain.sid;
+        // Do not release mappings or their memory pins until the aborting STE
+        // has been acknowledged. On timeout the domain remains quarantined:
+        // leaking authority is preferable to freeing frames a device may
+        // still be able to translate.
+        smmu.write_ste(sid, None)?;
+        let mut domain = smmu.domains.remove(&domain_id).expect("SMMU domain disappeared");
         let mappings = core::mem::take(&mut domain.mappings).into_values().collect::<Vec<_>>();
-        let _ = smmu.invalidate_asid(domain.asid);
-        let _ = smmu.write_ste(sid, None);
         smmu.streams.remove(&sid);
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in domain.table_frames {
@@ -561,11 +596,11 @@ pub fn destroy_domain(domain_id: u64) {
         }
         let _ = allocator.deallocate_frame(domain.cd);
         Ok(mappings)
-    })
-    .unwrap_or_default();
+    })?;
     for mapping in mappings {
         object::unpin_dma(mapping.pin);
     }
+    Ok(())
 }
 
 /// Handle an SMMU event or global-error interrupt without taking the SMMU

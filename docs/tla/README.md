@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for five
+This directory contains finite, executable specifications for seven
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -10,6 +10,8 @@ CharlotteOS subsystems:
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
+| DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
+| Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
@@ -27,7 +29,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all five complete fast configurations;
+- runs all seven complete fast configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -50,6 +52,14 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteCapability -config CharlotteCapability_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteDMA -config CharlotteDMA_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRaft -config CharlotteRaft_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -233,6 +243,40 @@ target handle, while rollback alone may restore the exact original handle.
 The invariants reject future/unallocated handles, require tags to remain below
 the namespace's next serial, and require an active move transaction's source
 authority to remain revoked.
+
+## DMA and SMMUv3 model
+
+`CharlotteDMA.tla` separates memory pinning, page-table installation,
+translation revocation, pin release, driver exit, and memory reclamation. A
+domain-destruction timeout enters a quarantined state: mappings and pins remain
+live because hardware may still hold a usable translation.
+
+The invariants require every hardware-visible mapping to belong to the same
+driver as its memory object, every mapped or transitional object to remain
+pinned and unfreed, one domain per requester stream, and acknowledged stream
+revocation before domain resources can be finalized.
+
+Developing the model found two concrete error-path defects. A failed map could
+drop its `DmaPin` token without decrementing the memory object's pin count, and
+domain destruction ignored failure to install and acknowledge the aborting
+stream-table entry before releasing pins. The implementation now rolls
+pre-installation failures back, retains an unpublished pinned mapping after an
+uncertain invalidation, and quarantines a domain on teardown failure.
+
+## Raft election model
+
+`CharlotteRaft.tla` is the first layer of the consensus specification. It
+models a fixed voter set, durable term and vote updates, election retries,
+majority formation, higher-term step-down, crashes, restarts, lost requests,
+and duplicate grants. A three-voter, two-term configuration explores 22,838
+distinct states.
+
+The invariants require volatile state recovered by a running node to match its
+durable state, every observed vote to have been durably recorded, every leader
+to hold a majority, and at most one leader per term. Log matching, commit
+safety, snapshots, membership changes, and temporal election liveness are
+explicitly deferred to later layers rather than hidden inside this election
+model.
 
 ## Relationship to formal verification
 

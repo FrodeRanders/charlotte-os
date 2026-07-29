@@ -66,3 +66,9 @@ run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
     Load Start Publish RequestStop Exit Reap Teardown
 run_model CharlotteCapability CharlotteCapability_small.cfg \
     Allocate Remove DelegateCopy BeginMove CommitMove RollbackMove CloseAddressSpace
+run_model CharlotteDMA CharlotteDMA_small.cfg \
+    CreateMemory CreateDomain BeginMap CommitMap QuarantineMap FailMap RevokeMap ReleasePin \
+    BeginDestroy AcknowledgeDestroy QuarantineDestroy FinalizeDomain \
+    CloseMemory ExitDriver ReclaimMemory
+run_model CharlotteRaft CharlotteRaft_small.cfg \
+    StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart

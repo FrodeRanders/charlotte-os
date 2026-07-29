@@ -75,7 +75,7 @@ invalidate either queued identities or already delivered capabilities.
 ## Deliberately omitted behavior
 
 The models currently omit vector IPC, connection attachments, multiple memory
-attachments, memory contents, page mappings, DMA pins, completion observers,
+attachments, memory contents, CPU page mappings, completion observers,
 detached operations, timeout races, address-space validation failures and
 cross-registry rollback steps.
 
@@ -112,6 +112,39 @@ The userspace Raft reactor applies the same single-wait discipline: a bounded
 CQ wait is released by endpoint/transport readiness or supplies the next
 election-clock tick on timeout. It does not combine an indefinite CQ wait with
 a separately delivered detached-timer completion.
+
+## DMA and SMMUv3 lifecycle
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `CreateMemory` | `memory::object::allocate` | Abstract: frame count, physical addresses and ordinary CPU mappings are omitted. |
+| `CreateDomain` | `device::grant_dma_domain`, `smmu::create_domain` | Direct for unique requester-stream ownership and domain authority. Page-table allocation is omitted. |
+| `BeginMap` | `memory::object::pin_for_dma` | Direct: rights are checked and the complete object is pinned before entering the SMMU registry. |
+| `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. |
+| `FailMap` | partial-PTE cleanup and `memory::object::unpin_dma` | Direct rollback for failures before complete PTE installation, including unknown-domain lookup. |
+| `QuarantineMap` | failed `invalidate_asid` after `Domain::map` | Direct safety policy: the unpublished internal mapping retains its pin because hardware translation state is uncertain. A later acknowledged domain destroy reclaims it. |
+| `RevokeMap` / `ReleasePin` | `Domain::clear_mapping`, `invalidate_asid`, then `unpin_dma` | Direct ordering: translation removal is acknowledged before the object becomes reclaimable. |
+| `BeginDestroy` | `smmu::destroy_domain` before the aborting STE is acknowledged | Abstract in-progress management state under the SMMU lock. |
+| `AcknowledgeDestroy` | successful `write_ste(sid, None)` | Direct linearization point at which the requester stream is forced to abort and mappings may be consumed. |
+| `QuarantineDestroy` | `destroy_domain` error return | Direct safety policy: the domain and pins remain retained when hardware acknowledgement is uncertain. |
+| `ExitDriver` | `device::close_address_space`, `memory::object::close_address_space` | Abstract bulk teardown; pinned owned memory becomes `destroy_when_unpinned`. |
+| `ReclaimMemory` | final `unpin_dma` for a destroy-pending object | Direct for last-pin removal, capability cleanup and frame reclamation. |
+
+## Raft election and durable voting
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `StartElection` | `RaftNode::start_election` | Abstract atomic transition. Rust persists the incremented term and self-vote before sending vote requests. |
+| `GrantVote` | `handle_vote_request`, followed by `handle_vote_response` | Abstract delivery pair. Voter persistence precedes its response; candidate vote sets deduplicate peer IDs. Log freshness is omitted. |
+| `BecomeLeader` | `has_election_majority`, `become_leader` | Direct for a fixed voter set and distinct-voter majority. Leader no-op append is deferred to the log layer. |
+| `ObserveHigherTerm` | `step_down` from request or response handling | Direct for durable term advancement, vote clearing and candidate-vote reset. |
+| `Crash` / `Restart` | service-domain exit and reconstruction through `RaftNode::new` | Abstract: volatile role and collected votes disappear; term and vote reload from `PersistentStateStore`. |
+
+This first Raft layer checks election safety only. It represents loss by
+withholding an action and duplication through idempotent same-candidate voting.
+It does not yet model the transport queue, log replication, commit indices,
+snapshot installation, membership changes, storage write failures, fairness,
+or eventual election.
 
 ## Unified capability namespace
 
