@@ -195,6 +195,10 @@ extern "C" fn verify_el0_nvme() {
     assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(1)) }, 2 * 1024 * 1024 + 4096);
     assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(2)) }, ECHO_ELF.len() as u32);
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");
+    // The completion service reports that the client finished its work, not
+    // that the scheduler has reaped its initial thread. Wait for that separate
+    // lifecycle event before releasing the address space.
+    supervisor::wait_domain_exit(&object_client, 10_000);
     supervisor::teardown_domain(object_client);
     crate::self_test::el0_service::verify_persistent_upgrade(&ns);
     crate::self_test::el0_raft::test_persistent_raft(&ns);
