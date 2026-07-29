@@ -2,7 +2,10 @@
 #![no_std]
 #![no_main]
 
-use catten_rt::{Context, config};
+use catten_rt::{
+    Context,
+    config,
+};
 use catten_services::{
     net,
     ns,

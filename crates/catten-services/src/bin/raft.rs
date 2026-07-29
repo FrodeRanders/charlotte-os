@@ -124,8 +124,7 @@ fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
         memory_close(cap);
         return None;
     }
-    let value =
-        unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, length).to_vec() };
+    let value = unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, length).to_vec() };
     memory_unmap(cap);
     memory_close(cap);
     Some(value)

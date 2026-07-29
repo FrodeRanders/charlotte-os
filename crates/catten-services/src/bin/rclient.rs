@@ -124,12 +124,10 @@ fn main(ctx: Context) -> ! {
     if shutdown != 0 {
         let _ = unsafe { wait_reply(shutdown, 0) };
     }
-    config::write::<u32>(4, u32::from_be_bytes([
-        peer_mac[2],
-        peer_mac[3],
-        peer_mac[4],
-        peer_mac[5],
-    ]));
+    config::write::<u32>(
+        4,
+        u32::from_be_bytes([peer_mac[2], peer_mac[3], peer_mac[4], peer_mac[5]]),
+    );
     config::write::<u32>(0, SENTINEL);
     unsafe { thread_exit() };
 }
