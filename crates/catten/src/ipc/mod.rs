@@ -182,7 +182,9 @@ struct QueuedMessage {
     sender: AddressSpaceId,
     opcode: u32,
     arg0: u64,
-    reply: Option<CapabilityId>,
+    /// Internal token identity. The receiver-visible capability is allocated
+    /// only when this message is dequeued.
+    reply: Option<ReplyTokenId>,
     memory: Vec<MemoryObjectCap>,
     connection: Option<CapabilityId>,
 }
@@ -626,14 +628,7 @@ pub fn scalar_call(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
-    let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token_cap))?;
+    let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token))?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -764,13 +759,6 @@ fn scalar_call_with_connection_impl(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
     let server_memory_vec: Vec<MemoryObjectCap> = server_memory_cap.into_iter().collect();
     let delivery = enqueue_message(
         &mut ipc,
@@ -778,7 +766,7 @@ fn scalar_call_with_connection_impl(
         caller,
         opcode,
         arg0,
-        Some(token_cap),
+        Some(token),
         server_memory_vec,
         Some(attached_cap),
     )?;
@@ -837,20 +825,13 @@ pub fn scalar_call_with_memory_move(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
         opcode,
         arg0,
-        Some(token_cap),
+        Some(token),
         Some(server_memory_cap),
     )?;
     drop(ipc);
@@ -908,20 +889,13 @@ pub fn scalar_call_with_memory_copy(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
         opcode,
         arg0,
-        Some(token_cap),
+        Some(token),
         Some(server_memory_cap),
     )?;
     drop(ipc);
@@ -1009,20 +983,13 @@ fn scalar_call_with_memory_borrow(
             }),
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
         caller,
         opcode,
         arg0,
-        Some(token_cap),
+        Some(token),
         Some(server_memory_cap),
     )?;
     drop(ipc);
@@ -1051,7 +1018,7 @@ fn enqueue_scalar(
     sender: AddressSpaceId,
     opcode: u32,
     arg0: u64,
-    reply: Option<CapabilityId>,
+    reply: Option<ReplyTokenId>,
 ) -> Result<Delivery, IpcError> {
     enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, Vec::new(), None)
 }
@@ -1062,7 +1029,7 @@ fn enqueue_scalar_with_memory(
     sender: AddressSpaceId,
     opcode: u32,
     arg0: u64,
-    reply: Option<CapabilityId>,
+    reply: Option<ReplyTokenId>,
     memory: Option<MemoryObjectCap>,
 ) -> Result<Delivery, IpcError> {
     let memory_vec: Vec<MemoryObjectCap> = memory.into_iter().collect();
@@ -1076,7 +1043,7 @@ fn enqueue_message(
     sender: AddressSpaceId,
     opcode: u32,
     arg0: u64,
-    reply: Option<CapabilityId>,
+    reply: Option<ReplyTokenId>,
     memory: Vec<MemoryObjectCap>,
     connection: Option<CapabilityId>,
 ) -> Result<Delivery, IpcError> {
@@ -1130,24 +1097,51 @@ pub fn receive(
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
 
-    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-    if endpoint.closed {
-        return Err(IpcError::EndpointClosed);
-    }
-    let message = endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?;
+    let (message, interface, version) = {
+        let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+        if endpoint.closed {
+            return Err(IpcError::EndpointClosed);
+        }
+        (
+            endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?,
+            endpoint.interface,
+            endpoint.version,
+        )
+    };
+    let reply = install_reply_cap(&mut ipc, receiver, message.reply)?;
     // Scalar receive returns at most the first memory cap for backward
     // compatibility. Vector receive (receive_vec) returns all of them.
     let first_memory = message.memory.first().copied();
     Ok(ScalarMessage {
         sender: message.sender,
-        interface: endpoint.interface,
-        version: endpoint.version,
+        interface,
+        version,
         opcode: message.opcode,
         arg0: message.arg0,
-        reply: message.reply,
+        reply,
         memory: first_memory,
         connection: message.connection,
     })
+}
+
+fn install_reply_cap(
+    ipc: &mut IpcRegistry,
+    receiver: AddressSpaceId,
+    token: Option<ReplyTokenId>,
+) -> Result<Option<CapabilityId>, IpcError> {
+    let Some(token) = token else {
+        return Ok(None);
+    };
+    let reply = ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?;
+    if reply.server != receiver || reply.consumed {
+        return Err(IpcError::PermissionDenied);
+    }
+    Ok(Some(ipc.as_caps(receiver).insert(
+        receiver,
+        Capability::ReplyToken {
+            token,
+        },
+    )))
 }
 
 pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Result<(), IpcError> {
@@ -1439,14 +1433,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                 Vec::new()
             };
             for message in queued {
-                if let Some(reply_cap) = message.reply {
-                    consume_reply_cap(
-                        &mut ipc,
-                        asid,
-                        reply_cap,
-                        REPLY_ENDPOINT_CLOSED,
-                        &mut observers,
-                    );
+                if let Some(token) = message.reply {
+                    consume_reply_token(&mut ipc, token, REPLY_ENDPOINT_CLOSED, &mut observers);
                 }
                 for memory_cap in &message.memory {
                     let _ = crate::memory::object::close_cap(asid, *memory_cap);
@@ -1480,19 +1468,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         Capability::ReplyToken {
             token,
         } => {
-            if let Some(token) = ipc.reply_tokens.remove(&token) {
-                if let Some(borrow) = token.borrow {
-                    let _ = revoke_memory_borrow(borrow);
-                }
-                if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
-                    call.result = Some(ReplyValue {
-                        result: REPLY_CANCELLED,
-                        cap: None,
-                        memory: None,
-                    });
-                    observers.extend(drain_observers(&call.observers));
-                }
-            }
+            consume_reply_token(&mut ipc, token, REPLY_CANCELLED, &mut observers);
         }
         Capability::Connection {
             ..
@@ -1540,19 +1516,12 @@ pub fn close_address_space(asid: AddressSpaceId) {
     }
 }
 
-fn consume_reply_cap(
+fn consume_reply_token(
     ipc: &mut IpcRegistry,
-    server: AddressSpaceId,
-    reply_cap: CapabilityId,
+    token: ReplyTokenId,
     result: i64,
     observers: &mut Vec<Weak<dyn Observer>>,
 ) {
-    let token = match ipc.remove_cap(server, reply_cap) {
-        Ok(Capability::ReplyToken {
-            token,
-        }) => token,
-        _ => return,
-    };
     if let Some(token) = ipc.reply_tokens.remove(&token) {
         if let Some(borrow) = token.borrow {
             let _ = revoke_memory_borrow(borrow);
@@ -1574,23 +1543,14 @@ fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
         .iter()
         .filter_map(|(token_id, token)| {
             if token.call == call {
-                Some((
-                    *token_id,
-                    token.server,
-                    token.borrow,
-                    reply_cap_for_token(ipc, token.server, *token_id),
-                ))
+                Some((*token_id, token.server, token.borrow))
             } else {
                 None
             }
         })
         .collect::<Vec<_>>();
-    for (token, server, borrow, reply_cap) in tokens {
-        if let Some(reply_cap) = reply_cap {
-            cancel_queued_message_with_reply(ipc, server, reply_cap, borrow);
-        } else if let Some(borrow) = borrow {
-            let _ = revoke_memory_borrow(borrow);
-        }
+    for (token, server, borrow) in tokens {
+        cancel_queued_message_with_token(ipc, server, token, borrow);
         ipc.reply_tokens.remove(&token);
         ipc.remove_matching_caps(
             server,
@@ -1601,38 +1561,17 @@ fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
     }
 }
 
-fn reply_cap_for_token(
-    ipc: &IpcRegistry,
-    server: AddressSpaceId,
-    token: ReplyTokenId,
-) -> Option<CapabilityId> {
-    ipc.caps.get(&server).and_then(|caps| {
-        caps.caps.iter().find_map(|(cap_id, cap)| {
-            if *cap
-                == (Capability::ReplyToken {
-                    token,
-                })
-            {
-                Some(*cap_id)
-            } else {
-                None
-            }
-        })
-    })
-}
-
-fn cancel_queued_message_with_reply(
+fn cancel_queued_message_with_token(
     ipc: &mut IpcRegistry,
     server: AddressSpaceId,
-    reply_cap: CapabilityId,
+    token: ReplyTokenId,
     borrow: Option<MemoryBorrow>,
 ) {
     for endpoint in ipc.endpoints.values_mut() {
         if endpoint.owner != server {
             continue;
         }
-        if let Some(index) =
-            endpoint.queue.iter().position(|message| message.reply == Some(reply_cap))
+        if let Some(index) = endpoint.queue.iter().position(|message| message.reply == Some(token))
         {
             if let Some(message) = endpoint.queue.remove(index) {
                 if let Some(borrow) = borrow {
@@ -1682,18 +1621,25 @@ pub fn receive_vec(
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
 
-    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-    if endpoint.closed {
-        return Err(IpcError::EndpointClosed);
-    }
-    let message = endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?;
+    let (message, interface, version) = {
+        let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+        if endpoint.closed {
+            return Err(IpcError::EndpointClosed);
+        }
+        (
+            endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?,
+            endpoint.interface,
+            endpoint.version,
+        )
+    };
+    let reply = install_reply_cap(&mut ipc, receiver, message.reply)?;
     let response = ScalarMessage {
         sender: message.sender,
-        interface: endpoint.interface,
-        version: endpoint.version,
+        interface,
+        version,
         opcode: message.opcode,
         arg0: message.arg0,
-        reply: message.reply,
+        reply,
         memory: message.memory.first().copied(),
         connection: message.connection,
     };
@@ -1808,20 +1754,13 @@ pub fn vector_call(
             borrow: None,
         },
     );
-    let token_cap = ipc.as_caps(server).insert(
-        server,
-        Capability::ReplyToken {
-            token,
-        },
-    );
-
     let delivery = match enqueue_message(
         &mut ipc,
         endpoint_id,
         caller,
         opcode,
         arg0,
-        Some(token_cap),
+        Some(token),
         memory_caps,
         None,
     ) {
@@ -1830,8 +1769,6 @@ pub fn vector_call(
             let _ = ipc.as_caps(caller).caps.remove(&call_cap);
             crate::capability::remove(caller, call_cap, crate::capability::ObjectKind::Ipc);
             ipc.pending_calls.remove(&call);
-            let _ = ipc.as_caps(server).caps.remove(&token_cap);
-            crate::capability::remove(server, token_cap, crate::capability::ObjectKind::Ipc);
             ipc.reply_tokens.remove(&token);
             rollback_vector_transfers(caller, server, &mut applied);
             return Err(error);

@@ -33,9 +33,8 @@ TimerId   == 1 .. MaxTimers
 \* 2. TYPES
 \* -----------------------------------------------------------------------------
 
-\* Operation states.
-OpState == {"Created", "Submitted", "Accepted", "InFlight", "Completed",
-            "Failed", "Cancelled", "ResultObserved", "Reclaimed"}
+\* Completion::OpState, plus Reclaimed for a removed capability slot.
+OpState == {"InFlight", "CancelPending", "Completed", "Observed", "Reclaimed"}
 
 \* A completion entry delivered to a CQ ring.
 CompletionEntry == [
@@ -52,7 +51,7 @@ Operation == [
     state    : OpState,
     cq       : CqId \cup {0},
     buffer   : 0 .. MaxOps,
-    observed : BOOLEAN
+    cqDrained : BOOLEAN
 ]
 
 \* A CQ ring (shared-memory ring buffer between kernel and userspace).
@@ -105,7 +104,7 @@ Init ==
           state    |-> "Reclaimed",
           cq       |-> 0,
           buffer   |-> 0,
-          observed |-> TRUE
+          cqDrained |-> TRUE
        ]]
     /\ cqRings = [c \in CqId |-> [
           owner    |-> NullAsid,
@@ -137,9 +136,6 @@ Init ==
 
 CanAllocOp    == nextOpId \in OpId
 CanAllocTimer == nextTimerId \in TimerId
-IsTimerOp(opId) ==
-    \E timerId \in TimerId :
-        timers[timerId].op = opId /\ ~timers[timerId].fired
 
 \* Post a completion to a CQ ring. If the ring is full, store in backlog.
 \* Also wakes any waiter on this CQ.
@@ -164,15 +160,15 @@ PostCompletion(cqId, entry) ==
 \* 6. TRANSITIONS
 \* -----------------------------------------------------------------------------
 
-\* -- 6.1 Submit an operation (no buffer) ------------------------------------
+\* -- 6.1 Submit an operation (no buffer). Rust creates it InFlight. ---------
 SubmitNoBuffer(as, cqId) ==
     /\ CanAllocOp
     /\ cqRings[cqId].owner = as
     /\ ~cqRings[cqId].closed
     /\ LET opId == nextOpId
        IN /\ operations' = [operations EXCEPT ![opId] = [
-                op |-> opId, owner |-> as, state |-> "Submitted",
-                cq |-> cqId, buffer |-> 0, observed |-> FALSE]]
+                op |-> opId, owner |-> as, state |-> "InFlight",
+                cq |-> cqId, buffer |-> 0, cqDrained |-> FALSE]]
           /\ nextOpId' = nextOpId + 1
     /\ UNCHANGED <<cqRings, timers, waiters, nextTimerId>>
 
@@ -184,53 +180,42 @@ SubmitWithBuffer(as, cqId, bufId) ==
     /\ bufId /= 0
     /\ LET opId == nextOpId
        IN /\ operations' = [operations EXCEPT ![opId] = [
-                op |-> opId, owner |-> as, state |-> "Submitted",
-                cq |-> cqId, buffer |-> bufId, observed |-> FALSE]]
+                op |-> opId, owner |-> as, state |-> "InFlight",
+                cq |-> cqId, buffer |-> bufId, cqDrained |-> FALSE]]
           /\ nextOpId' = nextOpId + 1
     /\ UNCHANGED <<cqRings, timers, waiters, nextTimerId>>
 
-\* -- 6.3 Kernel accepts and starts the operation -----------------------------
-Accept(opId) ==
-    /\ operations[opId].state = "Submitted"
-    /\ operations[opId].owner /= NullAsid
-    /\ operations' = [operations EXCEPT ![opId].state = "InFlight"]
-    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
-
-\* -- 6.4 Operation completes normally ----------------------------------------
+\* -- 6.3 Operation completes normally ----------------------------------------
 Complete(opId, resultVal) ==
-    /\ operations[opId].state \in {"InFlight"}
-    /\ ~IsTimerOp(opId)
+    /\ operations[opId].state \in {"InFlight", "CancelPending"}
     /\ LET op  == operations[opId]
            cq  == op.cq
        IN /\ op.owner /= NullAsid
           /\ /\ operations' = [operations EXCEPT ![opId].state = "Completed"]
-             /\ PostCompletion(cq, [operation |-> opId, status |-> "Ok",
-                                    result |-> resultVal, buffer |-> op.buffer])
+             /\ PostCompletion(cq, [operation |-> opId,
+                    status |-> IF op.state = "CancelPending"
+                               THEN "Cancelled" ELSE "Ok",
+                    result |-> resultVal, buffer |-> op.buffer])
     /\ UNCHANGED <<timers, nextOpId, nextTimerId>>
 
-\* -- 6.5 Operation fails -----------------------------------------------------
+\* -- 6.4 Operation fails -----------------------------------------------------
 Fail(opId, resultVal) ==
-    /\ operations[opId].state \in {"InFlight", "Submitted"}
-    /\ ~IsTimerOp(opId)
+    /\ operations[opId].state \in {"InFlight", "CancelPending"}
     /\ LET op  == operations[opId]
            cq  == op.cq
        IN /\ op.owner /= NullAsid
-          /\ /\ operations' = [operations EXCEPT ![opId].state = "Failed"]
-             /\ PostCompletion(cq, [operation |-> opId, status |-> "Failed",
-                                    result |-> resultVal, buffer |-> op.buffer])
+          /\ /\ operations' = [operations EXCEPT ![opId].state = "Completed"]
+             /\ PostCompletion(cq, [operation |-> opId,
+                    status |-> IF op.state = "CancelPending"
+                               THEN "Cancelled" ELSE "Failed",
+                    result |-> resultVal, buffer |-> op.buffer])
     /\ UNCHANGED <<timers, nextOpId, nextTimerId>>
 
-\* -- 6.6 Cancel an in-flight operation ---------------------------------------
+\* -- 6.5 Request cancellation. Rust defers the terminal completion. ----------
 CancelOp(opId) ==
-    /\ operations[opId].state \in {"Submitted", "InFlight"}
-    /\ ~IsTimerOp(opId)
-    /\ LET op  == operations[opId]
-           cq  == op.cq
-       IN /\ op.owner /= NullAsid
-          /\ /\ operations' = [operations EXCEPT ![opId].state = "Cancelled"]
-             /\ PostCompletion(cq, [operation |-> opId, status |-> "Cancelled",
-                                    result |-> 0, buffer |-> op.buffer])
-    /\ UNCHANGED <<timers, nextOpId, nextTimerId>>
+    /\ operations[opId].state = "InFlight"
+    /\ operations' = [operations EXCEPT ![opId].state = "CancelPending"]
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
 
 \* -- 6.7 Userspace drains one entry from a CQ ring ---------------------------
 DrainOne(as, cqId) ==
@@ -251,7 +236,7 @@ DrainOne(as, cqId) ==
                               ![cqId].backlog = newBacklog,
                               ![cqId].gen = IF refill THEN ring.gen + 1
                                            ELSE ring.gen]
-          /\ operations' = [operations EXCEPT ![opId].observed = TRUE]
+          /\ operations' = [operations EXCEPT ![opId].cqDrained = TRUE]
     /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId>>
 
 \* -- 6.8 Userspace drains ALL entries from a CQ ring -------------------------
@@ -276,7 +261,7 @@ DrainAll(as, cqId) ==
                                           ![cqId].gen      = ring.gen + 1]
           /\ operations' = [op \in OpId |->
                IF op \in obsOps
-               THEN [operations[op] EXCEPT !.observed = TRUE]
+               THEN [operations[op] EXCEPT !.cqDrained = TRUE]
                ELSE operations[op]]
     /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId>>
 
@@ -310,7 +295,7 @@ SubmitTimer(as, cqId, timeout) ==
            timerId == nextTimerId
        IN /\ operations' = [operations EXCEPT ![opId] = [
                 op |-> opId, owner |-> as, state |-> "InFlight",
-                cq |-> cqId, buffer |-> 0, observed |-> FALSE]]
+                cq |-> cqId, buffer |-> 0, cqDrained |-> FALSE]]
           /\ timers' = [timers EXCEPT ![timerId] = [
                 timer |-> timerId, owner |-> as, op |-> opId, fired |-> FALSE]]
           /\ nextOpId'    = nextOpId + 1
@@ -322,10 +307,12 @@ TimerFire(timerId) ==
     /\ ~timers[timerId].fired
     /\ LET opId == timers[timerId].op
            op   == operations[opId]
-       IN /\ op.state = "InFlight"
+       IN /\ op.state \in {"InFlight", "CancelPending"}
           /\ timers' = [timers EXCEPT ![timerId].fired = TRUE]
           /\ operations' = [operations EXCEPT ![opId].state = "Completed"]
-          /\ PostCompletion(op.cq, [operation |-> opId, status |-> "TimerFired",
+          /\ PostCompletion(op.cq, [operation |-> opId,
+                                    status |-> IF op.state = "CancelPending"
+                                               THEN "Cancelled" ELSE "TimerFired",
                                     result |-> 0, buffer |-> 0])
     /\ UNCHANGED <<nextOpId, nextTimerId>>
 
@@ -338,10 +325,15 @@ OpenCq(as, cqId) ==
                                    ![cqId].gen    = cqRings[cqId].gen + 1]
     /\ UNCHANGED <<operations, timers, waiters, nextOpId, nextTimerId>>
 
-\* -- 6.15 Reclaim an observed operation ---------------------------------------
+\* -- 6.14 Observe a capability result through poll/take ----------------------
+ObserveResult(opId) ==
+    /\ operations[opId].state = "Completed"
+    /\ operations' = [operations EXCEPT ![opId].state = "Observed"]
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
+
+\* -- 6.15 Revoke a terminal completion capability ----------------------------
 Reclaim(opId) ==
-    /\ operations[opId].observed
-    /\ operations[opId].state \in {"Completed", "Failed", "Cancelled"}
+    /\ operations[opId].state \in {"Completed", "Observed"}
     /\ operations' = [operations EXCEPT ![opId].state = "Reclaimed"]
     /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
 
@@ -355,7 +347,6 @@ Next ==
             SubmitNoBuffer(as, cqId)
     \/ \E as \in ASID : \E cqId \in CqId : \E buf \in (1 .. MaxOps) :
             SubmitWithBuffer(as, cqId, buf)
-    \/ \E opId \in OpId : Accept(opId)
     \/ \E opId \in OpId : \E r \in 0 .. 3 : Complete(opId, r)
     \/ \E opId \in OpId : \E r \in 0 .. 3 : Fail(opId, r)
     \/ \E opId \in OpId : CancelOp(opId)
@@ -366,6 +357,7 @@ Next ==
     \/ \E as \in ASID : \E cqId \in CqId : \E t \in 0 .. 3 :
             SubmitTimer(as, cqId, t)
     \/ \E timerId \in TimerId : TimerFire(timerId)
+    \/ \E opId \in OpId : ObserveResult(opId)
     \/ \E opId \in OpId : Reclaim(opId)
 
 Spec == Init /\ [][Next]_vars
@@ -387,36 +379,21 @@ TypeOK ==
     /\ nextOpId \in 1 .. (MaxOps + 1)
     /\ nextTimerId \in 1 .. (MaxTimers + 1)
 
-\* I1: Non-lossy terminal completions.
-\*     If an operation is in a terminal state (Completed/Failed/Cancelled),
-\*     its completion is either in the CQ ring entries, in the backlog,
-\*     or has been observed by the user (drained).
+\* I1: Non-lossy CQ delivery. Until userspace drains an operation's CQ entry,
+\*     it remains in the shared ring or the kernel backlog. Polling the
+\*     completion capability is independent and may set state=Observed first.
 CompletionIsTracked ==
     \A opId \in OpId :
         LET op == operations[opId]
-        IN op.state \in {"Completed", "Failed", "Cancelled"} =>
-           (op.observed
+        IN op.state \in {"Completed", "Observed"} =>
+           (op.cqDrained
             \/ \E c \in CqId :
                  (\E i \in 1 .. Len(cqRings[c].entries) :
                       cqRings[c].entries[i].operation = opId)
                  \/ (\E i \in 1 .. Len(cqRings[c].backlog) :
                       cqRings[c].backlog[i].operation = opId))
 
-\* I2: A terminal operation is either awaiting observation or has been
-\*     observed; it cannot be both tracked in a CQ and marked observed.
-TerminalTrackingExclusive ==
-    \A opId \in OpId :
-        LET op == operations[opId]
-            tracked ==
-                \E c \in CqId :
-                    (\E i \in 1 .. Len(cqRings[c].entries) :
-                        cqRings[c].entries[i].operation = opId)
-                    \/ (\E i \in 1 .. Len(cqRings[c].backlog) :
-                        cqRings[c].backlog[i].operation = opId)
-        IN op.state \in {"Completed", "Failed", "Cancelled"} =>
-            (op.observed <=> ~tracked)
-
-\* I3: Ring boundedness. Ring entries never exceed capacity.
+\* I2: Ring boundedness. Ring entries never exceed capacity.
 RingBounded ==
     \A c \in CqId :
         Len(cqRings[c].entries) <= cqRings[c].capacity
@@ -445,19 +422,18 @@ CqOwnerValid ==
 \* I7: Operation references the correct CQ.
 OpCqValid ==
     \A opId \in OpId :
-        operations[opId].state \notin {"Reclaimed", "Created"} =>
+        operations[opId].state /= "Reclaimed" =>
             operations[opId].cq /= 0
 
 \* I8: Timer fired implies operation completed (or later reclaimed).
 TimerFiredImpliesCompleted ==
     \A t \in TimerId :
         timers[t].fired /\ timers[t].op /= 0 =>
-            operations[timers[t].op].state \in {"Completed", "Reclaimed"}
+            operations[timers[t].op].state \in {"Completed", "Observed", "Reclaimed"}
 
 Invariants ==
     /\ TypeOK
     /\ CompletionIsTracked
-    /\ TerminalTrackingExclusive
     /\ RingBounded
     /\ WaiterValid
     /\ NoLostWakeups

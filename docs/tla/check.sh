@@ -52,7 +52,7 @@ run_model() {
 cd "${script_dir}"
 run_model CharlotteIPC CharlotteIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
-    ScalarCallCopy ReplyReturnMemory ReplyRevokeBorrow EndpointClose \
+    ScalarCallCopy Receive ReplyReturnMemory EndpointClose \
     DomainTeardown
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
-    Complete Fail CancelOp DrainOne DrainAll CqWait CqWake TimerFire
+    Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire

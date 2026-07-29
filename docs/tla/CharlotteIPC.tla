@@ -125,7 +125,7 @@ ReplyToken == [
     token    : TokenId \cup {0},
     server   : ASID \cup {NullAsid},
     call     : CallId \cup {0},
-    delivered: BOOLEAN,
+    delivered : BOOLEAN,
     consumed : BOOLEAN,
     borrow   : MemId \cup {0}
 ]
@@ -197,6 +197,16 @@ AllocCap(as, cap) ==
 FreeCap(as, cid) ==
     /\ capTable' = [capTable EXCEPT ![as][cid] = NullCap]
 
+\* Remove every receiver-visible reply capability for the selected internal
+\* token identities. This models cancellation and teardown invalidation.
+RemoveReplyCaps(table, tokenIds) ==
+    [as \in ASID |->
+        [cid \in CapId |->
+            IF table[as][cid].kind = "ReplyTokenCap"
+               /\ table[as][cid].token \in tokenIds
+            THEN NullCap
+            ELSE table[as][cid]]]
+
 \* Revoke every borrow represented by a set of reply tokens.  This operator
 \* is used by endpoint close and domain teardown so completion and ownership
 \* restoration remain one abstract atomic transition.
@@ -237,7 +247,7 @@ Init ==
           token    |-> t,
           server   |-> NullAsid,
           call     |-> 0,
-          delivered|-> TRUE,
+          delivered |-> TRUE,
           consumed |-> TRUE,
           borrow   |-> 0
        ]]
@@ -329,7 +339,7 @@ ScalarSend(sender, connCid, opcode, arg0) ==
 ScalarCall(caller, connCid, opcode, arg0) ==
     /\ capTable[caller][connCid].kind = "ConnectionCap"
     /\ Authorized(capTable[caller][connCid], "call")
-    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(2)
+    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(1)
     /\ LET epid    == capTable[caller][connCid].ep
            e       == endpoints[epid]
            server  == e.owner
@@ -339,7 +349,6 @@ ScalarCall(caller, connCid, opcode, arg0) ==
           /\ LET callid    == nextCallId
                  tokid     == nextTokenId
                  pcapCid   == nextCapId
-                 tokCapCid == nextCapId + 1
                  msg   == [sender |-> caller, opcode |-> opcode, arg0 |-> arg0,
                            reply |-> tokid, mem |-> 0, memMode |-> "None",
                            conn |-> 0]
@@ -352,11 +361,10 @@ ScalarCall(caller, connCid, opcode, arg0) ==
                 /\ replyTokens' = [replyTokens EXCEPT ![tokid] = token]
                 /\ pendingCalls' = [pendingCalls EXCEPT ![callid] = pcall]
                 /\ capTable'    = [capTable EXCEPT
-                       ![caller][pcapCid]   = PendingCallCap(callid),
-                       ![server][tokCapCid] = ReplyTokenCap(tokid)]
+                       ![caller][pcapCid] = PendingCallCap(callid)]
                 /\ nextCallId'  = nextCallId + 1
                 /\ nextTokenId' = nextTokenId + 1
-                /\ nextCapId'   = nextCapId + 2
+                /\ nextCapId'   = nextCapId + 1
                 /\ UNCHANGED <<memObjects, nextEpId, nextMemId>>
 
 \* -- 6.5 ScalarCall with memory move -----------------------------------------
@@ -364,7 +372,7 @@ ScalarCallMove(caller, connCid, opcode, arg0, memCid) ==
     /\ capTable[caller][connCid].kind = "ConnectionCap"
     /\ Authorized(capTable[caller][connCid], "call")
     /\ capTable[caller][memCid].kind = "MemoryCap"
-    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(3)
+    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(2)
     /\ LET epid    == capTable[caller][connCid].ep
            e       == endpoints[epid]
            mid     == capTable[caller][memCid].mem
@@ -377,8 +385,7 @@ ScalarCallMove(caller, connCid, opcode, arg0, memCid) ==
           /\ LET callid    == nextCallId
                  tokid     == nextTokenId
                  pcapCid   == nextCapId
-                 tokCapCid == nextCapId + 1
-                 cap3Cid   == nextCapId + 2
+                 cap3Cid   == nextCapId + 1
                  msg   == [sender |-> caller, opcode |-> opcode, arg0 |-> arg0,
                            reply |-> tokid, mem |-> mid, memMode |-> "Move",
                            conn |-> 0]
@@ -395,11 +402,10 @@ ScalarCallMove(caller, connCid, opcode, arg0, memCid) ==
                 /\ capTable'    = [capTable EXCEPT
                        ![caller][memCid]    = NullCap,
                        ![caller][pcapCid]   = PendingCallCap(callid),
-                       ![server][tokCapCid] = ReplyTokenCap(tokid),
                        ![server][cap3Cid]   = MemoryCap(mid)]
                 /\ nextCallId'  = nextCallId + 1
                 /\ nextTokenId' = nextTokenId + 1
-                /\ nextCapId'   = nextCapId + 3
+                /\ nextCapId'   = nextCapId + 2
                 /\ UNCHANGED <<nextEpId, nextMemId>>
 
 \* -- 6.6 ScalarCall with borrow-read -----------------------------------------
@@ -407,7 +413,7 @@ ScalarCallBorrowRead(caller, connCid, opcode, arg0, memCid) ==
     /\ capTable[caller][connCid].kind = "ConnectionCap"
     /\ Authorized(capTable[caller][connCid], "call")
     /\ capTable[caller][memCid].kind = "MemoryCap"
-    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(2)
+    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(1)
     /\ LET epid    == capTable[caller][connCid].ep
            e       == endpoints[epid]
            mid     == capTable[caller][memCid].mem
@@ -422,7 +428,6 @@ ScalarCallBorrowRead(caller, connCid, opcode, arg0, memCid) ==
           /\ LET callid    == nextCallId
                  tokid     == nextTokenId
                  pcapCid   == nextCapId
-                 tokCapCid == nextCapId + 1
                  msg   == [sender |-> caller, opcode |-> opcode, arg0 |-> arg0,
                            reply |-> tokid, mem |-> mid, memMode |-> "BorrowRead",
                            conn |-> 0]
@@ -439,11 +444,10 @@ ScalarCallBorrowRead(caller, connCid, opcode, arg0, memCid) ==
                        ![mid].lender  = caller,
                        ![mid].borrows = mo.borrows \cup {server}]
                 /\ capTable'    = [capTable EXCEPT
-                       ![caller][pcapCid]   = PendingCallCap(callid),
-                       ![server][tokCapCid] = ReplyTokenCap(tokid)]
+                       ![caller][pcapCid] = PendingCallCap(callid)]
                 /\ nextCallId'  = nextCallId + 1
                 /\ nextTokenId' = nextTokenId + 1
-                /\ nextCapId'   = nextCapId + 2
+                /\ nextCapId'   = nextCapId + 1
                 /\ UNCHANGED <<nextEpId, nextMemId>>
 
 \* -- 6.7 ScalarCall with borrow-write ----------------------------------------
@@ -451,7 +455,7 @@ ScalarCallBorrowWrite(caller, connCid, opcode, arg0, memCid) ==
     /\ capTable[caller][connCid].kind = "ConnectionCap"
     /\ Authorized(capTable[caller][connCid], "call")
     /\ capTable[caller][memCid].kind = "MemoryCap"
-    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(2)
+    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(1)
     /\ LET epid    == capTable[caller][connCid].ep
            e       == endpoints[epid]
            mid     == capTable[caller][memCid].mem
@@ -466,7 +470,6 @@ ScalarCallBorrowWrite(caller, connCid, opcode, arg0, memCid) ==
           /\ LET callid    == nextCallId
                  tokid     == nextTokenId
                  pcapCid   == nextCapId
-                 tokCapCid == nextCapId + 1
                  msg   == [sender |-> caller, opcode |-> opcode, arg0 |-> arg0,
                            reply |-> tokid, mem |-> mid, memMode |-> "BorrowWrite",
                            conn |-> 0]
@@ -482,11 +485,10 @@ ScalarCallBorrowWrite(caller, connCid, opcode, arg0, memCid) ==
                                                        ![mid].lender = caller,
                                                        ![mid].owner  = server]
                 /\ capTable'    = [capTable EXCEPT
-                       ![caller][pcapCid]   = PendingCallCap(callid),
-                       ![server][tokCapCid] = ReplyTokenCap(tokid)]
+                       ![caller][pcapCid] = PendingCallCap(callid)]
                 /\ nextCallId'  = nextCallId + 1
                 /\ nextTokenId' = nextTokenId + 1
-                /\ nextCapId'   = nextCapId + 2
+                /\ nextCapId'   = nextCapId + 1
                 /\ UNCHANGED <<nextEpId, nextMemId>>
 
 \* -- 6.7b ScalarCall with memory copy ---------------------------------------
@@ -494,7 +496,7 @@ ScalarCallCopy(caller, connCid, opcode, arg0, memCid) ==
     /\ capTable[caller][connCid].kind = "ConnectionCap"
     /\ Authorized(capTable[caller][connCid], "call")
     /\ capTable[caller][memCid].kind = "MemoryCap"
-    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(3)
+    /\ CanAllocCall /\ CanAllocToken /\ CanAllocCaps(2)
     /\ CanAllocMem
     /\ LET epid    == capTable[caller][connCid].ep
            e       == endpoints[epid]
@@ -511,8 +513,7 @@ ScalarCallCopy(caller, connCid, opcode, arg0, memCid) ==
                  callid    == nextCallId
                  tokid     == nextTokenId
                  pcapCid   == nextCapId
-                 tokCapCid == nextCapId + 1
-                 memCapCid == nextCapId + 2
+                 memCapCid == nextCapId + 1
                  msg   == [sender |-> caller, opcode |-> opcode, arg0 |-> arg0,
                            reply |-> tokid, mem |-> cmid, memMode |-> "Copy",
                            conn |-> 0]
@@ -531,11 +532,10 @@ ScalarCallCopy(caller, connCid, opcode, arg0, memCid) ==
                                     borrows |-> {}]]
                 /\ capTable'    = [capTable EXCEPT
                        ![caller][pcapCid]   = PendingCallCap(callid),
-                       ![server][tokCapCid] = ReplyTokenCap(tokid),
                        ![server][memCapCid] = MemoryCap(newMid)]
                 /\ nextCallId'  = nextCallId + 1
                 /\ nextTokenId' = nextTokenId + 1
-                /\ nextCapId'   = nextCapId + 3
+                /\ nextCapId'   = nextCapId + 2
                 /\ nextMemId'   = nextMemId + 1
                 /\ UNCHANGED <<nextEpId>>
 
@@ -547,14 +547,21 @@ Receive(server, epCid) ==
            e    == endpoints[epid]
        IN /\ e.owner = server
           /\ e.queue /= <<>>
-          /\ endpoints' = [endpoints EXCEPT ![epid].queue = Tail(e.queue)]
-          /\ LET tokid == Head(e.queue).reply
-             IN IF tokid /= 0
-                THEN replyTokens' =
-                    [replyTokens EXCEPT ![tokid].delivered = TRUE]
-                ELSE UNCHANGED replyTokens
-    /\ UNCHANGED <<capTable, pendingCalls, memObjects,
-                   nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
+          /\ LET msg == Head(e.queue)
+             IN /\ endpoints' = [endpoints EXCEPT ![epid].queue = Tail(e.queue)]
+                /\ IF msg.reply = 0
+                   THEN /\ UNCHANGED <<capTable, replyTokens, nextCapId>>
+                   ELSE /\ CanAllocCaps(1)
+                        /\ ~replyTokens[msg.reply].consumed
+                        /\ ~replyTokens[msg.reply].delivered
+                        /\ replyTokens[msg.reply].server = server
+                        /\ capTable' = [capTable EXCEPT
+                              ![server][nextCapId] = ReplyTokenCap(msg.reply)]
+                        /\ replyTokens' = [replyTokens EXCEPT
+                              ![msg.reply].delivered = TRUE]
+                        /\ nextCapId' = nextCapId + 1
+    /\ UNCHANGED <<pendingCalls, memObjects,
+                   nextEpId, nextTokenId, nextCallId, nextMemId>>
 
 \* -- 6.9 Reply (scalar result only) ------------------------------------------
 Reply(server, tokenCid, resultVal) ==
@@ -564,13 +571,14 @@ Reply(server, tokenCid, resultVal) ==
        IN /\ tok.server = server
           /\ tok.delivered
           /\ ~tok.consumed
-          /\ tok.borrow = 0
           /\ pendingCalls[tok.call].result = NoResult
           /\ replyTokens' = [replyTokens EXCEPT ![tokid].consumed = TRUE]
           /\ pendingCalls' = [pendingCalls EXCEPT ![tok.call].result =
                                   [value |-> resultVal, mem |-> 0]]
+          /\ memObjects' = [m \in MemId |->
+                  RevokeTokenBorrows(m, {tokid})]
           /\ capTable'    = [capTable EXCEPT ![server][tokenCid] = NullCap]
-    /\ UNCHANGED <<endpoints, memObjects,
+    /\ UNCHANGED <<endpoints,
                    nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
 
 \* -- 6.10 Reply with memory return (move or copy back) -----------------------
@@ -583,49 +591,26 @@ ReplyReturnMemory(server, tokenCid, memCid, resultVal) ==
            mo    == memObjects[mid]
        IN /\ tok.server = server /\ ~tok.consumed
           /\ tok.delivered
-          /\ tok.borrow = 0
           /\ mo.state \in {"Moved", "Owned"} /\ mo.owner = server
           /\ pendingCalls[tok.call].result = NoResult
           /\ LET caller == pendingCalls[tok.call].caller
              IN /\ replyTokens'   = [replyTokens EXCEPT ![tokid].consumed = TRUE]
                 /\ pendingCalls'  = [pendingCalls EXCEPT ![tok.call].result =
                                          [value |-> resultVal, mem |-> mid]]
-                /\ memObjects'    = [memObjects EXCEPT ![mid].owner = caller,
-                                                         ![mid].state = "Owned"]
+                /\ memObjects'    = [m \in MemId |->
+                       LET revoked == RevokeTokenBorrows(m, {tokid})
+                       IN IF m = mid
+                          THEN [revoked EXCEPT !.owner = caller,
+                                               !.state = "Owned",
+                                               !.lender = NullAsid,
+                                               !.borrows = {}]
+                          ELSE revoked]
                 /\ capTable'      = [capTable EXCEPT ![server][tokenCid] = NullCap,
                                                       ![server][memCid]   = NullCap]
     /\ UNCHANGED <<endpoints,
                    nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
 
-\* -- 6.11 Reply that revokes a borrow ---------------------------------------
-ReplyRevokeBorrow(server, tokenCid, resultVal) ==
-    /\ capTable[server][tokenCid].kind = "ReplyTokenCap"
-    /\ LET tokid == capTable[server][tokenCid].token
-           tok   == replyTokens[tokid]
-       IN /\ tok.server = server /\ ~tok.consumed
-          /\ tok.delivered
-          /\ tok.borrow /= 0
-          /\ pendingCalls[tok.call].result = NoResult
-          /\ LET mid == tok.borrow
-                 mo  == memObjects[mid]
-             IN /\ replyTokens' = [replyTokens EXCEPT ![tokid].consumed = TRUE]
-                /\ pendingCalls' = [pendingCalls EXCEPT ![tok.call].result =
-                                        [value |-> resultVal, mem |-> 0]]
-                /\ memObjects'  = [memObjects EXCEPT ![mid] =
-                       CASE mo.state = "BorrowedR" ->
-                           [mo EXCEPT !.borrows = mo.borrows \ {server},
-                                      !.state   = IF mo.borrows \ {server} = {}
-                                                  THEN "Owned" ELSE "BorrowedR"]
-                       [] mo.state = "BorrowedW" ->
-                           [mo EXCEPT !.owner  = mo.lender,
-                                      !.lender = NullAsid,
-                                      !.state  = "Owned"]
-                       [] OTHER -> mo]
-                /\ capTable'    = [capTable EXCEPT ![server][tokenCid] = NullCap]
-    /\ UNCHANGED <<endpoints,
-                   nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
-
-\* -- 6.12 Cancel pending call ------------------------------------------------
+\* -- 6.11 Cancel pending call ------------------------------------------------
 CancelPendingCall(caller, callCid) ==
     /\ capTable[caller][callCid].kind = "PendingCallCap"
     /\ LET callid == capTable[caller][callCid].call
@@ -653,7 +638,9 @@ CancelPendingCall(caller, callCid) ==
                                                    !.state  = "Owned"]
                                     [] OTHER -> mo]
                         ELSE UNCHANGED memObjects
-                     /\ capTable' = [capTable EXCEPT ![caller][callCid] = NullCap]
+                     /\ capTable' =
+                          [RemoveReplyCaps(capTable, {tokid}) EXCEPT
+                               ![caller][callCid] = NullCap]
     /\ UNCHANGED <<endpoints,
                    nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
 
@@ -739,9 +726,10 @@ DomainTeardown(as) ==
                                        !.lender = NullAsid,
                                        !.state  = "Owned"]
                   ELSE revoked]
-          \* Remove all caps owned by this AS.
-          /\ capTable' = [capTable EXCEPT ![as] =
-                              [cid \in CapId |-> NullCap]]
+          \* Remove all caps owned by this AS and any delivered reply
+          \* authority invalidated by cancellation of its calls.
+          /\ capTable' = [RemoveReplyCaps(capTable, TokensToConsume) EXCEPT
+                              ![as] = [cid \in CapId |-> NullCap]]
     /\ UNCHANGED <<nextCapId, nextEpId, nextTokenId, nextCallId, nextMemId>>
 
 \* -- 6.15 Observe a pending call result --------------------------------------
@@ -783,8 +771,6 @@ Next ==
             Reply(as, cid, r)
     \/ \E as \in ASID : \E cid, cid2 \in CapId : \E r \in {0,1} :
             ReplyReturnMemory(as, cid, cid2, r)
-    \/ \E as \in ASID : \E cid \in CapId : \E r \in {0,1} :
-            ReplyRevokeBorrow(as, cid, r)
     \/ \E as \in ASID : \E cid \in CapId : CancelPendingCall(as, cid)
     \/ \E as \in ASID : \E cid \in CapId : EndpointClose(as, cid)
     \/ \E as \in ASID : DomainTeardown(as)
@@ -855,6 +841,17 @@ TokenServer ==
              /\ capTable[as][cid].token /= 0)
             => (replyTokens[capTable[as][cid].token].server = as)
 
+\* I8: Reply authority exists precisely for a live token whose message has
+\*     been received. Queuing an internal token identity is not authority.
+ReplyCapabilityAfterDelivery ==
+    \A t \in TokenId :
+        ((~replyTokens[t].consumed /\ replyTokens[t].delivered)
+         <=> \E as \in ASID : \E cid \in CapId :
+                capTable[as][cid] = ReplyTokenCap(t))
+    /\ \A t2 \in TokenId :
+        Cardinality({ pair \in ASID \X CapId :
+            capTable[pair[1]][pair[2]] = ReplyTokenCap(t2) }) <= 1
+
 \* I9: No dangling memory caps. A cap to a memory object is only held by
 \*     address spaces that have a valid relationship to it.
 NoDanglingMemCaps ==
@@ -874,16 +871,21 @@ TokenCallValid ==
         (replyTokens[tok2].call /= 0 /\ ~replyTokens[tok2].consumed) =>
             (pendingCalls[replyTokens[tok2].call].caller /= NullAsid)
 
-\* I11: Borrow revocation on completion. If a pending call completes (result set)
-\*      and its reply token had an attached borrow, the borrowed memory object
-\*      must be back in Owned state.
-BorrowRevokedOnCompletion ==
-    \A c \in CallId :
-        LET pcall == pendingCalls[c]
-        IN (pcall.result /= NoResult /\ pcall.caller /= NullAsid)
-           => \A t \in TokenId :
-                (replyTokens[t].call = c /\ replyTokens[t].borrow /= 0)
-                => memObjects[replyTokens[t].borrow].state = "Owned"
+\* I11: Every remaining borrow is justified by a live reply token. Completing
+\*      one read borrow need not make the object Owned when another live call
+\*      concurrently borrows the same object.
+BorrowBackedByActiveToken ==
+    /\ \A m \in MemId : \A borrower \in memObjects[m].borrows :
+        \E t \in TokenId :
+            /\ ~replyTokens[t].consumed
+            /\ replyTokens[t].borrow = m
+            /\ replyTokens[t].server = borrower
+    /\ \A m2 \in MemId :
+        memObjects[m2].state = "BorrowedW" =>
+            \E t2 \in TokenId :
+                /\ ~replyTokens[t2].consumed
+                /\ replyTokens[t2].borrow = m2
+                /\ replyTokens[t2].server = memObjects[m2].owner
 
 Invariants ==
     /\ TypeOK
@@ -894,8 +896,9 @@ Invariants ==
     /\ ExclusiveBorrowWrite
     /\ NoMixedBorrows
     /\ TokenServer
+    /\ ReplyCapabilityAfterDelivery
     /\ NoDanglingMemCaps
     /\ TokenCallValid
-    /\ BorrowRevokedOnCompletion
+    /\ BorrowBackedByActiveToken
 
 =============================================================================
