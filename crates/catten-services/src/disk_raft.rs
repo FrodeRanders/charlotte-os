@@ -234,6 +234,49 @@ fn serialize_entries(entries: &[LogEntry]) -> Vec<u8> {
     buf
 }
 
+const LOG_STATE_MAGIC: &[u8; 8] = b"CRFTLOG1";
+const LOG_STATE_HEADER_LEN: usize = 40;
+
+fn serialize_log_state(
+    snapshot_index: u64,
+    snapshot_term: u64,
+    snapshot: &[u8],
+    entries: &[LogEntry],
+) -> Vec<u8> {
+    let encoded_entries = serialize_entries(entries);
+    let mut buf =
+        Vec::with_capacity(LOG_STATE_HEADER_LEN + snapshot.len() + encoded_entries.len());
+    buf.extend_from_slice(LOG_STATE_MAGIC);
+    buf.extend_from_slice(&snapshot_index.to_le_bytes());
+    buf.extend_from_slice(&snapshot_term.to_le_bytes());
+    buf.extend_from_slice(&(snapshot.len() as u64).to_le_bytes());
+    buf.extend_from_slice(&(encoded_entries.len() as u64).to_le_bytes());
+    buf.extend_from_slice(snapshot);
+    buf.extend_from_slice(&encoded_entries);
+    buf
+}
+
+fn deserialize_log_state(buf: &[u8]) -> Option<(u64, u64, Vec<u8>, Vec<LogEntry>)> {
+    if buf.len() < LOG_STATE_HEADER_LEN || &buf[..8] != LOG_STATE_MAGIC {
+        return None;
+    }
+    let snapshot_index = u64::from_le_bytes(buf[8..16].try_into().ok()?);
+    let snapshot_term = u64::from_le_bytes(buf[16..24].try_into().ok()?);
+    let snapshot_len = usize::try_from(u64::from_le_bytes(buf[24..32].try_into().ok()?)).ok()?;
+    let entries_len = usize::try_from(u64::from_le_bytes(buf[32..40].try_into().ok()?)).ok()?;
+    let snapshot_end = LOG_STATE_HEADER_LEN.checked_add(snapshot_len)?;
+    let entries_end = snapshot_end.checked_add(entries_len)?;
+    if entries_end != buf.len() {
+        return None;
+    }
+    let snapshot = buf[LOG_STATE_HEADER_LEN..snapshot_end].to_vec();
+    let entries = deserialize_entries(&buf[snapshot_end..entries_end]);
+    if serialize_entries(&entries).len() != entries_len {
+        return None;
+    }
+    Some((snapshot_index, snapshot_term, snapshot, entries))
+}
+
 // ---------------------------------------------------------------------------
 // PersistentStateStore
 // ---------------------------------------------------------------------------
@@ -338,7 +381,7 @@ impl DiskLogStore {
             return None;
         }
 
-        let (snapshot_idx, snapshot_term) =
+        let legacy_snapshot =
             if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
                 if buf.len() < 16 {
                     (0, 0)
@@ -352,30 +395,50 @@ impl DiskLogStore {
                 (0, 0)
             };
 
-        let snapshot_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
+        let legacy_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
+        let log_bytes = obj_read(obj_conn, objects.log).unwrap_or_default();
+        let (snapshot_idx, snapshot_term, snapshot_data, entries) =
+            if let Some(state) = deserialize_log_state(&log_bytes) {
+                state
+            } else if log_bytes.starts_with(LOG_STATE_MAGIC) {
+                // Never reinterpret a corrupt or unsupported unified record
+                // as the legacy entry stream.
+                return None;
+            } else {
+                (
+                    legacy_snapshot.0,
+                    legacy_snapshot.1,
+                    legacy_data,
+                    deserialize_entries(&log_bytes),
+                )
+            };
 
-        let entries = if let Some(buf) = obj_read(obj_conn, objects.log) {
-            deserialize_entries(&buf)
-        } else {
-            Vec::new()
-        };
-
-        Some(Self {
+        let store = Self {
             obj_conn,
             objects,
             entries: Mutex::new(entries),
             snapshot_idx: Mutex::new(snapshot_idx),
             snapshot_term: Mutex::new(snapshot_term),
             snapshot_data: Mutex::new(snapshot_data),
-        })
+        };
+        // Migrate the former three-object representation to one atomic
+        // copy-on-write object before it is used for further mutations.
+        if !log_bytes.starts_with(LOG_STATE_MAGIC) {
+            store.persist_log_state();
+        }
+        Some(store)
     }
 
-    fn persist_log(&self) {
-        let entries = self.entries.lock();
-        let data = serialize_entries(&entries);
+    fn persist_log_state(&self) {
+        let entries = self.entries.lock().clone();
+        let snapshot_idx = *self.snapshot_idx.lock();
+        let snapshot_term = *self.snapshot_term.lock();
+        let snapshot_data = self.snapshot_data.lock().clone();
+        let data =
+            serialize_log_state(snapshot_idx, snapshot_term, &snapshot_data, &entries);
         assert!(
             obj_write(self.obj_conn, self.objects.log, &data) && obj_flush(self.obj_conn),
-            "failed to persist Raft log"
+            "failed to persist Raft log state"
         );
     }
 }
@@ -438,7 +501,7 @@ impl LogStore for DiskLogStore {
 
     fn append(&self, new_entries: Vec<LogEntry>) {
         self.entries.lock().extend(new_entries);
-        self.persist_log();
+        self.persist_log_state();
     }
 
     fn truncate_from(&self, index: u64) {
@@ -448,7 +511,7 @@ impl LogStore for DiskLogStore {
         }
         let offset = (index - base - 1) as usize;
         self.entries.lock().truncate(offset);
-        self.persist_log();
+        self.persist_log_state();
     }
 
     fn entries_from(&self, index: u64) -> Vec<LogEntry> {
@@ -484,14 +547,7 @@ impl LogStore for DiskLogStore {
         entries.drain(0..offset);
         *self.snapshot_idx.lock() = index;
         *self.snapshot_term.lock() = compacted_term;
-        let mut meta = [0u8; 16];
-        meta[0..8].copy_from_slice(&index.to_le_bytes());
-        meta[8..16].copy_from_slice(&compacted_term.to_le_bytes());
-        assert!(
-            obj_write(self.obj_conn, self.objects.snapshot_meta, &meta),
-            "failed to persist Raft snapshot metadata"
-        );
-        self.persist_log();
+        self.persist_log_state();
     }
 
     fn snapshot_data(&self) -> Vec<u8> {
@@ -499,18 +555,25 @@ impl LogStore for DiskLogStore {
     }
 
     fn install_snapshot(&self, index: u64, term: u64, data: Vec<u8>) {
-        self.entries.lock().clear();
+        let mut entries = self.entries.lock();
+        let old_base = *self.snapshot_idx.lock();
+        let retain_from = if index == old_base && term == *self.snapshot_term.lock() {
+            Some(0)
+        } else if index > old_base {
+            let offset = (index - old_base - 1) as usize;
+            (offset < entries.len() && entries[offset].term == term).then_some(offset + 1)
+        } else {
+            None
+        };
+        if let Some(retain_from) = retain_from {
+            entries.drain(0..retain_from);
+        } else {
+            entries.clear();
+        }
+        drop(entries);
         *self.snapshot_idx.lock() = index;
         *self.snapshot_term.lock() = term;
         *self.snapshot_data.lock() = data.clone();
-        let mut meta = [0u8; 16];
-        meta[0..8].copy_from_slice(&index.to_le_bytes());
-        meta[8..16].copy_from_slice(&term.to_le_bytes());
-        assert!(
-            obj_write(self.obj_conn, self.objects.snapshot_meta, &meta)
-                && obj_write(self.obj_conn, self.objects.snapshot_data, &data),
-            "failed to persist Raft snapshot"
-        );
-        self.persist_log();
+        self.persist_log_state();
     }
 }

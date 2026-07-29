@@ -100,6 +100,11 @@ impl RaftNode {
         let current_term = persistent_state.current_term();
         let voted_for = persistent_state.voted_for();
         let snapshot_index = log_store.snapshot_index();
+        if snapshot_index > 0
+            && let Some(ref machine) = state_machine
+        {
+            machine.restore(&log_store.snapshot_data());
+        }
 
         let seed =
             me.id.as_bytes().iter().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(*b as u64));
@@ -459,6 +464,21 @@ impl RaftNode {
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
         self.known_leader_id = Some(req.leader_id);
 
+        // A delayed or retried snapshot must never move application progress
+        // backwards or replace a newer snapshot/log. A successful completed
+        // response lets the leader resume AppendEntries at the following
+        // index.
+        if req.last_included_index <= self.commit_index {
+            self.pending_snapshot = None;
+            return InstallSnapshotResponse {
+                term: self.current_term,
+                success: true,
+                last_included_index: req.last_included_index,
+                next_offset: req.offset.saturating_add(req.data.len() as u64),
+                done: true,
+            };
+        }
+
         if req.offset == 0 {
             self.pending_snapshot = Some(PendingSnapshot {
                 last_included_index: req.last_included_index,
@@ -758,17 +778,32 @@ mod tests {
         log_store::{
             InMemoryLogStore,
             InMemoryPersistentStateStore,
+            LogStore,
         },
+        state_machine::StateMachine,
         transport::NoopTransport,
         types::{
             AppendEntriesRequest,
             AppendEntriesResponse,
             InstallSnapshotRequest,
+            LogEntry,
             NodeState,
             Peer,
             VoteResponse,
         },
     };
+
+    struct RecordingStateMachine {
+        restored: Arc<spin::Mutex<Vec<u8>>>,
+    }
+
+    impl StateMachine for RecordingStateMachine {
+        fn apply(&self, _term: u64, _command: &[u8]) {}
+
+        fn restore(&self, snapshot_data: &[u8]) {
+            *self.restored.lock() = snapshot_data.to_vec();
+        }
+    }
 
     fn node_with_voters(ids: &[&str]) -> RaftNode {
         let peers: Vec<Peer> = ids.iter().map(|id| Peer::voter((*id).to_string(), 0)).collect();
@@ -872,6 +907,75 @@ mod tests {
         assert_eq!(node.persistent_state.current_term(), 5);
         assert_eq!(node.persistent_state.voted_for(), None);
         assert_eq!(node.known_leader_id.as_deref(), Some("n2"));
+    }
+
+    #[test]
+    fn restart_restores_persisted_snapshot_before_marking_it_applied() {
+        let log_store = InMemoryLogStore::new();
+        log_store.install_snapshot(4, 3, vec![9, 8, 7]);
+        let restored = Arc::new(spin::Mutex::new(Vec::new()));
+
+        let node = RaftNode::new(RaftNodeConfig {
+            me: Peer::voter("n1".to_string(), 0),
+            timeout_millis: 150,
+            log_store: Box::new(log_store),
+            persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+            state_machine: Some(Box::new(RecordingStateMachine {
+                restored: restored.clone(),
+            })),
+            cluster_configuration: vec![Peer::voter("n1".to_string(), 0)],
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+        });
+
+        assert_eq!(&*restored.lock(), &[9, 8, 7]);
+        assert_eq!(node.commit_index, 4);
+        assert_eq!(node.last_applied, 4);
+    }
+
+    #[test]
+    fn stale_snapshot_cannot_regress_committed_progress() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.log_store.install_snapshot(5, 2, vec![5]);
+        node.commit_index = 5;
+        node.last_applied = 5;
+
+        let response = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: node.current_term,
+                leader_id: "n2".to_string(),
+                last_included_index: 3,
+                last_included_term: 1,
+                offset: 0,
+                data: vec![3],
+                done: true,
+            },
+            201,
+        );
+
+        assert!(response.success);
+        assert!(response.done);
+        assert_eq!(node.log_store.snapshot_index(), 5);
+        assert_eq!(node.log_store.snapshot_data(), vec![5]);
+        assert_eq!(node.commit_index, 5);
+        assert_eq!(node.last_applied, 5);
+    }
+
+    #[test]
+    fn snapshot_install_retains_a_matching_log_suffix() {
+        let store = InMemoryLogStore::new();
+        store.append(vec![
+            LogEntry::new(1, "n1".to_string(), vec![1]),
+            LogEntry::new(2, "n1".to_string(), vec![2]),
+            LogEntry::new(3, "n1".to_string(), vec![3]),
+        ]);
+
+        store.install_snapshot(2, 2, vec![8]);
+
+        assert_eq!(store.snapshot_index(), 2);
+        assert_eq!(store.last_index(), 3);
+        assert_eq!(store.term_at(3), 3);
+        assert_eq!(store.entry_at(3).unwrap().data, vec![3]);
     }
 
     #[test]

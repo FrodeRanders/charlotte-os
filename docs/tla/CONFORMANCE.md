@@ -163,6 +163,21 @@ inside the log model. Snapshots, joint membership, failed storage operations,
 state-machine application, transport framing, and temporal liveness are
 outside this abstraction.
 
+## Raft snapshot installation and recovery
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Direct for ordered chunk accumulation. A mismatched offset is rejected without changing the durable image. |
+| `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. |
+| `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
+| `ActivateSnapshot` | commit/last-applied update and `StateMachine::restore` | Abstract split after durable publication so a crash between persistence and activation is explored. |
+| `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
+| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes before exposing its index as committed and applied. |
+
+The model abstracts snapshot contents to one value and chunks to a bounded
+count. It omits checksums below the object-store interface, network framing,
+storage exhaustion, and state-machine-specific validation of snapshot bytes.
+
 ## Unified capability namespace
 
 | TLA+ action | Rust implementation | Correspondence |

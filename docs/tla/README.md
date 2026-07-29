@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for eight
+This directory contains finite, executable specifications for nine
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -13,6 +13,7 @@ CharlotteOS subsystems:
 | DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
+| Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
@@ -30,7 +31,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all eight complete fast configurations;
+- runs all nine complete fast configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -65,6 +66,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaftLog -config CharlotteRaftLog_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRaftSnapshot -config CharlotteRaftSnapshot_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -297,6 +302,23 @@ suffix. Only a conflicting entry permits suffix truncation. The Rust
 was corrected to reflect it. Snapshots, membership changes, storage write
 failures, state-machine application, and temporal replication liveness remain
 future layers.
+
+`CharlotteRaftSnapshot.tla` adds chunked snapshot reception, stale-snapshot
+discard, atomic durable installation, matching-suffix retention, activation,
+crash, and restart. Its fast configuration explores 2,522 distinct states.
+The invariants require an installed snapshot and its retained suffix to form
+one consistent durable image, prevent snapshot or application progress from
+moving backwards, and require restart to restore the durable state-machine
+image before declaring the snapshot applied.
+
+This layer found two implementation defects. Construction advanced
+`last_applied` to the stored snapshot index without restoring its bytes into
+the supplied state machine, and a delayed snapshot could replace newer
+committed progress. It also exposed that three individually atomic object
+writes do not form one atomic snapshot/log update. The implementation now
+restores on construction, acknowledges stale snapshots without installing
+them, retains a suffix with a matching boundary term, and serializes snapshot
+metadata, bytes, and log suffix into one copy-on-write object.
 
 ## Relationship to formal verification
 

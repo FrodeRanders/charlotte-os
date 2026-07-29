@@ -166,7 +166,24 @@ impl LogStore for InMemoryLogStore {
         snapshot_data: Vec<u8>,
     ) {
         let mut entries = self.entries.lock();
-        entries.clear();
+        let old_base = *self.snapshot_idx.lock();
+        let retain_from = if last_included_index == old_base
+            && last_included_term == *self.snapshot_term_val.lock()
+        {
+            Some(0)
+        } else if last_included_index > old_base {
+            let offset = (last_included_index - old_base - 1) as usize;
+            (offset < entries.len() && entries[offset].term == last_included_term)
+                .then_some(offset + 1)
+        } else {
+            None
+        };
+        if let Some(retain_from) = retain_from {
+            entries.drain(0..retain_from);
+        } else {
+            entries.clear();
+        }
+        drop(entries);
         *self.snapshot_idx.lock() = last_included_index;
         *self.snapshot_term_val.lock() = last_included_term;
         *self.snapshot_bytes.lock() = snapshot_data;

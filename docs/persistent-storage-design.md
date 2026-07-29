@@ -250,11 +250,14 @@ object-store-backed implementations for durable deployments.
 ### 4.2 Disk-backed implementation
 
 `DiskPersistentStateStore` and `DiskLogStore` connect to the `"obj"` service.
-The cluster and node identities are hashed into a stable namespace containing
-four object IDs: term/vote state, snapshot metadata, snapshot data, and log
-entries. Stable creation (`OP_CREATE_AT`) means a replacement process opens
-the same objects instead of allocating new ones. Each mutation writes its
-serialized object and calls `FLUSH` before returning.
+The cluster and node identities are hashed into a stable namespace. Term/vote
+state has its own object. Snapshot metadata, snapshot data, and the
+post-snapshot log suffix are serialized into one log-state object so snapshot
+installation and compaction have a single copy-on-write publication point.
+Stable creation (`OP_CREATE_AT`) means a replacement process opens the same
+objects instead of allocating new ones. Former three-object log stores are
+read once and migrated to the unified representation. Each mutation writes
+its serialized object and calls `FLUSH` before returning.
 
 The Raft launch manifest selects the backend:
 

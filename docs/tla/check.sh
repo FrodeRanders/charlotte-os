@@ -74,3 +74,6 @@ run_model CharlotteRaft CharlotteRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
 run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \
     Elect AppendLeader ReplicateOne CommitLeader PropagateCommit Crash Restart
+run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
+    AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
+    DiscardStale Crash Restart
