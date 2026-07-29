@@ -83,3 +83,38 @@ Those omissions matter when interpreting a result: TLC checks the modeled
 protocol projection only. A future refinement effort should split concrete
 multi-registry operations into pre-linearization, committed and rollback
 actions and prove that their projection implements these abstract transitions.
+
+## Scheduler lifecycle
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Spawn` | `Thread::new`, `MASTER_THREAD_TABLE.add_element` | Direct for reusable TID allocation and fresh monotonic generation; context construction is omitted. |
+| `Admit` | `submit_ready_thread`, `submit_to_lp` | Abstract: run-queue insertion and `ThreadState::Ready` are one transition. |
+| `Dispatch` / `Preempt` | `RoundRobin::next` | Direct for the Ready/Running handoff and one current thread per LP. |
+| `Block` | `block_thread_with_constraint` | Direct for waker generation capture and `Blocked`; concrete observer registration shares the transition's linearization point. |
+| `Wake` | `Waker::notify`, `submit_woken_thread`, `add_thread` | Direct for generation validation and re-admission. A stale generation disables the model action and is rejected by Rust. |
+| `Migrate` | `try_rebalance` | Direct for migration-safe, unpinned Ready threads; load-window policy is omitted. |
+| `Abort` | `abort_thread`, `take_element`, `stage_dead_thread` | Abstract atomic transition from master-table membership to the LP-local dead list. |
+| `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; stack-pointer deferral is omitted. |
+
+## Service lifecycle
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Load` | `loader::load_domain` | Abstract: ELF parsing, mappings and bootstrap frames are omitted. |
+| `Start` | `start_domain`, `spawn_thread` | Direct for the initial `(tid, generation)` domain handle. |
+| `Publish` | name-service register/replacement request | Abstract atomic publication; IPC details are covered by `CharlotteIPC`. |
+| `RequestStop` / `Exit` | service shutdown or `abort_thread` | Abstract: cooperative and forced shutdown share the same lifecycle projection. |
+| `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
+| `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
+
+## Unified capability namespace
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Allocate` | `capability::allocate` | Direct for fresh per-AS serial allocation and authoritative kind insertion. |
+| `Remove` | `capability::remove` | Direct for owner-and-kind checked removal. |
+| `DelegateCopy` | subsystem delegation followed by `allocate` in the target AS | Abstract: payload-table insertion is omitted; the target handle is fresh. |
+| `BeginMove` / `CommitMove` | subsystem move transaction and target capability allocation | Abstract split around payload transfer so intermediate revocation is checkable. |
+| `RollbackMove` | `capability::restore` | Direct for crate-private restoration of the exact pre-transaction handle. |
+| `CloseAddressSpace` | `capability::close_address_space` | Direct for dropping the complete authority namespace after payload teardown. |

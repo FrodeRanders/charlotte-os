@@ -1,12 +1,15 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for two
+This directory contains finite, executable specifications for five
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
+| Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
+| Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
+| Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
@@ -24,7 +27,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs both complete fast configurations;
+- runs all five complete fast configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -37,6 +40,17 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteCQ -config CharlotteCQ_mini.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteScheduler -config CharlotteScheduler_small.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteServiceLifecycle -config CharlotteServiceLifecycle_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteCapability -config CharlotteCapability_small.cfg \
+  -workers auto -coverage 1
 ```
 
 Run them from `docs/tla`.
@@ -181,6 +195,44 @@ completion capability, because the Rust paths are independent.
 `StateConstraint` bounds the otherwise unbounded generation counter for TLC.
 This is a model-checking bound, not a statement that the implementation's
 counter cannot wrap.
+
+## Scheduler lifecycle model
+
+`CharlotteScheduler.tla` separates thread admission, dispatch, blocking,
+wakeup, migration, abort, and reaping. In particular, `Dead` means that
+`abort_thread` has removed the thread from `MASTER_THREAD_TABLE` but its owned
+context is still staged in the dying LP's `DEAD_THREADS` list. Only `Reap`
+makes the reusable slot absent. Wake actions carry the generation captured by
+the waker and cannot affect a later occupant of the same thread ID.
+
+The checked invariants require one running thread per LP, valid placement and
+pinning, a valid owner for every non-absent thread, matching blocked-waker
+generations, and migration authority for every movable thread.
+
+## Service lifecycle model
+
+`CharlotteServiceLifecycle.tla` models loading, starting, name-service
+publication, replacement publication, shutdown, exit, scheduler reaping, and
+address-space teardown. Publication is a single linearization point: the new
+generation becomes visible while the old generation ceases to be published.
+Teardown requires explicit evidence that the scheduler reaped the domain's
+initial thread, matching `wait_domain_exit` followed by `teardown_domain`.
+
+The model checks unique and internally consistent publication, monotonic
+bounded generations, and the prohibition against teardown before reaping.
+
+## Unified capability model
+
+`CharlotteCapability.tla` models the authoritative per-address-space tag table
+in `capability.rs`. Allocation and public delegation use fresh monotonically
+increasing handles. Removal validates both owner and expected object kind.
+A move is split into begin/commit/rollback transitions so TLC explores the
+window in which source authority has been removed: commit allocates a fresh
+target handle, while rollback alone may restore the exact original handle.
+
+The invariants reject future/unallocated handles, require tags to remain below
+the namespace's next serial, and require an active move transaction's source
+authority to remain revoked.
 
 ## Relationship to formal verification
 

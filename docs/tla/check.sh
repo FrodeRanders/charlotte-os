@@ -40,7 +40,11 @@ run_model() {
 
     local action
     for action in "$@"; do
-        if ! grep -Eq "^<${action} .*: [1-9][0-9]*:[1-9][0-9]*$" "${log}"; then
+        # TLC reports "new distinct successors:total successors". An action
+        # can legitimately contribute zero new states when another action
+        # reaches the same successor; a positive total still proves it was
+        # enabled and exercised.
+        if ! grep -Eq "^<${action} .*: [0-9]+:[1-9][0-9]*$" "${log}"; then
             echo "error: required action ${action} had no TLC coverage in ${module}" >&2
             exit 1
         fi
@@ -56,3 +60,9 @@ run_model CharlotteIPC CharlotteIPC_small.cfg \
     DomainTeardown
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
+run_model CharlotteScheduler CharlotteScheduler_small.cfg \
+    Spawn Admit Dispatch Preempt Block Wake Migrate Abort Reap
+run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
+    Load Start Publish RequestStop Exit Reap Teardown
+run_model CharlotteCapability CharlotteCapability_small.cfg \
+    Allocate Remove DelegateCopy BeginMove CommitMove RollbackMove CloseAddressSpace
