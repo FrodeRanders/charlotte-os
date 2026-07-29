@@ -251,7 +251,7 @@ Barrelfish treats a multicore computer as a distributed system:
 - Simon Gerber et al., [Not Your Parents’ Physical Address Space](https://www.usenix.org/system/files/conference/hotos15/hotos15-paper-gerber.pdf)
 - Barrelfish/DC material in the [OSDI ’14 proceedings](https://www.usenix.org/sites/default/files/osdi14_full_proceedings.pdf)
 
-#### Relationship to Sitas (and thus Seastar)
+#### Relationship to [`Sitas`](https://github.com/FrodeRanders/sitas) (and thus Seastar)
 
 Both designs favor:
 
