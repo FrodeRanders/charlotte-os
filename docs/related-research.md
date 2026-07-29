@@ -28,6 +28,26 @@ Its most important unresolved research problem is preserving capability
 and ownership semantics across unreliable networks, retries, partial 
 failure, and service restart.
 
+This note distinguishes four kinds of answer:
+
+- **Implemented** means the behavior exists in the current kernel or userspace
+  services and has direct tests.
+- **Specified and bounded-model-checked** means an executable TLA+ abstraction
+  and a Rust conformance map exist, but there is no refinement proof.
+- **Partial** means a local mechanism or lower layer exists, while the
+  end-to-end policy or some failure modes remain unresolved.
+- **Open** means the architecture may state an intention, but the repository
+  does not yet provide an implementation-level contract.
+
+The audit below finds that most questions about the **local** object model now
+have implemented or bounded-model-checked answers: tagged capability lookup,
+rights attenuation, reply-token linearity, memory transfer and lending,
+completion retention and cancellation, lifecycle teardown, DMA isolation, and
+Raft's internal safety mechanisms. The principal open areas are the **remote**
+invocation/capability contract, derivation-based and distributed revocation,
+whole-system information-flow proof, consensus-backed service authority, and
+end-to-end admission/priority policy.
+
 ---
 
 ## 1. Architectural themes
@@ -95,6 +115,20 @@ service lookup
 - What happens when a target service restarts?
 - How are duplicated, delayed, or replayed requests detected?
 - What delivery and execution guarantees does an invocation provide?
+
+#### Present CharlotteOS answers
+
+Most of these questions now have a local answer but not yet a distributed one:
+
+| Question | Current answer |
+|---|---|
+| Capability identity | A local handle names a tagged kernel object in one address space. A connection names an endpoint; the name service separately returns a service generation so clients can reject stale instances. The representation of stable authority for a remote logical object remains open. |
+| Forgery resistance | Local handles are opaque, monotonically allocated, non-reused table indices and are checked against the caller ASID, object-family tag, and subsystem registry. Cryptographic protection or proxy validation for a network-carried capability is not implemented. |
+| Attenuation | Connection delegation intersects the requested `SEND`/`CALL` rights with available authority. Device, memory, observer, and bootstrap authority is explicitly delegated. General derivation trees and arbitrary distributed attenuation are not implemented. |
+| Revocation | Endpoint closure, capability removal, address-space teardown, borrow cancellation, and service-generation replacement revoke local authority deterministically. Selective transitive and distributed revocation remain open. |
+| Service restart | Implemented locally: old connections fail, a replacement registers a new generation, and clients re-resolve. A remote retry/re-resolution contract across partitions remains open. |
+| Duplicate and replay detection | Local pending calls and reply tokens have unique identities and one-shot terminal transitions. Raft RPC handling has term/index and peer-identity checks. There is no general remote invocation ID, deduplication window, or replay cache yet. |
+| Delivery/execution guarantee | Local IPC distinguishes a queued call cancelled before delivery from a delivered call whose reply authority is later invalidated. It does not claim transactional execution. A general remote at-most-once/at-least-once and uncertain-outcome contract remains open. |
 
 Amoeba’s Fast Local Internet Protocol, or FLIP, is also directly relevant. It was designed 
 to support location-independent RPC, group communication, and internetwork routing without 
@@ -169,11 +203,22 @@ It combines:
 - Can cancellation, domain teardown, and lending revocation be modeled as state machines?
 - Can access-control or information-flow properties be proven over the object model?
 
-Initial executable specifications for IPC ownership transitions and completion
-queues live in [`tla/`](tla/README.md). They model-check bounded abstract safety
-properties and exercise copy, move, read-borrow, write-borrow, cancellation,
-close, and teardown paths. They do not yet constitute a refinement proof of
-the Rust kernel; the remaining verification boundary is documented there.
+Several now have concrete, qualified answers:
+
+| Question | Current answer |
+|---|---|
+| Authority invariants over capability tables | **Specified and bounded-model-checked.** `CharlotteCapability.tla` checks the unified tagged namespace, fresh handles, kind-correct removal, delegation, move rollback, and whole-AS teardown. `CharlotteIPC.tla` composes authority with endpoints, reply tokens, and memory transfers. |
+| Explicit derivation information | **Answered negatively for the current design.** Delegation attenuates rights and creates a fresh handle, but the kernel does not retain a general capability-derivation tree. Consequently selective transitive revocation and confinement proofs remain open. |
+| Atomic, formally specified memory ownership transitions | **Partially answered.** Copy, move, read/write borrow, cancellation, close, and teardown are executable TLA+ actions with mapped Rust linearization points. Concrete multi-registry atomicity is reviewed in the conformance map, but no refinement proof establishes equivalence to Rust. |
+| Declarative bootstrap authority | **Partially implemented.** A typed launch manifest and typed bootstrap capability vector describe values and explicitly delegated name-service, device, state, endpoint, and system-observer authority. Launch policy is still assembled procedurally by the supervisor rather than derived from a complete declarative authority specification. |
+| Reply-token invariants | **Implemented and model-checked in a bounded abstraction.** A token belongs to one pending call, becomes receiver-visible only on delivery, is consumable once, and is invalidated by cancellation, caller death, or endpoint teardown. |
+| Cancellation, teardown, and lending state machines | **Yes, at the abstract safety level.** `CharlotteIPC`, `CharlotteCQ`, `CharlotteServiceLifecycle`, and `CharlotteDMA` cover these paths; the conformance document maps their actions to Rust. |
+| Access-control or information-flow proof | **Open.** Kind/owner/rights checks and an explicitly delegated system-observer capability provide useful enforcement mechanisms, but there is no noninterference or whole-system access-control proof. |
+
+The executable specifications live in [`tla/`](tla/README.md). They do not
+constitute a refinement proof of the Rust kernel; the remaining verification
+boundary and the identified linearization points are documented in
+[`tla/CONFORMANCE.md`](tla/CONFORMANCE.md).
 
 The most relevant seL4 concepts include:
 
@@ -437,6 +482,23 @@ waiting mechanism.
 - Can an operation complete concurrently with cancellation?
 - Who owns cleanup after the submitting process dies?
 - Which operations require separately delegable operation capabilities?
+
+### Present CharlotteOS answers
+
+| Question | Current answer |
+|---|---|
+| Non-lossy terminal records and ring overflow | **Implemented.** A full shared ring spills entries into a kernel backlog; draining the ring flushes the backlog in order. Submission capacity provides earlier backpressure, although memory exhaustion of the backlog is not modeled as a recoverable condition. |
+| Wakeup coalescing | **Implemented and bounded-model-checked.** Queue work generations, observer registration, and a post-registration recheck close the lost-wake window. Notifications may coalesce because the retained record or generation, rather than the wake itself, is authoritative. |
+| Exactly one terminal transition | **Implemented and bounded-model-checked.** `InFlight → Completed` or `InFlight → CancelPending → Completed`; duplicate completion is idempotent and does not post a second CQ entry. |
+| Buffer ownership returned once | **Implemented for completion-owned buffers.** The buffer stays inside the operation through cancellation and is taken only by `Completed → Observed`. IPC memory ownership and lending use separate modeled state machines. |
+| Completion racing cancellation | **Defined.** Both transitions serialize on the operation state lock. Completion first yields its result and later cancellation reports `AlreadyComplete`; cancellation first forces the eventual terminal result to `Cancelled`. |
+| Submitter death cleanup | **Partially answered.** Closing an address space tears down its completion namespace; IPC, service, device, DMA, and borrow teardown have explicit reconciliation paths. Operations with effects outside those managers still require resource-specific cleanup, and drain-or-leak behavior under irrecoverable hardware uncertainty remains intentional. |
+| Separately delegable operation capabilities | **An initial policy exists.** Individually waited, polled, cancelled, or buffer-owning work receives a completion capability. High-rate work may use a capability-free operation ID delivered only through a selected CQ. General cross-domain delegation of an in-flight operation is not yet a supported authority pattern. |
+
+The relevant implementation is in `completion`, with boot self-tests for
+completion state, CQ integration, overflow/backlog delivery, cancellation, and
+blocking waits. `CharlotteCQ.tla` checks the corresponding bounded safety
+projection.
 
 ---
 
@@ -713,6 +775,20 @@ Useful questions include:
 - Can request/reply cycles deadlock when all bounded queues are full?
 - How are priority and backpressure propagated through chains of services?
 
+### Present CharlotteOS answers
+
+| Question | Current answer |
+|---|---|
+| Admission control | **Implemented at individual boundaries.** Endpoint enqueue returns queue-full, completion submission returns `WouldBlock`, per-LP IPI and shard-mailbox submission has a bounded `try_*` path, and device services bound their outstanding work by queue or hardware capacity. There is no node-wide admission controller. |
+| Control-plane isolation | **Partial.** Some kernel-critical IPI traffic has a must-not-drop path, while ordinary cross-LP work receives backpressure. This is not a general control-plane/data-plane class system, and force-eviction in the exceptional IPI fallback is not a proof of safe overload behavior. |
+| Reserved cancellation/teardown capacity | **Mostly open as an end-to-end policy.** Many cancellation and teardown transitions mutate authoritative state directly rather than enqueueing ordinary work, which avoids sharing an endpoint slot. The system does not consistently reserve queue credits for cancellation, teardown, or priority traffic across every service boundary. |
+| Full-queue request/reply deadlock | **Locally tested, not globally excluded.** Endpoint queue-full behavior, FIFO preservation, cancellation, and closure are tested and modeled. No wait-for graph, lock-order proof, or end-to-end model excludes cyclic service dependencies under saturation. |
+| Chained priority/backpressure | **Partial.** `QueueFull`/`WouldBlock` is explicit at several hops and queues are bounded, but priority classes and automatic propagation through a chain of services are not implemented as one policy. Each service must currently translate upstream pressure deliberately. |
+
+The architecture can therefore claim bounded local mechanisms and explicit
+failure signals. It cannot yet claim a complete overload-control theorem for
+the composed system.
+
 ---
 
 ## 9. Capability security and compatibility
@@ -833,13 +909,37 @@ capability service must still define:
 Distributed locks and mutable leases should use fencing tokens so that a 
 former holder cannot continue operating after its lease has expired.
 
+### Present CharlotteOS answers
+
+CharlotteOS now contains a `no_std` adaptation of the separately tested Graft
+Raft implementation rather than only an architectural proposal. It implements
+durable term/vote/log state, leader no-op entries, current-term commit rules,
+learners, joint consensus, automatic finalization after a catch-up fence,
+linearizable-read barriers, chunked snapshots carrying membership, and
+persistent object-store recovery. The boot suite exercises local multi-node
+election and explicit persistent restart. The TLA+ suite separately checks
+bounded election, log, membership, and snapshot safety models.
+
+That answers the Raft-mechanism part, but not yet the distributed name-service
+policy:
+
+| Question | Current answer |
+|---|---|
+| Which operations are linearizable? | The Graft core defines committed client commands and quorum-contact read barriers. The EL0 Raft transport currently exposes peer RPCs and status; general client-command/query service wiring is incomplete, so node-name operations are not yet advertised as cluster-linearizable. |
+| Leader changes and outstanding calls | The core rejects non-leader commands, tracks a known leader, and requires current-term/quorum conditions. Redirect, retry, idempotency, and uncertain-outcome behavior are not yet a complete external client protocol. |
+| Capabilities after rollback/reconfiguration | Raft membership authority is configuration-indexed and removed peers are decommissioned. Application capabilities issued from replicated directory state do not yet have consensus-backed epochs or rollback rules. |
+| Authority during membership changes | Peer voting and leadership authority follows stable/joint voter sets; learners replicate without voting. This protects the consensus group itself, not arbitrary capabilities stored in its state machine. |
+| Consensus-backed service generations | **Open.** Current name-service generations are node-local lifecycle generations. The planned clustered registry must decide whether generation allocation is a replicated command. |
+| Stale replicas authorizing operations | The Raft core accepts leader RPCs only from configured voters and linearizable reads only after a quorum-contact barrier. A distributed capability issuer still needs an epoch/fencing rule so a stale service replica cannot authorize external effects. |
+
 ---
 
 ## 12. Recommended research agenda
 
 ### 12.1 Formalize the local object model
 
-Specify:
+This agenda item is substantially underway. The executable models and
+conformance map now cover:
 
 - capability-table invariants;
 - rights attenuation;
@@ -851,8 +951,15 @@ Specify:
 - driver teardown;
 - completion retention.
 
-The state machines should make double return, use-after-move, stale 
-reply, and lost completion structurally impossible.
+Within their finite configurations, the state machines make double return,
+use-after-move, stale reply, lost completion, stale scheduler wakeup, unsafe
+DMA unpinning, and inconsistent Raft recovery invariant violations.
+
+The remaining work is qualitatively different: add omitted concrete failure
+steps, identify all Rust linearization points, construct refinement mappings,
+and eventually prove that the implementation refines the abstract state
+machines. Access-control and information-flow properties also remain beyond
+the present safety models.
 
 ### 12.2 Define a remote invocation contract
 
@@ -915,15 +1022,22 @@ Measure:
 
 Important cases include:
 
-- reply racing cancellation;
-- caller death during a mutable loan;
-- server death after consuming a moved object;
-- device reset with DMA in flight;
-- completion-ring saturation;
-- endpoint closure with queued calls;
-- service restart during name lookup;
-- duplicate remote request after leader change;
-- network partition during authority revocation.
+- reply racing cancellation — **implemented in the state machine and exercised
+  by cancellation tests; broader schedule fuzzing remains useful**;
+- caller death during a mutable loan — **covered by IPC teardown tests and the
+  bounded IPC model**;
+- server death after consuming a moved object — **local teardown has defined
+  ownership behavior; persistent/external effects remain protocol-specific**;
+- device reset with DMA in flight — **driver teardown and SMMU/DMA quarantine
+  paths exist and are modeled; real-hardware fault injection remains future
+  work**;
+- completion-ring saturation — **tested with non-lossy backlog delivery and
+  modeled**;
+- endpoint closure with queued calls — **tested and modeled**;
+- service restart during name lookup — **waitable lookup and generation-based
+  restart are exercised by the service lifecycle suite**;
+- duplicate remote request after leader change — **open**;
+- network partition during authority revocation — **open**.
 
 ---
 
