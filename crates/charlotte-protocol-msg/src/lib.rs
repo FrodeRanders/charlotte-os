@@ -92,9 +92,7 @@ pub fn build_frame_header(
     buf[ETHERNET_HEADER_SIZE..].copy_from_slice(&message);
 }
 
-pub fn parse_frame_header_checked(
-    frame: &[u8],
-) -> Result<ParsedFrameHeader, HeaderError> {
+pub fn parse_frame_header_checked(frame: &[u8]) -> Result<ParsedFrameHeader, HeaderError> {
     if frame.len() < FRAME_HEADER_SIZE {
         return Err(HeaderError::FrameTooShort);
     }

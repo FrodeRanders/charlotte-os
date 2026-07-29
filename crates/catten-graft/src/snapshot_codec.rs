@@ -230,11 +230,11 @@ mod tests {
         vec,
     };
 
-    use crate::types::Peer;
     use super::{
         decode_snapshot_payload,
         wrap_snapshot_payload,
     };
+    use crate::types::Peer;
 
     #[test]
     fn membership_and_application_state_round_trip() {
