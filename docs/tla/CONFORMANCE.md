@@ -89,7 +89,7 @@ actions and prove that their projection implements these abstract transitions.
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `Spawn` | `Thread::new`, `MASTER_THREAD_TABLE.add_element` | Direct for reusable TID allocation and fresh monotonic generation; context construction is omitted. |
-| `Admit` | `submit_ready_thread`, `submit_to_lp` | Abstract: run-queue insertion and `ThreadState::Ready` are one transition. |
+| `Admit` | `submit_new_thread`, `submit_to_lp` | Abstract: initial run-queue insertion and `ThreadState::Ready` are one transition. Deferred re-admission uses generation-checked `submit_woken_thread`. |
 | `Dispatch` / `Preempt` | `RoundRobin::next` | Direct for the Ready/Running handoff and one current thread per LP. |
 | `Block` | `block_thread_with_constraint` | Direct for waker generation capture and `Blocked`; concrete observer registration shares the transition's linearization point. |
 | `Wake` | `Waker::notify`, `submit_woken_thread`, `add_thread` | Direct for generation validation and re-admission. A stale generation disables the model action and is rejected by Rust. |

@@ -244,7 +244,7 @@ pub struct Thread {
     pub generation: ThreadGeneration,
     pub state: ThreadState,
     /// The LP this thread prefers to run on, assigned at spawn time.
-    /// Re-admission via `submit_woken_thread` and `submit_ready_thread`
+    /// Re-admission via `submit_woken_thread` and initial `submit_new_thread`
     /// try this LP first rather than scanning for the least-loaded one,
     /// giving the thread cache affinity and keeping its timer events on
     /// the same LP's queue.

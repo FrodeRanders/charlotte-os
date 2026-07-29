@@ -138,7 +138,7 @@ fn spawn_thread_with_migration(
     let tid = MASTER_THREAD_TABLE.write().add_element(thread);
     SYSTEM_SCHEDULER
         .read()
-        .submit_ready_thread(tid as ThreadId)
+        .submit_new_thread(tid as ThreadId)
         .expect("Error submitting ready thread to system scheduler");
     tid
 }

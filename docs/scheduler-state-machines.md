@@ -15,7 +15,7 @@ scheduler change should be checked against these invariants.
 spawn_thread()
       │
       ▼
-NeedsLpAssignment ── submit_ready_thread() ──► Ready(lp)
+NeedsLpAssignment ── submit_new_thread() ──► Ready(lp)
       │                                             │
       │ block_thread()                              │ next(): dequeue
       ▼                                             ▼
@@ -188,7 +188,7 @@ prompt timeout so the IRQ can drain the due head.
 completion::wait(asid, cap):
   1. Fast path: is_terminal()? → return
   2. block_thread(tid, &completion)   [Waker registered on Completion.observers]
-  3. Guard: is_terminal()? → submit_ready_thread(tid)   [lost-wake]
+  3. Guard: is_terminal()? → submit_woken_thread(tid, generation) [lost-wake]
   4. yield_lp()                       [thread sleeps]
 
   When completion fires:
@@ -230,7 +230,7 @@ wait_on_cq(asid, cq, min_complete):
     ├── block_thread(tid, &observable)
     │
     ├── guard: generation changed while registering Waker
-    │   → submit_ready_thread(tid)   [lost-wake guard]
+    │   → submit_woken_thread(tid, generation) [lost-wake guard]
     │
     └── yield_lp() → blocks until woken → loop
 ```
@@ -291,7 +291,7 @@ work changes the generation.
 2. block_thread()             [register Waker]
 3.  ◄── wake() fires here ──  [race window]
 4. yield_lp()                 [would sleep forever]
-5.  BUT: guard observes generation change → submit_ready_thread()
+5.  BUT: guard observes generation change → submit_woken_thread(tid, generation)
    → thread re-admitted and consumes the new generation
 ```
 

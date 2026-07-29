@@ -140,7 +140,7 @@ It fuses two things the kernel already has:
 | Ingredient | Exists today | File |
 |---|---|---|
 | An `Observable` whose completion notifies observers | `Thread: Observable`, `TimerEvent: Observable` | `scheduler/threads/mod.rs:70`, `timers/mod.rs:64` |
-| An `Observer` that wakes a blocked thread | `Waker(ThreadId): Observer` → `submit_ready_thread` | `scheduler/threads/waker.rs:16` |
+| An `Observer` that wakes a blocked thread | `Waker(ThreadId, ThreadGeneration): Observer` → `submit_woken_thread` | `scheduler/threads/waker.rs` |
 | The block-on-observable pattern | `SystemScheduler::block_thread(tid, &dyn Observable)` | `system_scheduler/mod.rs:70` |
 
 Today `block_thread` only ever blocks on a `TimerEvent` (via `sleep`). The ABI

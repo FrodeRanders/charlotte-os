@@ -573,9 +573,9 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
         );
         SYSTEM_SCHEDULER
             .read()
-            .submit_ready_thread(tid)
+            .submit_new_thread(tid)
             .map(|_| ())
-            .expect("SPAWN_THREAD: submit_ready_thread fallback failed")
+            .expect("SPAWN_THREAD: submit_new_thread fallback failed")
     });
     // Return the thread id in x0.
     frame.regs[0] = tid as u64;
@@ -1192,10 +1192,11 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     // timer firing or the completion finishing).
     struct TimeoutWake {
         tid: crate::cpu::scheduler::threads::ThreadId,
+        generation: crate::cpu::scheduler::threads::ThreadGeneration,
     }
     impl crate::klib::observer::Observer for TimeoutWake {
         fn notify(self: alloc::sync::Arc<Self>) {
-            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(self.tid);
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
         }
     }
 
@@ -1214,18 +1215,20 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         .expect("COMPLETION_WAIT_TIMEOUT: no running thread");
 
     // Block on the completion.
-    SYSTEM_SCHEDULER
+    let generation = SYSTEM_SCHEDULER
         .read()
-        .block_thread(
+        .block_thread_with_constraint_generation(
             tid,
             &*crate::completion::completion_of(asid, cap)
                 .expect("COMPLETION_WAIT_TIMEOUT: unknown cap"),
+            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
         )
         .expect("COMPLETION_WAIT_TIMEOUT: failed to block thread");
 
     // Arm a timer that also wakes this thread (timeout path).
     let timeout_obs = Arc::new(TimeoutWake {
         tid,
+        generation,
     });
     let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
     timer_event.register_observer(

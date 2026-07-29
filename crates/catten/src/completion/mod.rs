@@ -942,15 +942,19 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let tid =
         SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().ok_or(CapError::UnknownCap)?;
 
-    SYSTEM_SCHEDULER
+    let generation = SYSTEM_SCHEDULER
         .read()
-        .block_thread(tid, completion.as_ref() as &dyn Observable)
+        .block_thread_with_constraint_generation(
+            tid,
+            completion.as_ref() as &dyn Observable,
+            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+        )
         .map_err(|_| CapError::UnknownCap)?;
 
     // Lost-wake guard: if the operation completed after our fast-path check but
     // before (or during) registration, make the thread runnable again.
     if completion.is_terminal() {
-        let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
     }
 
     yield_lp();
@@ -1111,17 +1115,14 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
             },
         );
 
-        if SYSTEM_SCHEDULER
-            .read()
-            .block_thread_with_constraint(
-                tid,
-                &observable,
-                crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
-            )
-            .is_err()
-        {
-            return;
-        }
+        let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+            tid,
+            &observable,
+            crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
+        ) {
+            Ok(generation) => generation,
+            Err(_) => return,
+        };
 
         // Lost-wake guard: if work arrived while the waker was being
         // registered, re-admit the thread before it yields.
@@ -1136,7 +1137,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
                     cq_state.work_generation,
                     cq_state.last_seen_generation,
                 );
-                let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+                let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
             }
         }
 
@@ -1182,10 +1183,11 @@ pub fn wait_on_cq_timeout(
 
     struct CqTimeoutWake {
         tid: crate::cpu::scheduler::threads::ThreadId,
+        generation: crate::cpu::scheduler::threads::ThreadGeneration,
     }
     impl Observer for CqTimeoutWake {
         fn notify(self: Arc<Self>) {
-            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(self.tid);
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
         }
     }
 
@@ -1207,20 +1209,18 @@ pub fn wait_on_cq_timeout(
         asid,
         cq,
     };
-    if SYSTEM_SCHEDULER
-        .read()
-        .block_thread_with_constraint(
-            tid,
-            &observable,
-            crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
-        )
-        .is_err()
-    {
-        return false;
-    }
+    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+        tid,
+        &observable,
+        crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
+    ) {
+        Ok(generation) => generation,
+        Err(_) => return false,
+    };
 
     let timeout_obs = Arc::new(CqTimeoutWake {
         tid,
+        generation,
     });
     let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
     crate::klib::observer::Observable::register_observer(
@@ -1234,7 +1234,7 @@ pub fn wait_on_cq_timeout(
         if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq))
             && cq_state.work_generation != cq_state.last_seen_generation
         {
-            let _ = SYSTEM_SCHEDULER.read().submit_ready_thread(tid);
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
         }
     }
 

@@ -58,7 +58,7 @@ impl DeferredWorkManager {
         let tid = MASTER_THREAD_TABLE.write().add_element(thread);
         SYSTEM_SCHEDULER
             .write()
-            .submit_ready_thread(tid)
+            .submit_new_thread(tid)
             .expect("Failed to submit DWM worker thread to the system scheduler");
     }
 }

@@ -3,7 +3,7 @@
 //! [`SystemScheduler`] holds one per-LP [`LpScheduler`] and makes global
 //! decisions:
 //!
-//! - **Admission** ([`submit_ready_thread`], [`submit_woken_thread`]): assign a thread to an LP,
+//! - **Admission** ([`submit_new_thread`], [`submit_woken_thread`]): assign a thread to an LP,
 //!   preferring its [`affinity_lp`](crate::cpu::scheduler::threads::Thread::affinity_lp) (set at
 //!   first admission) over the globally least-loaded LP.
 //! - **Blocking** ([`block_thread`], [`block_thread_with_constraint`]): register a waker on an
@@ -139,7 +139,19 @@ impl SystemScheduler {
         self.get_least_loaded_lp()
     }
 
-    pub fn submit_ready_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
+    /// Admit a thread immediately after inserting it in the master table.
+    ///
+    /// This generation-free operation is intentionally restricted to initial
+    /// admission. Any reference retained across blocking, notification, or
+    /// asynchronous work must use [`Self::submit_woken_thread`] instead.
+    pub fn submit_new_thread(&self, tid: ThreadId) -> Result<LpId, Error> {
+        if !MASTER_THREAD_TABLE
+            .read()
+            .get(tid)
+            .is_ok_and(|thread| matches!(thread.state, ThreadState::NeedsLpAssignment))
+        {
+            return Err(Error::InvalidThread);
+        }
         let target = self.pick_lp_for(tid);
         let mut lp_guard = target.lock();
         let load_before = lp_guard.thread_count();
@@ -165,7 +177,7 @@ impl SystemScheduler {
         }
         drop(lp_guard);
         sched_trace!(
-            "[sched] submit_ready TID={} -> LP{} load={}->{}",
+            "[sched] submit_new TID={} -> LP{} load={}->{}",
             tid,
             lp_id,
             load_before,
@@ -398,7 +410,8 @@ impl SystemScheduler {
         tid: ThreadId,
         event: &dyn crate::klib::observer::Observable,
     ) -> Result<(), Error> {
-        self.block_thread_with_constraint(tid, event, MigrationConstraint::GeneralWait)
+        self.block_thread_with_constraint_generation(tid, event, MigrationConstraint::GeneralWait)
+            .map(|_| ())
     }
 
     pub fn block_thread_with_constraint(
@@ -407,6 +420,17 @@ impl SystemScheduler {
         event: &dyn crate::klib::observer::Observable,
         constraint: MigrationConstraint,
     ) -> Result<(), Error> {
+        self.block_thread_with_constraint_generation(tid, event, constraint).map(|_| ())
+    }
+
+    /// Block a thread and return the generation captured by the installed
+    /// waker while the master-table entry is locked.
+    pub fn block_thread_with_constraint_generation(
+        &self,
+        tid: ThreadId,
+        event: &dyn crate::klib::observer::Observable,
+        constraint: MigrationConstraint,
+    ) -> Result<ThreadGeneration, Error> {
         let state = {
             let table = MASTER_THREAD_TABLE.read();
             table
@@ -460,7 +484,7 @@ impl SystemScheduler {
             .register_observer(Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>);
         thread.add_migration_constraint(constraint);
         thread.state = ThreadState::Blocked(waker);
-        Ok(())
+        Ok(generation)
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {

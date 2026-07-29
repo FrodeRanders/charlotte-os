@@ -15,6 +15,7 @@ use crate::{
             spawn_thread,
             system_scheduler::{
                 REBALANCE_SUCCESSES,
+                SYSTEM_SCHEDULER,
                 get_thread_id,
             },
             threads::MASTER_THREAD_TABLE,
@@ -51,6 +52,16 @@ extern "C" fn worker() {
         false;
     let home = get_lp_id();
     logln!("[scheduler lifecycle] worker tid={} running on LP{}", tid, home);
+    let generation =
+        MASTER_THREAD_TABLE.read().get(tid).expect("lifecycle worker vanished").generation;
+    assert!(
+        SYSTEM_SCHEDULER.read().submit_new_thread(tid).is_err(),
+        "generation-free admission accepted a non-new thread"
+    );
+    assert!(
+        SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation.wrapping_add(1)).is_err(),
+        "stale generation re-admitted a live thread"
+    );
     // One substantial wait is enough to verify the property under test:
     // rebalance established this worker's home LP before it acquired a timer
     // affinity, and the wake must return it to that LP. Hundreds of 1 ms waits

@@ -8,7 +8,7 @@
 
 3. **Raft election liveness** — `handle_vote_request` manually set `state = Follower` without calling `step_down()`, leaving `timeout_at_millis` stale.  The node immediately timed out again, causing rapid election cycling with neither reaching quorum.  Fixed by calling `step_down(req.term, current_millis)` which properly resets the deadline.
 
-4. **LP affinity** — `submit_woken_thread` and `submit_ready_thread` were picking `get_least_loaded_lp()` on every re-admission, bouncing ordinarily admitted threads across LPs. This caused timer-on-wrong-LP bugs and TLB churn. Fixed by adding soft `affinity_lp` placement, set on first ordinary assignment and preferred on wake. Explicit `submit_to_lp()` now also records a separate hard `pinned_lp` for future placement policy.
+4. **LP affinity** — wake and initial-admission paths were picking `get_least_loaded_lp()` on every admission, bouncing ordinarily admitted threads across LPs. This caused timer-on-wrong-LP bugs and TLB churn. Fixed by adding soft `affinity_lp` placement, set by `submit_new_thread` on first assignment and preferred by generation-checked `submit_woken_thread`. Explicit `submit_to_lp()` also records a separate hard `pinned_lp`.
 
 5. **Orphan EL0 test threads** — device probe thread (`probe_device_topology`) had `loop { yield_lp() }` after logging.  Fixed by removing the loop (trampoline calls `abort()` on return).  Two EL0 payload threads (TID=4, TID=25) appeared not to reach `svc #8 (THREAD_EXIT)` despite having the correct instruction encoding.  Verifiers now perform idempotent teardown after observing the committed result. This prevents a payload exit failure from becoming permanent scheduler load without claiming to explain the underlying exit anomaly.
 
@@ -162,7 +162,7 @@ retained on `dev` are:
 | `completion/mod.rs` | `CqState` with `work_generation`/`last_seen_generation`; `wait_on_cq` uses generation comparison |
 | `completion/cq.rs` | `drain()` method on `CompletionQueueRing` |
 | `scheduler/threads/mod.rs` | `affinity_lp: Option<LpId>` on `Thread` |
-| `scheduler/system_scheduler/mod.rs` | `pick_lp_for()`, affinity-aware `submit_ready_thread`/`submit_woken_thread` |
+| `scheduler/system_scheduler/mod.rs` | `pick_lp_for()`, initial-only `submit_new_thread`, affinity-aware generation-checked `submit_woken_thread` |
 | `scheduler/mod.rs` | Scheduler yield and lifecycle handling |
 | `syscall/mod.rs` | Timer submission and completion ABI |
 | `catten-graft/src/node.rs` | `step_down()`, `become_leader()` (no-op entry), `handle_vote_request`, `handle_append_entries` |

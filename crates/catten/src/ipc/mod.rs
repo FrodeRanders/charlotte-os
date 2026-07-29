@@ -1162,9 +1162,9 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
     let observable = EndpointObservable {
         endpoint: endpoint_id,
     };
-    crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+    let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
         .read()
-        .block_thread_with_constraint(
+        .block_thread_with_constraint_generation(
             tid,
             &observable,
             crate::cpu::scheduler::threads::MigrationConstraint::EndpointWait,
@@ -1176,7 +1176,7 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
     if endpoint_is_readable_or_closed(endpoint_id)? {
         let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
-            .submit_ready_thread(tid);
+            .submit_woken_thread(tid, generation);
     }
 
     crate::cpu::scheduler::yield_lp();
@@ -1355,9 +1355,9 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
     let observable = PendingCallObservable {
         call: call_id,
     };
-    crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+    let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
         .read()
-        .block_thread_with_constraint(
+        .block_thread_with_constraint_generation(
             tid,
             &observable,
             crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
@@ -1367,7 +1367,7 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
     if pending_call_is_ready(call_id)? {
         let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
-            .submit_ready_thread(tid);
+            .submit_woken_thread(tid, generation);
     }
     crate::cpu::scheduler::yield_lp();
     Ok(())
