@@ -46,6 +46,9 @@ pub const FLAG_ACK: u16 = 1 << 1;
 pub const FLAG_FIN: u16 = 1 << 2;
 pub const VALID_FLAGS: u16 = FLAG_SYN | FLAG_ACK | FLAG_FIN;
 
+/// Parsed frame header: (destination MAC, source MAC, seq, ack, payload_len, flags).
+pub type ParsedFrameHeader = ([u8; 6], [u8; 6], u32, u32, u16, u16);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaderError {
     FrameTooShort,
@@ -91,7 +94,7 @@ pub fn build_frame_header(
 
 pub fn parse_frame_header_checked(
     frame: &[u8],
-) -> Result<([u8; 6], [u8; 6], u32, u32, u16, u16), HeaderError> {
+) -> Result<ParsedFrameHeader, HeaderError> {
     if frame.len() < FRAME_HEADER_SIZE {
         return Err(HeaderError::FrameTooShort);
     }
