@@ -21,6 +21,7 @@ use catten_graft::{
         LogStore,
         PersistentStateStore,
     },
+    membership::ClusterConfiguration,
     node::RaftNode,
     types::{
         NodeState,
@@ -110,8 +111,12 @@ fn write_payload_to_mem(payload: &[u8]) -> Option<u64> {
     Some(cap)
 }
 
-fn read_payload_from_mem(cap: u64) -> Option<Vec<u8>> {
-    if cap == 0 {
+fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
+    let length = usize::try_from(length).ok()?;
+    if cap == 0 || length > RAFT_RPC_MEMORY_SIZE {
+        if cap != 0 {
+            memory_close(cap);
+        }
         return None;
     }
     let map_status = memory_map(cap, SCRATCH_VADDR, false);
@@ -119,18 +124,17 @@ fn read_payload_from_mem(cap: u64) -> Option<Vec<u8>> {
         memory_close(cap);
         return None;
     }
-    let value = unsafe {
-        core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, RAFT_RPC_MEMORY_SIZE).to_vec()
-    };
+    let value =
+        unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, length).to_vec() };
     memory_unmap(cap);
     memory_close(cap);
     Some(value)
 }
 
-fn reply_payload(reply: u64, payload: Result<Vec<u8>, catten_graft::wire::WireError>, term: u64) {
+fn reply_payload(reply: u64, payload: Result<Vec<u8>, catten_graft::wire::WireError>) {
     if let Ok(payload) = payload {
         if let Some(memory) = write_payload_to_mem(&payload) {
-            ipc_reply_move(reply, memory, term as i64);
+            ipc_reply_move(reply, memory, payload.len() as i64);
             return;
         }
     }
@@ -192,6 +196,7 @@ fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
 }
 
 fn main(ctx: Context) -> ! {
+    config::write::<u32>(0, 1);
     let node_id = match ctx.manifest_value(NODE_ID_KEY) {
         Some(ManifestValue::Bytes(bytes)) => core::str::from_utf8(bytes).unwrap_or("r1"),
         _ => "r1",
@@ -210,8 +215,6 @@ fn main(ctx: Context) -> ! {
         Some(ManifestValue::Unsigned(STORAGE_REQUIRED)) => STORAGE_REQUIRED,
         _ => STORAGE_MEMORY,
     };
-
-    config::write::<u32>(0, 1);
 
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -308,9 +311,11 @@ fn main(ctx: Context) -> ! {
         log_store,
         persistent_state: persistent_store,
         state_machine: None,
-        cluster_configuration: peers,
+        cluster_configuration: ClusterConfiguration::stable(peers),
         transport: transport.clone(),
         current_millis: 0,
+        snapshot_min_entries: 64,
+        snapshot_chunk_bytes: 3000,
     });
     config::write::<u32>(20, node.current_term as u32);
     config::write::<u32>(0, 6);
@@ -335,6 +340,35 @@ fn main(ctx: Context) -> ! {
         // Keep one deferred name-service lookup outstanding for each missing
         // peer. Registration completes that call; the reactor only polls the
         // existing call and never creates retry storms or blocks on a peer.
+        // Membership is replicated, so discovery must follow the committed
+        // configuration rather than remaining frozen at the boot manifest.
+        let active_peer_ids = node
+            .cluster_configuration
+            .all_members()
+            .into_iter()
+            .map(|peer| peer.id.clone())
+            .collect::<Vec<_>>();
+        peer_specs.retain(|(peer_id, _, pending)| {
+            if active_peer_ids.contains(peer_id) {
+                true
+            } else {
+                if *pending != 0 {
+                    ipc_close(*pending);
+                }
+                transport.remove_peer(peer_id);
+                false
+            }
+        });
+        for peer in node.cluster_configuration.all_members() {
+            if peer.id != node.me.id && !peer_specs.iter().any(|spec| spec.0 == peer.id) {
+                let peer_name = if peer.service_name != 0 {
+                    peer.service_name
+                } else {
+                    catten_services::name(alloc::format!("raft-{}", peer.id).as_bytes())
+                };
+                peer_specs.push((peer.id.clone(), peer_name, 0));
+            }
+        }
         for (peer_id, peer_name, pending) in &mut peer_specs {
             poll_peer_discovery(ns_conn, peer_id, *peer_name, pending, &transport);
         }
@@ -357,16 +391,12 @@ fn main(ctx: Context) -> ! {
 
             match message.opcode {
                 raft::OP_VOTE_REQUEST => {
-                    let request = read_payload_from_mem(message.memory)
+                    let request = read_payload_from_mem(message.memory, message.arg0)
                         .and_then(|payload| decode_vote_request(&payload).ok());
                     if let Some(request) = request {
                         let response = node.handle_vote_request(request, node.millis());
                         if message.reply != 0 {
-                            reply_payload(
-                                message.reply,
-                                encode_vote_response(&response),
-                                response.term,
-                            );
+                            reply_payload(message.reply, encode_vote_response(&response));
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);
@@ -374,16 +404,12 @@ fn main(ctx: Context) -> ! {
                 }
 
                 raft::OP_APPEND_ENTRIES => {
-                    let request = read_payload_from_mem(message.memory)
+                    let request = read_payload_from_mem(message.memory, message.arg0)
                         .and_then(|payload| decode_append_request(&payload).ok());
                     if let Some(request) = request {
                         let response = node.handle_append_entries(request, node.millis());
                         if message.reply != 0 {
-                            reply_payload(
-                                message.reply,
-                                encode_append_response(&response),
-                                response.term,
-                            );
+                            reply_payload(message.reply, encode_append_response(&response));
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);
@@ -391,16 +417,12 @@ fn main(ctx: Context) -> ! {
                 }
 
                 raft::OP_INSTALL_SNAPSHOT => {
-                    let request = read_payload_from_mem(message.memory)
+                    let request = read_payload_from_mem(message.memory, message.arg0)
                         .and_then(|payload| decode_snapshot_request(&payload).ok());
                     if let Some(request) = request {
                         let response = node.handle_install_snapshot(request, node.millis());
                         if message.reply != 0 {
-                            reply_payload(
-                                message.reply,
-                                encode_snapshot_response(&response),
-                                response.term,
-                            );
+                            reply_payload(message.reply, encode_snapshot_response(&response));
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);

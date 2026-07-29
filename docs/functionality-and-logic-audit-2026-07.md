@@ -108,6 +108,26 @@ wire decoding, completion polling, and leader election together. It is not a
 substitute for longer fault-injection, partition, restart, persistence, or
 multi-node replication/snapshot testing on Linux KVM.
 
+### Graft semantic convergence follow-up (2026-07-29)
+
+The initial remediation repaired the three reported defects but did not make
+the adaptation semantically complete. A subsequent comparison with the mature
+Graft implementations ported normalized membership, voters and learners,
+joint-consensus quorums and replicated configuration commands, leader no-op
+entries, linearizable-read contact quorums, local snapshot creation, membership
+snapshot recovery, bounded transport deadlines, protobuf AppendEntries
+batching, and the shared `raft.proto` RPC shapes.
+
+Charlotte-specific peer discovery now follows committed membership through
+waitable name-service lookups. Removed peers have their pending calls and
+connection capabilities closed. The IPC adapter carries an exact protobuf
+length with each moved page; decoding no longer depends on zero padding.
+Snapshot replacement remains a single atomic object-store record update,
+preserving CharlotteOS's stronger crash behavior.
+
+The parity contract and intentional differences are maintained in
+[`raft-conformance.md`](raft-conformance.md).
+
 ## Findings
 
 ### F1 — Critical: Raft counts every configured voter after one response

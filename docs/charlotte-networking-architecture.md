@@ -710,8 +710,9 @@ invocation described above are the building blocks of a **generic,
 transport-agnostic Raft consensus service** — a replicated state
 machine exported as a native CharlotteOS IPC endpoint.
 
-> **Implementation status.** The Raft core, transport traits, wire
-> format, and service binary all compile and load as EL0 services.
+> **Implementation status.** The Raft core, transport traits, shared protobuf
+> wire format, joint-consensus membership model, snapshot membership recovery,
+> and service binary all compile and load as EL0 services.
 > A two-node cluster in one CharlotteOS instance repeatedly elects one
 > leader over local endpoint IPC on four-LP QEMU/HVF. Election timers use
 > completion events, and verifier/test domains terminate rather than polling
@@ -727,12 +728,12 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 | Capability | Status |
 |---|---|
-| Raft core (leader election, log replication, commit/apply) | Two-node local election boot-validated; broader replication/state-machine coverage remains incomplete |
+| Raft core (leader election, log replication, commit/apply) | Two-node local election boot-validated; shared Graft quorum, learner, joint-consensus, read-barrier, and snapshot semantics implemented; broader fault injection remains incomplete |
 | Charlotte IPC transport (`CharlotteTransport`) | Local peer-connection table and endpoint transport boot-validated |
-| Election timer (`submit_timer`) | Implemented (SVC #1, OpCode::Timer, CNTV hardware) |
-| Scalar RPCs over endpoint IPC | Local VoteRequest/AppendEntries path boot-validated via endpoint calls |
-| Memory-object RPC payloads (zero-copy log replication) | Wire format defined; transport uses scalar calls only |
-| Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter, with a 4 KiB object limit |
+| Election/heartbeat clock | Bounded completion-queue wait; no detached timer or polling loop |
+| Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
+| RPC batching | Largest protobuf AppendEntries prefix fitting one 4 KiB attachment; larger logs continue in later RPCs |
+| Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
 | Cross-machine Raft (NIC driver + reliable message layer) | Blocked on NIC runtime validation (KVM) |
 | Distributed name service (on top of Raft) | Design only; depends on cross-machine Raft |
 
@@ -759,12 +760,16 @@ machine exported as a native CharlotteOS IPC endpoint.
 |---|---|---|
 | Peer discovery (single-instance) | Name service (`OP_LOOKUP`) | Works: nodes register as `raft-{id}`, look up local peers |
 | Peer discovery (cross-machine) | Distributed name service (on top of Raft) | Requires cross-machine Raft first |
-| Inter-node RPC (scalar) | Endpoint IPC (`ipc_scalar_call`) | Works: VoteRequest, AppendEntries travel as scalar messages |
-| Inter-node RPC (zero-copy) | Memory objects (`Move` transfer) | Wire format defined; transport currently scalar-only |
-| Election timer | `submit_timer()` (SVC #1, OpCode::Timer) | Implemented: CNTV hardware → CQ completion |
+| Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
+| Election/heartbeat clock | Bounded `CQ_WAIT` timeout | Implemented without a detached timer or polling loop |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
 | Client command submission | Capability-based endpoint call | `OP_CLIENT_COMMAND` opcode defined; not yet wired to state machine |
 | Linearizable reads | Reply tokens + read barrier | Supported by `RaftNode` logic; untested end-to-end |
+| Membership changes | Replicated internal commands | `JOIN`, `JOINT`, and `FINALIZE` core semantics implemented; administrative service API not yet exposed |
+
+The precise correspondence with the general Graft implementation and the
+intentional platform substitutions are recorded in
+[Graft Conformance in CharlotteOS](raft-conformance.md).
 
 ## 18.2 Why this is better than socket-based Raft
 

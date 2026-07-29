@@ -20,6 +20,8 @@ pub enum RpcCompletion {
     InstallSnapshot {
         peer_id: alloc::string::String,
         response: InstallSnapshotResponse,
+        sent_next_offset: u64,
+        sent_done: bool,
     },
 }
 
@@ -45,6 +47,8 @@ pub struct InstallSnapshotRpc<'a> {
 }
 
 pub trait RaftTransport {
+    fn set_current_millis(&self, _current_millis: u64) {}
+
     fn send_vote_request(
         &self,
         peer: &Peer,

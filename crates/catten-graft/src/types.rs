@@ -94,6 +94,7 @@ pub struct VoteRequest {
 
 #[derive(Debug, Clone)]
 pub struct VoteResponse {
+    pub peer_id: String,
     pub term: u64,
     pub vote_granted: bool,
 }
@@ -110,6 +111,7 @@ pub struct AppendEntriesRequest {
 
 #[derive(Debug, Clone)]
 pub struct AppendEntriesResponse {
+    pub peer_id: String,
     pub term: u64,
     pub success: bool,
     pub match_index: u64,
@@ -128,6 +130,7 @@ pub struct InstallSnapshotRequest {
 
 #[derive(Debug, Clone)]
 pub struct InstallSnapshotResponse {
+    pub peer_id: String,
     pub term: u64,
     pub success: bool,
     pub last_included_index: u64,
@@ -173,3 +176,10 @@ pub const ERR_NOT_LEADER: i64 = -1;
 pub const ERR_LOG_INCONSISTENCY: i64 = -2;
 pub const ERR_STALE_TERM: i64 = -3;
 pub const ERR_NOT_FOUND: i64 = -4;
+pub const ERR_TOO_LARGE: i64 = -5;
+pub const ERR_READ_BARRIER: i64 = -6;
+pub const ERR_NOT_COMMITTED: i64 = -7;
+
+/// Leaves room for Raft metadata and peer IDs in CharlotteOS's one-page IPC
+/// transport object.
+pub const MAX_COMMAND_BYTES: usize = 3000;

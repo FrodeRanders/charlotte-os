@@ -13,3 +13,4 @@ bench = false
 catten-syscall = { path = "../catten-syscall" }
 catten-rt = { path = "../catten-rt" }
 spin = { version = "0.9", features = ["lock_api"] }
+prost = { version = "0.14.4", default-features = false, features = ["derive"] }

@@ -16,6 +16,15 @@ transport, replicated client commands, membership changes, snapshot recovery,
 power-loss behavior, and replication between the name-service instance on
 each machine are not yet validated end to end.
 
+The core implementation is nevertheless no longer an independent,
+feature-reduced interpretation of Raft. It follows the common Graft model for
+normalized peer identity, voters and learners, joint-consensus quorums,
+replicated \texttt{JOIN}/\texttt{JOINT}/\texttt{FINALIZE} commands, leader
+no-op entries, current-term commit rules, linearizable-read contact quorums,
+and membership-bearing snapshots. These paths compile and have focused
+regression tests, but membership administration and client commands are not
+yet exposed end to end by the EL0 service.
+
 \section{Raft as a capability service}
 
 The Raft consensus protocol provides a replicated, fault-tolerant state machine
@@ -26,16 +35,17 @@ process that:
     \item \textbf{Registers with the name service} as \texttt{"raft-<id>"}.
     \item \textbf{Obtains connection capabilities to its peers} through the name
         service (or through seed configuration at bootstrap).
-    \item \textbf{Communicates with peers through endpoint IPC.} VoteRequest and
-        AppendEntries travel as scalar messages; log payloads travel as memory
-        objects (Move transfer for zero-copy replication).
-    \item \textbf{Uses completion queues for timers.} Election timeouts and
-        heartbeat intervals use \texttt{submit\_timer()} --- a first-class
-        completion primitive --- not polling loops or \texttt{sleep()}.
-    \item \textbf{Serves client commands through its endpoint.} A client
-        submits a command via \texttt{OP\_CLIENT\_COMMAND}; the leader
-        replicates it, commits it, applies it to the state machine, and
-        replies.
+    \item \textbf{Communicates with peers through endpoint IPC.} Shared
+        \texttt{raft.proto} VoteRequest, AppendEntries, and InstallSnapshot
+        payloads travel in moved memory capabilities. The scalar argument
+        carries the exact protobuf length.
+    \item \textbf{Uses completion-queue waits for time.} A bounded
+        \texttt{CQ\_WAIT} drives election and heartbeat checks without a
+        detached timer completion or a busy polling loop.
+    \item \textbf{Reserves a client-command endpoint operation.}
+        \texttt{OP\_CLIENT\_COMMAND} is defined and the core can submit,
+        commit, and apply opaque commands, but the present generic EL0 service
+        does not yet expose that path with a concrete state machine.
 \end{itemize}
 
 The Raft core (\texttt{catten-graft}) is a generic, transport-agnostic library.
@@ -44,11 +54,10 @@ communication behind a few methods:
 
 \begin{verbatim}
 trait RaftTransport {
-    async fn send_vote_request(&self, peer: PeerId, req: VoteRequest)
-        -> Result<VoteResponse, TransportError>;
-    async fn send_append_entries(&self, peer: PeerId, req: AppendEntries)
-        -> Result<AppendResponse, TransportError>;
-    // ...
+    fn send_vote_request(&self, request: VoteRequest);
+    fn send_append_entries(&self, request: AppendEntries);
+    fn send_install_snapshot(&self, request: InstallSnapshot);
+    fn poll_completions(&self) -> Vec<RpcCompletion>;
 }
 \end{verbatim}
 
@@ -95,9 +104,10 @@ ownership instead of copying bytes. A follower that receives a Move attachment
 gets the exact same physical pages the leader held --- no intermediate buffer,
 no copy. 
 
-When going over the network, the wire format supports this; the transport implementation 
-decides whether to use scalar IPC (small payloads) or memory-object RPC (large payloads)
-at the ends.
+The current local transport uses one moved page per RPC and batches the largest
+AppendEntries prefix whose protobuf encoding fits. This is a 4\,KiB transport
+attachment limit, not a persistent-object or Raft-log limit. A network
+transport can use different framing without changing the protobuf contract.
 
 \subsection{Capability-based security}
 
@@ -127,9 +137,12 @@ than spinning during boot. Stable object identifiers derived from cluster and
 node identity hold term/vote state, log entries, and snapshot data; mutations
 are followed by an NVMe flush.
 
-The node identity, peer list, election timeout, and storage policy themselves
+The node identity, initial seed list, election timeout, and storage policy
 remain in the launch manifest. They are deployment configuration owned by the
-supervisor, not replicated Raft protocol state. The ordinary two-node local
+supervisor. Active membership is replicated through the Raft log and stored in
+the snapshot envelope; after recovery, it supersedes an obsolete seed list.
+Peer discovery follows that active membership through waitable name-service
+lookups. The ordinary two-node local
 test remains in-memory so the generic Raft service is testable on a multicore
 machine without storage hardware. The distinct durability test verifies one
 node across process restart. Neither test should be read as evidence that the
