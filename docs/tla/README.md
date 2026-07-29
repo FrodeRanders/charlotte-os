@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for seven
+This directory contains finite, executable specifications for eight
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -12,6 +12,7 @@ CharlotteOS subsystems:
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
 | DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
+| Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
@@ -29,7 +30,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all seven complete fast configurations;
+- runs all eight complete fast configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -60,6 +61,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaft -config CharlotteRaft_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRaftLog -config CharlotteRaftLog_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -274,9 +279,24 @@ distinct states.
 The invariants require volatile state recovered by a running node to match its
 durable state, every observed vote to have been durably recorded, every leader
 to hold a majority, and at most one leader per term. Log matching, commit
-safety, snapshots, membership changes, and temporal election liveness are
-explicitly deferred to later layers rather than hidden inside this election
-model.
+safety, snapshots, membership changes, and temporal election liveness are not
+hidden inside this election model.
+
+`CharlotteRaftLog.tla` is the second layer. It composes the election layer's
+one-leader-per-term guarantee with durable log append, one-entry
+`AppendEntries` conflict repair, current-term majority commit, commit
+propagation, crash, and restart. Its bounded three-node configuration explores
+122,240 distinct states. The invariants check log matching, agreement of
+committed entries, leader completeness, and that commit indices never extend
+past durable logs.
+
+The log model exposed an important abstraction boundary while it was being
+developed: replaying an already matching entry must preserve the follower's
+suffix. Only a conflicting entry permits suffix truncation. The Rust
+`handle_append_entries` implementation already has that ordering; the model
+was corrected to reflect it. Snapshots, membership changes, storage write
+failures, state-machine application, and temporal replication liveness remain
+future layers.
 
 ## Relationship to formal verification
 

@@ -72,3 +72,5 @@ run_model CharlotteDMA CharlotteDMA_small.cfg \
     CloseMemory ExitDriver ReclaimMemory
 run_model CharlotteRaft CharlotteRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
+run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \
+    Elect AppendLeader ReplicateOne CommitLeader PropagateCommit Crash Restart

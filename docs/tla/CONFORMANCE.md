@@ -142,9 +142,26 @@ a separately delivered detached-timer completion.
 
 This first Raft layer checks election safety only. It represents loss by
 withholding an action and duplication through idempotent same-candidate voting.
-It does not yet model the transport queue, log replication, commit indices,
-snapshot installation, membership changes, storage write failures, fairness,
-or eventual election.
+It does not model the transport queue, snapshot installation, membership
+changes, storage write failures, fairness, or eventual election.
+
+## Raft log replication and commit
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Elect` | `handle_vote_response`, `become_leader` | Assumes the election model's one-leader-per-term result and Raft's up-to-date-log voting rule. Each replacement leader has a strictly newer term. |
+| `AppendLeader` | `append_client_entry`, `LogStore::append` | Direct for a durable leader append. Client response and state-machine application are omitted. |
+| `ReplicateOne` | `handle_append_entries`, `truncate_suffix`, `append` | One-entry projection. A matching entry retains the existing suffix; a conflict truncates from that index before appending. The store flushes each mutation before returning. |
+| `CommitLeader` | `advance_commit_index` | Direct: a configured-voter majority must contain the index, and Raft advances by counting only an entry from the leader's current term. |
+| `PropagateCommit` | follower `handle_append_entries` update of `commit_index` | Direct for `min(leader_commit, last_new_index)` after prefix validation. |
+| `Crash` / `Restart` | service-domain exit and `RaftNode::new` with its `LogStore` | Durable logs survive. The model conservatively retains commit knowledge; concrete restart currently reconstructs it from snapshot/application progress and subsequent leader messages. |
+
+The second layer checks log matching, committed-entry agreement, and leader
+completeness under bounded conflict repair and restart. It relies on the first
+layer for election safety rather than reimplementing durable one-vote-per-term
+inside the log model. Snapshots, joint membership, failed storage operations,
+state-machine application, transport framing, and temporal liveness are
+outside this abstraction.
 
 ## Unified capability namespace
 
