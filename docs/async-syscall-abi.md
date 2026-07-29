@@ -217,7 +217,7 @@ The mapping:
 |---|---|
 | `read`/`write: &[Handle]` (fds to watch) | *not needed* — interests are registered at `submit` time and reported via the CQ; the shard watches one CQ, not N handles |
 | `timeout: Option<Duration>` | `deadline: Option<Timestamp>` |
-| returns `Event { woke, readable[], writable[] }` | returns count; CQ entries carry `{ cap, result }` |
+| returns `Event { woke, readable[], writable[] }` | returns count; CQ entries carry `{ operation, cookie, status, flags, result }` |
 | `woke` (wake pipe drained) | a wake IPI raised the CQ observable with no completion payload |
 
 Note the structural improvement: sitas must *hand the OS the fd set on every
@@ -534,20 +534,22 @@ The submission side of the ABI now exists **in the kernel** as
 `crates/catten/src/self_test/completion.rs`. It is built entirely on facilities
 that already existed:
 
-- a per-address-space **capability table** is an
-  `IdTable<Arc<Completion>>` keyed by `AddressSpaceId` — the same `IdTable` that
-  backs the thread and address-space tables;
+- a per-address-space completion payload registry is keyed by the public
+  handle allocated in the unified tagged object-capability namespace; the
+  authoritative entry is therefore shared with IPC, memory, device, and
+  mailbox capabilities while the completion registry retains the typed
+  `Arc<Completion>` payload;
 - a `Completion` is `Observable`: a waiting thread registers its `Waker` as an
   `Observer` (via `SystemScheduler::block_thread`) and `complete()` notifies
   them — byte-for-byte the mechanism `TimerEvent`/`sleep` already use;
 - an owned `Vec<u8>` transferred on `submit` is retained until a terminal
   completion hands it back (buffer ownership / deferred reclaim).
 
-The five operations are present as kernel-internal functions: `submit → cap`,
-`complete(cap, result)` (the kernel-side hook a worker's exit-observer would
-call), `poll` (non-blocking drain), `wait` (blocks via `block_thread`, with a
-lost-wake re-check), `cancel`, `close`, plus an `observe` hook mirroring "monitor
-a capability with the same mechanism the kernel uses."
+The five user-facing operations are present, along with `poll` for
+capability-specific non-blocking observation and
+`complete(cap, result)` as the kernel-side hook used by worker-exit and timer
+observers. `wait` blocks through the scheduler with a lost-wake recheck, while
+`cancel` and `close` enforce the terminal ownership lifecycle.
 
 **What the self-tests validate at boot** (whitebox integration tests, the kernel
 has no `cargo test`): buffer transfer on submit; the observer-signal path firing
@@ -556,15 +558,12 @@ retaining the buffer until the terminal `Cancelled` completion (deferred
 reclaim); and `submit` returning `WouldBlock` at the capacity bound (submission
 backpressure).
 
-**What is deliberately *not* here yet** (honest scoping): `wait` is implemented
-but not exercised in self-tests because it blocks the calling thread, and
-self-tests run before the BSP yields to the scheduler; there is no real-EL0
-test thread (the dispatch path is exercised via synthetic `TrapFrame` — §9.3);
-and there is no shared-memory CQ/SQ ring — completion is delivered via the
-observer wake, not yet a userspace-visible queue. The module builds and links
-cleanly for both `aarch64-unknown-none-catten` and `x86_64-unknown-none-catten`
-(with the `display` feature off, which has an unrelated pre-existing host-link
-issue), and adds no new warnings.
+The prototype has since grown beyond that initial submission path. Blocking CQ
+waits are scheduler-driven and tested after boot, a shared-memory CQ ring plus
+non-lossy kernel backlog is mapped into EL0 domains, and real AArch64 EL0/SVC
+self-tests exercise submission, waiting, draining, cancellation, endpoint
+readiness, and cross-LP completion paths. The historical implementation steps
+below are retained to explain how those pieces were introduced.
 
 ### 9.3 Syscall entry prototype: `sync_dispatcher` no longer panics on SVC
 
@@ -584,20 +583,13 @@ When an SVC is taken from EL0 (EC = 0x15):
 5. Any result the handler writes into `frame.regs[0]` (x0) is written back to
    the stack before the IVT `pop_volatile_regs` restores it into the user's x0.
 
-The dispatch table currently maps SVC #0 (LOG, a debug/test placeholder) and
-SVC #1–6 (the five completion-cap operations) to handler functions.
-Self-tests in `crates/catten/src/self_test/syscall.rs` exercise every dispatch
-route by calling `syscall_dispatch` directly with a synthetic `TrapFrame`,
-verifying that the completion-cap operations (submit/complete/poll/cancel/close)
-are reachable through the syscall table without panicking.
-
-**What is not here yet:** a real-EL0 test thread that executes actual `SVC #n`
-instructions. That requires mapping a page with user access (`AP_EL0`) in a
-user address space, writing a small assembly stub there, and creating a user
-thread with that page as its entry point — page-table work deferred to the next
-step. The dispatch path itself is real and exercised from the self-test harness.
-An unknown syscall number still panics (fatal), which is the expected behavior
-until error-return conventions are defined.
+The dispatch table now uses the shared `catten-syscall::SyscallNumber`
+enumeration for the complete implemented ABI rather than independently
+maintained numeric arms. Synthetic `TrapFrame` tests cover dispatch, and
+multiple real-EL0 tests execute SVC instructions through the architectural
+entry path. An unknown numeric syscall still terminates at the kernel boundary;
+ordinary callers use the shared enumeration and therefore cannot name an
+unimplemented syscall through the typed API.
 
 **Update (branch `shard-local-kernel`):** the first real-EL0 user thread now
 exists as a self-test (`crates/catten/src/self_test/el0.rs`). It creates a user
@@ -648,34 +640,34 @@ The completion-queue ring buffer, the prerequisite for zero-syscall completion
 draining from userspace (§4.2), now exists as
 `crates/catten/src/completion/cq.rs`. It is a single 4 KiB page containing a
 header (head, tail, capacity, overflow — 4 × u32) and a circular entry array
-(16 bytes per entry: `cap: u64, result: i64`). The kernel is the single
-producer (`write(cap, result)` advances the head); the consumer (ultimately
-userspace) calls `read()` which advances the tail.
+(32 bytes per entry: `operation: u64`, `cookie: u64`, `status: u32`,
+`flags: u32`, and `result: i64`). The kernel is the single producer;
+`write(operation, cookie, status, result)` advances the head and the userspace
+consumer advances the tail.
 
 The ring is allocated from the kernel heap (`alloc::vec![0u8; 4096]`) and the
 reference is a raw pointer — once mapped into a user address space, the same
 physical memory is visible from both sides. Entries are written/read with
 `volatile` accesses and a `fence(Release)`/`fence(Acquire)` barrier pair,
-ensuring correct ordering without cache-coherence surprises. Overflow is
-detected (head + 1 == tail) and counted rather than silently overwriting.
+ensuring correct ordering without cache-coherence surprises. The raw ring
+detects and counts a full-ring write instead of overwriting an entry; the
+completion subsystem then retains that entry in its ordered, non-lossy kernel
+backlog until userspace drains enough ring capacity.
 
 Self-tests validate: write → pending count, drain in insertion order,
-fill-to-capacity, overflow detection, and `OpResult` ↔ `i64` encoding
+fill-to-capacity, overflow detection, and status/result encoding
 round-trip. An integration self-test (`self_test/cq_completion.rs`) validates
 the full submit → complete → ring-entry cycle: an AS with an attached CQ ring,
 `complete()` writes the entry to the ring, `cq_pending()` returns the count,
 and the ring is drained and verified. Both architectures build cleanly.
 
-What remains: map the ring page into a user address space (the AP_EL0
-page-mapping infrastructure from the real-EL0 test now exists) and wire
-the `wait` syscall to block until `pending() > 0`. That is the last
-piece of the zero-syscall-completion loop.
-**(Done — see §9.6: the real-EL0 test now maps a CQ ring page at
+The ring mapping and wait path are now complete (see §9.6): the real-EL0 test
+maps a CQ ring page at
 `0x0001_1000` alongside the code page, with
 `open_address_space_with_cq_phys` attaching the ring to the completion
 subsystem. The ring is a physical frame visible from both the kernel
 (HHDM) and userspace (page table), and `complete()` writes entries to
-it. The zero-syscall completion loop is fully wired on the kernel side.)**
+it. The zero-syscall completion loop is fully wired on the kernel side.
 
 ---
 
@@ -693,8 +685,8 @@ it. The zero-syscall completion loop is fully wired on the kernel side.)**
 3. **Bring up a syscall entry path on AArch64** (decode `ESR_EL1.EC == 0b010101`
    in `sync_dispatcher` instead of panicking) sufficient to call `submit`/`wait`
    from an EL0 test thread.
-   **(Done — see §9.3: syscall dispatch table wired; self-tests exercise all
-   routes via synthetic `TrapFrame`. Real-EL0 test thread deferred.)**
+   **(Done — see §9.3: syscall dispatch is wired through the shared enumeration;
+   synthetic dispatch tests and real-EL0 SVC tests exercise the path.)**
 4. **Bound `IPI_CMD_QUEUES`** and generalize `IpiRpc` toward a typed message, so
    cross-shard submit exerts backpressure (this also seeds Option B / Phase 3).
    **(Done — see §9.4: bounded per-LP queues with `push`-returns-backpressure

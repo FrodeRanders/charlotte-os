@@ -15,7 +15,7 @@ This is a reviewable correspondence map, not a refinement proof.
 | `EndpointCreate` | `ipc::create_endpoint` | Direct for owner, capacity, open state and endpoint capability. Interface/version and CQ notification binding are omitted. |
 | `ConnectionMint` | `ipc::mint_connection` and `mintable_endpoint` | Direct for endpoint identity and attenuated rights. |
 | `ScalarSend` | `ipc::scalar_send`, `enqueue_scalar` | Direct for authorization, closure, queue capacity and enqueue. |
-| `ScalarCall` | `ipc::scalar_call` | Direct for pending-call creation, internal reply-token creation and enqueue. No server-visible reply capability exists yet. |
+| `ScalarCall` | `ipc::scalar_call` | Direct for pending-call creation, internal reply-token creation and enqueue. The token identity remains kernel-internal while queued; `receive` installs the server-visible one-shot capability. |
 | `ScalarCallMove` | `ipc::scalar_call_with_memory_move`, `memory::object::move_to` | Abstract: one attachment only; concrete rollback and mapping checks are omitted. |
 | `ScalarCallCopy` | `ipc::scalar_call_with_memory_copy`, `memory::object::copy_to` | Abstract: contents and allocation failures are omitted. |
 | `ScalarCallBorrowRead` | `ipc::scalar_call_with_memory_borrow_read`, `memory::object::lend_read` | Direct for distinct borrower, shared readers and reply-bound revocation. Rights and mapping checks are omitted. |
