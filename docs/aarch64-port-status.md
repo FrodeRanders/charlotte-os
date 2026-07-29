@@ -26,7 +26,9 @@
   sink on macOS. GIC and UART MMIO base addresses are QEMU-`virt` hardcoded
   pending device-tree support. EL0 userspace, cross-domain IPC, service restart,
   delegated device access, and a two-node Raft election are exercised by the
-  deferred QEMU TCG boot tests. Virtio-net still requires Linux KVM validation.
+  deferred QEMU TCG boot tests. The opt-in virtio-net test also runs under TCG,
+  including PCI discovery, MSI-X, SMMU DMA mapping, feature negotiation,
+  `DRIVER_OK`, MAC/link reads, and an EL0 transmit request.
 
 ## How to build and run
 
@@ -172,8 +174,10 @@ exception log and `lldb` on the QEMU gdb stub:
   for DT) is still `todo!()`. ACPI parsing works on `virt` (which does expose
   ACPI), so this is not blocking today.
 - **EL0 / userspace.** The EL0 drop, syscall path, isolated service domains,
-  memory IPC, service restart, and Raft election are TCG-tested. The virtio-net
-  EL0 MMIO path is skipped under HVF and remains pending on Linux KVM.
+  memory IPC, service restart, Raft election, and virtio-net smoke path are
+  TCG-tested. The virtio-net EL0 MMIO path remains incompatible with HVF;
+  use `--net-test` without `--hvf`. Two TCG guests can share a QEMU socket LAN
+  as described in `aarch64-network-development.md`.
 - **SPI / external interrupt routing.** Only PPIs (timer) and SGIs (IPIs) are
   wired; device SPIs will need the `ExternalInterruptControllerIfce` path
   (GICD `IROUTER`/config) once drivers attach.

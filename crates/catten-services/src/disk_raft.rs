@@ -244,8 +244,7 @@ fn serialize_log_state(
     entries: &[LogEntry],
 ) -> Vec<u8> {
     let encoded_entries = serialize_entries(entries);
-    let mut buf =
-        Vec::with_capacity(LOG_STATE_HEADER_LEN + snapshot.len() + encoded_entries.len());
+    let mut buf = Vec::with_capacity(LOG_STATE_HEADER_LEN + snapshot.len() + encoded_entries.len());
     buf.extend_from_slice(LOG_STATE_MAGIC);
     buf.extend_from_slice(&snapshot_index.to_le_bytes());
     buf.extend_from_slice(&snapshot_term.to_le_bytes());
@@ -381,19 +380,18 @@ impl DiskLogStore {
             return None;
         }
 
-        let legacy_snapshot =
-            if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
-                if buf.len() < 16 {
-                    (0, 0)
-                } else {
-                    (
-                        u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8])),
-                        u64::from_le_bytes(buf[8..16].try_into().unwrap_or([0; 8])),
-                    )
-                }
-            } else {
+        let legacy_snapshot = if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
+            if buf.len() < 16 {
                 (0, 0)
-            };
+            } else {
+                (
+                    u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8])),
+                    u64::from_le_bytes(buf[8..16].try_into().unwrap_or([0; 8])),
+                )
+            }
+        } else {
+            (0, 0)
+        };
 
         let legacy_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
         let log_bytes = obj_read(obj_conn, objects.log).unwrap_or_default();
@@ -405,12 +403,7 @@ impl DiskLogStore {
                 // as the legacy entry stream.
                 return None;
             } else {
-                (
-                    legacy_snapshot.0,
-                    legacy_snapshot.1,
-                    legacy_data,
-                    deserialize_entries(&log_bytes),
-                )
+                (legacy_snapshot.0, legacy_snapshot.1, legacy_data, deserialize_entries(&log_bytes))
             };
 
         let store = Self {
@@ -434,8 +427,7 @@ impl DiskLogStore {
         let snapshot_idx = *self.snapshot_idx.lock();
         let snapshot_term = *self.snapshot_term.lock();
         let snapshot_data = self.snapshot_data.lock().clone();
-        let data =
-            serialize_log_state(snapshot_idx, snapshot_term, &snapshot_data, &entries);
+        let data = serialize_log_state(snapshot_idx, snapshot_term, &snapshot_data, &entries);
         assert!(
             obj_write(self.obj_conn, self.objects.log, &data) && obj_flush(self.obj_conn),
             "failed to persist Raft log state"

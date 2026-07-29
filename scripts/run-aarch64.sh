@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test] [--live-upgrade-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -18,7 +18,12 @@
 #   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
-#   --net-test     Build the KVM-only virtio-net test (requires separately configured matching PCI hardware)
+#   --net-test     Build and run the virtio-net test under TCG/KVM
+#   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
+#   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
+#   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
+#   --instance NAME  Use separate boot/NVMe/log files for this VM
+#   --mac ADDRESS  Set the guest NIC MAC address
 #   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
@@ -31,12 +36,16 @@ GDB=""
 DISPLAY_MODE="0"
 USE_HVF="0"
 NET_TEST="0"
+RELMSG_TEST="0"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
 SCHEDULER_TRACE="0"
 DEBUG_SNAPSHOT="0"
+INSTANCE=""
+NET_BACKEND="user"
+NET_MAC="52:54:00:12:34:56"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -48,6 +57,19 @@ while [ "$#" -gt 0 ]; do
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
+        --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
+        --net-listen)
+            [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
+            NET_BACKEND="listen:$2"; shift 2 ;;
+        --net-connect)
+            [ "$#" -ge 2 ] || { echo "Missing value for --net-connect" >&2; exit 1; }
+            NET_BACKEND="connect:$2"; shift 2 ;;
+        --instance)
+            [ "$#" -ge 2 ] || { echo "Missing value for --instance" >&2; exit 1; }
+            INSTANCE="$2"; shift 2 ;;
+        --mac)
+            [ "$#" -ge 2 ] || { echo "Missing value for --mac" >&2; exit 1; }
+            NET_MAC="$2"; shift 2 ;;
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
@@ -59,13 +81,30 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
+    exit 1
+fi
+if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
+    echo "error: socket networking requires --net-test" >&2
+    exit 1
+fi
+if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
+    echo "error: --relmsg-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
 TARGET_DIR="${ARCH}-unknown-none-catten"
 IMAGE_DIR="./os-images"
-IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}.img"
+INSTANCE_SUFFIX=""
+if [ -n "$INSTANCE" ]; then
+    INSTANCE_SUFFIX="-${INSTANCE}"
+fi
+IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTAA64.EFI"
 
@@ -81,7 +120,9 @@ if [ "$PROFILE" = "release" ]; then
     RELEASE_FLAG="--release"
 fi
 
-if [ "$CLEAN_BUILD" = "1" ]; then
+if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
+    echo ">>> Reusing staged AArch64 EL0 bundle."
+elif [ "$CLEAN_BUILD" = "1" ]; then
     echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
     cargo clean --target "$TARGET_SPEC"
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
@@ -90,7 +131,9 @@ else
     echo ">>> Rebuilding embedded EL0 service bundle..."
     "${ROOT_DIR}/scripts/build-catten-services.sh" --embed
 fi
-"${ROOT_DIR}/scripts/build-catten-user.sh" --embed
+if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
+    "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
+fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
 
 # Feature selection.
@@ -123,6 +166,9 @@ if [ "$NET_TEST" = "1" ]; then
     fi
     FEATURES="${FEATURES},virtio_net_test"
 fi
+if [ "$RELMSG_TEST" = "1" ]; then
+    FEATURES="${FEATURES},relmsg_net_test"
+fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
@@ -151,8 +197,16 @@ if [ "$DEBUG_SNAPSHOT" = "1" ]; then
     fi
 fi
 
-cargo build --package catten --target "$TARGET_SPEC" \
-    --no-default-features --features "$FEATURES" $RELEASE_FLAG
+if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
+    if [ ! -f "$KERNEL" ]; then
+        echo "error: CATTEN_SKIP_KERNEL_BUILD=1 but ${KERNEL} does not exist" >&2
+        exit 1
+    fi
+    echo ">>> Reusing previously built Catten kernel."
+else
+    cargo build --package catten --target "$TARGET_SPEC" \
+        --no-default-features --features "$FEATURES" $RELEASE_FLAG
+fi
 
 if command -v sha256sum >/dev/null 2>&1; then
     KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
@@ -174,7 +228,7 @@ mcopy -i "$IMAGE" "$KERNEL" "::/catten"
 mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 
 # --- NVMe persistent disk image ---
-NVME_IMAGE="${IMAGE_DIR}/nvme-disk.img"
+NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
 if [ ! -f "$NVME_IMAGE" ]; then
     echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
     dd if=/dev/zero of="$NVME_IMAGE" bs=1048576 count=16 status=none
@@ -191,7 +245,8 @@ QEMU_OPTS=(
     -M "$MACHINE"
     -m 512M
     -bios "$FIRMWARE"
-    -drive file="$IMAGE",format=raw,if=virtio
+    -drive "file=${IMAGE},format=raw,if=none,id=boot0"
+    -device "virtio-blk-pci,drive=boot0,addr=3"
 )
 
 if [ "$USE_HVF" = "1" ]; then
@@ -202,11 +257,39 @@ fi
 
 QEMU_OPTS+=(-smp "$SMP")
 
-NVME_IMAGE="${IMAGE_DIR}/nvme-disk.img"
+if [ "${CATTEN_QEMU_VIRTIO_TRACE:-0}" = "1" ]; then
+    QEMU_OPTS+=(
+        -trace enable=virtio_pci_notify_write
+    )
+fi
+if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then
+    QEMU_OPTS+=(-monitor "unix:/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
+fi
+
 QEMU_OPTS+=(
     -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
-    -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4"
+    -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2"
 )
+
+if [ "$NET_TEST" = "1" ]; then
+    QEMU_OPTS+=(-nic none)
+    case "$NET_BACKEND" in
+        user)
+            QEMU_OPTS+=(-netdev user,id=charlotte-net)
+            ;;
+        listen:*)
+            NET_PORT="${NET_BACKEND#listen:}"
+            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,listen=:${NET_PORT}")
+            ;;
+        connect:*)
+            NET_PEER="${NET_BACKEND#connect:}"
+            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,connect=${NET_PEER}")
+            ;;
+    esac
+    QEMU_OPTS+=(
+        -device "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=${NET_MAC},addr=1"
+    )
+fi
 
 if [ "$DISPLAY_MODE" = "1" ]; then
     QEMU_OPTS+=(-device ramfb)
@@ -215,7 +298,7 @@ else
 fi
 
 if [ -n "$TIMEOUT" ]; then
-    LOG="/tmp/charlotte-serial.log"
+    LOG="/tmp/charlotte${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."

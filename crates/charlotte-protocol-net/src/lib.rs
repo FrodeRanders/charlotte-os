@@ -23,12 +23,30 @@ pub fn decode_status(reply: i64) -> (u8, [u8; 6]) {
     let v = reply as u64;
     let link = (v & 0xff) as u8;
     let mac = [
-        ((v >> 48) & 0xff) as u8,
-        ((v >> 40) & 0xff) as u8,
-        ((v >> 32) & 0xff) as u8,
-        ((v >> 24) & 0xff) as u8,
-        ((v >> 16) & 0xff) as u8,
         ((v >> 8) & 0xff) as u8,
+        ((v >> 16) & 0xff) as u8,
+        ((v >> 24) & 0xff) as u8,
+        ((v >> 32) & 0xff) as u8,
+        ((v >> 40) & 0xff) as u8,
+        ((v >> 48) & 0xff) as u8,
     ];
     (link, mac)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_status;
+
+    #[test]
+    fn decodes_driver_status_layout() {
+        let mac = [0x52_u64, 0x54, 0x00, 0x12, 0x34, 0x01];
+        let encoded = 1
+            | (mac[0] << 8)
+            | (mac[1] << 16)
+            | (mac[2] << 24)
+            | (mac[3] << 32)
+            | (mac[4] << 40)
+            | (mac[5] << 48);
+        assert_eq!(decode_status(encoded as i64), (1, [0x52, 0x54, 0x00, 0x12, 0x34, 0x01]));
+    }
 }

@@ -157,9 +157,12 @@ QEMU `virt` machine (GICv3): it initializes memory, brings up all secondary
 processors, runs the scheduler with preemptive context switching driven by the
 ARM Generic Timer, and enumerates PCIe via ECAM. See
 [`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) for a detailed
-status report, including current limitations (device-tree discovery and
-Linux KVM NIC validation). EL0 execution, isolated userspace services, IPC,
-driver restart, and a two-node Raft election are boot-tested under QEMU TCG.
+status report, including current limitations (notably device-tree discovery).
+EL0 execution, isolated userspace services, IPC, driver restart, virtio-net
+initialization and transmit submission, and a two-node Raft election are
+boot-tested under QEMU TCG. See
+[`docs/aarch64-network-development.md`](docs/aarch64-network-development.md)
+for the macOS TCG and two-VM socket-LAN workflow.
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 

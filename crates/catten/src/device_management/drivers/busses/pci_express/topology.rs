@@ -563,24 +563,27 @@ impl PcieFunction {
     }
 }
 
-/// Scan the PCI topology for the first virtio-net device and return its
-/// BAR0 physical base address and its interrupt line (for delegation to an
-/// EL0 driver domain, Phase 9).
-pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
+/// Scan the PCI topology for the first virtio-net device, configure MSI-X
+/// vector zero when possible, and return its delegated-device coordinates.
+pub fn lookup_first_virtio_net(
+    topology: &PcieTopology,
+) -> Option<(u64, usize, u32, u32, Option<u64>)> {
     for group in &topology.segments {
         // Walk the bus hierarchy starting at the root bus of each segment.
         let mut stack = alloc::vec![&*group.root_bus];
         while let Some(bus) = stack.pop() {
             for dev in &bus.devices {
-                let ep = match dev {
+                let (ep, device, function) = match dev {
                     PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Endpoint(ep) => ep,
+                        PcieFunction::Endpoint(ep) => {
+                            (ep, sfd.number.get_inner(), ep.number.get_inner())
+                        }
                         _ => continue,
                     },
                     PcieDevice::MultiFunc(mfd) => {
                         match mfd.functions.first().and_then(|f| {
                             if let PcieFunction::Endpoint(ep) = f {
-                                Some(ep)
+                                Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
                             } else {
                                 None
                             }
@@ -597,14 +600,93 @@ pub fn lookup_first_virtio_net(topology: &PcieTopology) -> Option<(u64, u8)> {
                 if ep.identifier.device_id < 0x1000 || ep.identifier.device_id > 0x107f {
                     continue;
                 }
+                if (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00) {
+                    continue;
+                }
+                let requester_id =
+                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                 let cfg = ep.cfg_ptr.lock();
                 let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
-                let bar0 = header.bar(0);
-                let irq = header.interrupt_line();
-                drop(cfg);
-                let phys_base = (bar0 & 0xffff_fff0) as u64;
+                // QEMU places all modern virtio regions in BAR 4. Verify the
+                // vendor capability instead of mistaking the transitional
+                // legacy I/O BAR for a DMA-isolatable transport.
+                let cfg_bytes = cfg.as_ptr().cast::<u8>();
+                let mut capability =
+                    header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
+                let mut modern_bar = None;
+                for _ in 0..48 {
+                    if capability < 0x40 || capability + 16 > 0x100 {
+                        break;
+                    }
+                    let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                    let next =
+                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
+                    let len =
+                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                    let cfg_type =
+                        unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                    if id == 0x09 && len >= 16 {
+                        let bar =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 4)) };
+                        let offset = unsafe {
+                            core::ptr::read_unaligned(cfg_bytes.add(capability + 8).cast::<u32>())
+                        };
+                        let length = unsafe {
+                            core::ptr::read_unaligned(cfg_bytes.add(capability + 12).cast::<u32>())
+                        };
+                        logln!(
+                            "[net] virtio cap type={} bar={} offset={:#x} length={:#x}",
+                            cfg_type,
+                            bar,
+                            offset,
+                            length
+                        );
+                    }
+                    if id == 0x09 && len >= 16 && cfg_type == 1 {
+                        modern_bar = Some(unsafe {
+                            core::ptr::read_volatile(cfg_bytes.add(capability + 4))
+                        });
+                    }
+                    if next == 0 || next == capability {
+                        break;
+                    }
+                    capability = next;
+                }
+                let bar_index = modern_bar? as usize;
+                if bar_index >= 6 {
+                    continue;
+                }
+                let bar = header.bar(bar_index) as u64;
+                if bar & 1 != 0 {
+                    continue;
+                }
+                let phys_base = if bar & 0x4 != 0 {
+                    if bar_index + 1 >= 6 {
+                        continue;
+                    }
+                    (bar & 0xffff_fff0) | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                } else {
+                    bar & 0xffff_fff0
+                };
+                let legacy_irq = header.interrupt_line() as u32;
                 if phys_base != 0 {
-                    return Some((phys_base, irq));
+                    #[cfg(target_arch = "aarch64")]
+                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi()
+                        && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
+                            cfg.as_ptr(),
+                            message,
+                        )
+                        .is_ok()
+                    {
+                        logln!(
+                            "[net] MSI-X vector 0: address={:#x} data={} intid={}",
+                            message.address,
+                            message.data,
+                            message.intid
+                        );
+                        return Some((phys_base, 4, message.intid, requester_id, Some(message.address)));
+                    }
+                    return Some((phys_base, 4, legacy_irq, requester_id, None));
                 }
             }
             for dev in &bus.devices {

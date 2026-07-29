@@ -11,10 +11,10 @@ services, or run the self-tests.
         \texttt{rustup}. The \texttt{rust-toolchain.toml} pins the exact
         version.
     \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
-        (\texttt{qemu-system-x86\_64}). On macOS, Apple Hypervisor Framework
-        (HVF) acceleration is used automatically. On Linux, KVM is required
-        for virtio-net runtime validation (HVF does not emulate EL0 MMIO
-        instructions).
+        (\texttt{qemu-system-x86\_64}). On macOS, TCG is the default and HVF
+        is opt-in. The virtio-net smoke test runs under TCG; HVF is unsuitable
+        for its direct EL0 device-MMIO path. KVM is an optional Linux
+        accelerator, not a networking requirement.
     \item \textbf{Build dependencies:} \texttt{cargo}, \texttt{just} (optional,
         for convenience targets in the Justfile).
 \end{itemize}

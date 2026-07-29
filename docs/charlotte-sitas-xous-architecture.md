@@ -37,7 +37,7 @@ is in the repository history and earlier revisions of this document.
 | 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, backlog batching, §8.2 32-byte richer completion records | Done |
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
-| 9 | Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init sequence, MAC read, virtqueue setup, frame TX/RX (compiles), MEMORY_GET_PHYS syscall. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary (compile). Runtime validation is blocked by HVF's EL0-MMIO limitation and remains pending on Linux KVM. | Driver built, not yet runtime-validated |
+| 9 | Virtio-net driver: PCI discovery, translated legacy register aperture + MSI-X delegation, SMMU DMA domain, feature negotiation, MAC/link read, virtqueue setup, and EL0 frame submission. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary compile. The driver smoke path is runtime-validated under QEMU TCG; receive, completion reclamation, batching, and the TCP/IP service remain incomplete. | Driver smoke path TCG-validated; full data path pending |
 | 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Implemented; intermittent SMP timer/lifecycle validation remains |
 | 11 | Userspace startup ABI: ELF `_start`, `entry!(main)`, typed `Context`, fixed-width/versioned launch header, explicit startup input | Done |
 
@@ -57,8 +57,9 @@ is in the repository history and earlier revisions of this document.
 
 ### What's next
 
-- **Criterion 10** — runtime-validate the virtio-net driver and TCP/IP
-  stack on a KVM host and close the batching/buffer-pool milestone.
+- **Criterion 10** — extend the TCG-validated virtio-net initialization and
+  transmit-submission path with receive parsing, used-ring reclamation,
+  batching/buffer pools, and the deployed TCP/IP service.
 - **TCP/IP service** — deploy the smoltcp adapter as a native EL0
   service consuming frames from the NIC driver endpoint.
 - **Network service stack** — build the reliable-message layer, RPC,
@@ -2291,9 +2292,11 @@ Current status:
     registers with direct EL0 MMIO writes, completes an interrupt-driven
     deferred read (§7.2), and acknowledges a delegated device interrupt
     from EL0.
--   Criterion 10 remains pending runtime validation on Linux KVM. The
-    virtio-net driver, protocol crates, smoltcp adapter, and TCP/IP service
-    compile, but no successful end-to-end NIC data path is claimed from HVF.
+-   Criterion 10 is partially runtime-validated under QEMU TCG: PCI discovery,
+    MSI-X delegation, SMMU-backed queues, feature negotiation, MAC/link reads,
+    `DRIVER_OK`, and an EL0 transmit submission pass. HVF remains unsuitable
+    for this EL0-MMIO path. Receive parsing, TX completion reclamation,
+    batching, and an end-to-end TCP/IP exchange are not yet claimed.
 -   Criterion 11 is substantially strengthened but remains open as a complete
     ABI audit. Launch ABI v2.0 is shared, versioned, bounded, and fixed-width,
     including typed manifest and capability records; crt0

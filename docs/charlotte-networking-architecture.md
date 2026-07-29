@@ -719,10 +719,11 @@ machine exported as a native CharlotteOS IPC endpoint.
 > forever; the settled system reaches the idle/WFI path. A separate
 > single-voter test requires the NVMe-backed object store, restarts the Raft
 > process, and verifies that its recovered term advances. Cross-machine leader
-> election remains blocked on two dependencies: (1) the NIC driver and TCP/IP
-> service need runtime validation on Linux KVM because HVF cannot safely
-> exercise the required EL0 MMIO path, and (2) the reliable-message service
-> needs end-to-end implementation and validation over that driver.
+> election remains blocked on guest software integration, not KVM. The
+> virtio-net initialization/transmit smoke path now passes under macOS QEMU
+> TCG, and two guests can share a socket-backed Ethernet segment. The
+> reliable-message service still needs end-to-end frame transport, followed
+> by a remote Raft transport and distributed-name-service replica wiring.
 > Commit `2679085` established local two-node IPC election; later scheduler,
 > timer, and lifecycle fixes preserve that result under the current HVF boot.
 
@@ -734,7 +735,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
 | RPC batching | Largest protobuf AppendEntries prefix fitting one 4 KiB attachment; larger logs continue in later RPCs |
 | Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
-| Cross-machine Raft (NIC driver + reliable message layer) | Blocked on NIC runtime validation (KVM) |
+| Cross-machine Raft (NIC driver + reliable message layer) | Host L2 and NIC smoke path available under TCG; reliable-message and remote Raft transport integration pending |
 | Distributed name service (on top of Raft) | Design only; depends on cross-machine Raft |
 
 ```
@@ -814,8 +815,8 @@ continued operation after a remote-node crash have not yet been validated.
 > **Status: local node service implemented; replication is design only.**
 > Each booted node has one shared `ns.rs` registry used by its ordinary
 > services. Making those per-node replicas share cluster state requires
-> (1) cross-machine Raft
-> validated on KVM, (2) the reliable message layer implemented, and
+> (1) the reliable message layer carried over the TCG-validated NIC path,
+> (2) cross-machine Raft validated between separate guests, and
 > (3) the name service refactored as a `StateMachine` implementation.
 
 Each existing node-local name service becomes a replica of one logical

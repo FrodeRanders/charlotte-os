@@ -55,7 +55,11 @@ const PAGE_SIZE: usize = 4096;
 const STE_SIZE: usize = 64;
 const QUEUE_ENTRIES: u32 = 256;
 const EVENT_ENTRIES: u32 = 128;
-const IOVA_START: u64 = 0x1_0000_0000;
+// Keep the default aperture usable by devices whose DMA descriptors are
+// nominally 64-bit but whose queue transport still has an effective 32-bit
+// address limit. This is an I/O virtual address, not exposed physical memory;
+// each requester retains its own isolated stage-1 domain.
+const IOVA_START: u64 = 0x1000_0000;
 
 const IDR0: usize = 0x000;
 const IDR1: usize = 0x004;
@@ -651,4 +655,17 @@ pub fn handle_interrupt(intid: u32) -> bool {
 
 pub fn fault_count() -> u64 {
     FAULT_COUNT.load(Ordering::Acquire)
+}
+
+/// Number of fault events the hardware has produced but the interrupt path
+/// has not consumed yet. This is also useful to diagnose a requester whose
+/// MSI path is itself affected by a translation failure.
+pub fn pending_fault_events() -> u32 {
+    let mmio = IRQ_MMIO.load(Ordering::Acquire);
+    if mmio == 0 {
+        return 0;
+    }
+    let producer = read32(mmio, EVTQ_PROD) & (EVENT_ENTRIES * 2 - 1);
+    let consumer = IRQ_EVENT_CONS.load(Ordering::Acquire);
+    producer.wrapping_sub(consumer) & (EVENT_ENTRIES * 2 - 1)
 }

@@ -27,10 +27,10 @@ authoritative record.
     per-shard CQ rings & Done \\
 8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
     interrupt-driven deferred reads, crash recovery & Done \\
-9 & Virtio-net driver: PCI discovery, BAR0 + IRQ delegation, virtio init,
-    MAC read, virtqueue setup, frame TX/RX (compiles). Smoltcp 0.13 adapter
-    + TCP/IP service binary (compile). Runtime validation pending on KVM. &
-    Driver built, not runtime-validated \\
+9 & Virtio-net driver: PCI discovery, MSI-X and SMMU delegation, feature
+    negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
+    Smoltcp 0.13 adapter + TCP/IP service binary compile. &
+    Driver smoke path TCG-validated; full data path pending \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
     wakes, sustained-window load rebalancing & Done \\
 11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
@@ -119,16 +119,18 @@ authoritative record.
 \begin{itemize}
     \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists;
         the EL0 test and real-EL0 user thread are AArch64-only.
-    \item \textbf{Virtio-net runtime:} the driver and TCP/IP stack compile but
-        cannot be runtime-validated on macOS (HVF does not emulate EL0 MMIO
-        instructions). Validation requires a Linux KVM host.
+    \item \textbf{Virtio-net runtime:} initialization and transmit submission
+        are runtime-validated on macOS under QEMU TCG. HVF remains unsuitable
+        for direct EL0 device MMIO. Receive parsing, TX reclamation, batching,
+        and the deployed TCP/IP service remain incomplete.
     \item \textbf{General process loader:} the ELF loader is fixed-address for
         reference service images, not a general loader with argv/env/auxv-style
         setup.
     \item \textbf{Resource accounting:} per-domain quotas are not yet
         implemented; capability-table capacity is fixed.
-    \item \textbf{Cross-machine Raft:} blocked on NIC runtime validation (KVM)
-        and the reliable message layer implementation.
+    \item \textbf{Cross-machine Raft:} two TCG guests can share a QEMU socket
+        LAN, but reliable-message frame transport and remote Raft peer routing
+        are not yet connected.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
         ACPI IORT, per-requester DMA-domain capabilities, memory pinning,
         IOVA map/unmap, synchronous invalidation, fault reporting, teardown,

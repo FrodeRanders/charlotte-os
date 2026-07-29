@@ -240,10 +240,37 @@ pub mod net {
 /// Virtio-net device MMIO offsets (virtio legacy transport, common config
 /// at BAR0 offset 0 on the transitional device QEMU exposes).
 pub mod virtio {
+    // QEMU virtio-pci modern capability layout within BAR 4.
+    pub const MODERN_COMMON: usize = 0x0000;
+    pub const MODERN_ISR: usize = 0x1000;
+    pub const MODERN_DEVICE: usize = 0x2000;
+    pub const MODERN_NOTIFY: usize = 0x3000;
+    pub const MODERN_NOTIFY_MULTIPLIER: usize = 4;
+
+    pub const M_DEVICE_FEATURE_SELECT: usize = 0x00;
+    pub const M_DEVICE_FEATURE: usize = 0x04;
+    pub const M_DRIVER_FEATURE_SELECT: usize = 0x08;
+    pub const M_DRIVER_FEATURE: usize = 0x0c;
+    pub const M_CONFIG_VECTOR: usize = 0x10;
+    pub const M_DEVICE_STATUS: usize = 0x14;
+    pub const M_QUEUE_SELECT: usize = 0x16;
+    pub const M_QUEUE_SIZE: usize = 0x18;
+    pub const M_QUEUE_VECTOR: usize = 0x1a;
+    pub const M_QUEUE_ENABLE: usize = 0x1c;
+    pub const M_QUEUE_NOTIFY_OFF: usize = 0x1e;
+    pub const M_QUEUE_DESC: usize = 0x20;
+    pub const M_QUEUE_DRIVER: usize = 0x28;
+    pub const M_QUEUE_DEVICE: usize = 0x30;
+
     /// Offset within BAR0 of the common config (legacy layout).
-    pub const COMMON_CFG_OFFSET: usize = 0x000;
+    /// QEMU `virt` places the first legacy PCI I/O BAR at port 0x80. On
+    /// AArch64 that aperture is translated into a page of system MMIO which
+    /// the supervisor delegates to this reference driver.
+    pub const COMMON_CFG_OFFSET: usize = 0x080;
     /// Device-specific config offset (legacy: immediate after common config).
-    pub const DEVICE_CFG_OFFSET: usize = 0x014;
+    /// MSI-X adds the configuration-vector and queue-vector registers to the
+    /// legacy common header, moving device-specific configuration by 4 bytes.
+    pub const DEVICE_CFG_OFFSET: usize = 0x018;
 
     // Common config registers relative to COMMON_CFG_OFFSET.
     pub const DEVICE_FEATURES: usize = 0x00; // u32 r/o
@@ -254,6 +281,8 @@ pub mod virtio {
     pub const QUEUE_NOTIFY: usize = 0x10; // u16 w/o
     pub const DEVICE_STATUS: usize = 0x12; // u8  r/w
     pub const ISR_STATUS: usize = 0x13; // u8  r/o
+    pub const CONFIG_VECTOR: usize = 0x14; // u16 r/w (MSI-X)
+    pub const QUEUE_VECTOR: usize = 0x16; // u16 r/w (MSI-X)
 
     // Device status bits.
     pub const STATUS_ACKNOWLEDGE: u8 = 1;
@@ -270,6 +299,7 @@ pub mod virtio {
     pub const DESC_SIZE: usize = 16;
     /// Descriptor field offsets within the 16-byte struct.
     pub const DESC_ADDR_LO: usize = 0; // u32 (guest physical lo)
+    pub const DESC_ADDR_HI: usize = 4; // u32 (guest physical hi)
     pub const DESC_LENGTH: usize = 8; // u32
     pub const DESC_FLAGS: usize = 12; // u16
     pub const DESC_NEXT: usize = 14; // u16
@@ -294,8 +324,10 @@ pub mod virtio {
     /// Small queue size for the smoke test.
     pub const QUEUE_COUNT: u16 = 32;
 
-    // Feature bits (simplified; we negotiate none for now).
-    // pub const FEATURE_MAC: u32 = 1 << 5;
+    pub const FEATURE_MAC: u32 = 1 << 5;
+    pub const FEATURE_STATUS: u32 = 1 << 16;
+    pub const FEATURE_VERSION_1: u32 = 1;
+    pub const FEATURE_ACCESS_PLATFORM: u32 = 1 << 1;
 }
 
 /// Stage a memory-carried name: allocate a one-page memory object, write
@@ -494,15 +526,22 @@ pub mod relmsg {
 
     pub const OP_SEND: u32 = 1;
     pub const OP_RECV: u32 = 2;
+    pub const OP_STATUS: u32 = 3;
+    /// Internal ingress used by the isolated NIC-receive pump.
+    pub const OP_FRAME: u32 = 4;
+    pub const OP_SHUTDOWN: u32 = 5;
 
     pub const ERR_PEER_UNREACHABLE: i64 = -1;
     pub const ERR_BAD_OPCODE: i64 = -2;
     pub const ERR_UNKNOWN: i64 = -3;
+    pub const ERR_BUSY: i64 = -4;
 
     pub const MAX_PEERS: usize = 16;
     pub const MAX_MSG: usize = 1400;
     pub const RETRANSMIT_MS: u64 = 200;
-    pub const MAX_RETRIES: u32 = 5;
+    /// Permit peers that boot at different speeds to rendezvous without
+    /// making an application-level send wait forever.
+    pub const MAX_RETRIES: u32 = 150;
 }
 
 /// Block until a pending call completes, returning

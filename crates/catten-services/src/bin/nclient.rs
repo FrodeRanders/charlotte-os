@@ -74,7 +74,7 @@ fn main(ctx: Context) -> ! {
         memory_unmap(frame_cap);
     }
 
-    // Send through OP_SEND (call with moved memory object).
+    // Transfer the frame object to the NIC without copying its payload.
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, TEST_FRAME.len() as u64, frame_cap);
     if call == 0 {
         unsafe { thread_exit() };
@@ -83,6 +83,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(TX_SUCCESS_OFFSET, status as u32);
     config::write::<u32>(STAGE_OFFSET, 4); // TX attempted
 
+    let shutdown = ipc_scalar_call(net_conn, net::OP_SHUTDOWN, 0);
+    if shutdown != 0 {
+        let _ = unsafe { wait_reply(shutdown, REPLY_SPINS) };
+    }
     config::write::<u32>(0, SENTINEL);
     unsafe { thread_exit() };
 }
