@@ -169,6 +169,12 @@ It combines:
 - Can cancellation, domain teardown, and lending revocation be modeled as state machines?
 - Can access-control or information-flow properties be proven over the object model?
 
+Initial executable specifications for IPC ownership transitions and completion
+queues live in [`tla/`](tla/README.md). They model-check bounded abstract safety
+properties and exercise copy, move, read-borrow, write-borrow, cancellation,
+close, and teardown paths. They do not yet constitute a refinement proof of
+the Rust kernel; the remaining verification boundary is documented there.
+
 The most relevant seL4 concepts include:
 
 - capability spaces and CNodes;
