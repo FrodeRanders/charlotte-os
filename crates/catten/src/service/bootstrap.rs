@@ -115,7 +115,27 @@ pub fn write_handoff_state(
     state_cap: u64,
     endpoint_cap: u64,
 ) {
-    if state_count > 0 {
+    assert!(state_count <= 1, "single-state handoff helper received multiple states");
+    let state_caps = if state_count > 0 {
+        core::slice::from_ref(&state_cap)
+    } else {
+        &[]
+    };
+    write_handoff_states(config_frame, state_caps, endpoint_cap);
+}
+
+/// Write every state capability delegated during a live upgrade.
+pub fn write_handoff_states(config_frame: PAddr, state_caps: &[u64], endpoint_cap: u64) {
+    let additional = state_caps.len() + usize::from(endpoint_cap != 0);
+    let base: *mut u8 = config_frame.into();
+    let header =
+        unsafe { core::ptr::read_volatile(base.add(LAUNCH_HEADER_OFFSET) as *const LaunchHeader) };
+    assert!(header.is_compatible(), "handoff written before launch header");
+    assert!(
+        header.capabilities_count as usize + additional <= CAPABILITY_VECTOR_CAPACITY,
+        "handoff exceeds launch capability vector"
+    );
+    for &state_cap in state_caps {
         append_capability(config_frame, CapabilityKind::HandoffState, state_cap);
     }
     if endpoint_cap != 0 {

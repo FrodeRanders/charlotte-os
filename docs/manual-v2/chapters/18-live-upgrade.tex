@@ -120,10 +120,13 @@ userspace service manager. It validates that the manager holds a callable
 connection to the target, loads the new service ELF, moves the state memory
 object to the new domain, writes the bootstrap config page, and starts the new
 domain. The replacement registers a fresh endpoint and the name service
-advances its generation. The reference path supports both a persistent
+atomically publishes the new connection and generation before retiring the
+old connection or releasing deferred lookups. The reference path supports both a persistent
 capability-backed echo image and its embedded fallback, plus one state object.
-Multiple state objects, signed package manifests, rollback policy, and
-manager-owned teardown remain future work.
+The kernel handoff helper can transfer multiple state objects and rolls a
+partial transfer back if a later move or endpoint delegation fails. The current
+reference manager still exercises one object. Signed package manifests,
+version rollback policy, and manager-owned teardown remain future work.
 
 \section{What the service must implement}
 

@@ -490,7 +490,7 @@ pub fn move_to(
         },
     );
     let revoked = crate::capability::remove(owner, cap, crate::capability::ObjectKind::Memory);
-    debug_assert!(revoked);
+    assert!(revoked, "memory source capability was absent from unified table");
     Ok(target_cap)
 }
 
@@ -522,7 +522,7 @@ pub(crate) fn rollback_move_to(
         .ok_or(MemoryObjectError::UnknownCapability)?;
     let revoked =
         crate::capability::remove(target, target_cap, crate::capability::ObjectKind::Memory);
-    debug_assert!(revoked);
+    assert!(revoked, "rollback target capability was absent from unified table");
     registry
         .objects
         .get_mut(&cap_entry.object)
@@ -531,7 +531,7 @@ pub(crate) fn rollback_move_to(
     registry.caps_for_mut(owner).caps.insert(original_cap, cap_entry);
     let restored =
         crate::capability::restore(owner, original_cap, crate::capability::ObjectKind::Memory);
-    debug_assert!(restored);
+    assert!(restored, "rollback source capability slot was not vacant");
     Ok(())
 }
 
@@ -785,7 +785,7 @@ pub fn revoke_lend(
         .ok_or(MemoryObjectError::UnknownCapability)?;
     let revoked =
         crate::capability::remove(borrower, borrower_cap, crate::capability::ObjectKind::Memory);
-    debug_assert!(revoked);
+    assert!(revoked, "borrower capability was absent from unified table");
     Ok(())
 }
 
@@ -830,7 +830,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
         }
     }
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
-    debug_assert!(revoked);
+    assert!(revoked, "memory payload capability was absent from unified table");
     Ok(())
 }
 
@@ -896,7 +896,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
 
         if let Some(caps) = registry.caps.remove(&asid) {
             for cap in caps.caps.keys() {
-                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Memory);
+                assert!(
+                    crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Memory,),
+                    "memory payload capability was absent from unified table"
+                );
             }
         }
     }
@@ -967,7 +970,10 @@ fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: Memory
             .collect::<Vec<_>>();
         for cap_id in caps_to_remove {
             caps.caps.remove(&cap_id);
-            crate::capability::remove(*asid, cap_id, crate::capability::ObjectKind::Memory);
+            assert!(
+                crate::capability::remove(*asid, cap_id, crate::capability::ObjectKind::Memory,),
+                "memory payload capability was absent from unified table"
+            );
         }
     }
 }

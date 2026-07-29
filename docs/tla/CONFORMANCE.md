@@ -103,18 +103,23 @@ actions and prove that their projection implements these abstract transitions.
 |---|---|---|
 | `Load` | `loader::load_domain` | Abstract: ELF parsing, mappings and bootstrap frames are omitted. |
 | `Start` | `start_domain`, `spawn_thread` | Direct for the initial `(tid, generation)` domain handle. |
-| `Publish` | name-service register/replacement request | Abstract atomic publication; IPC details are covered by `CharlotteIPC`. |
+| `Publish` | name-service `register` map insertion | Direct linearization point: the new `(connection, generation, access key)` is inserted before the superseded connection is retired or deferred lookups are released. Deferred lookups retain the caller key and are authorized against the published policy before receiving a connection. IPC details are covered by `CharlotteIPC`. |
 | `RequestStop` / `Exit` | service shutdown or `abort_thread` | Abstract: cooperative and forced shutdown share the same lifecycle projection. |
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
 | `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
+
+The userspace Raft reactor applies the same single-wait discipline: a bounded
+CQ wait is released by endpoint/transport readiness or supplies the next
+election-clock tick on timeout. It does not combine an indefinite CQ wait with
+a separately delivered detached-timer completion.
 
 ## Unified capability namespace
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `Allocate` | `capability::allocate` | Direct for fresh per-AS serial allocation and authoritative kind insertion. |
-| `Remove` | `capability::remove` | Direct for owner-and-kind checked removal. |
+| `Remove` | typed-registry removal followed by `capability::remove` | Direct for owner-and-kind checked removal. Concrete callers assert that the unified entry exists, including optimized builds, so payload and authority tables cannot silently diverge. |
 | `DelegateCopy` | subsystem delegation followed by `allocate` in the target AS | Abstract: payload-table insertion is omitted; the target handle is fresh. |
 | `BeginMove` / `CommitMove` | subsystem move transaction and target capability allocation | Abstract split around payload transfer so intermediate revocation is checkable. |
-| `RollbackMove` | `capability::restore` | Direct for crate-private restoration of the exact pre-transaction handle. |
+| `RollbackMove` | `memory::object::rollback_move_to`, `capability::restore` | Direct for reverse-order transaction rollback and crate-private restoration of the exact pre-transaction handle. The live-upgrade supervisor uses the target handles returned by `move_to`, rolls partial multi-object handoff back in reverse order, and aborts replacement launch on endpoint-delegation failure. |
 | `CloseAddressSpace` | `capability::close_address_space` | Direct for dropping the complete authority namespace after payload teardown. |

@@ -688,6 +688,41 @@ defects: preserve complete boot-test artifacts, exercise the network path on
 Linux KVM, and extend consensus testing beyond the deterministic two-node boot
 case to randomized ordering, loss, duplication, and membership changes.
 
+### Follow-up: capability transactions and service publication
+
+A follow-up audit checked every typed capability registry against the unified
+tagged namespace. Normal close, address-space teardown, queued-IPC
+cancellation, enqueue rollback, and vector-transfer rollback now assert that
+removing a typed payload also removes the corresponding unified entry. These
+checks are deliberately active in optimized kernels: divergence between the
+payload registry and the authority table is an invariant failure, not a
+recoverable syscall error.
+
+The dormant multi-object live-upgrade helper previously ignored failed state
+moves, delivered the source-domain handle instead of the newly allocated
+target-domain handle, and silently tolerated endpoint-delegation failure. It
+now records every source/target handle pair, rolls a partial handoff back in
+reverse order, tears down the unsuccessful replacement domain, and exposes all
+successfully moved state handles through the launch capability vector.
+
+Name-service replacement now has an explicit publication linearization point:
+the new connection, generation, and access key are installed in the registry
+before the old connection is closed and before deferred lookup replies are
+released. Consequently, every lookup handled after publication observes the
+new generation. Deferred lookups also retain their caller access key; a keyed
+registration therefore applies the same authorization check to callers that
+arrived before publication as it does to later callers. Non-blocking,
+non-keyed lookup likewise rejects a keyed registration instead of bypassing
+its policy.
+
+A validation boot also reproduced a Raft liveness stall in which one node had
+finished initialization but never entered a reactor iteration after submitting
+its first detached timer. The Raft service now uses one bounded CQ wait as both
+its event wait and election-clock source. Endpoint readiness and transport
+completion still release the wait immediately; only an actual timeout advances
+Raft time. This removes the detached timer completion as a second wake path and
+keeps an otherwise quiet node able to start an election.
+
 The long-term networking document remains a proposal rather than a description
 of current behavior. The code presently provides a frame protocol, compile-only
 smoltcp integration, a local-loopback reliable-message prototype, and an early

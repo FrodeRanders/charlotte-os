@@ -406,6 +406,11 @@ pub fn spawn_upgrade(
     old_asid: AddressSpaceId,
     grant: UpgradeGrant,
 ) -> ServiceDomain {
+    let handoff_caps = grant.state_caps.len() + usize::from(grant.endpoint_cap != 0);
+    assert!(
+        handoff_caps < charlotte_launch::CAPABILITY_VECTOR_CAPACITY,
+        "[supervisor] upgrade handoff exceeds launch capability vector"
+    );
     let loaded = loader::load_domain(image);
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
@@ -418,32 +423,59 @@ pub fn spawn_upgrade(
     bootstrap::write_manifest(loaded.config_frame, &[]);
 
     // Move state caps from KERNEL_ASID to the new domain.
-    let state_count = grant.state_caps.len() as u32;
-    let first_state = if state_count > 0 {
-        grant.state_caps[0]
-    } else {
-        0
-    };
-    for cap in &grant.state_caps {
-        let _ = crate::memory::object::move_to(crate::memory::KERNEL_ASID, *cap, loaded.asid);
+    let mut moved_state = Vec::with_capacity(grant.state_caps.len());
+    for &source_cap in &grant.state_caps {
+        match crate::memory::object::move_to(crate::memory::KERNEL_ASID, source_cap, loaded.asid) {
+            Ok(target_cap) => moved_state.push((source_cap, target_cap)),
+            Err(error) => {
+                for &(original_cap, target_cap) in moved_state.iter().rev() {
+                    crate::memory::object::rollback_move_to(
+                        loaded.asid,
+                        target_cap,
+                        crate::memory::KERNEL_ASID,
+                        original_cap,
+                    )
+                    .expect("[supervisor] upgrade state rollback failed");
+                }
+                close_user_address_space(loaded.asid)
+                    .expect("[supervisor] failed upgrade-domain cleanup");
+                panic!("[supervisor] upgrade state move failed: {error:?}");
+            }
+        }
     }
     // Delegate a connection from the old endpoint to the new domain while
     // the old domain is still alive.
     let delegated_ep = if grant.endpoint_cap != 0 {
-        ipc::connection_delegate(
-            old_asid,
-            grant.endpoint_cap,
-            loaded.asid,
-            ConnectionRights::SEND | ConnectionRights::CALL,
+        Some(
+            ipc::connection_delegate(
+                old_asid,
+                grant.endpoint_cap,
+                loaded.asid,
+                ConnectionRights::SEND | ConnectionRights::CALL,
+            )
+            .unwrap_or_else(|error| {
+                for &(original_cap, target_cap) in moved_state.iter().rev() {
+                    crate::memory::object::rollback_move_to(
+                        loaded.asid,
+                        target_cap,
+                        crate::memory::KERNEL_ASID,
+                        original_cap,
+                    )
+                    .expect("[supervisor] upgrade state rollback failed");
+                }
+                close_user_address_space(loaded.asid)
+                    .expect("[supervisor] failed upgrade-domain cleanup");
+                panic!("[supervisor] upgrade endpoint delegation failed: {error:?}");
+            }),
         )
-        .ok()
     } else {
         None
     };
-    bootstrap::write_handoff_state(
+    let target_state_caps =
+        moved_state.iter().map(|(_, target_cap)| *target_cap).collect::<Vec<_>>();
+    bootstrap::write_handoff_states(
         loaded.config_frame,
-        state_count,
-        first_state,
+        &target_state_caps,
         delegated_ep.unwrap_or(0),
     );
     start_domain(loaded)

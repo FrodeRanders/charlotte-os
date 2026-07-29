@@ -528,7 +528,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
             .ok_or(DeviceError::UnknownCapability)?
     };
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
-    debug_assert!(revoked);
+    assert!(revoked, "device payload capability was absent from unified table");
     match object {
         DeviceObject::Mmio(region) => {
             if let Some(base) = region.mapped {
@@ -574,7 +574,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
         }
     };
     for cap in objects.keys() {
-        crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Device);
+        assert!(
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Device),
+            "device payload capability was absent from unified table"
+        );
     }
     for object in objects.values() {
         match object {

@@ -654,7 +654,10 @@ static USER_MAILBOX_CAPS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsMailboxCaps
 pub fn close_mailbox_address_space(asid: AddressSpaceId) {
     if let Some(caps) = USER_MAILBOX_CAPS.write().remove(&asid) {
         for cap in caps.endpoints.keys() {
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Mailbox);
+            assert!(
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Mailbox),
+                "mailbox payload capability was absent from unified table"
+            );
         }
     }
 }
@@ -759,7 +762,10 @@ fn sys_mailbox_close(frame: &mut TrapFrame) {
     let mut tables = USER_MAILBOX_CAPS.write();
     frame.regs[0] = match tables.get_mut(&asid).and_then(|caps| caps.endpoints.remove(&cap)) {
         Some(_) => {
-            crate::capability::remove(asid, cap, crate::capability::ObjectKind::Mailbox);
+            assert!(
+                crate::capability::remove(asid, cap, crate::capability::ObjectKind::Mailbox),
+                "mailbox payload capability was absent from unified table"
+            );
             0
         }
         None => 1,

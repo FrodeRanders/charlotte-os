@@ -302,7 +302,7 @@ impl IpcRegistry {
             .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(IpcError::UnknownCapability)?;
         let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Ipc);
-        debug_assert!(revoked);
+        assert!(revoked, "IPC payload capability was absent from unified table");
         Ok(removed)
     }
 
@@ -312,7 +312,10 @@ impl IpcRegistry {
                 caps.caps.iter().filter_map(|(id, cap)| (*cap == target).then_some(*id)).collect();
             for id in removed {
                 caps.caps.remove(&id);
-                crate::capability::remove(asid, id, crate::capability::ObjectKind::Ipc);
+                assert!(
+                    crate::capability::remove(asid, id, crate::capability::ObjectKind::Ipc),
+                    "IPC payload capability was absent from unified table"
+                );
             }
         }
     }
@@ -1511,7 +1514,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
     }
     if let Some(caps) = IPC.write().caps.remove(&asid) {
         for cap in caps.caps.keys() {
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Ipc);
+            assert!(
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Ipc),
+                "IPC payload capability was absent from unified table"
+            );
         }
     }
 }
@@ -1584,11 +1590,17 @@ fn cancel_queued_message_with_token(
                 if let Some(connection_cap) = message.connection
                     && let Some(caps) = ipc.caps.get_mut(&server)
                 {
-                    caps.caps.remove(&connection_cap);
-                    crate::capability::remove(
-                        server,
-                        connection_cap,
-                        crate::capability::ObjectKind::Ipc,
+                    assert!(
+                        caps.caps.remove(&connection_cap).is_some(),
+                        "queued connection payload capability disappeared during cancellation"
+                    );
+                    assert!(
+                        crate::capability::remove(
+                            server,
+                            connection_cap,
+                            crate::capability::ObjectKind::Ipc,
+                        ),
+                        "IPC payload capability was absent from unified table"
                     );
                 }
             }
@@ -1766,8 +1778,14 @@ pub fn vector_call(
     ) {
         Ok(delivery) => delivery,
         Err(error) => {
-            let _ = ipc.as_caps(caller).caps.remove(&call_cap);
-            crate::capability::remove(caller, call_cap, crate::capability::ObjectKind::Ipc);
+            assert!(
+                ipc.as_caps(caller).caps.remove(&call_cap).is_some(),
+                "call payload capability disappeared during enqueue rollback"
+            );
+            assert!(
+                crate::capability::remove(caller, call_cap, crate::capability::ObjectKind::Ipc),
+                "IPC payload capability was absent from unified table"
+            );
             ipc.pending_calls.remove(&call);
             ipc.reply_tokens.remove(&token);
             rollback_vector_transfers(caller, server, &mut applied);
@@ -1901,6 +1919,6 @@ fn rollback_vector_transfers(
                 target_cap,
             } => crate::memory::object::revoke_lend(sender, source_cap, target, target_cap),
         };
-        debug_assert!(result.is_ok(), "vector IPC rollback must be infallible");
+        assert!(result.is_ok(), "vector IPC rollback must be infallible");
     }
 }

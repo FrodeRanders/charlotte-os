@@ -54,7 +54,7 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     cq_read,
-    cq_wait,
+    cq_wait_timeout,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -70,12 +70,10 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
-    submit_detached_timer,
     thread_exit,
 };
 
 const LOOP_TICK_MS: u64 = 25;
-const ELECTION_TIMER_COOKIE: u64 = 0x5241_4654_5449_4d45;
 
 fn fatal(stage: u64) -> ! {
     catten_syscall::el0_log(0x5241_4654, stage);
@@ -320,19 +318,14 @@ fn main(ctx: Context) -> ! {
     let mut served: u32 = 0;
 
     let cq = ctx.completion_queue_layout();
-    if submit_detached_timer(LOOP_TICK_MS, 0, ELECTION_TIMER_COOKIE) == u64::MAX {
-        fatal(7);
-    }
 
     loop {
-        cq_wait(1, 0);
+        // Endpoint readiness and transport completions wake this reactor
+        // immediately. The bounded wait itself supplies Raft's periodic clock,
+        // avoiding a separate detached-timer completion and wake path.
+        let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
 
-        let mut timer_fired = false;
-        while let Some(entry) = unsafe { cq_read(cq.base, cq.entries) } {
-            if entry.cookie == ELECTION_TIMER_COOKIE && entry.status == 0 {
-                timer_fired = true;
-            }
-        }
+        while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
@@ -436,13 +429,10 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        if timer_fired {
+        if timed_out != 0 {
             node.set_millis(node.millis() + LOOP_TICK_MS);
             if node.check_timeout() {
                 node.start_election(node.millis());
-            }
-            if submit_detached_timer(LOOP_TICK_MS, 0, ELECTION_TIMER_COOKIE) == u64::MAX {
-                fatal(8);
             }
         }
 

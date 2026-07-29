@@ -48,8 +48,10 @@ struct Registration {
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
-/// Deferred lookups: name → list of reply tokens waiting for registration.
-type Waitlist = BTreeMap<Vec<u8>, Vec<u64>>;
+/// Deferred lookups: name → reply token and the access key supplied by its
+/// caller. Retaining the key is necessary because registration may establish
+/// an access policy after the lookup has blocked.
+type Waitlist = BTreeMap<Vec<u8>, Vec<(u64, u64)>>;
 
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
@@ -94,17 +96,12 @@ fn register(
     access_key: u64,
 ) -> i64 {
     let generation = match registry.get(&key) {
-        Some(previous) => {
-            if previous.connection != 0 {
-                unsafe {
-                    ipc_close(previous.connection);
-                }
-            }
-            previous.generation + 1
-        }
+        Some(previous) => previous.generation + 1,
         None => 1,
     };
-    registry.insert(
+    // Publishing the new entry is the replacement linearization point. Retire
+    // the old connection only after no subsequent lookup can observe it.
+    let previous = registry.insert(
         key.clone(),
         Registration {
             connection,
@@ -112,17 +109,28 @@ fn register(
             access_key,
         },
     );
+    if let Some(previous) = previous
+        && previous.connection != 0
+    {
+        unsafe {
+            ipc_close(previous.connection);
+        }
+    }
 
-    // Wake all callers waiting for this service.
+    // Wake all callers only after the new generation is authoritative.
     if let Some(waiters) = waitlist.remove(&key) {
-        for reply in waiters {
-            unsafe {
-                ipc_reply_connection(
-                    reply,
-                    connection,
-                    IpcRights::SEND | IpcRights::CALL,
-                    generation,
-                );
+        for (reply, caller_key) in waiters {
+            if access_key != 0 && access_key != caller_key {
+                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+            } else {
+                unsafe {
+                    ipc_reply_connection(
+                        reply,
+                        connection,
+                        IpcRights::SEND | IpcRights::CALL,
+                        generation,
+                    );
+                }
             }
         }
     }
@@ -153,20 +161,23 @@ fn lookup_or_defer(
         }
         _ => {
             // Defer: retain the reply token until the service registers.
-            waitlist.entry(key.to_vec()).or_default().push(reply);
+            waitlist.entry(key.to_vec()).or_default().push((reply, caller_key));
         }
     }
 }
 
 fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
     match registry.get(key) {
-        Some(registration) if registration.connection != 0 => unsafe {
+        Some(registration) if registration.connection != 0 && registration.access_key == 0 => unsafe {
             ipc_reply_connection(
                 reply,
                 registration.connection,
                 IpcRights::SEND | IpcRights::CALL,
                 registration.generation,
             );
+        },
+        Some(registration) if registration.connection != 0 => unsafe {
+            ipc_reply(reply, ns::ERR_ACCESS_DENIED);
         },
         _ => unsafe {
             ipc_reply(reply, ns::ERR_NOT_FOUND);

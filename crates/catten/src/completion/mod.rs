@@ -476,7 +476,10 @@ fn empty_as(capacity: usize) -> AsCompletions {
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
     if let Some(previous) = COMPLETIONS.write().insert(asid, replacement) {
         for cap in previous.table.keys() {
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion);
+            assert!(
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
+                "completion payload capability was absent from unified table"
+            );
         }
     }
 }
@@ -575,7 +578,10 @@ pub fn cq_ring_of(
 pub fn close_address_space(asid: AddressSpaceId) {
     if let Some(completions) = COMPLETIONS.write().remove(&asid) {
         for cap in completions.table.keys() {
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion);
+            assert!(
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
+                "completion payload capability was absent from unified table"
+            );
         }
     }
 }
@@ -980,7 +986,7 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
     as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion);
-    debug_assert!(revoked);
+    assert!(revoked, "completion payload capability was absent from unified table");
     as_completions.live = as_completions.live.saturating_sub(1);
     Ok(())
 }
