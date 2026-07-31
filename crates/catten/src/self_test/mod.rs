@@ -17,8 +17,6 @@ pub mod el0_demo;
 pub mod el0_disco;
 #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
 pub mod el0_dns;
-#[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
-pub mod el0_tcpip;
 #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
 pub mod el0_http;
 pub mod el0_ipc;
@@ -31,6 +29,8 @@ pub mod el0_raft;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_service;
 pub mod el0_sitas;
+#[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
+pub mod el0_tcpip;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_uart;
 pub mod ipc;

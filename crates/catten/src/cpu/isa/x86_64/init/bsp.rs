@@ -1,11 +1,19 @@
 use spin::LazyLock;
 
-use super::INTERRUPT_STACK_SIZE;
-use super::gdt::*;
-use crate::cpu::isa::interrupts::fixed::register_fixed_isr_gates;
-use crate::cpu::isa::interrupts::idt::Idt;
-use crate::cpu::isa::lp::ops::init_lp_state;
-use crate::early_logln;
+use super::{
+    INTERRUPT_STACK_SIZE,
+    gdt::*,
+};
+use crate::{
+    cpu::isa::{
+        interrupts::{
+            fixed::register_fixed_isr_gates,
+            idt::Idt,
+        },
+        lp::ops::init_lp_state,
+    },
+    early_logln,
+};
 
 static mut BSP_INTERRUPT_STACK: [u8; INTERRUPT_STACK_SIZE] = [0u8; INTERRUPT_STACK_SIZE];
 static mut BSP_DF_STACK: [u8; INTERRUPT_STACK_SIZE] = [0u8; INTERRUPT_STACK_SIZE];

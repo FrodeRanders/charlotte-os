@@ -18,15 +18,15 @@
 use core::ptr::NonNull;
 
 use super::{
+    AddressSpace,
+    PAGE_SIZE,
+    PageTable,
     descriptor::{
         Descriptor,
         MAIR_IDX_DEVICE,
         MAIR_IDX_NORMAL,
     },
     is_table_unused,
-    AddressSpace,
-    PageTable,
-    PAGE_SIZE,
 };
 use crate::{
     cpu::isa::{
@@ -322,12 +322,12 @@ impl<'vas> Walker<'vas> {
             }
             if !no_execute && mair_index != MAIR_IDX_DEVICE {
                 core::arch::asm!(
-                        "dsb ishst",
-                        "ic ialluis",
-                        "dsb ish",
-                        "isb",
-                        options(nomem, nostack, preserves_flags),
-                    );
+                    "dsb ishst",
+                    "ic ialluis",
+                    "dsb ish",
+                    "isb",
+                    options(nomem, nostack, preserves_flags),
+                );
             }
         }
         tlb::inval_page(self.vaddr);

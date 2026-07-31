@@ -46,7 +46,6 @@ pub const fn manifest_key(bytes: &[u8]) -> u64 {
 /// booted node never joins a cluster mid-boot. `"bootdone"` packed LE.
 pub const BOOT_DONE_NAME: u64 = 0x0065_6e6f_6474_6f6f;
 
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LaunchHeader {

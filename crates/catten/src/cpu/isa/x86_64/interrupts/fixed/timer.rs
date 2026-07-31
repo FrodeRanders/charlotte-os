@@ -1,6 +1,10 @@
-use crate::cpu::isa::interface::interrupts::LocalIntCtlrIfce;
-use crate::cpu::isa::interrupts::x2apic::X2Apic;
-use crate::timers::TIMER_QUEUES;
+use crate::{
+    cpu::isa::{
+        interface::interrupts::LocalIntCtlrIfce,
+        interrupts::x2apic::X2Apic,
+    },
+    timers::TIMER_QUEUES,
+};
 
 unsafe extern "custom" {
     pub unsafe fn isr_lapic_timer();

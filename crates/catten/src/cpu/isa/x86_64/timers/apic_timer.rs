@@ -1,19 +1,32 @@
-use alloc::sync::Arc;
-use alloc::vec;
-use alloc::vec::Vec;
+use alloc::{
+    sync::Arc,
+    vec,
+    vec::Vec,
+};
 
 use spin::lazylock::LazyLock;
 
 use super::tsc::TSC_CYCLE_PERIOD;
-use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
-use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
-use crate::cpu::isa::lp::ops::get_lp_id;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
 use crate::cpu::isa::timers::tsc::rdtsc;
-use crate::cpu::isa::x86_64::constants::msrs;
-use crate::cpu::multiprocessor::get_lp_count;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-use crate::klib::time::duration::ExtDuration;
+use crate::{
+    cpu::{
+        isa::{
+            constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
+            interface::timers::{
+                LpTimerError,
+                LpTimerIfce,
+            },
+            lp::ops::get_lp_id,
+            x86_64::constants::msrs,
+        },
+        multiprocessor::{
+            get_lp_count,
+            spin::mutex::Mutex,
+        },
+    },
+    klib::time::duration::ExtDuration,
+};
 
 pub static APIC_TIMERS: LazyLock<Vec<Arc<Mutex<ApicTimer>>>> = LazyLock::new(|| {
     vec![Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))); get_lp_count() as usize]
@@ -36,7 +49,7 @@ pub enum ApicTimerDivisors {
 
 #[derive(Clone, Debug)]
 pub struct ApicTimer {
-    resolution:  ExtDuration,
+    resolution: ExtDuration,
     reset_value: <Self as LpTimerIfce>::TickCount,
 }
 
@@ -77,7 +90,7 @@ impl ApicTimer {
 
     pub fn new(interrupt_vector: <ApicTimer as LpTimerIfce>::IntDispatchNum) -> Self {
         let mut t = ApicTimer {
-            resolution:  ExtDuration::from_secs(0),
+            resolution: ExtDuration::from_secs(0),
             reset_value: 0,
         };
         t.determine_timer_resolution();

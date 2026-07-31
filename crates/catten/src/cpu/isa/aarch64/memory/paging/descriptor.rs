@@ -6,10 +6,8 @@
 //! matching the layout Limine configures before handing control to the kernel.
 //!
 //! There are two descriptor shapes that matter to us:
-//! - **Table descriptors** (levels 0-2): point at the next level table. Bits
-//!   `[1:0] = 0b11`.
-//! - **Block descriptors** (levels 1-2): map a large/huge page directly. Bits
-//!   `[1:0] = 0b01`.
+//! - **Table descriptors** (levels 0-2): point at the next level table. Bits `[1:0] = 0b11`.
+//! - **Block descriptors** (levels 1-2): map a large/huge page directly. Bits `[1:0] = 0b01`.
 //! - **Page descriptors** (level 3): map a 4 KiB page. Bits `[1:0] = 0b11`.
 //!
 //! Note that at level 3 the "page" encoding reuses the `0b11` value that means

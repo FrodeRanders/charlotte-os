@@ -4,9 +4,9 @@
 //! set of per-core timers. We use:
 //! - `CNTFRQ_EL0`: the frequency of the system counter in Hz (timestamp source).
 //! - `CNTVCT_EL0`: the current virtual counter value (our monotonic timestamp).
-//! - The EL1 virtual timer (`CNTV_CTL_EL0`, `CNTV_CVAL_EL0`, `CNTV_TVAL_EL0`)
-//!   as the per-LP interrupt source. It raises its PPI (INTID 27 on the GIC of
-//!   the QEMU `virt` machine) when `CNTVCT_EL0 >= CNTV_CVAL_EL0`.
+//! - The EL1 virtual timer (`CNTV_CTL_EL0`, `CNTV_CVAL_EL0`, `CNTV_TVAL_EL0`) as the per-LP
+//!   interrupt source. It raises its PPI (INTID 27 on the GIC of the QEMU `virt` machine) when
+//!   `CNTVCT_EL0 >= CNTV_CVAL_EL0`.
 //!
 //! The virtual timer is used in preference to the EL1 physical timer (`CNTP_*`)
 //! because hypervisors such as Apple's HVF only expose the virtual timer to a
@@ -17,18 +17,31 @@
 //! See the ARM Architecture Reference Manual (ARM ARM), chapter D12 "The
 //! Generic Timer in AArch64 state".
 
-use alloc::sync::Arc;
-use alloc::vec::Vec;
+use alloc::{
+    sync::Arc,
+    vec::Vec,
+};
 use core::arch::asm;
 
 use spin::lazylock::LazyLock;
 
-use crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR;
-use crate::cpu::isa::interface::timers::{LpTimerError, LpTimerIfce};
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::multiprocessor::get_lp_count;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
-use crate::klib::time::duration::ExtDuration;
+use crate::{
+    cpu::{
+        isa::{
+            constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
+            interface::timers::{
+                LpTimerError,
+                LpTimerIfce,
+            },
+            lp::ops::get_lp_id,
+        },
+        multiprocessor::{
+            get_lp_count,
+            spin::mutex::Mutex,
+        },
+    },
+    klib::time::duration::ExtDuration,
+};
 
 pub type LpTimer = ArmGenericTimer;
 
@@ -180,7 +193,8 @@ impl LpTimerIfce for ArmGenericTimer {
                 0
             };
         let ticks: u64 = ticks.try_into().map_err(|_| LpTimerError::DurationOutOfRange)?;
-        self.compare_value = Self::now().checked_add(ticks).ok_or(LpTimerError::DurationOutOfRange)?;
+        self.compare_value =
+            Self::now().checked_add(ticks).ok_or(LpTimerError::DurationOutOfRange)?;
         Ok(())
     }
 

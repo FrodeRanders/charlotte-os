@@ -91,8 +91,13 @@ mod inner {
     }
 
     fn kernel_ns_connection(ns: &NameServiceHandle) -> u64 {
-        ipc::connection_delegate(ns.domain.asid, ns.endpoint_cap, KERNEL_ASID, ConnectionRights::CALL)
-            .expect("[dns] kernel name-service connection")
+        ipc::connection_delegate(
+            ns.domain.asid,
+            ns.endpoint_cap,
+            KERNEL_ASID,
+            ConnectionRights::CALL,
+        )
+        .expect("[dns] kernel name-service connection")
     }
 
     fn call(kernel_conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
@@ -103,8 +108,8 @@ mod inner {
 
     fn call_with_memory(kernel_conn: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
         let mem = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
-        let call = ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem)
-            .ok()?;
+        let call =
+            ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem).ok()?;
         ipc::wait_reply(KERNEL_ASID, call).ok()?;
         ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
     }
@@ -236,11 +241,7 @@ mod inner {
             lookup == Some(DNS_RESULT_LOCAL) || lookup == Some(DNS_RESULT_REMOTE),
             "[dns] replicated lookup must resolve local or remote, got {lookup:?}"
         );
-        assert_ne!(
-            lookup,
-            Some(DNS_ERR_NOT_FOUND),
-            "[dns] replicated name must not be unknown"
-        );
+        assert_ne!(lookup, Some(DNS_ERR_NOT_FOUND), "[dns] replicated name must not be unknown");
 
         // ---- Remote invocation through the catalog ----
         // Host a local echo on every node; the leader publishes it through the
@@ -292,7 +293,10 @@ mod inner {
             "[dns] cross-node invocation of echo must return the echoed value"
         );
 
-        logln!("[dns] SUCCESS: Raft-elected name service replicated the catalog and served a remote invocation.");
+        logln!(
+            "[dns] SUCCESS: Raft-elected name service replicated the catalog and served a remote \
+             invocation."
+        );
         crate::self_test::results::pass(crate::self_test::results::TestId::Dns);
     }
 }

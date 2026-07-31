@@ -1,7 +1,11 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use core::arch::x86_64::__cpuid_count;
-use core::mem::transmute;
+use alloc::{
+    string::String,
+    vec::Vec,
+};
+use core::{
+    arch::x86_64::__cpuid_count,
+    mem::transmute,
+};
 
 use spin::lazylock::LazyLock;
 
@@ -108,7 +112,11 @@ impl CpuInfoIfce for CpuInfo {
         unsafe {
             core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
         }
-        if cr4 & (1 << 12) != 0 { 57 } else { 48 }
+        if cr4 & (1 << 12) != 0 {
+            57
+        } else {
+            48
+        }
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {

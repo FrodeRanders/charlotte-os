@@ -15,8 +15,8 @@ use catten_rt::{
 use catten_services::{
     net,
     ns,
-    socket,
     sleep_ms,
+    socket,
     wait_for_boot_done,
     wait_reply,
 };
@@ -196,8 +196,7 @@ fn main(ctx: Context) -> ! {
             memory_close(memory);
             fail(0xe00f);
         }
-        let received =
-            unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, PAYLOAD.len()) };
+        let received = unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, PAYLOAD.len()) };
         let matches = received == PAYLOAD;
         memory_unmap(memory);
         memory_close(memory);

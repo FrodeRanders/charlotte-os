@@ -121,8 +121,7 @@ mod inner {
                 let rx_total = unsafe { core::ptr::read_volatile(tcpip_cfg.add(1)) };
                 let tx_ok = unsafe { core::ptr::read_volatile(tcpip_cfg.add(2)) };
                 let sock_count = unsafe { core::ptr::read_volatile(tcpip_cfg.add(3)) };
-                let frouter_base =
-                    unsafe { crate::self_test::FROUTER_STATUS_FRAME } as *const u32;
+                let frouter_base = unsafe { crate::self_test::FROUTER_STATUS_FRAME } as *const u32;
                 let frouter_rx = if frouter_base.is_null() {
                     0
                 } else {
@@ -168,8 +167,8 @@ mod inner {
         );
 
         logln!(
-            "[tcpip] SUCCESS: two guests exchanged TCP data through the smoltcp adapter \
-             over the Ethernet frouter."
+            "[tcpip] SUCCESS: two guests exchanged TCP data through the smoltcp adapter over the \
+             Ethernet frouter."
         );
         crate::self_test::results::pass(crate::self_test::results::TestId::Tcpip);
     }

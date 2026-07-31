@@ -1,15 +1,14 @@
 //! Distributed name service (`dns`) — a Raft-replicated `name -> node` catalog.
 //!
 //! One replica runs per node. Each replica:
-//! - derives its persistent node identity from the NIC MAC + cluster mnemonic
-//!   ([`NodeIdentity`]) and waits for the kernel's boot-done marker,
+//! - derives its persistent node identity from the NIC MAC + cluster mnemonic ([`NodeIdentity`])
+//!   and waits for the kernel's boot-done marker,
 //! - discovers its peers through the cluster discovery service (`disco`),
-//! - runs a [`RaftNode`] whose transport carries peer RPCs over the reliable
-//!   message layer ([`RelmsgRaftTransport`]), and
-//! - serves registrations (proposed to the cluster, then registered with the
-//!   node-local name service) and lookups (answered from the replicated
-//!   catalog: local names resolve to the local name service, remote names
-//!   report the hosting node).
+//! - runs a [`RaftNode`] whose transport carries peer RPCs over the reliable message layer
+//!   ([`RelmsgRaftTransport`]), and
+//! - serves registrations (proposed to the cluster, then registered with the node-local name
+//!   service) and lookups (answered from the replicated catalog: local names resolve to the local
+//!   name service, remote names report the hosting node).
 #![no_std]
 #![no_main]
 
@@ -417,7 +416,8 @@ fn main(ctx: Context) -> ! {
                                         }
                                         _ => dns::ERR_NOT_FOUND,
                                     };
-                                    let reply = catten_services::rcall::encode_reply(call_id, result);
+                                    let reply =
+                                        catten_services::rcall::encode_reply(call_id, result);
                                     if let Some(peer) = transport.peer_id_for_mac(&source_mac) {
                                         transport.send_message(
                                             &peer,
@@ -431,9 +431,8 @@ fn main(ctx: Context) -> ! {
                                 // Complete the matching in-flight OP_CALL.
                                 if let Some((call_id, result)) =
                                     catten_services::rcall::decode_reply(frame)
-                                    && let Some(index) = in_flight_calls
-                                        .iter()
-                                        .position(|(id, _)| *id == call_id)
+                                    && let Some(index) =
+                                        in_flight_calls.iter().position(|(id, _)| *id == call_id)
                                 {
                                     let (_, reply) = in_flight_calls.swap_remove(index);
                                     if reply != 0 {
@@ -442,11 +441,12 @@ fn main(ctx: Context) -> ! {
                                 }
                             }
                             _ => {
-                                if let Some(inbound) =
-                                    transport.decode_inbound(&source_mac, frame)
+                                if let Some(inbound) = transport.decode_inbound(&source_mac, frame)
                                 {
                                     let millis = node.millis();
-                                    drive_inbound(&mut node, &transport, source_mac, inbound, millis);
+                                    drive_inbound(
+                                        &mut node, &transport, source_mac, inbound, millis,
+                                    );
                                 }
                             }
                         }
@@ -608,7 +608,10 @@ fn main(ctx: Context) -> ! {
                     let entries = catalog.entries();
                     let mut length = 4usize;
                     unsafe {
-                        core::ptr::write_volatile(CATALOG_SCRATCH as *mut u32, entries.len() as u32);
+                        core::ptr::write_volatile(
+                            CATALOG_SCRATCH as *mut u32,
+                            entries.len() as u32,
+                        );
                     }
                     for (name, node) in entries.iter() {
                         let name_len = name.len().min(255);
@@ -666,10 +669,7 @@ fn main(ctx: Context) -> ! {
                                     next_call_id = next_call_id.wrapping_add(1);
                                     in_flight_calls.push((call_id, message.reply));
                                     let frame = catten_services::rcall::encode_request(
-                                        call_id,
-                                        &name,
-                                        opcode,
-                                        arg,
+                                        call_id, &name, opcode, arg,
                                     );
                                     transport.send_message(
                                         &owner_str,

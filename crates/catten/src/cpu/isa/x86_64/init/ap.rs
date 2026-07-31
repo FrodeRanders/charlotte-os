@@ -1,14 +1,33 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
+use alloc::{
+    boxed::Box,
+    vec::Vec,
+};
 
 use spin::lazylock::LazyLock;
 
-use super::{INTERRUPT_STACK_SIZE, gdt};
-use crate::cpu::isa::interrupts::idt::{Idt, asm_load_idt};
-use crate::cpu::isa::interrupts::x2apic::X2Apic;
-use crate::cpu::isa::lp::ops::{get_lp_id, init_lp_state};
-use crate::cpu::multiprocessor::get_lp_count;
-use crate::logln;
+use super::{
+    INTERRUPT_STACK_SIZE,
+    gdt,
+};
+use crate::{
+    cpu::{
+        isa::{
+            interrupts::{
+                idt::{
+                    Idt,
+                    asm_load_idt,
+                },
+                x2apic::X2Apic,
+            },
+            lp::ops::{
+                get_lp_id,
+                init_lp_state,
+            },
+        },
+        multiprocessor::get_lp_count,
+    },
+    logln,
+};
 
 static AP_INTERRUPT_STACKS: LazyLock<Vec<[u8; INTERRUPT_STACK_SIZE]>> = LazyLock::new(|| {
     logln!("LP {}: Computing the number of AP interrupt stacks to allocate.", (get_lp_id()));

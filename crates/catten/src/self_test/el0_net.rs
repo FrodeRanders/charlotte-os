@@ -135,11 +135,7 @@ extern "C" fn verify_el0_net() {
         frouter.status_frame
     };
     #[cfg(all(
-        any(
-            feature = "disco_net_test",
-            feature = "tcpip_net_test",
-            feature = "http_net_test"
-        ),
+        any(feature = "disco_net_test", feature = "tcpip_net_test", feature = "http_net_test"),
         not(feature = "relmsg_net_test")
     ))]
     let _ = frouter_config;
@@ -232,8 +228,8 @@ extern "C" fn verify_el0_net() {
                     logln!(
                         "[net] waiting: driver {} rx/tx {}/{} send={} relmsg {} opcode {} handled \
                          {} send {}/{} frouter {} forwarded {} client {} status={:#x} avail={} \
-                         pfn={:#x}/{:#x} notify={}/{} enabled={}/{} dma-faults={}/{} \
-                         rxq={}/{} client-error={}",
+                         pfn={:#x}/{:#x} notify={}/{} enabled={}/{} dma-faults={}/{} rxq={}/{} \
+                         client-error={}",
                         ds,
                         rx_seen,
                         tx_seen,

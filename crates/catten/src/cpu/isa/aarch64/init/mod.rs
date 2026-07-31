@@ -1,7 +1,11 @@
-use super::interrupts::load_ivt;
 use core::arch::asm;
-use crate::cpu::isa::interface::init::InitInterface;
-use crate::{early_logln, logln};
+
+use super::interrupts::load_ivt;
+use crate::{
+    cpu::isa::interface::init::InitInterface,
+    early_logln,
+    logln,
+};
 
 pub struct IsaInitializer;
 
@@ -39,11 +43,7 @@ impl InitInterface for IsaInitializer {
         // Initialization code for the aarch64 architecture
         early_logln!("Performing Aarch64 ISA specific initialization...");
         let (sctlr_before, sctlr_after) = clear_write_execute_never();
-        early_logln!(
-            "SCTLR_EL1 WXN clear: before={:#x} after={:#x}",
-            sctlr_before,
-            sctlr_after
-        );
+        early_logln!("SCTLR_EL1 WXN clear: before={:#x} after={:#x}", sctlr_before, sctlr_after);
         // Setup the interrupt vector table
         early_logln!("Loading the interrupt vector table on the AP");
         load_ivt();
@@ -57,11 +57,7 @@ impl InitInterface for IsaInitializer {
         // Initialization code for the aarch64 architecture
         logln!("Performing Aarch64 ISA specific initialization...");
         let (sctlr_before, sctlr_after) = clear_write_execute_never();
-        logln!(
-            "SCTLR_EL1 WXN clear: before={:#x} after={:#x}",
-            sctlr_before,
-            sctlr_after
-        );
+        logln!("SCTLR_EL1 WXN clear: before={:#x} after={:#x}", sctlr_before, sctlr_after);
         // Setup the interrupt vector table
         logln!("Loading the interrupt vector table on the AP");
         load_ivt();

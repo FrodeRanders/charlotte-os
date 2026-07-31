@@ -20,11 +20,11 @@
 //!
 //! ## Launch manifest
 //!
-//! - `ip`: optional local IPv4 address as four bytes. Defaults to a
-//!   MAC-derived `10.0.0.(100 + mac[5] % 100)`; override with `10.0.2.15`
-//!   (plus `gateway`) when the guest sits on a SLIRP user network.
-//! - `gateway`: optional IPv4 default-route gateway as four bytes. Omit on a
-//!   raw two-node link: same-subnet peers are reached directly.
+//! - `ip`: optional local IPv4 address as four bytes. Defaults to a MAC-derived `10.0.0.(100 +
+//!   mac[5] % 100)`; override with `10.0.2.15` (plus `gateway`) when the guest sits on a SLIRP user
+//!   network.
+//! - `gateway`: optional IPv4 default-route gateway as four bytes. Omit on a raw two-node link:
+//!   same-subnet peers are reached directly.
 #![no_std]
 #![no_main]
 
@@ -121,7 +121,11 @@ impl TcpipState {
     /// default ephemeral range is 49152..=65535.
     fn alloc_ephemeral_port(&mut self) -> u16 {
         let port = self.next_ephemeral;
-        self.next_ephemeral = if port >= 65535 { 49152 } else { port + 1 };
+        self.next_ephemeral = if port >= 65535 {
+            49152
+        } else {
+            port + 1
+        };
         port
     }
 }
@@ -388,7 +392,10 @@ fn main(ctx: Context) -> ! {
                     }
                     let port = read_port(msg.memory);
                     memory_close(msg.memory);
-                    let listen = smoltcp::wire::IpListenEndpoint { addr: None, port };
+                    let listen = smoltcp::wire::IpListenEndpoint {
+                        addr: None,
+                        port,
+                    };
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     match sock.listen(listen) {
                         Ok(()) => ipc_reply(msg.reply, 0),
@@ -410,7 +417,10 @@ fn main(ctx: Context) -> ! {
                     }
                     let port = read_port(msg.memory);
                     memory_close(msg.memory);
-                    let listen = smoltcp::wire::IpListenEndpoint { addr: None, port };
+                    let listen = smoltcp::wire::IpListenEndpoint {
+                        addr: None,
+                        port,
+                    };
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     match sock.listen(listen) {
                         Ok(()) => ipc_reply(msg.reply, 0),
@@ -572,7 +582,11 @@ fn main(ctx: Context) -> ! {
         }
 
         let (_, timed_out) = cq_wait_timeout(1, POLL_MS, 0);
-        elapsed_ms = if timed_out != 0 { POLL_MS } else { 1 };
+        elapsed_ms = if timed_out != 0 {
+            POLL_MS
+        } else {
+            1
+        };
     }
 }
 

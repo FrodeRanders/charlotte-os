@@ -46,11 +46,17 @@ pub fn get_int_state() -> bool {
 
 use core::arch::naked_asm;
 
-use crate::cpu::isa::lp::LpId;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
-use crate::logln;
-use crate::memory::VAddr;
+use crate::{
+    cpu::{
+        isa::lp::LpId,
+        scheduler::{
+            system_scheduler::SYSTEM_SCHEDULER,
+            threads::MASTER_THREAD_TABLE,
+        },
+    },
+    logln,
+    memory::VAddr,
+};
 
 /// Enable Advanced SIMD and floating-point instruction access at EL1 (and EL0).
 ///
@@ -131,7 +137,7 @@ pub fn log_mpidr() {
     let m = mpidr();
     let a3 = (m >> 32) & 0xff;
     let a2 = (m >> 16) & 0xff;
-    let a1 = (m >> 8)  & 0xff;
+    let a1 = (m >> 8) & 0xff;
     let a0 = m & 0xff;
     let lp = get_lp_id();
     crate::early_logln!("[MPIDR] LP{} mpidr={} aff={}.{}.{}.{}", lp, m, a3, a2, a1, a0);
@@ -262,12 +268,11 @@ pub extern "C" fn cond_yield_lp() {
 /// `curr_on_cpu` / `next_on_cpu` point at the respective threads' `on_cpu`
 /// ownership bytes (null when there is no such thread, e.g. an abandoned boot
 /// context). The routine implements the SMP hand-off:
-///  1. save the outgoing thread, then **release-store** `*curr_on_cpu = 0`,
-///     publishing the completed save to other LPs;
-///  2. **acquire-wait** until `*next_on_cpu == 0`, so a thread that was woken
-///     onto this LP is never restored until the LP that last ran it finished
-///     saving it (closing the wake-before-save race), then claim it by setting
-///     `*next_on_cpu = 1`;
+///  1. save the outgoing thread, then **release-store** `*curr_on_cpu = 0`, publishing the
+///     completed save to other LPs;
+///  2. **acquire-wait** until `*next_on_cpu == 0`, so a thread that was woken onto this LP is never
+///     restored until the LP that last ran it finished saving it (closing the wake-before-save
+///     race), then claim it by setting `*next_on_cpu = 1`;
 ///  3. restore the incoming thread.
 ///
 /// The saved frame layout (from higher to lower address, i.e. in push order)

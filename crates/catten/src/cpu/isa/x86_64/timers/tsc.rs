@@ -2,10 +2,17 @@ use core::arch::asm;
 
 use spin::LazyLock;
 
-use crate::cpu::isa::interface::system_info::CpuInfoIfce;
-use crate::cpu::isa::system_info::{CpuInfo, IsaExtension};
-use crate::environment::boot_protocol::limine::TSC_FREQUENCY_REQUEST;
-use crate::klib::time::duration::ExtDuration;
+use crate::{
+    cpu::isa::{
+        interface::system_info::CpuInfoIfce,
+        system_info::{
+            CpuInfo,
+            IsaExtension,
+        },
+    },
+    environment::boot_protocol::limine::TSC_FREQUENCY_REQUEST,
+    klib::time::duration::ExtDuration,
+};
 
 pub static IS_TSC_INVARIANT: LazyLock<bool> =
     LazyLock::new(|| CpuInfo::is_extension_supported(IsaExtension::InvariantTsc));

@@ -1,7 +1,11 @@
-use crate::cpu::isa::init::gdt;
-use crate::cpu::isa::interrupts::idt::Idt;
-use crate::logln;
-use crate::memory::VAddr;
+use crate::{
+    cpu::isa::{
+        init::gdt,
+        interrupts::idt::Idt,
+    },
+    logln,
+    memory::VAddr,
+};
 
 pub fn set_gates(idt: &mut Idt) {
     idt.set_gate(0, isr_divide_by_zero, gdt::KERNEL_CODE_SELECTOR, None, true, true);

@@ -236,14 +236,7 @@ fn handle_frame(
         if frame_cluster_id == *cluster_id && source_mac != local_mac {
             let payload = &frame[FRAME_HEADER_SIZE..];
             if let Some((peer_id, service_name)) = parse_response_payload(payload) {
-                learn_peer(
-                    peers,
-                    source_mac,
-                    peer_id,
-                    service_name,
-                    tick_ms,
-                    disco::PEER_TTL_MS,
-                );
+                learn_peer(peers, source_mac, peer_id, service_name, tick_ms, disco::PEER_TTL_MS);
             }
             if (flags & FLAG_PROBE) != 0 {
                 send_response(
@@ -385,9 +378,7 @@ fn main(ctx: Context) -> ! {
                 disco::OP_FRAME => {
                     unsafe { DIAG_RX_RAW = DIAG_RX_RAW.wrapping_add(1) };
                     let frame_len = message.arg0 as usize;
-                    if message.memory == 0
-                        || !(FRAME_HEADER_SIZE..=4096).contains(&frame_len)
-                    {
+                    if message.memory == 0 || !(FRAME_HEADER_SIZE..=4096).contains(&frame_len) {
                         if message.memory != 0 {
                             memory_close(message.memory);
                         }

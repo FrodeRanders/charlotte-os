@@ -123,7 +123,8 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             .filter(|asid| *asid != crate::memory::KERNEL_ASID)
             .unwrap_or_else(|| {
                 panic!(
-                    "SVC from EL0t has no live address space (TTBR0={active_ttbr0:#x}, ELR={elr_el1:#x})"
+                    "SVC from EL0t has no live address space (TTBR0={active_ttbr0:#x}, \
+                     ELR={elr_el1:#x})"
                 )
             });
 

@@ -5,11 +5,10 @@
 //! routed through the frame demultiplexer to the NIC. Each message is prefixed
 //! with a one-byte request/response type tag followed by the encoded protobuf.
 //!
-//! - Requests are handed to the owning reactor (which drives
-//!   `RaftNode::handle_*`) and answered with a tagged response back to the
-//!   source MAC.
-//! - Responses are buffered and surfaced through `poll_completions`, exactly
-//!   like `CharlotteTransport`.
+//! - Requests are handed to the owning reactor (which drives `RaftNode::handle_*`) and answered
+//!   with a tagged response back to the source MAC.
+//! - Responses are buffered and surfaced through `poll_completions`, exactly like
+//!   `CharlotteTransport`.
 //!
 //! relmsg allows one outstanding `OP_SEND` per peer (it replies `ERR_BUSY`
 //! otherwise), so outbound RPCs are queued per peer and drained one at a time.
@@ -206,9 +205,7 @@ impl RelmsgRaftTransport {
     pub fn decode_inbound(&self, source_mac: &[u8; 6], frame: &[u8]) -> Option<InboundRpc> {
         let (&tag, payload) = frame.split_first()?;
         match tag {
-            TAG_VOTE_REQUEST => {
-                decode_vote_request(payload).ok().map(InboundRpc::VoteRequest)
-            }
+            TAG_VOTE_REQUEST => decode_vote_request(payload).ok().map(InboundRpc::VoteRequest),
             TAG_APPEND_REQUEST => {
                 decode_append_request(payload).ok().map(InboundRpc::AppendEntries)
             }

@@ -127,8 +127,8 @@ mod inner {
     }
 
     fn call(kernel_conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
-        let call = crate::ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_conn, opcode, arg0)
-            .ok()?;
+        let call =
+            crate::ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_conn, opcode, arg0).ok()?;
         crate::ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
         crate::ipc::poll_reply(crate::memory::KERNEL_ASID, call)
             .ok()
@@ -137,8 +137,9 @@ mod inner {
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
-        let call = crate::ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name)
-            .ok()?;
+        let call =
+            crate::ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name)
+                .ok()?;
         crate::ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
         crate::ipc::poll_reply(crate::memory::KERNEL_ASID, call)
             .ok()
@@ -307,9 +308,7 @@ mod inner {
         }
         logln!("[http] httpd reached the listening stage.");
 
-        logln!(
-            "[http] SUCCESS: httpd is listening on port 80; host may curl the hostfwd port."
-        );
+        logln!("[http] SUCCESS: httpd is listening on port 80; host may curl the hostfwd port.");
         crate::self_test::results::pass(crate::self_test::results::TestId::Http);
     }
 }

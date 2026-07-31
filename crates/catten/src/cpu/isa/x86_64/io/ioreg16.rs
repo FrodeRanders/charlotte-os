@@ -1,9 +1,16 @@
-use core::arch::asm;
-use core::ops::Add;
+use core::{
+    arch::asm,
+    ops::Add,
+};
 
-pub use crate::cpu::isa::interface::io::{IReg16Ifce, OReg16Ifce};
-use crate::memory::PAddr;
-use crate::memory::physical::PhysicalAddress;
+pub use crate::cpu::isa::interface::io::{
+    IReg16Ifce,
+    OReg16Ifce,
+};
+use crate::memory::{
+    PAddr,
+    physical::PhysicalAddress,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum IoReg16 {

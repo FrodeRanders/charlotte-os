@@ -21,9 +21,9 @@ use core::sync::atomic::AtomicUsize;
 use crate::{
     cpu::isa::{
         interface::memory::{
-            address::VirtualAddress,
             AddressSpaceInterface,
             MemoryMapping,
+            address::VirtualAddress,
         },
         lp::ops::{
             kernel_thread_trampoline,
@@ -35,16 +35,16 @@ use crate::{
         },
     },
     memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceId,
+        PHYSICAL_FRAME_ALLOCATOR,
+        VAddr,
         allocators::stack_allocator::{
+            Error,
             allocate_stack,
             deallocate_stack,
-            Error,
         },
         linear::PageType,
-        AddressSpaceId,
-        VAddr,
-        ADDRESS_SPACE_TABLE,
-        PHYSICAL_FRAME_ALLOCATOR,
     },
 };
 
@@ -137,9 +137,10 @@ pub struct ThreadContext {
 impl Drop for ThreadContext {
     fn drop(&mut self) {
         if let Some(user_stack) = self._user_stack
-            && !deallocate_user_stack(user_stack) {
-                crate::early_logln!("WARNING: failed to free user stack on thread teardown");
-            }
+            && !deallocate_user_stack(user_stack)
+        {
+            crate::early_logln!("WARNING: failed to free user stack on thread teardown");
+        }
         if deallocate_stack(self._kernel_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
             crate::early_logln!("WARNING: failed to free kernel stack on thread teardown");
         }

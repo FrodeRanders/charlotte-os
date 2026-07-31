@@ -1,8 +1,10 @@
 use spin::LazyLock;
 
 pub use crate::cpu::isa::common::memory::address::*;
-use crate::cpu::isa::interface::system_info::CpuInfoIfce;
-use crate::cpu::isa::x86_64::system_info::CpuInfo;
+use crate::cpu::isa::{
+    interface::system_info::CpuInfoIfce,
+    x86_64::system_info::CpuInfo,
+};
 
 pub static PADDR_SIG_BITS: LazyLock<u8> = LazyLock::new(CpuInfo::get_paddr_sig_bits);
 pub static PADDR_MASK: LazyLock<usize> = LazyLock::new(|| (1 << *PADDR_SIG_BITS as usize) - 1);

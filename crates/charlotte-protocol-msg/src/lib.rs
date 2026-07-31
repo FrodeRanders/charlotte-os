@@ -6,12 +6,11 @@
 //! control — the "Reliable Message Layer" of the architecture.
 //!
 //! Messages carry:
-//! - A 32-bit sequence number (monotonic, per-connection; one per *message*,
-//!   shared by all fragments)
+//! - A 32-bit sequence number (monotonic, per-connection; one per *message*, shared by all
+//!   fragments)
 //! - A 32-bit acknowledgement number (cumulative)
 //! - A 16-bit payload length
-//! - A 16-bit flags field (bit 0 = SYN, bit 1 = ACK, bit 2 = FIN,
-//!   bit 3 = FRAG, bit 4 = MORE)
+//! - A 16-bit flags field (bit 0 = SYN, bit 1 = ACK, bit 2 = FIN, bit 3 = FRAG, bit 4 = MORE)
 //! - The application payload
 //!
 //! ## Fragmentation
@@ -171,7 +170,9 @@ pub fn parse_header(buf: &[u8; HEADER_SIZE]) -> (u32, u32, u16, u16, u16) {
     (seq, ack, len, flags, fragment_offset(buf))
 }
 
-pub fn parse_header_checked(buf: &[u8; HEADER_SIZE]) -> Result<(u32, u32, u16, u16, u16), HeaderError> {
+pub fn parse_header_checked(
+    buf: &[u8; HEADER_SIZE],
+) -> Result<(u32, u32, u16, u16, u16), HeaderError> {
     if u16::from_be_bytes([buf[0], buf[1]]) != MSG_ETHERTYPE {
         return Err(HeaderError::WrongEtherType);
     }
@@ -208,10 +209,7 @@ mod tests {
         assert_eq!(len, 100);
         assert_eq!(flags, FLAG_ACK);
         assert_eq!(offset, 0);
-        assert_eq!(
-            parse_header_checked(&hdr),
-            Ok((42, 17, 100, FLAG_ACK, 0))
-        );
+        assert_eq!(parse_header_checked(&hdr), Ok((42, 17, 100, FLAG_ACK, 0)));
     }
 
     #[test]

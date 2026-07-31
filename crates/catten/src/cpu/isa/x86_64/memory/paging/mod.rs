@@ -1,16 +1,30 @@
 pub mod pte;
 pub mod pth_walker;
-use core::arch::asm;
-use core::iter::Iterator;
-use core::ptr::NonNull;
+use core::{
+    arch::asm,
+    iter::Iterator,
+    ptr::NonNull,
+};
 
-use super::MemoryInterfaceImpl;
-use super::address::vaddr::VAddr;
-use crate::cpu::isa::interface::memory::address::Address;
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface, MemoryMapping};
-use crate::klib::size::{gibibytes, kibibytes, mebibytes};
-use crate::logln;
-use crate::memory::PAddr;
+use super::{
+    MemoryInterfaceImpl,
+    address::vaddr::VAddr,
+};
+use crate::{
+    cpu::isa::interface::memory::{
+        AddressSpaceInterface,
+        MemoryInterface,
+        MemoryMapping,
+        address::Address,
+    },
+    klib::size::{
+        gibibytes,
+        kibibytes,
+        mebibytes,
+    },
+    logln,
+    memory::PAddr,
+};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(transparent)]
@@ -74,18 +88,19 @@ impl AddressSpace {
         phys_base: usize,
         size: usize,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
-        use crate::cpu::isa::interface::memory::address::{
-            PhysicalAddress,
-            VirtualAddress,
+        use crate::{
+            cpu::isa::interface::memory::address::{
+                PhysicalAddress,
+                VirtualAddress,
+            },
+            memory::linear::PageType,
         };
-        use crate::memory::linear::PageType;
 
         let start = phys_base & !(PAGE_SIZE - 1);
-        let end = phys_base
-            .checked_add(size)
-            .and_then(|end| end.checked_add(PAGE_SIZE - 1))
-            .ok_or(<MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable)?
-            & !(PAGE_SIZE - 1);
+        let end =
+            phys_base.checked_add(size).and_then(|end| end.checked_add(PAGE_SIZE - 1)).ok_or(
+                <MemoryInterfaceImpl as MemoryInterface>::Error::NoRequestedVAddrRegionAvailable,
+            )? & !(PAGE_SIZE - 1);
         for phys in (start..end).step_by(PAGE_SIZE) {
             let frame = PAddr::from(phys as u64);
             let mapping = MemoryMapping {

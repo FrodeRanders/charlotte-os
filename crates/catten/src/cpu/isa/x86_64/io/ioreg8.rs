@@ -1,10 +1,20 @@
-use core::arch::asm;
-use core::ops::Add;
+use core::{
+    arch::asm,
+    ops::Add,
+};
 
-pub use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::memory::physical::PhysicalAddress;
-use crate::memory::{PAddr, VAddr};
+pub use crate::cpu::isa::interface::io::{
+    IReg8Ifce,
+    OReg8Ifce,
+};
+use crate::{
+    cpu::isa::interface::memory::address::VirtualAddress,
+    memory::{
+        PAddr,
+        VAddr,
+        physical::PhysicalAddress,
+    },
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum IoReg8 {

@@ -287,8 +287,8 @@ impl LocalIntCtlrIfce for GicV3 {
         if target_vector > 15 {
             return Err(Error::InvalidLpId);
         }
-        let mpidr =
-            crate::cpu::multiprocessor::startup::mpidr_for_lp(target_lp).ok_or(Error::InvalidLpId)?;
+        let mpidr = crate::cpu::multiprocessor::startup::mpidr_for_lp(target_lp)
+            .ok_or(Error::InvalidLpId)?;
         let aff0 = mpidr & 0xff;
         let aff1 = (mpidr >> 8) & 0xff;
         let aff2 = (mpidr >> 16) & 0xff;

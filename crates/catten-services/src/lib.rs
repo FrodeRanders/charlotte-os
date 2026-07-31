@@ -777,11 +777,8 @@ pub fn sleep_ms(milliseconds: u64) {
 /// reliable-message/Raft membership clients) must call this before starting
 /// to communicate with other nodes.
 pub fn wait_for_boot_done(ns_conn: u64) -> bool {
-    let call = catten_syscall::ipc_scalar_call(
-        ns_conn,
-        ns::OP_LOOKUP,
-        charlotte_launch::BOOT_DONE_NAME,
-    );
+    let call =
+        catten_syscall::ipc_scalar_call(ns_conn, ns::OP_LOOKUP, charlotte_launch::BOOT_DONE_NAME);
     if call == 0 {
         return false;
     }

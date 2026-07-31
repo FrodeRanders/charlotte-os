@@ -1,6 +1,9 @@
 use core::ops::Add;
 
-use crate::cpu::isa::interface::io::{IReg8Ifce, OReg8Ifce};
+use crate::cpu::isa::interface::io::{
+    IReg8Ifce,
+    OReg8Ifce,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub struct IoReg8 {

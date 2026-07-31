@@ -18,13 +18,13 @@ use crate::{
             vaddr::VAddr,
         },
         interface::memory::{
+            AddressSpaceInterface,
+            MemoryInterface,
+            MemoryMapping,
             address::{
                 Address,
                 VirtualAddress,
             },
-            AddressSpaceInterface,
-            MemoryInterface,
-            MemoryMapping,
         },
     },
     klib::size::{

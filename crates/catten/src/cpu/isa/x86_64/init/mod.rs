@@ -2,10 +2,15 @@ mod ap;
 mod bsp;
 pub mod gdt;
 
-use crate::cpu::isa::interface::init::InitInterface;
-use crate::cpu::isa::lp::ops::get_lp_id;
-use crate::cpu::isa::memory::paging::PAGE_SIZE;
-use crate::{early_logln, logln};
+use crate::{
+    cpu::isa::{
+        interface::init::InitInterface,
+        lp::ops::get_lp_id,
+        memory::paging::PAGE_SIZE,
+    },
+    early_logln,
+    logln,
+};
 
 const INTERRUPT_STACK_SIZE: usize = PAGE_SIZE * 4;
 

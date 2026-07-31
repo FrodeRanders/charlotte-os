@@ -1,5 +1,7 @@
-use core::arch::asm;
-use core::mem::MaybeUninit;
+use core::{
+    arch::asm,
+    mem::MaybeUninit,
+};
 
 static mut IDTR: MaybeUninit<Idtr> = MaybeUninit::uninit();
 

@@ -226,9 +226,8 @@ pub fn publish_boot_done() {
         .expect("[supervisor] boot-done endpoint creation failed");
     let conn = ipc::connection_mint(KERNEL_ASID, endpoint, ConnectionRights::ALL)
         .expect("[supervisor] boot-done connection mint failed");
-    let ns_conn = KERNEL_NS_CONN
-        .lock()
-        .expect("[supervisor] kernel name-service connection missing");
+    let ns_conn =
+        KERNEL_NS_CONN.lock().expect("[supervisor] kernel name-service connection missing");
     let call = ipc::scalar_call_with_connection(
         KERNEL_ASID,
         ns_conn,
@@ -238,8 +237,7 @@ pub fn publish_boot_done() {
         ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
     )
     .expect("[supervisor] boot-done registration call failed");
-    ipc::wait_reply(KERNEL_ASID, call)
-        .expect("[supervisor] boot-done registration wait failed");
+    ipc::wait_reply(KERNEL_ASID, call).expect("[supervisor] boot-done registration wait failed");
     let result = ipc::poll_reply(KERNEL_ASID, call)
         .expect("[supervisor] boot-done registration result missing");
     let generation = result.map(|reply| reply.result).unwrap_or(0);

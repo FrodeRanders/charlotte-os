@@ -59,15 +59,15 @@ pub const TSC_AUX: u32 = 0xc000_0103;
 // ---- SYSCALL / SYSRET MSRs -----------------------------------------------
 
 /// Extended Feature Enable Register. Bit 0 (SCE) must be set for SYSCALL.
-pub const EFER: u32 = 0xC000_0080;
+pub const EFER: u32 = 0xc000_0080;
 pub const EFER_SCE: u64 = 1;
 
 /// Bits 47:32 = SYSCALL CS selector, bits 63:48 = SYSRET CS selector.
-pub const STAR: u32 = 0xC000_0081;
+pub const STAR: u32 = 0xc000_0081;
 /// RIP loaded on SYSCALL (long mode handler entry point).
-pub const LSTAR: u32 = 0xC000_0082;
+pub const LSTAR: u32 = 0xc000_0082;
 /// RFLAGS mask applied on SYSCALL entry (bits set here are cleared).
-pub const SFMASK: u32 = 0xC000_0084;
+pub const SFMASK: u32 = 0xc000_0084;
 
 /// Convenience: enable SYSCALL by setting EFER.SCE.
 pub unsafe fn enable_syscall() {
@@ -81,8 +81,7 @@ pub unsafe fn enable_syscall() {
 /// assembly trampoline that saves registers and calls into Rust.
 pub unsafe fn setup_syscall(handler_addr: u64) {
     unsafe {
-        let star_val: u64 = (0x0010u64 << 48)
-                         | (0x0008u64 << 32);
+        let star_val: u64 = (0x0010u64 << 48) | (0x0008u64 << 32);
         write(STAR, star_val);
         write(LSTAR, handler_addr);
         write(SFMASK, 1 << 9);

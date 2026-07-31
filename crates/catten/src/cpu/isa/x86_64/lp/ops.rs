@@ -94,7 +94,10 @@ pub fn get_lic_id() -> u32 {
     apic_id
 }
 
-use core::arch::{asm, naked_asm};
+use core::arch::{
+    asm,
+    naked_asm,
+};
 
 use super::LpId;
 use crate::cpu::isa::constants::*;
@@ -126,10 +129,14 @@ pub fn get_lp_id() -> LpId {
     id as crate::cpu::isa::lp::LpId
 }
 
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::cpu::scheduler::threads::MASTER_THREAD_TABLE;
-use crate::logln;
-use crate::memory::VAddr;
+use crate::{
+    cpu::scheduler::{
+        system_scheduler::SYSTEM_SCHEDULER,
+        threads::MASTER_THREAD_TABLE,
+    },
+    logln,
+    memory::VAddr,
+};
 
 #[inline]
 pub extern "C" fn get_lp_local_base() -> VAddr {
@@ -172,7 +179,7 @@ pub extern "C" fn cond_yield_lp() {
             lp_id: LpId,
         },
         FromNonThread {
-            next:  usize,
+            next: usize,
             lp_id: LpId,
         },
     }
@@ -237,7 +244,7 @@ pub extern "C" fn cond_yield_lp() {
                     #[cfg(feature = "yield_trace")]
                     {
                         trace = YieldTrace::FromNonThread {
-                            next:  next_tid,
+                            next: next_tid,
                             lp_id: get_lp_id(),
                         };
                     }

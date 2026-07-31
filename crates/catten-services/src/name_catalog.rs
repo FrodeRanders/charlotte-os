@@ -57,10 +57,7 @@ impl NameCatalog {
     /// Snapshot copy of the whole `name -> node` catalog.
     pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)> {
         let entries = self.entries.lock();
-        entries
-            .iter()
-            .map(|(name, node)| (name.clone(), node.clone()))
-            .collect()
+        entries.iter().map(|(name, node)| (name.clone(), node.clone())).collect()
     }
 
     fn apply_command(&self, command: &[u8]) -> Vec<u8> {
@@ -131,12 +128,20 @@ impl NameCatalog {
 impl StateMachine for NameCatalog {
     fn apply(&self, _term: u64, command: &[u8]) {
         let result = self.apply_command(command);
-        *self.last_apply.lock() = if result.is_empty() { None } else { Some(result) };
+        *self.last_apply.lock() = if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        };
     }
 
     fn apply_with_result(&self, _term: u64, command: &[u8]) -> Vec<u8> {
         let result = self.apply_command(command);
-        *self.last_apply.lock() = if result.is_empty() { None } else { Some(result.clone()) };
+        *self.last_apply.lock() = if result.is_empty() {
+            None
+        } else {
+            Some(result.clone())
+        };
         result
     }
 

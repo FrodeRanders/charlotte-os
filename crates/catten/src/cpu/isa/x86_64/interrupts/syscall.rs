@@ -44,11 +44,11 @@ pub extern "C" fn syscall_handler(syscall_no: u64) -> u64 {
     match syscall_no {
         0 => {
             // LOG
-            0xC0FFEE
+            0xc0ffee
         }
         _ => {
             // Unknown syscall — return 0xDEAD.
-            0xDEAD
+            0xdead
         }
     }
 }

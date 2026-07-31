@@ -116,7 +116,8 @@ fn decode(bytes: &[u8]) -> Option<NodeIdentity> {
     if name_len_off + 4 > bytes.len() {
         return None;
     }
-    let name_len = u32::from_le_bytes(bytes[name_len_off..name_len_off + 4].try_into().ok()?) as usize;
+    let name_len =
+        u32::from_le_bytes(bytes[name_len_off..name_len_off + 4].try_into().ok()?) as usize;
     let name_off = name_len_off + 4;
     if name_off + name_len > bytes.len() || mnemonic_len == 0 || name_len == 0 {
         return None;

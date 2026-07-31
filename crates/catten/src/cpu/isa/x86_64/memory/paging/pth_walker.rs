@@ -7,12 +7,24 @@
 
 use core::ptr::NonNull;
 
-use super::{is_pagetable_unused, PAGE_SIZE};
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::interface::memory::{AddressSpaceInterface, MemoryInterface};
-use crate::cpu::isa::x86_64::memory::address::paddr::PAddr;
-use crate::cpu::isa::x86_64::memory::address::vaddr::VAddr;
-use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
+use super::{
+    PAGE_SIZE,
+    is_pagetable_unused,
+};
+use crate::{
+    cpu::isa::{
+        interface::memory::{
+            AddressSpaceInterface,
+            MemoryInterface,
+            address::VirtualAddress,
+        },
+        x86_64::memory::address::{
+            paddr::PAddr,
+            vaddr::VAddr,
+        },
+    },
+    memory::PHYSICAL_FRAME_ALLOCATOR,
+};
 
 const CR3_ADDRESS_MASK: u64 = 0x000ffffffffff000;
 type WalkerError = <super::MemoryInterfaceImpl as MemoryInterface>::Error;

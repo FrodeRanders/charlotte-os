@@ -275,9 +275,8 @@ fn process_frame(
                     total: None,
                 });
             }
-            let within_ceiling = frag_offset
-                .checked_add(payload_len)
-                .is_some_and(|end| end <= relmsg::MAX_MSG);
+            let within_ceiling =
+                frag_offset.checked_add(payload_len).is_some_and(|end| end <= relmsg::MAX_MSG);
             if within_ceiling {
                 if let Some(ra) = peer.reassembling.as_mut() {
                     ra.fragments.insert(frag_offset, payload.to_vec());

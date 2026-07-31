@@ -1,14 +1,35 @@
-use core::mem::{offset_of, transmute};
+use core::mem::{
+    offset_of,
+    transmute,
+};
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
 
-use crate::cpu::isa::init::gdt::{USER_CODE_SELECTOR, USER_DATA_SELECTOR};
-use crate::cpu::isa::interface::memory::address::VirtualAddress;
-use crate::cpu::isa::lp::ops::{kernel_thread_trampoline, user_trampoline};
-use crate::cpu::isa::memory::paging::PAGE_SIZE;
-use crate::klib::collections::id_table;
-use crate::memory::allocators::stack_allocator::{allocate_stack, deallocate_stack};
-use crate::memory::{ADDRESS_SPACE_TABLE, AddressSpaceId, KERNEL_AS, VAddr};
+use crate::{
+    cpu::isa::{
+        init::gdt::{
+            USER_CODE_SELECTOR,
+            USER_DATA_SELECTOR,
+        },
+        interface::memory::address::VirtualAddress,
+        lp::ops::{
+            kernel_thread_trampoline,
+            user_trampoline,
+        },
+        memory::paging::PAGE_SIZE,
+    },
+    klib::collections::id_table,
+    memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceId,
+        KERNEL_AS,
+        VAddr,
+        allocators::stack_allocator::{
+            allocate_stack,
+            deallocate_stack,
+        },
+    },
+};
 
 /// # Interrupt stack frame structure for x86_64 architecture
 /// Note: must be 16 byte aligned as per `AMD APM 8.9.3`

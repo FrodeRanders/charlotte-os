@@ -1,5 +1,7 @@
-use core::arch::asm;
-use core::mem::size_of;
+use core::{
+    arch::asm,
+    mem::size_of,
+};
 
 use crate::get_lp_id;
 
@@ -30,14 +32,14 @@ impl SegmentDescriptor {
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed(1))]
 struct TssDescriptor {
-    low:  u64, // Low 64 bits of the descriptor
+    low: u64,  // Low 64 bits of the descriptor
     high: u64, // High 64 bits of the descriptor
 }
 
 impl TssDescriptor {
     fn new() -> Self {
         TssDescriptor {
-            low:  0,
+            low: 0,
             high: 0,
         }
     }
@@ -148,14 +150,14 @@ unsafe extern "C" {
 #[repr(C, packed(1))]
 struct GdtRegister {
     limit: u16,
-    base:  *const Gdt,
+    base: *const Gdt,
 }
 
 impl GdtRegister {
     fn new(gdt: &Gdt) -> Self {
         GdtRegister {
             limit: (size_of::<Gdt>() - 1) as u16,
-            base:  gdt,
+            base: gdt,
         }
     }
 

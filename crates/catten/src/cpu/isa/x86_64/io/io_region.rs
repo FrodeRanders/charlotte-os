@@ -1,5 +1,10 @@
-use crate::cpu::isa::io::IoReg8;
-use crate::memory::{PAddr, VAddr};
+use crate::{
+    cpu::isa::io::IoReg8,
+    memory::{
+        PAddr,
+        VAddr,
+    },
+};
 
 pub type IoPortAddr = u16;
 pub type IoUSize = u16;

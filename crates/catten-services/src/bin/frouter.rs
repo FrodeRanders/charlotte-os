@@ -36,8 +36,8 @@ use catten_services::{
     net,
     ns,
     relmsg,
-    socket,
     sleep_ms,
+    socket,
     wait_reply,
 };
 use catten_syscall::{
@@ -114,7 +114,13 @@ fn try_lookup(ns_conn: u64, name: u64) -> Option<u64> {
     }
 }
 
-fn add_route_if_missing(routes: &mut Vec<Route>, ns_conn: u64, ethertype: u16, name: u64, opcode: u32) {
+fn add_route_if_missing(
+    routes: &mut Vec<Route>,
+    ns_conn: u64,
+    ethertype: u16,
+    name: u64,
+    opcode: u32,
+) {
     if routes.iter().any(|route| route.ethertype == ethertype) {
         return;
     }
@@ -135,7 +141,10 @@ fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
     }
     let ethertype = unsafe {
         let base = SCRATCH as *const u8;
-        u16::from_be_bytes([core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET)), core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET + 1))])
+        u16::from_be_bytes([
+            core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET)),
+            core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET + 1)),
+        ])
     };
     let _ = memory_unmap(memory);
     ethertype
@@ -249,10 +258,34 @@ fn main(ctx: Context) -> ! {
             // Consumers may register after us; refresh the optional routes on
             // every poll so a late-registering service is picked up even when
             // no frames are arriving.
-            add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
-            add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
-            add_route_if_missing(&mut routes, ns_conn, IPV4_ETHERTYPE, socket::NAME, socket::OP_FRAME);
-            add_route_if_missing(&mut routes, ns_conn, ARP_ETHERTYPE, socket::NAME, socket::OP_FRAME);
+            add_route_if_missing(
+                &mut routes,
+                ns_conn,
+                MSG_ETHERTYPE,
+                relmsg::NAME,
+                relmsg::OP_FRAME,
+            );
+            add_route_if_missing(
+                &mut routes,
+                ns_conn,
+                DISCO_ETHERTYPE,
+                disco::NAME,
+                disco::OP_FRAME,
+            );
+            add_route_if_missing(
+                &mut routes,
+                ns_conn,
+                IPV4_ETHERTYPE,
+                socket::NAME,
+                socket::OP_FRAME,
+            );
+            add_route_if_missing(
+                &mut routes,
+                ns_conn,
+                ARP_ETHERTYPE,
+                socket::NAME,
+                socket::OP_FRAME,
+            );
             config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
             config::write::<u32>(FORWARDED_OFFSET, forwarded);
             config::write::<u32>(DROPPED_OFFSET, dropped);

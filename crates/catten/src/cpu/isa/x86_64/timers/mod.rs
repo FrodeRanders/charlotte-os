@@ -3,10 +3,18 @@ pub mod tsc;
 
 pub use apic_timer::LpTimer;
 
-use crate::cpu::isa::interface::system_info::CpuInfoIfce;
-use crate::cpu::isa::system_info::CpuInfo;
-use crate::cpu::isa::timers::tsc::{IS_TSC_INVARIANT, TSC_CYCLE_PERIOD, TSC_FREQUENCY_HZ};
-use crate::logln;
+use crate::{
+    cpu::isa::{
+        interface::system_info::CpuInfoIfce,
+        system_info::CpuInfo,
+        timers::tsc::{
+            IS_TSC_INVARIANT,
+            TSC_CYCLE_PERIOD,
+            TSC_FREQUENCY_HZ,
+        },
+    },
+    logln,
+};
 
 pub fn print_timer_info() {
     if *IS_TSC_INVARIANT {

@@ -19,10 +19,16 @@
 
 use core::arch::asm;
 
-use crate::cpu::isa::aarch64::memory::address::vaddr::VAddr;
-use crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE;
-use crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER;
-use crate::memory::AddressSpaceId;
+use crate::{
+    cpu::{
+        isa::aarch64::memory::{
+            address::vaddr::VAddr,
+            paging::PAGE_SIZE,
+        },
+        scheduler::system_scheduler::SYSTEM_SCHEDULER,
+    },
+    memory::AddressSpaceId,
+};
 
 /// Encode a virtual address for the `TLBI ...VA*` instructions. The address is
 /// shifted right by 12 (the page shift); bits [43:0] of the operand hold VA
@@ -78,8 +84,7 @@ pub fn inval_range_kernel(base: VAddr, num_pages: usize) {
 /// across all cores. Uses the ASID-qualified `VAE1IS` variant so that only the
 /// target address space's entries are affected.
 pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
-    let Some(hwasid) =
-        SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
+    let Some(hwasid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
     else {
         return;
     };
@@ -100,8 +105,7 @@ pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
 /// `ASIDE1IS` invalidates every entry tagged with the given ASID, broadcast to
 /// the inner shareable domain.
 pub fn inval_asid(asid: AddressSpaceId) {
-    let Some(hwasid) =
-        SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
+    let Some(hwasid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
     else {
         return;
     };
