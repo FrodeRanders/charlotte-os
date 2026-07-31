@@ -149,3 +149,9 @@ name = "frouter"
 path = "src/bin/frouter.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "dns"
+path = "src/bin/dns.rs"
+test = false
+bench = false

@@ -10,6 +10,16 @@ extern crate alloc;
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;
 
+/// Persistent, cluster-scoped node identity (`{mnemonic}:{token}`).
+pub mod node_identity;
+
+/// Replicated name catalog: the Raft state machine for the distributed name
+/// service.
+pub mod name_catalog;
+
+/// Raft peer transport over the reliable message layer (`relmsg`).
+pub mod relmsg_transport;
+
 /// Pack up to 8 ASCII bytes into a u64 service name (little-endian).
 ///
 /// This interim scalar encoding is limited to 8 bytes; longer names travel
@@ -568,6 +578,35 @@ pub mod disco {
     pub const PROBE_COUNT: usize = 3;
     pub const PROBE_INTERVAL_MS: u64 = 200;
     pub const PEER_TTL_MS: u64 = 30_000;
+}
+
+/// Distributed name service (`charlotte-protocol-dns` v1).
+///
+/// One replica runs per node. The replicas form a Raft group whose state
+/// machine is a replicated `name -> node` catalog; the node-local name
+/// service still owns the actual connection capabilities. `OP_REGISTER`
+/// proposes a `name -> local node` entry to the cluster (and registers the
+/// connection with the local name service once committed). `OP_LOOKUP`
+/// answers from the replicated catalog: local names resolve to the local
+/// name service, remote names report the hosting node.
+pub mod dns {
+    pub const INTERFACE: u64 = super::name(b"DNS ");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"dns");
+
+    pub const OP_REGISTER: u32 = 1;
+    pub const OP_LOOKUP: u32 = 2;
+    pub const OP_STATUS: u32 = 3;
+    pub const OP_SHUTDOWN: u32 = 4;
+
+    /// The name is registered on this node (lookup returns a connection).
+    pub const RESULT_LOCAL: i64 = 0;
+    /// The name is registered on a remote node (lookup returns its node id).
+    pub const RESULT_REMOTE: i64 = 1;
+    pub const ERR_NOT_FOUND: i64 = -1;
+    pub const ERR_NOT_LEADER: i64 = -2;
+    pub const ERR_BAD_OPCODE: i64 = -3;
+    pub const ERR_TOO_LARGE: i64 = -4;
 }
 
 /// Block until a pending call completes, returning

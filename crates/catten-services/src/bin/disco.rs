@@ -47,6 +47,7 @@ use catten_syscall::{
     ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
+    ipc_reply_move,
     ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_scalar_call_move,
@@ -73,6 +74,7 @@ use charlotte_protocol_net::decode_status;
 const REPLY_SPINS: u64 = 50_000_000;
 const TX_SCRATCH: usize = 0x0000_0000_0090_0000;
 const RX_SCRATCH: usize = 0x0000_0000_0090_1000;
+const LIST_SCRATCH: usize = 0x0000_0000_0090_2000;
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;
@@ -285,25 +287,31 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 3);
 
-    let node_id = match ctx.manifest_value(charlotte_launch::manifest_key(b"node-id")) {
-        Some(ManifestValue::Bytes(id)) => id.to_vec(),
-        Some(_) => {
-            config::write::<u32>(0, 0xff02);
-            unsafe { thread_exit() };
-        }
-        None => {
-            config::write::<u32>(0, 0xff01);
-            unsafe { thread_exit() };
-        }
+    let cluster_raw = ctx.manifest_value(charlotte_launch::manifest_key(b"cluster"));
+    let mnemonic: Vec<u8> = match &cluster_raw {
+        Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
+        _ => b"default".to_vec(),
     };
-    let cluster_id_raw = match ctx.manifest_value(charlotte_launch::manifest_key(b"cluster")) {
-        Some(ManifestValue::Bytes(raw)) => {
-            let mut id = [0u8; CLUSTER_ID_LEN];
-            let len = raw.len().min(CLUSTER_ID_LEN);
-            id[..len].copy_from_slice(&raw[..len]);
-            id
+    let cluster_id_raw: [u8; CLUSTER_ID_LEN] = {
+        let mut id = [0u8; CLUSTER_ID_LEN];
+        let len = mnemonic.len().min(CLUSTER_ID_LEN);
+        id[..len].copy_from_slice(&mnemonic[..len]);
+        id
+    };
+
+    // The node's name is the persisted identity derived from its NIC MAC and
+    // the cluster mnemonic, so every node on the segment carries the same
+    // stable identity in its probes.
+    let node_id = match catten_services::node_identity::NodeIdentity::load_or_create(
+        ns_conn,
+        &mnemonic,
+        Some(local_mac),
+    ) {
+        Some(identity) => identity.name,
+        None => {
+            config::write::<u32>(0, 0xff03);
+            unsafe { thread_exit() };
         }
-        _ => [0u8; CLUSTER_ID_LEN],
     };
     config::write::<u32>(0, 4);
 
@@ -413,7 +421,32 @@ fn main(ctx: Context) -> ! {
                 disco::OP_LIST_PEERS => {
                     let count = peers.len() as u32;
                     config::write::<u32>(4, count);
-                    ipc_reply(message.reply, count as i64);
+                    // Reply with the packed peer list: count:u32, then per
+                    // peer { mac:[u8;6], node_id_len:u8, node_id }.
+                    let mut buf = alloc::vec![0u8; 4];
+                    buf[0..4].copy_from_slice(&count.to_le_bytes());
+                    for (mac, peer) in peers.iter() {
+                        buf.extend_from_slice(mac);
+                        buf.push(peer.node_id.len().min(255) as u8);
+                        buf.extend_from_slice(&peer.node_id[..peer.node_id.len().min(255)]);
+                    }
+                    let cap = memory_alloc(1);
+                    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                buf.as_ptr(),
+                                LIST_SCRATCH as *mut u8,
+                                buf.len(),
+                            );
+                        }
+                        memory_unmap(cap);
+                        ipc_reply_move(message.reply, cap, buf.len() as i64);
+                    } else {
+                        if cap != 0 {
+                            memory_close(cap);
+                        }
+                        ipc_reply(message.reply, -1);
+                    }
                 }
                 disco::OP_STATUS => {
                     let running: u64 = 1;

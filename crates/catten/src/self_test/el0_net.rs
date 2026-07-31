@@ -31,7 +31,7 @@ const NET_CLIENT_ELF: &[u8] =
 #[cfg(feature = "relmsg_net_test")]
 const NET_CLIENT_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/rclient.elf"));
-#[cfg(feature = "relmsg_net_test")]
+#[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
 const RELMSG_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relmsg.elf"));
 #[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
@@ -108,12 +108,14 @@ extern "C" fn verify_el0_net() {
     logln!("[net] driver spawned (asid={}) with BAR0 + IRQ grants", driver_asid);
     let _driver = driver;
 
-    #[cfg(feature = "relmsg_net_test")]
+    #[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
     let relmsg_config = {
         let relmsg = supervisor::spawn_with_name_service(RELMSG_ELF, ns, ConnectionRights::CALL);
         logln!("[relmsg] service spawned (asid={})", relmsg.asid);
         relmsg.status_frame
     };
+    #[cfg(all(feature = "dns_net_test", not(feature = "relmsg_net_test")))]
+    let _ = relmsg_config;
     #[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
     let frouter_config = {
         let frouter = supervisor::spawn_with_name_service(FROUTER_ELF, ns, ConnectionRights::CALL);

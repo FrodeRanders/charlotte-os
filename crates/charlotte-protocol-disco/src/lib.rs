@@ -29,6 +29,8 @@
 //! ```
 #![no_std]
 
+extern crate alloc;
+
 pub const DISCO_ETHERTYPE: u16 = 0x88b6;
 pub const DISCO_VERSION: u16 = 1;
 pub const FLAG_PROBE: u16 = 1 << 0;
@@ -122,4 +124,32 @@ pub fn parse_disco_frame(frame: &[u8]) -> Option<(u16, u16, [u8; 6], [u8; CLUSTE
     let source_mac: [u8; 6] = frame[18..24].try_into().ok()?;
     let cluster_id: [u8; CLUSTER_ID_LEN] = frame[26..42].try_into().ok()?;
     Some((version, flags, source_mac, cluster_id))
+}
+
+/// Parse the peer list returned by the disco service's `OP_LIST_PEERS`:
+/// `count:u32`, then per peer `{ mac:[u8;6], node_id_len:u8, node_id }`.
+pub fn parse_peer_list(bytes: &[u8]) -> alloc::vec::Vec<([u8; 6], alloc::vec::Vec<u8>)> {
+    let mut peers = alloc::vec::Vec::new();
+    if bytes.len() < 4 {
+        return peers;
+    }
+    let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+    let mut pos = 4;
+    for _ in 0..count {
+        if bytes.len() < pos + 7 {
+            break;
+        }
+        let mut mac = [0u8; 6];
+        mac.copy_from_slice(&bytes[pos..pos + 6]);
+        pos += 6;
+        let id_len = bytes[pos] as usize;
+        pos += 1;
+        if bytes.len() < pos + id_len {
+            break;
+        }
+        let node_id = bytes[pos..pos + id_len].to_vec();
+        pos += id_len;
+        peers.push((mac, node_id));
+    }
+    peers
 }

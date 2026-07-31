@@ -15,6 +15,8 @@ pub mod el0;
 pub mod el0_demo;
 #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
 pub mod el0_disco;
+#[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
+pub mod el0_dns;
 pub mod el0_ipc;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
@@ -112,6 +114,10 @@ pub fn run_self_tests() {
     el0_disco::test_el0_disco();
     #[cfg(all(not(feature = "disco_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 disco test (enable disco_net_test with matching PCI hardware).");
+    #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
+    el0_dns::test_el0_dns();
+    #[cfg(all(not(feature = "dns_net_test"), target_arch = "aarch64"))]
+    logln!("Skipping EL0 dns test (enable dns_net_test with matching PCI hardware).");
     #[cfg(target_arch = "aarch64")]
     el0_nvme::test_el0_nvme();
     #[cfg(target_arch = "aarch64")]
