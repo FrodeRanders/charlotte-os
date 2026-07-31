@@ -189,6 +189,7 @@ pub extern "C" fn bsp_main() -> ! {
     // Publish the node's boot-done marker once the boot storm settles, so
     // network-initiating services wait until this node is through boot before
     // communicating with the rest of the cluster.
+    #[cfg(target_arch = "aarch64")]
     crate::service::supervisor::start_boot_done_publisher();
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from

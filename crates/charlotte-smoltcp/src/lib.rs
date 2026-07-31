@@ -198,6 +198,11 @@ impl TxToken for CharlotteTx {
 
 #[cfg(test)]
 mod tests {
+    use smoltcp::phy::{
+        Device,
+        RxToken,
+    };
+
     use super::CharlotteEthDevice;
 
     #[test]

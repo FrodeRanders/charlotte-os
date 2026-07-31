@@ -38,13 +38,15 @@ mod uefi_rts;
 
 pub fn get_pcie_segment_groups() -> Vec<PcieSegmentGroup> {
     #[cfg(all(feature = "acpi", feature = "devicetree"))]
-    compile_error!("The Catten Kernel does not support compiling in both the acpi and devicetree
+    compile_error!(
+        "The Catten Kernel does not support compiling in both the acpi and devicetree
     features as standards do not allow systems to expose both at the same time. Please
-    recompile your kernel with only the one you actually intend to use.");
+    recompile your kernel with only the one you actually intend to use."
+    );
 
     #[cfg(feature = "acpi")]
     {
-        return acpi::sdt::mcfg::parse_mcfg();
+        acpi::sdt::mcfg::parse_mcfg()
     }
 
     #[cfg(feature = "devicetree")]
@@ -52,5 +54,11 @@ pub fn get_pcie_segment_groups() -> Vec<PcieSegmentGroup> {
         todo!("Develop a way to get the information for each PCIe segment from a Device Tree.");
     }
 
-    panic!("The Catten Kernel can not function without either the acpi or devicetree features enabled at compile time.");
+    #[cfg(not(any(feature = "acpi", feature = "devicetree")))]
+    {
+        panic!(
+            "The Catten Kernel can not function without either the acpi or devicetree features \
+             enabled at compile time."
+        );
+    }
 }

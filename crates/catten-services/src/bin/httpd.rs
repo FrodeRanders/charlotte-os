@@ -5,15 +5,15 @@
 //! observable state across the node:
 //!
 //! - `node`    — NIC MAC + link state (`net::OP_STATUS`)
-//! - `ns`      — name-service registry catalog + pending lookups
-//!   (`ns::OP_STATUS`, via the bootstrap connection)
+//! - `ns`      — name-service registry catalog + pending lookups (`ns::OP_STATUS`, via the
+//!   bootstrap connection)
 //! - `tcpip`   — tcpip service counters (`socket::OP_STATUS`)
 //! - `frouter` — frame demultiplexer counters (`frouter::OP_STATUS`)
 //! - `dns`     — Raft leader/term/catalog (`dns::OP_STATUS`)
 //! - `disco`   — discovered peers (`disco::OP_STATUS`)
 //! - `relmsg`  — reliable-message transport (`relmsg::OP_STATUS`)
-//! - `threads` — system-wide thread statistics via the observe service's
-//!   `OP_THREAD_SNAPSHOT` (backed by the kernel SystemObserver capability)
+//! - `threads` — system-wide thread statistics via the observe service's `OP_THREAD_SNAPSHOT`
+//!   (backed by the kernel SystemObserver capability)
 //! - `http`    — this server's own counters
 //!
 //! Services that are not running are rendered as `null`; the aggregator uses
@@ -40,8 +40,8 @@ use catten_services::{
     ns,
     observability,
     relmsg,
-    socket,
     sleep_ms,
+    socket,
     wait_for_boot_done,
     wait_reply,
 };
@@ -295,18 +295,16 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             if status == 0 && memory != 0 {
                 let len = len as usize;
                 if memory_map(memory, SCRATCH, false) == 0 {
-                    let _ = write!(
-                        s,
-                        "{{\"count\":{},\"entries\":{{",
-                        unsafe { core::ptr::read_volatile(SCRATCH as *const u32) }
-                    );
+                    let _ = write!(s, "{{\"count\":{},\"entries\":{{", unsafe {
+                        core::ptr::read_volatile(SCRATCH as *const u32)
+                    });
                     let mut offset = 4usize;
                     let mut emitted = 0u32;
                     let count = unsafe { core::ptr::read_volatile(SCRATCH as *const u32) };
                     while emitted < count && offset + 2 < len.min(4096) {
-                        let name_len = unsafe {
-                            core::ptr::read_volatile((SCRATCH + offset) as *const u8)
-                        } as usize;
+                        let name_len =
+                            unsafe { core::ptr::read_volatile((SCRATCH + offset) as *const u8) }
+                                as usize;
                         let node_offset = offset + 1 + name_len;
                         if node_offset + 1 > len.min(4096) {
                             break;
@@ -358,11 +356,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             }
         }
         if !rendered {
-            let _ = write!(
-                s,
-                "{{\"count\":{},\"entries\":{{}}}}",
-                (v >> 32) & 0xffff_ffff
-            );
+            let _ = write!(s, "{{\"count\":{},\"entries\":{{}}}}", (v >> 32) & 0xffff_ffff);
         }
         s.push('}');
     } else {
@@ -381,15 +375,16 @@ fn render_threads(s: &mut String, observe_conn: u64) {
     let blocked = report.rows.iter().filter(|r| r.state == 4).count();
     let _ = write!(
         s,
-        "\"threads\":{{\"count\":{},\"freq_hz\":{},\"mono_ticks\":{},\
-         \"by_state\":{{\"running\":{},\"ready\":{},\"needs_lp\":{},\"blocked\":{}}},\"sample\":[",
+        "\"threads\":{{\"count\":{},\"freq_hz\":{},\"mono_ticks\":{},\"by_state\":{{\"running\":{}",
         report.rows.len(),
         report.freq_hz,
         report.mono_ticks,
-        running,
-        ready,
-        needs_lp,
-        blocked
+        running
+    );
+    let _ = write!(
+        s,
+        ",\"ready\":{},\"needs_lp\":{},\"blocked\":{}}},\"sample\":[",
+        ready, needs_lp, blocked
     );
     let samples = report.rows.len().min(THREAD_SAMPLE_ROWS);
     for i in 0..samples {
@@ -432,19 +427,26 @@ fn render_ns(s: &mut String, ns_conn: u64) {
         return;
     }
     unsafe {
-        let magic = core::ptr::read_volatile((SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32);
+        let magic = core::ptr::read_volatile(
+            (SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32,
+        );
         let registered = core::ptr::read_volatile(
             (SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *const u32,
         );
-        let pending =
-            core::ptr::read_volatile((SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32);
+        let pending = core::ptr::read_volatile(
+            (SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32,
+        );
         if magic != ns::STATUS_MAGIC {
             memory_unmap(memory);
             memory_close(memory);
             s.push_str("\"ns\":null");
             return;
         }
-        let _ = write!(s, "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[", registered, pending);
+        let _ = write!(
+            s,
+            "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[",
+            registered, pending
+        );
         let mut offset = 12usize;
         let mut emitted = 0u32;
         while emitted < registered && offset + 1 < len.min(4096) {
@@ -492,25 +494,21 @@ fn build_json(
     let socks = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_SOCKETS as usize]);
     let _ = write!(
         &mut s,
-        "{{\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},\
-         \"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{},\
-         \"listen_port\":{}}},",
-        mac[0],
-        mac[1],
-        mac[2],
-        mac[3],
-        mac[4],
-        mac[5],
-        link,
+        "{{\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], link
+    );
+    let _ = write!(
+        &mut s,
+        "\"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{}",
         (ip >> 24) & 0xff,
         (ip >> 16) & 0xff,
         (ip >> 8) & 0xff,
         ip & 0xff,
         rx,
         tx,
-        socks,
-        HTTP_PORT
+        socks
     );
+    let _ = write!(&mut s, ",\"listen_port\":{}}},", HTTP_PORT);
 
     // name service: registered-services catalog.
     render_ns(&mut s, services.ns_conn);
@@ -521,15 +519,15 @@ fn build_json(
         if let Some(w) = read_words(services.frouter_conn, frouter::OP_STATUS, 0, 7) {
             let _ = write!(
                 &mut s,
-                "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\
-                 \"unknown\":{},\"routes\":{}}},",
+                "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\"unknown\":\
+                 {}",
                 w[frouter::STATUS_OFFSET_STAGE as usize],
                 w[frouter::STATUS_OFFSET_RX as usize],
                 w[frouter::STATUS_OFFSET_FORWARDED as usize],
                 w[frouter::STATUS_OFFSET_DROPPED as usize],
-                w[frouter::STATUS_OFFSET_UNKNOWN as usize],
-                w[frouter::STATUS_OFFSET_ROUTES as usize]
+                w[frouter::STATUS_OFFSET_UNKNOWN as usize]
             );
+            let _ = write!(&mut s, ",\"routes\":{}}},", w[frouter::STATUS_OFFSET_ROUTES as usize]);
         } else {
             s.push_str("\"frouter\":null,");
         }
@@ -569,12 +567,7 @@ fn build_json(
             let _ = write!(
                 &mut s,
                 "\"relmsg\":{{\"local_mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\"}},",
-                peer_mac[0],
-                peer_mac[1],
-                peer_mac[2],
-                peer_mac[3],
-                peer_mac[4],
-                peer_mac[5]
+                peer_mac[0], peer_mac[1], peer_mac[2], peer_mac[3], peer_mac[4], peer_mac[5]
             );
         } else {
             s.push_str("\"relmsg\":null,");
@@ -591,11 +584,7 @@ fn build_json(
         s.push_str("\"threads\":null,");
     }
 
-    let _ = write!(
-        &mut s,
-        "\"http\":{{\"requests\":{},\"uptime\":{}}}}}",
-        requests, uptime
-    );
+    let _ = write!(&mut s, "\"http\":{{\"requests\":{},\"uptime\":{}}}}}", requests, uptime);
     s
 }
 
