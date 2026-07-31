@@ -1,21 +1,23 @@
-//! Minimal hardcoded HTTP server exposing a node's observable state.
+//! Minimal hardcoded HTTP server exposing a full report of a node's state.
 //!
 //! Listens on TCP port 80 through the tcpip service, and for each connection
-//! reads the request, then replies with a small JSON document aggregating
-//! state that the services already collect:
+//! reads the request, then replies with a JSON document aggregating
+//! observable state across the node:
 //!
-//! ```json
-//! {
-//!   "node":  { "mac": "52:54:00:12:34:56", "link": 1 },
-//!   "tcpip": { "ip": "10.0.2.15", "rx_frames": N, "tx_sends": N,
-//!              "sockets": N, "listen_port": 80 },
-//!   "http":  { "requests": N, "uptime": N }
-//! }
-//! ```
+//! - `node`    — NIC MAC + link state (`net::OP_STATUS`)
+//! - `tcpip`   — tcpip service counters (`socket::OP_STATUS`)
+//! - `frouter` — frame demultiplexer counters (`frouter::OP_STATUS`)
+//! - `dns`     — Raft leader/term/catalog (`dns::OP_STATUS`)
+//! - `disco`   — discovered peers (`disco::OP_STATUS`)
+//! - `relmsg`  — reliable-message transport (`relmsg::OP_STATUS`)
+//! - `threads` — system-wide thread statistics via the observe service's
+//!   `OP_THREAD_SNAPSHOT` (backed by the kernel SystemObserver capability)
+//! - `http`    — this server's own counters
 //!
-//! This is a deliberate keyhole, not a web server: no routing, no keep-alive,
-//! one connection at a time. It exists so a host (or another node) can peek
-//! into a CharlotteOS guest over the NIC.
+//! Services that are not running are rendered as `null`; the aggregator uses
+//! non-blocking `ns::OP_TRY_LOOKUP` so an absent service never stalls a
+//! request. This is a deliberate keyhole, not a web server: no routing, no
+//! keep-alive, one connection at a time.
 #![no_std]
 #![no_main]
 
@@ -29,14 +31,21 @@ use catten_rt::{
     config,
 };
 use catten_services::{
+    disco,
+    dns,
+    frouter,
     net,
     ns,
+    observability,
+    relmsg,
     socket,
     sleep_ms,
     wait_for_boot_done,
     wait_reply,
 };
 use catten_syscall::{
+    THREAD_STATISTICS_HEADER_U64S,
+    THREAD_STATISTICS_RECORD_U64S,
     ipc_close,
     ipc_reply_wait_with_memory,
     ipc_scalar_call,
@@ -47,21 +56,40 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_protocol_msg::unpack_address_and_len;
 use charlotte_protocol_net::decode_status;
 
 const SCRATCH: usize = 0x0000_0000_00e0_0000;
 const HTTP_PORT: u16 = 80;
 const ACCEPT_POLL_MS: u64 = 50;
 const SENTINEL: u32 = 0x4854_5450; // "HTTP"
+/// Cap on rendered thread rows so the report fits comfortably in a single
+/// TCP segment; the full detail is available from observe directly.
+const THREAD_SAMPLE_ROWS: usize = 8;
+
+struct ServiceSet {
+    tcp_conn: u64,
+    frouter_conn: u64,
+    dns_conn: u64,
+    disco_conn: u64,
+    relmsg_conn: u64,
+    observe_conn: u64,
+}
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(8, code);
     unsafe { thread_exit() };
 }
 
-/// Send a payload, retrying while the tcpip service reports `ERR_WOULD_BLOCK`.
+/// Send a payload, retrying while the tcpip service reports `ERR_WOULD_BLOCK`
+/// or accepts only part of a chunk (buffer fills as smoltcp drains it).
 fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
-    for _ in 0..300 {
+    let mut offset = 0usize;
+    for _ in 0..1200 {
+        if offset >= data.len() {
+            return true;
+        }
+        let chunk_len = (data.len() - offset).min(4096);
         let cap = memory_alloc(1);
         if cap == 0 || memory_map(cap, SCRATCH, true) != 0 {
             if cap != 0 {
@@ -70,13 +98,17 @@ fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
             return false;
         }
         unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), SCRATCH as *mut u8, data.len());
+            core::ptr::copy_nonoverlapping(
+                data.as_ptr().add(offset),
+                SCRATCH as *mut u8,
+                chunk_len,
+            );
         }
         memory_unmap(cap);
         let send = ipc_scalar_call_move(
             tcp_conn,
             socket::OP_SEND,
-            ((data.len() as u64) << 32) | (sock_id & 0xffff_ffff),
+            ((chunk_len as u64) << 32) | (sock_id & 0xffff_ffff),
             cap,
         );
         if send == 0 {
@@ -84,56 +116,222 @@ fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
             return false;
         }
         let (sent, _) = unsafe { wait_reply(send, 0) };
-        if sent == data.len() as i64 {
-            return true;
-        }
-        if sent != socket::ERR_WOULD_BLOCK {
+        if sent > 0 {
+            offset += sent as usize;
+        } else if sent != socket::ERR_WOULD_BLOCK {
             return false;
+        } else {
+            sleep_ms(ACCEPT_POLL_MS);
         }
-        sleep_ms(ACCEPT_POLL_MS);
     }
     false
 }
 
-/// Query the tcpip service for its packed `TcpipStatus` snapshot.
-fn tcpip_status(tcp_conn: u64) -> [u32; 5] {
-    let call = ipc_scalar_call(tcp_conn, socket::OP_STATUS, 0);
+/// Non-blocking name-service lookup; `None` if the service is not registered.
+fn try_lookup(ns_conn: u64, name: u64) -> Option<u64> {
+    let call = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, name);
     if call == 0 {
-        return [0; 5];
+        return None;
     }
-    let (status, _len, _connection, memory) = ipc_reply_wait_with_memory(call);
+    let (generation, connection) = unsafe { wait_reply(call, 0) };
+    if generation < 1 || connection == 0 {
+        None
+    } else {
+        Some(connection)
+    }
+}
+
+/// Scalar status call; `None` on failure.
+fn call_scalar(conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
+    let call = ipc_scalar_call(conn, opcode, arg0);
+    if call == 0 {
+        return None;
+    }
+    let (result, _) = unsafe { wait_reply(call, 0) };
+    Some(result)
+}
+
+/// Call `opcode` and copy `words` little-endian u32 words out of the moved
+/// reply page.
+fn read_words(conn: u64, opcode: u32, arg0: u64, words: usize) -> Option<alloc::vec::Vec<u32>> {
+    let call = ipc_scalar_call(conn, opcode, arg0);
+    if call == 0 {
+        return None;
+    }
+    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
     ipc_close(call);
     if status != 0 || memory == 0 {
         if memory != 0 {
             memory_close(memory);
         }
-        return [0; 5];
+        return None;
     }
-    if memory_map(memory, SCRATCH, false) != 0 {
+    if (len as usize) < words * 4 || memory_map(memory, SCRATCH, false) != 0 {
         memory_close(memory);
-        return [0; 5];
+        return None;
     }
-    let mut words = [0u32; 5];
+    let mut out = alloc::vec![0u32; words];
     unsafe {
-        core::ptr::copy_nonoverlapping(SCRATCH as *const u32, words.as_mut_ptr(), words.len());
+        core::ptr::copy_nonoverlapping(SCRATCH as *const u32, out.as_mut_ptr(), words);
     }
     memory_unmap(memory);
     memory_close(memory);
-    words
+    Some(out)
 }
 
-fn build_json(mac: &[u8; 6], link: u8, tcp_conn: u64, requests: u32, uptime: u32) -> String {
-    let status = tcpip_status(tcp_conn);
-    let ip = status[socket::STATUS_OFFSET_IP as usize];
-    let rx = status[socket::STATUS_OFFSET_RX_FRAMES as usize];
-    let tx = status[socket::STATUS_OFFSET_TX_SENDS as usize];
-    let socks = status[socket::STATUS_OFFSET_SOCKETS as usize];
+struct ThreadRow {
+    tid: u64,
+    asid: u64,
+    state: u64,
+    dispatch: u64,
+    runtime_ticks: u128,
+}
+
+struct ThreadReport {
+    freq_hz: u64,
+    mono_ticks: u64,
+    rows: alloc::vec::Vec<ThreadRow>,
+}
+
+/// Fetch and parse the observe service's system-wide thread snapshot
+/// (`CCOSTAT1` wire format).
+fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
+    let call = ipc_scalar_call(observe_conn, observability::OP_THREAD_SNAPSHOT, 0);
+    if call == 0 {
+        return None;
+    }
+    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
+    ipc_close(call);
+    if status != 0 || memory == 0 {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        return None;
+    }
+    let len = len as usize;
+    if memory_map(memory, SCRATCH, false) != 0 {
+        memory_close(memory);
+        return None;
+    }
+    let header_words = THREAD_STATISTICS_HEADER_U64S;
+    if len < header_words * 8 {
+        memory_unmap(memory);
+        memory_close(memory);
+        return None;
+    }
+    let mut header = [0u64; 6];
+    unsafe {
+        core::ptr::copy_nonoverlapping(SCRATCH as *const u64, header.as_mut_ptr(), header_words);
+    }
+    let max_by_len = (len.saturating_sub(header_words * 8)) / (THREAD_STATISTICS_RECORD_U64S * 8);
+    let count = (header[3] as usize).min(max_by_len);
+    let mut rows = alloc::vec::Vec::with_capacity(count);
+    for i in 0..count {
+        let base = SCRATCH + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
+        let mut rec: [u64; THREAD_STATISTICS_RECORD_U64S] = [0; THREAD_STATISTICS_RECORD_U64S];
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                base as *const u64,
+                rec.as_mut_ptr(),
+                THREAD_STATISTICS_RECORD_U64S,
+            );
+        }
+        rows.push(ThreadRow {
+            tid: rec[0],
+            asid: rec[2],
+            state: rec[3],
+            dispatch: rec[6],
+            runtime_ticks: ((rec[11] as u128) << 64) | rec[10] as u128,
+        });
+    }
+    memory_unmap(memory);
+    memory_close(memory);
+    Some(ThreadReport {
+        freq_hz: header[4],
+        mono_ticks: header[5],
+        rows,
+    })
+}
+
+fn state_name(state: u64) -> &'static str {
+    match state {
+        1 => "follower",
+        2 => "candidate",
+        3 => "leader",
+        _ => "unknown",
+    }
+}
+
+fn thread_state_name(state: u64) -> &'static str {
+    match state {
+        1 => "running",
+        2 => "ready",
+        3 => "needs-lp",
+        4 => "blocked",
+        _ => "unknown",
+    }
+}
+
+fn render_threads(s: &mut String, observe_conn: u64) {
+    let Some(report) = thread_report(observe_conn) else {
+        s.push_str("\"threads\":null");
+        return;
+    };
+    let running = report.rows.iter().filter(|r| r.state == 1).count();
+    let ready = report.rows.iter().filter(|r| r.state == 2).count();
+    let needs_lp = report.rows.iter().filter(|r| r.state == 3).count();
+    let blocked = report.rows.iter().filter(|r| r.state == 4).count();
+    let _ = write!(
+        s,
+        "\"threads\":{{\"count\":{},\"freq_hz\":{},\"mono_ticks\":{},\
+         \"by_state\":{{\"running\":{},\"ready\":{},\"needs_lp\":{},\"blocked\":{}}},\"sample\":[",
+        report.rows.len(),
+        report.freq_hz,
+        report.mono_ticks,
+        running,
+        ready,
+        needs_lp,
+        blocked
+    );
+    let samples = report.rows.len().min(THREAD_SAMPLE_ROWS);
+    for i in 0..samples {
+        let row = &report.rows[i];
+        if i > 0 {
+            s.push(',');
+        }
+        let _ = write!(
+            s,
+            "{{\"tid\":{},\"asid\":{},\"state\":\"{}\",\"dispatch\":{},\"runtime_ticks\":{}}}",
+            row.tid,
+            row.asid,
+            thread_state_name(row.state),
+            row.dispatch,
+            row.runtime_ticks
+        );
+    }
+    s.push_str("]}");
+}
+
+fn build_json(
+    mac: &[u8; 6],
+    link: u8,
+    services: &ServiceSet,
+    requests: u32,
+    uptime: u32,
+) -> String {
     let mut s = String::new();
+
+    // node + tcpip (both mandatory at startup).
+    let status = read_words(services.tcp_conn, socket::OP_STATUS, 0, 5);
+    let ip = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_IP as usize]);
+    let rx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_RX_FRAMES as usize]);
+    let tx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_TX_SENDS as usize]);
+    let socks = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_SOCKETS as usize]);
     let _ = write!(
         &mut s,
         "{{\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},\
          \"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{},\
-         \"listen_port\":{}}},\"http\":{{\"requests\":{},\"uptime\":{}}}}}",
+         \"listen_port\":{}}},",
         mac[0],
         mac[1],
         mac[2],
@@ -148,9 +346,98 @@ fn build_json(mac: &[u8; 6], link: u8, tcp_conn: u64, requests: u32, uptime: u32
         rx,
         tx,
         socks,
-        HTTP_PORT,
-        requests,
-        uptime
+        HTTP_PORT
+    );
+
+    // frouter counters.
+    if services.frouter_conn != 0 {
+        if let Some(w) = read_words(services.frouter_conn, frouter::OP_STATUS, 0, 7) {
+            let _ = write!(
+                &mut s,
+                "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\
+                 \"unknown\":{},\"routes\":{}}},",
+                w[frouter::STATUS_OFFSET_STAGE as usize],
+                w[frouter::STATUS_OFFSET_RX as usize],
+                w[frouter::STATUS_OFFSET_FORWARDED as usize],
+                w[frouter::STATUS_OFFSET_DROPPED as usize],
+                w[frouter::STATUS_OFFSET_UNKNOWN as usize],
+                w[frouter::STATUS_OFFSET_ROUTES as usize]
+            );
+        } else {
+            s.push_str("\"frouter\":null,");
+        }
+    } else {
+        s.push_str("\"frouter\":null,");
+    }
+
+    // dns: state | term<<8 | catalog<<32.
+    if services.dns_conn != 0 {
+        if let Some(result) = call_scalar(services.dns_conn, dns::OP_STATUS, 0) {
+            let v = result as u64;
+            let _ = write!(
+                &mut s,
+                "\"dns\":{{\"state\":\"{}\",\"term\":{},\"catalog\":{}}},",
+                state_name(v & 0xff),
+                (v >> 8) & 0xff,
+                (v >> 32) & 0xffff_ffff
+            );
+        } else {
+            s.push_str("\"dns\":null,");
+        }
+    } else {
+        s.push_str("\"dns\":null,");
+    }
+
+    // disco: running | peers<<8.
+    if services.disco_conn != 0 {
+        if let Some(result) = call_scalar(services.disco_conn, disco::OP_STATUS, 0) {
+            let v = result as u64;
+            let _ = write!(
+                &mut s,
+                "\"disco\":{{\"running\":{},\"peers\":{}}},",
+                v & 0xff,
+                (v >> 8) & 0xff
+            );
+        } else {
+            s.push_str("\"disco\":null,");
+        }
+    } else {
+        s.push_str("\"disco\":null,");
+    }
+
+    // relmsg: packed local MAC.
+    if services.relmsg_conn != 0 {
+        if let Some(result) = call_scalar(services.relmsg_conn, relmsg::OP_STATUS, 0) {
+            let (peer_mac, _len) = unpack_address_and_len(result as u64);
+            let _ = write!(
+                &mut s,
+                "\"relmsg\":{{\"local_mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\"}},",
+                peer_mac[0],
+                peer_mac[1],
+                peer_mac[2],
+                peer_mac[3],
+                peer_mac[4],
+                peer_mac[5]
+            );
+        } else {
+            s.push_str("\"relmsg\":null,");
+        }
+    } else {
+        s.push_str("\"relmsg\":null,");
+    }
+
+    // observe: system-wide thread statistics.
+    if services.observe_conn != 0 {
+        render_threads(&mut s, services.observe_conn);
+        s.push(',');
+    } else {
+        s.push_str("\"threads\":null,");
+    }
+
+    let _ = write!(
+        &mut s,
+        "\"http\":{{\"requests\":{},\"uptime\":{}}}}}",
+        requests, uptime
     );
     s
 }
@@ -189,10 +476,21 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 4);
 
+    // Optional report sources; absent services render as null.
+    let services = ServiceSet {
+        tcp_conn,
+        frouter_conn: try_lookup(ns_conn, frouter::NAME).unwrap_or(0),
+        dns_conn: try_lookup(ns_conn, dns::NAME).unwrap_or(0),
+        disco_conn: try_lookup(ns_conn, disco::NAME).unwrap_or(0),
+        relmsg_conn: try_lookup(ns_conn, relmsg::NAME).unwrap_or(0),
+        observe_conn: try_lookup(ns_conn, observability::NAME).unwrap_or(0),
+    };
+    config::write::<u32>(0, 5);
+
     if !wait_for_boot_done(ns_conn) {
         fail(0xe004);
     }
-    config::write::<u32>(0, 5);
+    config::write::<u32>(0, 6);
 
     let mut requests: u32 = 0;
     let mut uptime: u32 = 0;
@@ -225,7 +523,6 @@ fn main(ctx: Context) -> ! {
         if result != 0 {
             fail(0xe009);
         }
-        config::write::<u32>(0, 6);
 
         let mut accepted = false;
         for _ in 0..3000 {
@@ -268,7 +565,7 @@ fn main(ctx: Context) -> ! {
         memory_unmap(memory);
         memory_close(memory);
 
-        let body = build_json(&mac, link, tcp_conn, requests, uptime);
+        let body = build_json(&mac, link, &services, requests, uptime);
         let mut response = String::new();
         response.push_str("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");
         let _ = write!(response, "{}", body.len());

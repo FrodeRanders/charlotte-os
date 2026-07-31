@@ -32,6 +32,7 @@ use catten_rt::{
 };
 use catten_services::{
     disco,
+    frouter,
     net,
     ns,
     relmsg,
@@ -40,10 +41,19 @@ use catten_services::{
     wait_reply,
 };
 use catten_syscall::{
+    IpcRights,
     ipc_close,
+    ipc_endpoint_bind_cq,
+    ipc_endpoint_create,
+    ipc_recv,
+    ipc_reply,
+    ipc_reply_move,
     ipc_reply_poll_with_memory,
     ipc_scalar_call,
+    ipc_scalar_call_connection,
     ipc_scalar_call_move,
+    ipc_status,
+    memory_alloc,
     memory_close,
     memory_map,
     memory_unmap,
@@ -145,6 +155,31 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(STAGE_OFFSET, 2);
 
+    // Register so other services (notably the httpd report aggregator) can
+    // look us up and query our live counters.
+    let ep = ipc_endpoint_create(frouter::INTERFACE, frouter::VERSION, 8);
+    if ep == 0 {
+        unsafe { thread_exit() };
+    }
+    let registration = ipc_scalar_call_connection(
+        ns_conn,
+        ns::OP_REGISTER,
+        frouter::NAME,
+        ep,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+    );
+    if registration == 0 {
+        unsafe { thread_exit() };
+    }
+    let (generation, _) = unsafe { wait_reply(registration, 0) };
+    if generation < 1 {
+        unsafe { thread_exit() };
+    }
+    if ipc_endpoint_bind_cq(ep, 0) != 0 {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(STAGE_OFFSET, 3);
+
     let mut routes: Vec<Route> = Vec::new();
     add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
     add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
@@ -156,6 +191,7 @@ fn main(ctx: Context) -> ! {
     let mut forwarded: u32 = 0;
     let mut dropped: u32 = 0;
     let mut unknown: u32 = 0;
+    let stage: u32 = 4;
 
     loop {
         let receive = ipc_scalar_call(net_conn, net::OP_RECV, 0);
@@ -163,6 +199,53 @@ fn main(ctx: Context) -> ! {
             unsafe { thread_exit() };
         }
         loop {
+            // Drain our own endpoint so status queries are served even while
+            // no frames are flowing (non-blocking).
+            loop {
+                let m = ipc_recv(ep);
+                if m.status == ipc_status::NO_MESSAGE {
+                    break;
+                }
+                if m.status == ipc_status::ENDPOINT_CLOSED {
+                    unsafe { thread_exit() };
+                }
+                if !m.is_ok() || m.reply == 0 {
+                    continue;
+                }
+                if m.opcode == frouter::OP_STATUS {
+                    let cap = memory_alloc(1);
+                    if cap == 0 {
+                        ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
+                        continue;
+                    }
+                    if memory_map(cap, SCRATCH, true) != 0 {
+                        memory_close(cap);
+                        ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
+                        continue;
+                    }
+                    let words = [
+                        stage,
+                        rx_total,
+                        forwarded,
+                        dropped,
+                        unknown,
+                        routes.len() as u32,
+                        frouter::STATUS_MAGIC,
+                    ];
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            words.as_ptr(),
+                            SCRATCH as *mut u32,
+                            words.len(),
+                        );
+                    }
+                    memory_unmap(cap);
+                    ipc_reply_move(m.reply, cap, (words.len() * 4) as i64);
+                } else {
+                    ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
+                }
+            }
+
             // Consumers may register after us; refresh the optional routes on
             // every poll so a late-registering service is picked up even when
             // no frames are arriving.

@@ -464,8 +464,6 @@ pub mod socket {
     pub const MAX_SOCKETS: usize = 16;
 }
 
-/// Owned-snapshot observability protocol.
-///
 /// The initial service exports scheduler statistics for its own protection
 /// domain. Other services can expose or voluntarily publish their own
 /// snapshots without granting an observer ambient cross-domain authority.
@@ -481,6 +479,28 @@ pub mod observability {
 
     pub const ERR_UNAVAILABLE: i64 = -1;
     pub const ERR_BAD_OPCODE: i64 = -2;
+}
+
+/// Frame demultiplexer status protocol.
+pub mod frouter {
+    pub const INTERFACE: u64 = super::name(b"FROUTER");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"frouter");
+
+    pub const OP_STATUS: u32 = 1;
+
+    pub const ERR_BAD_OPCODE: i64 = -1;
+
+    /// `FrouterStatus` snapshot layout (little-endian u32 words in a moved
+    /// page). Offsets are in u32 words from the base of the reply page.
+    pub const STATUS_OFFSET_STAGE: u32 = 0;
+    pub const STATUS_OFFSET_RX: u32 = 1;
+    pub const STATUS_OFFSET_FORWARDED: u32 = 2;
+    pub const STATUS_OFFSET_DROPPED: u32 = 3;
+    pub const STATUS_OFFSET_UNKNOWN: u32 = 4;
+    pub const STATUS_OFFSET_ROUTES: u32 = 5;
+    pub const STATUS_OFFSET_MAGIC: u32 = 6;
+    pub const STATUS_MAGIC: u32 = 0x4652_5453;
 }
 
 /// Persistent object store protocol (`charlotte-protocol-objstore` v1).

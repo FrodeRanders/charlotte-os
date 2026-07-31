@@ -42,7 +42,7 @@ fn main(ctx: Context) -> ! {
         ns::OP_REGISTER,
         observability::NAME,
         endpoint,
-        IpcRights::SEND | IpcRights::CALL,
+        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
     );
     if registration == 0 {
         unsafe { thread_exit() };

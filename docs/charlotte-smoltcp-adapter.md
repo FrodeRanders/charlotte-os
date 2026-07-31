@@ -112,14 +112,26 @@ scripts/run-aarch64.sh release --tcpip-test \
 Each guest's tcpip client resolves the peer MAC over ARP, completes the TCP
 handshake, transfers a payload, and verifies the echoed bytes.
 
-## HTTP keyhole
+## HTTP keyhole / full report
 
 `httpd.elf` turns the stack into a read-only "keyhole": a hardcoded HTTP
-server on port 80 that answers every request with a small JSON page of
-observable state (`node` MAC/link, `tcpip` ip/rx/tx/sockets, `http`
-request/uptime counters). It consumes the same socket API as the smoke
-client — one connection at a time, no keep-alive, deliberately not a web
-server.
+server on port 80 that answers every request with a JSON report of observable
+state aggregated across the node:
+
+- `node` — NIC MAC + link (`net::OP_STATUS`)
+- `tcpip` — ip, rx frames, tx sends, open sockets (`socket::OP_STATUS`)
+- `frouter` — rx/forwarded/dropped/unknown/routes (`frouter::OP_STATUS`)
+- `dns` — Raft state/term/catalog (`dns::OP_STATUS`), when running
+- `disco` / `relmsg` — peers / transport, when running
+- `threads` — system-wide thread statistics from the observe service's
+  `OP_THREAD_SNAPSHOT`, backed by the kernel's unique SystemObserver
+  capability (count, per-state histogram, sampled rows)
+- `http` — this server's own request/uptime counters
+
+The aggregator uses non-blocking `ns::OP_TRY_LOOKUP`, so an absent service
+renders as `null` rather than stalling a request. It consumes the same socket
+API as the smoke client — one connection at a time, no keep-alive,
+deliberately not a web server.
 
 From the host, run the guest on the SLIRP user network with a hostfwd and
 curl the page:
@@ -134,3 +146,15 @@ listening stage; the run script then validates the JSON round trip from the
 host. The guest uses `10.0.2.15` (SLIRP's default) with a default route via
 `10.0.2.2` — the `ip`/`gateway` launch-manifest overrides the MAC-derived
 address used on the raw two-node link.
+
+### Capability model
+
+The report has two sources with different privileges:
+
+- **Per-service telemetry** must be *published* by each service over IPC
+  (status ops). Status frames (`STATUS_VADDR`) stay per-domain; no capability
+  lets an EL0 service read another domain's page. That is deliberate —
+  services retain ownership of their telemetry.
+- **Kernel scheduler data** comes from the `observe` service, which holds the
+  unique `SystemObserver` capability granting system-wide thread statistics.
+  The httpd queries it over IPC; it never holds the capability itself.
