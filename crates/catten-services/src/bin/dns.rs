@@ -98,6 +98,7 @@ const LOOP_TICK_MS: u64 = 25;
 const REPLY_SPINS: u64 = u64::MAX;
 const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
 const LIST_SCRATCH: usize = 0x0000_0000_0090_1000;
+const CATALOG_SCRATCH: usize = 0x0000_0000_0090_2000;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
@@ -584,6 +585,64 @@ fn main(ctx: Context) -> ! {
                         | ((catalog.registered_count() as i64) << 32);
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_CATALOG => {
+                    // Dump the replicated name -> node catalog into a moved
+                    // page: [count:u32][len:u8 name node_len:u8 node]*.
+                    let cap = memory_alloc(1);
+                    if cap == 0 {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
+                        }
+                        continue;
+                    }
+                    if memory_map(cap, CATALOG_SCRATCH, true) != 0 {
+                        memory_close(cap);
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
+                        }
+                        continue;
+                    }
+                    let entries = catalog.entries();
+                    let mut length = 4usize;
+                    unsafe {
+                        core::ptr::write_volatile(CATALOG_SCRATCH as *mut u32, entries.len() as u32);
+                    }
+                    for (name, node) in entries.iter() {
+                        let name_len = name.len().min(255);
+                        let node_len = node.len().min(255);
+                        if length + 2 + name_len + node_len > 4096 {
+                            break;
+                        }
+                        unsafe {
+                            core::ptr::write_volatile(
+                                (CATALOG_SCRATCH + length) as *mut u8,
+                                name_len as u8,
+                            );
+                            core::ptr::copy_nonoverlapping(
+                                name.as_ptr(),
+                                (CATALOG_SCRATCH + length + 1) as *mut u8,
+                                name_len,
+                            );
+                            core::ptr::write_volatile(
+                                (CATALOG_SCRATCH + length + 1 + name_len) as *mut u8,
+                                node_len as u8,
+                            );
+                            core::ptr::copy_nonoverlapping(
+                                node.as_ptr(),
+                                (CATALOG_SCRATCH + length + 2 + name_len) as *mut u8,
+                                node_len,
+                            );
+                        }
+                        length += 2 + name_len + node_len;
+                    }
+                    memory_unmap(cap);
+                    if message.reply != 0 {
+                        ipc_reply_move(message.reply, cap, length as i64);
+                    } else {
+                        memory_close(cap);
                     }
                 }
 

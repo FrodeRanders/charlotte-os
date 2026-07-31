@@ -101,6 +101,18 @@ pub mod ns {
     /// normally. Existing connections retain their normal endpoint lifetime.
     pub const OP_UNREGISTER: u32 = 8;
 
+    /// Reply moves a page snapshot of the registry: three little-endian u32
+    /// words (`STATUS_OFFSET_MAGIC/REGISTERED/PENDING`), then one record per
+    /// registered service of `[len:u8][name bytes]`. The scalar result is the
+    /// snapshot byte length.
+    pub const OP_STATUS: u32 = 9;
+
+    pub const STATUS_OFFSET_MAGIC: u32 = 0;
+    pub const STATUS_OFFSET_REGISTERED: u32 = 1;
+    pub const STATUS_OFFSET_PENDING: u32 = 2;
+    /// `"NSST"` LE.
+    pub const STATUS_MAGIC: u32 = 0x5453_534e;
+
     /// Read a u64 access key from a memory object, or 0 if none.
     /// Consumes (unmaps and closes) the memory cap on success.
     /// # Safety
@@ -639,6 +651,10 @@ pub mod dns {
     /// reply is the target service's scalar result (deferred until the remote
     /// call completes).
     pub const OP_CALL: u32 = 5;
+    /// Dump the replicated catalog. Reply moves a page snapshot: one u32
+    /// count, then per entry `[name_len:u8][name][node_len:u8][node]`. The
+    /// scalar result is the snapshot byte length.
+    pub const OP_CATALOG: u32 = 6;
 
     /// The name is registered on this node (lookup returns a connection).
     pub const RESULT_LOCAL: i64 = 0;

@@ -34,12 +34,17 @@ use catten_syscall::{
     ipc_recv_block,
     ipc_reply,
     ipc_reply_connection,
+    ipc_reply_move,
     ipc_status,
+    memory_alloc,
     memory_close,
     memory_map,
     memory_unmap,
     thread_exit,
 };
+
+const STATUS_SCRATCH: usize = 0x0000_0000_0011_0000;
+const STATUS_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
     connection: u64,
@@ -327,6 +332,62 @@ fn main(ctx: Context) -> ! {
                     None => unsafe {
                         ipc_reply(message.reply, ns::ERR_INVALID);
                     },
+                }
+            }
+            ns::OP_STATUS => {
+                let cap = memory_alloc(1);
+                if cap == 0 {
+                    if message.reply != 0 {
+                        unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
+                    }
+                    continue;
+                }
+                if memory_map(cap, STATUS_SCRATCH, true) != 0 {
+                    memory_close(cap);
+                    if message.reply != 0 {
+                        unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
+                    }
+                    continue;
+                }
+                let mut length = 0usize;
+                unsafe {
+                    core::ptr::write_volatile(
+                        (STATUS_SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
+                        ns::STATUS_MAGIC,
+                    );
+                    core::ptr::write_volatile(
+                        (STATUS_SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *mut u32,
+                        registry.len() as u32,
+                    );
+                    core::ptr::write_volatile(
+                        (STATUS_SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
+                        waitlist.len() as u32,
+                    );
+                }
+                length += 12;
+                for key in registry.keys() {
+                    let name_len = key.len().min(255);
+                    if length + 1 + name_len > STATUS_SNAPSHOT_MAX {
+                        break;
+                    }
+                    unsafe {
+                        core::ptr::write_volatile(
+                            (STATUS_SCRATCH + length) as *mut u8,
+                            name_len as u8,
+                        );
+                        core::ptr::copy_nonoverlapping(
+                            key.as_ptr(),
+                            (STATUS_SCRATCH + length + 1) as *mut u8,
+                            name_len,
+                        );
+                    }
+                    length += 1 + name_len;
+                }
+                memory_unmap(cap);
+                if message.reply != 0 {
+                    unsafe { ipc_reply_move(message.reply, cap, length as i64) };
+                } else {
+                    memory_close(cap);
                 }
             }
             _ => {

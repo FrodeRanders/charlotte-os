@@ -119,14 +119,22 @@ server on port 80 that answers every request with a JSON report of observable
 state aggregated across the node:
 
 - `node` — NIC MAC + link (`net::OP_STATUS`)
+- `ns` — the node-local name-service registry: registered-service catalog
+  and pending lookups (`ns::OP_STATUS`, via the bootstrap connection)
 - `tcpip` — ip, rx frames, tx sends, open sockets (`socket::OP_STATUS`)
 - `frouter` — rx/forwarded/dropped/unknown/routes (`frouter::OP_STATUS`)
-- `dns` — Raft state/term/catalog (`dns::OP_STATUS`), when running
+- `dns` — Raft state/term plus the replicated `name -> node` cluster
+  catalog (`dns::OP_STATUS` + `dns::OP_CATALOG`), when running
 - `disco` / `relmsg` — peers / transport, when running
 - `threads` — system-wide thread statistics from the observe service's
   `OP_THREAD_SNAPSHOT`, backed by the kernel's unique SystemObserver
   capability (count, per-state histogram, sampled rows)
 - `http` — this server's own request/uptime counters
+
+The `ns` and `dns` sections together are the node's picture of the cluster:
+`ns` is the local registry (what is registered on *this* node), while `dns`
+is the Raft-replicated catalog (which names live on *which* nodes, across
+the cluster).
 
 The aggregator uses non-blocking `ns::OP_TRY_LOOKUP`, so an absent service
 renders as `null` rather than stalling a request. It consumes the same socket

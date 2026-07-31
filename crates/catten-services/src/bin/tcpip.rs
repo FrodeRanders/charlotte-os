@@ -96,6 +96,9 @@ const FRAME_MAX: usize = 4096;
 struct SocketEntry {
     handle: smoltcp::iface::SocketHandle,
     recv_pending: Option<u64>,
+    /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
+    /// from the set once it reaches a final state.
+    closing: bool,
 }
 
 struct TcpipState {
@@ -229,6 +232,23 @@ fn main(ctx: Context) -> ! {
     loop {
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
 
+        // Sweep sockets that have fully closed (graceful close finished) so
+        // their handles are recycled.
+        let mut closing: [u64; 8] = [0; 8];
+        let mut closing_n: usize = 0;
+        for (id, entry) in state.sockets.iter() {
+            if entry.closing && !sockets.get::<TcpSocket>(entry.handle).is_open() && closing_n < 8 {
+                closing[closing_n] = *id;
+                closing_n += 1;
+            }
+        }
+        for i in 0..closing_n {
+            if let Some(entry) = state.sockets.remove(&closing[i]) {
+                sockets.remove(entry.handle);
+            }
+        }
+        config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
+
         // Complete any ready recv operations.
         let mut completed: [u64; 8] = [0; 8];
         let mut completed_n: usize = 0;
@@ -312,6 +332,7 @@ fn main(ctx: Context) -> ! {
                         SocketEntry {
                             handle,
                             recv_pending: None,
+                            closing: false,
                         },
                     );
                     config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
@@ -475,11 +496,16 @@ fn main(ctx: Context) -> ! {
                 }
 
                 socket::OP_CLOSE => {
-                    if let Some(entry) = state.sockets.remove(&msg.arg0) {
-                        if let Some(token) = entry.recv_pending {
+                    // Graceful close: transition to FIN-WAIT so queued
+                    // transmit data (e.g. an httpd response) drains before the
+                    // FIN; the reactor sweeps the socket once fully closed.
+                    if let Some(entry) = state.sockets.get_mut(&msg.arg0) {
+                        if let Some(token) = entry.recv_pending.take() {
                             ipc_reply(token, 0);
                         }
-                        sockets.remove(entry.handle);
+                        entry.closing = true;
+                        let sock = sockets.get_mut::<TcpSocket>(entry.handle);
+                        sock.close();
                     }
                     config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
                     ipc_reply(msg.reply, 0);

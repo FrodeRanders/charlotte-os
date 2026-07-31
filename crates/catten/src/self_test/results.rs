@@ -37,6 +37,10 @@ impl Deadline {
             what
         );
     }
+
+    pub fn is_expired(&self) -> bool {
+        monotonic_millis() >= self.expires_at
+    }
 }
 
 #[repr(u8)]

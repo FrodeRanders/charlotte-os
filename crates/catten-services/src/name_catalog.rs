@@ -54,6 +54,15 @@ impl NameCatalog {
         self.entries.lock().len()
     }
 
+    /// Snapshot copy of the whole `name -> node` catalog.
+    pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)> {
+        let entries = self.entries.lock();
+        entries
+            .iter()
+            .map(|(name, node)| (name.clone(), node.clone()))
+            .collect()
+    }
+
     fn apply_command(&self, command: &[u8]) -> Vec<u8> {
         match command.first().copied() {
             Some(CMD_REGISTER) => {

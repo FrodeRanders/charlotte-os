@@ -5,6 +5,8 @@
 //! observable state across the node:
 //!
 //! - `node`    — NIC MAC + link state (`net::OP_STATUS`)
+//! - `ns`      — name-service registry catalog + pending lookups
+//!   (`ns::OP_STATUS`, via the bootstrap connection)
 //! - `tcpip`   — tcpip service counters (`socket::OP_STATUS`)
 //! - `frouter` — frame demultiplexer counters (`frouter::OP_STATUS`)
 //! - `dns`     — Raft leader/term/catalog (`dns::OP_STATUS`)
@@ -68,6 +70,7 @@ const SENTINEL: u32 = 0x4854_5450; // "HTTP"
 const THREAD_SAMPLE_ROWS: usize = 8;
 
 struct ServiceSet {
+    ns_conn: u64,
     tcp_conn: u64,
     frouter_conn: u64,
     dns_conn: u64,
@@ -78,6 +81,7 @@ struct ServiceSet {
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(8, code);
+    catten_syscall::el0_log(0x4854_5444, 0xfa00_0000 | code as u64);
     unsafe { thread_exit() };
 }
 
@@ -118,10 +122,11 @@ fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
         let (sent, _) = unsafe { wait_reply(send, 0) };
         if sent > 0 {
             offset += sent as usize;
-        } else if sent != socket::ERR_WOULD_BLOCK {
-            return false;
-        } else {
+        } else if sent == socket::ERR_WOULD_BLOCK || sent == 0 {
+            // Connection not established yet or transmit buffer full; retry.
             sleep_ms(ACCEPT_POLL_MS);
+        } else {
+            return false;
         }
     }
     false
@@ -272,6 +277,99 @@ fn thread_state_name(state: u64) -> &'static str {
     }
 }
 
+fn render_dns(s: &mut String, dns_conn: u64) {
+    if let Some(result) = call_scalar(dns_conn, dns::OP_STATUS, 0) {
+        let v = result as u64;
+        let _ = write!(
+            s,
+            "\"dns\":{{\"state\":\"{}\",\"term\":{},\"catalog\":",
+            state_name(v & 0xff),
+            (v >> 8) & 0xff
+        );
+        // Dump the replicated name -> node catalog.
+        let call = ipc_scalar_call(dns_conn, dns::OP_CATALOG, 0);
+        let mut rendered = false;
+        if call != 0 {
+            let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
+            ipc_close(call);
+            if status == 0 && memory != 0 {
+                let len = len as usize;
+                if memory_map(memory, SCRATCH, false) == 0 {
+                    let _ = write!(
+                        s,
+                        "{{\"count\":{},\"entries\":{{",
+                        unsafe { core::ptr::read_volatile(SCRATCH as *const u32) }
+                    );
+                    let mut offset = 4usize;
+                    let mut emitted = 0u32;
+                    let count = unsafe { core::ptr::read_volatile(SCRATCH as *const u32) };
+                    while emitted < count && offset + 2 < len.min(4096) {
+                        let name_len = unsafe {
+                            core::ptr::read_volatile((SCRATCH + offset) as *const u8)
+                        } as usize;
+                        let node_offset = offset + 1 + name_len;
+                        if node_offset + 1 > len.min(4096) {
+                            break;
+                        }
+                        let node_len = unsafe {
+                            core::ptr::read_volatile((SCRATCH + node_offset) as *const u8)
+                        } as usize;
+                        if node_offset + 1 + node_len > len.min(4096) {
+                            break;
+                        }
+                        if emitted > 0 {
+                            s.push(',');
+                        }
+                        s.push('"');
+                        for i in 0..name_len {
+                            let byte = unsafe {
+                                core::ptr::read_volatile((SCRATCH + offset + 1 + i) as *const u8)
+                            };
+                            if byte == b'"' {
+                                s.push('\\');
+                            }
+                            if byte >= 0x20 {
+                                s.push(byte as char);
+                            }
+                        }
+                        s.push_str("\":\"");
+                        for i in 0..node_len {
+                            let byte = unsafe {
+                                core::ptr::read_volatile(
+                                    (SCRATCH + node_offset + 1 + i) as *const u8,
+                                )
+                            };
+                            if byte == b'"' {
+                                s.push('\\');
+                            }
+                            if byte >= 0x20 {
+                                s.push(byte as char);
+                            }
+                        }
+                        s.push('"');
+                        offset = node_offset + 1 + node_len;
+                        emitted += 1;
+                    }
+                    s.push_str("}}");
+                    rendered = true;
+                }
+                memory_unmap(memory);
+                memory_close(memory);
+            }
+        }
+        if !rendered {
+            let _ = write!(
+                s,
+                "{{\"count\":{},\"entries\":{{}}}}",
+                (v >> 32) & 0xffff_ffff
+            );
+        }
+        s.push('}');
+    } else {
+        s.push_str("\"dns\":null");
+    }
+}
+
 fn render_threads(s: &mut String, observe_conn: u64) {
     let Some(report) = thread_report(observe_conn) else {
         s.push_str("\"threads\":null");
@@ -312,6 +410,71 @@ fn render_threads(s: &mut String, observe_conn: u64) {
     s.push_str("]}");
 }
 
+fn render_ns(s: &mut String, ns_conn: u64) {
+    let call = ipc_scalar_call(ns_conn, ns::OP_STATUS, 0);
+    if call == 0 {
+        s.push_str("\"ns\":null");
+        return;
+    }
+    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
+    ipc_close(call);
+    if status != 0 || memory == 0 {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        s.push_str("\"ns\":null");
+        return;
+    }
+    let len = len as usize;
+    if memory_map(memory, SCRATCH, false) != 0 {
+        memory_close(memory);
+        s.push_str("\"ns\":null");
+        return;
+    }
+    unsafe {
+        let magic = core::ptr::read_volatile((SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32);
+        let registered = core::ptr::read_volatile(
+            (SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *const u32,
+        );
+        let pending =
+            core::ptr::read_volatile((SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32);
+        if magic != ns::STATUS_MAGIC {
+            memory_unmap(memory);
+            memory_close(memory);
+            s.push_str("\"ns\":null");
+            return;
+        }
+        let _ = write!(s, "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[", registered, pending);
+        let mut offset = 12usize;
+        let mut emitted = 0u32;
+        while emitted < registered && offset + 1 < len.min(4096) {
+            let name_len = core::ptr::read_volatile((SCRATCH + offset) as *const u8) as usize;
+            if offset + 1 + name_len > len.min(4096) {
+                break;
+            }
+            if emitted > 0 {
+                s.push(',');
+            }
+            s.push('"');
+            for i in 0..name_len {
+                let byte = core::ptr::read_volatile((SCRATCH + offset + 1 + i) as *const u8);
+                if byte == b'"' {
+                    s.push('\\');
+                }
+                if byte >= 0x20 {
+                    s.push(byte as char);
+                }
+            }
+            s.push('"');
+            offset += 1 + name_len;
+            emitted += 1;
+        }
+        s.push_str("]}");
+    }
+    memory_unmap(memory);
+    memory_close(memory);
+}
+
 fn build_json(
     mac: &[u8; 6],
     link: u8,
@@ -349,6 +512,10 @@ fn build_json(
         HTTP_PORT
     );
 
+    // name service: registered-services catalog.
+    render_ns(&mut s, services.ns_conn);
+    s.push(',');
+
     // frouter counters.
     if services.frouter_conn != 0 {
         if let Some(w) = read_words(services.frouter_conn, frouter::OP_STATUS, 0, 7) {
@@ -370,20 +537,10 @@ fn build_json(
         s.push_str("\"frouter\":null,");
     }
 
-    // dns: state | term<<8 | catalog<<32.
+    // dns: Raft state/term + replicated name -> node catalog.
     if services.dns_conn != 0 {
-        if let Some(result) = call_scalar(services.dns_conn, dns::OP_STATUS, 0) {
-            let v = result as u64;
-            let _ = write!(
-                &mut s,
-                "\"dns\":{{\"state\":\"{}\",\"term\":{},\"catalog\":{}}},",
-                state_name(v & 0xff),
-                (v >> 8) & 0xff,
-                (v >> 32) & 0xffff_ffff
-            );
-        } else {
-            s.push_str("\"dns\":null,");
-        }
+        render_dns(&mut s, services.dns_conn);
+        s.push(',');
     } else {
         s.push_str("\"dns\":null,");
     }
@@ -478,6 +635,7 @@ fn main(ctx: Context) -> ! {
 
     // Optional report sources; absent services render as null.
     let services = ServiceSet {
+        ns_conn,
         tcp_conn,
         frouter_conn: try_lookup(ns_conn, frouter::NAME).unwrap_or(0),
         dns_conn: try_lookup(ns_conn, dns::NAME).unwrap_or(0),
@@ -566,6 +724,7 @@ fn main(ctx: Context) -> ! {
         memory_close(memory);
 
         let body = build_json(&mac, link, &services, requests, uptime);
+        catten_syscall::el0_log(0x4854_5444, 1);
         let mut response = String::new();
         response.push_str("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ");
         let _ = write!(response, "{}", body.len());
