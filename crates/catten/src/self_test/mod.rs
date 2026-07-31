@@ -13,6 +13,8 @@ pub mod cq_wait;
 pub mod device;
 pub mod el0;
 pub mod el0_demo;
+#[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+pub mod el0_disco;
 pub mod el0_ipc;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
@@ -35,6 +37,11 @@ pub mod statistics;
 pub mod syscall;
 
 use crate::logln;
+
+/// Status-frame address of the frame demultiplexer (frouter), published by
+/// the net test and read by the disco verifier for diagnostics. Zero until
+/// the frouter has been spawned.
+pub static mut FROUTER_STATUS_FRAME: usize = 0;
 
 pub fn run_self_tests() {
     logln!("Running self tests...");
@@ -101,6 +108,10 @@ pub fn run_self_tests() {
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
     #[cfg(all(not(feature = "virtio_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
+    #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+    el0_disco::test_el0_disco();
+    #[cfg(all(not(feature = "disco_net_test"), target_arch = "aarch64"))]
+    logln!("Skipping EL0 disco test (enable disco_net_test with matching PCI hardware).");
     #[cfg(target_arch = "aarch64")]
     el0_nvme::test_el0_nvme();
     #[cfg(target_arch = "aarch64")]

@@ -203,27 +203,22 @@ pub extern "C" fn cond_yield_lp() {
                             let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
                             (curr_rsp0_ptr, next_rsp0_ptr)
                         };
-                        cfg_select! {
-                            feature = "yield_trace" => {
-                                trace = YieldTrace::FromThread {
-                                    current: curr_tid.unwrap(),
-                                    next: next_tid,
-                                    lp_id: get_lp_id(),
-                                };
-                            }
-                            _ => {}
+                        #[cfg(feature = "yield_trace")]
+                        {
+                            trace = YieldTrace::FromThread {
+                                current: curr_tid.unwrap(),
+                                next: next_tid,
+                                lp_id: get_lp_id(),
+                            };
                         }
                         lsched.clear_ctx_switch_pending();
                         Some((curr_rsp0_ptr, next_rsp0_ptr))
                     } else {
-                        cfg_select! {
-                            feature = "yield_trace" => {
-
-                                trace = YieldTrace::NoSwitch {
-                                    lp_id: get_lp_id(),
-                                };
-                            }
-                            _ => {}
+                        #[cfg(feature = "yield_trace")]
+                        {
+                            trace = YieldTrace::NoSwitch {
+                                lp_id: get_lp_id(),
+                            };
                         }
                         // Nothing else to run: still clear the pending flag so
                         // the quantum timer is re-armed (otherwise the timer
@@ -239,14 +234,12 @@ pub extern "C" fn cond_yield_lp() {
                             .expect("Next thread not found during yield.");
                         &raw mut next_thread.context.rsp_cpl0
                     };
-                    cfg_select! {
-                        feature = "yield_trace" => {
-                            trace = YieldTrace::FromNonThread {
-                                next:  next_tid,
-                                lp_id: get_lp_id(),
-                            };
-                        }
-                        _ => {}
+                    #[cfg(feature = "yield_trace")]
+                    {
+                        trace = YieldTrace::FromNonThread {
+                            next:  next_tid,
+                            lp_id: get_lp_id(),
+                        };
                     }
                     lsched.clear_ctx_switch_pending();
                     Some((core::ptr::null_mut(), next_rsp0_ptr))

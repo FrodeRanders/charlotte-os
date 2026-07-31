@@ -39,6 +39,14 @@ pub const fn manifest_key(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(packed)
 }
 
+/// Well-known node-local name that the kernel registers with the name service
+/// once a node has finished its boot storm. Network-initiating services
+/// (cluster discovery, reliable-message/Raft membership) block on
+/// `ns::OP_LOOKUP` for this name before starting to communicate, so a freshly
+/// booted node never joins a cluster mid-boot. `"bootdone"` packed LE.
+pub const BOOT_DONE_NAME: u64 = 0x0065_6e6f_6474_6f6f;
+
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LaunchHeader {

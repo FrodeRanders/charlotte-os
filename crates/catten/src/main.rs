@@ -158,10 +158,9 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Physical Address bits implemented: {}", (CpuInfo::get_paddr_sig_bits()));
     logln!("Virtual Address bits implemented: {}", (CpuInfo::get_vaddr_sig_bits()));
     print_timer_info();
-    cfg_select! {
-        feature = "acpi" => {
-            environment::acpi::print_table_map();
-        }
+    #[cfg(feature = "acpi")]
+    {
+        environment::acpi::print_table_map();
     }
     mask_interrupts!();
     #[cfg(all(not(feature = "hvf_compat"), not(feature = "live_upgrade_test")))]
@@ -187,6 +186,10 @@ pub extern "C" fn bsp_main() -> ! {
     #[cfg(not(feature = "live_upgrade_test"))]
     crate::self_test::scheduler_lifecycle::test_scheduler_lifecycle();
     crate::self_test::results::finalize_and_start_coordinator();
+    // Publish the node's boot-done marker once the boot storm settles, so
+    // network-initiating services wait until this node is through boot before
+    // communicating with the rest of the cluster.
+    crate::service::supervisor::start_boot_done_publisher();
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from
     // overloaded LPs before any of those contexts begin executing.

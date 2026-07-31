@@ -83,10 +83,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(TX_SUCCESS_OFFSET, status as u32);
     config::write::<u32>(STAGE_OFFSET, 4); // TX attempted
 
-    let shutdown = ipc_scalar_call(net_conn, net::OP_SHUTDOWN, 0);
-    if shutdown != 0 {
-        let _ = unsafe { wait_reply(shutdown, REPLY_SPINS) };
-    }
+    // The NIC driver is deliberately left running: cluster discovery, the
+    // frame demultiplexer, and the reliable-message layer all keep using it
+    // after this smoke client finishes. Tearing it down here would strand
+    // their in-flight OP_SEND and OP_RECV calls.
     config::write::<u32>(0, SENTINEL);
     unsafe { thread_exit() };
 }

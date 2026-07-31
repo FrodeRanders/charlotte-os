@@ -147,6 +147,10 @@ name = "charlotte-protocol-block"
 version = "0.1.0"
 
 [[package]]
+name = "charlotte-protocol-disco"
+version = "0.1.0"
+
+[[package]]
 name = "charlotte-protocol-fs"
 version = "0.1.0"
 

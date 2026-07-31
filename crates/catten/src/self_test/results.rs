@@ -61,10 +61,11 @@ pub enum TestId {
     SchedulerLifecycle = 16,
     Nvme = 17,
     Net = 18,
+    Disco = 19,
 }
 
 impl TestId {
-    const ALL: [Self; 19] = [
+    const ALL: [Self; 20] = [
         Self::El0,
         Self::Raft,
         Self::RaftStorage,
@@ -84,6 +85,7 @@ impl TestId {
         Self::SchedulerLifecycle,
         Self::Nvme,
         Self::Net,
+        Self::Disco,
     ];
 
     const fn name(self) -> &'static str {
@@ -107,6 +109,7 @@ impl TestId {
             Self::SchedulerLifecycle => "scheduler-lifecycle",
             Self::Nvme => "nvme",
             Self::Net => "net",
+            Self::Disco => "disco",
         }
     }
 }
@@ -157,6 +160,8 @@ pub fn register_boot_suite() {
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     register(TestId::Net);
+    #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+    register(TestId::Disco);
 }
 
 pub fn pass(id: TestId) {

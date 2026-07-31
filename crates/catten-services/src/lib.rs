@@ -544,6 +544,32 @@ pub mod relmsg {
     pub const MAX_RETRIES: u32 = 150;
 }
 
+/// Cluster discovery protocol (`charlotte-protocol-disco` v1).
+///
+/// Nodes broadcast probes on EtherType `0x88B6`; peers reply with unicast
+/// responses carrying node identity and service-registration information.
+/// Reliability comes from probe retransmission rather than sequenced ACKs,
+/// matching the pattern used by mDNS, SSDP, and LLDP.
+pub mod disco {
+    pub const INTERFACE: u64 = super::name(b"DISC O");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"disco");
+
+    pub const OP_PROBE: u32 = 1;
+    pub const OP_LIST_PEERS: u32 = 2;
+    pub const OP_STATUS: u32 = 3;
+    pub const OP_SHUTDOWN: u32 = 4;
+    /// Internal ingress used by the frame demultiplexer (frouter): delivers
+    /// one raw frame whose EtherType matched `DISCO_ETHERTYPE`. The call
+    /// attaches a **moved** memory object holding the frame; the service
+    /// processes it and replies 0.
+    pub const OP_FRAME: u32 = 5;
+
+    pub const PROBE_COUNT: usize = 3;
+    pub const PROBE_INTERVAL_MS: u64 = 200;
+    pub const PEER_TTL_MS: u64 = 30_000;
+}
+
 /// Block until a pending call completes, returning
 /// `(result, returned_connection_cap)`.
 ///
@@ -581,4 +607,25 @@ pub fn sleep_ms(milliseconds: u64) {
     }
     catten_syscall::wait(timer);
     catten_syscall::close(timer);
+}
+
+/// Block until the kernel has registered [`charlotte_launch::BOOT_DONE_NAME`]
+/// in the name service, signalling that this node has finished its boot storm.
+///
+/// `ns::OP_LOOKUP` defers until the name is registered, so this returns as
+/// soon as the kernel publishes the marker. Returns `false` only if the call
+/// itself could not be made. Network-initiating services (cluster discovery,
+/// reliable-message/Raft membership clients) must call this before starting
+/// to communicate with other nodes.
+pub fn wait_for_boot_done(ns_conn: u64) -> bool {
+    let call = catten_syscall::ipc_scalar_call(
+        ns_conn,
+        ns::OP_LOOKUP,
+        charlotte_launch::BOOT_DONE_NAME,
+    );
+    if call == 0 {
+        return false;
+    }
+    let (generation, _) = unsafe { wait_reply(call, 0) };
+    generation >= 1
 }

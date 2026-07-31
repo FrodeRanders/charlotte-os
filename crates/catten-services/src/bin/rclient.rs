@@ -64,6 +64,13 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(0, 12);
 
+    // Do not initiate cluster communication until this node has finished
+    // booting: messages sent during the boot storm are silently lost.
+    if !catten_services::wait_for_boot_done(ns_conn) {
+        unsafe { thread_exit() };
+    }
+    config::write::<u32>(0, 13);
+
     let receive = ipc_scalar_call(relmsg_conn, relmsg::OP_RECV, 0);
     if receive == 0 {
         config::write::<u32>(0, 0xe002);

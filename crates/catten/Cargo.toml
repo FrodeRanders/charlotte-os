@@ -31,6 +31,11 @@ virtio_net_test = []
 # Extend the virtio-net test across a QEMU socket LAN with the reliable
 # message service. Requires virtio_net_test and a second guest.
 relmsg_net_test = ["virtio_net_test"]
+# Run the cluster discovery test (Ethernet broadcast bootstrap). Requires
+# virtio_net_test. For cross-node testing, also set disco_cross_node_test.
+disco_net_test = ["virtio_net_test"]
+# Extend the disco test to wait for cross-node peer discovery.
+disco_cross_node_test = ["disco_net_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []

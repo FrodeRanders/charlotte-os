@@ -34,9 +34,9 @@ const NET_CLIENT_ELF: &[u8] =
 #[cfg(feature = "relmsg_net_test")]
 const RELMSG_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relmsg.elf"));
-#[cfg(feature = "relmsg_net_test")]
-const RELRX_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relrx.elf"));
+#[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
+const FROUTER_ELF: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/frouter.elf"));
 
 #[cfg(target_arch = "aarch64")]
 #[cfg(not(feature = "relmsg_net_test"))]
@@ -114,12 +114,16 @@ extern "C" fn verify_el0_net() {
         logln!("[relmsg] service spawned (asid={})", relmsg.asid);
         relmsg.status_frame
     };
-    #[cfg(feature = "relmsg_net_test")]
-    let receiver_config = {
-        let receiver = supervisor::spawn_with_name_service(RELRX_ELF, ns, ConnectionRights::CALL);
-        logln!("[relmsg] receive pump spawned (asid={})", receiver.asid);
-        receiver.status_frame
+    #[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
+    let frouter_config = {
+        let frouter = supervisor::spawn_with_name_service(FROUTER_ELF, ns, ConnectionRights::CALL);
+        logln!("[frouter] frame demux spawned (asid={})", frouter.asid);
+        let base: *mut u8 = frouter.status_frame.into();
+        unsafe { crate::self_test::FROUTER_STATUS_FRAME = base as usize };
+        frouter.status_frame
     };
+    #[cfg(all(feature = "disco_net_test", not(feature = "relmsg_net_test")))]
+    let _ = frouter_config;
 
     let client = supervisor::spawn_with_name_service(NET_CLIENT_ELF, ns, ConnectionRights::CALL);
     let client_config = client.status_frame;
@@ -163,11 +167,12 @@ extern "C" fn verify_el0_net() {
                         unsafe { core::ptr::read_volatile(relmsg_base.add(12) as *const u32) };
                     let net_result =
                         unsafe { core::ptr::read_volatile(relmsg_base.add(16) as *const i64) };
-                    let receiver_base: *mut u8 = receiver_config.into();
+                    let receiver_base: *mut u8 = frouter_config.into();
                     let receiver_stage =
                         unsafe { core::ptr::read_volatile(receiver_base as *const u32) };
-                    let forwarded =
-                        unsafe { core::ptr::read_volatile(receiver_base.add(4) as *const u32) };
+                    let forwarded = unsafe {
+                        core::ptr::read_volatile((receiver_base as *const u8).add(8) as *const u32)
+                    };
                     let rx_seen =
                         unsafe { core::ptr::read_volatile(driver_cfg.add(4) as *const u16) };
                     let tx_seen =
@@ -201,7 +206,7 @@ extern "C" fn verify_el0_net() {
                     };
                     logln!(
                         "[net] waiting: driver {} rx/tx {}/{} send={} relmsg {} opcode {} handled \
-                         {} send {}/{} relrx {} forwarded {} client {} status={:#x} avail={} \
+                         {} send {}/{} frouter {} forwarded {} client {} status={:#x} avail={} \
                          pfn={:#x}/{:#x} notify={}/{} enabled={}/{} dma-faults={}/{} \
                          client-error={}",
                         ds,

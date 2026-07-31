@@ -23,6 +23,7 @@ use alloc::vec::Vec;
 
 use crate::{
     cpu::scheduler::{
+        monotonic_millis,
         spawn_thread,
         threads::{
             MASTER_THREAD_TABLE,
@@ -38,6 +39,7 @@ use crate::{
     },
     memory::{
         AddressSpaceId,
+        KERNEL_ASID,
         close_user_address_space,
         physical::PAddr,
     },
@@ -102,6 +104,23 @@ pub(crate) static LIVE_UPGRADE_MANAGER_ASID: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceId>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+/// Kernel-private connection to the node name service, minted when the node
+/// registry starts, used by the supervisor to publish the boot-done marker.
+static KERNEL_NS_CONN: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<CapabilityId>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+/// Interface id of the marker endpoint registered under the boot-done name.
+/// The endpoint is never called; it only exists so the name service has
+/// something to hand out on lookup.
+const BOOT_DONE_INTERFACE: u64 = u64::from_le_bytes(*b"BOOTDONE");
+/// `ns::OP_REGISTER` opcode (the name-service protocol lives in userspace).
+const NS_OP_REGISTER: u32 = 1;
+/// How long the boot-done publisher waits, after the boot threads are
+/// admitted, for the boot storm (deferred verifiers spawning services) to
+/// settle before declaring the node ready for cluster communication.
+const BOOT_SETTLE_MS: u64 = 3_000;
+
 fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
@@ -160,8 +179,71 @@ pub fn start_node_name_service() -> NameServiceHandle {
         NODE_NAME_SERVICE_VERSION,
         NODE_NAME_SERVICE_QUEUE_CAPACITY,
     );
+    // Retain a kernel-side connection so the supervisor can publish the
+    // boot-done marker after the boot storm settles.
+    let kernel_conn = ipc::connection_delegate(
+        handle.domain.asid,
+        handle.endpoint_cap,
+        KERNEL_ASID,
+        ConnectionRights::CALL,
+    )
+    .expect("[supervisor] kernel name-service connection delegation failed");
+    *KERNEL_NS_CONN.lock() = Some(kernel_conn);
     *node = Some(handle);
     handle
+}
+
+/// Spawn the thread that registers the well-known boot-done marker once the
+/// boot storm has settled.
+///
+/// Network-initiating services (cluster discovery, reliable-message/Raft
+/// membership clients) block on a name-service lookup of the marker before
+/// starting to communicate, so a freshly booted node never joins a cluster
+/// mid-boot.
+pub fn start_boot_done_publisher() {
+    spawn_thread(KERNEL_ASID, boot_done_publisher);
+}
+
+extern "C" fn boot_done_publisher() {
+    // The boot storm is the burst of deferred verifiers spawning EL0 services
+    // right after the scheduler starts. Yield for a bounded settling window so
+    // the NIC driver, the frame demultiplexer, and the socket transport have
+    // all quiesced before any node initiates cluster communication.
+    let settle_until = monotonic_millis().saturating_add(BOOT_SETTLE_MS);
+    while monotonic_millis() < settle_until {
+        yield_lp();
+    }
+    publish_boot_done();
+}
+
+/// Register `charlotte_launch::BOOT_DONE_NAME` in the node name service.
+///
+/// The marker points at a kernel-owned endpoint that is never called; its
+/// only purpose is to let a blocking `ns::OP_LOOKUP` resolve. Called from the
+/// boot-done publisher thread.
+pub fn publish_boot_done() {
+    let endpoint = ipc::endpoint_create(KERNEL_ASID, BOOT_DONE_INTERFACE, 1, 1)
+        .expect("[supervisor] boot-done endpoint creation failed");
+    let conn = ipc::connection_mint(KERNEL_ASID, endpoint, ConnectionRights::ALL)
+        .expect("[supervisor] boot-done connection mint failed");
+    let ns_conn = KERNEL_NS_CONN
+        .lock()
+        .expect("[supervisor] kernel name-service connection missing");
+    let call = ipc::scalar_call_with_connection(
+        KERNEL_ASID,
+        ns_conn,
+        NS_OP_REGISTER,
+        charlotte_launch::BOOT_DONE_NAME,
+        conn,
+        ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
+    )
+    .expect("[supervisor] boot-done registration call failed");
+    ipc::wait_reply(KERNEL_ASID, call)
+        .expect("[supervisor] boot-done registration wait failed");
+    let result = ipc::poll_reply(KERNEL_ASID, call)
+        .expect("[supervisor] boot-done registration result missing");
+    let generation = result.map(|reply| reply.result).unwrap_or(0);
+    crate::logln!("[node] boot-done marker registered (generation {generation}).");
 }
 
 /// Obtain the running node-local name service.

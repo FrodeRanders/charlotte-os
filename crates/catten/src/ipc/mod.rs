@@ -1324,23 +1324,28 @@ pub fn poll_reply(
     caller: AddressSpaceId,
     call_cap: CapabilityId,
 ) -> Result<Option<ReplyValue>, IpcError> {
-    let mut ipc = IPC.write();
-    let call_id = match ipc.cap(caller, call_cap)? {
-        Capability::PendingCall {
-            call,
-        } => call,
-        _ => return Err(IpcError::WrongType),
+    let (call_id, result, need_observe) = {
+        let ipc = IPC.read();
+        let call_id = match ipc.cap(caller, call_cap)? {
+            Capability::PendingCall {
+                call,
+            } => call,
+            _ => return Err(IpcError::WrongType),
+        };
+        let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
+        if call.caller != caller {
+            return Err(IpcError::PermissionDenied);
+        }
+        let need_observe = call.result.is_some() && !call.observed;
+        (call_id, call.result, need_observe)
     };
-    let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
-    if call.caller != caller {
-        return Err(IpcError::PermissionDenied);
+    if need_observe {
+        let mut ipc = IPC.write();
+        if let Some(call) = ipc.pending_calls.get_mut(&call_id) {
+            call.observed = true;
+        }
     }
-    if call.result.is_some() {
-        // Once the caller has observed the result, any returned capabilities
-        // are its own; closing the pending-call cap must not revoke them.
-        call.observed = true;
-    }
-    Ok(call.result)
+    Ok(result)
 }
 
 pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), IpcError> {

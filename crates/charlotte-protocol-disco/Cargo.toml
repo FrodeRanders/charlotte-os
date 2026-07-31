@@ -1,0 +1,10 @@
+[package]
+name = "charlotte-protocol-disco"
+version = "0.1.0"
+edition = "2024"
+description = "Cluster discovery protocol (Ethernet broadcast bootstrap)"
+
+[dependencies]
+[lib]
+test = false
+doctest = false

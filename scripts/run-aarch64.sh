@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -20,6 +20,7 @@
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --net-test     Build and run the virtio-net test under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
+#   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -37,6 +38,7 @@ DISPLAY_MODE="0"
 USE_HVF="0"
 NET_TEST="0"
 RELMSG_TEST="0"
+DISCO_TEST="0"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
@@ -58,6 +60,7 @@ while [ "$#" -gt 0 ]; do
         --hvf)         USE_HVF="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
+        --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -169,6 +172,13 @@ fi
 if [ "$RELMSG_TEST" = "1" ]; then
     FEATURES="${FEATURES},relmsg_net_test"
 fi
+if [ "$DISCO_TEST" = "1" ]; then
+    FEATURES="${FEATURES},disco_net_test"
+    # Enable cross-node verification when two instances are linked via socket.
+    if [ "$NET_BACKEND" != "user" ]; then
+        FEATURES="${FEATURES},disco_cross_node_test"
+    fi
+fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
@@ -260,6 +270,11 @@ QEMU_OPTS+=(-smp "$SMP")
 if [ "${CATTEN_QEMU_VIRTIO_TRACE:-0}" = "1" ]; then
     QEMU_OPTS+=(
         -trace enable=virtio_pci_notify_write
+    )
+fi
+if [ -n "${CATTEN_QEMU_TRACE_EVENTS:-}" ]; then
+    QEMU_OPTS+=(
+        -trace "events=${CATTEN_QEMU_TRACE_EVENTS},file=/tmp/charlotte${INSTANCE_SUFFIX}-qemu-trace.txt"
     )
 fi
 if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then

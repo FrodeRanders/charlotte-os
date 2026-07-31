@@ -89,6 +89,7 @@ spin = ">=0.10.0"
 charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
 charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
+charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 
 [profile.dev]
 panic = "abort"
@@ -134,5 +135,17 @@ bench = false
 [[bin]]
 name = "servicemgr"
 path = "src/bin/servicemgr.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "disco"
+path = "src/bin/disco.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "frouter"
+path = "src/bin/frouter.rs"
 test = false
 bench = false
