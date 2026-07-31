@@ -10,7 +10,7 @@
 //! The route table is EtherType → (service name, ingress opcode). Consumers
 //! are optional: a route is only installed once the named service is
 //! registered (retried each loop), so the frouter works whether a node runs
-//! relmsg, disco, both, or neither.
+//! relmsg, disco, tcpip, both, or neither.
 //!
 //! Status page layout:
 //! - word 0: stage
@@ -35,6 +35,7 @@ use catten_services::{
     net,
     ns,
     relmsg,
+    socket,
     sleep_ms,
     wait_reply,
 };
@@ -50,6 +51,9 @@ use catten_syscall::{
 };
 use charlotte_protocol_disco::DISCO_ETHERTYPE;
 use charlotte_protocol_msg::MSG_ETHERTYPE;
+
+const IPV4_ETHERTYPE: u16 = 0x0800;
+const ARP_ETHERTYPE: u16 = 0x0806;
 
 const STAGE_OFFSET: usize = 0;
 const RX_TOTAL_OFFSET: usize = 4;
@@ -144,6 +148,8 @@ fn main(ctx: Context) -> ! {
     let mut routes: Vec<Route> = Vec::new();
     add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
     add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
+    add_route_if_missing(&mut routes, ns_conn, IPV4_ETHERTYPE, socket::NAME, socket::OP_FRAME);
+    add_route_if_missing(&mut routes, ns_conn, ARP_ETHERTYPE, socket::NAME, socket::OP_FRAME);
     config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);
 
     let mut rx_total: u32 = 0;
@@ -162,6 +168,8 @@ fn main(ctx: Context) -> ! {
             // no frames are arriving.
             add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
             add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
+            add_route_if_missing(&mut routes, ns_conn, IPV4_ETHERTYPE, socket::NAME, socket::OP_FRAME);
+            add_route_if_missing(&mut routes, ns_conn, ARP_ETHERTYPE, socket::NAME, socket::OP_FRAME);
             config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
             config::write::<u32>(FORWARDED_OFFSET, forwarded);
             config::write::<u32>(DROPPED_OFFSET, dropped);

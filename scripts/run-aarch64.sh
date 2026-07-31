@@ -23,6 +23,9 @@
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --dns-test     Run the distributed name service test (Raft over the
 #               network; both guests must run it, implies --disco-test)
+#   --tcpip-test  Run the TCP/IP test: smoltcp adapter over the frouter,
+#               exchanging TCP data between two guests (both guests must
+#               run it, implies --net-test)
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -42,6 +45,7 @@ NET_TEST="0"
 RELMSG_TEST="0"
 DISCO_TEST="0"
 DNS_TEST="0"
+TCPIP_TEST="0"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
@@ -65,6 +69,7 @@ while [ "$#" -gt 0 ]; do
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
+        --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -98,6 +103,10 @@ if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
 fi
 if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
     echo "error: --relmsg-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
+    echo "error: --tcpip-test requires --net-listen or --net-connect" >&2
     exit 1
 fi
 
@@ -185,6 +194,9 @@ if [ "$DISCO_TEST" = "1" ]; then
 fi
 if [ "$DNS_TEST" = "1" ]; then
     FEATURES="${FEATURES},dns_net_test"
+fi
+if [ "$TCPIP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},tcpip_net_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then

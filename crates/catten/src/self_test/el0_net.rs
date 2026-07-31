@@ -34,7 +34,11 @@ const NET_CLIENT_ELF: &[u8] =
 #[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
 const RELMSG_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relmsg.elf"));
-#[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
+#[cfg(any(
+    feature = "relmsg_net_test",
+    feature = "disco_net_test",
+    feature = "tcpip_net_test"
+))]
 const FROUTER_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/frouter.elf"));
 
@@ -116,7 +120,11 @@ extern "C" fn verify_el0_net() {
     };
     #[cfg(all(feature = "dns_net_test", not(feature = "relmsg_net_test")))]
     let _ = relmsg_config;
-    #[cfg(any(feature = "relmsg_net_test", feature = "disco_net_test"))]
+    #[cfg(any(
+        feature = "relmsg_net_test",
+        feature = "disco_net_test",
+        feature = "tcpip_net_test"
+    ))]
     let frouter_config = {
         let frouter = supervisor::spawn_with_name_service(FROUTER_ELF, ns, ConnectionRights::CALL);
         logln!("[frouter] frame demux spawned (asid={})", frouter.asid);
@@ -124,7 +132,10 @@ extern "C" fn verify_el0_net() {
         unsafe { crate::self_test::FROUTER_STATUS_FRAME = base as usize };
         frouter.status_frame
     };
-    #[cfg(all(feature = "disco_net_test", not(feature = "relmsg_net_test")))]
+    #[cfg(all(
+        any(feature = "disco_net_test", feature = "tcpip_net_test"),
+        not(feature = "relmsg_net_test")
+    ))]
     let _ = frouter_config;
 
     let client = supervisor::spawn_with_name_service(NET_CLIENT_ELF, ns, ConnectionRights::CALL);

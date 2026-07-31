@@ -436,6 +436,7 @@ pub mod socket {
     pub const OP_SEND: u32 = 6;
     pub const OP_RECV: u32 = 7;
     pub const OP_CLOSE: u32 = 8;
+    pub const OP_FRAME: u32 = 9;
 
     pub const ERR_TOO_MANY_SOCKETS: i64 = -1;
     pub const ERR_BAD_SOCKET: i64 = -2;
