@@ -181,7 +181,7 @@ extern "C" fn verify_el0_uart() {
                 );
             }
             deadline.assert_pending("UART console client writes");
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
     let write_status = unsafe { core::ptr::read_volatile(client_cfg.add(1)) };
@@ -203,7 +203,7 @@ extern "C" fn verify_el0_uart() {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
             deadline.assert_pending("UART driver deferred-read arm");
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
     crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
@@ -218,7 +218,7 @@ extern "C" fn verify_el0_uart() {
                 crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
                 next_repend = now.saturating_add(250);
             }
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
 
@@ -267,7 +267,7 @@ extern "C" fn verify_el0_uart() {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
             deadline.assert_pending("UART verifier deferred-read arm");
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
     assert_eq!(
@@ -346,7 +346,7 @@ extern "C" fn verify_el0_uart() {
                 let _ = ipc::close_cap(KCLIENT_ASID, cap);
             }
             deadline.assert_pending("UART generation-2 registration");
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
     let write = ipc::scalar_call(KCLIENT_ASID, fresh_conn, OP_WRITE, b'2' as u64)
@@ -388,7 +388,7 @@ fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
             Err(error) => panic!("[uart] poll_reply failed for {}: {:?}", what, error),
         }
         deadline.assert_pending(what);
-        crate::cpu::scheduler::sleep_millis(1);
+        crate::cpu::scheduler::yield_lp();
     }
     ipc::close_cap(KCLIENT_ASID, call).expect("[uart] pending-call close failed");
     value.expect("[uart] reply value missing")

@@ -63,7 +63,7 @@ mod inner {
             let scheduler = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
             let _ = scheduler.abort_thread(domain.tid);
         }
-        supervisor::wait_domain_exit(&domain, 10_000);
+        supervisor::wait_domain_exit(&domain, 30_000);
         supervisor::teardown_domain(domain);
     }
 
@@ -73,10 +73,7 @@ mod inner {
     }
 
     fn wait_for_election(first: &ServiceDomain, second: &ServiceDomain, label: &str) -> (u32, u32) {
-        use crate::{
-            cpu::scheduler::sleep,
-            klib::time::duration::ExtDuration,
-        };
+        use crate::cpu::scheduler::yield_lp;
 
         let first_status: *const u32 = {
             let base: *mut u8 = first.status_frame.into();
@@ -87,7 +84,7 @@ mod inner {
             base as *const u32
         };
         let mut polls = 0u64;
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         loop {
             let first_state = unsafe { core::ptr::read_volatile(first_status.add(2)) };
             let second_state = unsafe { core::ptr::read_volatile(second_status.add(2)) };
@@ -122,21 +119,20 @@ mod inner {
                 );
             }
             deadline.assert_pending(label);
-            sleep(ExtDuration::from_millis(10));
+            // Yield rather than blocking on a timer: a timer wake that is not
+            // delivered would leave the deadline unchecked (silent hang).
+            yield_lp();
         }
     }
 
     fn wait_for_single_leader(domain: &ServiceDomain, label: &str) -> u32 {
-        use crate::{
-            cpu::scheduler::sleep,
-            klib::time::duration::ExtDuration,
-        };
+        use crate::cpu::scheduler::yield_lp;
 
         let status: *const u32 = {
             let base: *mut u8 = domain.status_frame.into();
             base as *const u32
         };
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         let mut poll = 0u64;
         loop {
             let stage = unsafe { core::ptr::read_volatile(status) };
@@ -159,7 +155,7 @@ mod inner {
             }
             deadline.assert_pending(label);
             poll += 1;
-            sleep(ExtDuration::from_millis(10));
+            yield_lp();
         }
     }
 

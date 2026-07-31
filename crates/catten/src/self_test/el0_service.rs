@@ -130,8 +130,10 @@ pub fn test_el0_service() {
 
 #[cfg(target_arch = "aarch64")]
 pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
     while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Service) {
-        crate::cpu::scheduler::sleep_millis(1);
+        deadline.assert_pending("EL0 persistent upgrade waiting for service-lifecycle test");
+        crate::cpu::scheduler::yield_lp();
     }
     let client_asid = crate::service::loader::create_user_address_space();
     let ns = ipc::connection_delegate(
@@ -172,10 +174,12 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
 
 #[cfg(target_arch = "aarch64")]
 fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
-    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
     while !condition() {
         deadline.assert_pending(what);
-        crate::cpu::scheduler::sleep_millis(1);
+        // Yield rather than blocking on a timer: a timer wake that is not
+        // delivered would leave the deadline unchecked (silent hang).
+        crate::cpu::scheduler::yield_lp();
     }
 }
 
@@ -259,7 +263,7 @@ extern "C" fn verify_el0_service() {
                 );
             }
             deadline.assert_pending("EL0 service client");
-            crate::cpu::scheduler::sleep_millis(1);
+            crate::cpu::scheduler::yield_lp();
         }
     }
     let echoed = unsafe { core::ptr::read_volatile(config.add(1)) };
