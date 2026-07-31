@@ -470,6 +470,20 @@ fn main(ctx: Context) -> ! {
         config::write::<u16>(18, tx_used_seen);
         config::write::<u8>(20, unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) });
         config::write::<u16>(22, tx_avail_idx);
+        // RX-ring diagnostic: descriptors the device has filled but the driver
+        // has not yet recycled. When this reaches `rx_qsz` the available ring
+        // is empty, so virtio-net has no RX buffer and queues incoming frames
+        // (the trigger for the socket/stream read-poll disable).
+        let device_used_idx = unsafe { r16(V_RX_DESC + used_offset(rx_qsz) + virtio::USED_IDX) };
+        let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
+        config::write::<u16>(44, rx_unrecycled);
+        config::write::<u16>(46, rx_qsz);
+        if rx_unrecycled >= rx_qsz {
+            // The RX available ring is empty: virtio-net must queue incoming
+            // frames until the driver recycles descriptors. Fires repeatedly
+            // while the condition holds.
+            catten_syscall::el0_log(0x4e45545258, rx_unrecycled as u64);
+        }
         deliver_received(&mut received, &mut pending_recv);
 
         // --- endpoint messages ---------------------------------------------

@@ -151,7 +151,7 @@ extern "C" fn verify_el0_net() {
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
             spins += 1;
-            if spins.is_multiple_of(2_000_000) {
+            if spins.is_multiple_of(100_000) {
                 let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
                 #[cfg(not(feature = "relmsg_net_test"))]
                 let cs = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
@@ -184,6 +184,12 @@ extern "C" fn verify_el0_net() {
                     let tx_avail = unsafe {
                         core::ptr::read_volatile((driver_cfg as *const u8).add(22) as *const u16)
                     };
+                    let rx_unrecycled = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(44) as *const u16)
+                    };
+                    let rx_qsz = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(46) as *const u16)
+                    };
                     let rx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(6)) };
                     let tx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(7)) };
                     let dma_faults = crate::device::smmu::fault_count();
@@ -210,7 +216,7 @@ extern "C" fn verify_el0_net() {
                         "[net] waiting: driver {} rx/tx {}/{} send={} relmsg {} opcode {} handled \
                          {} send {}/{} frouter {} forwarded {} client {} status={:#x} avail={} \
                          pfn={:#x}/{:#x} notify={}/{} enabled={}/{} dma-faults={}/{} \
-                         client-error={}",
+                         rxq={}/{} client-error={}",
                         ds,
                         rx_seen,
                         tx_seen,
@@ -233,11 +239,27 @@ extern "C" fn verify_el0_net() {
                         tx_enabled,
                         dma_faults,
                         pending_faults,
+                        rx_unrecycled,
+                        rx_qsz,
                         client_error
                     );
                 }
                 #[cfg(not(feature = "relmsg_net_test"))]
-                logln!("[net] waiting: driver stage {} client stage {}", ds, cs);
+                {
+                    let rx_unrecycled = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(44) as *const u16)
+                    };
+                    let rx_qsz = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(46) as *const u16)
+                    };
+                    logln!(
+                        "[net] waiting: driver stage {} client stage {} rxq={}/{}",
+                        ds,
+                        cs,
+                        rx_unrecycled,
+                        rx_qsz
+                    );
+                }
             }
             deadline.assert_pending("EL0 network client");
             yield_lp();

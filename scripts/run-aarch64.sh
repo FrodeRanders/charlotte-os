@@ -301,11 +301,13 @@ if [ "$NET_TEST" = "1" ]; then
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"
-            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,listen=:${NET_PORT}")
+            QEMU_OPTS+=(-netdev "stream,id=charlotte-net,server=on,addr.type=inet,addr.host=0.0.0.0,addr.port=${NET_PORT}")
             ;;
         connect:*)
             NET_PEER="${NET_BACKEND#connect:}"
-            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,connect=${NET_PEER}")
+            NET_HOST="${NET_PEER%%:*}"
+            NET_PORT="${NET_PEER#*:}"
+            QEMU_OPTS+=(-netdev "stream,id=charlotte-net,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
             ;;
     esac
     QEMU_OPTS+=(
