@@ -925,7 +925,7 @@ policy:
 
 | Question | Current answer |
 |---|---|
-| Which operations are linearizable? | The Graft core defines committed client commands and quorum-contact read barriers. The EL0 Raft transport currently exposes peer RPCs and status; general client-command/query service wiring is incomplete, so node-name operations are not yet advertised as cluster-linearizable. |
+| Which operations are linearizable? | The Graft core defines committed client commands and quorum-contact read barriers. The distributed name service now exposes client commands (`dns::OP_REGISTER`/`OP_LOOKUP`/`OP_CALL`) that submit to the leader and replicate the `name -> node` catalog across two guests; a per-operation external linearizability contract and general query service remain future work. |
 | Leader changes and outstanding calls | The core rejects non-leader commands, tracks a known leader, and requires current-term/quorum conditions. Redirect, retry, idempotency, and uncertain-outcome behavior are not yet a complete external client protocol. |
 | Capabilities after rollback/reconfiguration | Raft membership authority is configuration-indexed and removed peers are decommissioned. Application capabilities issued from replicated directory state do not yet have consensus-backed epochs or rollback rules. |
 | Authority during membership changes | Peer voting and leadership authority follows stable/joint voter sets; learners replicate without voting. This protects the consensus group itself, not arbitrary capabilities stored in its state machine. |

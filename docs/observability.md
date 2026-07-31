@@ -93,13 +93,20 @@ the system's predictability objective.
 
 ## External protocols
 
-Endpoint IPC is the implemented observability protocol. An HTTP adapter in
-userspace is architecturally straightforward: look up `observe`, request a
-snapshot, convert it to text or JSON, and return it from a read-only endpoint.
-It should remain a replaceable adapter rather than moving HTTP into the kernel.
+Endpoint IPC is the implemented observability protocol. The `httpd` keyhole
+service in userspace is that adapter in practice: it looks up `observe`,
+requests a machine-wide snapshot, and merges it with per-service status into
+a JSON report served over TCP port 80. It remains a replaceable userspace
+adapter rather than moving HTTP into the kernel.
 
-The current TCP/IP service does not yet provide the complete server-side
-`bind`/`listen`/`accept` path required for an HTTP listener, and end-to-end NIC
-operation is still under development. Consequently no HTTP endpoint is claimed
-yet. Once server sockets work, a minimal `GET /metrics` service can translate
-the existing IPC snapshot without changing the kernel ABI.
+The TCP/IP service provides the complete server-side
+`bind`/`listen`/`accept` path (smoltcp over the frouter's IP/ARP routing),
+and end-to-end NIC operation is validated. `httpd` aggregates the `observe`
+snapshot plus the `net`/`tcpip`/`frouter`/`ns`/`dns`/`disco`/`relmsg` status
+ops into one JSON page, reachable from the host via SLIRP `hostfwd`
+(`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
+
+The aggregation model follows the two explicit producer paths above: each
+service *voluntarily publishes* a status op, and the `observe` service is the
+sole holder of the system-observer capability; the httpd holds neither and
+queries both over IPC.

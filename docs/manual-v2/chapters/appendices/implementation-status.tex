@@ -29,8 +29,9 @@ authoritative record.
     interrupt-driven deferred reads, crash recovery & Done \\
 9 & Virtio-net driver: PCI discovery, MSI-X and SMMU delegation, feature
     negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
-    Smoltcp 0.13 adapter + TCP/IP service binary compile. &
-    Driver smoke path TCG-validated; full data path pending \\
+    Smoltcp 0.13 adapter + TCP/IP service binary compile, and the frame
+    demultiplexer routes IPv4/ARP to the tcpip service. &
+    Data path TCG-validated (relmsg/disco/dns/tcpip two-guest tests) \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
     wakes, sustained-window load rebalancing & Done \\
 11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
@@ -51,7 +52,7 @@ authoritative record.
     \item Coalesced remote shard wakes (idempotent scheduler fix) --- \textbf{Verified.}
     \item Userspace UART driver with only delegated MMIO + IRQ --- \textbf{Verified.}
     \item Restart invalidates stale connections + device reset + op reconciliation --- \textbf{Verified.}
-    \item Virtio-net data path with batched packet buffers --- \textbf{Compiled, runtime pending.}
+    \item Virtio-net data path with batched packet buffers --- \textbf{Runtime-validated on macOS QEMU TCG.}
     \item Fixed-width stable ABI representations (32-byte CQ entries) --- \textbf{Implemented; not formally audited.}
     \item Capability misuse and cancellation race adversarial tests --- \textbf{Partial; six IPC error-path tests.}
 \end{enumerate}
@@ -103,12 +104,12 @@ authoritative record.
     \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net},
         \texttt{charlotte-protocol-msg}.
 
-    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service binary
-        compile for aarch64-none.
+    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service runtime-validated over the frame demultiplexer; reliable-message fragmentation to 64 KiB.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC on 4-LP
         QEMU/HVF. Timer-driven elections via completion events. Verifier domains
-        terminate rather than polling.
+        terminate rather than polling. The distributed name service replicates a
+        \texttt{name $\rightarrow$ node} catalog across two guests.
 
     \item \textbf{CI:} GitHub Actions builds both architectures with
         \texttt{-D warnings}, QEMU boot gate on AArch64.
@@ -121,16 +122,21 @@ authoritative record.
         the EL0 test and real-EL0 user thread are AArch64-only.
     \item \textbf{Virtio-net runtime:} initialization and transmit submission
         are runtime-validated on macOS under QEMU TCG. HVF remains unsuitable
-        for direct EL0 device MMIO. Receive parsing, TX reclamation, batching,
-        and the deployed TCP/IP service remain incomplete.
+        for direct EL0 device MMIO. The receive/transmit data path, frame
+        demultiplexing, reliable messages, distributed name service, and the
+        TCP/IP service are validated; TX reclamation and batching remain
+        incomplete.
     \item \textbf{General process loader:} the ELF loader is fixed-address for
         reference service images, not a general loader with argv/env/auxv-style
         setup.
     \item \textbf{Resource accounting:} per-domain quotas are not yet
         implemented; capability-table capacity is fixed.
-    \item \textbf{Cross-machine Raft:} two TCG guests can share a QEMU socket
-        LAN, but reliable-message frame transport and remote Raft peer routing
-        are not yet connected.
+    \item \textbf{Cross-machine Raft:} two TCG guests share a QEMU stream LAN;
+        the reliable-message frame transport and remote Raft peer routing are
+        connected and validated (\texttt{--dns-test}).
+    \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
+        \texttt{observe} snapshot and per-service status into a JSON report
+        served over the TCP/IP service (\texttt{--http-test}).
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
         ACPI IORT, per-requester DMA-domain capabilities, memory pinning,
         IOVA map/unmap, synchronous invalidation, fault reporting, teardown,

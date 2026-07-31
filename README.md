@@ -27,12 +27,21 @@ The main additions and extensions currently maintained here are:
   polling.
 - **One shared node-local name service:** services register in a common
   registry; waitable lookup blocks until registration instead of relying on
-  arbitrary boot-time spin ranges. Replication of this registry across
-  computers remains future work.
+  arbitrary boot-time spin ranges. A distributed name service (`dns`)
+  replicates a `name → node` catalog across two QEMU guests over the
+  reliable-message layer.
 - **Generic Raft service:** a transport-independent Raft core and EL0 service,
   with a local two-node election test that can run on a multicore development
-  machine. This is distinct from the planned use of Raft to replicate the name
-  service across several physical or virtual machines.
+  machine. The distributed name service uses the same Graft core to replicate
+  the catalog across several virtual machines.
+- **TCP/IP as a userspace service:** the smoltcp stack runs through a frame
+  demultiplexer (IPv4/ARP routed to the `tcpip` service) and exposes a
+  socket-API protocol for clients; an `httpd` keyhole serves a full-node JSON
+  report over it, reachable from the host via SLIRP `hostfwd`
+  (`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
+- **Reliable-message fragmentation:** messages up to 64 KiB are split across
+  Ethernet frames and reassembled at the receiver, carrying the distributed
+  name service / Raft across two guests.
 - **Userspace persistent-storage prototype:** an NVMe block driver using DMA
   and MSI-X, a block protocol, an object store, and namespaced Raft
   term/vote/log/snapshot storage. Process-restart recovery is boot-tested;
@@ -159,10 +168,11 @@ ARM Generic Timer, and enumerates PCIe via ECAM. See
 [`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) for a detailed
 status report, including current limitations (notably device-tree discovery).
 EL0 execution, isolated userspace services, IPC, driver restart, virtio-net
-initialization and transmit submission, and a two-node Raft election are
-boot-tested under QEMU TCG. See
+frame exchange, reliable messages, the distributed name service, and a
+two-node Raft election are boot-tested under QEMU TCG. See
 [`docs/aarch64-network-development.md`](docs/aarch64-network-development.md)
-for the macOS TCG and two-VM socket-LAN workflow.
+for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
+`--disco-test`, `--dns-test`, `--tcpip-test`, `--http-test`).
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 

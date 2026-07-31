@@ -42,10 +42,14 @@ and serial logs. With a timeout, the logs are
 `/tmp/charlotte-node-a-serial.log` and
 `/tmp/charlotte-node-b-serial.log`.
 
-This establishes the host-side L2 link and runs a NIC in each guest. It does
-not yet constitute a distributed-name-service test. The remaining guest-side
-work is to make the reliable-message service exchange frames through `net0`,
-route Raft peer RPCs through that service instead of the local IPC transport,
-and then run one name-service replica per VM. The current `relmsg` binary is a
-local prototype and is not yet an Ethernet peer transport.
+This establishes the host-side L2 link and runs a NIC in each guest. It is
+the distributed-services test path: the reliable-message service exchanges
+frames through `net0` via the frouter, Raft peer RPCs (the distributed name
+service) route through that service, and each VM runs a name-service replica.
+
+Two-node tests use `--relmsg-test`, `--disco-test`, `--dns-test`, and
+`--tcpip-test` with the stream backend (the relmsg smoke client derives its
+peer from MAC last-octets 1 and 2). `--http-test` runs a single guest on the
+SLIRP user network with `hostfwd=tcp::8080-:80` so the host can curl the
+httpd keyhole.
 

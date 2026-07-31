@@ -12,9 +12,14 @@ Both peers use the one shared node-local name service also used by the service
 manager, drivers, and clients. Separately, a single-voter test uses the
 NVMe-backed object store, tears down the Raft process, restarts the same node
 identity, and verifies that its recovered term advances. Cross-machine
-transport, replicated client commands, membership changes, snapshot recovery,
-power-loss behavior, and replication between the name-service instance on
-each machine are not yet validated end to end.
+transport and replication between the name-service instance on each machine
+are implemented: the distributed name service (\texttt{dns}) runs the
+\texttt{CatalogMachine} state machine on the Graft core over the reliable
+message layer, and two guests on a stream Ethernet segment replicate a
+\texttt{name $\rightarrow$ node} catalog and serve remote invocation
+(\texttt{dns::OP\_CALL}). Membership changes, power-loss behavior, and
+general client-command exposure through the generic \texttt{raft} service
+remain not validated end to end.
 
 The core implementation is nevertheless no longer an independent,
 feature-reduced interpretation of Raft. It follows the common Graft model for
@@ -22,8 +27,9 @@ normalized peer identity, voters and learners, joint-consensus quorums,
 replicated \texttt{JOIN}/\texttt{JOINT}/\texttt{FINALIZE} commands, leader
 no-op entries, current-term commit rules, linearizable-read contact quorums,
 and membership-bearing snapshots. These paths compile and have focused
-regression tests, but membership administration and client commands are not
-yet exposed end to end by the EL0 service.
+regression tests. The \texttt{dns} service exposes client commands end to end
+through a concrete state machine; membership administration through the
+generic \texttt{raft} service is not yet exposed.
 
 \section{Raft as a capability service}
 
@@ -44,8 +50,9 @@ process that:
         detached timer completion or a busy polling loop.
     \item \textbf{Reserves a client-command endpoint operation.}
         \texttt{OP\_CLIENT\_COMMAND} is defined and the core can submit,
-        commit, and apply opaque commands, but the present generic EL0 service
-        does not yet expose that path with a concrete state machine.
+        commit, and apply opaque commands. The \texttt{dns} service realizes
+        that path with a concrete state machine; the generic EL0 service
+        still does not.
 \end{itemize}
 
 The Raft core (\texttt{catten-graft}) is a generic, transport-agnostic library.
@@ -61,9 +68,9 @@ trait RaftTransport {
 }
 \end{verbatim}
 
-The CharlotteOS implementation of this trait uses endpoint IPC. A future
-implementation could use the reliable message layer for cross-machine
-communication --- the consensus core would not change.
+The CharlotteOS implementation of this trait uses endpoint IPC for
+same-machine peers and the reliable message layer for cross-machine peers
+(the \texttt{dns} transport); the consensus core does not change.
 
 \section{Intended properties relative to socket-based Raft}
 
@@ -145,8 +152,8 @@ Peer discovery follows that active membership through waitable name-service
 lookups. The ordinary two-node local
 test remains in-memory so the generic Raft service is testable on a multicore
 machine without storage hardware. The distinct durability test verifies one
-node across process restart. Neither test should be read as evidence that the
-name service is already replicated across multiple computers.
+node across process restart. The \texttt{dns} test separately replicates a
+name-service catalog across two computers.
 
 \section{Cluster bootstrap --- the seed problem}
 
@@ -183,14 +190,15 @@ members respond with their service names. The joining node looks them up
 through the name service to obtain attested connection caps. This works
 without any seed configuration.
 
-\subsection{Distributed name service (end state)}
+\subsection{Distributed name service (implemented)}
 
-Once the cluster is running and the name service is itself replicated through
-Raft, a new node needs only a single seed to discover all peers through the
-consistent name registry. The name service is a \texttt{StateMachine}
-implementation on the Raft substrate. There remains one process-facing
-name-service instance per machine; those instances apply the same committed
-registry state.
+The \texttt{dns} service realizes this end state: its \texttt{CatalogMachine}
+is a \texttt{StateMachine} implementation on the Raft substrate, and a new
+node needs only a single seed to discover all peers through the consistent
+name registry. There remains one process-facing name-service instance per
+machine; those instances apply the same committed registry state. The
+\texttt{ns} node-local registry and the \texttt{dns} cluster catalog remain
+distinct services.
 
 \section{The generic StateMachine trait}
 
@@ -211,8 +219,9 @@ Different services are different state machines on the same Raft substrate:
     \item \textbf{Distributed name service:} commands are
         ``register(name, owner, route, generation)'' and ``unregister(name)''.
         The state maps names to owning-node identities, routable service
-        identities, generations, and policy metadata. Once replicated,
-        service discovery is available cluster-wide.
+        identities, generations, and policy metadata. Replicated, it makes
+        service discovery available cluster-wide; this is the implemented
+        \texttt{dns} service.
     \item \textbf{Distributed lock service:} commands are ``acquire(lock\_id)''
         and ``release(lock\_id)''. The state is a set of held locks.
     \item \textbf{Cluster configuration store:} commands are arbitrary
@@ -294,11 +303,12 @@ task. No polling loop, no thread dedicated to sleeping.
         affecting the kernel or other Raft nodes. The supervisor handles the
         lifecycle; the Raft protocol handles the consensus.
 
-    \item \textbf{A distributed name service is a possible extension.} Once
-        Raft is available as a service, all other services that need
-        cluster-wide consistency (name service, lock service, configuration)
-        are StateMachine implementations on the same substrate. There is one
-        consensus implementation to harden and audit.
+    \item \textbf{A distributed name service is implemented.} The
+        \texttt{dns} service runs the \texttt{CatalogMachine} state machine
+        on the Raft substrate; all other services that need cluster-wide
+        consistency (lock service, configuration) are the same
+        \texttt{StateMachine} pattern. There is one consensus
+        implementation to harden and audit.
 \end{enumerate}
 
 \endinput

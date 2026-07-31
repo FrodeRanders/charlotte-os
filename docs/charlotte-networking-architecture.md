@@ -627,6 +627,16 @@ Legacy software uses TCP/IP.
 
 Native software does not.
 
+> **Implementation note.** The TCP/IP service is implemented as a userspace
+> `tcpip` binary: the smoltcp stack runs through the frame demultiplexer
+> (the frouter routes IPv4 `0x0800` and ARP `0x0806` to it) and exposes a
+> socket-API protocol (`OP_SOCKET`/`OP_CONNECT`/`OP_BIND`/`OP_LISTEN`/
+> `OP_ACCEPT`/`OP_SEND`/`OP_RECV`/`OP_CLOSE`). Rather than riding the
+> reliable-message layer, it sits directly on the Ethernet frame transport
+> as one more frouter consumer — consistent with "TCP/IP is an
+> interoperability service", not the native model. The `httpd` keyhole
+> serves observable state over it (`--http-test`).
+
 ---
 
 # 15. Relationship to IPC
@@ -727,14 +737,14 @@ machine exported as a native CharlotteOS IPC endpoint.
 > completion events, and verifier/test domains terminate rather than polling
 > forever; the settled system reaches the idle/WFI path. A separate
 > single-voter test requires the NVMe-backed object store, restarts the Raft
-> process, and verifies that its recovered term advances. Cross-machine leader
-> election remains blocked on guest software integration, not KVM. The
-> virtio-net initialization/transmit smoke path now passes under macOS QEMU
-> TCG, and two guests can share a socket-backed Ethernet segment. The
-> reliable-message service still needs end-to-end frame transport, followed
-> by a remote Raft transport and distributed-name-service replica wiring.
+> process, and verifies that its recovered term advances. Cross-machine
+> operation is implemented: the reliable-message service exchanges frames
+> through `net0` via the frame demultiplexer, the distributed name service
+> (`dns`) routes Raft peer RPCs over that transport, and two guests on a
+> stream Ethernet segment replicate a `name -> node` catalog and serve remote
+> invocation (`--relmsg-test`/`--disco-test`/`--dns-test`).
 > Commit `2679085` established local two-node IPC election; later scheduler,
-> timer, and lifecycle fixes preserve that result under the current HVF boot.
+> timer, lifecycle, and stream-networking fixes preserve that result.
 
 | Capability | Status |
 |---|---|
@@ -742,10 +752,10 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Charlotte IPC transport (`CharlotteTransport`) | Local peer-connection table and endpoint transport boot-validated |
 | Election/heartbeat clock | Bounded completion-queue wait; no detached timer or polling loop |
 | Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
-| RPC batching | Largest protobuf AppendEntries prefix fitting one 4 KiB attachment; larger logs continue in later RPCs |
+| RPC batching | relmsg now fragments messages to 64 KiB, so a single Raft RPC can carry well beyond one frame; the dns still chunks snapshots at 1200 bytes |
 | Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
-| Cross-machine Raft (NIC driver + reliable message layer) | Host L2 and NIC smoke path available under TCG; reliable-message and remote Raft transport integration pending |
-| Distributed name service (on top of Raft) | Design only; depends on cross-machine Raft |
+| Cross-machine Raft (NIC driver + reliable message layer) | Implemented: two guests exchange relmsg frames over the frouter and replicate the dns catalog (`--dns-test`) |
+| Distributed name service (on top of Raft) | Implemented: `dns` runs the `CatalogMachine` state machine on the Graft core over the relmsg transport; leader-committed registrations replicate and a remote invocation (`OP_CALL`) routes through the catalog |
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -773,7 +783,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
 | Election/heartbeat clock | Bounded `CQ_WAIT` timeout | Implemented without a detached timer or polling loop |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
-| Client command submission | Capability-based endpoint call | `OP_CLIENT_COMMAND` opcode defined; not yet wired to state machine |
+| Client command submission | Capability-based endpoint call | The `dns` service submits `OP_REGISTER`/`OP_LOOKUP`/`OP_CALL` commands to its `CatalogMachine` through the leader; the generic `raft` service's `OP_CLIENT_COMMAND` endpoint remains unwired |
 | Linearizable reads | Reply tokens + read barrier | Supported by `RaftNode` logic; untested end-to-end |
 | Membership changes | Replicated internal commands | `JOIN`, `JOINT`, and `FINALIZE` core semantics implemented; administrative service API not yet exposed |
 
@@ -821,12 +831,12 @@ continued operation after a remote-node crash have not yet been validated.
 
 ## 18.3 Distributed name service (design)
 
-> **Status: local node service implemented; replication is design only.**
-> Each booted node has one shared `ns.rs` registry used by its ordinary
-> services. Making those per-node replicas share cluster state requires
-> (1) the reliable message layer carried over the TCG-validated NIC path,
-> (2) cross-machine Raft validated between separate guests, and
-> (3) the name service refactored as a `StateMachine` implementation.
+> **Status: implemented.** The `dns` service runs the `CatalogMachine` state
+> machine on the Graft core over the relmsg transport. Two guests on a stream
+> Ethernet segment elect a leader, replicate leader-committed `name -> node`
+> registrations, and serve remote invocation (`dns::OP_CALL`) through the
+> catalog. The design below describes the model it realizes; the general
+> `raft` service binary and per-node `ns.rs` refactor remain future work.
 
 Each existing node-local name service becomes a replica of one logical
 cluster service by running the registry as a `StateMachine` on top of Raft:
