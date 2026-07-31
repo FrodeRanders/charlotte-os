@@ -588,7 +588,10 @@ pub mod disco {
 /// proposes a `name -> local node` entry to the cluster (and registers the
 /// connection with the local name service once committed). `OP_LOOKUP`
 /// answers from the replicated catalog: local names resolve to the local
-/// name service, remote names report the hosting node.
+/// name service, remote names report the hosting node. `OP_CALL` is the
+/// remote-invocation entry point: it resolves a name through the catalog and
+/// invokes it locally (when hosted here) or forwards it to the hosting node
+/// over the reliable message layer.
 pub mod dns {
     pub const INTERFACE: u64 = super::name(b"DNS ");
     pub const VERSION: u32 = 1;
@@ -598,6 +601,11 @@ pub mod dns {
     pub const OP_LOOKUP: u32 = 2;
     pub const OP_STATUS: u32 = 3;
     pub const OP_SHUTDOWN: u32 = 4;
+    /// Remote invocation. `arg0` is the packed target service name; the
+    /// attached memory object holds `[target_opcode:u32 LE][arg:i64 LE]`. The
+    /// reply is the target service's scalar result (deferred until the remote
+    /// call completes).
+    pub const OP_CALL: u32 = 5;
 
     /// The name is registered on this node (lookup returns a connection).
     pub const RESULT_LOCAL: i64 = 0;
@@ -607,6 +615,65 @@ pub mod dns {
     pub const ERR_NOT_LEADER: i64 = -2;
     pub const ERR_BAD_OPCODE: i64 = -3;
     pub const ERR_TOO_LARGE: i64 = -4;
+}
+
+/// Remote-invocation wire protocol carried over the reliable message layer.
+///
+/// The distributed name service relays `OP_CALL`s to the node that hosts the
+/// target service. The wire carries a monotonic call id so replies can be
+/// matched to their requests. The transport prepends the type tag:
+/// ```text
+/// request: 0x10 | call_id:u64 | name_len:u8 | name | opcode:u32 | arg:i64
+/// reply:   0x11 | call_id:u64 | result:i64
+/// ```
+pub mod rcall {
+    pub const TAG_REQUEST: u8 = 0x10;
+    pub const TAG_REPLY: u8 = 0x11;
+
+    /// Encode the request body *without* the type tag; the transport adds it.
+    pub fn encode_request(call_id: u64, name: &[u8], opcode: u32, arg: i64) -> alloc::vec::Vec<u8> {
+        let mut frame = alloc::vec::Vec::with_capacity(8 + 1 + name.len() + 12);
+        frame.extend_from_slice(&call_id.to_le_bytes());
+        frame.push(name.len().min(255) as u8);
+        frame.extend_from_slice(&name[..name.len().min(255)]);
+        frame.extend_from_slice(&opcode.to_le_bytes());
+        frame.extend_from_slice(&arg.to_le_bytes());
+        frame
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<(u64, alloc::vec::Vec<u8>, u32, i64)> {
+        if frame.len() < 1 + 8 + 1 + 4 + 8 {
+            return None;
+        }
+        let call_id = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let name_len = frame[9] as usize;
+        let name_off = 10;
+        if frame.len() < name_off + name_len + 12 {
+            return None;
+        }
+        let name = frame[name_off..name_off + name_len].to_vec();
+        let op_off = name_off + name_len;
+        let opcode = u32::from_le_bytes(frame[op_off..op_off + 4].try_into().ok()?);
+        let arg = i64::from_le_bytes(frame[op_off + 4..op_off + 12].try_into().ok()?);
+        Some((call_id, name, opcode, arg))
+    }
+
+    /// Encode the reply body *without* the type tag; the transport adds it.
+    pub fn encode_reply(call_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        let mut frame = alloc::vec::Vec::with_capacity(16);
+        frame.extend_from_slice(&call_id.to_le_bytes());
+        frame.extend_from_slice(&result.to_le_bytes());
+        frame
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, i64)> {
+        if frame.len() < 17 {
+            return None;
+        }
+        let call_id = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let result = i64::from_le_bytes(frame[9..17].try_into().ok()?);
+        Some((call_id, result))
+    }
 }
 
 /// Block until a pending call completes, returning

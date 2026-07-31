@@ -195,6 +195,42 @@ fn drive_inbound(
     }
 }
 
+/// Invoke a service registered with the node-local name service, returning
+/// its scalar result.
+fn invoke_local(ns_conn: u64, name: &[u8], opcode: u32, arg: i64) -> i64 {
+    let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
+    if lookup == 0 {
+        return dns::ERR_NOT_FOUND;
+    }
+    let (generation, conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    if generation < 1 || conn == 0 {
+        return dns::ERR_NOT_FOUND;
+    }
+    let call = ipc_scalar_call(conn, opcode, arg as u64);
+    if call == 0 {
+        return dns::ERR_NOT_FOUND;
+    }
+    let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
+    result
+}
+
+/// Read the `[opcode:u32 LE][arg:i64 LE]` request from an `OP_CALL` memory
+/// object (consuming it).
+fn read_call_request(message: &catten_syscall::IpcMessage) -> (u32, i64) {
+    if message.memory == 0 {
+        return (0, 0);
+    }
+    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        memory_close(message.memory);
+        return (0, 0);
+    }
+    let opcode = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u32) };
+    let arg = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 4) as *const i64) };
+    memory_unmap(message.memory);
+    memory_close(message.memory);
+    (opcode, arg)
+}
+
 fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
@@ -342,6 +378,9 @@ fn main(ctx: Context) -> ! {
     // Deferred registers awaiting commit replication: (log index, reply token,
     // name, service connection).
     let mut pending_registers: Vec<(u64, u64, Vec<u8>, u64)> = Vec::new();
+    // In-flight remote calls awaiting a reply: (call id, client reply token).
+    let mut in_flight_calls: Vec<(u64, u64)> = Vec::new();
+    let mut next_call_id: u64 = 1;
 
     loop {
         let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
@@ -363,9 +402,52 @@ fn main(ctx: Context) -> ! {
                         let frame = unsafe {
                             core::slice::from_raw_parts(RX_SCRATCH as *const u8, len as usize)
                         };
-                        if let Some(inbound) = transport.decode_inbound(&source_mac, frame) {
-                            let millis = node.millis();
-                            drive_inbound(&mut node, &transport, source_mac, inbound, millis);
+                        match frame.first().copied() {
+                            Some(catten_services::rcall::TAG_REQUEST) => {
+                                // A remote invocation addressed to this node:
+                                // execute it against the local name service and
+                                // reply to the caller's MAC.
+                                if let Some((call_id, target, opcode, arg)) =
+                                    catten_services::rcall::decode_request(frame)
+                                {
+                                    let result = match catalog.lookup(&target) {
+                                        Some(owner) if owner == node_name => {
+                                            invoke_local(ns_conn, &target, opcode, arg)
+                                        }
+                                        _ => dns::ERR_NOT_FOUND,
+                                    };
+                                    let reply = catten_services::rcall::encode_reply(call_id, result);
+                                    if let Some(peer) = transport.peer_id_for_mac(&source_mac) {
+                                        transport.send_message(
+                                            &peer,
+                                            catten_services::rcall::TAG_REPLY,
+                                            reply,
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::rcall::TAG_REPLY) => {
+                                // Complete the matching in-flight OP_CALL.
+                                if let Some((call_id, result)) =
+                                    catten_services::rcall::decode_reply(frame)
+                                    && let Some(index) = in_flight_calls
+                                        .iter()
+                                        .position(|(id, _)| *id == call_id)
+                                {
+                                    let (_, reply) = in_flight_calls.swap_remove(index);
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
+                                    }
+                                }
+                            }
+                            _ => {
+                                if let Some(inbound) =
+                                    transport.decode_inbound(&source_mac, frame)
+                                {
+                                    let millis = node.millis();
+                                    drive_inbound(&mut node, &transport, source_mac, inbound, millis);
+                                }
+                            }
                         }
                         memory_unmap(memory);
                     }
@@ -500,6 +582,48 @@ fn main(ctx: Context) -> ! {
                     let result = (state as i64)
                         | ((node.current_term as i64) << 8)
                         | ((catalog.registered_count() as i64) << 32);
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_CALL => {
+                    let name = packed_name(message.arg0);
+                    let (opcode, arg) = read_call_request(&message);
+                    let result = if name.is_empty() {
+                        dns::ERR_TOO_LARGE
+                    } else {
+                        match catalog.lookup(&name) {
+                            Some(owner) if owner == node_name => {
+                                invoke_local(ns_conn, &name, opcode, arg)
+                            }
+                            Some(owner) => {
+                                // Remote: relay to the hosting node's dns over
+                                // the reliable message layer.
+                                let owner_str =
+                                    core::str::from_utf8(&owner).unwrap_or("").to_string();
+                                if let Some(_mac) = transport.mac_for_peer(&owner_str) {
+                                    let call_id = next_call_id;
+                                    next_call_id = next_call_id.wrapping_add(1);
+                                    in_flight_calls.push((call_id, message.reply));
+                                    let frame = catten_services::rcall::encode_request(
+                                        call_id,
+                                        &name,
+                                        opcode,
+                                        arg,
+                                    );
+                                    transport.send_message(
+                                        &owner_str,
+                                        catten_services::rcall::TAG_REQUEST,
+                                        frame,
+                                    );
+                                    continue; // reply completes when the remote REPLY arrives
+                                }
+                                dns::ERR_NOT_FOUND
+                            }
+                            None => dns::ERR_NOT_FOUND,
+                        }
+                    };
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
                     }

@@ -7,6 +7,8 @@
 #![cfg(target_arch = "aarch64")]
 
 mod inner {
+    use alloc::vec::Vec;
+
     use crate::{
         ipc::{
             self,
@@ -36,16 +38,23 @@ mod inner {
     // catten_services::dns opcodes.
     const DNS_OP_REGISTER: u32 = 1;
     const DNS_OP_LOOKUP: u32 = 2;
+    const DNS_OP_CALL: u32 = 5;
     const DNS_RESULT_LOCAL: i64 = 0;
     const DNS_RESULT_REMOTE: i64 = 1;
     const DNS_ERR_NOT_FOUND: i64 = -1;
     // "alpha" packed LE.
     const ALPHA_NAME: u64 = 0x0061_6870_6c61;
+    // "echo" packed LE.
+    const ECHO_NAME: u64 = 0x0000_6f68_6365;
+    // catten_services::echo opcodes.
+    const ECHO_OP_ECHO: u32 = 1;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
     const DNS_ELF: &[u8] =
         include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/dns.elf"));
+    const ECHO_ELF: &[u8] =
+        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
 
     static mut TEST_STATE: Option<NameServiceHandle> = None;
 
@@ -88,6 +97,14 @@ mod inner {
 
     fn call(kernel_conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
         let call = ipc::scalar_call(KERNEL_ASID, kernel_conn, opcode, arg0).ok()?;
+        ipc::wait_reply(KERNEL_ASID, call).ok()?;
+        ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
+    }
+
+    fn call_with_memory(kernel_conn: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
+        let mem = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
+        let call = ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem)
+            .ok()?;
         ipc::wait_reply(KERNEL_ASID, call).ok()?;
         ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
     }
@@ -225,7 +242,57 @@ mod inner {
             "[dns] replicated name must not be unknown"
         );
 
-        logln!("[dns] SUCCESS: Raft-elected name service replicated the catalog.");
+        // ---- Remote invocation through the catalog ----
+        // Host a local echo on every node; the leader publishes it through the
+        // dns, so a client on either node can invoke it by name and the dns
+        // routes to the hosting node over the network.
+        let echo = crate::service::supervisor::spawn_with_name_service(
+            ECHO_ELF,
+            ns,
+            ConnectionRights::CALL,
+        );
+        logln!("[dns] echo spawned (asid={})", echo.asid);
+        let _echo = echo;
+
+        let is_leader = state == 3;
+        if is_leader {
+            // Wait for the local echo to register, then publish it.
+            let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+            while lookup_service(kernel_ns, ECHO_NAME).unwrap_or(0) == 0 {
+                deadline.assert_pending("EL0 dns local echo registration");
+                yield_lp();
+            }
+            let register = call(dns_conn, DNS_OP_REGISTER, ECHO_NAME);
+            logln!("[dns] echo publish result = {register:?}");
+            assert_eq!(register, Some(0), "[dns] echo publish must commit");
+        }
+
+        // Wait for the catalog to carry both names.
+        let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        loop {
+            catalog = unsafe { core::ptr::read_volatile(dns_cfg.add(7)) };
+            if catalog >= 2 {
+                logln!("[dns] catalog carries {catalog} name(s); invoking echo.");
+                break;
+            }
+            deadline.assert_pending("EL0 dns echo publication");
+            yield_lp();
+        }
+
+        // Invoke the echo service by name. If this node hosts it the dns calls
+        // it locally; otherwise the dns relays the call to the hosting node.
+        let mut request = Vec::new();
+        request.extend_from_slice(&ECHO_OP_ECHO.to_le_bytes());
+        request.extend_from_slice(&42i64.to_le_bytes());
+        let echo_result = call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &request);
+        logln!("[dns] remote echo result = {echo_result:?}");
+        assert_eq!(
+            echo_result,
+            Some(42),
+            "[dns] cross-node invocation of echo must return the echoed value"
+        );
+
+        logln!("[dns] SUCCESS: Raft-elected name service replicated the catalog and served a remote invocation.");
         crate::self_test::results::pass(crate::self_test::results::TestId::Dns);
     }
 }

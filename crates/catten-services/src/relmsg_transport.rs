@@ -107,7 +107,13 @@ impl RelmsgRaftTransport {
         self.peer_macs.lock().contains_key(peer_id)
     }
 
-    fn peer_id_for_mac(&self, mac: &[u8; 6]) -> Option<String> {
+    /// The MAC the transport currently routes `peer_id` to.
+    pub fn mac_for_peer(&self, peer_id: &str) -> Option<[u8; 6]> {
+        self.peer_macs.lock().get(peer_id).copied()
+    }
+
+    /// The peer id whose MAC is `mac`.
+    pub fn peer_id_for_mac(&self, mac: &[u8; 6]) -> Option<String> {
         self.peer_macs.lock().iter().find_map(|(id, peer_mac)| {
             if peer_mac == mac {
                 Some(id.clone())
@@ -117,9 +123,28 @@ impl RelmsgRaftTransport {
         })
     }
 
+    /// Enqueue an arbitrary tagged message for `peer_id`, serialized with the
+    /// Raft RPCs on the same per-peer outbound path. Used by the distributed
+    /// name service to relay remote invocations.
+    pub fn send_message(&self, peer_id: &str, tag: u8, payload: Vec<u8>) {
+        self.queue_rpc(peer_id, tag, payload);
+    }
+
     /// Encode `payload` as a tagged outbound RPC and queue it for `peer_id`.
     fn queue_rpc(&self, peer_id: &str, tag: u8, payload: Vec<u8>) {
-        self.outbound.lock().entry(peer_id.to_string()).or_default().push((tag, payload));
+        let mut outbound = self.outbound.lock();
+        let queue = outbound.entry(peer_id.to_string()).or_default();
+        // Coalesce queued heartbeats: a newer AppendEntries supersedes an older
+        // one already waiting, so a slow ACK cannot starve other traffic
+        // (relmsg allows one in-flight send per peer).
+        if tag == TAG_APPEND_REQUEST
+            && queue.last().is_some_and(|(queued_tag, _)| *queued_tag == tag)
+        {
+            *queue.last_mut().expect("queue last") = (tag, payload);
+        } else {
+            queue.push((tag, payload));
+        }
+        drop(outbound);
         self.drain_outbound();
     }
 
