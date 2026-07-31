@@ -67,6 +67,15 @@ const PAGE_SIZE: usize = 4096;
 /// transfers at 512 data pages so a request never needs chained PRP lists.
 const MAX_TRANSFER_PAGES: usize = PAGE_SIZE / core::mem::size_of::<u64>();
 const MAX_TRANSFER_BYTES: u64 = (MAX_TRANSFER_PAGES * PAGE_SIZE) as u64;
+/// Generous spin bounds for controller reset and admin-command completion.
+/// The QEMU NVMe emulation can be slow under TCG, so these are deliberately
+/// large; on expiry the driver aborts initialisation cleanly rather than
+/// proceeding with a wedged controller or hanging forever.
+const RESET_RDY_ZERO_SPINS: usize = 1_000_000;
+const RESET_RDY_ONE_SPINS: usize = 1_000_000;
+const ADMIN_COMPLETION_SPINS: usize = 5_000_000;
+/// Sentinel admin status returned when a command never completes.
+const ADMIN_STATUS_TIMEOUT: u32 = 0xffff;
 
 fn spin_reply(call: u64) -> (i64, u64) {
     let (status, result, cap) = ipc_reply_wait(call);
@@ -426,7 +435,7 @@ unsafe fn admin_submit_and_wait(
         doorbell_write(sq0_tdbl(), aq.sq_tail as u16);
     }
 
-    loop {
+    for _ in 0..ADMIN_COMPLETION_SPINS {
         unsafe {
             let (phase_match, sf, _cid) = read_cqe(aq.cq_base, aq.cq_head, aq.cq_phase);
             if phase_match {
@@ -443,6 +452,8 @@ unsafe fn admin_submit_and_wait(
             }
         }
     }
+    config::write::<u32>(4, 0xe0);
+    ADMIN_STATUS_TIMEOUT
 }
 
 // ---------------------------------------------------------------------------
@@ -451,14 +462,20 @@ unsafe fn admin_submit_and_wait(
 
 unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     config::write::<u32>(4, 10); // entering nvme_init
-    // 1. Reset controller: disable, wait for RDY=0 with a timeout
+    // 1. Reset controller: disable, wait for RDY=0 with a generous bound.
     unsafe {
         write32(reg::CC, 0);
-        for _ in 0..100_000 {
+        let mut ready_zero = false;
+        for _ in 0..RESET_RDY_ZERO_SPINS {
             if read32(reg::CSTS) & CSTS_RDY == 0 {
+                ready_zero = true;
                 break;
             }
             core::hint::spin_loop();
+        }
+        if !ready_zero {
+            config::write::<u32>(4, 0xe1);
+            return None;
         }
     }
     config::write::<u32>(4, 11); // controller reset
@@ -486,8 +503,17 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
         write64(reg::ASQ, asq_mem.phys);
         write64(reg::ACQ, acq_mem.phys);
         write32(reg::CC, CC_EN | CC_IOSQES | CC_IOCQES);
-        while read32(reg::CSTS) & CSTS_RDY == 0 {
+        let mut ready_one = false;
+        for _ in 0..RESET_RDY_ONE_SPINS {
+            if read32(reg::CSTS) & CSTS_RDY != 0 {
+                ready_one = true;
+                break;
+            }
             core::hint::spin_loop();
+        }
+        if !ready_one {
+            config::write::<u32>(4, 0xe2);
+            return None;
         }
     }
     config::write::<u32>(4, 14); // controller enabled
@@ -525,6 +551,9 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let test_sf =
         unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.phys) };
     config::write::<u32>(48, test_sf);
+    if test_sf != 0 {
+        return None;
+    }
 
     // Set Features: Number of Queues (FID=0x07). CDW11 = (NCQR << 16) | NSQR.
     // Request 1 I/O CQ and 1 I/O SQ.
@@ -533,6 +562,9 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let nq_sf =
         unsafe { admin_submit_and_wait(&mut aq, ADMIN_SET_FEATURES, 0, nq_cdw10, nq_cdw11, 0) };
     config::write::<u32>(72, nq_sf);
+    if nq_sf != 0 {
+        return None;
+    }
 
     // 4. Identify namespace 1 (CNS=0)
     let id_ns_mem = alloc_queue_memory(1, PAGE_SIZE)?;

@@ -107,13 +107,15 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = client.status_frame.into();
         base as *const u32
     };
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
     while unsafe { core::ptr::read_volatile(client_cfg) } != 0x900d {
         let state = unsafe { core::ptr::read_volatile(client_cfg) };
         assert!(state < 0xdea0, "[nvme] I/O verifier failed: {:#x}", state);
-        // This verifier shares scheduler capacity with the interrupt-driven
-        // driver. Sleeping both avoids burning a guest core and gives thread
-        // context a chance to drain the IRQ handler's deferred CQ wake.
-        crate::cpu::scheduler::sleep_millis(1);
+        deadline.assert_pending("EL0 nvme I/O client sentinel");
+        // Yield rather than blocking on a timer: the interrupt-driven driver
+        // shares scheduler capacity, and a timer wait that is not delivered
+        // would leave the deadline unchecked (observed as a silent hang).
+        crate::cpu::scheduler::yield_lp();
     }
     let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
     assert_eq!(
@@ -141,8 +143,10 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
 
     // Wait for object store to register
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
     while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
-        crate::cpu::scheduler::sleep_millis(1);
+        deadline.assert_pending("EL0 nvme objstore registration");
+        crate::cpu::scheduler::yield_lp();
     }
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
@@ -170,11 +174,16 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = object_client.status_frame.into();
         base as *const u32
     };
-    crate::ipc::wait_reply(crate::memory::KERNEL_ASID, completion_lookup)
-        .expect("[nvme] blocking object-client completion lookup");
-    let completion = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup)
-        .expect("[nvme] object-client completion reply")
-        .expect("[nvme] object-client completion missing");
+    let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+    let completion = loop {
+        match crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup) {
+            Ok(Some(reply)) => break reply,
+            Ok(None) => {}
+            Err(_) => panic!("[nvme] object-client completion reply error"),
+        }
+        deadline.assert_pending("EL0 nvme object-client completion");
+        crate::cpu::scheduler::yield_lp();
+    };
     assert!(completion.result >= 1, "[nvme] invalid object-client completion generation");
     if let Some(connection) = completion.cap {
         crate::ipc::close_cap(crate::memory::KERNEL_ASID, connection)
@@ -198,7 +207,7 @@ extern "C" fn verify_el0_nvme() {
     // The completion service reports that the client finished its work, not
     // that the scheduler has reaped its initial thread. Wait for that separate
     // lifecycle event before releasing the address space.
-    supervisor::wait_domain_exit(&object_client, 10_000);
+    supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client);
     crate::self_test::el0_service::verify_persistent_upgrade(&ns);
     crate::self_test::el0_raft::test_persistent_raft(&ns);
