@@ -5,7 +5,10 @@
 extern crate alloc;
 
 use alloc::{
-    collections::VecDeque,
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
     vec::Vec,
 };
 
@@ -39,12 +42,16 @@ use catten_syscall::{
     thread_exit,
 };
 use charlotte_protocol_msg::{
+    ETHERNET_HEADER_SIZE,
     FLAG_ACK,
+    FLAG_FRAG,
+    FLAG_MORE,
     FRAME_HEADER_SIZE,
     MAX_PAYLOAD_SIZE,
     build_frame_header,
     pack_address_and_len,
     parse_frame_header_checked,
+    set_fragment_offset,
     unpack_address_and_len,
 };
 use charlotte_protocol_net::decode_status;
@@ -65,8 +72,35 @@ struct Outbound {
     seq: u32,
     reply: u64,
     payload_len: usize,
-    frame: Vec<u8>,
+    /// One frame per fragment of the message (a single frame for messages
+    /// that fit one Ethernet payload).
+    frames: Vec<Vec<u8>>,
     retries: u32,
+}
+
+/// In-progress reassembly of a fragmented inbound message. Fragments may
+/// arrive in any order; they are buffered by offset and assembled once the
+/// last fragment (no `FLAG_MORE`) is present.
+struct Reassembly {
+    seq: u32,
+    /// Fragment offset -> payload bytes, deduplicated by offset.
+    fragments: BTreeMap<usize, Vec<u8>>,
+    /// Total message length, set when the last fragment arrives.
+    total: Option<usize>,
+}
+
+/// Assemble the buffered fragments into one contiguous message, or `None` if
+/// a fragment is still missing (a gap from offset 0 to `total`).
+fn try_assemble(reassembly: &Reassembly) -> Option<Vec<u8>> {
+    let total = reassembly.total?;
+    let mut out = Vec::with_capacity(total);
+    let mut offset = 0usize;
+    while offset < total {
+        let bytes = reassembly.fragments.get(&offset)?;
+        out.extend_from_slice(bytes);
+        offset += bytes.len();
+    }
+    (offset == total).then_some(out)
 }
 
 struct Peer {
@@ -74,6 +108,7 @@ struct Peer {
     next_tx_seq: u32,
     next_rx_seq: u32,
     pending: Option<Outbound>,
+    reassembling: Option<Reassembly>,
 }
 
 impl Peer {
@@ -83,6 +118,7 @@ impl Peer {
             next_tx_seq: 1,
             next_rx_seq: 1,
             pending: None,
+            reassembling: None,
         }
     }
 }
@@ -166,7 +202,9 @@ fn retransmit_pending(net_conn: u64, peers: &mut [Peer]) {
             continue;
         }
         pending.retries += 1;
-        let _ = send_frame(net_conn, &pending.frame);
+        for frame in &pending.frames {
+            let _ = send_frame(net_conn, frame);
+        }
     }
 }
 
@@ -177,7 +215,8 @@ fn process_frame(
     peers: &mut Vec<Peer>,
     received: &mut VecDeque<ReceivedMessage>,
 ) {
-    let Ok((destination, source, seq, ack, payload_len, flags)) = parse_frame_header_checked(frame)
+    let Ok((destination, source, seq, ack, payload_len, flags, frag_offset)) =
+        parse_frame_header_checked(frame)
     else {
         return;
     };
@@ -200,32 +239,88 @@ fn process_frame(
     }
     let payload_len = payload_len as usize;
     let payload = &frame[FRAME_HEADER_SIZE..FRAME_HEADER_SIZE + payload_len];
-    let peer = &mut peers[index];
-    if seq == peer.next_rx_seq {
-        let cap = memory_alloc(1);
-        if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    payload.as_ptr(),
-                    PAYLOAD_SCRATCH as *mut u8,
-                    payload_len,
-                );
+    let is_frag = flags & FLAG_FRAG != 0;
+    let frag_offset = frag_offset as usize;
+
+    if seq == peers[index].next_rx_seq {
+        if !is_frag {
+            // Single-frame message: deliver immediately.
+            let cap = memory_alloc(1);
+            if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        payload.as_ptr(),
+                        PAYLOAD_SCRATCH as *mut u8,
+                        payload_len,
+                    );
+                }
+                memory_unmap(cap);
+                received.push_back(ReceivedMessage {
+                    source,
+                    cap,
+                    len: payload_len,
+                });
+                peers[index].next_rx_seq = peers[index].next_rx_seq.wrapping_add(1).max(1);
+            } else if cap != 0 {
+                memory_close(cap);
             }
-            memory_unmap(cap);
-            received.push_back(ReceivedMessage {
-                source,
-                cap,
-                len: payload_len,
-            });
-            peer.next_rx_seq = peer.next_rx_seq.wrapping_add(1).max(1);
-        } else if cap != 0 {
-            memory_close(cap);
+        } else {
+            // Fragment of the expected message: buffer it by offset (any
+            // arrival order) and assemble once the last fragment is present.
+            let peer = &mut peers[index];
+            if peer.reassembling.as_ref().is_none_or(|ra| ra.seq != seq) {
+                peer.reassembling = Some(Reassembly {
+                    seq,
+                    fragments: BTreeMap::new(),
+                    total: None,
+                });
+            }
+            let within_ceiling = frag_offset
+                .checked_add(payload_len)
+                .is_some_and(|end| end <= relmsg::MAX_MSG);
+            if within_ceiling {
+                if let Some(ra) = peer.reassembling.as_mut() {
+                    ra.fragments.insert(frag_offset, payload.to_vec());
+                    if flags & FLAG_MORE == 0 {
+                        ra.total = Some(frag_offset + payload_len);
+                    }
+                }
+            }
+            // Assemble and deliver if every fragment is now present. On a
+            // delivery failure, drop the reassembly state; the sender
+            // retransmits and reassembly restarts (next_rx_seq did not
+            // advance).
+            let assembled = peer.reassembling.as_ref().and_then(try_assemble);
+            if let Some(message_bytes) = assembled {
+                let total = message_bytes.len();
+                let pages = total.div_ceil(4096).max(1);
+                let cap = memory_alloc(pages);
+                if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            message_bytes.as_ptr(),
+                            PAYLOAD_SCRATCH as *mut u8,
+                            total,
+                        );
+                    }
+                    memory_unmap(cap);
+                    received.push_back(ReceivedMessage {
+                        source,
+                        cap,
+                        len: total,
+                    });
+                    peer.next_rx_seq = peer.next_rx_seq.wrapping_add(1).max(1);
+                } else if cap != 0 {
+                    memory_close(cap);
+                }
+                peer.reassembling = None;
+            }
         }
     }
 
     // Cumulative acknowledgement: duplicates are acknowledged again, while
     // out-of-order frames acknowledge the last contiguous sequence.
-    let last_contiguous = peer.next_rx_seq.wrapping_sub(1);
+    let last_contiguous = peers[index].next_rx_seq.wrapping_sub(1);
     let ack_frame = make_frame(source, local_mac, 0, last_contiguous, FLAG_ACK, &[]);
     let _ = send_frame(net_conn, &ack_frame);
 }
@@ -324,7 +419,7 @@ fn main(ctx: Context) -> ! {
                 let payload_len = payload_len as usize;
                 if message.memory == 0
                     || payload_len == 0
-                    || payload_len > MAX_PAYLOAD_SIZE.min(relmsg::MAX_MSG)
+                    || payload_len > relmsg::MAX_MSG
                     || destination == local_mac
                 {
                     if message.memory != 0 {
@@ -352,11 +447,47 @@ fn main(ctx: Context) -> ! {
                     core::slice::from_raw_parts(PAYLOAD_SCRATCH as *const u8, payload_len)
                 };
                 let seq = peers[index].next_tx_seq;
-                let frame = make_frame(destination, local_mac, seq, 0, 0, payload);
+
+                // Split the message into one frame per fragment (a single
+                // frame when it fits). All fragments share the message seq;
+                // each carries its byte offset and FLAG_FRAG (+ FLAG_MORE
+                // except the last).
+                let mut frames: Vec<Vec<u8>> = Vec::new();
+                let mut offset = 0usize;
+                while offset < payload_len {
+                    let chunk_len = (payload_len - offset).min(MAX_PAYLOAD_SIZE);
+                    let chunk = &payload[offset..offset + chunk_len];
+                    let last = offset + chunk_len >= payload_len;
+                    let fragmented = payload_len > MAX_PAYLOAD_SIZE;
+                    let flags = if !fragmented {
+                        0
+                    } else if last {
+                        FLAG_FRAG
+                    } else {
+                        FLAG_FRAG | FLAG_MORE
+                    };
+                    let mut frame = make_frame(destination, local_mac, seq, 0, flags, chunk);
+                    if flags & FLAG_FRAG != 0 {
+                        let header: &mut [u8; 16] = (&mut frame
+                            [ETHERNET_HEADER_SIZE..FRAME_HEADER_SIZE])
+                            .try_into()
+                            .expect("relmsg header slice");
+                        set_fragment_offset(header, offset as u16);
+                    }
+                    frames.push(frame);
+                    offset += chunk_len;
+                }
                 memory_unmap(message.memory);
                 memory_close(message.memory);
-                config::write::<u32>(12, 1);
-                if !send_frame(net_conn, &frame) {
+
+                let mut send_ok = true;
+                for frame in &frames {
+                    if !send_frame(net_conn, frame) {
+                        send_ok = false;
+                        break;
+                    }
+                }
+                if !send_ok {
                     config::write::<u32>(12, 0xe001);
                     ipc_reply(message.reply, relmsg::ERR_PEER_UNREACHABLE);
                     continue;
@@ -367,7 +498,7 @@ fn main(ctx: Context) -> ! {
                     seq,
                     reply: message.reply,
                     payload_len,
-                    frame,
+                    frames,
                     retries: 0,
                 });
             }

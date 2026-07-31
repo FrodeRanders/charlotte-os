@@ -2,6 +2,8 @@
 #![no_std]
 #![no_main]
 
+extern crate alloc;
+
 use catten_rt::{
     Context,
     config,
@@ -29,10 +31,21 @@ use charlotte_protocol_msg::{
 
 const SCRATCH: usize = 0x0000_0000_00a0_0000;
 const SENTINEL: u32 = 0xc0de_cafe;
-const PAYLOAD: &[u8] = b"CharlotteOS relmsg cross-node";
+/// Large enough to span multiple relmsg frames (~1468 each), exercising the
+/// fragmentation/reassembly path on both the send and receive sides.
+const PAYLOAD_LEN: usize = 3000;
+
+fn build_payload() -> alloc::vec::Vec<u8> {
+    let mut payload = alloc::vec::Vec::with_capacity(PAYLOAD_LEN);
+    for i in 0..PAYLOAD_LEN {
+        payload.push((i as u8).wrapping_mul(31).wrapping_add(7));
+    }
+    payload
+}
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1);
+    let payload = build_payload();
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -86,11 +99,11 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 14);
     unsafe {
-        core::ptr::copy_nonoverlapping(PAYLOAD.as_ptr(), SCRATCH as *mut u8, PAYLOAD.len());
+        core::ptr::copy_nonoverlapping(payload.as_ptr(), SCRATCH as *mut u8, payload.len());
     }
     memory_unmap(cap);
     config::write::<u32>(0, 15);
-    let destination = pack_address_and_len(peer_mac, PAYLOAD.len() as u16);
+    let destination = pack_address_and_len(peer_mac, payload.len() as u16);
     let send = ipc_scalar_call_move(relmsg_conn, relmsg::OP_SEND, destination, cap);
     if send == 0 {
         config::write::<u32>(0, 0xe003);
@@ -99,7 +112,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 16);
     let (send_result, _) = unsafe { wait_reply(send, 0) };
-    if send_result != PAYLOAD.len() as i64 {
+    if send_result != payload.len() as i64 {
         config::write::<i64>(8, send_result);
         config::write::<u32>(0, 0xe004);
         unsafe { thread_exit() };
@@ -109,7 +122,7 @@ fn main(ctx: Context) -> ! {
     let (status, source_and_len, _connection, received) = ipc_reply_wait_with_memory(receive);
     ipc_close(receive);
     let (source, len) = unpack_address_and_len(source_and_len);
-    if status != 0 || received == 0 || source != peer_mac || len as usize != PAYLOAD.len() {
+    if status != 0 || received == 0 || source != peer_mac || len as usize != payload.len() {
         if received != 0 {
             memory_close(received);
         }
@@ -120,7 +133,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     let bytes = unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, len as usize) };
-    let matches = bytes == PAYLOAD;
+    let matches = bytes == payload.as_slice();
     memory_unmap(received);
     memory_close(received);
     if !matches {

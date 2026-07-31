@@ -592,7 +592,11 @@ pub mod relmsg {
     pub const ERR_BUSY: i64 = -4;
 
     pub const MAX_PEERS: usize = 16;
-    pub const MAX_MSG: usize = 1400;
+    /// Maximum application message payload in bytes. Messages larger than one
+    /// frame are fragmented across multiple `charlotte-protocol-msg` frames
+    /// (the frame payload limit is `MAX_PAYLOAD_SIZE`); 65535 is the u16
+    /// message-length ceiling in the address/length packing.
+    pub const MAX_MSG: usize = 65535;
     pub const RETRANSMIT_MS: u64 = 200;
     /// Permit peers that boot at different speeds to rendezvous without
     /// making an application-level send wait forever.

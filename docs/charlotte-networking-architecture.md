@@ -356,6 +356,15 @@ Provides:
 
 This layer exports **messages**, not streams.
 
+Fragmentation is implemented: a message larger than one frame's payload
+(~1468 bytes) is split across frames that share the message's sequence
+number; each fragment carries its byte offset and a `FLAG_FRAG`/`FLAG_MORE`
+pair in the header's reserved bits. The receiver reassembles contiguous
+fragments of the expected message before delivering one message. The
+application-level message ceiling is `relmsg::MAX_MSG` (65535 bytes, the u16
+length field); a message that still exceeds one frame is fragmented
+automatically.
+
 ---
 
 ## RPC Layer
