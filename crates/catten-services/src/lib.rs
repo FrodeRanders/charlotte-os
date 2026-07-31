@@ -437,6 +437,18 @@ pub mod socket {
     pub const OP_RECV: u32 = 7;
     pub const OP_CLOSE: u32 = 8;
     pub const OP_FRAME: u32 = 9;
+    /// Reply moves a page holding the packed `TcpipStatus` snapshot
+    /// (`crate::socket::STATUS_*` layout).
+    pub const OP_STATUS: u32 = 10;
+
+    /// `TcpipStatus` snapshot layout (all little-endian u32 words in a moved
+    /// page). Offsets are in u32 words from the base of the reply page.
+    pub const STATUS_OFFSET_IP: u32 = 0;
+    pub const STATUS_OFFSET_RX_FRAMES: u32 = 1;
+    pub const STATUS_OFFSET_TX_SENDS: u32 = 2;
+    pub const STATUS_OFFSET_SOCKETS: u32 = 3;
+    pub const STATUS_OFFSET_MAGIC: u32 = 4;
+    pub const STATUS_MAGIC: u32 = 0x5443_5053;
 
     pub const ERR_TOO_MANY_SOCKETS: i64 = -1;
     pub const ERR_BAD_SOCKET: i64 = -2;

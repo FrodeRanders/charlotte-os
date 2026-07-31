@@ -20,10 +20,11 @@
 //!
 //! ## Launch manifest
 //!
+//! - `ip`: optional local IPv4 address as four bytes. Defaults to a
+//!   MAC-derived `10.0.0.(100 + mac[5] % 100)`; override with `10.0.2.15`
+//!   (plus `gateway`) when the guest sits on a SLIRP user network.
 //! - `gateway`: optional IPv4 default-route gateway as four bytes. Omit on a
-//!   raw two-node link: same-subnet peers are reached directly. The local
-//!   address is derived from the NIC MAC (10.0.0.(100 + mac[5] % 100)) so
-//!   both guests are self-configuring.
+//!   raw two-node link: same-subnet peers are reached directly.
 #![no_std]
 #![no_main]
 
@@ -157,7 +158,13 @@ fn main(ctx: Context) -> ! {
     let (_link, mac) = decode_status(status);
     let mtu: usize = 1500;
 
-    let local_ip = Ipv4Address::new(10, 0, 0, 100u8.wrapping_add(mac[5] % 100));
+    let default_ip = Ipv4Address::new(10, 0, 0, 100u8.wrapping_add(mac[5] % 100));
+    let local_ip = match ctx.manifest_value(charlotte_launch::manifest_key(b"ip")) {
+        Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
+            Ipv4Address::new(raw[0], raw[1], raw[2], raw[3])
+        }
+        _ => default_ip,
+    };
     let gateway = match ctx.manifest_value(charlotte_launch::manifest_key(b"gateway")) {
         Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
             Some(Ipv4Address::new(raw[0], raw[1], raw[2], raw[3]))
@@ -498,6 +505,38 @@ fn main(ctx: Context) -> ! {
                     rx_total = rx_total.wrapping_add(1);
                     config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
                     ipc_reply(msg.reply, 0);
+                }
+
+                socket::OP_STATUS => {
+                    // Move a page with the packed TcpipStatus snapshot so the
+                    // httpd keyhole can render live service counters.
+                    let cap = memory_alloc(1);
+                    if cap == 0 {
+                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
+                        continue;
+                    }
+                    if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+                        memory_close(cap);
+                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
+                        continue;
+                    }
+                    let octets = local_ip.octets();
+                    let words = [
+                        u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]]),
+                        rx_total,
+                        tx_ok,
+                        state.sockets.len() as u32,
+                        socket::STATUS_MAGIC,
+                    ];
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            words.as_ptr(),
+                            SCRATCH_VADDR as *mut u32,
+                            words.len(),
+                        );
+                    }
+                    memory_unmap(cap);
+                    ipc_reply_move(msg.reply, cap, (words.len() * 4) as i64);
                 }
 
                 _ => {

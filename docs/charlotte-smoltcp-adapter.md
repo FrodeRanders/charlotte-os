@@ -111,3 +111,26 @@ scripts/run-aarch64.sh release --tcpip-test \
 
 Each guest's tcpip client resolves the peer MAC over ARP, completes the TCP
 handshake, transfers a payload, and verifies the echoed bytes.
+
+## HTTP keyhole
+
+`httpd.elf` turns the stack into a read-only "keyhole": a hardcoded HTTP
+server on port 80 that answers every request with a small JSON page of
+observable state (`node` MAC/link, `tcpip` ip/rx/tx/sockets, `http`
+request/uptime counters). It consumes the same socket API as the smoke
+client — one connection at a time, no keep-alive, deliberately not a web
+server.
+
+From the host, run the guest on the SLIRP user network with a hostfwd and
+curl the page:
+
+```
+scripts/run-aarch64.sh release --http-test --instance http --smp 2 --timeout 90
+curl -s http://127.0.0.1:8080/
+```
+
+The guest self-test (`http_net_test`) verifies the httpd reaches its
+listening stage; the run script then validates the JSON round trip from the
+host. The guest uses `10.0.2.15` (SLIRP's default) with a default route via
+`10.0.2.2` — the `ip`/`gateway` launch-manifest overrides the MAC-derived
+address used on the raw two-node link.

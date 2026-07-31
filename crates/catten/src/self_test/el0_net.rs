@@ -37,7 +37,8 @@ const RELMSG_ELF: &[u8] =
 #[cfg(any(
     feature = "relmsg_net_test",
     feature = "disco_net_test",
-    feature = "tcpip_net_test"
+    feature = "tcpip_net_test",
+    feature = "http_net_test"
 ))]
 const FROUTER_ELF: &[u8] =
     include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/frouter.elf"));
@@ -123,7 +124,8 @@ extern "C" fn verify_el0_net() {
     #[cfg(any(
         feature = "relmsg_net_test",
         feature = "disco_net_test",
-        feature = "tcpip_net_test"
+        feature = "tcpip_net_test",
+        feature = "http_net_test"
     ))]
     let frouter_config = {
         let frouter = supervisor::spawn_with_name_service(FROUTER_ELF, ns, ConnectionRights::CALL);
@@ -133,7 +135,11 @@ extern "C" fn verify_el0_net() {
         frouter.status_frame
     };
     #[cfg(all(
-        any(feature = "disco_net_test", feature = "tcpip_net_test"),
+        any(
+            feature = "disco_net_test",
+            feature = "tcpip_net_test",
+            feature = "http_net_test"
+        ),
         not(feature = "relmsg_net_test")
     ))]
     let _ = frouter_config;

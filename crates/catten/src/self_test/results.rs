@@ -64,10 +64,11 @@ pub enum TestId {
     Disco = 19,
     Dns = 20,
     Tcpip = 21,
+    Http = 22,
 }
 
 impl TestId {
-    const ALL: [Self; 22] = [
+    const ALL: [Self; 23] = [
         Self::El0,
         Self::Raft,
         Self::RaftStorage,
@@ -90,6 +91,7 @@ impl TestId {
         Self::Disco,
         Self::Dns,
         Self::Tcpip,
+        Self::Http,
     ];
 
     const fn name(self) -> &'static str {
@@ -116,6 +118,7 @@ impl TestId {
             Self::Disco => "disco",
             Self::Dns => "dns",
             Self::Tcpip => "tcpip",
+            Self::Http => "http",
         }
     }
 }
@@ -172,6 +175,8 @@ pub fn register_boot_suite() {
     register(TestId::Dns);
     #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
     register(TestId::Tcpip);
+    #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
+    register(TestId::Http);
 }
 
 pub fn pass(id: TestId) {

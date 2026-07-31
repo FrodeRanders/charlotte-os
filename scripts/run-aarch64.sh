@@ -26,6 +26,10 @@
 #   --tcpip-test  Run the TCP/IP test: smoltcp adapter over the frouter,
 #               exchanging TCP data between two guests (both guests must
 #               run it, implies --net-test)
+#   --http-test   Run the HTTP keyhole test: a hardcoded HTTP server on the
+#               guest's tcpip stack serving observable state, reached from
+#               the host via SLIRP hostfwd (single guest, user network;
+#               implies --net-test)
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -46,6 +50,7 @@ RELMSG_TEST="0"
 DISCO_TEST="0"
 DNS_TEST="0"
 TCPIP_TEST="0"
+HTTP_TEST="0"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
@@ -70,6 +75,7 @@ while [ "$#" -gt 0 ]; do
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
+        --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -107,6 +113,10 @@ if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
 fi
 if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
     echo "error: --tcpip-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
+    echo "error: --http-test requires the default user network (hostfwd)" >&2
     exit 1
 fi
 
@@ -197,6 +207,9 @@ if [ "$DNS_TEST" = "1" ]; then
 fi
 if [ "$TCPIP_TEST" = "1" ]; then
     FEATURES="${FEATURES},tcpip_net_test"
+fi
+if [ "$HTTP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},http_net_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
@@ -309,7 +322,14 @@ if [ "$NET_TEST" = "1" ]; then
     QEMU_OPTS+=(-nic none)
     case "$NET_BACKEND" in
         user)
-            QEMU_OPTS+=(-netdev user,id=charlotte-net)
+            if [ "$HTTP_TEST" = "1" ]; then
+                # Host-side keyhole: forward host:8080 to the guest's httpd
+                # (port 80) so `curl localhost:8080` reaches the JSON state
+                # page through the SLIRP user network.
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::8080-:80")
+            else
+                QEMU_OPTS+=(-netdev user,id=charlotte-net)
+            fi
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"
@@ -344,6 +364,8 @@ if [ -n "$TIMEOUT" ]; then
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
     SELFTEST_COMPLETE=0
+    HTTP_PROBED=0
+    HTTP_PROBE_OK=0
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
@@ -355,6 +377,28 @@ if [ -n "$TIMEOUT" ]; then
                 cat "$LOG"
             fi
             exit 1
+        fi
+        # Probe the guest HTTP keyhole once the httpd reports listening,
+        # retrying a few times for the SLIRP/smoltcp path to settle.
+        if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
+            && grep -Fq "httpd is listening" "$LOG"; then
+            HTTP_PROBED=1
+            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:8080/ ..."
+            for _ in 1 2 3 4 5 6 7 8; do
+                HTTP_BODY="$(curl -fsS --max-time 5 http://127.0.0.1:8080/ 2>&1 || true)"
+                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":'; then
+                    HTTP_PROBE_OK=1
+                    break
+                fi
+                sleep 2
+            done
+            echo ">>> Guest HTTP keyhole response:"
+            echo "$HTTP_BODY"
+            if [ "$HTTP_PROBE_OK" = "1" ]; then
+                echo ">>> HTTP keyhole validated from the host."
+            else
+                echo "error: guest HTTP keyhole did not return the expected JSON state page" >&2
+            fi
         fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
             SELFTEST_COMPLETE=1
@@ -433,6 +477,10 @@ if [ -n "$TIMEOUT" ]; then
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
+    if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "1" ] && [ "$HTTP_PROBE_OK" = "0" ]; then
+        echo "error: guest HTTP keyhole was not validated from the host" >&2
+        exit 1
+    fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1

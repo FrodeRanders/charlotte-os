@@ -65,6 +65,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "httpd"
+path = "src/bin/httpd.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "raft"
 path = "src/bin/raft.rs"
 test = false

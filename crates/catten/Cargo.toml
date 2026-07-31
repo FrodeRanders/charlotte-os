@@ -42,6 +42,10 @@ dns_net_test = ["disco_net_test"]
 # Run the TCP/IP test: the smoltcp userspace adapter served through the
 # frouter, exchanging TCP data between two guests on a QEMU stream LAN.
 tcpip_net_test = ["virtio_net_test"]
+# Run the HTTP keyhole test: a hardcoded HTTP server on port 80 serving
+# observable node state over the tcpip service, reachable from the host via
+# SLIRP hostfwd (single guest, user network).
+http_net_test = ["virtio_net_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []
