@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twelve
+This directory contains finite, executable specifications for thirteen
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -9,6 +9,7 @@ CharlotteOS subsystems:
 | Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
+| Reusable ASID generation identity | `CharlotteAddressSpace.tla` | `CharlotteAddressSpace_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
 | DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
@@ -34,8 +35,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all twelve complete fast configurations plus expected-failure endpoint
-  observer and scheduler regression configurations;
+- runs all thirteen complete fast configurations plus expected-failure
+  endpoint-observer, scheduler, and address-space regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -55,6 +56,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteScheduler -config CharlotteScheduler_small.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteAddressSpace -config CharlotteAddressSpace_small.cfg \
+  -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteServiceLifecycle -config CharlotteServiceLifecycle_small.cfg \

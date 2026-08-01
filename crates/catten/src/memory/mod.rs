@@ -36,6 +36,27 @@ pub use crate::{
 
 pub type AddressSpaceId = usize;
 
+/// Stable identity for one occupancy of an address-space table slot.
+///
+/// The numeric ASID is intentionally reusable. Long-lived authorities and
+/// lifecycle operations must retain this handle so a delayed operation for a
+/// dead domain cannot act on a replacement that inherited the same ASID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddressSpaceHandle {
+    id: AddressSpaceId,
+    generation: usize,
+}
+
+impl AddressSpaceHandle {
+    pub const fn id(self) -> AddressSpaceId {
+        self.id
+    }
+
+    pub const fn generation(self) -> usize {
+        self.generation
+    }
+}
+
 /*The kernel address space is always ASID 0 and it is handled differently from userspace address
  * spaces because it needs to be initialized and accessible before the kernel allocator is
  * constructed and initialized.
@@ -66,6 +87,40 @@ pub static ADDRESS_SPACE_TABLE: LazyLock<Mutex<AddressSpaceTable>> = LazyLock::n
 pub enum AddressSpaceCloseError {
     KernelAddressSpace,
     AddressSpaceMissing,
+    StaleHandle,
+}
+
+/// Serializes allocation and teardown across resource cleanup. This prevents
+/// an ASID slot from being reused while cleanup keyed by its numeric id is in
+/// progress.
+static ADDRESS_SPACE_LIFECYCLE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// Add an address space and return the generation-bearing identity of this
+/// particular slot occupancy.
+pub fn register_user_address_space(address_space: AddressSpace) -> AddressSpaceHandle {
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let mut table = ADDRESS_SPACE_TABLE.lock();
+    let id = table.add_element(address_space);
+    debug_assert_ne!(id, KERNEL_ASID);
+    let generation = table.generation(id).expect("new address space missing generation");
+    AddressSpaceHandle {
+        id,
+        generation,
+    }
+}
+
+/// Return the identity currently occupying `asid`.
+pub fn current_address_space_handle(asid: AddressSpaceId) -> Option<AddressSpaceHandle> {
+    let table = ADDRESS_SPACE_TABLE.lock();
+    table.generation(asid).ok().map(|generation| AddressSpaceHandle {
+        id: asid,
+        generation,
+    })
+}
+
+/// Whether `handle` still denotes the active occupant of its ASID slot.
+pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
+    ADDRESS_SPACE_TABLE.lock().generation(handle.id).ok() == Some(handle.generation)
 }
 
 /// Tear down kernel-owned resources attached to a user address space, then
@@ -75,8 +130,38 @@ pub enum AddressSpaceCloseError {
 /// owns capability/resource cleanup and the page-table object lifetime; it is
 /// not a process scheduler.
 pub fn close_user_address_space(asid: AddressSpaceId) -> Result<(), AddressSpaceCloseError> {
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let generation = ADDRESS_SPACE_TABLE
+        .lock()
+        .generation(asid)
+        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)?;
+    close_user_address_space_locked(AddressSpaceHandle {
+        id: asid,
+        generation,
+    })
+}
+
+/// Close one exact address-space lifetime, rejecting a handle left behind by
+/// ASID reuse.
+pub fn close_user_address_space_handle(
+    handle: AddressSpaceHandle,
+) -> Result<(), AddressSpaceCloseError> {
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    close_user_address_space_locked(handle)
+}
+
+fn close_user_address_space_locked(
+    handle: AddressSpaceHandle,
+) -> Result<(), AddressSpaceCloseError> {
+    let asid = handle.id;
     if asid == KERNEL_ASID {
         return Err(AddressSpaceCloseError::KernelAddressSpace);
+    }
+
+    match ADDRESS_SPACE_TABLE.lock().generation(asid) {
+        Ok(generation) if generation == handle.generation => {}
+        Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
+        Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
 
     // DMA mappings must be revoked before memory-object teardown releases

@@ -58,6 +58,7 @@ mod inner {
             .generation;
         ServiceDomain {
             asid: addr.asid,
+            address_space: addr.address_space,
             tid,
             generation,
             config_frame: addr.config_frame,

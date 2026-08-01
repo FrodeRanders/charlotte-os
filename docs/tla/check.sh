@@ -102,6 +102,10 @@ run_model CharlotteScheduler CharlotteScheduler_small.cfg \
     DestroyAddressSpace
 run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
     ReapOnlyOffCpu UnsafeRemoteAbort
+run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
+    Allocate CaptureHandle CloseExact
+run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
+    ReplacementSurvivesStaleHandle UnsafeStaleClose
 run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
     Load Start Publish RequestStop Exit Reap Teardown
 run_model CharlotteCapability CharlotteCapability_small.cfg \

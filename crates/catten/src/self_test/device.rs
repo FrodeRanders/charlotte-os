@@ -118,6 +118,7 @@ pub fn test_device_capabilities() {
         // --- MMIO map / unmap against a real address space -----------------
         test_mmio_map_unmap();
         test_failed_dma_map_releases_pin();
+        test_stale_address_space_handle();
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
         // the delivery rounds below.
@@ -144,6 +145,33 @@ pub fn test_device_capabilities() {
     {
         logln!("Skipping device capability test (AArch64 only).");
     }
+}
+
+/// A delayed teardown handle must not close a new domain that reused the
+/// predecessor's numeric ASID.
+#[cfg(target_arch = "aarch64")]
+fn test_stale_address_space_handle() {
+    use crate::{
+        memory::{
+            AddressSpaceCloseError,
+            close_user_address_space_handle,
+        },
+        service::loader,
+    };
+
+    let old = loader::create_user_address_space_handle();
+    close_user_address_space_handle(old).expect("[device] initial AS close failed");
+    let replacement = loader::create_user_address_space_handle();
+    assert_eq!(replacement.id(), old.id(), "address-space test expected slot reuse");
+    assert_ne!(replacement.generation(), old.generation());
+    assert_eq!(
+        close_user_address_space_handle(old),
+        Err(AddressSpaceCloseError::StaleHandle),
+        "stale address-space handle closed its replacement"
+    );
+    assert!(crate::memory::address_space_handle_is_current(replacement));
+    close_user_address_space_handle(replacement).expect("[device] replacement AS close failed");
+    logln!("[device] stale address-space teardown rejected after ASID reuse");
 }
 
 #[cfg(target_arch = "aarch64")]

@@ -12,6 +12,7 @@ pub enum Error {
 pub struct IdTable<T> {
     list: Vec<Option<T>>,
     available_ids: Vec<usize>,
+    generations: Vec<usize>,
 }
 
 impl<T> IdTable<T> {
@@ -19,17 +20,23 @@ impl<T> IdTable<T> {
         IdTable {
             list: Vec::new(),
             available_ids: Vec::new(),
+            generations: Vec::new(),
         }
     }
 
     pub fn add_element(&mut self, element: T) -> usize {
         if let Some(id) = self.available_ids.pop() {
+            self.generations[id] =
+                self.generations[id].checked_add(1).expect("ID generation exhausted");
             self.list[id] = Some(element);
             id
         } else {
             logln!("ID Table: extending list (new size={})", self.list.len() + 1);
             let id = self.list.len();
             self.list.push(Some(element));
+            // Generation zero is reserved for handles that were never
+            // initialized. The first occupant of every slot is generation 1.
+            self.generations.push(1);
             id
         }
     }
@@ -40,6 +47,15 @@ impl<T> IdTable<T> {
 
     pub fn get_mut(&mut self, element_id: usize) -> Result<&mut T, Error> {
         self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.as_mut().ok_or(Error::IdNotActive)
+    }
+
+    /// Return the generation of the active occupant of `element_id`.
+    ///
+    /// A generation changes whenever a removed slot is reused, allowing
+    /// long-lived handles to distinguish the new object from its predecessor.
+    pub fn generation(&self, element_id: usize) -> Result<usize, Error> {
+        self.get(element_id)?;
+        self.generations.get(element_id).copied().ok_or(Error::IdNotActive)
     }
 
     pub fn remove_element(&mut self, element_id: usize) -> Result<(), Error> {

@@ -23,6 +23,7 @@ use crate::{
     },
     memory::{
         ADDRESS_SPACE_TABLE,
+        AddressSpaceHandle,
         AddressSpaceId,
         KERNEL_AS,
         PHYSICAL_FRAME_ALLOCATOR,
@@ -66,6 +67,7 @@ const PF_W: u32 = 2;
 /// A user protection domain prepared by the loader but not yet running.
 pub struct LoadedDomain {
     pub asid: AddressSpaceId,
+    pub address_space: AddressSpaceHandle,
     pub entry_vaddr: usize,
     pub config_frame: PAddr,
     pub status_frame: PAddr,
@@ -315,13 +317,18 @@ fn map_elf_load_segment(asid: AddressSpaceId, image: &[u8], segment: ElfLoadSegm
 
 /// Create a fresh user address space.
 pub fn create_user_address_space() -> AddressSpaceId {
+    create_user_address_space_handle().id()
+}
+
+/// Create a fresh user address space and retain its reuse-safe identity.
+pub fn create_user_address_space_handle() -> AddressSpaceHandle {
     let user_as = {
         let _kas = KERNEL_AS.lock();
         let mut as_ = AddressSpace::get_current();
         as_.set_ttbr0(0);
         as_
     };
-    ADDRESS_SPACE_TABLE.lock().add_element(user_as)
+    crate::memory::register_user_address_space(user_as)
 }
 
 /// Map all `PT_LOAD` segments of `image` into `asid` and return the entry
@@ -387,7 +394,8 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
 /// (endpoint readiness binding, timed waits, detached operations). The
 /// domain is not started.
 pub fn load_domain(image: &[u8]) -> LoadedDomain {
-    let asid = create_user_address_space();
+    let address_space = create_user_address_space_handle();
+    let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);
 
     // EL0 may inspect launch data but cannot mutate it. The supervisor still
@@ -426,6 +434,7 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
 
     LoadedDomain {
         asid,
+        address_space,
         entry_vaddr,
         config_frame,
         status_frame,

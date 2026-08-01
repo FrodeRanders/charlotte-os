@@ -201,6 +201,14 @@ ownership validation, revocation, and whole-address-space namespace teardown
 are centralised. Handles are monotonic within an address space and are not
 reused, preventing a stale handle from naming a later object.
 
+Numeric kernel ASIDs are reusable, but they are not lifecycle authority on
+their own. Address-space allocation also returns a monotonically advancing
+slot generation. Supervisors retain the resulting `(ASID, generation)` handle
+for delayed teardown and privileged-manager authorization; a handle from a
+retired domain is rejected after its numeric slot is reused. Raw ASIDs remain
+appropriate only for short operations that establish liveness through the
+address-space table during the operation.
+
 ## 2.2 Endpoints
 
 Endpoints answer:

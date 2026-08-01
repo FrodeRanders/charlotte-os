@@ -38,9 +38,10 @@ use crate::{
         ConnectionRights,
     },
     memory::{
+        AddressSpaceHandle,
         AddressSpaceId,
         KERNEL_ASID,
-        close_user_address_space,
+        close_user_address_space_handle,
         physical::PAddr,
     },
     service::{
@@ -53,6 +54,8 @@ use crate::{
 #[derive(Copy, Clone)]
 pub struct ServiceDomain {
     pub asid: AddressSpaceId,
+    /// Reuse-safe identity used by delayed authority and teardown paths.
+    pub address_space: AddressSpaceHandle,
     pub tid: ThreadId,
     pub generation: ThreadGeneration,
     pub config_frame: PAddr,
@@ -84,7 +87,7 @@ static NODE_NAME_SERVICE: spin::LazyLock<
 /// The only domain to which the boot supervisor delegates system-wide
 /// telemetry inspection authority.
 static SYSTEM_OBSERVER_ASID: spin::LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceId>>,
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// Name-service handle bound to the authorized live-upgrade manager.
@@ -101,7 +104,7 @@ pub(crate) static LIVE_UPGRADE_NS: spin::LazyLock<
 /// This is assigned only by `spawn_service_manager`; merely registering the
 /// name "svcmgr" does not grant process-creation authority.
 pub(crate) static LIVE_UPGRADE_MANAGER_ASID: spin::LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceId>>,
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// Kernel-private connection to the node name service, minted when the node
@@ -132,6 +135,7 @@ fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
         .generation;
     ServiceDomain {
         asid: loaded.asid,
+        address_space: loaded.address_space,
         tid,
         generation,
         config_frame: loaded.config_frame,
@@ -305,7 +309,7 @@ pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceD
     bootstrap::write_system_observer_cap(loaded.config_frame, observer_cap);
     bootstrap::write_manifest(loaded.config_frame, &[]);
     let domain = start_domain(loaded);
-    *observer = Some(domain.asid);
+    *observer = Some(domain.address_space);
     domain
 }
 
@@ -346,7 +350,7 @@ pub fn spawn_with_name_service_and_data(
 pub fn spawn_service_manager(image: &[u8], name_service: &NameServiceHandle) -> ServiceDomain {
     let domain = spawn_with_name_service(image, name_service, ConnectionRights::CALL);
     *LIVE_UPGRADE_NS.lock() = Some(*name_service);
-    *LIVE_UPGRADE_MANAGER_ASID.lock() = Some(domain.asid);
+    *LIVE_UPGRADE_MANAGER_ASID.lock() = Some(domain.address_space);
     domain
 }
 
@@ -476,9 +480,10 @@ pub fn teardown_domain(domain: ServiceDomain) {
         domain_exited(&domain),
         "[supervisor] refusing to tear down a domain whose thread still runs"
     );
-    close_user_address_space(domain.asid).expect("[supervisor] address-space close failed");
+    close_user_address_space_handle(domain.address_space)
+        .expect("[supervisor] address-space close failed");
     let mut manager = LIVE_UPGRADE_MANAGER_ASID.lock();
-    if *manager == Some(domain.asid) {
+    if *manager == Some(domain.address_space) {
         *manager = None;
     }
 }
@@ -531,7 +536,7 @@ pub fn spawn_upgrade(
                     )
                     .expect("[supervisor] upgrade state rollback failed");
                 }
-                close_user_address_space(loaded.asid)
+                close_user_address_space_handle(loaded.address_space)
                     .expect("[supervisor] failed upgrade-domain cleanup");
                 panic!("[supervisor] upgrade state move failed: {error:?}");
             }
@@ -557,7 +562,7 @@ pub fn spawn_upgrade(
                     )
                     .expect("[supervisor] upgrade state rollback failed");
                 }
-                close_user_address_space(loaded.asid)
+                close_user_address_space_handle(loaded.address_space)
                     .expect("[supervisor] failed upgrade-domain cleanup");
                 panic!("[supervisor] upgrade endpoint delegation failed: {error:?}");
             }),

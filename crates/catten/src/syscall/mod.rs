@@ -1388,7 +1388,10 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let state_cap = frame.regs[3];
     let target_connection = frame.regs[4];
 
-    if *crate::service::supervisor::LIVE_UPGRADE_MANAGER_ASID.lock() != Some(caller_asid) {
+    let authorized_manager = *crate::service::supervisor::LIVE_UPGRADE_MANAGER_ASID.lock();
+    if authorized_manager.is_none_or(|handle| {
+        handle.id() != caller_asid || !crate::memory::address_space_handle_is_current(handle)
+    }) {
         frame.regs[0] = 0;
         return;
     }
@@ -1454,7 +1457,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     ) {
         Ok(cap) => cap,
         Err(_) => {
-            let _ = crate::memory::close_user_address_space(loaded.asid);
+            let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
             frame.regs[0] = 0;
             return;
         }
@@ -1469,7 +1472,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         let moved_cap = match crate::memory::object::move_to(caller_asid, state_cap, loaded.asid) {
             Ok(cap) => cap,
             Err(_) => {
-                let _ = crate::memory::close_user_address_space(loaded.asid);
+                let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
                 frame.regs[0] = 0;
                 return;
             }
