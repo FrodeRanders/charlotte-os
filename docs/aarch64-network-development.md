@@ -42,6 +42,19 @@ and serial logs. With a timeout, the logs are
 `/tmp/charlotte-node-a-serial.log` and
 `/tmp/charlotte-node-b-serial.log`.
 
+For simultaneous scheduler/timer diagnostics, give each runner a distinct GDB
+stub port. Trace and snapshot files include the instance name, so the two
+captures do not overwrite one another:
+
+```sh
+./scripts/run-aarch64.sh debug --dns-test --scheduler-trace --debug-snapshot \
+  --gdb-port 1234 --instance node-a --mac 52:54:00:12:34:01 \
+  --net-listen 12000 --timeout 60
+./scripts/run-aarch64.sh debug --dns-test --scheduler-trace --debug-snapshot \
+  --gdb-port 1235 --instance node-b --mac 52:54:00:12:34:02 \
+  --net-connect 127.0.0.1:12000 --timeout 60
+```
+
 This establishes the host-side L2 link and runs a NIC in each guest. It is
 the distributed-services test path: the reliable-message service exchanges
 frames through `net0` via the frouter, Raft peer RPCs (the distributed name
@@ -52,4 +65,3 @@ Two-node tests use `--relmsg-test`, `--disco-test`, `--dns-test`, and
 peer from MAC last-octets 1 and 2). `--http-test` runs a single guest on the
 SLIRP user network with `hostfwd=tcp::8080-:80` so the host can curl the
 httpd keyhole.
-

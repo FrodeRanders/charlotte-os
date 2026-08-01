@@ -312,6 +312,11 @@ one failure.
   connector completed DNS but remained at 20/21 on the independently tracked
   `scheduler-lifecycle` test, reproducing the scheduling-sensitive validation
   issue rather than a distributed-call failure.
+- The runner can now capture scheduler traces and timer/waker snapshots from
+  both guests simultaneously using distinct `--gdb-port` values and
+  instance-qualified output files. Two subsequent two-guest runs (one complete
+  DNS run and one shorter NIC run) passed scheduler lifecycle on both guests;
+  the intermittent LP0 wake loss has not yet recurred under instrumentation.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, discovery bootstrap, transport

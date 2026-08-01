@@ -9,12 +9,13 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
-#   --gdb          Start QEMU paused with gdb stub on tcp::1234
+#   --gdb          Start QEMU paused with a gdb stub
+#   --gdb-port PORT  GDB stub port (default: 1234)
 #   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
@@ -43,6 +44,7 @@ set -euo pipefail
 ARCH="aarch64"
 PROFILE="debug"
 GDB=""
+GDB_PORT="1234"
 DISPLAY_MODE="0"
 USE_HVF="0"
 NET_TEST="0"
@@ -66,7 +68,10 @@ while [ "$#" -gt 0 ]; do
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
-        --gdb)         GDB="-s -S"; shift ;;
+        --gdb)         GDB="-S"; shift ;;
+        --gdb-port)
+            [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
+            GDB_PORT="$2"; shift 2 ;;
         --debug-snapshot) DEBUG_SNAPSHOT="1"; shift ;;
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
@@ -98,6 +103,11 @@ while [ "$#" -gt 0 ]; do
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+if ! [[ "$GDB_PORT" =~ ^[0-9]+$ ]] || [ "$GDB_PORT" -lt 1 ] || [ "$GDB_PORT" -gt 65535 ]; then
+    echo "error: --gdb-port must be an integer from 1 through 65535" >&2
+    exit 1
+fi
 
 if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
@@ -299,6 +309,10 @@ fi
 
 QEMU_OPTS+=(-smp "$SMP")
 
+if [ -n "$GDB" ]; then
+    QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
+fi
+
 if [ "${CATTEN_QEMU_VIRTIO_TRACE:-0}" = "1" ]; then
     QEMU_OPTS+=(
         -trace enable=virtio_pci_notify_write
@@ -359,7 +373,7 @@ if [ -n "$TIMEOUT" ]; then
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     if [ "$SCHEDULER_TRACE" = "1" ] || [ "$DEBUG_SNAPSHOT" = "1" ]; then
-        QEMU_OPTS+=(-gdb tcp::1234)
+        QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
@@ -409,14 +423,15 @@ if [ -n "$TIMEOUT" ]; then
         fi
     done
     if [ "$SCHEDULER_TRACE" = "1" ]; then
-        TRACE_RAW="/tmp/charlotte-scheduler-trace.bin"
-        TRACE_TEXT="/tmp/charlotte-scheduler-trace.log"
+        TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.bin"
+        TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.log"
+        TRACE_LLDB="/tmp/charlotte${INSTANCE_SUFFIX}-trace-lldb.log"
         read -r TRACE_ADDR TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "DEBUG_TRACE" { print "0x" $1, "0x" $2; exit }')
         if [ -n "${TRACE_ADDR:-}" ] && command -v lldb >/dev/null 2>&1; then
             TRACE_COUNT=$((TRACE_SIZE))
             lldb --batch \
                 -o "settings set interpreter.stop-command-source-on-error false" \
-                -o "gdb-remote 1234" \
+                -o "gdb-remote ${GDB_PORT}" \
                 -o "thread backtrace all" \
                 -o "thread select 1" \
                 -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
@@ -431,25 +446,27 @@ if [ -n "$TIMEOUT" ]; then
                 -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
                 -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "memory read --force --binary --size 1 --count ${TRACE_COUNT} --outfile ${TRACE_RAW} ${TRACE_ADDR}" \
-                -o "process detach" "$KERNEL" >/tmp/charlotte-trace-lldb.log 2>&1 || true
+                -o "process detach" "$KERNEL" >"$TRACE_LLDB" 2>&1 || true
             if [ -s "$TRACE_RAW" ]; then
                 python3 scripts/decode-scheduler-trace.py "$TRACE_RAW" >"$TRACE_TEXT"
                 echo ">>> Scheduler trace captured in ${TRACE_TEXT}"
             else
-                echo "warning: scheduler trace capture failed; see /tmp/charlotte-trace-lldb.log" >&2
+                echo "warning: scheduler trace capture failed; see ${TRACE_LLDB}" >&2
             fi
         else
             echo "warning: DEBUG_TRACE symbol or lldb unavailable; scheduler trace not captured" >&2
         fi
-    elif [ "$DEBUG_SNAPSHOT" = "1" ]; then
+    fi
+    if [ "$DEBUG_SNAPSHOT" = "1" ]; then
         if command -v lldb >/dev/null 2>&1; then
+            SNAPSHOT_LLDB="/tmp/charlotte${INSTANCE_SUFFIX}-debug-snapshot-lldb.log"
             TIMER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "TIMER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
             WAKER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "WAKER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
             LIFECYCLE_PROGRESS_ADDR="$(nm "$KERNEL" | awk '$3 == "SCHEDULER_LIFECYCLE_PROGRESS" && !found { print "0x" $1; found=1 }')"
             SCHEDULER_LP_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "SCHEDULER_LP_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
             lldb --batch \
                 -o "settings set interpreter.stop-command-source-on-error false" \
-                -o "gdb-remote 1234" \
+                -o "gdb-remote ${GDB_PORT}" \
                 -o "thread backtrace all" \
                 -o "thread select 1" \
                 -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
@@ -467,8 +484,8 @@ if [ -n "$TIMEOUT" ]; then
                 -o "memory read --force --format x --size 8 --count 3 ${WAKER_DIAG_ADDR}" \
                 -o "memory read --force --format x --size 8 --count 1 ${LIFECYCLE_PROGRESS_ADDR}" \
                 -o "memory read --force --format x --size 8 --count 24 ${SCHEDULER_LP_DIAG_ADDR}" \
-                -o "process detach" "$KERNEL" >/tmp/charlotte-debug-snapshot-lldb.log 2>&1 || true
-            echo ">>> Debug snapshot captured in /tmp/charlotte-debug-snapshot-lldb.log"
+                -o "process detach" "$KERNEL" >"$SNAPSHOT_LLDB" 2>&1 || true
+            echo ">>> Debug snapshot captured in ${SNAPSHOT_LLDB}"
         else
             echo "warning: lldb unavailable; debug snapshot not captured" >&2
         fi
