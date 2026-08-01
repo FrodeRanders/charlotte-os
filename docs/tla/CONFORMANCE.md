@@ -90,12 +90,20 @@ actions and prove that their projection implements these abstract transitions.
 |---|---|---|
 | `Spawn` | `Thread::new`, `MASTER_THREAD_TABLE.add_element` | Direct for reusable TID allocation and fresh monotonic generation; context construction is omitted. |
 | `Admit` | `submit_new_thread`, `submit_to_lp` | Abstract: initial run-queue insertion and `ThreadState::Ready` are one transition. Deferred re-admission uses generation-checked `submit_woken_thread`. |
-| `Dispatch` / `Preempt` | `RoundRobin::next` | Direct for the Ready/Running handoff and one current thread per LP. |
+| `Dispatch` / `Preempt` / `SwitchOff` | `RoundRobin::next`, ISA `cond_yield_lp` / `switch_ctx` | `onCpu` is deliberately separate from `ThreadState`: a blocking or wake-raced outgoing thread retains physical execution until the context switch. |
 | `Block` | `block_thread_with_constraint` | Direct for waker generation capture and `Blocked`; concrete observer registration shares the transition's linearization point. |
 | `Wake` | `Waker::notify`, `submit_woken_thread`, `add_thread` | Direct for generation validation and re-admission. A stale generation disables the model action and is rejected by Rust. |
 | `Migrate` | `try_rebalance` | Direct for migration-safe, unpinned Ready threads; load-window policy is omitted. |
-| `Abort` | `abort_thread`, `take_element`, `stage_dead_thread` | Abstract atomic transition from master-table membership to the LP-local dead list. |
-| `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; stack-pointer deferral is omitted. |
+| `RequestRemoteAbort` | `abort_thread`, `abort_requested`, `abort_owner_lp`, scheduler IPI | Direct for cross-LP termination: the caller records the physical owner but leaves the executing context in the master table. |
+| `RetireRemoteAbort` | `RoundRobin::next`, `retire_requested_threads` | Owner-LP transition after switching away. Run-queue selection and `add_thread` reject the requested generation, including block/wake races. |
+| `AbortNotRunning` / `SelfAbort` | `abort_thread`, `take_element`, `stage_dead_thread` | Non-running contexts can be removed immediately; self-exit is staged while still on its stack and switches away before reaping. |
+| `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; the concrete stack-pointer check may defer a context again. |
+| `DestroyAddressSpace` | `domain_exited`, `teardown_domain`, `close_user_address_space` | Requires every master-table and deferred-dead thread owned by the ASID to be gone. `OnCpuHasLiveAddressSpace` checks the resulting safety boundary. |
+
+`CharlotteScheduler_unsafe.cfg` enables the former immediate remote-removal
+transition and is required to produce a `ReapOnlyOffCpu` counterexample. This
+negative model corresponds to the stale-AS SVC panic fixed by owner-LP
+retirement; it is not part of the repaired `Spec`.
 
 ## Service lifecycle
 

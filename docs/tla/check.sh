@@ -53,6 +53,38 @@ run_model() {
     grep -E 'states generated,|The depth of the complete state graph' "${log}"
 }
 
+run_expected_violation() {
+    local module="$1"
+    local config="$2"
+    local invariant="$3"
+    local action="$4"
+    local log="${model_dir}/${module}-negative.log"
+
+    echo ">>> TLC ${module} (${config}, expected counterexample)"
+    if java -XX:+UseParallelGC -cp "${tools_jar}" tlc2.TLC \
+            "${module}" \
+            -config "${config}" \
+            -workers auto \
+            -metadir "${model_dir}/${module}-negative-states" \
+            -coverage 1 >"${log}" 2>&1; then
+        echo "error: negative model unexpectedly satisfied ${invariant}" >&2
+        cat "${log}" >&2
+        exit 1
+    fi
+    if ! grep -Fq "Invariant ${invariant} is violated" "${log}"; then
+        echo "error: negative model failed for a reason other than ${invariant}" >&2
+        cat "${log}" >&2
+        exit 1
+    fi
+    if ! grep -Eq "^<${action} .*: [0-9]+:[1-9][0-9]*$" "${log}"; then
+        echo "error: expected counterexample did not exercise ${action}" >&2
+        cat "${log}" >&2
+        exit 1
+    fi
+    grep -F "Invariant ${invariant} is violated" "${log}"
+    grep -E "^<${action} " "${log}" | tail -n 1
+}
+
 cd "${script_dir}"
 run_model CharlotteIPC CharlotteIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
@@ -61,7 +93,11 @@ run_model CharlotteIPC CharlotteIPC_small.cfg \
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_model CharlotteScheduler CharlotteScheduler_small.cfg \
-    Spawn Admit Dispatch Preempt Block Wake Migrate Abort Reap
+    Spawn Admit Dispatch Preempt Block Wake SwitchOff Migrate \
+    RequestRemoteAbort RetireRemoteAbort AbortNotRunning SelfAbort Reap \
+    DestroyAddressSpace
+run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
+    ReapOnlyOffCpu UnsafeRemoteAbort
 run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
     Load Start Publish RequestStop Exit Reap Teardown
 run_model CharlotteCapability CharlotteCapability_small.cfg \

@@ -33,7 +33,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all ten complete fast configurations;
+- runs all eleven complete fast configurations plus one expected-failure
+  scheduler regression configuration;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -228,16 +229,47 @@ counter cannot wrap.
 
 ## Scheduler lifecycle model
 
-`CharlotteScheduler.tla` separates thread admission, dispatch, blocking,
-wakeup, migration, abort, and reaping. In particular, `Dead` means that
-`abort_thread` has removed the thread from `MASTER_THREAD_TABLE` but its owned
-context is still staged in the dying LP's `DEAD_THREADS` list. Only `Reap`
-makes the reusable slot absent. Wake actions carry the generation captured by
-the waker and cannot affect a later occupant of the same thread ID.
+`CharlotteScheduler.tla` separates scheduler-table phase from physical
+execution (`onCpu`). This distinction represents the interval after a thread
+blocks or is remotely aborted but before its owning LP switches away from the
+thread's stack. Remote abort is split into `RequestRemoteAbort` and
+`RetireRemoteAbort`: the requester records the owner and signals it, while only
+the owner can switch off and retire the context. Wake and dispatch reject an
+abort-requested generation. `Dead` is the LP-local deferred-reaping interval;
+only `Reap`, while off-CPU, makes the reusable slot absent.
 
-The checked invariants require one running thread per LP, valid placement and
-pinning, a valid owner for every non-absent thread, matching blocked-waker
-generations, and migration authority for every movable thread.
+The model also represents address-space destruction. Destruction requires all
+threads owned by the address space to be absent, and an invariant rejects a
+destroyed address space containing a physically executing thread.
+
+The checked invariants require one physically executing thread per LP, valid
+placement and pinning, live address spaces for on-CPU threads, off-CPU reaping,
+owner-CPU abort retirement, no redispatch after an abort request, matching
+blocked-waker generations, and migration authority for movable threads.
+
+`CharlotteScheduler_unsafe.cfg` deliberately enables `UnsafeRemoteAbort`, an
+abstraction of the former immediate cross-LP removal. The model runner requires
+this configuration to violate `ReapOnlyOffCpu`; if the old transition stops
+producing its counterexample, the suite fails. Thus the repaired model is
+checked positively and the original bug trace is retained as an executable
+negative regression rather than generated TLC trace files.
+
+### Cross-LP abort findings
+
+Modeling the physical CPU separately from `ThreadState` exposed two necessary
+rules reflected in the Rust scheduler:
+
+1. A remote caller cannot remove or reap a running target. It sets
+   `abort_requested` and `abort_owner_lp`, sends a scheduler IPI, and the owner
+   LP retires the target after switching away.
+2. A target may block, or a waker may race, between request and switch. Run
+   queue selection and admission must reject the abort-requested generation;
+   retirement is keyed by the recorded owner rather than the transient
+   `ThreadState` snapshot.
+
+With two threads, two LPs, two address spaces, and two generations, TLC 2.19
+completely explored 373,860 distinct repaired-model states (1,710,157 states
+generated, depth 22) without an invariant violation.
 
 ## Service lifecycle model
 
