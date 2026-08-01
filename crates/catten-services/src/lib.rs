@@ -656,7 +656,8 @@ pub mod dns {
     /// call completes).
     pub const OP_CALL: u32 = 5;
     /// Dump the replicated catalog. Reply moves a page snapshot: one u32
-    /// count, then per entry `[name_len:u8][name][node_len:u8][node]`. The
+    /// count, then per entry
+    /// `[name_len:u8][name][node_len:u8][node][generation:u64 LE]`. The
     /// scalar result is the snapshot byte length.
     pub const OP_CATALOG: u32 = 6;
 
@@ -673,6 +674,7 @@ pub mod dns {
     /// non-idempotent operation.
     pub const ERR_UNCERTAIN: i64 = -5;
     pub const ERR_BUSY: i64 = -6;
+    pub const ERR_STALE_GENERATION: i64 = -7;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.
@@ -682,8 +684,8 @@ pub mod dns {
 /// and monotonic call id. The transport prepends the type tag:
 /// ```text
 /// request: 0x10 | session:u64 | call_id:u64 | caller_len:u8 | caller |
-///          name_len:u8 | name | opcode:u32 | arg:i64
-/// reply:   0x11 | session:u64 | call_id:u64 | result:i64
+///          name_len:u8 | name | target_generation:u64 | opcode:u32 | arg:i64
+/// reply:   0x11 | session:u64 | call_id:u64 | target_generation:u64 | result:i64
 /// ```
 pub mod rcall {
     pub const TAG_REQUEST: u8 = 0x10;
@@ -695,27 +697,29 @@ pub mod rcall {
         call_id: u64,
         caller: &[u8],
         name: &[u8],
+        target_generation: u64,
         opcode: u32,
         arg: i64,
     ) -> alloc::vec::Vec<u8> {
         let caller_len = caller.len().min(255);
         let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(18 + caller_len + name_len + 12);
+        let mut frame = alloc::vec::Vec::with_capacity(18 + caller_len + name_len + 20);
         frame.extend_from_slice(&session.to_le_bytes());
         frame.extend_from_slice(&call_id.to_le_bytes());
         frame.push(caller_len as u8);
         frame.extend_from_slice(&caller[..caller_len]);
         frame.push(name_len as u8);
         frame.extend_from_slice(&name[..name_len]);
+        frame.extend_from_slice(&target_generation.to_le_bytes());
         frame.extend_from_slice(&opcode.to_le_bytes());
         frame.extend_from_slice(&arg.to_le_bytes());
         frame
     }
 
-    pub type Request = (u64, u64, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u32, i64);
+    pub type Request = (u64, u64, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64, u32, i64);
 
     pub fn decode_request(frame: &[u8]) -> Option<Request> {
-        if frame.len() < 1 + 8 + 8 + 1 + 1 + 4 + 8 {
+        if frame.len() < 1 + 8 + 8 + 1 + 1 + 8 + 4 + 8 {
             return None;
         }
         let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
@@ -729,33 +733,41 @@ pub mod rcall {
         let name_len_off = caller_off + caller_len;
         let name_len = frame[name_len_off] as usize;
         let name_off = name_len_off + 1;
-        if frame.len() < name_off + name_len + 12 {
+        if frame.len() < name_off + name_len + 20 {
             return None;
         }
         let name = frame[name_off..name_off + name_len].to_vec();
         let op_off = name_off + name_len;
-        let opcode = u32::from_le_bytes(frame[op_off..op_off + 4].try_into().ok()?);
-        let arg = i64::from_le_bytes(frame[op_off + 4..op_off + 12].try_into().ok()?);
-        Some((session, call_id, caller, name, opcode, arg))
+        let target_generation = u64::from_le_bytes(frame[op_off..op_off + 8].try_into().ok()?);
+        let opcode = u32::from_le_bytes(frame[op_off + 8..op_off + 12].try_into().ok()?);
+        let arg = i64::from_le_bytes(frame[op_off + 12..op_off + 20].try_into().ok()?);
+        Some((session, call_id, caller, name, target_generation, opcode, arg))
     }
 
     /// Encode the reply body *without* the type tag; the transport adds it.
-    pub fn encode_reply(session: u64, call_id: u64, result: i64) -> alloc::vec::Vec<u8> {
-        let mut frame = alloc::vec::Vec::with_capacity(24);
+    pub fn encode_reply(
+        session: u64,
+        call_id: u64,
+        target_generation: u64,
+        result: i64,
+    ) -> alloc::vec::Vec<u8> {
+        let mut frame = alloc::vec::Vec::with_capacity(32);
         frame.extend_from_slice(&session.to_le_bytes());
         frame.extend_from_slice(&call_id.to_le_bytes());
+        frame.extend_from_slice(&target_generation.to_le_bytes());
         frame.extend_from_slice(&result.to_le_bytes());
         frame
     }
 
-    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
-        if frame.len() < 25 {
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, u64, i64)> {
+        if frame.len() < 33 {
             return None;
         }
         let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
         let call_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
-        let result = i64::from_le_bytes(frame[17..25].try_into().ok()?);
-        Some((session, call_id, result))
+        let target_generation = u64::from_le_bytes(frame[17..25].try_into().ok()?);
+        let result = i64::from_le_bytes(frame[25..33].try_into().ok()?);
+        Some((session, call_id, target_generation, result))
     }
 }
 

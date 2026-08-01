@@ -42,11 +42,12 @@ single responsibility.
 The stack below is the target architecture. The current repository contains a
 userspace virtio-net driver, a frame demultiplexer (``frouter''), a
 reliable-message service with fragmentation, a distributed name service that
-replicates a \texttt{name $\rightarrow$ node} catalog across two guests, a
+replicates a \texttt{name $\rightarrow$ \{node, generation\}} catalog across two guests, a
 smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
 NIC/TCP path is runtime-validated on macOS QEMU TCG (\texttt{--relmsg-test},
 \texttt{--disco-test}, \texttt{--dns-test}, \texttt{--tcpip-test}), and remote
-capability RPC is implemented (\texttt{dns::OP\_CALL}).
+scalar remote-call prototype is implemented (\texttt{dns::OP\_CALL}); general
+remote capability delegation is not.
 
 \section{The native protocol stack}
 
@@ -137,9 +138,10 @@ caller node, caller DNS-session generation, and call ID, and a reply is
 accepted only from the expected peer. The implementation bounds outstanding
 calls at 64, returns \texttt{ERR\_UNCERTAIN} after five seconds (execution may
 already have occurred), and retains 128 completed results to suppress duplicate
-execution within that window. The replicated catalog does not yet bind the
-target service generation, and remote object-capability delegation remains
-future work.
+execution within that window. The replicated catalog assigns a monotonically
+advancing service generation; requests and replies carry it, and the target
+rejects stale generations before execution. Remote object-capability
+delegation remains future work.
 
 \subsection{Distributed objects}
 

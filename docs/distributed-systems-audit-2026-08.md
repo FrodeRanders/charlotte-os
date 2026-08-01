@@ -144,9 +144,11 @@ Follow-up:
 Repair status: DNS v2 now identifies calls by caller node/session/call ID,
 accepts replies only from the expected peer, bounds in-flight state, returns an
 explicit `ERR_UNCERTAIN` on deadline, and keeps a bounded completed-result
-deduplication window. A fresh two-guest run passed 21/21 on both nodes. Binding
-the target service generation and model-checking the retry/cache state machine
-remain open, so this finding is only partially repaired.
+deduplication window. The replicated catalog now retains generation tombstones,
+increments generations on replacement, includes them in snapshots and
+observability, and rejects a remote call whose target generation is stale. A
+fresh two-guest run passed 21/21 on both nodes. Model-checking the retry/cache
+state machine remains open, so this finding is only partially repaired.
 
 ### F7 — Frame routes retain stale capabilities after service restart (high)
 
@@ -312,14 +314,16 @@ principal distributed findings occur.
   restart fault test remains under the CI/fault-testing item).
 - [ ] Complete the remote invocation contract. Caller/session/call identity,
   source binding, bounded deadlines/in-flight state, explicit uncertainty, and
-  bounded deduplication are implemented; target-generation binding and a
-  checked state-machine model remain.
+  bounded deduplication and target-generation binding are implemented; a
+  checked state-machine model remains.
 - [x] Move DNS to durable Raft state and authoritative membership bootstrap.
   Clustered DNS now requires durable term/vote/log/snapshot stores and an
   exact launch-manifest voter identity set. Discovery resolves those voters to
   transport routes but cannot add, omit, or replace voting authority; missing
   configured voters fail closed.
 - [ ] Add linearizable reads and replicated service lifecycle/generation policy.
+  Replicated monotonic generations and tombstones are implemented; leader-only
+  read barriers plus follower-to-leader forwarding remain.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been

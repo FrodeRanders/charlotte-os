@@ -392,8 +392,9 @@ node, caller DNS-session generation, and call ID; replies must arrive from the
 expected peer. At most 64 calls may be outstanding, a five-second deadline
 returns `ERR_UNCERTAIN` (because execution may already have happened), and a
 128-result receiver cache suppresses re-execution of duplicate identities
-within that window. The replicated catalog does not yet bind a service
-generation, and the protocol does not yet serialize or delegate object
+within that window. The replicated catalog binds each owner to a monotonically
+advancing service generation, and remote calls carry and verify that generation
+before execution. The protocol does not yet serialize or delegate object
 capabilities across machines.
 
 ---
@@ -761,7 +762,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 > operation is implemented: the reliable-message service exchanges frames
 > through `net0` via the frame demultiplexer, the distributed name service
 > (`dns`) routes Raft peer RPCs over that transport, and two guests on a
-> stream Ethernet segment replicate a `name -> node` catalog and serve remote
+> stream Ethernet segment replicate a `name -> {node, generation}` catalog and serve remote
 > invocation (`--relmsg-test`/`--disco-test`/`--dns-test`).
 > Commit `2679085` established local two-node IPC election; later scheduler,
 > timer, lifecycle, and stream-networking fixes preserve that result.
@@ -853,7 +854,8 @@ continued operation after a remote-node crash have not yet been validated.
 
 > **Status: implemented.** The `dns` service runs the `CatalogMachine` state
 > machine on the Graft core over the relmsg transport. Two guests on a stream
-> Ethernet segment elect a leader, replicate leader-committed `name -> node`
+> Ethernet segment elect a leader, replicate leader-committed
+> `name -> {node, generation}`
 > registrations, and serve remote invocation (`dns::OP_CALL`) through the
 > catalog. The design below describes the model it realizes; the general
 > `raft` service binary and per-node `ns.rs` refactor remain future work.

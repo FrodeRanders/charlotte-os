@@ -114,6 +114,7 @@ const DEDUP_WINDOW: usize = 128;
 struct InFlightCall {
     call_id: u64,
     expected_peer: alloc::string::String,
+    expected_generation: u64,
     reply: u64,
     deadline: u64,
 }
@@ -500,8 +501,15 @@ fn main(ctx: Context) -> ! {
                                 // A remote invocation addressed to this node:
                                 // execute it against the local name service and
                                 // reply to the caller's MAC.
-                                if let Some((session, call_id, caller, target, opcode, arg)) =
-                                    catten_services::rcall::decode_request(frame)
+                                if let Some((
+                                    session,
+                                    call_id,
+                                    caller,
+                                    target,
+                                    target_generation,
+                                    opcode,
+                                    arg,
+                                )) = catten_services::rcall::decode_request(frame)
                                 {
                                     let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
                                     else {
@@ -521,8 +529,14 @@ fn main(ctx: Context) -> ! {
                                     });
                                     let result = cached.map_or_else(
                                         || match catalog.lookup(&target) {
-                                            Some(owner) if owner == node_name => {
+                                            Some(owner)
+                                                if owner.node == node_name
+                                                    && owner.generation == target_generation =>
+                                            {
                                                 invoke_local(ns_conn, &target, opcode, arg)
+                                            }
+                                            Some(owner) if owner.node == node_name => {
+                                                dns::ERR_STALE_GENERATION
                                             }
                                             _ => dns::ERR_NOT_FOUND,
                                         },
@@ -542,7 +556,10 @@ fn main(ctx: Context) -> ! {
                                     remote_calls_served = remote_calls_served.wrapping_add(1);
                                     config::write::<u32>(40, remote_calls_served);
                                     let reply = catten_services::rcall::encode_reply(
-                                        session, call_id, result,
+                                        session,
+                                        call_id,
+                                        target_generation,
+                                        result,
                                     );
                                     transport.send_message(
                                         &source_peer,
@@ -553,11 +570,12 @@ fn main(ctx: Context) -> ! {
                             }
                             Some(catten_services::rcall::TAG_REPLY) => {
                                 // Complete the matching in-flight OP_CALL.
-                                if let Some((session, call_id, result)) =
+                                if let Some((session, call_id, target_generation, result)) =
                                     catten_services::rcall::decode_reply(frame)
                                     && let Some(index) = in_flight_calls.iter().position(|call| {
                                         call.call_id == call_id
                                             && session == dns_session
+                                            && target_generation == call.expected_generation
                                             && transport
                                                 .peer_id_for_mac(&source_mac)
                                                 .is_some_and(|peer| peer == call.expected_peer)
@@ -647,7 +665,7 @@ fn main(ctx: Context) -> ! {
                         dns::ERR_TOO_LARGE
                     } else {
                         match catalog.lookup(&name) {
-                            Some(owner) if owner == node_name => {
+                            Some(owner) if owner.node == node_name => {
                                 // Local: resolve through the node-local name
                                 // service and hand back the connection. A
                                 // catalog-only registration has no connection
@@ -680,14 +698,14 @@ fn main(ctx: Context) -> ! {
                             Some(owner) => {
                                 // Remote: reply RESULT_REMOTE and move a memory
                                 // object carrying the hosting node's id.
-                                if message.reply != 0 && !owner.is_empty() {
+                                if message.reply != 0 && !owner.node.is_empty() {
                                     let cap = memory_alloc(1);
                                     if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
                                         unsafe {
                                             core::ptr::copy_nonoverlapping(
-                                                owner.as_ptr(),
+                                                owner.node.as_ptr(),
                                                 LIST_SCRATCH as *mut u8,
-                                                owner.len(),
+                                                owner.node.len(),
                                             );
                                         }
                                         memory_unmap(cap);
@@ -724,7 +742,8 @@ fn main(ctx: Context) -> ! {
 
                 dns::OP_CATALOG => {
                     // Dump the replicated name -> node catalog into a moved
-                    // page: [count:u32][len:u8 name node_len:u8 node]*.
+                    // page: [count:u32][name_len:u8 name node_len:u8 node
+                    // generation:u64]*.
                     let cap = memory_alloc(1);
                     if cap == 0 {
                         if message.reply != 0 {
@@ -747,10 +766,10 @@ fn main(ctx: Context) -> ! {
                             entries.len() as u32,
                         );
                     }
-                    for (name, node) in entries.iter() {
+                    for (name, entry) in entries.iter() {
                         let name_len = name.len().min(255);
-                        let node_len = node.len().min(255);
-                        if length + 2 + name_len + node_len > 4096 {
+                        let node_len = entry.node.len().min(255);
+                        if length + 2 + name_len + node_len + 8 > 4096 {
                             break;
                         }
                         unsafe {
@@ -768,12 +787,17 @@ fn main(ctx: Context) -> ! {
                                 node_len as u8,
                             );
                             core::ptr::copy_nonoverlapping(
-                                node.as_ptr(),
+                                entry.node.as_ptr(),
                                 (CATALOG_SCRATCH + length + 2 + name_len) as *mut u8,
                                 node_len,
                             );
+                            core::ptr::copy_nonoverlapping(
+                                entry.generation.to_le_bytes().as_ptr(),
+                                (CATALOG_SCRATCH + length + 2 + name_len + node_len) as *mut u8,
+                                8,
+                            );
                         }
-                        length += 2 + name_len + node_len;
+                        length += 2 + name_len + node_len + 8;
                     }
                     memory_unmap(cap);
                     if message.reply != 0 {
@@ -790,14 +814,14 @@ fn main(ctx: Context) -> ! {
                         dns::ERR_TOO_LARGE
                     } else {
                         match catalog.lookup(&name) {
-                            Some(owner) if owner == node_name => {
+                            Some(owner) if owner.node == node_name => {
                                 invoke_local(ns_conn, &name, opcode, arg)
                             }
                             Some(owner) => {
                                 // Remote: relay to the hosting node's dns over
                                 // the reliable message layer.
                                 let owner_str =
-                                    core::str::from_utf8(&owner).unwrap_or("").to_string();
+                                    core::str::from_utf8(&owner.node).unwrap_or("").to_string();
                                 if let Some(_mac) = transport.mac_for_peer(&owner_str) {
                                     if in_flight_calls.len() >= MAX_IN_FLIGHT_CALLS {
                                         dns::ERR_BUSY
@@ -807,6 +831,7 @@ fn main(ctx: Context) -> ! {
                                         in_flight_calls.push(InFlightCall {
                                             call_id,
                                             expected_peer: owner_str.clone(),
+                                            expected_generation: owner.generation,
                                             reply: message.reply,
                                             deadline: node
                                                 .millis()
@@ -817,6 +842,7 @@ fn main(ctx: Context) -> ! {
                                             call_id,
                                             &node_name,
                                             &name,
+                                            owner.generation,
                                             opcode,
                                             arg,
                                         );

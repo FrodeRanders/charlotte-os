@@ -1,7 +1,7 @@
 //! Replicated name catalog: the Raft state machine behind the distributed
 //! name service.
 //!
-//! Maps `name -> node_id` (which node registered the name). Connections are
+//! Maps `name -> {node_id, generation}`. Connections are
 //! node-local capabilities and cannot be replicated, so only the *location* of
 //! a registration is committed; resolving it to a connection stays a local
 //! operation on the hosting node.
@@ -25,10 +25,17 @@ use catten_graft::state_machine::{
 
 const CMD_REGISTER: u8 = 0x01;
 const CMD_UNREGISTER: u8 = 0x02;
-const CATALOG_MAGIC: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
+const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
+const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogEntry {
+    pub node: Vec<u8>,
+    pub generation: u64,
+}
 
 pub struct NameCatalog {
-    entries: spin::Mutex<BTreeMap<Vec<u8>, Vec<u8>>>,
+    entries: spin::Mutex<BTreeMap<Vec<u8>, CatalogEntry>>,
     last_apply: spin::Mutex<Option<Vec<u8>>>,
 }
 
@@ -40,24 +47,28 @@ impl NameCatalog {
         })
     }
 
-    /// The node that registered `name`, or `None`.
-    pub fn lookup(&self, name: &[u8]) -> Option<Vec<u8>> {
-        self.entries.lock().get(name).cloned()
+    /// The replicated owner and service generation for `name`, or `None`.
+    pub fn lookup(&self, name: &[u8]) -> Option<CatalogEntry> {
+        self.entries.lock().get(name).filter(|entry| !entry.node.is_empty()).cloned()
     }
 
     /// Whether `name` is registered to this node.
     pub fn is_local(&self, name: &[u8], local_node: &[u8]) -> bool {
-        self.lookup(name).as_deref() == Some(local_node)
+        self.lookup(name).is_some_and(|entry| entry.node == local_node)
     }
 
     pub fn registered_count(&self) -> usize {
-        self.entries.lock().len()
+        self.entries.lock().values().filter(|entry| !entry.node.is_empty()).count()
     }
 
-    /// Snapshot copy of the whole `name -> node` catalog.
-    pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)> {
+    /// Snapshot copy of the whole `name -> {node, generation}` catalog.
+    pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, CatalogEntry)> {
         let entries = self.entries.lock();
-        entries.iter().map(|(name, node)| (name.clone(), node.clone())).collect()
+        entries
+            .iter()
+            .filter(|(_, entry)| !entry.node.is_empty())
+            .map(|(name, entry)| (name.clone(), entry.clone()))
+            .collect()
     }
 
     fn apply_command(&self, command: &[u8]) -> Vec<u8> {
@@ -69,14 +80,25 @@ impl NameCatalog {
                 let Some((node, _)) = take_len_bytes(command, after_name) else {
                     return Vec::new();
                 };
-                self.entries.lock().insert(name.to_vec(), node.to_vec());
+                let mut entries = self.entries.lock();
+                let generation =
+                    entries.get(name).map_or(1, |entry| entry.generation.saturating_add(1));
+                entries.insert(
+                    name.to_vec(),
+                    CatalogEntry {
+                        node: node.to_vec(),
+                        generation,
+                    },
+                );
                 node.to_vec()
             }
             Some(CMD_UNREGISTER) => {
                 let Some((name, _)) = take_len_bytes(command, 1) else {
                     return Vec::new();
                 };
-                self.entries.lock().remove(name);
+                if let Some(entry) = self.entries.lock().get_mut(name) {
+                    entry.node.clear();
+                }
                 Vec::new()
             }
             _ => Vec::new(),
@@ -86,17 +108,18 @@ impl NameCatalog {
     fn snapshot_bytes(&self) -> Vec<u8> {
         let entries = self.entries.lock();
         let mut size = 8 + 4; // magic + count
-        for (name, node) in entries.iter() {
-            size += 4 + name.len() + 4 + node.len();
+        for (name, entry) in entries.iter() {
+            size += 4 + name.len() + 4 + entry.node.len() + 8;
         }
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V2.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
-        for (name, node) in entries.iter() {
+        for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
             buf.extend_from_slice(name);
-            buf.extend_from_slice(&(node.len() as u32).to_le_bytes());
-            buf.extend_from_slice(node);
+            buf.extend_from_slice(&(entry.node.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.node);
+            buf.extend_from_slice(&entry.generation.to_le_bytes());
         }
         buf
     }
@@ -105,7 +128,8 @@ impl NameCatalog {
         if data.len() < 12 {
             return;
         }
-        if u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default()) != CATALOG_MAGIC {
+        let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
+        if magic != CATALOG_MAGIC_V1 && magic != CATALOG_MAGIC_V2 {
             return;
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;
@@ -118,8 +142,25 @@ impl NameCatalog {
             let Some((node, after_node)) = take_len_bytes(data, after_name) else {
                 return;
             };
-            entries.insert(name.to_vec(), node.to_vec());
-            pos = after_node;
+            let (generation, after_entry) = if magic == CATALOG_MAGIC_V2 {
+                let Some(bytes) = data.get(after_node..after_node.saturating_add(8)) else {
+                    return;
+                };
+                let Ok(bytes) = <[u8; 8]>::try_from(bytes) else {
+                    return;
+                };
+                (u64::from_le_bytes(bytes), after_node + 8)
+            } else {
+                (1, after_node)
+            };
+            entries.insert(
+                name.to_vec(),
+                CatalogEntry {
+                    node: node.to_vec(),
+                    generation,
+                },
+            );
+            pos = after_entry;
         }
         *self.entries.lock() = entries;
     }
@@ -160,7 +201,12 @@ impl StateMachine for NameCatalog {
 
 impl QueryableStateMachine for NameCatalog {
     fn query(&self, query: &[u8]) -> Vec<u8> {
-        self.lookup(query).unwrap_or_default()
+        self.lookup(query).map_or_else(Vec::new, |entry| {
+            let mut result = Vec::with_capacity(8 + entry.node.len());
+            result.extend_from_slice(&entry.generation.to_le_bytes());
+            result.extend_from_slice(&entry.node);
+            result
+        })
     }
 }
 

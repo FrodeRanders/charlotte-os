@@ -312,7 +312,8 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                         let node_len = unsafe {
                             core::ptr::read_volatile((SCRATCH + node_offset) as *const u8)
                         } as usize;
-                        if node_offset + 1 + node_len > len.min(4096) {
+                        let generation_offset = node_offset + 1 + node_len;
+                        if generation_offset + 8 > len.min(4096) {
                             break;
                         }
                         if emitted > 0 {
@@ -330,7 +331,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                                 s.push(byte as char);
                             }
                         }
-                        s.push_str("\":\"");
+                        s.push_str("\":{\"node\":\"");
                         for i in 0..node_len {
                             let byte = unsafe {
                                 core::ptr::read_volatile(
@@ -344,8 +345,13 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                                 s.push(byte as char);
                             }
                         }
-                        s.push('"');
-                        offset = node_offset + 1 + node_len;
+                        let generation = unsafe {
+                            u64::from_le(core::ptr::read_unaligned(
+                                (SCRATCH + generation_offset) as *const u64,
+                            ))
+                        };
+                        let _ = write!(s, "\",\"generation\":{generation}}}");
+                        offset = generation_offset + 8;
                         emitted += 1;
                     }
                     s.push_str("}}");
