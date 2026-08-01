@@ -357,13 +357,23 @@ Provides:
 This layer exports **messages**, not streams.
 
 Fragmentation is implemented: a message larger than one frame's payload
-(~1468 bytes) is split across frames that share the message's sequence
+(~1460 bytes in wire protocol v2) is split across frames that share the message's sequence
 number; each fragment carries its byte offset and a `FLAG_FRAG`/`FLAG_MORE`
 pair in the header's reserved bits. The receiver reassembles contiguous
 fragments of the expected message before delivering one message. The
 application-level message ceiling is `relmsg::MAX_MSG` (65535 bytes, the u16
 length field); a message that still exceeds one frame is fragmented
 automatically.
+
+Wire protocol v2 also carries a 64-bit sender-session identifier. `FLAG_SYN`
+asserts that session on data and acknowledgement frames. A peer that observes
+a new, non-retired session resets both sequence spaces and rewrites an
+outstanding transmission from sequence one, allowing one relmsg service to
+restart without requiring its peer to restart. Recently retired sessions are
+remembered so delayed frames cannot immediately roll state backward. Receive
+queues and fragment count/bytes are bounded; when the delivery queue is full,
+the receiver withholds sequence advancement and acknowledgement so normal
+retransmission supplies backpressure.
 
 ---
 

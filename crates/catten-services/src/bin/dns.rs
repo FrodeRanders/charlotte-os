@@ -489,7 +489,7 @@ fn main(ctx: Context) -> ! {
                                         _ => dns::ERR_NOT_FOUND,
                                     };
                                     remote_calls_served = remote_calls_served.wrapping_add(1);
-                                    config::write::<u32>(36, remote_calls_served);
+                                    config::write::<u32>(40, remote_calls_served);
                                     let reply =
                                         catten_services::rcall::encode_reply(call_id, result);
                                     if let Some(peer) = transport.peer_id_for_mac(&source_mac) {
@@ -533,6 +533,11 @@ fn main(ctx: Context) -> ! {
 
         transport.drain_outbound();
         transport.reap_acks();
+        config::write::<u32>(
+            36,
+            transport.acknowledged_count(catten_services::rcall::TAG_REPLY).min(u32::MAX as u64)
+                as u32,
+        );
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {

@@ -65,13 +65,19 @@ pub enum InboundRpc {
 /// A tagged, encoded Raft RPC queued for a peer: (type tag, protobuf bytes).
 type OutboundRpc = (u8, Vec<u8>);
 
+struct PendingSend {
+    call: u64,
+    tag: u8,
+}
+
 pub struct RelmsgRaftTransport {
     relmsg_conn: u64,
     peer_macs: spin::Mutex<BTreeMap<String, [u8; 6]>>,
     /// Outbound RPCs queued per peer.
     outbound: spin::Mutex<BTreeMap<String, Vec<OutboundRpc>>>,
     /// Outstanding relmsg `OP_SEND` call caps per peer (0 = none).
-    pending_sends: spin::Mutex<BTreeMap<String, u64>>,
+    pending_sends: spin::Mutex<BTreeMap<String, PendingSend>>,
+    acknowledged_by_tag: spin::Mutex<BTreeMap<u8, u64>>,
     received_responses: spin::Mutex<Vec<RpcCompletion>>,
     current_millis: spin::Mutex<u64>,
 }
@@ -83,6 +89,7 @@ impl RelmsgRaftTransport {
             peer_macs: spin::Mutex::new(BTreeMap::new()),
             outbound: spin::Mutex::new(BTreeMap::new()),
             pending_sends: spin::Mutex::new(BTreeMap::new()),
+            acknowledged_by_tag: spin::Mutex::new(BTreeMap::new()),
             received_responses: spin::Mutex::new(Vec::new()),
             current_millis: spin::Mutex::new(0),
         }
@@ -95,10 +102,10 @@ impl RelmsgRaftTransport {
     pub fn remove_peer(&self, peer_id: &str) {
         self.peer_macs.lock().remove(peer_id);
         self.outbound.lock().remove(peer_id);
-        if let Some(call) = self.pending_sends.lock().remove(peer_id)
-            && call != 0
+        if let Some(pending) = self.pending_sends.lock().remove(peer_id)
+            && pending.call != 0
         {
-            ipc_close(call);
+            ipc_close(pending.call);
         }
     }
 
@@ -152,7 +159,7 @@ impl RelmsgRaftTransport {
         let mut outbound = self.outbound.lock();
         let mut pending = self.pending_sends.lock();
         for (peer_id, queue) in outbound.iter_mut() {
-            if pending.get(peer_id).is_some_and(|cap| *cap != 0) {
+            if pending.get(peer_id).is_some_and(|send| send.call != 0) {
                 continue;
             }
             let Some((tag, payload)) = queue.first() else {
@@ -166,7 +173,13 @@ impl RelmsgRaftTransport {
                 continue;
             };
             queue.remove(0);
-            pending.insert(peer_id.clone(), call);
+            pending.insert(
+                peer_id.clone(),
+                PendingSend {
+                    call,
+                    tag,
+                },
+            );
         }
     }
 
@@ -175,19 +188,30 @@ impl RelmsgRaftTransport {
         let mut completed = Vec::new();
         {
             let mut pending = self.pending_sends.lock();
-            for (peer_id, call) in pending.iter_mut() {
-                if *call == 0 {
+            for (peer_id, send) in pending.iter_mut() {
+                if send.call == 0 {
                     continue;
                 }
-                let (status, _result, _connection, _memory) = ipc_reply_poll_with_memory(*call);
+                let (status, result, _connection, _memory) = ipc_reply_poll_with_memory(send.call);
                 if status != 1 {
-                    ipc_close(*call);
-                    *call = 0;
+                    ipc_close(send.call);
+                    send.call = 0;
+                    if status == 0 && result <= crate::relmsg::MAX_MSG as u64 {
+                        let mut counts = self.acknowledged_by_tag.lock();
+                        let count = counts.entry(send.tag).or_default();
+                        *count = count.saturating_add(1);
+                    }
                     completed.push(peer_id.clone());
                 }
             }
         }
         let _ = completed;
+    }
+
+    /// Number of messages with `tag` acknowledged by the remote relmsg
+    /// instance. This is transport delivery, not application processing.
+    pub fn acknowledged_count(&self, tag: u8) -> u64 {
+        self.acknowledged_by_tag.lock().get(&tag).copied().unwrap_or(0)
     }
 
     /// Send a tagged RPC response to a peer MAC, routed through the per-peer

@@ -113,6 +113,13 @@ Follow-up:
 - define behavior for delayed frames from an old session;
 - test unilateral restart after traffic has advanced the sequence.
 
+Repair status: wire protocol v2 now binds frames to a 64-bit service-instance
+session, asserts it with `FLAG_SYN`, resets both sequence directions when a
+new non-retired session appears, and rejects a bounded window of retired
+sessions. Receive delivery and fragment accumulation are bounded. The normal
+two-guest DNS/Raft path passes after this change; an automated unilateral
+restart fault test remains to be added.
+
 ### F6 — Remote calls lack a complete identity and failure contract (high)
 
 DNS records an in-flight call as only `(call_id, local_reply_token)`. Replies
@@ -262,6 +269,10 @@ one failure.
   `--dns-test` run again completed all 21 registered tests on both guests.
   Each replica used the same exact two-node voter manifest; discovery supplied
   routes for those identities but did not determine Raft membership.
+- After relmsg wire protocol v2 and bounded receive state were added, a third
+  fresh two-guest run completed all 21 tests on both guests. The leader now
+  waits for transport acknowledgement of its remote-call reply, avoiding the
+  runner race in which QEMU stopped before the follower received that reply.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, remote-call, discovery bootstrap,
@@ -285,7 +296,8 @@ principal distributed findings occur.
 - [x] Preserve snapshot request progress across network responses.
 - [x] Make frouter routes generation/restart aware (invalidate and re-resolve
   stale connections; proactive generation refresh remains follow-up work).
-- [ ] Add relmsg sessions and bounded buffering.
+- [x] Add relmsg sessions and bounded buffering (the automated unilateral
+  restart fault test remains under the CI/fault-testing item).
 - [ ] Define and implement the remote invocation contract.
 - [x] Move DNS to durable Raft state and authoritative membership bootstrap.
   Clustered DNS now requires durable term/vote/log/snapshot stores and an

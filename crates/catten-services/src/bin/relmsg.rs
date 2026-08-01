@@ -46,12 +46,14 @@ use charlotte_protocol_msg::{
     FLAG_ACK,
     FLAG_FRAG,
     FLAG_MORE,
+    FLAG_SYN,
     FRAME_HEADER_SIZE,
     MAX_PAYLOAD_SIZE,
     build_frame_header,
     pack_address_and_len,
     parse_frame_header_checked,
     set_fragment_offset,
+    set_sequence,
     unpack_address_and_len,
 };
 use charlotte_protocol_net::decode_status;
@@ -61,6 +63,9 @@ const STAGE_OFFSET: usize = 0;
 const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
 const TX_SCRATCH: usize = 0x0000_0000_0090_1000;
 const PAYLOAD_SCRATCH: usize = 0x0000_0000_0090_2000;
+const MAX_RECEIVED_MESSAGES: usize = 32;
+const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
+const RETIRED_SESSION_WINDOW: usize = 8;
 
 struct ReceivedMessage {
     source: [u8; 6],
@@ -85,6 +90,7 @@ struct Reassembly {
     seq: u32,
     /// Fragment offset -> payload bytes, deduplicated by offset.
     fragments: BTreeMap<usize, Vec<u8>>,
+    buffered_bytes: usize,
     /// Total message length, set when the last fragment arrives.
     total: Option<usize>,
 }
@@ -109,6 +115,8 @@ struct Peer {
     next_rx_seq: u32,
     pending: Option<Outbound>,
     reassembling: Option<Reassembly>,
+    remote_session: Option<u64>,
+    retired_sessions: VecDeque<u64>,
 }
 
 impl Peer {
@@ -119,7 +127,50 @@ impl Peer {
             next_rx_seq: 1,
             pending: None,
             reassembling: None,
+            remote_session: None,
+            retired_sessions: VecDeque::new(),
         }
+    }
+
+    fn accept_session(&mut self, session: u64, flags: u16) -> Option<bool> {
+        if session == 0 || self.retired_sessions.contains(&session) {
+            return None;
+        }
+        if self.remote_session == Some(session) {
+            return Some(false);
+        }
+        if flags & FLAG_SYN == 0 {
+            return None;
+        }
+        let restarted = if let Some(previous) = self.remote_session.replace(session) {
+            self.retired_sessions.push_back(previous);
+            if self.retired_sessions.len() > RETIRED_SESSION_WINDOW {
+                self.retired_sessions.pop_front();
+            }
+            true
+        } else {
+            false
+        };
+        self.next_rx_seq = 1;
+        self.reassembling = None;
+        Some(restarted)
+    }
+
+    fn reset_transmit_session(&mut self) {
+        self.next_tx_seq = 1;
+        let Some(pending) = self.pending.as_mut() else {
+            return;
+        };
+        pending.seq = 1;
+        pending.retries = 0;
+        for frame in &mut pending.frames {
+            let header: &mut [u8; charlotte_protocol_msg::HEADER_SIZE] = (&mut frame
+                [ETHERNET_HEADER_SIZE..FRAME_HEADER_SIZE])
+                .try_into()
+                .expect("relmsg header slice");
+            set_sequence(header, 1);
+        }
+        self.next_tx_seq = 2;
     }
 }
 
@@ -164,6 +215,7 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
 fn make_frame(
     destination: [u8; 6],
     source: [u8; 6],
+    session: u64,
     seq: u32,
     ack: u32,
     flags: u16,
@@ -171,7 +223,16 @@ fn make_frame(
 ) -> Vec<u8> {
     let mut frame = alloc::vec![0u8; FRAME_HEADER_SIZE + payload.len()];
     let mut header = [0u8; FRAME_HEADER_SIZE];
-    build_frame_header(&mut header, destination, source, seq, ack, payload.len() as u16, flags);
+    build_frame_header(
+        &mut header,
+        destination,
+        source,
+        session,
+        seq,
+        ack,
+        payload.len() as u16,
+        flags,
+    );
     frame[..FRAME_HEADER_SIZE].copy_from_slice(&header);
     frame[FRAME_HEADER_SIZE..].copy_from_slice(payload);
     frame
@@ -211,11 +272,12 @@ fn retransmit_pending(net_conn: u64, peers: &mut [Peer]) {
 fn process_frame(
     net_conn: u64,
     local_mac: [u8; 6],
+    local_session: u64,
     frame: &[u8],
     peers: &mut Vec<Peer>,
     received: &mut VecDeque<ReceivedMessage>,
 ) {
-    let Ok((destination, source, seq, ack, payload_len, flags, frag_offset)) =
+    let Ok((destination, source, remote_session, seq, ack, payload_len, flags, frag_offset)) =
         parse_frame_header_checked(frame)
     else {
         return;
@@ -226,6 +288,12 @@ fn process_frame(
     let Some(index) = peer_index(peers, source) else {
         return;
     };
+    let Some(peer_restarted) = peers[index].accept_session(remote_session, flags) else {
+        return;
+    };
+    if peer_restarted {
+        peers[index].reset_transmit_session();
+    }
     if flags & FLAG_ACK != 0 {
         let peer = &mut peers[index];
         if peer.pending.as_ref().is_some_and(|pending| pending.seq == ack) {
@@ -243,6 +311,9 @@ fn process_frame(
     let frag_offset = frag_offset as usize;
 
     if seq == peers[index].next_rx_seq {
+        if received.len() >= MAX_RECEIVED_MESSAGES {
+            return;
+        }
         if !is_frag {
             // Single-frame message: deliver immediately.
             let cap = memory_alloc(1);
@@ -272,13 +343,26 @@ fn process_frame(
                 peer.reassembling = Some(Reassembly {
                     seq,
                     fragments: BTreeMap::new(),
+                    buffered_bytes: 0,
                     total: None,
                 });
             }
             let within_ceiling =
                 frag_offset.checked_add(payload_len).is_some_and(|end| end <= relmsg::MAX_MSG);
             if within_ceiling && let Some(ra) = peer.reassembling.as_mut() {
-                ra.fragments.insert(frag_offset, payload.to_vec());
+                let is_new = !ra.fragments.contains_key(&frag_offset);
+                if is_new && ra.fragments.len() >= MAX_REASSEMBLY_FRAGMENTS {
+                    return;
+                }
+                let replaced = ra.fragments.insert(frag_offset, payload.to_vec());
+                ra.buffered_bytes = ra
+                    .buffered_bytes
+                    .saturating_sub(replaced.as_ref().map_or(0, Vec::len))
+                    .saturating_add(payload_len);
+                if ra.buffered_bytes > relmsg::MAX_MSG {
+                    peer.reassembling = None;
+                    return;
+                }
                 if flags & FLAG_MORE == 0 {
                     ra.total = Some(frag_offset + payload_len);
                 }
@@ -318,7 +402,8 @@ fn process_frame(
     // Cumulative acknowledgement: duplicates are acknowledged again, while
     // out-of-order frames acknowledge the last contiguous sequence.
     let last_contiguous = peers[index].next_rx_seq.wrapping_sub(1);
-    let ack_frame = make_frame(source, local_mac, 0, last_contiguous, FLAG_ACK, &[]);
+    let ack_frame =
+        make_frame(source, local_mac, local_session, 0, last_contiguous, FLAG_SYN | FLAG_ACK, &[]);
     let _ = send_frame(net_conn, &ack_frame);
 }
 
@@ -347,7 +432,6 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     config::write::<u32>(STAGE_OFFSET, 2);
-
     let ep = ipc_endpoint_create(relmsg::INTERFACE, relmsg::VERSION, 16);
     if ep == 0 {
         unsafe { thread_exit() };
@@ -369,6 +453,10 @@ fn main(ctx: Context) -> ! {
     if generation < 1 {
         unsafe { thread_exit() };
     }
+    // Name-service generations are monotonic for this registered service
+    // name, so a unilateral relmsg restart gets a distinct wire session. Peer
+    // state is already keyed by MAC, so retain the complete generation.
+    let local_session = generation as u64;
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut peers: Vec<Peer> = Vec::new();
@@ -457,15 +545,16 @@ fn main(ctx: Context) -> ! {
                     let last = offset + chunk_len >= payload_len;
                     let fragmented = payload_len > MAX_PAYLOAD_SIZE;
                     let flags = if !fragmented {
-                        0
+                        FLAG_SYN
                     } else if last {
-                        FLAG_FRAG
+                        FLAG_SYN | FLAG_FRAG
                     } else {
-                        FLAG_FRAG | FLAG_MORE
+                        FLAG_SYN | FLAG_FRAG | FLAG_MORE
                     };
-                    let mut frame = make_frame(destination, local_mac, seq, 0, flags, chunk);
+                    let mut frame =
+                        make_frame(destination, local_mac, local_session, seq, 0, flags, chunk);
                     if flags & FLAG_FRAG != 0 {
-                        let header: &mut [u8; 16] = (&mut frame
+                        let header: &mut [u8; charlotte_protocol_msg::HEADER_SIZE] = (&mut frame
                             [ETHERNET_HEADER_SIZE..FRAME_HEADER_SIZE])
                             .try_into()
                             .expect("relmsg header slice");
@@ -523,7 +612,14 @@ fn main(ctx: Context) -> ! {
                 if memory_map(message.memory, RX_SCRATCH, false) == 0 {
                     let frame =
                         unsafe { core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len) };
-                    process_frame(net_conn, local_mac, frame, &mut peers, &mut received);
+                    process_frame(
+                        net_conn,
+                        local_mac,
+                        local_session,
+                        frame,
+                        &mut peers,
+                        &mut received,
+                    );
                     memory_unmap(message.memory);
                 }
                 memory_close(message.memory);

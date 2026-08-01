@@ -568,7 +568,7 @@ pub mod fs {
     pub const ERR_DIR_NOT_EMPTY: i64 = 6;
 }
 
-/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v1).
+/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v2).
 ///
 /// Exposes sequenced, acknowledged, retransmitted message delivery.
 /// Clients send messages addressed to peer service names; the RML
@@ -576,7 +576,7 @@ pub mod fs {
 /// them via the NIC driver (or directly for same-machine peers).
 pub mod relmsg {
     pub const INTERFACE: u64 = super::name(b"RELMSG");
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = 2;
     pub const NAME: u64 = super::name(b"relmsg");
 
     pub const OP_SEND: u32 = 1;
