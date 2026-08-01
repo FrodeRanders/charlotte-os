@@ -807,6 +807,19 @@ pub fn test_endpoint_ipc_connection_attach() {
         "live endpoint must leave its close watch pending"
     );
 
+    // Readability and lifecycle are distinct events. A message arriving on a
+    // live endpoint wakes receivers, but must not masquerade as endpoint
+    // death (the distributed name service relies on this distinction when it
+    // automatically tombstones a publication).
+    ipc::scalar_send(client, client_service_conn, 7, 0x55)
+        .expect("message sent while close watch is armed");
+    assert!(
+        matches!(crate::completion::poll(client, close_watch), Ok(None)),
+        "message arrival must not complete an endpoint-close watch"
+    );
+    let message = ipc::receive(service, service_endpoint).expect("watched endpoint receive");
+    assert_eq!(message.arg0, 0x55);
+
     // Stale service connections fail deterministically after the service
     // endpoint closes (restart semantics).
     ipc::close_cap(service, service_endpoint).expect("service endpoint close failed");

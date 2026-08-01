@@ -650,6 +650,7 @@ fn main(ctx: Context) -> ! {
     let mut recv_pending: u64 = 0;
     let mut served: u32 = 0;
     let mut remote_calls_served: u32 = 0;
+    let mut remote_queries_served: u32 = 0;
     let mut pending_registers: Vec<PendingRegistration> = Vec::new();
     let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
     let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
@@ -820,6 +821,8 @@ fn main(ctx: Context) -> ! {
                                         transport.peer_id_for_mac(&source_mac)
                                     && source_peer.as_bytes() == caller
                                 {
+                                    remote_queries_served = remote_queries_served.wrapping_add(1);
+                                    config::write::<u32>(44, remote_queries_served);
                                     let (status, entry) =
                                         match node.handle_client_query(name.clone()) {
                                             Ok(bytes) => (0, decode_query_result(&bytes)),

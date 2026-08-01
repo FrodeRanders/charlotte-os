@@ -207,7 +207,13 @@ struct Endpoint {
     version: u32,
     capacity: usize,
     queue: VecDeque<QueuedMessage>,
-    observers: ConcurrentQueue<Weak<dyn Observer>>,
+    /// Threads waiting for the endpoint to become readable. These observers
+    /// fire on message arrival and endpoint closure.
+    readiness_observers: ConcurrentQueue<Weak<dyn Observer>>,
+    /// Lifecycle observers installed through `watch_connection_closed`.
+    /// Unlike readiness observers, ordinary message delivery must not wake
+    /// these: they fire exclusively when the endpoint closes.
+    close_observers: ConcurrentQueue<Weak<dyn Observer>>,
     closed: bool,
     /// When bound, endpoint readiness is delivered to this completion queue
     /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
@@ -346,7 +352,8 @@ pub fn endpoint_create(
             version,
             capacity,
             queue: VecDeque::new(),
-            observers: ConcurrentQueue::unbounded(),
+            readiness_observers: ConcurrentQueue::unbounded(),
+            close_observers: ConcurrentQueue::unbounded(),
             closed: false,
             notify_cq: None,
         },
@@ -1077,7 +1084,7 @@ fn enqueue_message(
         None
     };
     Ok(Delivery {
-        observers: drain_observers(&endpoint.observers),
+        observers: drain_observers(&endpoint.readiness_observers),
         cq_wake,
     })
 }
@@ -1269,7 +1276,7 @@ pub fn watch_connection_closed(
         if endpoint.closed {
             true
         } else {
-            let _ = endpoint.observers.push(Arc::downgrade(&observer));
+            let _ = endpoint.close_observers.push(Arc::downgrade(&observer));
             false
         }
     };
@@ -1283,7 +1290,7 @@ impl Observable for EndpointObservable {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
         let ipc = IPC.read();
         if let Some(endpoint) = ipc.endpoints.get(&self.endpoint) {
-            let _ = endpoint.observers.push(observer);
+            let _ = endpoint.readiness_observers.push(observer);
         }
     }
 }
@@ -1492,7 +1499,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     Vec::new()
                 } else {
                     endpoint.closed = true;
-                    observers.extend(drain_observers(&endpoint.observers));
+                    observers.extend(drain_observers(&endpoint.readiness_observers));
+                    observers.extend(drain_observers(&endpoint.close_observers));
                     // A CQ-bound endpoint reports its closure as a readiness
                     // wake so a reactor blocked on one CQ wait observes it.
                     cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));

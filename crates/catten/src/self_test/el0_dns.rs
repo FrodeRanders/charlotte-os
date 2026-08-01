@@ -372,6 +372,7 @@ mod inner {
         // until its DNS replica has also served the follower's remote call;
         // otherwise the runner can observe local SELFTEST COMPLETE and stop
         // the leader while the follower is still awaiting its reply.
+        let mut query_barrier = 0;
         if is_leader {
             let deadline = crate::self_test::results::Deadline::after_millis(60_000);
             while unsafe { core::ptr::read_volatile(dns_cfg.add(9)) } == 0 {
@@ -379,6 +380,7 @@ mod inner {
                 yield_lp();
             }
             logln!("[dns] leader served the follower's remote invocation.");
+            query_barrier = unsafe { core::ptr::read_volatile(dns_cfg.add(11)) };
 
             assert_eq!(
                 unsafe { core::ptr::read_volatile(dns_cfg.add(8)) },
@@ -414,6 +416,19 @@ mod inner {
             }
             deadline.assert_pending("EL0 dns generation-fenced unregister replication");
             yield_lp();
+        }
+        if is_leader {
+            while unsafe { core::ptr::read_volatile(dns_cfg.add(11)) } <= query_barrier {
+                deadline.assert_pending("EL0 dns follower tombstone acknowledgement");
+                yield_lp();
+            }
+        } else {
+            let lookup = call(dns_conn, DNS_OP_LOOKUP, ECHO_NAME);
+            assert_eq!(
+                lookup,
+                Some(DNS_ERR_NOT_FOUND),
+                "[dns] post-tombstone lookup must observe the removal"
+            );
         }
         if is_leader {
             let stale_unregister = call_with_memory(

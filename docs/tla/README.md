@@ -267,6 +267,13 @@ rules reflected in the Rust scheduler:
    retirement is keyed by the recorded owner rather than the transient
    `ThreadState` snapshot.
 
+The authoritative `scheduler-lifecycle` kernel self-test exercises the same
+trace deterministically. A target pinned to LP1 masks interrupts while LP0
+requests its abort, installs a block after the request, and receives a racing
+wake. The test requires that wake admission to reject the terminating
+generation, then waits for owner-LP retirement and deferred reaping before it
+can report success.
+
 With two threads, two LPs, two address spaces, and two generations, TLC 2.19
 completely explored 373,860 distinct repaired-model states (1,710,157 states
 generated, depth 22) without an invariant violation.
