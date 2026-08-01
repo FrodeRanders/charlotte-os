@@ -20,14 +20,14 @@
 use core::arch::asm;
 
 use crate::{
-    cpu::{
-        isa::aarch64::memory::{
-            address::vaddr::VAddr,
-            paging::PAGE_SIZE,
-        },
-        scheduler::system_scheduler::SYSTEM_SCHEDULER,
+    cpu::isa::aarch64::memory::{
+        address::vaddr::VAddr,
+        paging::PAGE_SIZE,
     },
-    memory::AddressSpaceId,
+    memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceId,
+    },
 };
 
 /// Encode a virtual address for the `TLBI ...VA*` instructions. The address is
@@ -42,7 +42,7 @@ fn tlbi_va_operand(vaddr: VAddr) -> u64 {
 /// [63:48] of the operand.
 #[inline(always)]
 fn tlbi_asid_operand(asid: HwAsidRaw) -> u64 {
-    (asid as u64) << 48
+    super::paging::encode_hw_asid(asid)
 }
 
 type HwAsidRaw = u16;
@@ -84,10 +84,13 @@ pub fn inval_range_kernel(base: VAddr, num_pages: usize) {
 /// across all cores. Uses the ASID-qualified `VAE1IS` variant so that only the
 /// target address space's entries are affected.
 pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
-    let Some(hwasid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
-    else {
-        return;
+    let hwasid = match ADDRESS_SPACE_TABLE.lock().get(asid) {
+        Ok(address_space) if address_space.hw_asid() != 0 => address_space.hw_asid(),
+        _ => return,
     };
+    if num_pages == 0 {
+        return;
+    }
     let raw_base = <VAddr as Into<usize>>::into(base);
     let asid_bits = tlbi_asid_operand(hwasid);
     unsafe {
@@ -105,10 +108,16 @@ pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
 /// `ASIDE1IS` invalidates every entry tagged with the given ASID, broadcast to
 /// the inner shareable domain.
 pub fn inval_asid(asid: AddressSpaceId) {
-    let Some(hwasid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid)
-    else {
-        return;
+    let hwasid = match ADDRESS_SPACE_TABLE.lock().get(asid) {
+        Ok(address_space) if address_space.hw_asid() != 0 => address_space.hw_asid(),
+        _ => return,
     };
+    inval_hardware_asid(hwasid);
+}
+
+/// Broadcast invalidation by hardware tag. Used before returning a tag to the
+/// allocator, when the software address-space table entry is being removed.
+pub fn inval_hardware_asid(hwasid: HwAsidRaw) {
     let op = tlbi_asid_operand(hwasid);
     unsafe {
         asm!(

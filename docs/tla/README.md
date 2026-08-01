@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for fourteen
+This directory contains finite, executable specifications for fifteen
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -10,6 +10,7 @@ CharlotteOS subsystems:
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
 | Reusable ASID generation identity | `CharlotteAddressSpace.tla` | `CharlotteAddressSpace_small.cfg` |
+| AArch64 hardware-ASID recycling | `CharlotteHardwareAsid.tla` | `CharlotteHardwareAsid_small.cfg` |
 | Deferred interrupt-route reuse | `CharlotteInterruptRoute.tla` | `CharlotteInterruptRoute_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
@@ -36,9 +37,9 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all fourteen complete fast configurations plus expected-failure
-  endpoint-observer, scheduler, address-space, and interrupt-route regression
-  configurations;
+- runs all fifteen complete fast configurations plus expected-failure
+  endpoint-observer, scheduler, address-space, hardware-ASID, and
+  interrupt-route regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -61,6 +62,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteAddressSpace -config CharlotteAddressSpace_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteHardwareAsid -config CharlotteHardwareAsid_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \

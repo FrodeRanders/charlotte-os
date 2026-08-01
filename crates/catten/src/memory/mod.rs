@@ -97,8 +97,10 @@ static ADDRESS_SPACE_LIFECYCLE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::ne
 
 /// Add an address space and return the generation-bearing identity of this
 /// particular slot occupancy.
-pub fn register_user_address_space(address_space: AddressSpace) -> AddressSpaceHandle {
+pub fn register_user_address_space(mut address_space: AddressSpace) -> AddressSpaceHandle {
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    #[cfg(target_arch = "aarch64")]
+    address_space.ensure_hw_asid();
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let id = table.add_element(address_space);
     debug_assert_ne!(id, KERNEL_ASID);

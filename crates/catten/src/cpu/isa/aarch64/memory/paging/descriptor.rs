@@ -32,6 +32,9 @@ const ATTR_INDX_SHIFT: u64 = 2;
 /// Lower attribute: Access Flag. If this is clear when the descriptor is used
 /// the CPU takes an Access Flag fault, so we always set it on live mappings.
 const AF: u64 = 1 << 10;
+/// Lower attribute: non-global. User translations must carry this bit so TLB
+/// lookup includes the ASID from TTBR0_EL1; kernel mappings remain global.
+const NOT_GLOBAL: u64 = 1 << 11;
 /// Lower attribute: Shareability field `[9:8]`. `0b11` is inner-shareable,
 /// which is what we want for Normal cacheable memory on an SMP system.
 const SH_INNER: u64 = 0b11 << 8;
@@ -124,7 +127,7 @@ impl Descriptor {
             bits |= AP_RO;
         }
         if user_accessible {
-            bits |= AP_EL0;
+            bits |= AP_EL0 | NOT_GLOBAL;
         }
         if no_execute {
             // Mark the mapping non-executable at both privilege levels. User

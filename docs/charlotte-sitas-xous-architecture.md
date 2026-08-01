@@ -209,6 +209,16 @@ retired domain is rejected after its numeric slot is reused. Raw ASIDs remain
 appropriate only for short operations that establish liveness through the
 address-space table during the operation.
 
+On AArch64 each live user address space also receives a nonzero hardware ASID
+encoded in `TTBR0_EL1`. The allocator observes `TCR_EL1.AS` and supports both
+8-bit and 16-bit tag spaces, reserving any tag already used by the kernel.
+Context switches therefore select tagged translations without a whole-TLB
+flush. User leaf descriptors are non-global (`nG=1`), ensuring the hardware
+includes that tag in TLB matching, while shared kernel mappings remain global.
+Before a hardware tag is returned to the free pool, teardown broadcasts an
+ASID-qualified invalidation; software `(ASID, generation)` remains the authority
+identity and is deliberately distinct from this recyclable hardware cache tag.
+
 ## 2.2 Endpoints
 
 Endpoints answer:

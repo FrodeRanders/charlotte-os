@@ -106,6 +106,10 @@ run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
     ReplacementSurvivesStaleHandle UnsafeStaleClose
+run_model CharlotteHardwareAsid CharlotteHardwareAsid_small.cfg \
+    Allocate CacheTranslation Retire Invalidate
+run_expected_violation CharlotteHardwareAsid CharlotteHardwareAsid_unsafe.cfg \
+    NoDirtyTagReuse UnsafeAllocate
 run_model CharlotteInterruptRoute CharlotteInterruptRoute_small.cfg \
     Bind QueueWake Unbind DrainSafe
 run_expected_violation CharlotteInterruptRoute CharlotteInterruptRoute_unsafe.cfg \

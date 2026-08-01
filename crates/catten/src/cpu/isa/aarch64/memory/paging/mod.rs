@@ -3,6 +3,7 @@
 pub mod descriptor;
 pub mod walker;
 
+use alloc::vec::Vec;
 use core::{
     arch::asm,
     ptr::NonNull,
@@ -32,6 +33,10 @@ use crate::{
         kibibytes,
         mebibytes,
     },
+    memory::{
+        LazyLock,
+        Mutex,
+    },
 };
 
 /// Hardware Address Space Identifier. On AArch64 the ASID is held in the top
@@ -39,6 +44,82 @@ use crate::{
 /// wide depending on `TCR_EL1.AS`; we model the full 16-bit width and mask as
 /// required.
 pub type HwAsid = u16;
+
+const TTBR_BADDR_MASK: u64 = 0x0000_ffff_ffff_f000;
+
+/// Hardware ASID width selected by TCR_EL1.AS: 8 bits when clear, 16 bits
+/// when set. In the 8-bit format the tag occupies TTBR bits 63:56.
+static HW_ASID_BITS: LazyLock<u8> = LazyLock::new(|| {
+    let tcr: u64;
+    unsafe {
+        asm!("mrs {tcr}, tcr_el1", tcr = out(reg) tcr, options(nomem, nostack, preserves_flags));
+    }
+    assert_eq!(
+        tcr & (1 << 22),
+        0,
+        "CharlotteOS requires TCR_EL1.A1=0 so TTBR0 selects the user ASID"
+    );
+    if tcr & (1 << 36) != 0 {
+        16
+    } else {
+        8
+    }
+});
+
+fn hw_asid_shift() -> u32 {
+    if *HW_ASID_BITS == 16 {
+        48
+    } else {
+        56
+    }
+}
+
+pub(crate) fn encode_hw_asid(asid: HwAsid) -> u64 {
+    (asid as u64) << hw_asid_shift()
+}
+
+struct HwAsidAllocator {
+    next: u32,
+    limit: u32,
+    reserved_kernel: HwAsid,
+    free: Vec<HwAsid>,
+}
+
+impl HwAsidAllocator {
+    fn new() -> Self {
+        let ttbr0: u64;
+        unsafe {
+            asm!("mrs {ttbr0}, ttbr0_el1", ttbr0 = out(reg) ttbr0, options(nomem, nostack, preserves_flags));
+        }
+        Self {
+            next: 1,
+            limit: 1u32 << *HW_ASID_BITS,
+            reserved_kernel: ((ttbr0 >> hw_asid_shift()) & 0xffff) as HwAsid,
+            free: Vec::new(),
+        }
+    }
+
+    fn allocate(&mut self) -> HwAsid {
+        if let Some(asid) = self.free.pop() {
+            return asid;
+        }
+        if self.next == self.reserved_kernel as u32 {
+            self.next += 1;
+        }
+        assert!(self.next < self.limit, "AArch64 hardware ASID space exhausted");
+        let asid = self.next as HwAsid;
+        self.next += 1;
+        asid
+    }
+
+    fn release(&mut self, asid: HwAsid) {
+        debug_assert_ne!(asid, 0);
+        self.free.push(asid);
+    }
+}
+
+static HW_ASID_ALLOCATOR: LazyLock<Mutex<HwAsidAllocator>> =
+    LazyLock::new(|| Mutex::new(HwAsidAllocator::new()));
 
 pub const PAGE_SIZE: usize = kibibytes(4);
 pub const LARGE_PAGE_SIZE: usize = mebibytes(2);
@@ -64,10 +145,12 @@ pub fn is_table_unused(table_ptr: NonNull<PageTable>) -> bool {
 /// An address space is defined by its two translation table base registers:
 /// `TTBR0_EL1` maps the lower half (user space) and `TTBR1_EL1` maps the higher
 /// half (kernel space).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct AddressSpace {
     ttbr0_el1: u64,
     ttbr1_el1: u64,
+    hw_asid: HwAsid,
+    owns_hw_asid: bool,
 }
 
 impl AddressSpace {
@@ -81,10 +164,32 @@ impl AddressSpace {
 
     pub fn set_ttbr0(&mut self, ttbr0: u64) {
         self.ttbr0_el1 = ttbr0;
+        self.hw_asid = ((ttbr0 >> hw_asid_shift()) & 0xffff) as HwAsid;
+        self.owns_hw_asid = false;
     }
 
     pub fn set_ttbr1(&mut self, ttbr1: u64) {
         self.ttbr1_el1 = ttbr1;
+    }
+
+    pub fn hw_asid(&self) -> HwAsid {
+        self.hw_asid
+    }
+
+    pub(crate) fn ensure_hw_asid(&mut self) -> HwAsid {
+        if self.hw_asid == 0 {
+            self.hw_asid = HW_ASID_ALLOCATOR.lock().allocate();
+            self.owns_hw_asid = true;
+            self.ttbr0_el1 = (self.ttbr0_el1 & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
+        }
+        self.hw_asid
+    }
+
+    /// Install a lower-half root without disturbing this address space's TLB
+    /// identity. Fresh user spaces acquire a nonzero tag on first mapping.
+    pub(super) fn install_ttbr0_base(&mut self, base: u64) {
+        self.ensure_hw_asid();
+        self.ttbr0_el1 = (base & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
     }
 
     /// Map a physical MMIO region into this address space at its higher half
@@ -149,6 +254,8 @@ impl AddressSpaceInterface for AddressSpace {
         AddressSpace {
             ttbr0_el1,
             ttbr1_el1,
+            hw_asid: ((ttbr0_el1 >> hw_asid_shift()) & 0xffff) as HwAsid,
+            owns_hw_asid: false,
         }
     }
 
@@ -355,6 +462,18 @@ impl AddressSpaceInterface for AddressSpace {
     ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
         let mut walker = walker::Walker::new(self, vaddr);
         walker.translate()
+    }
+}
+
+impl Drop for AddressSpace {
+    fn drop(&mut self) {
+        if self.owns_hw_asid && self.hw_asid != 0 {
+            // A tag cannot be reused until all cores have discarded entries
+            // belonging to its previous page-table lifetime.
+            super::tlb::inval_hardware_asid(self.hw_asid);
+            HW_ASID_ALLOCATOR.lock().release(self.hw_asid);
+            self.owns_hw_asid = false;
+        }
     }
 }
 

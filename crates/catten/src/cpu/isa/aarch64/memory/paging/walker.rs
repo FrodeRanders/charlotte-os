@@ -221,7 +221,7 @@ impl<'vas> Walker<'vas> {
             if self.is_higher_half() {
                 self.address_space.set_ttbr1(base);
             } else {
-                self.address_space.set_ttbr0(base);
+                self.address_space.install_ttbr0_base(base);
             }
             if was_active {
                 self.address_space.load().expect("Failed to load new root translation table");

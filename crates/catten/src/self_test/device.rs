@@ -161,10 +161,25 @@ fn test_stale_address_space_handle() {
     };
 
     let old = loader::create_user_address_space_handle();
+    let old_hw_asid = crate::memory::ADDRESS_SPACE_TABLE
+        .lock()
+        .get(old.id())
+        .expect("[device] old address space missing")
+        .hw_asid();
+    assert_ne!(old_hw_asid, 0, "user address space must have a hardware ASID");
     close_user_address_space_handle(old).expect("[device] initial AS close failed");
     let replacement = loader::create_user_address_space_handle();
+    let replacement_hw_asid = crate::memory::ADDRESS_SPACE_TABLE
+        .lock()
+        .get(replacement.id())
+        .expect("[device] replacement address space missing")
+        .hw_asid();
     assert_eq!(replacement.id(), old.id(), "address-space test expected slot reuse");
     assert_ne!(replacement.generation(), old.generation());
+    assert_eq!(
+        replacement_hw_asid, old_hw_asid,
+        "address-space test expected invalidated hardware-ASID recycling"
+    );
     assert_eq!(
         close_user_address_space_handle(old),
         Err(AddressSpaceCloseError::StaleHandle),
