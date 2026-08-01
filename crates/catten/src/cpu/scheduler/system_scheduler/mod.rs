@@ -514,9 +514,11 @@ impl SystemScheduler {
         {
             let table = MASTER_THREAD_TABLE.read();
             let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+            thread.abort_owner_lp.store(owner_lp as usize, Ordering::Release);
             thread.abort_requested.store(true, Ordering::Release);
             if LocalIntCtlr::send_unicast_ipi(owner_lp, SCHEDULER_IPI_VECTOR).is_err() {
                 thread.abort_requested.store(false, Ordering::Release);
+                thread.abort_owner_lp.store(usize::MAX, Ordering::Release);
                 return Err(Error::InvalidThread);
             }
             return Ok(tid);

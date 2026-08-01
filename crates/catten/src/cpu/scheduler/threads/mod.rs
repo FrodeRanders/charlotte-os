@@ -38,6 +38,7 @@ use core::{
     sync::atomic::{
         AtomicBool,
         AtomicU64,
+        AtomicUsize,
         Ordering,
     },
 };
@@ -119,8 +120,8 @@ pub fn retire_requested_threads() {
         .enumerate()
         .filter_map(|(tid, thread)| {
             let thread = thread.as_ref()?;
-            (tid != active_tid.unwrap_or(usize::MAX)
-                && matches!(thread.state, ThreadState::Running(owner) if owner == lp)
+            (thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
+                && tid != active_tid.unwrap_or(usize::MAX)
                 && thread.abort_requested.load(Ordering::Acquire))
             .then_some((tid, thread.generation))
         })
@@ -131,7 +132,7 @@ pub fn retire_requested_threads() {
             let mut table = MASTER_THREAD_TABLE.write();
             let still_requested = table.get(tid).is_ok_and(|thread| {
                 thread.generation == generation
-                    && matches!(thread.state, ThreadState::Running(owner) if owner == lp)
+                    && thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
                     && thread.abort_requested.load(Ordering::Acquire)
             });
             if !still_requested {
@@ -309,6 +310,7 @@ pub struct Thread {
     /// Cross-LP termination is completed by the CPU that owns the running
     /// context, after it has switched off this thread's stack.
     pub(crate) abort_requested: AtomicBool,
+    pub(crate) abort_owner_lp: AtomicUsize,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -337,6 +339,7 @@ impl Thread {
             dispatch_count: 0,
             last_dispatch_tick: None,
             abort_requested: AtomicBool::new(false),
+            abort_owner_lp: AtomicUsize::new(usize::MAX),
             exit_observers: Mutex::new(Vec::new()),
         }
     }

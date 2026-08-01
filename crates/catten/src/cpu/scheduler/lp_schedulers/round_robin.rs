@@ -211,10 +211,10 @@ impl LpScheduler for RoundRobin {
         let next_handle = loop {
             match self.run_queue.pop_front() {
                 Some(handle) => {
-                    let valid = MASTER_THREAD_TABLE
-                        .read()
-                        .get(handle.tid)
-                        .is_ok_and(|thread| thread.generation == handle.generation);
+                    let valid = MASTER_THREAD_TABLE.read().get(handle.tid).is_ok_and(|thread| {
+                        thread.generation == handle.generation
+                            && !thread.abort_requested.load(Ordering::Acquire)
+                    });
                     if valid {
                         break handle;
                     }
@@ -292,6 +292,12 @@ impl LpScheduler for RoundRobin {
             Err(_) => return Err(Error::InvalidThread),
         };
         if expected_generation.is_some_and(|generation| generation != thread.generation) {
+            return Err(Error::InvalidThread);
+        }
+        // A wake may race a remote abort request. Once termination is
+        // requested, that generation must never be admitted again; its owner
+        // LP will retire it after switching off its stack.
+        if thread.abort_requested.load(Ordering::Acquire) {
             return Err(Error::InvalidThread);
         }
         let handle = ThreadHandle {
