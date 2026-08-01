@@ -72,6 +72,21 @@ pub const VALID_FLAGS: u16 = FLAG_SYN | FLAG_ACK | FLAG_FIN | FLAG_FRAG | FLAG_M
 /// payload_len, flags, fragment_offset).
 pub type ParsedFrameHeader = ([u8; 6], [u8; 6], u64, u32, u32, u16, u16, u16);
 
+/// Fields written ahead of a reliable-message Ethernet payload.
+///
+/// Keeping these related values together makes construction self-documenting
+/// and avoids an error-prone sequence of similarly typed positional arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameHeader {
+    pub destination: [u8; 6],
+    pub source: [u8; 6],
+    pub session: u64,
+    pub sequence: u32,
+    pub acknowledgment: u32,
+    pub payload_len: u16,
+    pub flags: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaderError {
     FrameTooShort,
@@ -98,21 +113,19 @@ pub fn unpack_address_and_len(packed: u64) -> ([u8; 6], u16) {
     (mac, packed as u16)
 }
 
-pub fn build_frame_header(
-    buf: &mut [u8; FRAME_HEADER_SIZE],
-    destination: [u8; 6],
-    source: [u8; 6],
-    session: u64,
-    seq: u32,
-    ack: u32,
-    payload_len: u16,
-    flags: u16,
-) {
-    buf[..6].copy_from_slice(&destination);
-    buf[6..12].copy_from_slice(&source);
+pub fn build_frame_header(buf: &mut [u8; FRAME_HEADER_SIZE], header: FrameHeader) {
+    buf[..6].copy_from_slice(&header.destination);
+    buf[6..12].copy_from_slice(&header.source);
     buf[12..14].copy_from_slice(&MSG_ETHERTYPE.to_be_bytes());
     let mut message = [0u8; HEADER_SIZE];
-    build_header(&mut message, session, seq, ack, payload_len, flags);
+    build_header(
+        &mut message,
+        header.session,
+        header.sequence,
+        header.acknowledgment,
+        header.payload_len,
+        header.flags,
+    );
     buf[ETHERNET_HEADER_SIZE..].copy_from_slice(&message);
 }
 
@@ -268,7 +281,18 @@ mod tests {
         let source = [0x52, 0x54, 0, 0x12, 0x34, 1];
         let mut frame = [0u8; FRAME_HEADER_SIZE + 3];
         let mut header = [0u8; FRAME_HEADER_SIZE];
-        build_frame_header(&mut header, destination, source, 99, 7, 6, 3, FLAG_ACK);
+        build_frame_header(
+            &mut header,
+            FrameHeader {
+                destination,
+                source,
+                session: 99,
+                sequence: 7,
+                acknowledgment: 6,
+                payload_len: 3,
+                flags: FLAG_ACK,
+            },
+        );
         frame[..FRAME_HEADER_SIZE].copy_from_slice(&header);
         frame[FRAME_HEADER_SIZE..].copy_from_slice(b"hey");
         assert_eq!(

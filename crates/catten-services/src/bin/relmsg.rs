@@ -48,6 +48,7 @@ use charlotte_protocol_msg::{
     FLAG_MORE,
     FLAG_SYN,
     FRAME_HEADER_SIZE,
+    FrameHeader,
     MAX_PAYLOAD_SIZE,
     build_frame_header,
     pack_address_and_len,
@@ -225,13 +226,15 @@ fn make_frame(
     let mut header = [0u8; FRAME_HEADER_SIZE];
     build_frame_header(
         &mut header,
-        destination,
-        source,
-        session,
-        seq,
-        ack,
-        payload.len() as u16,
-        flags,
+        FrameHeader {
+            destination,
+            source,
+            session,
+            sequence: seq,
+            acknowledgment: ack,
+            payload_len: payload.len() as u16,
+            flags,
+        },
     );
     frame[..FRAME_HEADER_SIZE].copy_from_slice(&header);
     frame[FRAME_HEADER_SIZE..].copy_from_slice(payload);
