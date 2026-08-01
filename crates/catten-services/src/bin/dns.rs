@@ -79,9 +79,11 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    close as completion_close,
     cq_read,
     cq_wait_timeout,
     ipc_close,
+    ipc_connection_watch_closed,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
@@ -98,6 +100,7 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
+    poll as completion_poll,
     submit_detached_timer,
     thread_exit,
 };
@@ -167,6 +170,8 @@ enum PendingRegistration {
         reply: u64,
         name: Vec<u8>,
         generation: u64,
+        connection: u64,
+        local_generation: u64,
     },
     Unregister {
         log_index: u64,
@@ -176,6 +181,19 @@ enum PendingRegistration {
         local_generation: u64,
     },
 }
+
+struct LocalPublication {
+    name: Vec<u8>,
+    generation: u64,
+    local_generation: u64,
+    connection: u64,
+    close_watch: u64,
+    endpoint_closed: bool,
+    local_cleanup_submitted: bool,
+    next_unregister_attempt: u64,
+}
+
+const AUTO_UNREGISTER_RETRY_MS: u64 = 1_000;
 
 fn reply_lookup(
     ns_conn: u64,
@@ -637,6 +655,7 @@ fn main(ctx: Context) -> ! {
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
     let mut pending_local_unregistrations: Vec<u64> = Vec::new();
+    let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
 
@@ -915,6 +934,32 @@ fn main(ctx: Context) -> ! {
                                             }
                                         }
                                     }
+                                }
+                            }
+                            Some(catten_services::runregister::TAG_REQUEST) => {
+                                if let Some((owner, name, generation)) =
+                                    catten_services::runregister::decode_request(frame)
+                                    && node.state == NodeState::Leader
+                                    && transport
+                                        .peer_id_for_mac(&source_mac)
+                                        .is_some_and(|peer| peer.as_bytes() == owner)
+                                    && catalog.lookup(&name).is_some_and(|entry| {
+                                        entry.active
+                                            && entry.node == owner
+                                            && entry.generation == generation
+                                    })
+                                    && let Ok(log_index) = node.submit_command(
+                                        encode_unregister_generation(&name, &owner, generation),
+                                        node.millis(),
+                                    )
+                                {
+                                    pending_registers.push(PendingRegistration::Unregister {
+                                        log_index,
+                                        reply: 0,
+                                        name,
+                                        expected_generation: generation,
+                                        local_generation: 0,
+                                    });
                                 }
                             }
                             _ => {
@@ -1332,6 +1377,9 @@ fn main(ctx: Context) -> ! {
                         }
                     };
                     let Some(local_generation) = local_generation else {
+                        if connection != 0 {
+                            ipc_close(connection);
+                        }
                         if reply != 0 {
                             ipc_reply(reply, dns::ERR_TOO_LARGE);
                         }
@@ -1344,6 +1392,8 @@ fn main(ctx: Context) -> ! {
                                 reply,
                                 name,
                                 generation,
+                                connection,
+                                local_generation,
                             });
                         }
                         Err(code) => {
@@ -1357,6 +1407,9 @@ fn main(ctx: Context) -> ! {
                                     pending_local_unregistrations.push(unregister);
                                 }
                             }
+                            if connection != 0 {
+                                ipc_close(connection);
+                            }
                             if reply != 0 {
                                 ipc_reply(reply, code);
                             }
@@ -1367,6 +1420,8 @@ fn main(ctx: Context) -> ! {
                     reply,
                     name,
                     generation,
+                    connection,
+                    local_generation,
                     ..
                 } => {
                     let activated = node
@@ -1375,6 +1430,21 @@ fn main(ctx: Context) -> ! {
                         .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
                         .map(u64::from_le_bytes)
                         == Some(generation);
+                    if activated && connection != 0 {
+                        let close_watch = ipc_connection_watch_closed(connection);
+                        local_publications.push(LocalPublication {
+                            name: name.clone(),
+                            generation,
+                            local_generation,
+                            connection,
+                            close_watch,
+                            endpoint_closed: false,
+                            local_cleanup_submitted: false,
+                            next_unregister_attempt: 0,
+                        });
+                    } else if connection != 0 {
+                        ipc_close(connection);
+                    }
                     if reply != 0 {
                         ipc_reply(
                             reply,
@@ -1385,7 +1455,6 @@ fn main(ctx: Context) -> ! {
                             },
                         );
                     }
-                    let _ = name;
                 }
                 PendingRegistration::Unregister {
                     reply,
@@ -1434,6 +1503,85 @@ fn main(ctx: Context) -> ! {
                 false
             }
         });
+
+        let mut publication_index = 0;
+        while publication_index < local_publications.len() {
+            let publication = &mut local_publications[publication_index];
+            if !publication.endpoint_closed && publication.close_watch == u64::MAX {
+                publication.close_watch = ipc_connection_watch_closed(publication.connection);
+            }
+            if !publication.endpoint_closed && publication.close_watch != u64::MAX {
+                let (status, _result) = completion_poll(publication.close_watch);
+                if status == 0 {
+                    completion_close(publication.close_watch);
+                    ipc_close(publication.connection);
+                    publication.close_watch = u64::MAX;
+                    publication.connection = 0;
+                    publication.endpoint_closed = true;
+                }
+            }
+
+            let still_active = catalog.lookup(&publication.name).is_some_and(|entry| {
+                entry.node == node_name && entry.generation == publication.generation
+            });
+            if !still_active {
+                if !publication.local_cleanup_submitted && publication.local_generation != 0 {
+                    let call = submit_unregister_local_generation(
+                        ns_conn,
+                        &publication.name,
+                        publication.local_generation,
+                    );
+                    if call != 0 {
+                        pending_local_unregistrations.push(call);
+                        publication.local_cleanup_submitted = true;
+                    }
+                }
+                if publication.close_watch != u64::MAX {
+                    // A replacement made this watcher obsolete. Its endpoint
+                    // may still be alive, so retain the completion until that
+                    // endpoint eventually closes rather than cancelling away
+                    // the only strong observer reference.
+                    publication_index += 1;
+                } else {
+                    local_publications.swap_remove(publication_index);
+                }
+                continue;
+            }
+
+            let now = node.millis();
+            if publication.endpoint_closed && now >= publication.next_unregister_attempt {
+                publication.next_unregister_attempt = now.saturating_add(AUTO_UNREGISTER_RETRY_MS);
+                if node.state == NodeState::Leader {
+                    if let Ok(log_index) = node.submit_command(
+                        encode_unregister_generation(
+                            &publication.name,
+                            &node_name,
+                            publication.generation,
+                        ),
+                        now,
+                    ) {
+                        pending_registers.push(PendingRegistration::Unregister {
+                            log_index,
+                            reply: 0,
+                            name: publication.name.clone(),
+                            expected_generation: publication.generation,
+                            local_generation: publication.local_generation,
+                        });
+                    }
+                } else if let Some(leader) = node.known_leader_id.as_ref() {
+                    transport.send_message(
+                        leader,
+                        catten_services::runregister::TAG_REQUEST,
+                        catten_services::runregister::encode_request(
+                            &node_name,
+                            &publication.name,
+                            publication.generation,
+                        ),
+                    );
+                }
+            }
+            publication_index += 1;
+        }
 
         // A timeout cannot prove whether a remote target executed before its
         // reply was lost, so report an explicitly uncertain outcome. The

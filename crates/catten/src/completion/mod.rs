@@ -210,6 +210,10 @@ struct CompletionInner {
     exit_observer: Option<Arc<CompletionExitObserver>>,
     /// Keeps the timer observer (if any) alive until the completion is reclaimed.
     timer_observer: Option<Arc<CompletionTimerObserver>>,
+    /// Keeps a subsystem-defined event observer alive. IPC uses this for
+    /// connection endpoint-close watches without coupling completion storage
+    /// to the concrete IPC observer type.
+    event_observer: Option<Arc<dyn Observer>>,
 }
 
 /// An [`Observer`] that completes a capability when the worker thread it is
@@ -267,6 +271,7 @@ impl Completion {
                 state: OpState::InFlight,
                 exit_observer: None,
                 timer_observer: None,
+                event_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
         })
@@ -282,6 +287,10 @@ impl Completion {
 
     fn set_timer_observer(&self, observer: Arc<CompletionTimerObserver>) {
         self.inner.lock().timer_observer = Some(observer);
+    }
+
+    pub(crate) fn set_event_observer(&self, observer: Arc<dyn Observer>) {
+        self.inner.lock().event_observer = Some(observer);
     }
 
     fn state_kind(&self) -> OpStateKind {

@@ -924,3 +924,42 @@ pub fn wait_for_boot_done(ns_conn: u64) -> bool {
     let (generation, _) = unsafe { wait_reply(call, 0) };
     generation >= 1
 }
+
+/// Generation-fenced automatic service retraction sent by a publication's
+/// owning node to the current Raft leader.
+pub mod runregister {
+    pub const TAG_REQUEST: u8 = 0x14;
+
+    pub fn encode_request(owner: &[u8], name: &[u8], generation: u64) -> alloc::vec::Vec<u8> {
+        let owner_len = owner.len().min(255);
+        let name_len = name.len().min(255);
+        let mut frame = alloc::vec::Vec::with_capacity(2 + owner_len + name_len + 8);
+        frame.push(owner_len as u8);
+        frame.extend_from_slice(&owner[..owner_len]);
+        frame.push(name_len as u8);
+        frame.extend_from_slice(&name[..name_len]);
+        frame.extend_from_slice(&generation.to_le_bytes());
+        frame
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
+        if frame.len() < 12 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let owner_len = frame[1] as usize;
+        let owner_off = 2;
+        if frame.len() < owner_off + owner_len + 1 + 8 {
+            return None;
+        }
+        let owner = frame[owner_off..owner_off + owner_len].to_vec();
+        let name_len_off = owner_off + owner_len;
+        let name_len = frame[name_len_off] as usize;
+        let name_off = name_len_off + 1;
+        if frame.len() != name_off + name_len + 8 {
+            return None;
+        }
+        let name = frame[name_off..name_off + name_len].to_vec();
+        let generation = u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
+        Some((owner, name, generation))
+    }
+}

@@ -640,6 +640,7 @@ pub fn test_endpoint_ipc_connection_attach() {
     let nameservice = 0x6100;
     let service = 0x6200;
     let client = 0x6300;
+    crate::completion::open_address_space(client, 8);
 
     let ns_endpoint = ipc::endpoint_create(nameservice, 0x4e53_5643, 1, 4)
         .expect("name-service endpoint_create failed");
@@ -797,9 +798,30 @@ pub fn test_endpoint_ipc_connection_attach() {
         .expect("endpoint close should complete queued register call");
     assert_eq!(doomed_value.result, ipc::REPLY_ENDPOINT_CLOSED);
 
+    // Endpoint-death watches are completion-backed and close the lost-wake
+    // race between checking the endpoint and registering its observer.
+    let close_watch = ipc::watch_connection_closed(client, client_service_conn)
+        .expect("connection close watch submission failed");
+    assert!(
+        matches!(crate::completion::poll(client, close_watch), Ok(None)),
+        "live endpoint must leave its close watch pending"
+    );
+
     // Stale service connections fail deterministically after the service
     // endpoint closes (restart semantics).
     ipc::close_cap(service, service_endpoint).expect("service endpoint close failed");
+    let closed = crate::completion::poll(client, close_watch)
+        .expect("connection close watch poll failed")
+        .expect("endpoint close must complete its watch");
+    assert_eq!(closed.result, crate::completion::OpResult::Ok(ipc::REPLY_ENDPOINT_CLOSED));
+    crate::completion::close(client, close_watch).expect("connection close watch close failed");
+    let late_watch = ipc::watch_connection_closed(client, client_service_conn)
+        .expect("already-closed connection watch submission failed");
+    assert!(
+        matches!(crate::completion::poll(client, late_watch), Ok(Some(_))),
+        "watching an already-closed endpoint must complete immediately"
+    );
+    crate::completion::close(client, late_watch).expect("late close watch close failed");
     assert_eq!(
         ipc::scalar_call(client, client_service_conn, 8, 0),
         Err(IpcError::EndpointClosed),
@@ -807,6 +829,7 @@ pub fn test_endpoint_ipc_connection_attach() {
     );
 
     ipc::close_address_space(client);
+    crate::completion::close_address_space(client);
     ipc::close_address_space(service);
     ipc::close_address_space(nameservice);
     logln!("Endpoint IPC connection attachment tests passed.");

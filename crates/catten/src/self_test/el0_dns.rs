@@ -51,6 +51,7 @@ mod inner {
     const ECHO_NAME: u64 = 0x0000_6f68_6365;
     // catten_services::echo opcodes.
     const ECHO_OP_ECHO: u32 = 1;
+    const ECHO_OP_SHUTDOWN: u32 = 2;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
@@ -287,7 +288,6 @@ mod inner {
             ConnectionRights::CALL,
         );
         logln!("[dns] echo spawned (asid={})", echo.asid);
-        let _echo = echo;
 
         let is_leader = state == 3;
         let mut echo_generation = 0;
@@ -341,21 +341,17 @@ mod inner {
             }
             logln!("[dns] leader served the follower's remote invocation.");
 
-            let unregister = call_with_memory(
-                dns_conn,
-                DNS_OP_UNREGISTER,
-                ECHO_NAME,
-                &(echo_generation as u64).to_le_bytes(),
+            let mut shutdown = Vec::new();
+            shutdown.extend_from_slice(&ECHO_OP_SHUTDOWN.to_le_bytes());
+            shutdown.extend_from_slice(&0i64.to_le_bytes());
+            assert_eq!(
+                call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &shutdown),
+                Some(0),
+                "[dns] hosted echo must acknowledge shutdown"
             );
-            assert_eq!(unregister, Some(echo_generation));
-            let stale_unregister = call_with_memory(
-                dns_conn,
-                DNS_OP_UNREGISTER,
-                ECHO_NAME,
-                &(echo_generation as u64).to_le_bytes(),
-            );
-            assert_eq!(stale_unregister, Some(DNS_ERR_STALE_GENERATION));
-            logln!("[dns] generation {} unregistered; stale replay rejected.", echo_generation);
+            crate::service::supervisor::wait_domain_exit(&echo, 30_000);
+            crate::service::supervisor::teardown_domain(echo);
+            logln!("[dns] generation {echo_generation} endpoint closed; awaiting tombstone.");
         }
 
         // Keep both voters alive until the exact-generation tombstone has
@@ -366,10 +362,23 @@ mod inner {
             deadline.assert_pending("EL0 dns generation-fenced unregister replication");
             yield_lp();
         }
+        if is_leader {
+            let stale_unregister = call_with_memory(
+                dns_conn,
+                DNS_OP_UNREGISTER,
+                ECHO_NAME,
+                &(echo_generation as u64).to_le_bytes(),
+            );
+            assert_eq!(stale_unregister, Some(DNS_ERR_STALE_GENERATION));
+            logln!(
+                "[dns] endpoint death unregistered generation {}; stale replay rejected.",
+                echo_generation
+            );
+        }
 
         logln!(
             "[dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote \
-             invocation, and fenced service unregister by generation."
+             invocation, and automatically fenced endpoint-death unregister by generation."
         );
         crate::self_test::results::pass(crate::self_test::results::TestId::Dns);
     }

@@ -891,6 +891,19 @@ cluster service by running the registry as a `StateMachine` on top of Raft:
 - Access keys (`OP_REGISTER_KEYED`) — enforced consistently across the
   cluster; revocation propagates through the replicated log
 
+Each owning DNS process retains a kernel completion watch on the local service
+connection. Endpoint closure wakes the DNS reactor. The owner then proposes an
+owner-and-generation-fenced tombstone locally when it is leader, or sends an
+authenticated retraction to the known leader. Retraction is idempotent and
+retried at low frequency across leadership changes; it cannot remove a
+replacement generation.
+
+Raft and DNS control messages share relmsg's per-peer serialized transport.
+Only one send may be in flight per peer. Consecutive queued AppendEntries are
+coalesced, while non-Raft control traffic keeps its FIFO position, so a slow
+emulator does not accumulate obsolete heartbeats ahead of retraction or call
+traffic.
+
 Kernel capability identifiers and endpoint objects are local to one machine
 and must not be placed in the Raft log. Replicated registrations instead
 contain a stable service name, owning node identity, routable service identity,

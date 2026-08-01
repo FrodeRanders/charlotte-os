@@ -10,7 +10,10 @@ use alloc::{
         BTreeMap,
         VecDeque,
     },
-    sync::Weak,
+    sync::{
+        Arc,
+        Weak,
+    },
     vec::Vec,
 };
 use core::ops::BitOr;
@@ -1216,6 +1219,64 @@ fn endpoint_is_readable_or_closed(endpoint_id: EndpointId) -> Result<bool, IpcEr
 
 struct EndpointObservable {
     endpoint: EndpointId,
+}
+
+struct EndpointCloseCompletionObserver {
+    asid: AddressSpaceId,
+    cap: crate::completion::CompletionCap,
+}
+
+impl Observer for EndpointCloseCompletionObserver {
+    fn notify(self: Arc<Self>) {
+        let _ = crate::completion::complete(
+            self.asid,
+            self.cap,
+            crate::completion::OpResult::Ok(REPLY_ENDPOINT_CLOSED),
+        );
+    }
+}
+
+/// Return a completion capability that becomes ready when the endpoint named
+/// by `connection_cap` closes. Registration and the closed-state check share
+/// the IPC lock, closing the lost-wake race between those operations.
+pub fn watch_connection_closed(
+    asid: AddressSpaceId,
+    connection_cap: CapabilityId,
+) -> Result<crate::completion::CompletionCap, IpcError> {
+    let endpoint_id = {
+        let ipc = IPC.read();
+        match ipc.cap(asid, connection_cap)? {
+            Capability::Connection {
+                endpoint,
+                ..
+            } => endpoint,
+            _ => return Err(IpcError::WrongType),
+        }
+    };
+    let cap = crate::completion::submit(asid, crate::completion::OpCode::Nop, None)
+        .map_err(|_| IpcError::QueueFull)?;
+    let observer: Arc<dyn Observer> = Arc::new(EndpointCloseCompletionObserver {
+        asid,
+        cap,
+    });
+    let completion =
+        crate::completion::completion_of(asid, cap).map_err(|_| IpcError::UnknownCapability)?;
+    completion.set_event_observer(observer.clone());
+
+    let already_closed = {
+        let ipc = IPC.read();
+        let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+        if endpoint.closed {
+            true
+        } else {
+            let _ = endpoint.observers.push(Arc::downgrade(&observer));
+            false
+        }
+    };
+    if already_closed {
+        observer.notify();
+    }
+    Ok(cap)
 }
 
 impl Observable for EndpointObservable {

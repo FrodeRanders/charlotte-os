@@ -220,6 +220,11 @@ Different services are different state machines on the same Raft substrate:
         ``register(name, owner, route, generation)'' and
         ``unregister(name, owner, generation)''. Unregistration is rejected
         unless both owner and generation still match the active entry.
+        The owning DNS process watches the local endpoint through a waitable
+        kernel completion. Endpoint death proposes this same fenced tombstone;
+        a follower forwards an authenticated, idempotent request to its known
+        leader and retries across leadership changes. A stale death notification
+        therefore cannot remove a replacement generation.
         The state maps names to owning-node identities, routable service
         identities, generations, and policy metadata. Replicated, it makes
         service discovery available cluster-wide; this is the implemented
@@ -233,6 +238,12 @@ Different services are different state machines on the same Raft substrate:
 None of these state machines know about sockets, IP addresses, or TCP. They
 implement \texttt{apply()} and \texttt{snapshot()}. The Raft substrate handles
 replication, leader election, and fault tolerance.
+
+Raft RPCs and DNS control messages use one serialized relmsg queue per peer.
+Because QEMU may acknowledge that queue slowly, consecutive queued
+AppendEntries heartbeats are coalesced. Non-Raft control messages retain their
+FIFO position, preventing obsolete heartbeat backlog from starving service
+retraction and invocation traffic.
 
 \section{Relationship to the name service}
 

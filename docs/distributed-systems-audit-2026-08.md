@@ -211,8 +211,13 @@ connection publication succeeds, a generation-fenced `activate` command makes
 the entry visible. Failed local publication leaves an inactive replicated
 tombstone rather than a resolvable ghost. Catalog snapshot v3 preserves the
 phase, while v1/v2 snapshots migrate existing entries as active. A fresh
-two-guest run passed 21/21. Automatic replicated unregister on service death
-remains open.
+two-guest run passed 21/21. The kernel now exposes a waitable connection-close
+completion. DNS retains one for each local publication and proposes the same
+owner-and-generation-fenced tombstone when its endpoint closes. A follower
+sends an authenticated, idempotent request to its known leader and retries at
+one-second intervals across leader changes. The request shares relmsg's
+per-peer queue, where queued AppendEntries heartbeats are coalesced. A fresh
+two-guest acceptance run remains required for this final automatic path.
 
 ### F10 — Relmsg buffering is insufficiently bounded (medium)
 
@@ -361,13 +366,15 @@ it does not claim transactional or globally exactly-once execution.
   exact launch-manifest voter identity set. Discovery resolves those voters to
   transport routes but cannot add, omit, or replace voting authority; missing
   configured voters fail closed.
-- [ ] Complete replicated service lifecycle policy. Monotonic generations,
+- [x] Complete replicated service lifecycle policy. Monotonic generations,
   two-phase prepare/activate publication, tombstones, generation-fenced calls,
   and linearizable lookup/call routing through follower-to-leader forwarding
   are implemented. Explicit unregister is fenced by owning node plus
   distributed generation, while its asynchronous local cleanup is separately
-  fenced by the observed local generation. Automatic distributed
-  unregister/revocation on service death and partition fault injection remain.
+  fenced by the observed local generation. Endpoint death produces a waitable
+  kernel completion and an authenticated, retried owner-to-leader tombstone
+  request. Partition fault injection and a fresh two-guest acceptance run for
+  this automatic path remain validation work.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been

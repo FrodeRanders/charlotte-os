@@ -97,6 +97,7 @@ pub enum SyscallNumber {
     DmaMap = 57,
     DmaUnmap = 58,
     ThreadStatistics = 59,
+    IpcConnectionWatchClosed = 60,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -164,12 +165,13 @@ impl TryFrom<u16> for SyscallNumber {
             57 => Ok(Self::DmaMap),
             58 => Ok(Self::DmaUnmap),
             59 => Ok(Self::ThreadStatistics),
+            60 => Ok(Self::IpcConnectionWatchClosed),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::ThreadStatistics as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::IpcConnectionWatchClosed as u16;
 
 // ---- observability wire format ---------------------------------------------
 
@@ -1007,6 +1009,14 @@ pub fn ipc_reply_wait_with_memory(call: u64) -> (u64, u64, u64, u64) {
 #[inline(always)]
 pub fn ipc_close(cap: u64) -> u64 {
     unsafe { svc3(SyscallNumber::IpcClose, cap, 0, 0) }
+}
+
+/// Create a completion capability that resolves when the connection's
+/// endpoint closes. `u64::MAX` reports an invalid connection or completion
+/// backpressure; capability zero is valid.
+#[inline]
+pub fn ipc_connection_watch_closed(connection: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::IpcConnectionWatchClosed, connection, 0, 0) }
 }
 
 /// Complete a call and return a delegated connection cap to the original caller.

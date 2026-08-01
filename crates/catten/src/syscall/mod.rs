@@ -193,6 +193,7 @@ pub mod call_no {
     /// x1 naming a system-observer capability authorizes all threads. Returns
     /// a memory-object capability in x0 and its exact length in x1.
     pub const THREAD_STATISTICS: u16 = SyscallNumber::ThreadStatistics as u16;
+    pub const IPC_CONNECTION_WATCH_CLOSED: u16 = SyscallNumber::IpcConnectionWatchClosed as u16;
     /// Request the supervisor to spawn a replacement domain for a live
     /// upgrade. x1 = persistent ELF memory cap (0 for embedded fallback),
     /// x2 = ELF byte length, or embedded selector when x1 is 0; x3 = state
@@ -288,6 +289,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::DmaMap => sys_dma_map(frame),
         SyscallNumber::DmaUnmap => sys_dma_unmap(frame),
         SyscallNumber::ThreadStatistics => sys_thread_statistics(frame),
+        SyscallNumber::IpcConnectionWatchClosed => sys_ipc_connection_watch_closed(frame),
         SyscallNumber::SpawnUpgrade => {
             #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
@@ -1010,6 +1012,11 @@ fn sys_ipc_close(frame: &mut TrapFrame) {
         Ok(()) => 0,
         Err(error) => ipc_status(error),
     };
+}
+
+fn sys_ipc_connection_watch_closed(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    frame.regs[0] = ipc::watch_connection_closed(asid, frame.regs[1]).unwrap_or(u64::MAX);
 }
 
 fn sys_ipc_reply_connection(frame: &mut TrapFrame) {
