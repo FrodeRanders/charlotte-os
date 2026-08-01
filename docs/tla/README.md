@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for ten
+This directory contains finite, executable specifications for eleven
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -15,6 +15,7 @@ CharlotteOS subsystems:
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
+| Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
@@ -75,6 +76,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaftSnapshot -config CharlotteRaftSnapshot_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRemoteCall -config CharlotteRemoteCall_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -339,6 +344,23 @@ writes do not form one atomic snapshot/log update. The implementation now
 restores on construction, acknowledges stale snapshots without installing
 them, retains a suffix with a matching boundary term, and serializes snapshot
 metadata, bytes, and log suffix into one copy-on-write object.
+
+## Remote-call model
+
+`CharlotteRemoteCall.tla` models the complete caller-node/session/call identity,
+target-generation fencing, execution, reply delivery, explicit uncertain
+timeouts, duplicate requests, transport settlement, session retirement, and a
+bounded completed-result cache. Its contract is deliberately narrower than
+global exactly-once execution: a result must remain cached while a request can
+still recur, and eviction is permitted only after relmsg settlement or explicit
+retirement of an uncertain caller session.
+
+The invariants require stale target generations never to execute, successful
+completion to have one execution and a delivered reply, uncertainty never to
+masquerade as success, and executed identities to remain cached until safe.
+The model corresponds to the scalar DNS v2 prototype; transactional effects,
+durable deduplication across DNS reboot, and general remote capability transfer
+remain outside it.
 
 ## Relationship to formal verification
 

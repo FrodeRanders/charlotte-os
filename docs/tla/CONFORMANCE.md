@@ -196,6 +196,22 @@ and chunks to a bounded count. It omits peer roles and addresses within those
 sets, checksums below the object-store interface, network framing, storage
 exhaustion, and state-machine-specific validation of snapshot bytes.
 
+## Remote-call identity and uncertainty
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Start` | `dns::OP_CALL`, `InFlightCall` | Captures caller DNS session, monotonic call ID, expected peer and replicated target generation before dispatch. |
+| `ReplaceTarget` / `RejectStale` | `NameCatalog` generation transition; inbound `rcall` validation | The target executes only when the request generation equals the active catalog generation; otherwise it returns `ERR_STALE_GENERATION`. |
+| `Execute` / `DuplicateRequest` | inbound `TAG_REQUEST`; `CompletedCall` cache | First delivery invokes the local endpoint and caches its result; the same caller/session/call identity reuses the cached result. |
+| `QueueReply` / `DeliverReply` | `TAG_REPLY`; relmsg acknowledgement counter | Abstract split between application result creation, reliable-message delivery, and client reply completion. |
+| `Timeout` | `REMOTE_CALL_TIMEOUT_MS`, in-flight expiry | Direct: once dispatch may have executed, expiry returns `ERR_UNCERTAIN`, not a retry-safe transport error. |
+| `SettleTransport` / `Evict` | per-peer relmsg reply-ACK ordinal and bounded result window | Direct for transport settlement: Rust evicts only an entry whose reply ordinal has been acknowledged by that peer. If every entry remains unsettled, it returns `ERR_BUSY` before execution instead of evicting deduplication evidence. Explicit uncertain-session retirement remains a modeled extension. |
+
+The model does not assert global exactly-once behavior. It checks at-most-once
+execution while an identity remains tracked and makes the condition for safe
+eviction explicit. Durable deduplication across DNS process restart and general
+remote object-capability transfer are outside the implementation and model.
+
 ## Unified capability namespace
 
 | TLA+ action | Rust implementation | Correspondence |

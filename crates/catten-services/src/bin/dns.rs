@@ -129,6 +129,8 @@ struct CompletedCall {
     session: u64,
     call_id: u64,
     result: i64,
+    peer: alloc::string::String,
+    settled_after_ack: u64,
 }
 
 enum PendingQueryKind {
@@ -571,6 +573,7 @@ fn main(ctx: Context) -> ! {
     let mut pending_registers: Vec<PendingRegistration> = Vec::new();
     let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
     let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
+    let mut next_reply_ordinal: BTreeMap<alloc::string::String, u64> = BTreeMap::new();
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
     let mut next_query_id: u64 = 1;
@@ -636,13 +639,42 @@ fn main(ctx: Context) -> ! {
                                         memory_close(memory);
                                         continue;
                                     }
-                                    let cached = completed_calls.iter().find(|completed| {
-                                        completed.caller == caller
-                                            && completed.session == session
-                                            && completed.call_id == call_id
-                                    });
-                                    let result = cached.map_or_else(
-                                        || match catalog.lookup(&target) {
+                                    let cached_result = completed_calls
+                                        .iter()
+                                        .find(|completed| {
+                                            completed.caller == caller
+                                                && completed.session == session
+                                                && completed.call_id == call_id
+                                        })
+                                        .map(|completed| completed.result);
+                                    let reply_ordinal = next_reply_ordinal
+                                        .entry(source_peer.clone())
+                                        .or_insert_with(|| {
+                                            transport.acknowledged_count_for(
+                                                &source_peer,
+                                                catten_services::rcall::TAG_REPLY,
+                                            )
+                                        });
+                                    *reply_ordinal = reply_ordinal.saturating_add(1);
+
+                                    if cached_result.is_none()
+                                        && completed_calls.len() >= DEDUP_WINDOW
+                                        && let Some(index) =
+                                            completed_calls.iter().position(|completed| {
+                                                transport.acknowledged_count_for(
+                                                    &completed.peer,
+                                                    catten_services::rcall::TAG_REPLY,
+                                                ) >= completed.settled_after_ack
+                                            })
+                                    {
+                                        completed_calls.remove(index);
+                                    }
+                                    let has_dedup_capacity = completed_calls.len() < DEDUP_WINDOW;
+                                    let result = cached_result.unwrap_or_else(|| {
+                                        if !has_dedup_capacity {
+                                            return dns::ERR_BUSY;
+                                        }
+                                        match catalog.lookup(&target) {
                                             Some(owner)
                                                 if owner.node == node_name
                                                     && owner.generation == target_generation =>
@@ -653,18 +685,16 @@ fn main(ctx: Context) -> ! {
                                                 dns::ERR_STALE_GENERATION
                                             }
                                             _ => dns::ERR_NOT_FOUND,
-                                        },
-                                        |completed| completed.result,
-                                    );
-                                    if cached.is_none() {
-                                        if completed_calls.len() >= DEDUP_WINDOW {
-                                            completed_calls.pop_front();
                                         }
+                                    });
+                                    if cached_result.is_none() && has_dedup_capacity {
                                         completed_calls.push_back(CompletedCall {
                                             caller,
                                             session,
                                             call_id,
                                             result,
+                                            peer: source_peer.clone(),
+                                            settled_after_ack: *reply_ordinal,
                                         });
                                     }
                                     remote_calls_served = remote_calls_served.wrapping_add(1);

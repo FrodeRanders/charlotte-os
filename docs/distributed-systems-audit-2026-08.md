@@ -285,10 +285,10 @@ one failure.
 - `charlotte-smoltcp`: 2 tests passed.
 - Workspace and standalone-service formatting checks passed.
 - Direct service Clippy found four warning groups, confirming the CI gap.
-- All ten TLC configurations completed without invariant violations and with
+- All eleven TLC configurations completed without invariant violations and with
   the required action coverage: IPC, completion queue, scheduler, service
   lifecycle, capability namespace, DMA, Raft election, Raft log, Raft
-  membership, and Raft snapshot.
+  membership, Raft snapshot, and bounded remote invocation.
 - After the first repair slice, a fresh two-guest `--dns-test` run completed
   all 21 registered tests on both guests. The leader remained alive until it
   had served the follower's remote call, and both DNS replicas used durable
@@ -306,11 +306,19 @@ one failure.
   before networking or the changed call path ran. A fresh rerun completed all
   21 tests on both nodes. This reproducible class of scheduling-sensitive boot
   failure remains evidence for repair-order item 8.
+- After the bounded deduplication cache was aligned with the remote-call model,
+  both guests again replicated the catalog and completed a remote invocation
+  with result 42. The listener produced the authoritative 21/21 result. The
+  connector completed DNS but remained at 20/21 on the independently tracked
+  `scheduler-lifecycle` test, reproducing the scheduling-sensitive validation
+  issue rather than a distributed-call failure.
 
 These TLC results establish safety only for the modeled projections. The
-models deliberately omit the relmsg session, remote-call, discovery bootstrap,
-transport queue, and network snapshot-correlation state machines in which the
-principal distributed findings occur.
+models deliberately omit the relmsg session, discovery bootstrap, transport
+queue, and network snapshot-correlation state machines in which several of the
+principal distributed findings occur. The remote-call model covers bounded
+identity retention, generation fencing, uncertainty, and safe dedup eviction;
+it does not claim transactional or globally exactly-once execution.
 
 ## Recommended implementation order
 
@@ -331,10 +339,12 @@ principal distributed findings occur.
   stale connections; proactive generation refresh remains follow-up work).
 - [x] Add relmsg sessions and bounded buffering (the automated unilateral
   restart fault test remains under the CI/fault-testing item).
-- [ ] Complete the remote invocation contract. Caller/session/call identity,
+- [x] Complete the bounded remote invocation contract. Caller/session/call identity,
   source binding, bounded deadlines/in-flight state, explicit uncertainty, and
-  bounded deduplication and target-generation binding are implemented; a
-  checked state-machine model remains.
+  bounded deduplication and target-generation binding are implemented. The
+  state-machine model requires completed results to remain until transport
+  settlement; the implementation now returns `ERR_BUSY` instead of evicting an
+  unsettled result when that bounded cache is full.
 - [x] Move DNS to durable Raft state and authoritative membership bootstrap.
   Clustered DNS now requires durable term/vote/log/snapshot stores and an
   exact launch-manifest voter identity set. Discovery resolves those voters to

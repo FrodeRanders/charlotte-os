@@ -79,3 +79,6 @@ run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
 run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
+run_model CharlotteRemoteCall CharlotteRemoteCall_small.cfg \
+    Start ReplaceTarget Execute RejectStale QueueReply DuplicateRequest \
+    DeliverReply Timeout SettleTransport RetireUncertainSession Evict

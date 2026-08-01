@@ -78,6 +78,7 @@ pub struct RelmsgRaftTransport {
     /// Outstanding relmsg `OP_SEND` call caps per peer (0 = none).
     pending_sends: spin::Mutex<BTreeMap<String, PendingSend>>,
     acknowledged_by_tag: spin::Mutex<BTreeMap<u8, u64>>,
+    acknowledged_by_peer_tag: spin::Mutex<BTreeMap<(String, u8), u64>>,
     received_responses: spin::Mutex<Vec<RpcCompletion>>,
     current_millis: spin::Mutex<u64>,
 }
@@ -90,6 +91,7 @@ impl RelmsgRaftTransport {
             outbound: spin::Mutex::new(BTreeMap::new()),
             pending_sends: spin::Mutex::new(BTreeMap::new()),
             acknowledged_by_tag: spin::Mutex::new(BTreeMap::new()),
+            acknowledged_by_peer_tag: spin::Mutex::new(BTreeMap::new()),
             received_responses: spin::Mutex::new(Vec::new()),
             current_millis: spin::Mutex::new(0),
         }
@@ -200,6 +202,10 @@ impl RelmsgRaftTransport {
                         let mut counts = self.acknowledged_by_tag.lock();
                         let count = counts.entry(send.tag).or_default();
                         *count = count.saturating_add(1);
+                        drop(counts);
+                        let mut peer_counts = self.acknowledged_by_peer_tag.lock();
+                        let count = peer_counts.entry((peer_id.clone(), send.tag)).or_default();
+                        *count = count.saturating_add(1);
                     }
                     completed.push(peer_id.clone());
                 }
@@ -212,6 +218,13 @@ impl RelmsgRaftTransport {
     /// instance. This is transport delivery, not application processing.
     pub fn acknowledged_count(&self, tag: u8) -> u64 {
         self.acknowledged_by_tag.lock().get(&tag).copied().unwrap_or(0)
+    }
+
+    /// Number of messages with `tag` acknowledged by a particular remote
+    /// relmsg instance. The per-peer count lets callers determine when a
+    /// specific queued reply has become transport-settled.
+    pub fn acknowledged_count_for(&self, peer_id: &str, tag: u8) -> u64 {
+        self.acknowledged_by_peer_tag.lock().get(&(peer_id.to_string(), tag)).copied().unwrap_or(0)
     }
 
     /// Send a tagged RPC response to a peer MAC, routed through the per-peer
