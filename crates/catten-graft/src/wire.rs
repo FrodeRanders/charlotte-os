@@ -172,6 +172,8 @@ pub fn encode_snapshot_response(response: &InstallSnapshotResponse) -> Result<Ve
         peer_id: response.peer_id.clone(),
         success: response.success,
         last_included_index: signed(response.last_included_index)?,
+        next_offset: signed(response.next_offset)?,
+        done: response.done,
     })
 }
 
@@ -182,7 +184,34 @@ pub fn decode_snapshot_response(bytes: &[u8]) -> Result<InstallSnapshotResponse,
         term: nonnegative(response.term)?,
         success: response.success,
         last_included_index: nonnegative(response.last_included_index)?,
-        next_offset: 0,
-        done: false,
+        next_offset: nonnegative(response.next_offset)?,
+        done: response.done,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_response_preserves_chunk_progress() {
+        let response = InstallSnapshotResponse {
+            peer_id: "node-b".into(),
+            term: 9,
+            success: true,
+            last_included_index: 41,
+            next_offset: 8192,
+            done: true,
+        };
+
+        let encoded = encode_snapshot_response(&response).expect("encode snapshot response");
+        let decoded = decode_snapshot_response(&encoded).expect("decode snapshot response");
+
+        assert_eq!(decoded.peer_id, response.peer_id);
+        assert_eq!(decoded.term, response.term);
+        assert_eq!(decoded.success, response.success);
+        assert_eq!(decoded.last_included_index, response.last_included_index);
+        assert_eq!(decoded.next_offset, response.next_offset);
+        assert_eq!(decoded.done, response.done);
+    }
 }

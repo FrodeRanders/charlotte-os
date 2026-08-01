@@ -233,13 +233,13 @@ impl RelmsgRaftTransport {
             TAG_SNAPSHOT_RESPONSE => {
                 let response = decode_snapshot_response(payload).ok()?;
                 let peer_id = self.peer_id_for_mac(source_mac)?;
-                // Snapshot offset/done are tracked only for the request side;
-                // this transport carries no progress state back.
+                let sent_next_offset = response.next_offset;
+                let sent_done = response.done;
                 self.received_responses.lock().push(RpcCompletion::InstallSnapshot {
                     peer_id,
                     response,
-                    sent_next_offset: 0,
-                    sent_done: false,
+                    sent_next_offset,
+                    sent_done,
                 });
                 None
             }
@@ -349,7 +349,8 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
     if len > crate::relmsg::MAX_MSG {
         return None;
     }
-    let cap = memory_alloc(1);
+    let pages = len.div_ceil(4096);
+    let cap = memory_alloc(pages);
     if cap == 0 {
         return None;
     }

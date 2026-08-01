@@ -293,6 +293,19 @@ mod inner {
             "[dns] cross-node invocation of echo must return the echoed value"
         );
 
+        // The leader's own invocation is local. Keep the leader VM alive
+        // until its DNS replica has also served the follower's remote call;
+        // otherwise the runner can observe local SELFTEST COMPLETE and stop
+        // the leader while the follower is still awaiting its reply.
+        if is_leader {
+            let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+            while unsafe { core::ptr::read_volatile(dns_cfg.add(9)) } == 0 {
+                deadline.assert_pending("EL0 dns follower remote invocation");
+                yield_lp();
+            }
+            logln!("[dns] leader served the follower's remote invocation.");
+        }
+
         logln!(
             "[dns] SUCCESS: Raft-elected name service replicated the catalog and served a remote \
              invocation."

@@ -131,11 +131,11 @@ fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
 }
 
 fn reply_payload(reply: u64, payload: Result<Vec<u8>, catten_graft::wire::WireError>) {
-    if let Ok(payload) = payload {
-        if let Some(memory) = write_payload_to_mem(&payload) {
-            ipc_reply_move(reply, memory, payload.len() as i64);
-            return;
-        }
+    if let Ok(payload) = payload
+        && let Some(memory) = write_payload_to_mem(&payload)
+    {
+        ipc_reply_move(reply, memory, payload.len() as i64);
+        return;
     }
     ipc_reply(reply, -1);
 }

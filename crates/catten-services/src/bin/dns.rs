@@ -22,10 +22,6 @@ use alloc::{
 };
 
 use catten_graft::{
-    log_store::{
-        InMemoryLogStore,
-        InMemoryPersistentStateStore,
-    },
     membership::ClusterConfiguration,
     node::RaftNode,
     state_machine::{
@@ -50,6 +46,10 @@ use catten_rt::{
 };
 use catten_services::{
     disco,
+    disk_raft::{
+        DiskLogStore,
+        DiskPersistentStateStore,
+    },
     dns,
     name_catalog::{
         NameCatalog,
@@ -102,6 +102,19 @@ const CATALOG_SCRATCH: usize = 0x0000_0000_0090_2000;
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
+
+fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
+    // Stable FNV-1a over the cluster/node tuple. This selects an object-store
+    // namespace; it is not used as a security boundary.
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in
+        cluster_id.iter().copied().chain(core::iter::once(0xff)).chain(node_id.iter().copied())
+    {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
 
 /// Boxes an `Arc<NameCatalog>` as a `StateMachine` so the Raft node and the
 /// service share one catalog.
@@ -358,11 +371,23 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(8, peers.len() as u32);
 
     let catalog = NameCatalog::new();
+    // A clustered voter must retain term, vote, log, and snapshot state.
+    // Falling back to memory after advertising the same durable node identity
+    // would permit a restarted replica to vote twice in one term.
+    let namespace = persistent_namespace(&mnemonic, &node_name);
+    let log_store = match DiskLogStore::new(ns_conn, namespace, true) {
+        Some(store) => store,
+        None => fatal(16),
+    };
+    let persistent_state = match DiskPersistentStateStore::new(ns_conn, namespace, true) {
+        Some(store) => store,
+        None => fatal(17),
+    };
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me,
         timeout_millis: election_timeout_ms,
-        log_store: Box::new(InMemoryLogStore::new()),
-        persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+        log_store: Box::new(log_store),
+        persistent_state: Box::new(persistent_state),
         state_machine: Some(Box::new(CatalogMachine(catalog.clone()))),
         cluster_configuration: ClusterConfiguration::stable(peers),
         transport: transport.clone(),
@@ -375,6 +400,7 @@ fn main(ctx: Context) -> ! {
     let cq = ctx.completion_queue_layout();
     let mut recv_pending: u64 = 0;
     let mut served: u32 = 0;
+    let mut remote_calls_served: u32 = 0;
     // Deferred registers awaiting commit replication: (log index, reply token,
     // name, service connection).
     let mut pending_registers: Vec<(u64, u64, Vec<u8>, u64)> = Vec::new();
@@ -416,6 +442,8 @@ fn main(ctx: Context) -> ! {
                                         }
                                         _ => dns::ERR_NOT_FOUND,
                                     };
+                                    remote_calls_served = remote_calls_served.wrapping_add(1);
+                                    config::write::<u32>(36, remote_calls_served);
                                     let reply =
                                         catten_services::rcall::encode_reply(call_id, result);
                                     if let Some(peer) = transport.peer_id_for_mac(&source_mac) {

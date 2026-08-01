@@ -101,7 +101,7 @@ fn lookup(ns_conn: u64, name: u64) -> u64 {
     }
 }
 
-fn try_lookup(ns_conn: u64, name: u64) -> Option<u64> {
+fn try_lookup(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
     let call = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, name);
     if call == 0 {
         return None;
@@ -110,7 +110,7 @@ fn try_lookup(ns_conn: u64, name: u64) -> Option<u64> {
     if generation < 1 || connection == 0 {
         None
     } else {
-        Some(connection)
+        Some((generation, connection))
     }
 }
 
@@ -124,7 +124,7 @@ fn add_route_if_missing(
     if routes.iter().any(|route| route.ethertype == ethertype) {
         return;
     }
-    if let Some(conn) = try_lookup(ns_conn, name) {
+    if let Some((_generation, conn)) = try_lookup(ns_conn, name) {
         routes.push(Route {
             ethertype,
             conn,
@@ -308,19 +308,30 @@ fn main(ctx: Context) -> ! {
 
             rx_total = rx_total.wrapping_add(1);
             let ethertype = read_ethertype(memory, frame_len as usize);
-            let Some(route) = routes.iter().find(|route| route.ethertype == ethertype) else {
+            let Some(route_index) = routes.iter().position(|route| route.ethertype == ethertype)
+            else {
                 unknown = unknown.wrapping_add(1);
                 memory_close(memory);
                 break;
             };
 
-            let forward = ipc_scalar_call_move(route.conn, route.opcode, frame_len, memory);
+            let route_conn = routes[route_index].conn;
+            let route_opcode = routes[route_index].opcode;
+            let forward = ipc_scalar_call_move(route_conn, route_opcode, frame_len, memory);
             if forward == 0 {
                 memory_close(memory);
                 dropped = dropped.wrapping_add(1);
+                let stale = routes.remove(route_index);
+                ipc_close(stale.conn);
             } else {
-                let _ = unsafe { wait_reply(forward, 0) };
-                forwarded = forwarded.wrapping_add(1);
+                let (result, _) = unsafe { wait_reply(forward, 0) };
+                if result == catten_syscall::IPC_REPLY_ENDPOINT_CLOSED {
+                    dropped = dropped.wrapping_add(1);
+                    let stale = routes.remove(route_index);
+                    ipc_close(stale.conn);
+                } else {
+                    forwarded = forwarded.wrapping_add(1);
+                }
             }
             break;
         }

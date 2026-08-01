@@ -503,7 +503,7 @@ fn main(ctx: Context) -> ! {
                     if m.reply != 0 {
                         let d = VADDR_BAR0 + virtio::MODERN_DEVICE;
                         let mac = [
-                            unsafe { r8(d + virtio::NET_MAC + 0) } as u64,
+                            unsafe { r8(d + virtio::NET_MAC) } as u64,
                             unsafe { r8(d + virtio::NET_MAC + 1) } as u64,
                             unsafe { r8(d + virtio::NET_MAC + 2) } as u64,
                             unsafe { r8(d + virtio::NET_MAC + 3) } as u64,

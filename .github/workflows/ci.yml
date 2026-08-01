@@ -53,6 +53,11 @@ jobs:
           cargo clippy --workspace \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
+          cargo clippy \
+            --manifest-path crates/catten-services/Cargo.toml \
+            --target crates/catten-services/aarch64-unknown-none.json \
+            --release -Z build-std=core,alloc \
+            -- -D warnings
 
   host-tests:
     name: Host-test libraries

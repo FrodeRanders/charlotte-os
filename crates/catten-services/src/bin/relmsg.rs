@@ -277,12 +277,10 @@ fn process_frame(
             }
             let within_ceiling =
                 frag_offset.checked_add(payload_len).is_some_and(|end| end <= relmsg::MAX_MSG);
-            if within_ceiling {
-                if let Some(ra) = peer.reassembling.as_mut() {
-                    ra.fragments.insert(frag_offset, payload.to_vec());
-                    if flags & FLAG_MORE == 0 {
-                        ra.total = Some(frag_offset + payload_len);
-                    }
+            if within_ceiling && let Some(ra) = peer.reassembling.as_mut() {
+                ra.fragments.insert(frag_offset, payload.to_vec());
+                if flags & FLAG_MORE == 0 {
+                    ra.total = Some(frag_offset + payload_len);
                 }
             }
             // Assemble and deliver if every fragment is now present. On a

@@ -121,7 +121,7 @@ impl TcpipState {
     /// default ephemeral range is 49152..=65535.
     fn alloc_ephemeral_port(&mut self) -> u16 {
         let port = self.next_ephemeral;
-        self.next_ephemeral = if port >= 65535 {
+        self.next_ephemeral = if port == u16::MAX {
             49152
         } else {
             port + 1
@@ -246,8 +246,8 @@ fn main(ctx: Context) -> ! {
                 closing_n += 1;
             }
         }
-        for i in 0..closing_n {
-            if let Some(entry) = state.sockets.remove(&closing[i]) {
+        for id in closing.iter().take(closing_n) {
+            if let Some(entry) = state.sockets.remove(id) {
                 sockets.remove(entry.handle);
             }
         }
@@ -291,8 +291,8 @@ fn main(ctx: Context) -> ! {
                 }
             }
         }
-        for i in 0..completed_n {
-            if let Some(entry) = state.sockets.get_mut(&completed[i]) {
+        for id in completed.iter().take(completed_n) {
+            if let Some(entry) = state.sockets.get_mut(id) {
                 entry.recv_pending = None;
             }
         }
