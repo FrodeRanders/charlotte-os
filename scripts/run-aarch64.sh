@@ -117,6 +117,19 @@ if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
     echo "error: socket networking requires --net-test" >&2
     exit 1
 fi
+if [ "$NET_BACKEND" != "user" ] && [ "${CODEX_SANDBOX_NETWORK_DISABLED:-0}" = "1" ] \
+    && [ "${CATTEN_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
+    echo "error: two-QEMU socket networking is unavailable in this sandbox" >&2
+    echo "       CODEX_SANDBOX_NETWORK_DISABLED=1 prevents the listener/connect path." >&2
+    echo "       Re-run outside the sandbox (or with network permission)." >&2
+    echo "       Set CATTEN_ALLOW_SANDBOX_NETWORK=1 only if the sandbox is known to allow it." >&2
+    exit 1
+fi
+if [ "$NET_BACKEND" != "user" ] && [ -n "${CODEX_SANDBOX:-}" ] \
+    && [ "${CATTEN_ALLOW_SANDBOX_NETWORK:-0}" != "1" ]; then
+    echo "warning: running a two-QEMU network test inside sandbox '${CODEX_SANDBOX}'" >&2
+    echo "         If discovery receives no frames, retry outside the sandbox." >&2
+fi
 if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
     echo "error: --relmsg-test requires --net-listen or --net-connect" >&2
     exit 1
