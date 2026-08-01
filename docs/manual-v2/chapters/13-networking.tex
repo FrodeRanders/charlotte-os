@@ -143,6 +143,15 @@ advancing service generation; requests and replies carry it, and the target
 rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
+Lookup and call-routing decisions do not use follower-local catalog state. A
+follower sends a correlated query to the known leader, and the leader answers
+only when Graft's quorum-contact read barrier succeeds. Query failure returns a
+safely retryable \texttt{ERR\_NOT\_LEADER}; a timeout after remote execution may
+have begun remains \texttt{ERR\_UNCERTAIN}. Raft time is supplied by a persistent
+detached-timer completion, preventing sustained endpoint traffic from freezing
+the lease clock. Catalog and status dumps are diagnostic local observations,
+not linearizable reads.
+
 \subsection{Distributed objects}
 
 At the top of the stack, applications interact with \textbf{capabilities} ---

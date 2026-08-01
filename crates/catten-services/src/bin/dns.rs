@@ -56,7 +56,9 @@ use catten_services::{
     },
     dns,
     name_catalog::{
+        CatalogEntry,
         NameCatalog,
+        decode_query_result,
         encode_register,
     },
     net,
@@ -93,11 +95,13 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 use charlotte_protocol_msg::unpack_address_and_len;
 
 const LOOP_TICK_MS: u64 = 25;
+const RAFT_TIMER_COOKIE: u64 = 0x444e_535f_5449_434b;
 const REPLY_SPINS: u64 = u64::MAX;
 const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
 const LIST_SCRATCH: usize = 0x0000_0000_0090_1000;
@@ -124,6 +128,85 @@ struct CompletedCall {
     session: u64,
     call_id: u64,
     result: i64,
+}
+
+enum PendingQueryKind {
+    Lookup {
+        reply: u64,
+        name: Vec<u8>,
+    },
+    Call {
+        reply: u64,
+        name: Vec<u8>,
+        opcode: u32,
+        arg: i64,
+    },
+}
+
+struct PendingQuery {
+    query_id: u64,
+    expected_leader: alloc::string::String,
+    deadline: u64,
+    kind: PendingQueryKind,
+}
+
+fn reply_lookup(
+    ns_conn: u64,
+    reply: u64,
+    name: &[u8],
+    entry: Option<CatalogEntry>,
+    local_node: &[u8],
+) {
+    if reply == 0 {
+        return;
+    }
+    let Some(entry) = entry else {
+        ipc_reply(reply, dns::ERR_NOT_FOUND);
+        return;
+    };
+    if entry.node == local_node {
+        let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
+        let (generation, connection) = if lookup != 0 {
+            unsafe { wait_reply(lookup, REPLY_SPINS) }
+        } else {
+            (0, 0)
+        };
+        if generation >= 1 && connection != 0 {
+            ipc_reply_connection(
+                reply,
+                connection,
+                IpcRights::SEND | IpcRights::CALL,
+                dns::RESULT_LOCAL,
+            );
+        } else {
+            ipc_reply(reply, dns::RESULT_LOCAL);
+        }
+        return;
+    }
+
+    let cap = memory_alloc(1);
+    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                entry.node.as_ptr(),
+                LIST_SCRATCH as *mut u8,
+                entry.node.len(),
+            );
+        }
+        memory_unmap(cap);
+        ipc_reply_move(reply, cap, dns::RESULT_REMOTE);
+    } else {
+        if cap != 0 {
+            memory_close(cap);
+        }
+        ipc_reply(reply, dns::ERR_NOT_FOUND);
+    }
+}
+
+fn linearizable_entry(node: &RaftNode, name: &[u8]) -> Result<Option<CatalogEntry>, i64> {
+    node.handle_client_query(name.to_vec())
+        .map(|bytes| decode_query_result(&bytes))
+        .map_err(|_| dns::ERR_NOT_LEADER)
 }
 
 fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
@@ -475,10 +558,27 @@ fn main(ctx: Context) -> ! {
     let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
     let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
     let mut next_call_id: u64 = 1;
+    let mut pending_queries: Vec<PendingQuery> = Vec::new();
+    let mut next_query_id: u64 = 1;
+    let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
 
     loop {
-        let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
-        while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
+        let (_, timed_out) = cq_wait_timeout(
+            1,
+            if timer_armed {
+                1_000
+            } else {
+                LOOP_TICK_MS
+            },
+            0,
+        );
+        let mut tick_due = !timer_armed && timed_out != 0;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == RAFT_TIMER_COOKIE {
+                tick_due = true;
+                timer_armed = false;
+            }
+        }
 
         // --- Inbound Raft traffic over relmsg ---
         if recv_pending == 0 {
@@ -587,6 +687,130 @@ fn main(ctx: Context) -> ! {
                                     }
                                 }
                             }
+                            Some(catten_services::rquery::TAG_REQUEST) => {
+                                if let Some((session, query_id, caller, name)) =
+                                    catten_services::rquery::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == caller
+                                {
+                                    let (status, entry) =
+                                        match node.handle_client_query(name.clone()) {
+                                            Ok(bytes) => (0, decode_query_result(&bytes)),
+                                            Err(_) => (dns::ERR_NOT_LEADER, None),
+                                        };
+                                    let reply = catten_services::rquery::encode_reply(
+                                        session,
+                                        query_id,
+                                        status,
+                                        entry.as_ref().map_or(0, |value| value.generation),
+                                        entry
+                                            .as_ref()
+                                            .map_or(&[][..], |value| value.node.as_slice()),
+                                    );
+                                    transport.send_message(
+                                        &source_peer,
+                                        catten_services::rquery::TAG_REPLY,
+                                        reply,
+                                    );
+                                }
+                            }
+                            Some(catten_services::rquery::TAG_REPLY) => {
+                                if let Some((session, query_id, status, generation, owner)) =
+                                    catten_services::rquery::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) = pending_queries.iter().position(|query| {
+                                        query.query_id == query_id
+                                            && query.expected_leader == source_peer
+                                    })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let entry =
+                                        (status == 0 && generation != 0 && !owner.is_empty())
+                                            .then_some(CatalogEntry {
+                                                node: owner,
+                                                generation,
+                                            });
+                                    match query.kind {
+                                        PendingQueryKind::Lookup {
+                                            reply,
+                                            name,
+                                        } => {
+                                            if status == 0 {
+                                                reply_lookup(
+                                                    ns_conn, reply, &name, entry, &node_name,
+                                                );
+                                            } else if reply != 0 {
+                                                ipc_reply(reply, status);
+                                            }
+                                        }
+                                        PendingQueryKind::Call {
+                                            reply,
+                                            name,
+                                            opcode,
+                                            arg,
+                                        } => {
+                                            let result = if status != 0 {
+                                                Some(status)
+                                            } else if let Some(entry) = entry {
+                                                if entry.node == node_name {
+                                                    Some(invoke_local(ns_conn, &name, opcode, arg))
+                                                } else if in_flight_calls.len()
+                                                    >= MAX_IN_FLIGHT_CALLS
+                                                {
+                                                    Some(dns::ERR_BUSY)
+                                                } else {
+                                                    let owner_str =
+                                                        core::str::from_utf8(&entry.node)
+                                                            .unwrap_or("")
+                                                            .to_string();
+                                                    if !transport.has_peer(&owner_str) {
+                                                        Some(dns::ERR_NOT_FOUND)
+                                                    } else {
+                                                        let call_id = next_call_id;
+                                                        next_call_id =
+                                                            next_call_id.wrapping_add(1).max(1);
+                                                        in_flight_calls.push(InFlightCall {
+                                                            call_id,
+                                                            expected_peer: owner_str.clone(),
+                                                            expected_generation: entry.generation,
+                                                            reply,
+                                                            deadline: node.millis().saturating_add(
+                                                                REMOTE_CALL_TIMEOUT_MS,
+                                                            ),
+                                                        });
+                                                        let request =
+                                                            catten_services::rcall::encode_request(
+                                                                dns_session,
+                                                                call_id,
+                                                                &node_name,
+                                                                &name,
+                                                                entry.generation,
+                                                                opcode,
+                                                                arg,
+                                                            );
+                                                        transport.send_message(
+                                                            &owner_str,
+                                                            catten_services::rcall::TAG_REQUEST,
+                                                            request,
+                                                        );
+                                                        None
+                                                    }
+                                                }
+                                            } else {
+                                                Some(dns::ERR_NOT_FOUND)
+                                            };
+                                            if let Some(result) = result
+                                                && reply != 0
+                                            {
+                                                ipc_reply(reply, result);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             _ => {
                                 if let Some(inbound) = transport.decode_inbound(&source_mac, frame)
                                 {
@@ -663,62 +887,49 @@ fn main(ctx: Context) -> ! {
                     let name = packed_name(message.arg0);
                     let result = if name.is_empty() {
                         dns::ERR_TOO_LARGE
-                    } else {
-                        match catalog.lookup(&name) {
-                            Some(owner) if owner.node == node_name => {
-                                // Local: resolve through the node-local name
-                                // service and hand back the connection. A
-                                // catalog-only registration has no connection
-                                // to delegate, so fall back to a scalar
-                                // RESULT_LOCAL.
-                                let lookup = ipc_scalar_call(
-                                    ns_conn,
-                                    ns::OP_TRY_LOOKUP,
-                                    catten_services::name(&name),
-                                );
-                                let (generation, conn) = if lookup != 0 {
-                                    unsafe { wait_reply(lookup, REPLY_SPINS) }
-                                } else {
-                                    (0, 0)
-                                };
-                                if generation >= 1 && conn != 0 && message.reply != 0 {
-                                    ipc_reply_connection(
-                                        message.reply,
-                                        conn,
-                                        IpcRights::SEND | IpcRights::CALL,
-                                        dns::RESULT_LOCAL,
-                                    );
-                                    continue;
-                                }
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::RESULT_LOCAL);
-                                }
+                    } else if node.state == NodeState::Leader {
+                        match linearizable_entry(&node, &name) {
+                            Ok(entry) => {
+                                reply_lookup(ns_conn, message.reply, &name, entry, &node_name);
                                 continue;
                             }
-                            Some(owner) => {
-                                // Remote: reply RESULT_REMOTE and move a memory
-                                // object carrying the hosting node's id.
-                                if message.reply != 0 && !owner.node.is_empty() {
-                                    let cap = memory_alloc(1);
-                                    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
-                                        unsafe {
-                                            core::ptr::copy_nonoverlapping(
-                                                owner.node.as_ptr(),
-                                                LIST_SCRATCH as *mut u8,
-                                                owner.node.len(),
-                                            );
-                                        }
-                                        memory_unmap(cap);
-                                        ipc_reply_move(message.reply, cap, dns::RESULT_REMOTE);
-                                        continue;
-                                    }
-                                    if cap != 0 {
-                                        memory_close(cap);
-                                    }
-                                }
-                                dns::ERR_NOT_FOUND
+                            Err(code) => code,
+                        }
+                    } else {
+                        let Some(leader) = node.known_leader_id.clone() else {
+                            if message.reply != 0 {
+                                ipc_reply(message.reply, dns::ERR_NOT_LEADER);
                             }
-                            None => dns::ERR_NOT_FOUND,
+                            continue;
+                        };
+                        if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                            || !transport.has_peer(&leader)
+                        {
+                            dns::ERR_BUSY
+                        } else {
+                            let query_id = next_query_id;
+                            next_query_id = next_query_id.wrapping_add(1).max(1);
+                            pending_queries.push(PendingQuery {
+                                query_id,
+                                expected_leader: leader.clone(),
+                                deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                kind: PendingQueryKind::Lookup {
+                                    reply: message.reply,
+                                    name: name.clone(),
+                                },
+                            });
+                            let request = catten_services::rquery::encode_request(
+                                dns_session,
+                                query_id,
+                                &node_name,
+                                &name,
+                            );
+                            transport.send_message(
+                                &leader,
+                                catten_services::rquery::TAG_REQUEST,
+                                request,
+                            );
+                            continue;
                         }
                     };
                     if message.reply != 0 {
@@ -812,12 +1023,50 @@ fn main(ctx: Context) -> ! {
                     let (opcode, arg) = read_call_request(&message);
                     let result = if name.is_empty() {
                         dns::ERR_TOO_LARGE
+                    } else if node.state != NodeState::Leader {
+                        let Some(leader) = node.known_leader_id.clone() else {
+                            if message.reply != 0 {
+                                ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                            }
+                            continue;
+                        };
+                        if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                            || !transport.has_peer(&leader)
+                        {
+                            dns::ERR_BUSY
+                        } else {
+                            let query_id = next_query_id;
+                            next_query_id = next_query_id.wrapping_add(1).max(1);
+                            pending_queries.push(PendingQuery {
+                                query_id,
+                                expected_leader: leader.clone(),
+                                deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                kind: PendingQueryKind::Call {
+                                    reply: message.reply,
+                                    name: name.clone(),
+                                    opcode,
+                                    arg,
+                                },
+                            });
+                            let request = catten_services::rquery::encode_request(
+                                dns_session,
+                                query_id,
+                                &node_name,
+                                &name,
+                            );
+                            transport.send_message(
+                                &leader,
+                                catten_services::rquery::TAG_REQUEST,
+                                request,
+                            );
+                            continue;
+                        }
                     } else {
-                        match catalog.lookup(&name) {
-                            Some(owner) if owner.node == node_name => {
+                        match linearizable_entry(&node, &name) {
+                            Ok(Some(owner)) if owner.node == node_name => {
                                 invoke_local(ns_conn, &name, opcode, arg)
                             }
-                            Some(owner) => {
+                            Ok(Some(owner)) => {
                                 // Remote: relay to the hosting node's dns over
                                 // the reliable message layer.
                                 let owner_str =
@@ -857,7 +1106,8 @@ fn main(ctx: Context) -> ! {
                                     dns::ERR_NOT_FOUND
                                 }
                             }
-                            None => dns::ERR_NOT_FOUND,
+                            Ok(None) => dns::ERR_NOT_FOUND,
+                            Err(code) => code,
                         }
                     };
                     if message.reply != 0 {
@@ -934,12 +1184,37 @@ fn main(ctx: Context) -> ! {
             }
         }
 
+        let mut index = 0;
+        while index < pending_queries.len() {
+            if pending_queries[index].deadline > node.millis() {
+                index += 1;
+                continue;
+            }
+            let query = pending_queries.swap_remove(index);
+            let reply = match query.kind {
+                PendingQueryKind::Lookup {
+                    reply,
+                    ..
+                }
+                | PendingQueryKind::Call {
+                    reply,
+                    ..
+                } => reply,
+            };
+            if reply != 0 {
+                // A catalog query has no target-side effect, so failure to
+                // obtain the leader's read-barrier answer is safely retryable.
+                ipc_reply(reply, dns::ERR_NOT_LEADER);
+            }
+        }
+
         // --- Raft clock ---
-        if timed_out != 0 {
+        if tick_due {
             node.set_millis(node.millis() + LOOP_TICK_MS);
             if node.check_timeout() {
                 node.start_election(node.millis());
             }
+            timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
         }
         if node.state == NodeState::Leader {
             node.broadcast_heartbeat(node.millis());

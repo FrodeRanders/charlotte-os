@@ -242,3 +242,19 @@ pub fn encode_unregister(name: &[u8]) -> Vec<u8> {
     buf.extend_from_slice(name);
     buf
 }
+
+/// Decode the state-machine query result emitted by [`QueryableStateMachine`].
+pub fn decode_query_result(bytes: &[u8]) -> Option<CatalogEntry> {
+    if bytes.len() < 8 {
+        return None;
+    }
+    let generation = u64::from_le_bytes(bytes[..8].try_into().ok()?);
+    let node = bytes[8..].to_vec();
+    if generation == 0 || node.is_empty() {
+        return None;
+    }
+    Some(CatalogEntry {
+        node,
+        generation,
+    })
+}

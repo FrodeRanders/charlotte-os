@@ -71,10 +71,12 @@ use catten_syscall::{
     memory_close,
     memory_map,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 
 const LOOP_TICK_MS: u64 = 25;
+const RAFT_TIMER_COOKIE: u64 = 0x5241_4654_5449_434b;
 
 fn fatal(stage: u64) -> ! {
     catten_syscall::el0_log(0x5241_4654, stage);
@@ -322,14 +324,28 @@ fn main(ctx: Context) -> ! {
     let mut served: u32 = 0;
 
     let cq = ctx.completion_queue_layout();
+    let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
 
     loop {
         // Endpoint readiness and transport completions wake this reactor
         // immediately. The bounded wait itself supplies Raft's periodic clock,
         // avoiding a separate detached-timer completion and wake path.
-        let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
-
-        while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
+        let (_, timed_out) = cq_wait_timeout(
+            1,
+            if timer_armed {
+                1_000
+            } else {
+                LOOP_TICK_MS
+            },
+            0,
+        );
+        let mut tick_due = !timer_armed && timed_out != 0;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == RAFT_TIMER_COOKIE {
+                tick_due = true;
+                timer_armed = false;
+            }
+        }
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
@@ -450,11 +466,12 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        if timed_out != 0 {
+        if tick_due {
             node.set_millis(node.millis() + LOOP_TICK_MS);
             if node.check_timeout() {
                 node.start_election(node.millis());
             }
+            timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
         }
 
         if node.state == NodeState::Leader {

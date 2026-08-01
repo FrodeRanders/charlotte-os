@@ -397,6 +397,14 @@ advancing service generation, and remote calls carry and verify that generation
 before execution. The protocol does not yet serialize or delegate object
 capabilities across machines.
 
+Lookup and call routing are linearizable on the implemented two-voter path:
+followers do not consult their local catalog for these operations. They send a
+correlated query to the known leader, which answers only after Graft's
+quorum-contact read barrier succeeds. Catalog/status dumps remain explicitly
+diagnostic local observations. Raft time is driven by a persistent detached
+timer completion, so continuous endpoint traffic cannot indefinitely extend a
+leader's read lease.
+
 ---
 
 ## Distributed Objects
@@ -804,8 +812,8 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
 | Election/heartbeat clock | Bounded `CQ_WAIT` timeout | Implemented without a detached timer or polling loop |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
-| Client command submission | Capability-based endpoint call | The `dns` service submits `OP_REGISTER`/`OP_LOOKUP`/`OP_CALL` commands to its `CatalogMachine` through the leader; the generic `raft` service's `OP_CLIENT_COMMAND` endpoint remains unwired |
-| Linearizable reads | Reply tokens + read barrier | Supported by `RaftNode` logic; untested end-to-end |
+| Client command submission | Capability-based endpoint call | The `dns` service submits registrations through the leader; lookup and call-routing queries are forwarded to the leader; the generic `raft` service's `OP_CLIENT_COMMAND` endpoint remains unwired |
+| Linearizable reads | Reply tokens + read barrier | Implemented for DNS lookup and call routing: followers forward correlated queries and the leader requires recent quorum contact; two-guest follower access is boot-validated |
 | Membership changes | Replicated internal commands | `JOIN`, `JOINT`, and `FINALIZE` core semantics implemented; administrative service API not yet exposed |
 
 The precise correspondence with the general Graft implementation and the

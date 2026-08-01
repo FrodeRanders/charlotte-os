@@ -771,6 +771,91 @@ pub mod rcall {
     }
 }
 
+/// Correlated follower-to-leader catalog queries. Followers must not answer
+/// `dns::OP_LOOKUP` or choose an `OP_CALL` target from their local applied
+/// state, because that state can be stale. The leader replies only after its
+/// Graft read barrier admits a linearizable query.
+pub mod rquery {
+    pub const TAG_REQUEST: u8 = 0x12;
+    pub const TAG_REPLY: u8 = 0x13;
+
+    pub fn encode_request(
+        session: u64,
+        query_id: u64,
+        caller: &[u8],
+        name: &[u8],
+    ) -> alloc::vec::Vec<u8> {
+        let caller_len = caller.len().min(255);
+        let name_len = name.len().min(255);
+        let mut frame = alloc::vec::Vec::with_capacity(18 + caller_len + name_len);
+        frame.extend_from_slice(&session.to_le_bytes());
+        frame.extend_from_slice(&query_id.to_le_bytes());
+        frame.push(caller_len as u8);
+        frame.extend_from_slice(&caller[..caller_len]);
+        frame.push(name_len as u8);
+        frame.extend_from_slice(&name[..name_len]);
+        frame
+    }
+
+    pub type Request = (u64, u64, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>);
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 19 {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let query_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = frame[17] as usize;
+        let caller_off = 18;
+        if frame.len() < caller_off + caller_len + 1 {
+            return None;
+        }
+        let caller = frame[caller_off..caller_off + caller_len].to_vec();
+        let name_len_off = caller_off + caller_len;
+        let name_len = frame[name_len_off] as usize;
+        let name_off = name_len_off + 1;
+        if frame.len() != name_off + name_len {
+            return None;
+        }
+        Some((session, query_id, caller, frame[name_off..].to_vec()))
+    }
+
+    pub fn encode_reply(
+        session: u64,
+        query_id: u64,
+        status: i64,
+        generation: u64,
+        node: &[u8],
+    ) -> alloc::vec::Vec<u8> {
+        let node_len = node.len().min(255);
+        let mut frame = alloc::vec::Vec::with_capacity(33 + node_len);
+        frame.extend_from_slice(&session.to_le_bytes());
+        frame.extend_from_slice(&query_id.to_le_bytes());
+        frame.extend_from_slice(&status.to_le_bytes());
+        frame.extend_from_slice(&generation.to_le_bytes());
+        frame.push(node_len as u8);
+        frame.extend_from_slice(&node[..node_len]);
+        frame
+    }
+
+    pub type Reply = (u64, u64, i64, u64, alloc::vec::Vec<u8>);
+
+    pub fn decode_reply(frame: &[u8]) -> Option<Reply> {
+        if frame.len() < 34 {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let query_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let status = i64::from_le_bytes(frame[17..25].try_into().ok()?);
+        let generation = u64::from_le_bytes(frame[25..33].try_into().ok()?);
+        let node_len = frame[33] as usize;
+        if frame.len() != 34 + node_len {
+            return None;
+        }
+        Some((session, query_id, status, generation, frame[34..].to_vec()))
+    }
+}
+
 /// Block until a pending call completes, returning
 /// `(result, returned_connection_cap)`.
 ///

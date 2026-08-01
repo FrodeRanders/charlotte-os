@@ -180,6 +180,16 @@ Follow-up:
 - return a redirect or unavailable result when linearizability cannot be
   established.
 
+Repair status: `OP_LOOKUP` and the routing decision for `OP_CALL` no longer
+read follower-local catalog state. A follower sends a source-bound, correlated
+query to its known leader; the leader answers only through Graft's
+quorum-contact read barrier. Query failure is safely retryable as
+`ERR_NOT_LEADER`, while a timeout after call dispatch remains `ERR_UNCERTAIN`.
+Raft time now advances from a persistent detached-timer completion, so
+sustained endpoint traffic cannot keep the lease clock artificially frozen.
+The follower path passed a fresh two-guest 21/21 test; partition fault
+injection remains open.
+
 ### F9 — Committed catalog entries can lack a local service (high)
 
 DNS commits `name -> node` before registering the supplied connection with the
@@ -321,9 +331,10 @@ principal distributed findings occur.
   exact launch-manifest voter identity set. Discovery resolves those voters to
   transport routes but cannot add, omit, or replace voting authority; missing
   configured voters fail closed.
-- [ ] Add linearizable reads and replicated service lifecycle/generation policy.
-  Replicated monotonic generations and tombstones are implemented; leader-only
-  read barriers plus follower-to-leader forwarding remain.
+- [ ] Complete replicated service lifecycle policy. Monotonic generations,
+  tombstones, generation-fenced calls, and linearizable lookup/call routing
+  through follower-to-leader forwarding are implemented. Distributed
+  unregister/revocation policy and partition fault injection remain.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been
