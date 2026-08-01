@@ -506,6 +506,21 @@ impl SystemScheduler {
         // ThreadState snapshot briefly pointing at the previous LP; preferring
         // that stale snapshot makes self-abort remove from the wrong scheduler.
         let current_lp = self.current_lp_for_thread(tid).or(state_lp);
+        // A remote caller must not remove a context which is still executing:
+        // its owning CPU may otherwise enter the kernel after the address space
+        // or stack has already been reclaimed. Ask that CPU to switch first.
+        if let Some(owner_lp) = current_lp
+            && owner_lp != get_lp_id()
+        {
+            let table = MASTER_THREAD_TABLE.read();
+            let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+            thread.abort_requested.store(true, Ordering::Release);
+            if LocalIntCtlr::send_unicast_ipi(owner_lp, SCHEDULER_IPI_VECTOR).is_err() {
+                thread.abort_requested.store(false, Ordering::Release);
+                return Err(Error::InvalidThread);
+            }
+            return Ok(tid);
+        }
         let remove_lp = current_lp.or(state_lp);
         if let Some(lp_id) = remove_lp {
             self.lp_schedulers[&lp_id]

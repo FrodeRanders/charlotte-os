@@ -408,7 +408,12 @@ pub fn spawn_driver_with_name_service(
     bootstrap::write_manifest(loaded.config_frame, &[]);
 
     let mmio = crate::device::grant_mmio(loaded.asid, grant.mmio_phys_base, grant.mmio_pages)
-        .expect("[supervisor] MMIO region grant failed");
+        .unwrap_or_else(|error| {
+            panic!(
+                "[supervisor] MMIO region grant failed: {:?} (owner={}, base={:#x}, pages={})",
+                error, loaded.asid, grant.mmio_phys_base, grant.mmio_pages
+            )
+        });
     let irq = crate::device::grant_interrupt(loaded.asid, grant.intid)
         .expect("[supervisor] interrupt grant failed");
     bootstrap::write_mmio_cap(loaded.config_frame, mmio);

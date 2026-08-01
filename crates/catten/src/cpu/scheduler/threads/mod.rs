@@ -13,6 +13,8 @@
 //! - `Ready(lp)`: enqueued in LP `lp`'s run queue, waiting to run.
 //! - `Running(lp)`: `current_handle` of LP `lp`'s scheduler; actively executing.
 //! - `Blocked(waker)`: parked, waiting for an observable event to fire the waker.
+//! - remote abort: mark `abort_requested`, interrupt the owning LP, switch the target off-CPU, and
+//!   retire it from that LP's safe scheduling boundary.
 //!
 //! The [`MASTER_THREAD_TABLE`] is the system-wide [`IdTable`] keyed by
 //! reusable [`ThreadId`].  Each entry is guarded by a monotonic
@@ -34,6 +36,7 @@ use alloc::{
 use core::{
     mem::offset_of,
     sync::atomic::{
+        AtomicBool,
         AtomicU64,
         Ordering,
     },
@@ -98,6 +101,47 @@ pub static DEAD_THREADS: LazyLock<RwLock<BTreeMap<LpId, Vec<Thread>>>> =
 /// `lp` after a context switch away from it.
 pub fn stage_dead_thread(lp: LpId, thread: Thread) {
     DEAD_THREADS.write().entry(lp).or_default().push(thread);
+}
+
+/// Complete remote abort requests after the owning LP has selected another
+/// context. The old thread intentionally remains `Running(lp)` in the master
+/// table during the switch so its saved-stack slot stays valid.
+pub fn retire_requested_threads() {
+    let lp = crate::cpu::isa::lp::ops::get_lp_id();
+    let active_tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_tid();
+    let requested: Vec<(ThreadId, ThreadGeneration)> = MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .enumerate()
+        .filter_map(|(tid, thread)| {
+            let thread = thread.as_ref()?;
+            (tid != active_tid.unwrap_or(usize::MAX)
+                && matches!(thread.state, ThreadState::Running(owner) if owner == lp)
+                && thread.abort_requested.load(Ordering::Acquire))
+            .then_some((tid, thread.generation))
+        })
+        .collect();
+
+    for (tid, generation) in requested {
+        let thread = {
+            let mut table = MASTER_THREAD_TABLE.write();
+            let still_requested = table.get(tid).is_ok_and(|thread| {
+                thread.generation == generation
+                    && matches!(thread.state, ThreadState::Running(owner) if owner == lp)
+                    && thread.abort_requested.load(Ordering::Acquire)
+            });
+            if !still_requested {
+                continue;
+            }
+            table.take_element(tid).expect("validated abort target disappeared")
+        };
+        record_exit(lp, tid, generation);
+        stage_dead_thread(lp, thread);
+    }
 }
 
 /// Drops any threads awaiting reaping on the *current* LP, freeing their stacks.
@@ -262,6 +306,9 @@ pub struct Thread {
     pub runtime_ticks: RunningStatistics,
     pub dispatch_count: u64,
     pub last_dispatch_tick: Option<u64>,
+    /// Cross-LP termination is completed by the CPU that owns the running
+    /// context, after it has switched off this thread's stack.
+    pub(crate) abort_requested: AtomicBool,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -289,6 +336,7 @@ impl Thread {
             runtime_ticks: RunningStatistics::new(),
             dispatch_count: 0,
             last_dispatch_tick: None,
+            abort_requested: AtomicBool::new(false),
             exit_observers: Mutex::new(Vec::new()),
         }
     }

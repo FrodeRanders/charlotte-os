@@ -192,6 +192,7 @@ impl LpScheduler for RoundRobin {
                 MASTER_THREAD_TABLE.read().get(handle.tid),
                 Ok(t) if t.generation == handle.generation
                     && matches!(t.state, ThreadState::Running(_))
+                    && !t.abort_requested.load(Ordering::Acquire)
             )
         } else {
             false

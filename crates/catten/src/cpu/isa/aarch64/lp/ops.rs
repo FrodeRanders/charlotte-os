@@ -247,6 +247,7 @@ pub extern "C" fn cond_yield_lp() {
             switch_ctx(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu);
         }
     }
+    crate::cpu::scheduler::threads::retire_requested_threads();
     // Reap any threads that exited: this runs after switching away from a dying
     // thread, so we are now on a different thread's stack and can safely free
     // the dead thread's kernel stack.
