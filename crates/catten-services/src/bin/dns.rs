@@ -16,6 +16,7 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
+    collections::BTreeMap,
     string::ToString,
     sync::Arc,
     vec::Vec,
@@ -101,6 +102,7 @@ const CATALOG_SCRATCH: usize = 0x0000_0000_0090_2000;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
+const MEMBER_KEY: u64 = manifest_key(b"member");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
 
 fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
@@ -289,6 +291,32 @@ fn main(ctx: Context) -> ! {
     };
     let node_name = identity.name;
     let node_name_str = core::str::from_utf8(&node_name).unwrap_or("node").to_string();
+    let mut configured_members: Vec<alloc::string::String> = ctx
+        .manifest()
+        .filter(|entry| entry.key == MEMBER_KEY)
+        .filter_map(|entry| match entry.value {
+            ManifestValue::Bytes(value) => core::str::from_utf8(value).ok(),
+            _ => None,
+        })
+        .filter(|member| !member.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    configured_members.sort();
+    configured_members.dedup();
+    if configured_members.is_empty() {
+        if expected_peers != 1 {
+            // Discovery identifies routes, but it must not independently
+            // grant voting authority. A multi-voter cluster requires the
+            // exact authoritative member identities in its launch manifest.
+            fatal(18);
+        }
+        configured_members.push(node_name_str.clone());
+    }
+    if configured_members.len() as u64 != expected_peers
+        || !configured_members.iter().any(|member| member == &node_name_str)
+    {
+        fatal(19);
+    }
     config::write::<u32>(0, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
@@ -339,34 +367,52 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 6);
 
-    // Discover peers until the expected membership is visible. A node that
-    // boots before its peers keeps waiting; the Raft membership is only as
-    // good as the discovery it was built from.
+    // Resolve the configured voter identities to transient MAC routes. The
+    // launch manifest grants voting authority; discovery never does.
     let transport = Arc::new(RelmsgRaftTransport::new(relmsg_conn));
-    let mut discovered: Vec<([u8; 6], Vec<u8>)> = Vec::new();
+    let mut discovered: BTreeMap<alloc::string::String, [u8; 6]> = BTreeMap::new();
     let mut discovery_rounds: u64 = 0;
-    while (discovered.len() as u64) < expected_peers.saturating_sub(1) && discovery_rounds < 2400 {
-        discovered = query_disco_peers(disco_conn);
-        if (discovered.len() as u64) < expected_peers.saturating_sub(1) {
+    loop {
+        discovered.clear();
+        for (mac, peer_node_id) in query_disco_peers(disco_conn) {
+            let Ok(peer_name) = core::str::from_utf8(&peer_node_id) else {
+                continue;
+            };
+            if peer_name != node_name_str
+                && configured_members.iter().any(|member| member == peer_name)
+            {
+                discovered.insert(peer_name.to_string(), mac);
+            }
+        }
+        let all_remote_members_visible = configured_members
+            .iter()
+            .filter(|member| *member != &node_name_str)
+            .all(|member| discovered.contains_key(member));
+        if all_remote_members_visible {
+            break;
+        }
+        if discovery_rounds >= 2400 {
+            fatal(20);
+        }
+        if !all_remote_members_visible {
             catten_services::sleep_ms(50);
             discovery_rounds += 1;
         }
-    }
-    if (discovered.len() as u64) < expected_peers.saturating_sub(1) {
-        config::write::<u32>(32, 0xffff_0000 | (expected_peers as u32));
     }
     config::write::<u32>(0, 7);
 
     let mut peers = Vec::new();
     let me = Peer::voter(node_name_str.clone(), 0);
     peers.push(me.clone());
-    for (mac, peer_node_id) in discovered {
-        let peer_name = core::str::from_utf8(&peer_node_id).unwrap_or("").to_string();
-        if peer_name.is_empty() || peer_name == node_name_str {
+    for peer_name in &configured_members {
+        if peer_name == &node_name_str {
             continue;
         }
-        transport.add_peer(&peer_name, mac);
-        peers.push(Peer::voter(peer_name, 0));
+        let Some(mac) = discovered.get(peer_name).copied() else {
+            fatal(21);
+        };
+        transport.add_peer(peer_name, mac);
+        peers.push(Peer::voter(peer_name.clone(), 0));
     }
     config::write::<u32>(8, peers.len() as u32);
 

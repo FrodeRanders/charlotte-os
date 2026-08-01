@@ -31,6 +31,7 @@ mod inner {
 
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const PEERS_KEY: u64 = charlotte_launch::manifest_key(b"peers");
+    const MEMBER_KEY: u64 = charlotte_launch::manifest_key(b"member");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
 
     // "dns" packed LE; the dns service registers under this name.
@@ -140,6 +141,24 @@ mod inner {
         // The cluster discovery service is spawned by the disco self-test
         // (disco_net_test is implied by dns_net_test); the dns service waits on
         // its registration for the peer set.
+        fn fnv1a(bytes: &[u8]) -> u64 {
+            let mut hash = 0xcbf2_9ce4_8422_2325u64;
+            for byte in bytes {
+                hash ^= *byte as u64;
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            hash
+        }
+        let member_a = alloc::format!(
+            "test-cluster:{:08x}",
+            fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff
+        )
+        .into_bytes();
+        let member_b = alloc::format!(
+            "test-cluster:{:08x}",
+            fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff
+        )
+        .into_bytes();
         let dns_manifest = [
             ManifestEntry {
                 key: CLUSTER_KEY,
@@ -155,6 +174,16 @@ mod inner {
                 key: ELECTION_KEY,
                 flags: 0,
                 value: ManifestValue::Unsigned(400),
+            },
+            ManifestEntry {
+                key: MEMBER_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(&member_a),
+            },
+            ManifestEntry {
+                key: MEMBER_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(&member_b),
             },
         ];
 

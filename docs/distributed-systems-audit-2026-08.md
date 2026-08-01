@@ -258,6 +258,10 @@ one failure.
   all 21 registered tests on both guests. The leader remained alive until it
   had served the follower's remote call, and both DNS replicas used durable
   object-store-backed Raft state.
+- After authoritative voter bootstrap was added, a second fresh two-guest
+  `--dns-test` run again completed all 21 registered tests on both guests.
+  Each replica used the same exact two-node voter manifest; discovery supplied
+  routes for those identities but did not determine Raft membership.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, remote-call, discovery bootstrap,
@@ -283,9 +287,11 @@ principal distributed findings occur.
   stale connections; proactive generation refresh remains follow-up work).
 - [ ] Add relmsg sessions and bounded buffering.
 - [ ] Define and implement the remote invocation contract.
-- [ ] Move DNS to durable Raft state and authoritative membership bootstrap
-  (durable term/vote/log/snapshot stores are now required; authoritative
-  membership bootstrap remains open).
+- [x] Move DNS to durable Raft state and authoritative membership bootstrap.
+  Clustered DNS now requires durable term/vote/log/snapshot stores and an
+  exact launch-manifest voter identity set. Discovery resolves those voters to
+  transport routes but cannot add, omit, or replace voting authority; missing
+  configured voters fail closed.
 - [ ] Add linearizable reads and replicated service lifecycle/generation policy.
 - [ ] Correct status documentation and expand CI/fault testing.
 
