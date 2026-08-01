@@ -111,9 +111,7 @@ const USER_THREAD_CODE: &[u8] = &[
 fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr) -> usize {
     let user_as = {
         let _kas = KERNEL_AS.lock();
-        let mut as_ = AddressSpace::get_current();
-        as_.set_ttbr0(0);
-        as_
+        AddressSpace::new_user()
     };
 
     // Register in the global table so create_user_thread_context finds it.

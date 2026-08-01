@@ -31,6 +31,7 @@ pub enum Error {
     VAddrNotLargePageAligned,
     VAddrNotHugePageAligned,
     NoRequestedVAddrRegionAvailable,
+    HardwareAsidExhausted,
     InvalAddrTlnRes,
     PMemError(PMemError),
     VMemError(VMemError),

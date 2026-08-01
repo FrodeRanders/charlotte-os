@@ -173,9 +173,7 @@ pub fn test_el0_cross_lp_async() {
         // --- create the demo's user address space ---
         let user_as = {
             let _kas = KERNEL_AS.lock();
-            let mut as_ = AddressSpace::get_current();
-            as_.set_ttbr0(0);
-            as_
+            AddressSpace::new_user()
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
         XLP_ASID.store(asid + 1, Ordering::Release);

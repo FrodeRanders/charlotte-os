@@ -71,6 +71,12 @@ handlers all work correctly. Exception delivery was **never** broken.
   reorder the GDT or return to ring 3 via `IRETQ` (recommended — works with any
   GDT layout, matching the existing `user_trampoline`).
 - **Ring-3 execution** has never been exercised on x86_64.
+- **PCID is not enabled.** Address-space switches reload CR3, which flushes
+  non-global translations. Cross-LP user TLB shootdowns conservatively reload
+  CR3 on every target LP. This is correct without PCID and avoids the former
+  scheduler-local PCID map, which was never populated and silently skipped
+  invalidations. PCID allocation plus `INVPCID` is a future optimization, not
+  an active kernel invariant.
 
 ## Remaining work (B and A both fixed; x86_64 boots + all self-tests pass)
 
@@ -81,4 +87,7 @@ handlers all work correctly. Exception delivery was **never** broken.
    x86_64 async IPI handler is now unstubbed).
 3. **Robust CPU-feature handling**: gate `RDTSCP`/`FSGSBASE` on CPUID instead of
    requiring `-cpu max`.
+4. **PCID optimization**: enable `CR4.PCIDE`, assign recyclable PCIDs with a
+   generation/flush discipline, and replace conservative CR3 shootdowns only
+   after ring-3 and multi-LP tests exercise the implementation.
 </content>

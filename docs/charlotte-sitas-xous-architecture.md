@@ -218,6 +218,11 @@ includes that tag in TLB matching, while shared kernel mappings remain global.
 Before a hardware tag is returned to the free pool, teardown broadcasts an
 ASID-qualified invalidation; software `(ASID, generation)` remains the authority
 identity and is deliberately distinct from this recyclable hardware cache tag.
+User domains are constructed through an explicit architecture operation rather
+than by copying and then mutating the current translation registers. If every
+hardware tag is concurrently occupied, runtime domain creation reports resource
+exhaustion; it does not panic the kernel. Boot-critical built-in services still
+treat exhaustion as a fatal configuration error.
 
 ## 2.2 Endpoints
 

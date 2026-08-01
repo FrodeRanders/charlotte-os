@@ -16,14 +16,9 @@ use alloc::{
 };
 use core::sync::atomic::Ordering;
 
-use hashbrown::HashMap;
-
 use crate::{
     cpu::{
-        isa::{
-            lp::LpId,
-            memory::paging::HwAsid,
-        },
+        isa::lp::LpId,
         scheduler::{
             lp_schedulers::{
                 Error,
@@ -50,10 +45,7 @@ use crate::{
         time::duration::ExtDuration,
     },
     logln,
-    memory::{
-        AddressSpaceId,
-        KERNEL_ASID,
-    },
+    memory::KERNEL_ASID,
     timers::{
         TIMER_QUEUES,
         TimerEvent,
@@ -85,7 +77,6 @@ pub struct RoundRobin {
     timer_event_observer: Arc<super::TimerEventObserver>,
     run_queue: VecDeque<ThreadHandle>,
     current_handle: Option<ThreadHandle>,
-    hwasid_map: HashMap<AddressSpaceId, HwAsid>,
     /// This LP's dedicated idle thread, run only when there is no other
     /// runnable thread. It exists so that a thread which blocks itself (or
     /// exits) while it is the sole runnable thread on this LP is switched away
@@ -115,7 +106,6 @@ impl RoundRobin {
             timer_event_observer: Arc::new(super::TimerEventObserver::new()),
             run_queue: VecDeque::new(),
             current_handle: None,
-            hwasid_map: HashMap::new(),
             idle_tid,
         }
     }
@@ -426,10 +416,6 @@ impl LpScheduler for RoundRobin {
         self.is_idle = true;
         TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
         self.publish_load();
-    }
-
-    fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid> {
-        self.hwasid_map.get(&asid).cloned()
     }
 
     fn thread_count(&self) -> ThreadCount {

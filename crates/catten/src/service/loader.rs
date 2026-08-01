@@ -25,6 +25,7 @@ use crate::{
         ADDRESS_SPACE_TABLE,
         AddressSpaceHandle,
         AddressSpaceId,
+        AddressSpaceRegistrationError,
         KERNEL_AS,
         PHYSICAL_FRAME_ALLOCATOR,
         linear::{
@@ -322,13 +323,16 @@ pub fn create_user_address_space() -> AddressSpaceId {
 
 /// Create a fresh user address space and retain its reuse-safe identity.
 pub fn create_user_address_space_handle() -> AddressSpaceHandle {
-    let user_as = {
-        let _kas = KERNEL_AS.lock();
-        let mut as_ = AddressSpace::get_current();
-        as_.set_ttbr0(0);
-        as_
-    };
-    crate::memory::register_user_address_space(user_as)
+    try_create_user_address_space_handle()
+        .expect("[loader] hardware address-space identifiers exhausted")
+}
+
+/// Try to create a fresh user address space without turning finite hardware
+/// ASID exhaustion into a kernel panic.
+pub fn try_create_user_address_space_handle()
+-> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
+    let _kas = KERNEL_AS.lock();
+    crate::memory::register_user_address_space(AddressSpace::new_user())
 }
 
 /// Map all `PT_LOAD` segments of `image` into `asid` and return the entry
@@ -394,7 +398,13 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
 /// (endpoint readiness binding, timed waits, detached operations). The
 /// domain is not started.
 pub fn load_domain(image: &[u8]) -> LoadedDomain {
-    let address_space = create_user_address_space_handle();
+    try_load_domain(image).expect("[loader] hardware address-space identifiers exhausted")
+}
+
+/// Load a domain while reporting finite hardware-ASID exhaustion to callers
+/// which accept runtime service-creation requests.
+pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
+    let address_space = try_create_user_address_space_handle()?;
     let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);
 
@@ -432,11 +442,11 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
         SHARD_CQ_COUNT,
     );
 
-    LoadedDomain {
+    Ok(LoadedDomain {
         asid,
         address_space,
         entry_vaddr,
         config_frame,
         status_frame,
-    }
+    })
 }

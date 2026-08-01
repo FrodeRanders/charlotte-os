@@ -200,7 +200,7 @@ impl<'vas> Walker<'vas> {
     /// Ensure the root (L0) table exists, allocating one if the relevant TTBR is
     /// empty. Kernel (higher half) mappings already have a root established by
     /// Limine; freshly created user address spaces may not.
-    fn ensure_root(&mut self) -> *mut PageTable {
+    fn ensure_root(&mut self) -> WalkerResult<*mut PageTable> {
         if self.root_table_base().is_none() {
             // Creating a root for an inactive address space must not install
             // that address space on the CPU doing the construction. Remember
@@ -212,6 +212,9 @@ impl<'vas> Walker<'vas> {
             } else {
                 current.get_ttbr0() == self.address_space.get_ttbr0()
             };
+            if !self.is_higher_half() {
+                self.address_space.ensure_hw_asid().ok_or(WalkerError::HardwareAsidExhausted)?;
+            }
             let new_root = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
             unsafe {
                 let new_root_ptr: *mut PageTable = new_root.into();
@@ -228,7 +231,7 @@ impl<'vas> Walker<'vas> {
             }
         }
         self.l0_ptr = self.root_table_ptr().unwrap();
-        self.l0_ptr
+        Ok(self.l0_ptr)
     }
 
     pub fn map_page(
@@ -294,7 +297,7 @@ impl<'vas> Walker<'vas> {
         zero_frame: bool,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk())?;
-        self.ensure_root();
+        self.ensure_root()?;
         if self.l1_ptr.is_null() {
             self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
         }
@@ -372,7 +375,7 @@ impl<'vas> Walker<'vas> {
         no_execute: bool,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_large_page())?;
-        self.ensure_root();
+        self.ensure_root()?;
         if self.l1_ptr.is_null() {
             self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
         }
@@ -415,7 +418,7 @@ impl<'vas> Walker<'vas> {
         no_execute: bool,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_huge_page())?;
-        self.ensure_root();
+        self.ensure_root()?;
         if self.l1_ptr.is_null() {
             self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
         }

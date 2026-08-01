@@ -24,10 +24,7 @@ use core::sync::atomic::{
 
 use crate::{
     cpu::{
-        isa::{
-            lp::LpId,
-            memory::paging::HwAsid,
-        },
+        isa::lp::LpId,
         scheduler::threads::{
             ThreadCount,
             ThreadGeneration,
@@ -35,7 +32,6 @@ use crate::{
         },
     },
     klib::observer::Observer,
-    memory::AddressSpaceId,
 };
 
 pub trait LpScheduler: Debug + Send {
@@ -74,7 +70,6 @@ pub trait LpScheduler: Debug + Send {
     fn is_idle(&self) -> bool;
     fn start(&mut self);
     fn stop(&mut self);
-    fn asid_to_hwasid(&self, asid: AddressSpaceId) -> Option<HwAsid>;
     fn thread_count(&self) -> ThreadCount;
 }
 

@@ -99,17 +99,19 @@ impl HwAsidAllocator {
         }
     }
 
-    fn allocate(&mut self) -> HwAsid {
+    fn allocate(&mut self) -> Option<HwAsid> {
         if let Some(asid) = self.free.pop() {
-            return asid;
+            return Some(asid);
         }
         if self.next == self.reserved_kernel as u32 {
             self.next += 1;
         }
-        assert!(self.next < self.limit, "AArch64 hardware ASID space exhausted");
+        if self.next >= self.limit {
+            return None;
+        }
         let asid = self.next as HwAsid;
         self.next += 1;
-        asid
+        Some(asid)
     }
 
     fn release(&mut self, asid: HwAsid) {
@@ -120,6 +122,20 @@ impl HwAsidAllocator {
 
 static HW_ASID_ALLOCATOR: LazyLock<Mutex<HwAsidAllocator>> =
     LazyLock::new(|| Mutex::new(HwAsidAllocator::new()));
+
+pub(crate) fn self_test_hw_asid_allocator() {
+    let mut allocator = HwAsidAllocator {
+        next: 1,
+        limit: 4,
+        reserved_kernel: 2,
+        free: Vec::new(),
+    };
+    assert_eq!(allocator.allocate(), Some(1));
+    assert_eq!(allocator.allocate(), Some(3));
+    assert_eq!(allocator.allocate(), None, "exhaustion must be reported without panicking");
+    allocator.release(1);
+    assert_eq!(allocator.allocate(), Some(1), "released tags must remain recyclable");
+}
 
 pub const PAGE_SIZE: usize = kibibytes(4);
 pub const LARGE_PAGE_SIZE: usize = mebibytes(2);
@@ -154,6 +170,19 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
+    /// Construct an inactive user address space sharing only the current
+    /// kernel (TTBR1) mappings. The lower-half root and hardware ASID are
+    /// assigned lazily, before the first user mapping or table registration.
+    pub fn new_user() -> Self {
+        let current = Self::get_current();
+        Self {
+            ttbr0_el1: 0,
+            ttbr1_el1: current.ttbr1_el1,
+            hw_asid: 0,
+            owns_hw_asid: false,
+        }
+    }
+
     pub fn get_ttbr0(&self) -> u64 {
         self.ttbr0_el1
     }
@@ -162,13 +191,7 @@ impl AddressSpace {
         self.ttbr1_el1
     }
 
-    pub fn set_ttbr0(&mut self, ttbr0: u64) {
-        self.ttbr0_el1 = ttbr0;
-        self.hw_asid = ((ttbr0 >> hw_asid_shift()) & 0xffff) as HwAsid;
-        self.owns_hw_asid = false;
-    }
-
-    pub fn set_ttbr1(&mut self, ttbr1: u64) {
+    pub(super) fn set_ttbr1(&mut self, ttbr1: u64) {
         self.ttbr1_el1 = ttbr1;
     }
 
@@ -176,19 +199,19 @@ impl AddressSpace {
         self.hw_asid
     }
 
-    pub(crate) fn ensure_hw_asid(&mut self) -> HwAsid {
+    pub(crate) fn ensure_hw_asid(&mut self) -> Option<HwAsid> {
         if self.hw_asid == 0 {
-            self.hw_asid = HW_ASID_ALLOCATOR.lock().allocate();
+            self.hw_asid = HW_ASID_ALLOCATOR.lock().allocate()?;
             self.owns_hw_asid = true;
             self.ttbr0_el1 = (self.ttbr0_el1 & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
         }
-        self.hw_asid
+        Some(self.hw_asid)
     }
 
     /// Install a lower-half root without disturbing this address space's TLB
     /// identity. Fresh user spaces acquire a nonzero tag on first mapping.
     pub(super) fn install_ttbr0_base(&mut self, base: u64) {
-        self.ensure_hw_asid();
+        debug_assert_ne!(self.hw_asid, 0);
         self.ttbr0_el1 = (base & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
     }
 

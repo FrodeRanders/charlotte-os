@@ -323,9 +323,7 @@ fn map_existing_data_page(asid: usize, vaddr: VAddr, frame: crate::memory::physi
 fn create_user_address_space(label: &str) -> usize {
     let user_as = {
         let _kas = KERNEL_AS.lock();
-        let mut as_ = AddressSpace::get_current();
-        as_.set_ttbr0(0);
-        as_
+        AddressSpace::new_user()
     };
     let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
     logln!("[EL0 IPC] {} AS asid={}", label, asid);
@@ -339,9 +337,7 @@ pub fn test_el0_endpoint_ipc() {
 
         let user_as = {
             let _kas = KERNEL_AS.lock();
-            let mut as_ = AddressSpace::get_current();
-            as_.set_ttbr0(0);
-            as_
+            AddressSpace::new_user()
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
         logln!("[EL0 IPC] user AS asid={}", asid);
@@ -386,9 +382,7 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
 
         let user_as = {
             let _kas = KERNEL_AS.lock();
-            let mut as_ = AddressSpace::get_current();
-            as_.set_ttbr0(0);
-            as_
+            AddressSpace::new_user()
         };
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
         logln!("[EL0 IPC block] user AS asid={}", asid);

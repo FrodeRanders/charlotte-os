@@ -90,25 +90,46 @@ pub enum AddressSpaceCloseError {
     StaleHandle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressSpaceRegistrationError {
+    HardwareAsidExhausted,
+}
+
 /// Serializes allocation and teardown across resource cleanup. This prevents
 /// an ASID slot from being reused while cleanup keyed by its numeric id is in
 /// progress.
 static ADDRESS_SPACE_LIFECYCLE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+#[cfg(target_arch = "aarch64")]
+fn prepare_user_address_space(
+    address_space: &mut AddressSpace,
+) -> Result<(), AddressSpaceRegistrationError> {
+    address_space.ensure_hw_asid().ok_or(AddressSpaceRegistrationError::HardwareAsidExhausted)?;
+    Ok(())
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+fn prepare_user_address_space(
+    _address_space: &mut AddressSpace,
+) -> Result<(), AddressSpaceRegistrationError> {
+    Ok(())
+}
+
 /// Add an address space and return the generation-bearing identity of this
 /// particular slot occupancy.
-pub fn register_user_address_space(mut address_space: AddressSpace) -> AddressSpaceHandle {
+pub fn register_user_address_space(
+    mut address_space: AddressSpace,
+) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    #[cfg(target_arch = "aarch64")]
-    address_space.ensure_hw_asid();
+    prepare_user_address_space(&mut address_space)?;
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let id = table.add_element(address_space);
     debug_assert_ne!(id, KERNEL_ASID);
     let generation = table.generation(id).expect("new address space missing generation");
-    AddressSpaceHandle {
+    Ok(AddressSpaceHandle {
         id,
         generation,
-    }
+    })
 }
 
 /// Return the identity currently occupying `asid`.

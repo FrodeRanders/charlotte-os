@@ -18,7 +18,10 @@ use spin::{
 
 use crate::{
     cpu::{
-        isa::lp::ops::get_lp_id,
+        isa::lp::ops::{
+            get_lp_id,
+            mask_interrupts,
+        },
         multiprocessor::get_lp_count,
         scheduler::{
             sleep_millis,
@@ -42,7 +45,6 @@ use crate::{
         Observer,
     },
     logln,
-    mask_interrupts,
     memory::KERNEL_ASID,
 };
 

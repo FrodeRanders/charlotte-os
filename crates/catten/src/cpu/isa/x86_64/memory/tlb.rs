@@ -1,51 +1,35 @@
 use core::arch::asm;
 
 use crate::{
-    cpu::{
-        isa::memory::paging::PAGE_SIZE,
-        scheduler::system_scheduler::SYSTEM_SCHEDULER,
-    },
+    cpu::isa::memory::paging::PAGE_SIZE,
     memory::{
         AddressSpaceId,
         VAddr,
     },
 };
 
-pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, size: usize) {
-    // SAFETY: This is safe because we are executing in an interrupt context where
-    // preemption is disabled, and we are not modifying any data structures that
-    // could be accessed by other threads.
-    if let Some(pcid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid) {
-        let raw_base = <VAddr as Into<usize>>::into(base);
-        for page in (raw_base..raw_base + size * PAGE_SIZE).step_by(PAGE_SIZE) {
-            let descriptor: [u64; 2] = [page as u64, pcid.get_inner() as u64];
-            unsafe {
-                asm!(
-                    "invpcid {mode:r}, [{desc_ptr}]",
-                    mode = in(reg) 0,
-                    desc_ptr = in(reg) &descriptor,
-                    options(nostack, preserves_flags),
-                );
-            }
-        }
+/// CharlotteOS does not yet enable CR4.PCIDE or assign x86 PCIDs. Reloading
+/// CR3 therefore invalidates all non-global translations for the address
+/// space currently active on this LP. That is sufficient for a shootdown:
+/// if `asid` is active it is flushed now, and if it is inactive its next
+/// context switch reloads CR3 and flushes it before use.
+fn flush_current_non_global() {
+    unsafe {
+        asm!(
+            "mov {cr3}, cr3",
+            "mov cr3, {cr3}",
+            cr3 = out(reg) _,
+            options(nostack, preserves_flags),
+        );
     }
 }
 
-pub fn inval_asid(asid: AddressSpaceId) {
-    // SAFETY: This is safe because we are executing in an interrupt context where
-    // preemption is disabled, and we are not modifying any data structures that
-    // could be accessed by other threads.
-    if let Some(pcid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().asid_to_hwasid(asid) {
-        let descriptor: [u64; 2] = [0, pcid.get_inner() as u64];
-        unsafe {
-            asm!(
-                "invpcid {mode:r}, [{desc_ptr}]",
-                mode = in(reg) 1,
-                desc_ptr = in(reg) &descriptor,
-                options(nostack, preserves_flags),
-            );
-        }
-    }
+pub fn inval_range_user(_asid: AddressSpaceId, _base: VAddr, _size: usize) {
+    flush_current_non_global();
+}
+
+pub fn inval_asid(_asid: AddressSpaceId) {
+    flush_current_non_global();
 }
 
 pub fn inval_range_kernel(base: VAddr, num_pages: usize) {

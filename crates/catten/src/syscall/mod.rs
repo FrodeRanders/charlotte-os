@@ -1443,7 +1443,16 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
             return;
         }
     };
-    let loaded = crate::service::loader::load_domain(elf);
+    let loaded = match crate::service::loader::try_load_domain(elf) {
+        Ok(loaded) => loaded,
+        Err(_) => {
+            if elf_cap != 0 {
+                let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+            }
+            frame.regs[0] = 0;
+            return;
+        }
+    };
     if elf_cap != 0 {
         let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
     }

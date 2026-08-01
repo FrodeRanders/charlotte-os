@@ -37,7 +37,6 @@ const DEV_ASID: usize = 0x000d_e71c;
 const TEST_SPI: u32 = 42;
 
 #[cfg(target_arch = "aarch64")]
-#[cfg(target_arch = "aarch64")]
 static IRQ_CAP: AtomicU64 = AtomicU64::new(0);
 #[cfg(target_arch = "aarch64")]
 static ROUND1_RELEASED: AtomicU32 = AtomicU32::new(0);
@@ -119,6 +118,7 @@ pub fn test_device_capabilities() {
         test_mmio_map_unmap();
         test_failed_dma_map_releases_pin();
         test_stale_address_space_handle();
+        crate::cpu::isa::memory::paging::self_test_hw_asid_allocator();
         irq = test_stale_interrupt_wake(irq);
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
