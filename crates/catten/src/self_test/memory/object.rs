@@ -10,13 +10,13 @@ use crate::{
     memory::{
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
-        close_user_address_space,
         linear::VAddr,
         object::{
             self,
             MemoryObjectError,
         },
     },
+    self_test::close_test_address_space,
 };
 
 fn create_memory_object_test_address_space(label: &str) -> usize {
@@ -177,10 +177,10 @@ pub fn test_memory_objects() {
     object::close_address_space(reader);
     object::close_address_space(target);
 
-    close_user_address_space(writer).expect("memory object: failed to close writer AS");
-    close_user_address_space(reader).expect("memory object: failed to close reader AS");
-    close_user_address_space(target).expect("memory object: failed to close target AS");
-    close_user_address_space(owner).expect("memory object: failed to close owner AS");
+    close_test_address_space(writer).expect("memory object: failed to close writer AS");
+    close_test_address_space(reader).expect("memory object: failed to close reader AS");
+    close_test_address_space(target).expect("memory object: failed to close target AS");
+    close_test_address_space(owner).expect("memory object: failed to close owner AS");
 
     logln!("First-class memory object tests passed.");
 }

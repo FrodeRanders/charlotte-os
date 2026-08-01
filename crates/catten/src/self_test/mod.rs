@@ -49,6 +49,18 @@ use crate::logln;
 /// the frouter has been spawned.
 pub static mut FROUTER_STATUS_FRAME: usize = 0;
 
+/// Synchronous self-tests that construct address spaces directly sometimes
+/// retain only their numeric id. Confine that downgrade here; production
+/// lifecycle code has no raw-ASID teardown API and must retain an
+/// `AddressSpaceHandle` from allocation.
+pub(crate) fn close_test_address_space(
+    asid: crate::memory::AddressSpaceId,
+) -> Result<(), crate::memory::AddressSpaceCloseError> {
+    let handle = crate::memory::current_address_space_handle(asid)
+        .ok_or(crate::memory::AddressSpaceCloseError::AddressSpaceMissing)?;
+    crate::memory::close_user_address_space_handle(handle)
+}
+
 pub fn run_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {

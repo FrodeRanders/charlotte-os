@@ -167,7 +167,7 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     let call = ipc::scalar_call(client_asid, connection, OP_ECHO, 0x51a5)
         .expect("persistent replacement call");
     assert_eq!(wait_reply_k2(client_asid, call, "persistent replacement echo").result, 0x51a5);
-    crate::memory::close_user_address_space(client_asid)
+    crate::self_test::close_test_address_space(client_asid)
         .expect("[service] persistent-upgrade client cleanup failed");
     logln!("[service] persistent NVMe ELF reload verified.");
 }
@@ -410,7 +410,7 @@ extern "C" fn verify_el0_service() {
     let c3 = ipc::scalar_call(kclient2_asid, f3, OP_ECHO, 0x99).expect("gen-3 call");
     let r3 = wait_reply_k2(kclient2_asid, c3, "gen-3 echo");
     assert_eq!(r3.result, 0x99, "gen-3 mismatch");
-    crate::memory::close_user_address_space(kclient2_asid)
+    crate::self_test::close_test_address_space(kclient2_asid)
         .expect("[service] K2 address-space close failed");
     logln!("[service] live handoff verified");
 

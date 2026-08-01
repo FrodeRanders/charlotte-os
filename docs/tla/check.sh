@@ -106,6 +106,10 @@ run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
     ReplacementSurvivesStaleHandle UnsafeStaleClose
+run_model CharlotteInterruptRoute CharlotteInterruptRoute_small.cfg \
+    Bind QueueWake Unbind DrainSafe
+run_expected_violation CharlotteInterruptRoute CharlotteInterruptRoute_unsafe.cfg \
+    NoStaleWakeDelivery DrainUnsafe
 run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
     Load Start Publish RequestStop Exit Reap Teardown
 run_model CharlotteCapability CharlotteCapability_small.cfg \

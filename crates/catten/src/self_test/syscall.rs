@@ -25,8 +25,8 @@ use crate::{
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
         VAddr,
-        close_user_address_space,
     },
+    self_test::close_test_address_space,
     syscall::{
         self,
         TrapFrame,
@@ -623,8 +623,8 @@ pub fn test_syscall_dispatch() {
         ));
     }
 
-    close_user_address_space(memory_owner).expect("syscall memory owner AS close failed");
-    close_user_address_space(memory_server).expect("syscall memory server AS close failed");
+    close_test_address_space(memory_owner).expect("syscall memory owner AS close failed");
+    close_test_address_space(memory_server).expect("syscall memory server AS close failed");
 
     completion::close_address_space(asid);
     logln!("Syscall dispatch subsystem tests passed.");

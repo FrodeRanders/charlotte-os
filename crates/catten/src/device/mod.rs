@@ -182,6 +182,10 @@ pub(crate) const MAX_ROUTED_INTID: usize = 256;
 const MIN_ROUTED_INTID: u32 = 32;
 
 static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+/// Generation of each interrupt route. It advances on every bind and unroute,
+/// fencing deferred wakes that were queued for a previous driver lifetime.
+static ROUTE_GENERATION: [AtomicU64; MAX_ROUTED_INTID] =
+    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
 static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] = [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
 static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
 
@@ -189,7 +193,13 @@ static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; 
 /// [`drain_deferred_wakes`] from thread context. Wakes coalesce (§9.4), so
 /// the bound capacity only needs to cover the number of distinct driver
 /// queues with generous headroom.
-static DEFERRED_WAKES: LazyLock<ConcurrentQueue<u64>> =
+#[derive(Clone, Copy)]
+struct DeferredWake {
+    intid: u32,
+    route_generation: u64,
+}
+
+static DEFERRED_WAKES: LazyLock<ConcurrentQueue<DeferredWake>> =
     LazyLock::new(|| ConcurrentQueue::bounded(MAX_ROUTED_INTID));
 
 /// Force construction of interrupt-ingress state before scheduler preemption
@@ -470,6 +480,7 @@ pub fn interrupt_bind_cq(
     // capability-table lock through the architecture operation so a concurrent
     // close cannot remove the capability and leave an orphaned route.
     IRQ_PENDING[intid as usize].store(0, Ordering::Release);
+    ROUTE_GENERATION[intid as usize].fetch_add(1, Ordering::AcqRel);
     ROUTE_TABLE[intid as usize].store(pack_route(asid, cq), Ordering::Release);
     arch_enable_irq(intid, target_lp);
     Ok(())
@@ -510,6 +521,10 @@ pub fn interrupt_status(asid: AddressSpaceId, cap: DeviceCap) -> Result<(u32, u6
 /// Mask an interrupt source and remove its route. Idempotent.
 fn unroute_interrupt(intid: u32) {
     if (intid as usize) < MAX_ROUTED_INTID {
+        // Invalidate queued wakes before clearing the route. A delivery racing
+        // these stores may enqueue either generation, but neither can match a
+        // subsequently rebound route.
+        ROUTE_GENERATION[intid as usize].fetch_add(1, Ordering::AcqRel);
         ROUTE_TABLE[intid as usize].store(0, Ordering::Release);
     }
     arch_disable_irq(intid);
@@ -630,6 +645,7 @@ pub fn deliver_interrupt(intid: u32) -> bool {
     if intid as usize >= MAX_ROUTED_INTID {
         return false;
     }
+    let route_generation = ROUTE_GENERATION[intid as usize].load(Ordering::Acquire);
     let packed = ROUTE_TABLE[intid as usize].load(Ordering::Acquire);
     if packed == 0 {
         return false;
@@ -653,7 +669,10 @@ pub fn deliver_interrupt(intid: u32) -> bool {
 
     // Hand the coalesced readiness wake to thread context. A full queue means
     // an equivalent wake is already pending delivery, so dropping is safe.
-    let _ = DEFERRED_WAKES.push(packed);
+    let _ = DEFERRED_WAKES.push(DeferredWake {
+        intid,
+        route_generation,
+    });
     true
 }
 
@@ -662,9 +681,17 @@ pub fn deliver_interrupt(intid: u32) -> bool {
 /// make threads runnable); the idle loop and cooperative `yield_lp` both call
 /// it, so a driver blocked in `CQ_WAIT` is released promptly once its LP has
 /// nothing else to run.
-pub fn drain_deferred_wakes() {
+pub fn drain_deferred_wakes() -> usize {
     let mut drained = 0u32;
-    while let Ok(packed) = DEFERRED_WAKES.pop() {
+    while let Ok(wake) = DEFERRED_WAKES.pop() {
+        let index = wake.intid as usize;
+        if ROUTE_GENERATION[index].load(Ordering::Acquire) != wake.route_generation {
+            continue;
+        }
+        let packed = ROUTE_TABLE[index].load(Ordering::Acquire);
+        if packed == 0 {
+            continue;
+        }
         let (asid, cq) = unpack_route(packed);
         sched_trace!("[sched] drain-wake AS={} CQ={}", asid, cq);
         crate::completion::wake(asid, cq);
@@ -673,6 +700,7 @@ pub fn drain_deferred_wakes() {
     if drained > 0 && SCHED_TRACE {
         logln!("[sched] drained {} deferred wake(s)", drained);
     }
+    drained as usize
 }
 
 // ---- helpers ---------------------------------------------------------------

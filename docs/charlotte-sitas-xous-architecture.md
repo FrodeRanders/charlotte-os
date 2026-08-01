@@ -1250,6 +1250,11 @@ The kernel interrupt path should:
 5.  return from the exception.
 
 Repeated interrupts should coalesce where the device model permits it.
+The deferred wake record carries the interrupt route generation, not merely
+the route's numeric `(ASID, CQ)` destination. Unbinding or rebinding advances
+that generation, so an interrupt queued immediately before driver teardown is
+dropped rather than delivered to a replacement that reuses the same ASID and
+queue number.
 
 ## 10.3 DMA isolation
 

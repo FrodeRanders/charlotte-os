@@ -123,24 +123,6 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
     ADDRESS_SPACE_TABLE.lock().generation(handle.id).ok() == Some(handle.generation)
 }
 
-/// Tear down kernel-owned resources attached to a user address space, then
-/// remove the address space table entry.
-///
-/// Callers must first ensure no threads in `asid` can keep running. This helper
-/// owns capability/resource cleanup and the page-table object lifetime; it is
-/// not a process scheduler.
-pub fn close_user_address_space(asid: AddressSpaceId) -> Result<(), AddressSpaceCloseError> {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    let generation = ADDRESS_SPACE_TABLE
-        .lock()
-        .generation(asid)
-        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)?;
-    close_user_address_space_locked(AddressSpaceHandle {
-        id: asid,
-        generation,
-    })
-}
-
 /// Close one exact address-space lifetime, rejecting a handle left behind by
 /// ASID reuse.
 pub fn close_user_address_space_handle(

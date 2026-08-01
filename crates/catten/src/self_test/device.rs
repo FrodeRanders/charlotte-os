@@ -65,7 +65,7 @@ pub fn test_device_capabilities() {
         // --- Capability-model negative tests -------------------------------
         let mmio =
             device::grant_mmio(DEV_ASID, 0x0900_0000, 1).expect("[device] grant_mmio failed");
-        let irq =
+        let mut irq =
             device::grant_interrupt(DEV_ASID, TEST_SPI).expect("[device] grant_interrupt failed");
         assert_eq!(
             device::grant_interrupt(DEV_ASID, 31),
@@ -119,6 +119,7 @@ pub fn test_device_capabilities() {
         test_mmio_map_unmap();
         test_failed_dma_map_releases_pin();
         test_stale_address_space_handle();
+        irq = test_stale_interrupt_wake(irq);
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
         // the delivery rounds below.
@@ -174,6 +175,32 @@ fn test_stale_address_space_handle() {
     logln!("[device] stale address-space teardown rejected after ASID reuse");
 }
 
+/// A deferred IRQ wake queued for a retired route must not be delivered when
+/// the same INTID, numeric ASID, and CQ are rebound. Only route generation can
+/// distinguish these otherwise-identical tuples.
+#[cfg(target_arch = "aarch64")]
+fn test_stale_interrupt_wake(old: u64) -> u64 {
+    crate::device::interrupt_bind_cq(DEV_ASID, old, 0)
+        .expect("[device] stale-wake initial bind failed");
+    assert!(crate::device::deliver_interrupt(TEST_SPI));
+    crate::device::close_cap(DEV_ASID, old).expect("[device] stale-wake initial close failed");
+
+    let replacement = crate::device::grant_interrupt(DEV_ASID, TEST_SPI)
+        .expect("[device] stale-wake replacement interrupt grant failed");
+    crate::device::interrupt_bind_cq(DEV_ASID, replacement, 0)
+        .expect("[device] stale-wake replacement bind failed");
+    assert_eq!(
+        crate::device::drain_deferred_wakes(),
+        0,
+        "wake from retired interrupt route reached its replacement"
+    );
+    crate::device::close_cap(DEV_ASID, replacement)
+        .expect("[device] stale-wake replacement close failed");
+    logln!("[device] stale deferred interrupt wake rejected after route reuse");
+    crate::device::grant_interrupt(DEV_ASID, TEST_SPI)
+        .expect("[device] stale-wake final interrupt grant failed")
+}
+
 #[cfg(target_arch = "aarch64")]
 fn completion_open() {
     // A completion-queue address space so interrupt readiness has somewhere
@@ -188,10 +215,8 @@ fn completion_open() {
 fn test_failed_dma_map_releases_pin() {
     use crate::{
         device::smmu,
-        memory::{
-            close_user_address_space,
-            object,
-        },
+        memory::object,
+        self_test::close_test_address_space,
         service::loader,
     };
 
@@ -203,7 +228,7 @@ fn test_failed_dma_map_releases_pin() {
         "[device] invalid DMA domain must reject mapping"
     );
     object::close_cap(asid, memory).expect("[device] failed DMA map leaked its memory pin");
-    close_user_address_space(asid).expect("[device] DMA rollback address-space cleanup failed");
+    close_test_address_space(asid).expect("[device] DMA rollback address-space cleanup failed");
     logln!("[device] failed DMA map released its memory pin");
 }
 
@@ -217,9 +242,9 @@ fn test_mmio_map_unmap() {
         memory::{
             PHYSICAL_FRAME_ALLOCATOR,
             VAddr,
-            close_user_address_space,
             physical::PAddr,
         },
+        self_test::close_test_address_space,
         service::loader,
     };
 
@@ -246,7 +271,7 @@ fn test_mmio_map_unmap() {
         .lock()
         .deallocate_frame(frame)
         .expect("[device] failed to free stand-in device frame");
-    close_user_address_space(asid).expect("[device] close_user_address_space failed");
+    close_test_address_space(asid).expect("[device] close address space failed");
     logln!("[device] MMIO map/unmap into a real address space passed");
 }
 

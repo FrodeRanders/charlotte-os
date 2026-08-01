@@ -19,9 +19,9 @@ use crate::{
         AddressSpaceId,
         KERNEL_AS,
         VAddr,
-        close_user_address_space,
         object,
     },
+    self_test::close_test_address_space,
 };
 
 fn create_ipc_memory_test_address_space(label: &str) -> AddressSpaceId {
@@ -496,8 +496,8 @@ pub fn test_endpoint_ipc() {
     object::unmap(memory_client, write_borrow).expect("memory IPC write borrow owner unmap failed");
     object::close_cap(memory_client, write_borrow).expect("memory IPC write borrow close failed");
 
-    close_user_address_space(memory_client).expect("memory IPC client AS close failed");
-    close_user_address_space(memory_server).expect("memory IPC server AS close failed");
+    close_test_address_space(memory_client).expect("memory IPC client AS close failed");
+    close_test_address_space(memory_server).expect("memory IPC server AS close failed");
 
     let teardown_server = create_ipc_memory_test_address_space("teardown server");
     let teardown_client = create_ipc_memory_test_address_space("teardown client");
@@ -521,7 +521,7 @@ pub fn test_endpoint_ipc() {
         teardown_moved,
     )
     .expect("memory IPC teardown moved call failed");
-    close_user_address_space(teardown_server).expect("memory IPC teardown server AS close failed");
+    close_test_address_space(teardown_server).expect("memory IPC teardown server AS close failed");
     let teardown_reply = ipc::poll_reply(teardown_client, teardown_call)
         .expect("memory IPC teardown moved poll failed")
         .expect("memory IPC teardown moved call should complete");
@@ -541,7 +541,7 @@ pub fn test_endpoint_ipc() {
         Err(IpcError::EndpointClosed),
         "connection to torn-down endpoint must report endpoint closed"
     );
-    close_user_address_space(teardown_client).expect("memory IPC teardown client AS close failed");
+    close_test_address_space(teardown_client).expect("memory IPC teardown client AS close failed");
 
     let death_server = create_ipc_memory_test_address_space("death server");
     let death_client = create_ipc_memory_test_address_space("death client");
@@ -596,7 +596,7 @@ pub fn test_endpoint_ipc() {
         );
         death_server_frame.into_hhdm_mut::<u64>().write_volatile(0x4445_4154_4844_4f4e);
     }
-    close_user_address_space(death_server).expect("memory IPC death server AS close failed");
+    close_test_address_space(death_server).expect("memory IPC death server AS close failed");
     let death_reply = ipc::poll_reply(death_client, death_call)
         .expect("memory IPC death poll failed")
         .expect("memory IPC death delivered call should complete");
@@ -620,7 +620,7 @@ pub fn test_endpoint_ipc() {
         .expect("memory IPC death owner unmap after server death failed");
     object::close_cap(death_client, death_borrow)
         .expect("memory IPC death owner close after server death failed");
-    close_user_address_space(death_client).expect("memory IPC death client AS close failed");
+    close_test_address_space(death_client).expect("memory IPC death client AS close failed");
 
     ipc::close_address_space(client);
     ipc::close_address_space(server);
@@ -968,8 +968,8 @@ pub fn test_endpoint_ipc_connection_copy() {
     object::close_cap(service, cancel_name).expect("cancel name close failed");
     object::close_cap(service, name_object).expect("named name close failed");
 
-    close_user_address_space(service).expect("named service AS close failed");
-    close_user_address_space(nameservice).expect("named ns AS close failed");
+    close_test_address_space(service).expect("named service AS close failed");
+    close_test_address_space(nameservice).expect("named ns AS close failed");
     logln!("Combined connection + copied-memory IPC attachment tests passed.");
 }
 
@@ -1028,7 +1028,7 @@ pub fn test_vector_ipc_transaction_rollback() {
     );
     object::close_cap(client, moved).expect("vector moved object cleanup failed");
     object::close_cap(client, vector).expect("vector page cleanup failed");
-    close_user_address_space(client).expect("vector client AS close failed");
-    close_user_address_space(server).expect("vector server AS close failed");
+    close_test_address_space(client).expect("vector client AS close failed");
+    close_test_address_space(server).expect("vector server AS close failed");
     logln!("Vector IPC transaction rollback test passed.");
 }
