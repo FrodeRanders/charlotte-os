@@ -143,6 +143,13 @@ advancing service generation; requests and replies carry it, and the target
 rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
+Registration uses two replicated phases. A \texttt{prepare} command allocates
+the next generation but remains invisible. After the owner successfully
+publishes its node-local endpoint, a generation-fenced \texttt{activate}
+command makes the entry visible. Failed local publication therefore leaves an
+inactive tombstone rather than a remotely resolvable ghost. Automatic
+replicated unregistration when the hosted service dies remains future work.
+
 Lookup and call-routing decisions do not use follower-local catalog state. A
 follower sends a correlated query to the known leader, and the leader answers
 only when Graft's quorum-contact read barrier succeeds. Query failure returns a

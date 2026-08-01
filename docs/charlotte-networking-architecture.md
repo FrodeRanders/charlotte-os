@@ -397,6 +397,14 @@ advancing service generation, and remote calls carry and verify that generation
 before execution. The protocol does not yet serialize or delegate object
 capabilities across machines.
 
+Publication is also generation-fenced and two-phase. A replicated `prepare`
+allocates the next generation but is not visible to lookup or call routing.
+Only after the owning node has successfully installed the local endpoint does
+a replicated `activate(name, generation)` make it visible. Failed activation
+therefore leaves an inactive tombstone instead of a catalog entry pointing at
+no service. Automatic replicated unregistration when a service dies is not yet
+implemented.
+
 Lookup and call routing are linearizable on the implemented two-voter path:
 followers do not consult their local catalog for these operations. They send a
 correlated query to the known leader, which answers only after Graft's

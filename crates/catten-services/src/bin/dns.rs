@@ -59,6 +59,7 @@ use catten_services::{
         CatalogEntry,
         NameCatalog,
         decode_query_result,
+        encode_activate,
         encode_register,
     },
     net,
@@ -148,6 +149,21 @@ struct PendingQuery {
     expected_leader: alloc::string::String,
     deadline: u64,
     kind: PendingQueryKind,
+}
+
+enum PendingRegistration {
+    Prepare {
+        log_index: u64,
+        reply: u64,
+        name: Vec<u8>,
+        connection: u64,
+    },
+    Activate {
+        log_index: u64,
+        reply: u64,
+        name: Vec<u8>,
+        generation: u64,
+    },
 }
 
 fn reply_lookup(
@@ -552,9 +568,7 @@ fn main(ctx: Context) -> ! {
     let mut recv_pending: u64 = 0;
     let mut served: u32 = 0;
     let mut remote_calls_served: u32 = 0;
-    // Deferred registers awaiting commit replication: (log index, reply token,
-    // name, service connection).
-    let mut pending_registers: Vec<(u64, u64, Vec<u8>, u64)> = Vec::new();
+    let mut pending_registers: Vec<PendingRegistration> = Vec::new();
     let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
     let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
     let mut next_call_id: u64 = 1;
@@ -732,6 +746,7 @@ fn main(ctx: Context) -> ! {
                                             .then_some(CatalogEntry {
                                                 node: owner,
                                                 generation,
+                                                active: true,
                                             });
                                     match query.kind {
                                         PendingQueryKind::Lookup {
@@ -867,12 +882,12 @@ fn main(ctx: Context) -> ! {
                         match node.submit_command(encode_register(&name, &node_name), node.millis())
                         {
                             Ok(index) => {
-                                pending_registers.push((
-                                    index,
-                                    message.reply,
+                                pending_registers.push(PendingRegistration::Prepare {
+                                    log_index: index,
+                                    reply: message.reply,
                                     name,
-                                    message.connection,
-                                ));
+                                    connection: message.connection,
+                                });
                                 continue;
                             }
                             Err(code) => code,
@@ -1133,39 +1148,110 @@ fn main(ctx: Context) -> ! {
         // --- Complete deferred registers once committed ---
         let mut index = 0;
         while index < pending_registers.len() {
-            let (log_index, _reply, _name, _connection) = &pending_registers[index];
-            if !node.is_committed(*log_index) {
+            let log_index = match &pending_registers[index] {
+                PendingRegistration::Prepare {
+                    log_index,
+                    ..
+                }
+                | PendingRegistration::Activate {
+                    log_index,
+                    ..
+                } => *log_index,
+            };
+            if !node.is_committed(log_index) {
                 index += 1;
                 continue;
             }
-            let (log_index, reply, name, connection) = pending_registers.swap_remove(index);
-            // Register the service connection with the node-local name service
-            // (catalog-only registrations carry no connection).
-            let result = if connection != 0 {
-                let local_reg = ipc_scalar_call_connection(
-                    ns_conn,
-                    ns::OP_REGISTER,
-                    catten_services::name(&name),
+            match pending_registers.swap_remove(index) {
+                PendingRegistration::Prepare {
+                    reply,
+                    name,
                     connection,
-                    IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-                );
-                if local_reg != 0 {
-                    let (generation, _) = unsafe { wait_reply(local_reg, REPLY_SPINS) };
-                    if generation >= 1 {
-                        0
+                    ..
+                } => {
+                    let generation = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        .unwrap_or(0);
+                    let local_ready = if generation == 0 {
+                        false
+                    } else if connection == 0 {
+                        true
                     } else {
-                        dns::ERR_TOO_LARGE
+                        let local_reg = ipc_scalar_call_connection(
+                            ns_conn,
+                            ns::OP_REGISTER,
+                            catten_services::name(&name),
+                            connection,
+                            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+                        );
+                        if local_reg == 0 {
+                            false
+                        } else {
+                            let (local_generation, _) =
+                                unsafe { wait_reply(local_reg, REPLY_SPINS) };
+                            local_generation >= 1
+                        }
+                    };
+                    if !local_ready {
+                        if reply != 0 {
+                            ipc_reply(reply, dns::ERR_TOO_LARGE);
+                        }
+                        continue;
                     }
-                } else {
-                    dns::ERR_TOO_LARGE
+                    match node.submit_command(encode_activate(&name, generation), node.millis()) {
+                        Ok(activate_index) => {
+                            pending_registers.push(PendingRegistration::Activate {
+                                log_index: activate_index,
+                                reply,
+                                name,
+                                generation,
+                            });
+                        }
+                        Err(code) => {
+                            if connection != 0 {
+                                let unregister = ipc_scalar_call(
+                                    ns_conn,
+                                    ns::OP_UNREGISTER,
+                                    catten_services::name(&name),
+                                );
+                                if unregister != 0 {
+                                    let _ = unsafe { wait_reply(unregister, REPLY_SPINS) };
+                                }
+                            }
+                            if reply != 0 {
+                                ipc_reply(reply, code);
+                            }
+                        }
+                    }
                 }
-            } else {
-                0
-            };
-            if reply != 0 {
-                ipc_reply(reply, result);
+                PendingRegistration::Activate {
+                    reply,
+                    name,
+                    generation,
+                    ..
+                } => {
+                    let activated = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        == Some(generation);
+                    if reply != 0 {
+                        ipc_reply(
+                            reply,
+                            if activated {
+                                0
+                            } else {
+                                dns::ERR_NOT_FOUND
+                            },
+                        );
+                    }
+                    let _ = name;
+                }
             }
-            let _ = log_index;
         }
 
         // A timeout cannot prove whether a remote target executed before its

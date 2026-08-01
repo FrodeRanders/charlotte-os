@@ -205,6 +205,15 @@ Follow-up:
 - connect supervisor teardown/restart to unregister/replace commands;
 - prevent a catalog-only local result from masquerading as a usable service.
 
+Repair status: registration is now a replicated two-phase protocol. `prepare`
+allocates a new monotonic generation but leaves it invisible; after node-local
+connection publication succeeds, a generation-fenced `activate` command makes
+the entry visible. Failed local publication leaves an inactive replicated
+tombstone rather than a resolvable ghost. Catalog snapshot v3 preserves the
+phase, while v1/v2 snapshots migrate existing entries as active. A fresh
+two-guest run passed 21/21. Automatic replicated unregister on service death
+remains open.
+
 ### F10 — Relmsg buffering is insufficiently bounded (medium)
 
 The completed receive queue is unbounded. Fragment maps can retain many small
@@ -332,9 +341,10 @@ principal distributed findings occur.
   transport routes but cannot add, omit, or replace voting authority; missing
   configured voters fail closed.
 - [ ] Complete replicated service lifecycle policy. Monotonic generations,
-  tombstones, generation-fenced calls, and linearizable lookup/call routing
-  through follower-to-leader forwarding are implemented. Distributed
-  unregister/revocation policy and partition fault injection remain.
+  two-phase prepare/activate publication, tombstones, generation-fenced calls,
+  and linearizable lookup/call routing through follower-to-leader forwarding
+  are implemented. Automatic distributed unregister/revocation on service
+  death and partition fault injection remain.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been
