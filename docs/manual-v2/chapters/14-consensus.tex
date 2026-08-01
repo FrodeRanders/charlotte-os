@@ -217,7 +217,9 @@ Different services are different state machines on the same Raft substrate:
 
 \begin{itemize}
     \item \textbf{Distributed name service:} commands are
-        ``register(name, owner, route, generation)'' and ``unregister(name)''.
+        ``register(name, owner, route, generation)'' and
+        ``unregister(name, owner, generation)''. Unregistration is rejected
+        unless both owner and generation still match the active entry.
         The state maps names to owning-node identities, routable service
         identities, generations, and policy metadata. Replicated, it makes
         service discovery available cluster-wide; this is the implemented

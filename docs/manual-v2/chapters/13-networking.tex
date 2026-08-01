@@ -132,7 +132,7 @@ The RPC layer provides request/reply semantics over the reliable message layer:
         between Rust types and the wire format.
 \end{itemize}
 
-The implemented DNS v2 remote-call path is narrower than this target model. It
+The implemented DNS v3 remote-call path is narrower than this target model. It
 currently carries scalar opcode/argument calls. A request is identified by
 caller node, caller DNS-session generation, and call ID, and a reply is
 accepted only from the expected peer. The implementation bounds outstanding
@@ -148,7 +148,11 @@ the next generation but remains invisible. After the owner successfully
 publishes its node-local endpoint, a generation-fenced \texttt{activate}
 command makes the entry visible. Failed local publication therefore leaves an
 inactive tombstone rather than a remotely resolvable ghost. Automatic
-replicated unregistration when the hosted service dies remains future work.
+replicated unregistration when the hosted service dies remains future work,
+but explicit unregistration is implemented. Its replicated tombstone must
+match the owning node and distributed generation. Subsequent removal from the
+node-local name service must also match the local generation captured before
+the proposal, so a delayed operation cannot remove a replacement instance.
 
 Lookup and call-routing decisions do not use follower-local catalog state. A
 follower sends a correlated query to the known leader, and the leader answers

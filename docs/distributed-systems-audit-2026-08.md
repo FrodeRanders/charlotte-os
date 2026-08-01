@@ -317,6 +317,12 @@ one failure.
   instance-qualified output files. Two subsequent two-guest runs (one complete
   DNS run and one shorter NIC run) passed scheduler lifecycle on both guests;
   the intermittent LP0 wake loss has not yet recurred under instrumentation.
+- A fresh two-guest DNS v3 run completed 21/21 on both guests after adding
+  explicit service removal. Registration returned the committed generation;
+  the leader committed an owner-and-generation-fenced tombstone, both replicas
+  observed the catalog contraction, and a stale unregister replay was rejected.
+  The run also exposed and removed a synchronous local-cleanup wait from the
+  DNS Raft reactor.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, discovery bootstrap, transport
@@ -358,8 +364,10 @@ it does not claim transactional or globally exactly-once execution.
 - [ ] Complete replicated service lifecycle policy. Monotonic generations,
   two-phase prepare/activate publication, tombstones, generation-fenced calls,
   and linearizable lookup/call routing through follower-to-leader forwarding
-  are implemented. Automatic distributed unregister/revocation on service
-  death and partition fault injection remain.
+  are implemented. Explicit unregister is fenced by owning node plus
+  distributed generation, while its asynchronous local cleanup is separately
+  fenced by the observed local generation. Automatic distributed
+  unregister/revocation on service death and partition fault injection remain.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been

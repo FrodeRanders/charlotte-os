@@ -40,9 +40,11 @@ mod inner {
     const DNS_OP_REGISTER: u32 = 1;
     const DNS_OP_LOOKUP: u32 = 2;
     const DNS_OP_CALL: u32 = 5;
+    const DNS_OP_UNREGISTER: u32 = 7;
     const DNS_RESULT_LOCAL: i64 = 0;
     const DNS_RESULT_REMOTE: i64 = 1;
     const DNS_ERR_NOT_FOUND: i64 = -1;
+    const DNS_ERR_STALE_GENERATION: i64 = -7;
     // "alpha" packed LE.
     const ALPHA_NAME: u64 = 0x0061_6870_6c61;
     // "echo" packed LE.
@@ -245,7 +247,10 @@ mod inner {
             logln!("[dns] replica is the Raft leader; registering name.");
             let register = call(dns_conn, DNS_OP_REGISTER, ALPHA_NAME);
             logln!("[dns] register result = {register:?}");
-            assert_eq!(register, Some(0), "[dns] register must commit on the leader");
+            assert!(
+                register.is_some_and(|generation| generation >= 1),
+                "[dns] register must return its committed generation"
+            );
         } else {
             logln!("[dns] replica is a follower; waiting for replicated catalog.");
         }
@@ -285,6 +290,7 @@ mod inner {
         let _echo = echo;
 
         let is_leader = state == 3;
+        let mut echo_generation = 0;
         if is_leader {
             // Wait for the local echo to register, then publish it.
             let deadline = crate::self_test::results::Deadline::after_millis(30_000);
@@ -294,7 +300,8 @@ mod inner {
             }
             let register = call(dns_conn, DNS_OP_REGISTER, ECHO_NAME);
             logln!("[dns] echo publish result = {register:?}");
-            assert_eq!(register, Some(0), "[dns] echo publish must commit");
+            echo_generation = register.unwrap_or(0);
+            assert!(echo_generation >= 1, "[dns] echo publish must return its generation");
         }
 
         // Wait for the catalog to carry both names.
@@ -333,11 +340,36 @@ mod inner {
                 yield_lp();
             }
             logln!("[dns] leader served the follower's remote invocation.");
+
+            let unregister = call_with_memory(
+                dns_conn,
+                DNS_OP_UNREGISTER,
+                ECHO_NAME,
+                &(echo_generation as u64).to_le_bytes(),
+            );
+            assert_eq!(unregister, Some(echo_generation));
+            let stale_unregister = call_with_memory(
+                dns_conn,
+                DNS_OP_UNREGISTER,
+                ECHO_NAME,
+                &(echo_generation as u64).to_le_bytes(),
+            );
+            assert_eq!(stale_unregister, Some(DNS_ERR_STALE_GENERATION));
+            logln!("[dns] generation {} unregistered; stale replay rejected.", echo_generation);
+        }
+
+        // Keep both voters alive until the exact-generation tombstone has
+        // replicated. This also prevents the follower's runner from removing
+        // quorum while the leader is committing the unregister operation.
+        let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        while unsafe { core::ptr::read_volatile(dns_cfg.add(7)) } != 1 {
+            deadline.assert_pending("EL0 dns generation-fenced unregister replication");
+            yield_lp();
         }
 
         logln!(
-            "[dns] SUCCESS: Raft-elected name service replicated the catalog and served a remote \
-             invocation."
+            "[dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote \
+             invocation, and fenced service unregister by generation."
         );
         crate::self_test::results::pass(crate::self_test::results::TestId::Dns);
     }

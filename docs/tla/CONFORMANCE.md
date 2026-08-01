@@ -103,8 +103,8 @@ actions and prove that their projection implements these abstract transitions.
 |---|---|---|
 | `Load` | `loader::load_domain` | Abstract: ELF parsing, mappings and bootstrap frames are omitted. |
 | `Start` | `start_domain`, `spawn_thread` | Direct for the initial `(tid, generation)` domain handle. |
-| `Publish` | name-service `register` map insertion | Direct linearization point: the new `(connection, generation, access key)` is inserted before the superseded connection is retired or deferred lookups are released. Deferred lookups retain the caller key and are authorized against the published policy before receiving a connection. IPC details are covered by `CharlotteIPC`. |
-| `RequestStop` / `Exit` | service shutdown or `abort_thread` | Abstract: cooperative and forced shutdown share the same lifecycle projection. |
+| `Publish` | local name-service `register`; distributed DNS `prepare` / `activate` | The local replacement linearization point inserts `(connection, generation, access key)` before retiring the superseded connection or releasing deferred lookups. Distributed publication becomes visible only after its generation-fenced activation commits. IPC and Raft details are covered by their respective models. |
+| `RequestStop` / `Exit` | generation-fenced DNS/local unregister; service shutdown or `abort_thread` | The model's domain identity abstracts the concrete owner-and-generation fence: stopping an old domain cannot unpublish its replacement. Local cleanup is asynchronous and separately local-generation-fenced. Cooperative and forced shutdown otherwise share this lifecycle projection; automatic endpoint-death-to-unregister notification is not implemented. |
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
 | `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
 

@@ -386,7 +386,7 @@ Provides:
 - object references
 - serialization
 
-Current implementation status: DNS v2 provides a narrow scalar remote-call
+Current implementation status: DNS v3 provides a narrow scalar remote-call
 prototype rather than general capability RPC. Its request identity is caller
 node, caller DNS-session generation, and call ID; replies must arrive from the
 expected peer. At most 64 calls may be outstanding, a five-second deadline
@@ -402,8 +402,12 @@ allocates the next generation but is not visible to lookup or call routing.
 Only after the owning node has successfully installed the local endpoint does
 a replicated `activate(name, generation)` make it visible. Failed activation
 therefore leaves an inactive tombstone instead of a catalog entry pointing at
-no service. Automatic replicated unregistration when a service dies is not yet
-implemented.
+no service. Explicit unregistration is fenced by both owning node and
+distributed generation; after that tombstone commits, removal from the local
+name service is separately fenced by the local generation observed before the
+proposal. A delayed request therefore cannot remove a replacement. Automatic
+replicated unregistration when a service dies is not yet implemented because
+EL0 currently lacks an endpoint-death subscription primitive.
 
 Lookup and call routing are linearizable on the implemented two-voter path:
 followers do not consult their local catalog for these operations. They send a

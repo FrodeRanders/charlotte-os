@@ -55,6 +55,8 @@ pub mod ns {
     /// name; the call must attach a re-delegable connection
     /// (`SEND | CALL | MINT_CONNECTION`) to the service's endpoint. Reply
     /// result = new instance generation (>= 1).
+    /// Prepare and activate a local publication through Raft. The reply is
+    /// the committed distributed generation (>= 1).
     pub const OP_REGISTER: u32 = 1;
     /// Look up a service by short name. `arg0` = packed name. Reply result =
     /// current generation with an attenuated (`SEND | CALL`) connection cap
@@ -106,6 +108,10 @@ pub mod ns {
     /// registered service of `[len:u8][name bytes]`. The scalar result is the
     /// snapshot byte length.
     pub const OP_STATUS: u32 = 9;
+    /// Unpublish only the exact short-name generation supplied in the first
+    /// eight bytes of an attached memory object. A stale request returns
+    /// [`ERR_NOT_FOUND`] and leaves a replacement untouched.
+    pub const OP_UNREGISTER_GENERATION: u32 = 10;
 
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
@@ -635,7 +641,8 @@ pub mod disco {
 /// machine is a replicated `name -> node` catalog; the node-local name
 /// service still owns the actual connection capabilities. `OP_REGISTER`
 /// proposes a `name -> local node` entry to the cluster (and registers the
-/// connection with the local name service once committed). `OP_LOOKUP`
+/// connection with the local name service once committed, replying with the
+/// committed distributed generation). `OP_LOOKUP`
 /// answers from the replicated catalog: local names resolve to the local
 /// name service, remote names report the hosting node. `OP_CALL` is the
 /// remote-invocation entry point: it resolves a name through the catalog and
@@ -643,7 +650,7 @@ pub mod disco {
 /// over the reliable message layer.
 pub mod dns {
     pub const INTERFACE: u64 = super::name(b"DNS ");
-    pub const VERSION: u32 = 2;
+    pub const VERSION: u32 = 3;
     pub const NAME: u64 = super::name(b"dns");
 
     pub const OP_REGISTER: u32 = 1;
@@ -660,6 +667,11 @@ pub mod dns {
     /// `[name_len:u8][name][node_len:u8][node][generation:u64 LE]`. The
     /// scalar result is the snapshot byte length.
     pub const OP_CATALOG: u32 = 6;
+    /// Replicate an exact-generation tombstone for a locally hosted service.
+    /// `arg0` is the packed name and the first eight bytes of the attached
+    /// memory object contain the expected distributed generation. The reply
+    /// is that generation on success.
+    pub const OP_UNREGISTER: u32 = 7;
 
     /// The name is registered on this node (lookup returns a connection).
     pub const RESULT_LOCAL: i64 = 0;

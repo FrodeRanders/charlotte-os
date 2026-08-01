@@ -93,6 +93,22 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     Some(key)
 }
 
+fn read_generation(message: &IpcMessage) -> Option<u64> {
+    if message.memory == 0 {
+        return None;
+    }
+    if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
+        unsafe { memory_close(message.memory) };
+        return None;
+    }
+    let generation = unsafe { core::ptr::read_volatile(NAME_SCRATCH_VADDR as *const u64) };
+    unsafe {
+        memory_unmap(message.memory);
+        memory_close(message.memory);
+    }
+    Some(generation)
+}
+
 fn register(
     registry: &mut Registry,
     waitlist: &mut Waitlist,
@@ -290,6 +306,28 @@ fn main(ctx: Context) -> ! {
                 let key = scalar_key(message.arg0);
                 let result = match registry.get_mut(&key) {
                     Some(registration) if registration.connection != 0 => {
+                        unsafe {
+                            ipc_close(registration.connection);
+                        }
+                        registration.connection = 0;
+                        registration.generation
+                    }
+                    _ => ns::ERR_NOT_FOUND,
+                };
+                if message.reply != 0 {
+                    unsafe {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+            }
+            ns::OP_UNREGISTER_GENERATION => {
+                let key = scalar_key(message.arg0);
+                let expected_generation = read_generation(&message);
+                let result = match (registry.get_mut(&key), expected_generation) {
+                    (Some(registration), Some(expected))
+                        if registration.connection != 0
+                            && u64::try_from(registration.generation) == Ok(expected) =>
+                    {
                         unsafe {
                             ipc_close(registration.connection);
                         }

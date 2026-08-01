@@ -276,7 +276,7 @@ mod inner {
                         let dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
                         if let Some(result) = call(dns_conn, DNS_OP_REGISTER, ALPHA_NAME) {
                             logln!("[http] dns register result = {result}");
-                            if result == 0 && wait_for_value(unsafe { dns_cfg.add(7) }, 1, 20_000) {
+                            if result >= 1 && wait_for_value(unsafe { dns_cfg.add(7) }, 1, 20_000) {
                                 logln!("[http] dns catalog populated with the alpha name.");
                             }
                         }

@@ -26,6 +26,7 @@ use catten_graft::state_machine::{
 const CMD_REGISTER: u8 = 0x01;
 const CMD_UNREGISTER: u8 = 0x02;
 const CMD_ACTIVATE: u8 = 0x03;
+const CMD_UNREGISTER_GENERATION: u8 = 0x04;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -129,6 +130,31 @@ impl NameCatalog {
                     return Vec::new();
                 }
                 entry.active = true;
+                generation.to_le_bytes().to_vec()
+            }
+            Some(CMD_UNREGISTER_GENERATION) => {
+                let Some((name, after_name)) = take_len_bytes(command, 1) else {
+                    return Vec::new();
+                };
+                let Some((node, after_node)) = take_len_bytes(command, after_name) else {
+                    return Vec::new();
+                };
+                let Some(bytes) = command.get(after_node..after_node.saturating_add(8)) else {
+                    return Vec::new();
+                };
+                let Ok(bytes) = <[u8; 8]>::try_from(bytes) else {
+                    return Vec::new();
+                };
+                let generation = u64::from_le_bytes(bytes);
+                let mut entries = self.entries.lock();
+                let Some(entry) = entries.get_mut(name) else {
+                    return Vec::new();
+                };
+                if !entry.active || entry.node != node || entry.generation != generation {
+                    return Vec::new();
+                }
+                entry.node.clear();
+                entry.active = false;
                 generation.to_le_bytes().to_vec()
             }
             _ => Vec::new(),
@@ -280,6 +306,20 @@ pub fn encode_unregister(name: &[u8]) -> Vec<u8> {
     buf.push(CMD_UNREGISTER);
     buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
     buf.extend_from_slice(name);
+    buf
+}
+
+/// Encode a generation- and owner-fenced unregister command. A delayed
+/// command cannot tombstone a replacement generation or another node's
+/// service with the same name.
+pub fn encode_unregister_generation(name: &[u8], node: &[u8], generation: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 4 + name.len() + 4 + node.len() + 8);
+    buf.push(CMD_UNREGISTER_GENERATION);
+    buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
+    buf.extend_from_slice(name);
+    buf.extend_from_slice(&(node.len() as u32).to_le_bytes());
+    buf.extend_from_slice(node);
+    buf.extend_from_slice(&generation.to_le_bytes());
     buf
 }
 

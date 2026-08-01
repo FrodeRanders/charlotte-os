@@ -61,6 +61,7 @@ use catten_services::{
         decode_query_result,
         encode_activate,
         encode_register,
+        encode_unregister_generation,
     },
     net,
     node_identity::NodeIdentity,
@@ -91,6 +92,7 @@ use catten_syscall::{
     ipc_reply_wait_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
+    ipc_scalar_call_move,
     ipc_status,
     memory_alloc,
     memory_close,
@@ -165,6 +167,13 @@ enum PendingRegistration {
         reply: u64,
         name: Vec<u8>,
         generation: u64,
+    },
+    Unregister {
+        log_index: u64,
+        reply: u64,
+        name: Vec<u8>,
+        expected_generation: u64,
+        local_generation: u64,
     },
 }
 
@@ -366,6 +375,57 @@ fn read_call_request(message: &catten_syscall::IpcMessage) -> (u32, i64) {
     memory_unmap(message.memory);
     memory_close(message.memory);
     (opcode, arg)
+}
+
+fn read_generation(message: &catten_syscall::IpcMessage) -> Option<u64> {
+    if message.memory == 0 {
+        return None;
+    }
+    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        memory_close(message.memory);
+        return None;
+    }
+    let generation = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
+    memory_unmap(message.memory);
+    memory_close(message.memory);
+    Some(generation)
+}
+
+fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
+    let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
+    if lookup == 0 {
+        return 0;
+    }
+    let (generation, connection) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    if connection != 0 {
+        ipc_close(connection);
+    }
+    generation.max(0) as u64
+}
+
+fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64) -> u64 {
+    let memory = memory_alloc(1);
+    if memory == 0 || memory_map(memory, LIST_SCRATCH, true) != 0 {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        return 0;
+    }
+    unsafe {
+        core::ptr::write_volatile(LIST_SCRATCH as *mut u64, generation);
+    }
+    memory_unmap(memory);
+    let call = ipc_scalar_call_move(
+        ns_conn,
+        ns::OP_UNREGISTER_GENERATION,
+        catten_services::name(name),
+        memory,
+    );
+    if call == 0 {
+        memory_close(memory);
+        return 0;
+    }
+    call
 }
 
 fn main(ctx: Context) -> ! {
@@ -576,6 +636,7 @@ fn main(ctx: Context) -> ! {
     let mut next_reply_ordinal: BTreeMap<alloc::string::String, u64> = BTreeMap::new();
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
+    let mut pending_local_unregistrations: Vec<u64> = Vec::new();
     let mut next_query_id: u64 = 1;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
 
@@ -928,6 +989,47 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                dns::OP_UNREGISTER => {
+                    let name = packed_name(message.arg0);
+                    let expected_generation = read_generation(&message);
+                    let result = if name.is_empty() || expected_generation.is_none() {
+                        dns::ERR_TOO_LARGE
+                    } else if node.state != NodeState::Leader {
+                        dns::ERR_NOT_LEADER
+                    } else {
+                        let expected_generation = expected_generation.unwrap_or(0);
+                        let matches_active_owner = catalog.lookup(&name).is_some_and(|entry| {
+                            entry.node == node_name && entry.generation == expected_generation
+                        });
+                        if !matches_active_owner {
+                            if message.reply != 0 {
+                                ipc_reply(message.reply, dns::ERR_STALE_GENERATION);
+                            }
+                            continue;
+                        }
+                        let local_generation = local_generation(ns_conn, &name);
+                        match node.submit_command(
+                            encode_unregister_generation(&name, &node_name, expected_generation),
+                            node.millis(),
+                        ) {
+                            Ok(log_index) => {
+                                pending_registers.push(PendingRegistration::Unregister {
+                                    log_index,
+                                    reply: message.reply,
+                                    name,
+                                    expected_generation,
+                                    local_generation,
+                                });
+                                continue;
+                            }
+                            Err(code) => code,
+                        }
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
                 dns::OP_LOOKUP => {
                     let name = packed_name(message.arg0);
                     let result = if name.is_empty() {
@@ -1186,6 +1288,10 @@ fn main(ctx: Context) -> ! {
                 | PendingRegistration::Activate {
                     log_index,
                     ..
+                }
+                | PendingRegistration::Unregister {
+                    log_index,
+                    ..
                 } => *log_index,
             };
             if !node.is_committed(log_index) {
@@ -1205,10 +1311,10 @@ fn main(ctx: Context) -> ! {
                         .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
                         .map(u64::from_le_bytes)
                         .unwrap_or(0);
-                    let local_ready = if generation == 0 {
-                        false
+                    let local_generation = if generation == 0 {
+                        None
                     } else if connection == 0 {
-                        true
+                        Some(0)
                     } else {
                         let local_reg = ipc_scalar_call_connection(
                             ns_conn,
@@ -1218,19 +1324,19 @@ fn main(ctx: Context) -> ! {
                             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
                         );
                         if local_reg == 0 {
-                            false
+                            None
                         } else {
                             let (local_generation, _) =
                                 unsafe { wait_reply(local_reg, REPLY_SPINS) };
-                            local_generation >= 1
+                            (local_generation >= 1).then_some(local_generation as u64)
                         }
                     };
-                    if !local_ready {
+                    let Some(local_generation) = local_generation else {
                         if reply != 0 {
                             ipc_reply(reply, dns::ERR_TOO_LARGE);
                         }
                         continue;
-                    }
+                    };
                     match node.submit_command(encode_activate(&name, generation), node.millis()) {
                         Ok(activate_index) => {
                             pending_registers.push(PendingRegistration::Activate {
@@ -1241,14 +1347,14 @@ fn main(ctx: Context) -> ! {
                             });
                         }
                         Err(code) => {
-                            if connection != 0 {
-                                let unregister = ipc_scalar_call(
+                            if local_generation != 0 {
+                                let unregister = submit_unregister_local_generation(
                                     ns_conn,
-                                    ns::OP_UNREGISTER,
-                                    catten_services::name(&name),
+                                    &name,
+                                    local_generation,
                                 );
                                 if unregister != 0 {
-                                    let _ = unsafe { wait_reply(unregister, REPLY_SPINS) };
+                                    pending_local_unregistrations.push(unregister);
                                 }
                             }
                             if reply != 0 {
@@ -1273,7 +1379,7 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(
                             reply,
                             if activated {
-                                0
+                                generation as i64
                             } else {
                                 dns::ERR_NOT_FOUND
                             },
@@ -1281,8 +1387,53 @@ fn main(ctx: Context) -> ! {
                     }
                     let _ = name;
                 }
+                PendingRegistration::Unregister {
+                    reply,
+                    name,
+                    expected_generation,
+                    local_generation,
+                    ..
+                } => {
+                    let removed_generation = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        .unwrap_or(0);
+                    let removed = removed_generation == expected_generation;
+                    if removed && local_generation != 0 {
+                        // This exact local generation may already have been
+                        // replaced while Raft committed the tombstone. The
+                        // local name service leaves such a replacement intact.
+                        let call =
+                            submit_unregister_local_generation(ns_conn, &name, local_generation);
+                        if call != 0 {
+                            pending_local_unregistrations.push(call);
+                        }
+                    }
+                    if reply != 0 {
+                        ipc_reply(
+                            reply,
+                            if removed {
+                                expected_generation as i64
+                            } else {
+                                dns::ERR_STALE_GENERATION
+                            },
+                        );
+                    }
+                }
             }
         }
+
+        pending_local_unregistrations.retain(|call| {
+            let (status, _result, _connection, _memory) = ipc_reply_poll_with_memory(*call);
+            if status == 1 {
+                true
+            } else {
+                ipc_close(*call);
+                false
+            }
+        });
 
         // A timeout cannot prove whether a remote target executed before its
         // reply was lost, so report an explicitly uncertain outcome. The
