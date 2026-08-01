@@ -8,7 +8,6 @@ use core::sync::atomic::{
 use crate::{
     cpu::{
         isa::lp::ops::get_lp_id,
-        multiprocessor::get_lp_count,
         scheduler::{
             sleep_millis,
             spawn_migratable_thread_on_lp,
@@ -76,18 +75,11 @@ extern "C" fn worker() {
     SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
     logln!("[scheduler lifecycle] worker tid={} completed on LP{}", tid, home);
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
-        let migrations = REBALANCE_SUCCESSES.load(Ordering::Relaxed);
-        if get_lp_count() > 1 {
-            assert!(migrations > 0);
-        }
         logln!(
-            "[scheduler lifecycle] SUCCESS: {} timer wakes retained post-rebalance LP affinity \
-             across {} workers; {} certified Ready migration(s) completed.",
-            WORKER_COUNT,
-            WORKER_COUNT,
-            migrations
+            "[scheduler lifecycle] {} timer wakes retained established LP affinity; inducing a \
+             controlled runtime imbalance before recording success.",
+            WORKER_COUNT
         );
-        crate::self_test::results::pass(crate::self_test::results::TestId::SchedulerLifecycle);
         spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
     }
 }
@@ -108,6 +100,7 @@ extern "C" fn runtime_rebalance_worker() {
         crate::cpu::scheduler::yield_lp();
     }
     if RUNTIME_REBALANCE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
+        crate::self_test::results::pass(crate::self_test::results::TestId::SchedulerLifecycle);
         logln!(
             "[scheduler runtime rebalance] SUCCESS: sustained-window sampling advanced certified \
              migrations to {}.",

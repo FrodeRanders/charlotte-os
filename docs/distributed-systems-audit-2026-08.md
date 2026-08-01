@@ -219,6 +219,19 @@ one-second intervals across leader changes. The request shares relmsg's
 per-peer queue, where queued AppendEntries heartbeats are coalesced. A fresh
 two-guest acceptance run remains required for this final automatic path.
 
+Follow-up audit found and repaired four integration defects before that
+acceptance run could be authoritative. Syscall 60 existed in the shared enum
+and kernel dispatcher but was absent from the AArch64 `svc3` emitter, aborting
+DNS when it installed the watch. Automatic proposals are now term-scoped and
+identical queued relmsg frames are deduplicated. Scalar DNS registration adopts
+an already-published local service connection (without granting callers
+minting authority), which supplies the endpoint identity required by the
+watch. The cross-node test now waits for the echo-mutating lifecycle/NVMe
+suites and for the newly spawned echo's serving stage, avoiding adoption of a
+stale generation. The final rerun was inconclusive because one TCG guest
+stopped advancing at 0.53 seconds and its peer hit the discovery deadline;
+automatic tombstone certification therefore remains honestly pending.
+
 ### F10 — Relmsg buffering is insufficiently bounded (medium)
 
 The completed receive queue is unbounded. Fragment maps can retain many small

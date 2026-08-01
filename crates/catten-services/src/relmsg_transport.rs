@@ -145,6 +145,9 @@ impl RelmsgRaftTransport {
         // Coalesce queued heartbeats: a newer AppendEntries supersedes an older
         // one already waiting, so a slow ACK cannot starve other traffic
         // (relmsg allows one in-flight send per peer).
+        if queue.iter().any(|queued| queued.0 == tag && queued.1 == payload) {
+            return;
+        }
         if tag == TAG_APPEND_REQUEST
             && queue.last().is_some_and(|(queued_tag, _)| *queued_tag == tag)
         {

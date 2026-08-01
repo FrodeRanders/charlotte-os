@@ -225,6 +225,10 @@ Different services are different state machines on the same Raft substrate:
         a follower forwards an authenticated, idempotent request to its known
         leader and retries across leadership changes. A stale death notification
         therefore cannot remove a replacement generation.
+        Scalar registration adopts an existing node-local service connection
+        through a non-blocking local lookup. This lets DNS route to and observe
+        the endpoint without granting ordinary lookup clients minting rights;
+        names without a local endpoint remain catalog-only registrations.
         The state maps names to owning-node identities, routable service
         identities, generations, and policy metadata. Replicated, it makes
         service discovery available cluster-wide; this is the implemented

@@ -898,6 +898,12 @@ authenticated retraction to the known leader. Retraction is idempotent and
 retried at low frequency across leadership changes; it cannot remove a
 replacement generation.
 
+A scalar DNS registration first performs a non-blocking lookup in the
+node-local registry. If that name already denotes a local service, DNS adopts
+the returned `CALL` connection for routing and death observation without
+granting the registering caller connection-minting authority. A name with no
+local endpoint remains a catalog-only registration.
+
 Raft and DNS control messages share relmsg's per-peer serialized transport.
 Only one send may be in flight per peer. Consecutive queued AppendEntries are
 coalesced, while non-Raft control traffic keeps its FIFO position, so a slow

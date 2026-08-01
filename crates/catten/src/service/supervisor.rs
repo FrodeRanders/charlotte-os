@@ -424,9 +424,11 @@ pub fn spawn_driver_with_name_service(
 /// Returns true once the domain's initial thread has exited and been reaped
 /// from the master thread table.
 pub fn domain_exited(domain: &ServiceDomain) -> bool {
-    if let Ok(thread) = MASTER_THREAD_TABLE.read().get(domain.tid)
-        && thread.generation == domain.generation
-    {
+    // A service may create additional threads after its initial entry thread.
+    // Removing only that initial TID is not sufficient evidence that the
+    // address space is quiescent: tearing it down while another domain thread
+    // is in EL0 (or entering SVC) leaves TTBR0 naming an already-removed AS.
+    if MASTER_THREAD_TABLE.read().iter().flatten().any(|thread| thread.asid == domain.asid) {
         return false;
     }
     !crate::cpu::scheduler::threads::DEAD_THREADS

@@ -164,6 +164,7 @@ enum PendingRegistration {
         reply: u64,
         name: Vec<u8>,
         connection: u64,
+        existing_local_generation: u64,
     },
     Activate {
         log_index: u64,
@@ -179,6 +180,7 @@ enum PendingRegistration {
         name: Vec<u8>,
         expected_generation: u64,
         local_generation: u64,
+        automatic_term: Option<u64>,
     },
 }
 
@@ -948,6 +950,15 @@ fn main(ctx: Context) -> ! {
                                             && entry.node == owner
                                             && entry.generation == generation
                                     })
+                                    && !pending_registers.iter().any(|pending| matches!(
+                                        pending,
+                                        PendingRegistration::Unregister {
+                                            name: pending_name,
+                                            expected_generation,
+                                            automatic_term: Some(_),
+                                            ..
+                                        } if pending_name == &name && *expected_generation == generation
+                                    ))
                                     && let Ok(log_index) = node.submit_command(
                                         encode_unregister_generation(&name, &owner, generation),
                                         node.millis(),
@@ -959,6 +970,7 @@ fn main(ctx: Context) -> ! {
                                         name,
                                         expected_generation: generation,
                                         local_generation: 0,
+                                        automatic_term: Some(node.current_term),
                                     });
                                 }
                             }
@@ -1018,11 +1030,33 @@ fn main(ctx: Context) -> ! {
                         match node.submit_command(encode_register(&name, &node_name), node.millis())
                         {
                             Ok(index) => {
+                                let (connection, existing_local_generation) =
+                                    if message.connection != 0 {
+                                        (message.connection, 0)
+                                    } else {
+                                        let lookup = ipc_scalar_call(
+                                            ns_conn,
+                                            ns::OP_TRY_LOOKUP,
+                                            catten_services::name(&name),
+                                        );
+                                        if lookup == 0 {
+                                            (0, 0)
+                                        } else {
+                                            let (generation, connection) =
+                                                unsafe { wait_reply(lookup, REPLY_SPINS) };
+                                            if generation >= 1 && connection != 0 {
+                                                (connection, generation as u64)
+                                            } else {
+                                                (0, 0)
+                                            }
+                                        }
+                                    };
                                 pending_registers.push(PendingRegistration::Prepare {
                                     log_index: index,
                                     reply: message.reply,
                                     name,
-                                    connection: message.connection,
+                                    connection,
+                                    existing_local_generation,
                                 });
                                 continue;
                             }
@@ -1064,6 +1098,7 @@ fn main(ctx: Context) -> ! {
                                     name,
                                     expected_generation,
                                     local_generation,
+                                    automatic_term: None,
                                 });
                                 continue;
                             }
@@ -1325,6 +1360,16 @@ fn main(ctx: Context) -> ! {
         // --- Complete deferred registers once committed ---
         let mut index = 0;
         while index < pending_registers.len() {
+            if matches!(
+                &pending_registers[index],
+                PendingRegistration::Unregister {
+                    automatic_term: Some(term),
+                    ..
+                } if *term != node.current_term
+            ) {
+                pending_registers.swap_remove(index);
+                continue;
+            }
             let log_index = match &pending_registers[index] {
                 PendingRegistration::Prepare {
                     log_index,
@@ -1348,6 +1393,7 @@ fn main(ctx: Context) -> ! {
                     reply,
                     name,
                     connection,
+                    existing_local_generation,
                     ..
                 } => {
                     let generation = node
@@ -1358,6 +1404,8 @@ fn main(ctx: Context) -> ! {
                         .unwrap_or(0);
                     let local_generation = if generation == 0 {
                         None
+                    } else if existing_local_generation != 0 {
+                        Some(existing_local_generation)
                     } else if connection == 0 {
                         Some(0)
                     } else {
@@ -1432,6 +1480,14 @@ fn main(ctx: Context) -> ! {
                         == Some(generation);
                     if activated && connection != 0 {
                         let close_watch = ipc_connection_watch_closed(connection);
+                        config::write::<u32>(
+                            32,
+                            if close_watch == u64::MAX {
+                                u32::MAX
+                            } else {
+                                1
+                            },
+                        );
                         local_publications.push(LocalPublication {
                             name: name.clone(),
                             generation,
@@ -1518,6 +1574,7 @@ fn main(ctx: Context) -> ! {
                     publication.close_watch = u64::MAX;
                     publication.connection = 0;
                     publication.endpoint_closed = true;
+                    config::write::<u32>(32, 2);
                 }
             }
 
@@ -1552,23 +1609,41 @@ fn main(ctx: Context) -> ! {
             if publication.endpoint_closed && now >= publication.next_unregister_attempt {
                 publication.next_unregister_attempt = now.saturating_add(AUTO_UNREGISTER_RETRY_MS);
                 if node.state == NodeState::Leader {
-                    if let Ok(log_index) = node.submit_command(
-                        encode_unregister_generation(
-                            &publication.name,
-                            &node_name,
-                            publication.generation,
-                        ),
-                        now,
-                    ) {
+                    let already_pending = pending_registers.iter().any(|pending| {
+                        matches!(
+                            pending,
+                            PendingRegistration::Unregister {
+                                name,
+                                expected_generation,
+                                automatic_term: Some(term),
+                                ..
+                            } if name == &publication.name
+                                && *expected_generation == publication.generation
+                                && *term == node.current_term
+                        )
+                    });
+                    if !already_pending
+                        && let Ok(log_index) = node.submit_command(
+                            encode_unregister_generation(
+                                &publication.name,
+                                &node_name,
+                                publication.generation,
+                            ),
+                            now,
+                        )
+                    {
+                        config::write::<u32>(32, 3);
                         pending_registers.push(PendingRegistration::Unregister {
                             log_index,
                             reply: 0,
                             name: publication.name.clone(),
                             expected_generation: publication.generation,
                             local_generation: publication.local_generation,
+                            automatic_term: Some(node.current_term),
                         });
                     }
                 } else if let Some(leader) = node.known_leader_id.as_ref() {
+                    config::write::<u32>(32, 4);
                     transport.send_message(
                         leader,
                         catten_services::runregister::TAG_REQUEST,

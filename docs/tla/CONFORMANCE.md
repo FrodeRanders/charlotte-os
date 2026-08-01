@@ -108,6 +108,12 @@ actions and prove that their projection implements these abstract transitions.
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
 | `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
 
+Concrete teardown treats a domain as exited only after every master-table and
+deferred-dead thread with that ASID is gone. Looking only at the initial TID
+allowed a secondary EL0 thread to enter SVC after its address space had been
+removed; the strengthened check implements the model's domain-wide `Reap`
+precondition.
+
 The userspace Raft reactor applies the same single-wait discipline: a bounded
 CQ wait is released by endpoint/transport readiness or supplies the next
 election-clock tick on timeout. It does not combine an indefinite CQ wait with

@@ -51,7 +51,6 @@ mod inner {
     const ECHO_NAME: u64 = 0x0000_6f68_6365;
     // catten_services::echo opcodes.
     const ECHO_OP_ECHO: u32 = 1;
-    const ECHO_OP_SHUTDOWN: u32 = 2;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
@@ -193,14 +192,26 @@ mod inner {
         let dns = spawn_with_manifest(DNS_ELF, ns, &dns_manifest);
         logln!("[dns] dns spawned (asid={})", dns.asid);
 
-        // Wait for the dns replica to enter its reactor (stage 8).
+        // Give each startup phase its own budget. In particular, do not spend
+        // the Raft-initialisation budget while discovery is still waiting for
+        // a peer on a slow emulator.
         let dns_cfg: *const u32 = {
             let base: *mut u8 = dns.status_frame.into();
             base as *const u32
         };
-        let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        let bootstrap_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        while unsafe { core::ptr::read_volatile(dns_cfg) } < 6 {
+            bootstrap_deadline.assert_pending("EL0 dns local bootstrap");
+            yield_lp();
+        }
+        let discovery_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        while unsafe { core::ptr::read_volatile(dns_cfg) } < 7 {
+            discovery_deadline.assert_pending("EL0 dns peer discovery");
+            yield_lp();
+        }
+        let raft_init_deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe { core::ptr::read_volatile(dns_cfg) } < 8 {
-            deadline.assert_pending("EL0 dns startup");
+            raft_init_deadline.assert_pending("EL0 dns durable Raft initialisation");
             yield_lp();
         }
         logln!("[dns] replica reached serving stage.");
@@ -282,6 +293,17 @@ mod inner {
         // Host a local echo on every node; the leader publishes it through the
         // dns, so a client on either node can invoke it by name and the dns
         // routes to the hosting node over the network.
+        // The service-lifecycle and NVMe persistent-upgrade suites also use
+        // the global `echo` name. Wait until both have finished replacing and
+        // tearing down their generations so this lifecycle probe has sole
+        // ownership of the name it is about to publish.
+        let echo_owner_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Service)
+            || !crate::self_test::results::has_passed(crate::self_test::results::TestId::Nvme)
+        {
+            echo_owner_deadline.assert_pending("EL0 dns waiting for echo-mutating suites");
+            yield_lp();
+        }
         let echo = crate::service::supervisor::spawn_with_name_service(
             ECHO_ELF,
             ns,
@@ -292,9 +314,26 @@ mod inner {
         let is_leader = state == 3;
         let mut echo_generation = 0;
         if is_leader {
-            // Wait for the local echo to register, then publish it.
+            // A prior lifecycle test may have left a closed echo generation
+            // in the local registry. The new domain's own serving stage is
+            // the authoritative proof that it has replaced that entry; a
+            // mere successful lookup could still return the stale generation.
             let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-            while lookup_service(kernel_ns, ECHO_NAME).unwrap_or(0) == 0 {
+            let echo_status: *const u32 = {
+                let base: *mut u8 = echo.status_frame.into();
+                base as *const u32
+            };
+            while unsafe { core::ptr::read_volatile(echo_status) } < 6 {
+                deadline.assert_pending("EL0 dns new echo serving stage");
+                yield_lp();
+            }
+            loop {
+                let connection = lookup_service(kernel_ns, ECHO_NAME).unwrap_or(0);
+                if connection != 0 {
+                    ipc::close_cap(KERNEL_ASID, connection)
+                        .expect("[dns] local echo lookup connection close");
+                    break;
+                }
                 deadline.assert_pending("EL0 dns local echo registration");
                 yield_lp();
             }
@@ -341,14 +380,16 @@ mod inner {
             }
             logln!("[dns] leader served the follower's remote invocation.");
 
-            let mut shutdown = Vec::new();
-            shutdown.extend_from_slice(&ECHO_OP_SHUTDOWN.to_le_bytes());
-            shutdown.extend_from_slice(&0i64.to_le_bytes());
             assert_eq!(
-                call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &shutdown),
-                Some(0),
-                "[dns] hosted echo must acknowledge shutdown"
+                unsafe { core::ptr::read_volatile(dns_cfg.add(8)) },
+                1,
+                "[dns] local endpoint-close watch must be installed before teardown"
             );
+            assert_eq!(unsafe { core::ptr::read_volatile(dns_cfg.add(7)) }, 2);
+            crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .abort_thread(echo.tid)
+                .expect("[dns] hosted echo abort");
             crate::service::supervisor::wait_domain_exit(&echo, 30_000);
             crate::service::supervisor::teardown_domain(echo);
             logln!("[dns] generation {echo_generation} endpoint closed; awaiting tombstone.");
@@ -358,7 +399,19 @@ mod inner {
         // replicated. This also prevents the follower's runner from removing
         // quorum while the leader is committing the unregister operation.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        let mut unregister_spins = 0u64;
         while unsafe { core::ptr::read_volatile(dns_cfg.add(7)) } != 1 {
+            unregister_spins = unregister_spins.wrapping_add(1);
+            if unregister_spins.is_multiple_of(2_000_000) {
+                let lifecycle = unsafe { core::ptr::read_volatile(dns_cfg.add(8)) };
+                let raft_state = unsafe { core::ptr::read_volatile(dns_cfg.add(6)) };
+                logln!(
+                    "[dns] waiting for endpoint tombstone: lifecycle={} raft-state={} catalog={}",
+                    lifecycle,
+                    raft_state,
+                    unsafe { core::ptr::read_volatile(dns_cfg.add(7)) }
+                );
+            }
             deadline.assert_pending("EL0 dns generation-fenced unregister replication");
             yield_lp();
         }
