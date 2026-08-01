@@ -54,6 +54,7 @@ use crate::{
             ThreadGeneration,
             ThreadId,
             ThreadState,
+            begin_retirement,
             record_exit,
             waker,
         },
@@ -537,6 +538,7 @@ impl SystemScheduler {
         // away) drops it later, once it is guaranteed off its stack. Staging it
         // on any other LP would risk freeing a stack still in use.
         let stage_lp = current_lp.unwrap_or_else(get_lp_id);
+        let _retirement = begin_retirement();
         let thread =
             MASTER_THREAD_TABLE.write().take_element(tid).map_err(|_| Error::InvalidThread)?;
         record_exit(stage_lp, tid, thread.generation);

@@ -436,6 +436,13 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
     if MASTER_THREAD_TABLE.read().iter().flatten().any(|thread| thread.asid == domain.asid) {
         return false;
     }
+    // A retiring thread is moved between two independently locked tables.
+    // Treat the system-wide transition interval conservatively so this
+    // observer cannot mistake the remove-before-stage gap for completed
+    // domain reaping.
+    if crate::cpu::scheduler::threads::retirement_in_flight() {
+        return false;
+    }
     !crate::cpu::scheduler::threads::DEAD_THREADS
         .read()
         .values()

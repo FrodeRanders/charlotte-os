@@ -1,11 +1,12 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for eleven
+This directory contains finite, executable specifications for twelve
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
+| Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
@@ -33,8 +34,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all eleven complete fast configurations plus one expected-failure
-  scheduler regression configuration;
+- runs all twelve complete fast configurations plus expected-failure endpoint
+  observer and scheduler regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -44,6 +45,10 @@ The individual commands are:
 ```sh
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteIPC -config CharlotteIPC_small.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteEndpointObservers -config CharlotteEndpointObservers_small.cfg \
+  -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteCQ -config CharlotteCQ_mini.cfg -workers auto -coverage 1
@@ -227,6 +232,21 @@ completion capability, because the Rust paths are independent.
 This is a model-checking bound, not a statement that the implementation's
 counter cannot wrap.
 
+## Endpoint-observer model
+
+`CharlotteEndpointObservers.tla` separates endpoint readability waiters from
+endpoint-close completion watchers. Message arrival signals only readability;
+endpoint closure signals both classes. Its principal invariant,
+`CloseSignalImpliesClosed`, makes a close completion authoritative evidence of
+the endpoint lifecycle rather than a generic readiness notification.
+
+`CharlotteEndpointObservers_unsafe.cfg` enables `UnsafeMessageWake`, which
+models the former shared observer queue. The model runner requires this
+configuration to violate `CloseSignalImpliesClosed`: an ordinary message wakes
+the close watcher while the endpoint remains open. The repaired configuration
+is checked positively, and the IPC kernel self-test follows the same concrete
+trace by sending a message while a close watch is armed.
+
 ## Scheduler lifecycle model
 
 `CharlotteScheduler.tla` separates scheduler-table phase from physical
@@ -273,6 +293,13 @@ requests its abort, installs a block after the request, and receives a racing
 wake. The test requires that wake admission to reject the terminating
 generation, then waits for owner-LP retirement and deferred reaping before it
 can report success.
+
+The master table and per-LP deferred-dead lists use separate locks. Their Rust
+transition is therefore marked by `RETIREMENTS_IN_FLIGHT`; domain-exit
+observers reject that intermediate state. Without the marker, teardown could
+observe the thread after master-table removal but before dead-list insertion,
+which violated the model's atomic retirement projection and caused a
+scheduling-sensitive supervisor panic.
 
 With two threads, two LPs, two address spaces, and two generations, TLC 2.19
 completely explored 373,860 distinct repaired-model states (1,710,157 states

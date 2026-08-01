@@ -449,7 +449,7 @@ fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
         Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
         _ => b"default".to_vec(),
@@ -467,7 +467,7 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => fatal(1),
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(dns::status::STAGE, 2);
 
     // MAC and persisted node identity.
     let net_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
@@ -519,13 +519,13 @@ fn main(ctx: Context) -> ! {
     {
         fatal(19);
     }
-    config::write::<u32>(0, 3);
+    config::write::<u32>(dns::status::STAGE, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
     if !wait_for_boot_done(ns_conn) {
         fatal(7);
     }
-    config::write::<u32>(0, 4);
+    config::write::<u32>(dns::status::STAGE, 4);
 
     let relmsg_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, relmsg::NAME);
     if relmsg_lookup == 0 {
@@ -543,7 +543,7 @@ fn main(ctx: Context) -> ! {
     if disco_generation < 1 || disco_conn == 0 {
         fatal(11);
     }
-    config::write::<u32>(0, 5);
+    config::write::<u32>(dns::status::STAGE, 5);
 
     // The dns endpoint: services register and look up through this service.
     let endpoint = ipc_endpoint_create(dns::INTERFACE, dns::VERSION, 16);
@@ -568,7 +568,7 @@ fn main(ctx: Context) -> ! {
         fatal(15);
     }
     let dns_session = generation as u64;
-    config::write::<u32>(0, 6);
+    config::write::<u32>(dns::status::STAGE, 6);
 
     // Resolve the configured voter identities to transient MAC routes. The
     // launch manifest grants voting authority; discovery never does.
@@ -602,7 +602,7 @@ fn main(ctx: Context) -> ! {
             discovery_rounds += 1;
         }
     }
-    config::write::<u32>(0, 7);
+    config::write::<u32>(dns::status::STAGE, 7);
 
     let mut peers = Vec::new();
     let me = Peer::voter(node_name_str.clone(), 0);
@@ -617,7 +617,7 @@ fn main(ctx: Context) -> ! {
         transport.add_peer(peer_name, mac);
         peers.push(Peer::voter(peer_name.clone(), 0));
     }
-    config::write::<u32>(8, peers.len() as u32);
+    config::write::<u32>(dns::status::PEER_COUNT, peers.len() as u32);
 
     let catalog = NameCatalog::new();
     // A clustered voter must retain term, vote, log, and snapshot state.
@@ -644,7 +644,7 @@ fn main(ctx: Context) -> ! {
         snapshot_min_entries: 0,
         snapshot_chunk_bytes: 1200,
     });
-    config::write::<u32>(0, 8);
+    config::write::<u32>(dns::status::STAGE, 8);
 
     let cq = ctx.completion_queue_layout();
     let mut recv_pending: u64 = 0;
@@ -781,7 +781,10 @@ fn main(ctx: Context) -> ! {
                                         });
                                     }
                                     remote_calls_served = remote_calls_served.wrapping_add(1);
-                                    config::write::<u32>(40, remote_calls_served);
+                                    config::write::<u32>(
+                                        dns::status::REMOTE_CALLS_SERVED,
+                                        remote_calls_served,
+                                    );
                                     let reply = catten_services::rcall::encode_reply(
                                         session,
                                         call_id,
@@ -822,7 +825,10 @@ fn main(ctx: Context) -> ! {
                                     && source_peer.as_bytes() == caller
                                 {
                                     remote_queries_served = remote_queries_served.wrapping_add(1);
-                                    config::write::<u32>(44, remote_queries_served);
+                                    config::write::<u32>(
+                                        dns::status::REMOTE_QUERIES_SERVED,
+                                        remote_queries_served,
+                                    );
                                     let (status, entry) =
                                         match node.handle_client_query(name.clone()) {
                                             Ok(bytes) => (0, decode_query_result(&bytes)),
@@ -997,14 +1003,19 @@ fn main(ctx: Context) -> ! {
         transport.drain_outbound();
         transport.reap_acks();
         config::write::<u32>(
-            36,
+            dns::status::REMOTE_CALL_ACKS,
             transport.acknowledged_count(catten_services::rcall::TAG_REPLY).min(u32::MAX as u64)
+                as u32,
+        );
+        config::write::<u32>(
+            dns::status::REMOTE_QUERY_REPLY_ACKS,
+            transport.acknowledged_count(catten_services::rquery::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
         );
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
-            config::write::<u32>(12, completed as u32);
+            config::write::<u32>(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
         }
 
         // --- Local endpoint ops (register / lookup / status) ---
@@ -1020,7 +1031,7 @@ fn main(ctx: Context) -> ! {
                 break;
             }
             served += 1;
-            config::write::<u32>(16, served);
+            config::write::<u32>(dns::status::IPC_REQUESTS_SERVED, served);
 
             match message.opcode {
                 dns::OP_REGISTER => {
@@ -1484,7 +1495,7 @@ fn main(ctx: Context) -> ! {
                     if activated && connection != 0 {
                         let close_watch = ipc_connection_watch_closed(connection);
                         config::write::<u32>(
-                            32,
+                            dns::status::PUBLICATION_LIFECYCLE,
                             if close_watch == u64::MAX {
                                 u32::MAX
                             } else {
@@ -1577,7 +1588,7 @@ fn main(ctx: Context) -> ! {
                     publication.close_watch = u64::MAX;
                     publication.connection = 0;
                     publication.endpoint_closed = true;
-                    config::write::<u32>(32, 2);
+                    config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 2);
                 }
             }
 
@@ -1635,7 +1646,7 @@ fn main(ctx: Context) -> ! {
                             now,
                         )
                     {
-                        config::write::<u32>(32, 3);
+                        config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 3);
                         pending_registers.push(PendingRegistration::Unregister {
                             log_index,
                             reply: 0,
@@ -1646,7 +1657,7 @@ fn main(ctx: Context) -> ! {
                         });
                     }
                 } else if let Some(leader) = node.known_leader_id.as_ref() {
-                    config::write::<u32>(32, 4);
+                    config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 4);
                     transport.send_message(
                         leader,
                         catten_services::runregister::TAG_REQUEST,
@@ -1713,16 +1724,16 @@ fn main(ctx: Context) -> ! {
             node.broadcast_heartbeat(node.millis());
         }
 
-        config::write::<u32>(20, node.current_term as u32);
+        config::write::<u32>(dns::status::CURRENT_TERM, node.current_term as u32);
         config::write::<u32>(
-            24,
+            dns::status::RAFT_STATE,
             match node.state {
                 NodeState::Candidate => 2,
                 NodeState::Leader => 3,
                 NodeState::Follower => 1,
             },
         );
-        config::write::<u32>(28, catalog.registered_count() as u32);
+        config::write::<u32>(dns::status::CATALOG_ENTRIES, catalog.registered_count() as u32);
     }
 }
 

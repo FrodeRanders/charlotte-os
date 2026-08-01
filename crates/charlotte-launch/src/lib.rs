@@ -15,6 +15,27 @@ pub const HEAP_SIZE: usize = 0xd000;
 pub const STATUS_VADDR: usize = 0x0000_0000_007f_0000;
 pub const STATUS_PAGE_SIZE: u32 = 4096;
 
+/// DNS service status-page ABI shared by the EL0 service and its kernel boot
+/// verifier. Every field is an aligned little-endian `u32` byte offset.
+pub mod dns_status {
+    pub const STAGE: usize = 0;
+    pub const PEER_COUNT: usize = 8;
+    pub const TRANSPORT_COMPLETIONS: usize = 12;
+    pub const IPC_REQUESTS_SERVED: usize = 16;
+    pub const CURRENT_TERM: usize = 20;
+    /// 1 = follower, 2 = candidate, 3 = leader.
+    pub const RAFT_STATE: usize = 24;
+    pub const CATALOG_ENTRIES: usize = 28;
+    /// Local publication watcher: 0 = absent, 1 = armed, 2 = endpoint closed,
+    /// 3 = leader unregister submitted, 4 = forwarded to leader.
+    pub const PUBLICATION_LIFECYCLE: usize = 32;
+    pub const REMOTE_CALL_ACKS: usize = 36;
+    pub const REMOTE_CALLS_SERVED: usize = 40;
+    pub const REMOTE_QUERIES_SERVED: usize = 44;
+    /// Reliable-transport acknowledgements for remote query replies.
+    pub const REMOTE_QUERY_REPLY_ACKS: usize = 48;
+}
+
 pub const LAUNCH_HEADER_OFFSET: usize = 2112;
 pub const CAPABILITY_VECTOR_OFFSET: usize = 2224;
 pub const CAPABILITY_VECTOR_CAPACITY: usize = 32;

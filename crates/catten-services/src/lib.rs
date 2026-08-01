@@ -673,6 +673,9 @@ pub mod dns {
     /// is that generation on success.
     pub const OP_UNREGISTER: u32 = 7;
 
+    /// Shared byte offsets in the DNS service's diagnostic status page.
+    pub use charlotte_launch::dns_status as status;
+
     /// The name is registered on this node (lookup returns a connection).
     pub const RESULT_LOCAL: i64 = 0;
     /// The name is registered on a remote node (lookup returns its node id).

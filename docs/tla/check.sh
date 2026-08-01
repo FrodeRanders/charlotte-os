@@ -90,6 +90,10 @@ run_model CharlotteIPC CharlotteIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
     ScalarCallCopy Receive ReplyReturnMemory EndpointClose \
     DomainTeardown
+run_model CharlotteEndpointObservers CharlotteEndpointObservers_small.cfg \
+    ArmReadiness ArmCloseWatch Send Receive Close ObserveClose
+run_expected_violation CharlotteEndpointObservers CharlotteEndpointObservers_unsafe.cfg \
+    CloseSignalImpliesClosed UnsafeMessageWake
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_model CharlotteScheduler CharlotteScheduler_small.cfg \

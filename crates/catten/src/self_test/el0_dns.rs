@@ -109,6 +109,11 @@ mod inner {
         ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
     }
 
+    fn status_word(base: *const u8, offset: usize) -> u32 {
+        debug_assert_eq!(offset % core::mem::align_of::<u32>(), 0);
+        unsafe { core::ptr::read_volatile(base.add(offset).cast::<u32>()) }
+    }
+
     fn call_with_memory(kernel_conn: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
         let mem = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
         let call =
@@ -195,22 +200,22 @@ mod inner {
         // Give each startup phase its own budget. In particular, do not spend
         // the Raft-initialisation budget while discovery is still waiting for
         // a peer on a slow emulator.
-        let dns_cfg: *const u32 = {
+        let dns_cfg: *const u8 = {
             let base: *mut u8 = dns.status_frame.into();
-            base as *const u32
+            base
         };
         let bootstrap_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while unsafe { core::ptr::read_volatile(dns_cfg) } < 6 {
+        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 6 {
             bootstrap_deadline.assert_pending("EL0 dns local bootstrap");
             yield_lp();
         }
         let discovery_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while unsafe { core::ptr::read_volatile(dns_cfg) } < 7 {
+        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 7 {
             discovery_deadline.assert_pending("EL0 dns peer discovery");
             yield_lp();
         }
         let raft_init_deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe { core::ptr::read_volatile(dns_cfg) } < 8 {
+        while status_word(dns_cfg, charlotte_launch::dns_status::STAGE) < 8 {
             raft_init_deadline.assert_pending("EL0 dns durable Raft initialisation");
             yield_lp();
         }
@@ -219,7 +224,7 @@ mod inner {
         // The Raft membership must include the peer discovered through the
         // cluster discovery service; a single-node cluster would silently pass
         // the register step without proving network replication.
-        let peers = unsafe { core::ptr::read_volatile(dns_cfg.add(2)) };
+        let peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
         logln!("[dns] Raft membership peers = {peers}");
         assert!(peers >= 2, "[dns] expected 2-node membership, discovered {peers}");
 
@@ -236,14 +241,14 @@ mod inner {
             if dns_conn == 0 {
                 dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
             }
-            state = unsafe { core::ptr::read_volatile(dns_cfg.add(6)) };
-            catalog = unsafe { core::ptr::read_volatile(dns_cfg.add(7)) };
+            state = status_word(dns_cfg, charlotte_launch::dns_status::RAFT_STATE);
+            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 1 || state == 3 {
                 break;
             }
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
-                let stage = unsafe { core::ptr::read_volatile(dns_cfg) };
+                let stage = status_word(dns_cfg, charlotte_launch::dns_status::STAGE);
                 logln!(
                     "[dns] waiting for leader or replication: stage={stage} state={state} \
                      catalog={catalog}"
@@ -270,7 +275,7 @@ mod inner {
         // Wait for the catalog to contain the entry (replicated everywhere).
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         loop {
-            catalog = unsafe { core::ptr::read_volatile(dns_cfg.add(7)) };
+            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 1 {
                 logln!("[dns] catalog converged: {catalog} name(s).");
                 break;
@@ -346,7 +351,7 @@ mod inner {
         // Wait for the catalog to carry both names.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         loop {
-            catalog = unsafe { core::ptr::read_volatile(dns_cfg.add(7)) };
+            catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
             if catalog >= 2 {
                 logln!("[dns] catalog carries {catalog} name(s); invoking echo.");
                 break;
@@ -375,19 +380,20 @@ mod inner {
         let mut query_barrier = 0;
         if is_leader {
             let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-            while unsafe { core::ptr::read_volatile(dns_cfg.add(9)) } == 0 {
+            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS) == 0 {
                 deadline.assert_pending("EL0 dns follower remote invocation");
                 yield_lp();
             }
             logln!("[dns] leader served the follower's remote invocation.");
-            query_barrier = unsafe { core::ptr::read_volatile(dns_cfg.add(11)) };
+            query_barrier =
+                status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_QUERY_REPLY_ACKS);
 
             assert_eq!(
-                unsafe { core::ptr::read_volatile(dns_cfg.add(8)) },
+                status_word(dns_cfg, charlotte_launch::dns_status::PUBLICATION_LIFECYCLE),
                 1,
                 "[dns] local endpoint-close watch must be installed before teardown"
             );
-            assert_eq!(unsafe { core::ptr::read_volatile(dns_cfg.add(7)) }, 2);
+            assert_eq!(status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES), 2);
             crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                 .read()
                 .abort_thread(echo.tid)
@@ -402,23 +408,26 @@ mod inner {
         // quorum while the leader is committing the unregister operation.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         let mut unregister_spins = 0u64;
-        while unsafe { core::ptr::read_volatile(dns_cfg.add(7)) } != 1 {
+        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) != 1 {
             unregister_spins = unregister_spins.wrapping_add(1);
             if unregister_spins.is_multiple_of(2_000_000) {
-                let lifecycle = unsafe { core::ptr::read_volatile(dns_cfg.add(8)) };
-                let raft_state = unsafe { core::ptr::read_volatile(dns_cfg.add(6)) };
+                let lifecycle =
+                    status_word(dns_cfg, charlotte_launch::dns_status::PUBLICATION_LIFECYCLE);
+                let raft_state = status_word(dns_cfg, charlotte_launch::dns_status::RAFT_STATE);
                 logln!(
                     "[dns] waiting for endpoint tombstone: lifecycle={} raft-state={} catalog={}",
                     lifecycle,
                     raft_state,
-                    unsafe { core::ptr::read_volatile(dns_cfg.add(7)) }
+                    status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES)
                 );
             }
             deadline.assert_pending("EL0 dns generation-fenced unregister replication");
             yield_lp();
         }
         if is_leader {
-            while unsafe { core::ptr::read_volatile(dns_cfg.add(11)) } <= query_barrier {
+            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_QUERY_REPLY_ACKS)
+                <= query_barrier
+            {
                 deadline.assert_pending("EL0 dns follower tombstone acknowledgement");
                 yield_lp();
             }

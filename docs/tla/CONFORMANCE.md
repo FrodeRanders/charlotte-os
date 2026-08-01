@@ -44,6 +44,23 @@ model's `delivered` bit records this linearization point; a live token has a
 receiver-visible capability exactly after delivery. Cancellation and teardown
 invalidate either queued identities or already delivered capabilities.
 
+## Endpoint observers
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `ArmReadiness` | `EndpointObservable::register_observer` | Direct: installs a waiter in `Endpoint::readiness_observers`. |
+| `ArmCloseWatch` | `watch_connection_closed` | Direct: installs a completion observer in `Endpoint::close_observers`, with an atomic already-closed check. |
+| `Send` | `enqueue_message` | Direct for the empty-to-readable event: drains readiness observers only. |
+| `Receive` | `receive` | Abstract: payload and authorization are omitted. |
+| `Close` | endpoint branch of `close_cap` | Direct: marks the endpoint closed and drains both observer classes. |
+| `ObserveClose` | `completion::poll` | Abstract: consumes the completed close-watch result. |
+| `UnsafeMessageWake` | former shared `Endpoint::observers` queue | Negative model only: message arrival drains a close watcher and violates `CloseSignalImpliesClosed`. |
+
+The kernel IPC self-test arms a close watch, sends and receives an ordinary
+message, requires the watch to remain pending, then closes the endpoint and
+requires the same watch to complete. This is the authoritative concrete trace
+corresponding to the repaired model and its retained negative counterexample.
+
 ## Completion queues
 
 | TLA+ action | Rust implementation | Correspondence |
@@ -99,6 +116,12 @@ actions and prove that their projection implements these abstract transitions.
 | `AbortNotRunning` / `SelfAbort` | `abort_thread`, `take_element`, `stage_dead_thread` | Non-running contexts can be removed immediately; self-exit is staged while still on its stack and switches away before reaping. |
 | `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; the concrete stack-pointer check may defer a context again. |
 | `DestroyAddressSpace` | `domain_exited`, `teardown_domain`, `close_user_address_space` | Requires every master-table and deferred-dead thread owned by the ASID to be gone. `OnCpuHasLiveAddressSpace` checks the resulting safety boundary. |
+
+The model makes master-table removal and insertion into the deferred-dead
+state one atomic retirement action. Rust uses separate locks for those tables,
+so `RETIREMENTS_IN_FLIGHT` marks the concrete intermediate interval;
+`domain_exited` rejects that interval. This supplies the linearization bridge
+needed for the model's atomic `RetireRemoteAbort`/`AbortNotRunning` projection.
 
 `CharlotteScheduler_unsafe.cfg` enables the former immediate remote-removal
 transition and is required to produce a `ReapOnlyOffCpu` counterexample. This

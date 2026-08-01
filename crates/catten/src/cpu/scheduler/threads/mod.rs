@@ -97,6 +97,33 @@ static NEXT_THREAD_GENERATION: AtomicU64 = AtomicU64::new(1);
 pub static DEAD_THREADS: LazyLock<RwLock<BTreeMap<LpId, Vec<Thread>>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
+/// Number of threads currently moving from the master table into an LP's
+/// deferred-reaping list.
+///
+/// The two collections have separate locks. Without this transition marker,
+/// a lifecycle observer can see the thread in neither collection between the
+/// remove and insert operations and incorrectly conclude that its domain has
+/// exited.
+static RETIREMENTS_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+pub struct RetirementGuard;
+
+impl Drop for RetirementGuard {
+    fn drop(&mut self) {
+        let previous = RETIREMENTS_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+        debug_assert!(previous > 0, "thread retirement counter underflow");
+    }
+}
+
+pub fn begin_retirement() -> RetirementGuard {
+    RETIREMENTS_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+    RetirementGuard
+}
+
+pub fn retirement_in_flight() -> bool {
+    RETIREMENTS_IN_FLIGHT.load(Ordering::SeqCst) != 0
+}
+
 /// Stage a thread that has stopped being scheduled on `lp` for reaping by that
 /// same LP. The thread's stack is not freed until [`reap_dead_threads`] runs on
 /// `lp` after a context switch away from it.
@@ -128,6 +155,7 @@ pub fn retire_requested_threads() {
         .collect();
 
     for (tid, generation) in requested {
+        let _retirement = begin_retirement();
         let thread = {
             let mut table = MASTER_THREAD_TABLE.write();
             let still_requested = table.get(tid).is_ok_and(|thread| {
