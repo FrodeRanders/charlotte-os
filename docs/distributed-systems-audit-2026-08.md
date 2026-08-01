@@ -141,6 +141,13 @@ Follow-up:
 - retain enough completed-call state to answer safe retransmissions;
 - model this state machine before claiming distributed capability invocation.
 
+Repair status: DNS v2 now identifies calls by caller node/session/call ID,
+accepts replies only from the expected peer, bounds in-flight state, returns an
+explicit `ERR_UNCERTAIN` on deadline, and keeps a bounded completed-result
+deduplication window. A fresh two-guest run passed 21/21 on both nodes. Binding
+the target service generation and model-checking the retry/cache state machine
+remain open, so this finding is only partially repaired.
+
 ### F7 — Frame routes retain stale capabilities after service restart (high)
 
 `frouter` installs one route per EtherType and never replaces it. If relmsg,
@@ -273,6 +280,11 @@ one failure.
   fresh two-guest run completed all 21 tests on both guests. The leader now
   waits for transport acknowledgement of its remote-call reply, avoiding the
   runner race in which QEMU stopped before the follower received that reply.
+- The first DNS v2 remote-call validation rerun exposed an unrelated boot
+  liveness failure: one connector guest stopped advancing at 0.255 seconds,
+  before networking or the changed call path ran. A fresh rerun completed all
+  21 tests on both nodes. This reproducible class of scheduling-sensitive boot
+  failure remains evidence for repair-order item 8.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, remote-call, discovery bootstrap,
@@ -298,7 +310,10 @@ principal distributed findings occur.
   stale connections; proactive generation refresh remains follow-up work).
 - [x] Add relmsg sessions and bounded buffering (the automated unilateral
   restart fault test remains under the CI/fault-testing item).
-- [ ] Define and implement the remote invocation contract.
+- [ ] Complete the remote invocation contract. Caller/session/call identity,
+  source binding, bounded deadlines/in-flight state, explicit uncertainty, and
+  bounded deduplication are implemented; target-generation binding and a
+  checked state-machine model remain.
 - [x] Move DNS to durable Raft state and authoritative membership bootstrap.
   Clustered DNS now requires durable term/vote/log/snapshot stores and an
   exact launch-manifest voter identity set. Discovery resolves those voters to

@@ -16,7 +16,10 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
     string::ToString,
     sync::Arc,
     vec::Vec,
@@ -104,6 +107,23 @@ const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
 const MEMBER_KEY: u64 = manifest_key(b"member");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
+const REMOTE_CALL_TIMEOUT_MS: u64 = 5_000;
+const MAX_IN_FLIGHT_CALLS: usize = 64;
+const DEDUP_WINDOW: usize = 128;
+
+struct InFlightCall {
+    call_id: u64,
+    expected_peer: alloc::string::String,
+    reply: u64,
+    deadline: u64,
+}
+
+struct CompletedCall {
+    caller: Vec<u8>,
+    session: u64,
+    call_id: u64,
+    result: i64,
+}
 
 fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
     // Stable FNV-1a over the cluster/node tuple. This selects an object-store
@@ -365,6 +385,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 {
         fatal(15);
     }
+    let dns_session = generation as u64;
     config::write::<u32>(0, 6);
 
     // Resolve the configured voter identities to transient MAC routes. The
@@ -450,8 +471,8 @@ fn main(ctx: Context) -> ! {
     // Deferred registers awaiting commit replication: (log index, reply token,
     // name, service connection).
     let mut pending_registers: Vec<(u64, u64, Vec<u8>, u64)> = Vec::new();
-    // In-flight remote calls awaiting a reply: (call id, client reply token).
-    let mut in_flight_calls: Vec<(u64, u64)> = Vec::new();
+    let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
+    let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
     let mut next_call_id: u64 = 1;
 
     loop {
@@ -479,38 +500,72 @@ fn main(ctx: Context) -> ! {
                                 // A remote invocation addressed to this node:
                                 // execute it against the local name service and
                                 // reply to the caller's MAC.
-                                if let Some((call_id, target, opcode, arg)) =
+                                if let Some((session, call_id, caller, target, opcode, arg)) =
                                     catten_services::rcall::decode_request(frame)
                                 {
-                                    let result = match catalog.lookup(&target) {
-                                        Some(owner) if owner == node_name => {
-                                            invoke_local(ns_conn, &target, opcode, arg)
-                                        }
-                                        _ => dns::ERR_NOT_FOUND,
+                                    let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
+                                    else {
+                                        memory_unmap(memory);
+                                        memory_close(memory);
+                                        continue;
                                     };
+                                    if source_peer.as_bytes() != caller {
+                                        memory_unmap(memory);
+                                        memory_close(memory);
+                                        continue;
+                                    }
+                                    let cached = completed_calls.iter().find(|completed| {
+                                        completed.caller == caller
+                                            && completed.session == session
+                                            && completed.call_id == call_id
+                                    });
+                                    let result = cached.map_or_else(
+                                        || match catalog.lookup(&target) {
+                                            Some(owner) if owner == node_name => {
+                                                invoke_local(ns_conn, &target, opcode, arg)
+                                            }
+                                            _ => dns::ERR_NOT_FOUND,
+                                        },
+                                        |completed| completed.result,
+                                    );
+                                    if cached.is_none() {
+                                        if completed_calls.len() >= DEDUP_WINDOW {
+                                            completed_calls.pop_front();
+                                        }
+                                        completed_calls.push_back(CompletedCall {
+                                            caller,
+                                            session,
+                                            call_id,
+                                            result,
+                                        });
+                                    }
                                     remote_calls_served = remote_calls_served.wrapping_add(1);
                                     config::write::<u32>(40, remote_calls_served);
-                                    let reply =
-                                        catten_services::rcall::encode_reply(call_id, result);
-                                    if let Some(peer) = transport.peer_id_for_mac(&source_mac) {
-                                        transport.send_message(
-                                            &peer,
-                                            catten_services::rcall::TAG_REPLY,
-                                            reply,
-                                        );
-                                    }
+                                    let reply = catten_services::rcall::encode_reply(
+                                        session, call_id, result,
+                                    );
+                                    transport.send_message(
+                                        &source_peer,
+                                        catten_services::rcall::TAG_REPLY,
+                                        reply,
+                                    );
                                 }
                             }
                             Some(catten_services::rcall::TAG_REPLY) => {
                                 // Complete the matching in-flight OP_CALL.
-                                if let Some((call_id, result)) =
+                                if let Some((session, call_id, result)) =
                                     catten_services::rcall::decode_reply(frame)
-                                    && let Some(index) =
-                                        in_flight_calls.iter().position(|(id, _)| *id == call_id)
+                                    && let Some(index) = in_flight_calls.iter().position(|call| {
+                                        call.call_id == call_id
+                                            && session == dns_session
+                                            && transport
+                                                .peer_id_for_mac(&source_mac)
+                                                .is_some_and(|peer| peer == call.expected_peer)
+                                    })
                                 {
-                                    let (_, reply) = in_flight_calls.swap_remove(index);
-                                    if reply != 0 {
-                                        ipc_reply(reply, result);
+                                    let call = in_flight_calls.swap_remove(index);
+                                    if call.reply != 0 {
+                                        ipc_reply(call.reply, result);
                                     }
                                 }
                             }
@@ -744,20 +799,37 @@ fn main(ctx: Context) -> ! {
                                 let owner_str =
                                     core::str::from_utf8(&owner).unwrap_or("").to_string();
                                 if let Some(_mac) = transport.mac_for_peer(&owner_str) {
-                                    let call_id = next_call_id;
-                                    next_call_id = next_call_id.wrapping_add(1);
-                                    in_flight_calls.push((call_id, message.reply));
-                                    let frame = catten_services::rcall::encode_request(
-                                        call_id, &name, opcode, arg,
-                                    );
-                                    transport.send_message(
-                                        &owner_str,
-                                        catten_services::rcall::TAG_REQUEST,
-                                        frame,
-                                    );
-                                    continue; // reply completes when the remote REPLY arrives
+                                    if in_flight_calls.len() >= MAX_IN_FLIGHT_CALLS {
+                                        dns::ERR_BUSY
+                                    } else {
+                                        let call_id = next_call_id;
+                                        next_call_id = next_call_id.wrapping_add(1).max(1);
+                                        in_flight_calls.push(InFlightCall {
+                                            call_id,
+                                            expected_peer: owner_str.clone(),
+                                            reply: message.reply,
+                                            deadline: node
+                                                .millis()
+                                                .saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                        });
+                                        let frame = catten_services::rcall::encode_request(
+                                            dns_session,
+                                            call_id,
+                                            &node_name,
+                                            &name,
+                                            opcode,
+                                            arg,
+                                        );
+                                        transport.send_message(
+                                            &owner_str,
+                                            catten_services::rcall::TAG_REQUEST,
+                                            frame,
+                                        );
+                                        continue; // reply completes when the remote REPLY arrives
+                                    }
+                                } else {
+                                    dns::ERR_NOT_FOUND
                                 }
-                                dns::ERR_NOT_FOUND
                             }
                             None => dns::ERR_NOT_FOUND,
                         }
@@ -818,6 +890,22 @@ fn main(ctx: Context) -> ! {
                 ipc_reply(reply, result);
             }
             let _ = log_index;
+        }
+
+        // A timeout cannot prove whether a remote target executed before its
+        // reply was lost, so report an explicitly uncertain outcome. The
+        // bounded table also prevents permanently unreachable peers from
+        // growing kernel-visible pending IPC state without limit.
+        let mut index = 0;
+        while index < in_flight_calls.len() {
+            if in_flight_calls[index].deadline > node.millis() {
+                index += 1;
+                continue;
+            }
+            let call = in_flight_calls.swap_remove(index);
+            if call.reply != 0 {
+                ipc_reply(call.reply, dns::ERR_UNCERTAIN);
+            }
         }
 
         // --- Raft clock ---

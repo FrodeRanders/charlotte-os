@@ -131,6 +131,16 @@ The RPC layer provides request/reply semantics over the reliable message layer:
         between Rust types and the wire format.
 \end{itemize}
 
+The implemented DNS v2 remote-call path is narrower than this target model. It
+currently carries scalar opcode/argument calls. A request is identified by
+caller node, caller DNS-session generation, and call ID, and a reply is
+accepted only from the expected peer. The implementation bounds outstanding
+calls at 64, returns \texttt{ERR\_UNCERTAIN} after five seconds (execution may
+already have occurred), and retains 128 completed results to suppress duplicate
+execution within that window. The replicated catalog does not yet bind the
+target service generation, and remote object-capability delegation remains
+future work.
+
 \subsection{Distributed objects}
 
 At the top of the stack, applications interact with \textbf{capabilities} ---
