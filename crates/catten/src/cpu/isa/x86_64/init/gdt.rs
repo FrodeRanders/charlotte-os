@@ -108,7 +108,7 @@ impl Gdt {
 
         dest_sd.access_byte = access_byte;
 
-        dest_sd.limit1_flags |= (flags & 0xff) << 4; // The upper 4 bits
+        dest_sd.limit1_flags |= (flags & 0x0f) << 4; // The upper 4 bits
         // of this field
         // encodes flags
     }

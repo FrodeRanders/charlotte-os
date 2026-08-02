@@ -18,6 +18,12 @@ use crate::{
 };
 
 pub fn test_vmem() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::cpu::isa::memory::paging::pte::PageTableEntry::self_test_pat_encoding();
+        logln!("x86-64 PAT page-table encoding tests passed.");
+    }
+
     // Raw heap-debug probe of a fixed x86-64 HHDM address; skipped elsewhere.
     #[cfg(target_arch = "x86_64")]
     let hhdm = 0xffff8000003ffff8usize as *const usize;

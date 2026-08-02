@@ -103,13 +103,11 @@ use super::LpId;
 use crate::cpu::isa::constants::*;
 
 pub fn store_lp_id(id: LpId) {
-    let id_upper = ((id as u64) >> 32) as u32;
-    let id_lower = ((id as u64) & (1 << 32) - 1) as u32;
     unsafe {
         asm!(
             "wrmsr",
-            in("eax") id_lower,
-            in("edx") id_upper,
+            in("eax") id,
+            in("edx") 0_u32,
             in("ecx") msrs::TSC_AUX,
             options(nostack, preserves_flags)
         );

@@ -12,6 +12,7 @@ const PAT_INDEX_0: u64 = 3;
 const PAT_INDEX_1: u64 = 4;
 const PAT_INDEX_2_STANDARD: u64 = 7; // only for PTEs pointing to a 4 KiB page
 const PAT_INDEX_2_LARGE_HUGE: u64 = 12; // only for PTEs pointing to a 2 MiB or 1 GiB page
+const MAX_PAT_INDEX: u8 = 0b111;
 const ACCESSED_BIT_INDEX: u64 = 5;
 const DIRTY_BIT_INDEX: u64 = 6;
 const PAGE_SIZE_BIT_INDEX: u64 = 7; // only for PTEs pointing to a 2 MiB or 1 GiB page
@@ -26,6 +27,31 @@ const EXECUTE_DISABLE_BIT_INDEX: u64 = 63;
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {
+    fn pat_index_mask(high_bit_index: u64) -> u64 {
+        (1 << PAT_INDEX_0) | (1 << PAT_INDEX_1) | (1 << high_bit_index)
+    }
+
+    fn decode_pat_index(&self, high_bit_index: u64) -> u8 {
+        let low = (self.0 >> PAT_INDEX_0) & 1;
+        let middle = ((self.0 >> PAT_INDEX_1) & 1) << 1;
+        let high = ((self.0 >> high_bit_index) & 1) << 2;
+        (low | middle | high) as u8
+    }
+
+    fn encode_pat_index(&mut self, pat_index: u8, high_bit_index: u64) {
+        assert!(
+            pat_index <= MAX_PAT_INDEX,
+            "PAT index must fit in the three architectural PAT-selection bits"
+        );
+
+        let pat_index = u64::from(pat_index);
+        let encoded = ((pat_index & 1) << PAT_INDEX_0)
+            | (((pat_index >> 1) & 1) << PAT_INDEX_1)
+            | (((pat_index >> 2) & 1) << high_bit_index);
+        let mask = Self::pat_index_mask(high_bit_index);
+        self.0 = (self.0 & !mask) | encoded;
+    }
+
     pub fn new(
         present: bool,
         writable: bool,
@@ -103,25 +129,45 @@ impl PageTableEntry {
     }
 
     pub fn get_pat_index(&self) -> u8 {
-        let mut pat_index = 0u8;
-        pat_index |= ((self.0 & (1 << PAT_INDEX_0)) >> PAT_INDEX_0) as u8;
-        pat_index |= ((self.0 & (1 << PAT_INDEX_1)) >> PAT_INDEX_1 - 1) as u8;
-        pat_index |= ((self.0 & (1 << PAT_INDEX_2_STANDARD)) >> PAT_INDEX_2_STANDARD - 2) as u8;
-        pat_index
+        self.decode_pat_index(PAT_INDEX_2_STANDARD)
+    }
+
+    pub fn get_pat_index_large_huge(&self) -> u8 {
+        self.decode_pat_index(PAT_INDEX_2_LARGE_HUGE)
     }
 
     pub fn set_pat_index_bits(&mut self, pat_index: u8) -> &mut Self {
-        self.0 |= ((pat_index as u64 & 1) << PAT_INDEX_0) as u64;
-        self.0 |= ((pat_index as u64 & 1 << 1) << PAT_INDEX_1 - 1) as u64;
-        self.0 |= ((pat_index as u64 & 1 << 2) << PAT_INDEX_2_STANDARD - 2) as u64;
+        self.encode_pat_index(pat_index, PAT_INDEX_2_STANDARD);
         self
     }
 
     pub fn set_pat_index_bits_large_huge(&mut self, pat_index: u8) -> &mut Self {
-        self.0 |= ((pat_index as u64 & 1) << PAT_INDEX_0) as u64;
-        self.0 |= ((pat_index as u64 & 1 << 1) << PAT_INDEX_1 - 1) as u64;
-        self.0 |= ((pat_index as u64 & 1 << 2) << PAT_INDEX_2_LARGE_HUGE - 2) as u64;
+        self.encode_pat_index(pat_index, PAT_INDEX_2_LARGE_HUGE);
         self
+    }
+
+    pub(crate) fn self_test_pat_encoding() {
+        for expected in 0..=MAX_PAT_INDEX {
+            let mut standard = Self(u64::MAX);
+            let standard_unrelated = standard.0 & !Self::pat_index_mask(PAT_INDEX_2_STANDARD);
+            standard.set_pat_index_bits(expected);
+            assert_eq!(standard.get_pat_index(), expected);
+            assert_eq!(
+                standard.0 & !Self::pat_index_mask(PAT_INDEX_2_STANDARD),
+                standard_unrelated,
+                "standard-page PAT update changed unrelated PTE bits"
+            );
+
+            let mut large_huge = Self(u64::MAX);
+            let large_huge_unrelated = large_huge.0 & !Self::pat_index_mask(PAT_INDEX_2_LARGE_HUGE);
+            large_huge.set_pat_index_bits_large_huge(expected);
+            assert_eq!(large_huge.get_pat_index_large_huge(), expected);
+            assert_eq!(
+                large_huge.0 & !Self::pat_index_mask(PAT_INDEX_2_LARGE_HUGE),
+                large_huge_unrelated,
+                "large/huge-page PAT update changed unrelated PTE bits"
+            );
+        }
     }
 
     pub fn is_accessed(&self) -> bool {
