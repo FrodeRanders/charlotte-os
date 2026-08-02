@@ -102,31 +102,21 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             0,
             "userspace syscall SVC originated outside EL0t (SPSR={spsr:#x}, ELR={elr_el1:#x})"
         );
-        let active_ttbr0: u64;
-        unsafe {
-            asm!(
-                "mrs {}, ttbr0_el1",
-                out(reg) active_ttbr0,
-                options(nomem, nostack, preserves_flags)
-            );
-        }
-        frame.asid = crate::memory::ADDRESS_SPACE_TABLE
-            .lock()
-            .iter()
-            .enumerate()
-            .find_map(|(asid, address_space)| {
-                address_space
-                    .as_ref()
-                    .filter(|address_space| address_space.get_ttbr0() == active_ttbr0)
-                    .map(|_| asid)
-            })
-            .filter(|asid| *asid != crate::memory::KERNEL_ASID)
-            .unwrap_or_else(|| {
-                panic!(
-                    "SVC from EL0t has no live address space (TTBR0={active_ttbr0:#x}, \
-                     ELR={elr_el1:#x})"
-                )
-            });
+        // The caller's logical ASID is tracked per-LP by the context switch. It
+        // must not be reconstructed from TTBR0_EL1: some hypervisors (HVF) do
+        // not preserve the ASID bits when the guest reads that register at EL0,
+        // so the value can come back base-only even though the switch programmed
+        // the full encoded TTBR0.
+        let asid = crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID
+            [get_lp_id() as usize]
+            .load(core::sync::atomic::Ordering::Acquire);
+        assert_ne!(
+            asid,
+            crate::memory::KERNEL_ASID,
+            "SVC from EL0t with no tracked user ASID (LP={:?}, ELR={elr_el1:#x})",
+            get_lp_id()
+        );
+        frame.asid = asid;
 
         // Read the saved volatile registers from the kernel stack. `frame_base`
         // is the stack pointer captured by the vector entry immediately after

@@ -80,6 +80,18 @@ extern "C" fn verify_el0_nvme() {
     logln!("[nvme] verifier running, discovering NVMe...");
     let (bar0, intid, requester_id, msi_address) = wait_for_nvme();
 
+    // Protected DMA requires an SMMU to exist and to map this requester to a
+    // stream. On platforms without one (e.g. HVF, where the ECAM window and
+    // SMMU are absent), the driver cannot be granted a DMA domain. Report the
+    // test as unsupported rather than panicking inside the driver spawn, which
+    // would abort the verifier before it reports and leave the boot waiting on
+    // a result that never arrives.
+    if crate::device::smmu::stream_id(requester_id).is_err() {
+        logln!("[nvme] SKIP: protected DMA unavailable (no SMMU); NVMe test not run.");
+        crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
+        return;
+    }
+
     // --- Spawn NVMe driver ---
     let driver = supervisor::spawn_driver_with_name_service(
         NVME_ELF,

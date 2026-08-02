@@ -181,7 +181,7 @@ pub extern "C" fn cond_yield_lp() {
     let interrupts_were_enabled = get_int_state();
     mask_interrupts!();
     // Collect switch parameters and release all locks before calling switch_ctx.
-    let switch_params: Option<(*mut u64, *const u64, *mut u8, *mut u8)> = {
+    let switch_params: Option<(*mut u64, *const u64, *mut u8, *mut u8, usize)> = {
         let sched = SYSTEM_SCHEDULER.read();
         let mut lsched = sched.get_lp_scheduler().lock();
         if lsched.is_ctx_switch_pending() {
@@ -189,7 +189,7 @@ pub extern "C" fn cond_yield_lp() {
             if let Ok(next_tid) = lsched.next() {
                 if let Some(curr_tid) = curr_tid {
                     if next_tid != curr_tid {
-                        let (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu) = {
+                        let (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu, next_asid) = {
                             let mut tt_guard = MASTER_THREAD_TABLE.write();
                             let curr_thread = tt_guard
                                 .get_mut(curr_tid)
@@ -199,12 +199,16 @@ pub extern "C" fn cond_yield_lp() {
                             let next_thread = tt_guard
                                 .get_mut(next_tid)
                                 .expect("Next thread not found during yield.");
+                            let next_asid = next_thread.asid;
+                            crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID
+                                [get_lp_id() as usize]
+                                .store(next_asid, core::sync::atomic::Ordering::Release);
                             let next_sp_ptr = &raw mut next_thread.context.saved_sp;
                             let next_on_cpu = &raw mut next_thread.context.on_cpu;
-                            (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu)
+                            (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu, next_asid)
                         };
                         lsched.clear_ctx_switch_pending();
-                        Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu))
+                        Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, next_asid))
                     } else {
                         // The only runnable thread is the current one, so there
                         // is nothing to switch to. Still clear the pending flag
@@ -216,18 +220,29 @@ pub extern "C" fn cond_yield_lp() {
                         None
                     }
                 } else {
-                    let (next_sp_ptr, next_on_cpu) = {
+                    let (next_sp_ptr, next_on_cpu, next_asid) = {
                         let mut tt_guard = MASTER_THREAD_TABLE.write();
                         let next_thread = tt_guard
                             .get_mut(next_tid)
                             .expect("Next thread not found during yield.");
+                        let next_asid = next_thread.asid;
+                        crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID
+                            [get_lp_id() as usize]
+                            .store(next_asid, core::sync::atomic::Ordering::Release);
                         (
                             &raw mut next_thread.context.saved_sp as *const u64,
                             &raw mut next_thread.context.on_cpu,
+                            next_asid,
                         )
                     };
                     lsched.clear_ctx_switch_pending();
-                    Some((core::ptr::null_mut(), next_sp_ptr, core::ptr::null_mut(), next_on_cpu))
+                    Some((
+                        core::ptr::null_mut(),
+                        next_sp_ptr,
+                        core::ptr::null_mut(),
+                        next_on_cpu,
+                        next_asid,
+                    ))
                 }
             } else {
                 logln!(
@@ -240,11 +255,20 @@ pub extern "C" fn cond_yield_lp() {
         } else {
             None
         }
-        // lsched and sched guards dropped here before switch_ctx
+        // sched and lsched guards dropped here, before the AS-table lookup and
+        // switch_ctx.
     };
-    if let Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu)) = switch_params {
+    // Resolve the incoming thread's authoritative encoded TTBR0 from its
+    // address space's software record after releasing the scheduler guards, so
+    // the address-space table is never acquired under the scheduler or thread
+    // table locks.
+    let switch_params =
+        switch_params.map(|(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, next_asid)| {
+            (curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, incoming_ttbr0(next_asid))
+        });
+    if let Some((curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, next_ttbr0)) = switch_params {
         unsafe {
-            switch_ctx(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu);
+            switch_ctx(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, next_ttbr0);
         }
     }
     crate::cpu::scheduler::threads::retire_requested_threads();
@@ -277,12 +301,25 @@ pub extern "C" fn cond_yield_lp() {
 ///  3. restore the incoming thread.
 ///
 /// The saved frame layout (from higher to lower address, i.e. in push order)
-/// is: `ttbr0_el1`, then the callee-saved general purpose registers x19-x30.
-/// The AArch64 PCS requires x19-x28 plus the frame pointer x29 and the link
-/// register x30 to be preserved across calls, so saving these is sufficient to
-/// resume the interrupted `cond_yield_lp` in the outgoing thread. Restoring x30
-/// and executing `ret` returns into the incoming thread exactly where it last
-/// called `switch_ctx` (or into a trampoline for a freshly created thread).
+/// is the callee-saved general purpose registers x19-x30. TTBR0 is not part of
+/// the frame: it is reloaded on restore from the incoming address space's
+/// software record (`next_ttbr0`). The AArch64 PCS requires x19-x28 plus the
+/// frame pointer x29 and the link register x30 to be preserved across calls,
+/// so saving these is sufficient to resume the interrupted `cond_yield_lp` in
+/// the outgoing thread. Restoring x30 and executing `ret` returns into the
+/// incoming thread exactly where it last called `switch_ctx` (or into a
+/// trampoline for a freshly created thread).
+///
+/// Switch the calling LP to the thread whose context fields are referenced by
+/// `next_sp_ptr`/`next_on_cpu`, reloading TTBR0 from the incoming address
+/// space's software record (`next_ttbr0`) rather than from anything saved on
+/// the stack. This is important under hypervisors such as HVF that do not
+/// preserve the hardware ASID bits of `TTBR0_EL1` when the guest reads the
+/// register at EL0: saving an `mrs ttbr0_el1` readback would restore a
+/// base-only TTBR0 and silently drop hardware-ASID isolation. The incoming
+/// thread's encoded TTBR0 is therefore always recomputed from its address
+/// space's `ttbr0_el1` field, which is maintained in software and never
+/// truncated.
 ///
 /// # Safety
 ///
@@ -296,9 +333,11 @@ pub unsafe extern "C" fn switch_ctx(
     next_sp_ptr: *const u64,
     curr_on_cpu: *mut u8,
     next_on_cpu: *mut u8,
+    next_ttbr0: u64,
 ) {
     naked_asm!(
-        // x0 = curr_sp_ptr, x1 = next_sp_ptr, x2 = curr_on_cpu, x3 = next_on_cpu
+        // x0 = curr_sp_ptr, x1 = next_sp_ptr, x2 = curr_on_cpu, x3 = next_on_cpu,
+        // x4 = next_ttbr0.
         "cbz x0, 2f",
         // Save callee-saved registers of the outgoing thread.
         "stp x29, x30, [sp, #-16]!",
@@ -307,14 +346,9 @@ pub unsafe extern "C" fn switch_ctx(
         "stp x23, x24, [sp, #-16]!",
         "stp x21, x22, [sp, #-16]!",
         "stp x19, x20, [sp, #-16]!",
-        // Save the outgoing thread's user translation table base register as a
-        // 16-byte pair (with a zero pad) to keep the stack 16-byte aligned, as
-        // required by the SP alignment check that firmware enables.
-        "mrs x4, ttbr0_el1",
-        "stp x4, xzr, [sp, #-16]!",
         // Store the outgoing stack pointer into *curr_sp_ptr.
-        "mov x4, sp",
-        "str x4, [x0]",
+        "mov x5, sp",
+        "str x5, [x0]",
         // Publish the completed save: release-store *curr_on_cpu = 0 so another
         // LP that acquire-observes it may safely restore this thread. The
         // release orders the saved_sp store above before the flag clear.
@@ -329,18 +363,18 @@ pub unsafe extern "C" fn switch_ctx(
         // queue entry.
         "cbz x3, 4f",
         "3:",
-        "ldaxrb w4, [x3]",
-        "cbnz w4, 3b",
-        "mov w5, #1",
-        "stxrb w6, w5, [x3]",
-        "cbnz w6, 3b",
+        "ldaxrb w5, [x3]",
+        "cbnz w5, 3b",
+        "mov w6, #1",
+        "stxrb w7, w6, [x3]",
+        "cbnz w7, 3b",
         "4:",
         // Load the incoming stack pointer from *next_sp_ptr.
-        "ldr x4, [x1]",
-        "mov sp, x4",
-        // Restore the incoming thread's user translation table base register
-        // and synchronise so subsequent EL0 accesses use the new mappings.
-        "ldp x4, xzr, [sp], #16",
+        "ldr x5, [x1]",
+        "mov sp, x5",
+        // Reload the incoming thread's user translation table base from the
+        // address space's authoritative software record, and synchronise so
+        // subsequent EL0 accesses use the new mappings.
         "msr ttbr0_el1, x4",
         // User address spaces carry distinct hardware ASIDs in TTBR0, so a
         // context switch selects a tagged translation context without flushing
@@ -357,6 +391,19 @@ pub unsafe extern "C" fn switch_ctx(
         // Return into the incoming thread.
         "ret",
     );
+}
+
+/// The authoritative TTBR0 value the context switch must program for a thread
+/// running in `asid`'s address space: the encoded base+ASID from the address
+/// space's software `ttbr0_el1` record. This is the single source of truth for
+/// the hardware translation context — the register is never read back and
+/// re-installed.
+pub fn incoming_ttbr0(asid: crate::memory::AddressSpaceId) -> u64 {
+    crate::memory::ADDRESS_SPACE_TABLE
+        .lock()
+        .get(asid)
+        .expect("Incoming thread's address space not found during yield.")
+        .get_ttbr0()
 }
 
 /// Trampoline used as the initial return target for a freshly created kernel
