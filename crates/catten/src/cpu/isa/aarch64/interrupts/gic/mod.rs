@@ -48,16 +48,53 @@ use crate::cpu::{
 
 pub type LocalIntCtlr = GicV3;
 
-/// QEMU `virt` GIC distributor MMIO physical base address.
-const GICD_BASE: usize = 0x0800_0000;
+/// QEMU `virt` GIC distributor MMIO physical base address (fallback when the
+/// firmware does not publish the interrupt topology, e.g. no ACPI).
+const GICD_BASE_FALLBACK: usize = 0x0800_0000;
 /// QEMU `virt` GIC redistributor region MMIO physical base address. Each core's
 /// redistributor occupies two consecutive 64 KiB frames (RD_base + SGI_base).
-const GICR_BASE: usize = 0x080a_0000;
+const GICR_BASE_FALLBACK: usize = 0x080a_0000;
 /// Size of a single core's redistributor region (two 64 KiB frames: the
 /// RD_base control frame and the SGI_base frame for private interrupts).
 const GICR_STRIDE: usize = 0x2_0000;
 /// Offset from a redistributor's RD_base to its SGI_base frame.
 const GICR_SGI_OFFSET: usize = 0x1_0000;
+
+/// The resolved GIC MMIO bases, discovered from the MADT ACPI table (GIC
+/// Distributor and Redistributor entries) and falling back to the QEMU `virt`
+/// geometry when ACPI is absent or does not describe the GIC.
+#[derive(Clone, Copy)]
+struct GicBases {
+    gicd: usize,
+    gicr: usize,
+}
+
+static GIC_BASES: LazyLock<GicBases> = LazyLock::new(|| {
+    #[cfg(feature = "acpi")]
+    if let Some((gicd, gicr)) = crate::environment::acpi::sdt::discovery::madt_gic_bases() {
+        return GicBases {
+            gicd: gicd as usize,
+            gicr: gicr as usize,
+        };
+    }
+    GicBases {
+        gicd: GICD_BASE_FALLBACK,
+        gicr: GICR_BASE_FALLBACK,
+    }
+});
+
+/// The GIC distributor MMIO base.
+#[inline]
+fn gicd_base() -> usize {
+    GIC_BASES.gicd
+}
+
+/// The GIC redistributor region MMIO base.
+#[inline]
+fn gicr_base() -> usize {
+    GIC_BASES.gicr
+}
+
 /// QEMU `virt,msi=gicv2m` MSI frame. Platform discovery should replace this
 /// fixed address when CharlotteOS consumes the firmware interrupt topology.
 const GICV2M_BASE: usize = 0x0802_0000;
@@ -136,11 +173,11 @@ unsafe fn mmio_write8(base: usize, offset: usize, value: u8) {
 }
 
 /// The RD_base MMIO address of the calling core's redistributor. Cores are
-/// laid out consecutively starting at [`GICR_BASE`]; we index by the local
-/// interrupt controller id (affinity 0), which matches the QEMU `virt` layout.
+/// laid out consecutively starting at the redistributor base; we index by the
+/// local interrupt controller id (affinity 0).
 #[inline]
 fn gicr_rd_base() -> usize {
-    GICR_BASE + (get_lic_id() as usize) * GICR_STRIDE
+    gicr_base() + (get_lic_id() as usize) * GICR_STRIDE
 }
 
 /// The SGI_base MMIO address of the calling core's redistributor.
@@ -231,7 +268,7 @@ impl GicV3 {
         use crate::memory::KERNEL_AS;
         let mut kas = KERNEL_AS.lock();
         // Distributor: a single 64 KiB frame.
-        kas.map_mmio_region(GICD_BASE, 0x1_0000).expect("Failed to map GIC distributor MMIO");
+        kas.map_mmio_region(gicd_base(), 0x1_0000).expect("Failed to map GIC distributor MMIO");
         // This core's redistributor: RD_base + SGI_base (two 64 KiB frames).
         kas.map_mmio_region(gicr_rd_base(), GICR_STRIDE)
             .expect("Failed to map GIC redistributor MMIO");
@@ -250,8 +287,8 @@ impl LocalIntCtlrIfce for GicV3 {
         // The distributor is system-wide; enabling affinity routing and Group 1
         // is idempotent and safe to repeat from each core as it comes online.
         unsafe {
-            let ctlr = mmio_read32(GICD_BASE, GICD_CTLR);
-            mmio_write32(GICD_BASE, GICD_CTLR, ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS);
+            let ctlr = mmio_read32(gicd_base(), GICD_CTLR);
+            mmio_write32(gicd_base(), GICD_CTLR, ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS);
             // Ensure SPI group registers do not matter here; SPIs are wired up
             // by the external interrupt controller path when devices attach.
             let _ = GICD_IGROUPR;
@@ -429,7 +466,7 @@ fn ensure_distributor_mapped() {
         interface::memory::AddressSpaceInterface,
     };
     let mut current = AddressSpace::get_current();
-    let _ = current.map_mmio_region(GICD_BASE, 0x1_0000);
+    let _ = current.map_mmio_region(gicd_base(), 0x1_0000);
     let _ = current.map_mmio_region(GICV2M_BASE, 0x1000);
 }
 
@@ -452,29 +489,29 @@ pub fn enable_spi(intid: u32, target_lp: LpId) {
         let is_msi = intid >= msi_base && intid < msi_base.saturating_add(msi_count);
         let cfg_word = (intid / 16) as usize;
         let cfg_shift = (intid % 16) * 2;
-        let mut cfg = mmio_read32(GICD_BASE, GICD_ICFGR + cfg_word * 4);
+        let mut cfg = mmio_read32(gicd_base(), GICD_ICFGR + cfg_word * 4);
         if is_msi {
             cfg |= 0b10 << cfg_shift;
         } else {
             cfg &= !(0b10 << cfg_shift);
         }
-        mmio_write32(GICD_BASE, GICD_ICFGR + cfg_word * 4, cfg);
+        mmio_write32(gicd_base(), GICD_ICFGR + cfg_word * 4, cfg);
         // Group 1 non-secure.
-        let mut group = mmio_read32(GICD_BASE, GICD_IGROUPR + word * 4);
+        let mut group = mmio_read32(gicd_base(), GICD_IGROUPR + word * 4);
         group |= 1 << bit;
-        mmio_write32(GICD_BASE, GICD_IGROUPR + word * 4, group);
+        mmio_write32(gicd_base(), GICD_IGROUPR + word * 4, group);
         // Runnable priority (numerically below the PMR threshold).
-        mmio_write8(GICD_BASE, GICD_IPRIORITYR + intid as usize, DEFAULT_PRIORITY);
+        mmio_write8(gicd_base(), GICD_IPRIORITYR + intid as usize, DEFAULT_PRIORITY);
         // Affinity routing (ARE_NS): translate the scheduler's logical LP id
         // to the PE's MPIDR affinity. AP startup order is nondeterministic, so
         // LP ids and Aff0 values are not interchangeable.
         let mpidr = crate::cpu::multiprocessor::startup::mpidr_for_lp(target_lp)
             .expect("SPI target LP has no registered MPIDR");
         let affinity = mpidr & 0x0000_00ff_00ff_ffff;
-        mmio_write64(GICD_BASE, GICD_IROUTER + intid as usize * 8, affinity);
+        mmio_write64(gicd_base(), GICD_IROUTER + intid as usize * 8, affinity);
         // Ensure the routing/config writes are observable before enabling.
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
-        mmio_write32(GICD_BASE, GICD_ISENABLER + word * 4, 1 << bit);
+        mmio_write32(gicd_base(), GICD_ISENABLER + word * 4, 1 << bit);
     }
 }
 
@@ -485,7 +522,7 @@ pub fn disable_spi(intid: u32) {
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
-        mmio_write32(GICD_BASE, GICD_ICENABLER + word * 4, 1 << bit);
+        mmio_write32(gicd_base(), GICD_ICENABLER + word * 4, 1 << bit);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
     }
 }
@@ -496,7 +533,7 @@ pub fn set_spi_pending(intid: u32) {
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
-        mmio_write32(GICD_BASE, GICD_ISPENDR + word * 4, 1 << bit);
+        mmio_write32(gicd_base(), GICD_ISPENDR + word * 4, 1 << bit);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
     }
 }
@@ -517,13 +554,13 @@ pub fn configure_synthetic_spi_edge(intid: u32) {
     let cfg_word = (intid / 16) as usize;
     let cfg_shift = (intid % 16) * 2;
     unsafe {
-        mmio_write32(GICD_BASE, GICD_ICENABLER + enable_word * 4, 1 << enable_bit);
+        mmio_write32(gicd_base(), GICD_ICENABLER + enable_word * 4, 1 << enable_bit);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
-        let mut cfg = mmio_read32(GICD_BASE, GICD_ICFGR + cfg_word * 4);
+        let mut cfg = mmio_read32(gicd_base(), GICD_ICFGR + cfg_word * 4);
         cfg |= 0b10 << cfg_shift;
-        mmio_write32(GICD_BASE, GICD_ICFGR + cfg_word * 4, cfg);
+        mmio_write32(gicd_base(), GICD_ICFGR + cfg_word * 4, cfg);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
-        mmio_write32(GICD_BASE, GICD_ISENABLER + enable_word * 4, 1 << enable_bit);
+        mmio_write32(gicd_base(), GICD_ISENABLER + enable_word * 4, 1 << enable_bit);
     }
 }
 
@@ -533,7 +570,7 @@ pub fn clear_spi_pending(intid: u32) {
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
-        mmio_write32(GICD_BASE, GICD_ICPENDR + word * 4, 1 << bit);
+        mmio_write32(gicd_base(), GICD_ICPENDR + word * 4, 1 << bit);
         asm!("dsb ish", options(nomem, nostack, preserves_flags));
     }
 }

@@ -23,6 +23,7 @@ use core::{
     },
     sync::atomic::{
         AtomicBool,
+        AtomicUsize,
         Ordering,
     },
 };
@@ -34,8 +35,13 @@ use crate::cpu::isa::{
     memory::address::paddr::PAddr,
 };
 
-/// QEMU `virt` PL011 UART0 MMIO physical base address.
-const PL011_BASE: usize = 0x0900_0000;
+/// Fallback: QEMU `virt` PL011 UART0 MMIO physical base address.
+const PL011_BASE_FALLBACK: usize = 0x0900_0000;
+
+/// The resolved PL011 MMIO base, discovered from the SPCR ACPI table (or the
+/// QEMU `virt` default when ACPI is absent). Read via atomics because `reg_ptr`
+/// runs from `early_logln!` before any `init()` has completed.
+static PL011_BASE: AtomicUsize = AtomicUsize::new(PL011_BASE_FALLBACK);
 
 /// Data register: writing a byte transmits it.
 const UARTDR: usize = 0x00;
@@ -54,10 +60,18 @@ pub static SERIAL: Mutex<Pl011> = Mutex::new(Pl011);
 /// call more than once (subsequent calls are no-ops). Until it has run, output
 /// is silently dropped rather than faulting on the unmapped MMIO page.
 pub fn init() {
+    // Discover the console UART base from the SPCR table before mapping. This
+    // runs before the kernel heap is ready, so discovery walks the XSDT without
+    // allocating. On QEMU `virt` SPCR reports the same `0x0900_0000`; on
+    // `sbsa-ref` and real ARM servers the console PL011 lives elsewhere.
+    #[cfg(feature = "acpi")]
+    if let Some(base) = crate::environment::acpi::sdt::discovery::spcr_uart_base() {
+        PL011_BASE.store(base as usize, Ordering::Release);
+    }
     use crate::memory::KERNEL_AS;
     KERNEL_AS
         .lock()
-        .map_mmio_region(PL011_BASE, 0x1000)
+        .map_mmio_region(PL011_BASE.load(Ordering::Acquire), 0x1000)
         .expect("Failed to map PL011 UART MMIO region");
     READY.store(true, Ordering::Release);
 }
@@ -72,7 +86,11 @@ impl Pl011 {
     fn reg_ptr(offset: usize) -> *mut u32 {
         // SAFETY: PL011_BASE is a valid MMIO physical address that Limine maps
         // into the HHDM, and `offset` is within the device's register window.
-        unsafe { PAddr::from(PL011_BASE as u64).into_hhdm_mut::<u32>().byte_add(offset) }
+        unsafe {
+            PAddr::from(PL011_BASE.load(Ordering::Acquire) as u64)
+                .into_hhdm_mut::<u32>()
+                .byte_add(offset)
+        }
     }
 
     #[inline]
