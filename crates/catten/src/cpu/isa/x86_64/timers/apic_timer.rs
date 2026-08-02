@@ -1,10 +1,12 @@
 use alloc::{
     sync::Arc,
-    vec,
     vec::Vec,
 };
 
-use spin::lazylock::LazyLock;
+use spin::{
+    lazylock::LazyLock,
+    once::Once,
+};
 
 use super::tsc::TSC_CYCLE_PERIOD;
 //use crate::cpu::isa::interrupts::x2apic::X2Apic;
@@ -28,9 +30,12 @@ use crate::{
     klib::time::duration::ExtDuration,
 };
 
-pub static APIC_TIMERS: LazyLock<Vec<Arc<Mutex<ApicTimer>>>> = LazyLock::new(|| {
-    vec![Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))); get_lp_count() as usize]
-});
+/// One lazily initialized timer state per logical processor. Each slot is
+/// first constructed by its owning LP, so calibration and x2APIC register
+/// setup execute against that LP's local hardware rather than repeatedly on
+/// whichever processor first touches this static.
+pub static APIC_TIMERS: LazyLock<Vec<Once<Arc<Mutex<ApicTimer>>>>> =
+    LazyLock::new(|| (0..get_lp_count()).map(|_| Once::new()).collect());
 
 pub type LpTimer = ApicTimer;
 
@@ -117,7 +122,9 @@ impl LpTimerIfce for ApicTimer {
     const NAME: &'static str = "x86-64 x2APIC Timer";
 
     fn get() -> Arc<Mutex<Self>> {
-        APIC_TIMERS[get_lp_id() as usize].clone()
+        APIC_TIMERS[get_lp_id() as usize]
+            .call_once(|| Arc::new(Mutex::new(ApicTimer::new(LAPIC_TIMER_VECTOR))))
+            .clone()
     }
 
     fn now() -> Self::Timestamp {

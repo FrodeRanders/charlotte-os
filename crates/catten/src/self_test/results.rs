@@ -290,6 +290,11 @@ extern "C" fn coordinator() {
             for test in TestId::ALL {
                 if pending & bit(test) != 0 {
                     logln!("SELFTEST PENDING: {}", test.name());
+                    #[cfg(target_arch = "aarch64")]
+                    if matches!(test, TestId::Device) {
+                        let (waiter, driver) = crate::self_test::device::progress();
+                        logln!("SELFTEST DEVICE PHASES: waiter={} driver={}", waiter, driver);
+                    }
                 }
             }
             next_report = now.saturating_add(1_000);

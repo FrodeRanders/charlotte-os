@@ -25,6 +25,10 @@
    ShardLocal, ShardMailbox, CQ ring — the same suite that passes on AArch64),
    then proceeds to PCIe device enumeration with zero panics. Only the real-EL0
    test is AArch64-gated (`#[cfg(target_arch = "aarch64")]`).
+5. **Per-LP APIC timer ownership** — every logical processor has an independent,
+   lazily initialized timer state. Its owning LP performs calibration and local
+   x2APIC setup on first use; timer state is no longer aliased through clones of
+   one `Arc` created by the bootstrap processor.
 
 ## RESOLVED: heap #GP (was "bug A") — LA57 / paging-mode mismatch
 

@@ -44,17 +44,23 @@ static ROUND1_RELEASED: AtomicU32 = AtomicU32::new(0);
 static ROUND2_START: AtomicU32 = AtomicU32::new(0);
 #[cfg(target_arch = "aarch64")]
 static ROUND2_RELEASED: AtomicU32 = AtomicU32::new(0);
+#[cfg(target_arch = "aarch64")]
+static WAITER_PHASE: AtomicU32 = AtomicU32::new(0);
+#[cfg(target_arch = "aarch64")]
+static DRIVER_PHASE: AtomicU32 = AtomicU32::new(0);
 
 pub fn test_device_capabilities() {
     #[cfg(target_arch = "aarch64")]
     {
         use crate::{
-            cpu::scheduler::spawn_thread,
             device::{
                 self,
                 DeviceError,
             },
-            memory::KERNEL_ASID,
+            self_test::results::{
+                self,
+                TestId,
+            },
         };
 
         logln!("Testing device capabilities (MMIO regions and interrupt objects)...");
@@ -138,8 +144,7 @@ pub fn test_device_capabilities() {
         );
         IRQ_CAP.store(irq, Ordering::Release);
 
-        let _waiter = spawn_thread(KERNEL_ASID, irq_waiter);
-        let _driver = spawn_thread(KERNEL_ASID, irq_driver);
+        results::spawn_verifier(TestId::Device, irq_driver);
         logln!("[device] interrupt waiter and driver deferred");
     }
     #[cfg(not(target_arch = "aarch64"))]
@@ -331,10 +336,15 @@ extern "C" fn irq_waiter() {
 
 #[cfg(target_arch = "aarch64")]
 extern "C" fn irq_driver() {
-    use crate::device;
+    use crate::{
+        cpu::scheduler::spawn_thread,
+        device,
+        memory::KERNEL_ASID,
+    };
 
     let irq = IRQ_CAP.load(Ordering::Acquire);
     device_phase(10, irq, 0);
+    let _waiter = spawn_thread(KERNEL_ASID, irq_waiter);
 
     // Round 1: simulate exactly what the IRQ dispatcher does for this INTID.
     // Delivery is intentionally unordered with the waiter: CQ readiness and
@@ -392,7 +402,17 @@ extern "C" fn irq_driver() {
 
 #[cfg(target_arch = "aarch64")]
 fn device_phase(phase: u64, a: u64, b: u64) {
+    if phase < 10 {
+        WAITER_PHASE.store(phase as u32, Ordering::Release);
+    } else {
+        DRIVER_PHASE.store(phase as u32, Ordering::Release);
+    }
     crate::debug_trace::trace(crate::debug_trace::TAG_DEVICE_PHASE, phase, a, b);
+}
+
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn progress() -> (u32, u32) {
+    (WAITER_PHASE.load(Ordering::Acquire), DRIVER_PHASE.load(Ordering::Acquire))
 }
 
 #[cfg(target_arch = "aarch64")]
