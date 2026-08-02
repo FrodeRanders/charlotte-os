@@ -210,12 +210,15 @@ copy/move/cancel), device (MMIO + SPI), cq-wait, async, sitas, service, uart
 a leader). The boot completes (boot-done marker).
 
 Remaining on sbsa-ref:
-- **`nvme`** — reported unsupported (SKIP): the kernel's MSI allocator programs
-  the QEMU `virt` GICv2m frame at a fixed address, which `sbsa-ref` does not
-  provide (MSI goes through the GIC ITS, not yet supported). Detected via the
-  discovered GICD base (`msi_available()`); probing the absent frame would
-  fault. Implementing the GIC ITS is the natural next step to run the NVMe
-  test on sbsa-ref.
+- **`nvme`** — the GIC ITS + LPI MSI path is implemented: the kernel discovers
+  the ITS (`0x44081000`), programs the NVMe's MSI-X via `MAPD`/`MAPC`/`MAPTI`
+  (device ID = the PCI Requester ID), and enables LPI delivery on the
+  redistributor. The NVMe driver now spawns on sbsa-ref with a real MSI-X
+  vector (`address=0x44091040 data=0 intid=8192`) and a DMA domain. However the
+  driver's EL0 init does not progress (its status frame stays zero) and its
+  client spin-polls `IpcReplyPoll` waiting for a registration that never
+  arrives — a driver-spawn/ELF-execution issue on sbsa-ref that is separate
+  from the (working) ITS/MSI plumbing.
 
 The virt/TCG baseline remains fully green (`SELFTEST COMPLETE: passed=18
 failed=0`), with the NVMe test running and passing against the real GICv2m.
