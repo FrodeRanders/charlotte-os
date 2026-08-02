@@ -28,10 +28,12 @@ pub fn find_table_physical(signature: [u8; 4]) -> Option<u64> {
     let xsdp = get_xsdp()?;
     let xsdt_addr = unsafe { (*xsdp.as_ptr()).xsdt_address };
     if xsdt_addr == 0 {
+        crate::logln!("[acpi-discovery] XSDP has no XSDT address");
         return None;
     }
     let xsdt: &SdtHeader = unsafe { &*PAddr::from(xsdt_addr).into_hhdm_ptr::<SdtHeader>() };
     if !xsdt.validate() {
+        crate::logln!("[acpi-discovery] XSDT checksum invalid");
         return None;
     }
     let data_len = xsdt.length as usize - size_of::<SdtHeader>();
@@ -77,7 +79,7 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
     const GICD_ENTRY_GICR_OFFSET: u64 = 44;
     const GICR_ENTRY_BASE_OFFSET: u64 = 4;
 
-    let madt = find_table_physical(*b"MADT")?;
+    let madt = find_table_physical(*b"APIC")?;
     let header: &SdtHeader = unsafe { &*PAddr::from(madt).into_hhdm_ptr::<SdtHeader>() };
     let end = madt + header.length as u64;
     let mut ptr = madt + MADT_HEADER_SIZE;
