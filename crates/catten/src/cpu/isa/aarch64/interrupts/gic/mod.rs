@@ -48,6 +48,11 @@ use crate::cpu::{
 
 pub type LocalIntCtlr = GicV3;
 
+/// GIC ITS and LPI support for platforms that deliver MSIs through the
+/// Interrupt Translation Service (e.g. QEMU `sbsa-ref`).
+mod its;
+mod lpi;
+
 /// QEMU `virt` GIC distributor MMIO physical base address (fallback when the
 /// firmware does not publish the interrupt topology, e.g. no ACPI).
 const GICD_BASE_FALLBACK: usize = 0x0800_0000;
@@ -305,6 +310,8 @@ impl LocalIntCtlrIfce for GicV3 {
         // Enable the EL1 virtual timer PPI (INTID 27) so the scheduler tick is
         // delivered to this core.
         Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR);
+        // Enable LPI delivery on this redistributor (required for ITS MSIs).
+        lpi::configure_lpis();
     }
 
     /// Send a unicast IPI to `target_lp` by generating the SGI whose INTID is
@@ -402,21 +409,38 @@ static GICV2M_SPI_COUNT: AtomicU32 = AtomicU32::new(0);
 /// faults. Callers gate MSI-X setup on this rather than touching the absent
 /// frame.
 pub fn msi_available() -> bool {
+    // Two MSI mechanisms are supported: the GIC ITS (QEMU `sbsa-ref`, real
+    // server platforms) and the GICv2m frame (QEMU `virt`).
+    if its::available() {
+        return true;
+    }
     #[cfg(feature = "acpi")]
     {
-        // The allocator programs the hardcoded QEMU-virt GICv2m frame, which
+        // The v2m allocator programs the hardcoded QEMU-virt GICv2m frame, which
         // sits at `GICD + 0x20000` on virt (GICD = 0x0800_0000). sbsa-ref's GICD
-        // is 0x4006_0000 and MSI goes through the GIC ITS (not yet supported);
-        // probing the absent frame there faults. Derive availability from the
-        // discovered GICD base rather than a MADT GICv2m entry, which QEMU virt
-        // does not publish.
+        // is 0x4006_0000 and MSI goes through the GIC ITS. Derive v2m
+        // availability from the discovered GICD base.
         return crate::environment::acpi::sdt::discovery::madt_gic_bases()
             .is_some_and(|(gicd, _)| gicd == GICD_BASE_FALLBACK as u64);
     }
     #[cfg(not(feature = "acpi"))]
     {
-        true
+        false
     }
+}
+
+/// Allocate one MSI for a PCI function identified by `device_id` (its PCI
+/// Requester ID). Prefers the GIC ITS when present (sbsa-ref); otherwise falls
+/// back to the QEMU `virt` GICv2m frame, which does not use the requester ID.
+pub fn allocate_msi(
+    device_id: u32,
+) -> Option<
+    crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+> {
+    if its::available() {
+        return its::allocate_msi(device_id);
+    }
+    allocate_v2m_msi()
 }
 
 /// Allocate one SPI from the GICv2m MSI frame and return the PCI message that
@@ -501,6 +525,12 @@ fn ensure_distributor_mapped() {
 /// been mapped (done by [`GicV3::init_lp`]).
 pub fn enable_spi(intid: u32, target_lp: LpId) {
     debug_assert!(intid >= FIRST_SPI, "enable_spi called with a non-SPI INTID");
+    // LPIs are configured through the redistributor property table (enabled at
+    // allocation time) and are edge-triggered with auto-clear on EOI, so the
+    // distributor path below does not apply.
+    if lpi::is_lpi(intid) {
+        return;
+    }
     ensure_distributor_mapped();
     let word = (intid / 32) as usize;
     let bit = intid % 32;
@@ -542,6 +572,9 @@ pub fn enable_spi(intid: u32, target_lp: LpId) {
 /// mask a device interrupt after delivery until the owning driver acknowledges
 /// it, so a level-triggered source does not storm the CPU.
 pub fn disable_spi(intid: u32) {
+    if lpi::is_lpi(intid) {
+        return;
+    }
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
@@ -553,6 +586,9 @@ pub fn disable_spi(intid: u32) {
 /// `GICD_ISPENDR`). Used by self-tests to exercise the device IRQ delivery
 /// path without a real peripheral.
 pub fn set_spi_pending(intid: u32) {
+    if lpi::is_lpi(intid) {
+        return;
+    }
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {
@@ -590,6 +626,9 @@ pub fn configure_synthetic_spi_edge(intid: u32) {
 /// Clear a Shared Peripheral Interrupt's pending state (distributor
 /// `GICD_ICPENDR`).
 pub fn clear_spi_pending(intid: u32) {
+    if lpi::is_lpi(intid) {
+        return;
+    }
     let word = (intid / 32) as usize;
     let bit = intid % 32;
     unsafe {

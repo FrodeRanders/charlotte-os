@@ -131,3 +131,41 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
     }
     (gicd != 0).then_some((gicd, gicr))
 }
+
+/// The GIC ITS base address from the MADT, if the platform publishes one.
+///
+/// QEMU `sbsa-ref` emits a GIC ITS entry whose 64-bit base sits at offset 8;
+/// some firmware revisions use an adjacent type for it, so both 0x0E and 0x0F
+/// entries are considered and the first with a plausible ITS MMIO base wins.
+pub fn madt_its_base() -> Option<u64> {
+    const GIC_ITS: u8 = 0x0E;
+    const GIC_ITS_ALT: u8 = 0x0F;
+    const MADT_HEADER_SIZE: u64 = 36 + 4 + 4;
+    const ENTRY_BASE_OFFSET: u64 = 8;
+
+    let madt = find_table_physical(*b"APIC")?;
+    let header: &SdtHeader = unsafe { &*PAddr::from(madt).into_hhdm_ptr::<SdtHeader>() };
+    let end = madt + header.length as u64;
+    let mut ptr = madt + MADT_HEADER_SIZE;
+    while ptr < end {
+        let entry = unsafe { PAddr::from(ptr).into_hhdm_ptr::<u8>() };
+        let entry_type = unsafe { *entry };
+        let entry_len = unsafe { *entry.add(1) } as u64;
+        if entry_len == 0 || ptr + entry_len > end {
+            break;
+        }
+        if entry_type == GIC_ITS || entry_type == GIC_ITS_ALT {
+            let base = unsafe {
+                (PAddr::from(ptr + ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>())
+                    .read_unaligned()
+            };
+            // A plausible ITS MMIO base lives in the server MMIO window (not
+            // the garbage from a misaligned read or a RAM address).
+            if base != 0 && base < 0x100_0000_0000 {
+                return Some(base);
+            }
+        }
+        ptr += entry_len;
+    }
+    None
+}

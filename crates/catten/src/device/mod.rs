@@ -180,14 +180,35 @@ pub(crate) const MAX_ROUTED_INTID: usize = 256;
 /// The first GIC Shared Peripheral Interrupt. SGIs and PPIs are private to a
 /// processor and cannot be delegated as device interrupts.
 const MIN_ROUTED_INTID: u32 = 32;
+/// The first LPI INTID delivered by the GIC ITS. LPIs are always numbered from
+/// 8192 (see `cpu::isa::aarch64::interrupts::gic::lpi`).
+const LPI_INTID_BASE: u32 = 8192;
+/// Number of LPI slots tracked by the routing tables (LPIs `LPI_INTID_BASE` ..
+/// `LPI_INTID_BASE + LPI_SLOTS - 1`).
+const LPI_SLOTS: usize = 32;
+/// Total routing-table slots: the SPI space plus the LPI window.
+pub(crate) const TOTAL_ROUTE_SLOTS: usize = MAX_ROUTED_INTID + LPI_SLOTS;
 
-static ROUTE_TABLE: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+/// Map an INTID to a routing-table slot: the SPI space is indexed directly and
+/// the LPI window is packed after it. Returns `None` for unroutable INTIDs.
+fn route_slot(intid: u32) -> Option<usize> {
+    let i = intid as usize;
+    if i < MAX_ROUTED_INTID {
+        return Some(i);
+    }
+    if i >= LPI_INTID_BASE as usize && i < LPI_INTID_BASE as usize + LPI_SLOTS {
+        return Some(MAX_ROUTED_INTID + (i - LPI_INTID_BASE as usize));
+    }
+    None
+}
+
+static ROUTE_TABLE: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
 /// Generation of each interrupt route. It advances on every bind and unroute,
 /// fencing deferred wakes that were queued for a previous driver lifetime.
-static ROUTE_GENERATION: [AtomicU64; MAX_ROUTED_INTID] =
-    [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
-static IRQ_PENDING: [AtomicU32; MAX_ROUTED_INTID] = [const { AtomicU32::new(0) }; MAX_ROUTED_INTID];
-static IRQ_COUNT: [AtomicU64; MAX_ROUTED_INTID] = [const { AtomicU64::new(0) }; MAX_ROUTED_INTID];
+static ROUTE_GENERATION: [AtomicU64; TOTAL_ROUTE_SLOTS] =
+    [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
+static IRQ_PENDING: [AtomicU32; TOTAL_ROUTE_SLOTS] = [const { AtomicU32::new(0) }; TOTAL_ROUTE_SLOTS];
+static IRQ_COUNT: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
 
 /// Deferred `(asid, cq)` wakes queued by interrupt context, delivered by
 /// [`drain_deferred_wakes`] from thread context. Wakes coalesce (§9.4), so
@@ -200,7 +221,7 @@ struct DeferredWake {
 }
 
 static DEFERRED_WAKES: LazyLock<ConcurrentQueue<DeferredWake>> =
-    LazyLock::new(|| ConcurrentQueue::bounded(MAX_ROUTED_INTID));
+    LazyLock::new(|| ConcurrentQueue::bounded(TOTAL_ROUTE_SLOTS));
 
 /// Force construction of interrupt-ingress state before scheduler preemption
 /// or device IRQ delivery is enabled. `spin::LazyLock` itself uses spinning;
@@ -310,7 +331,7 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     if owner == 0 || u32::try_from(owner).is_err() {
         return Err(DeviceError::InvalidAddressSpace);
     }
-    if intid < MIN_ROUTED_INTID || intid as usize >= MAX_ROUTED_INTID {
+    if intid < MIN_ROUTED_INTID || route_slot(intid).is_none() {
         return Err(DeviceError::InvalidInterrupt);
     }
     if devices.values().any(|caps| {
@@ -479,9 +500,10 @@ pub fn interrupt_bind_cq(
     // delivery that races the enable observes a consistent route. Keep the
     // capability-table lock through the architecture operation so a concurrent
     // close cannot remove the capability and leave an orphaned route.
-    IRQ_PENDING[intid as usize].store(0, Ordering::Release);
-    ROUTE_GENERATION[intid as usize].fetch_add(1, Ordering::AcqRel);
-    ROUTE_TABLE[intid as usize].store(pack_route(asid, cq), Ordering::Release);
+    let slot = route_slot(intid).expect("[dev] bound interrupt has no routing slot");
+    IRQ_PENDING[slot].store(0, Ordering::Release);
+    ROUTE_GENERATION[slot].fetch_add(1, Ordering::AcqRel);
+    ROUTE_TABLE[slot].store(pack_route(asid, cq), Ordering::Release);
     arch_enable_irq(intid, target_lp);
     Ok(())
 }
@@ -499,7 +521,8 @@ pub fn interrupt_ack(asid: AddressSpaceId, cap: DeviceCap) -> Result<u32, Device
         return Err(DeviceError::NotBound);
     }
     let (intid, target_lp) = (irq.intid, irq.target_lp);
-    let consumed = IRQ_PENDING[intid as usize].swap(0, Ordering::AcqRel);
+    let slot = route_slot(intid).expect("[dev] acknowledged interrupt has no routing slot");
+    let consumed = IRQ_PENDING[slot].swap(0, Ordering::AcqRel);
     // Re-arm the source (it was masked on delivery). Holding DEVICES prevents
     // close from racing this operation and re-enabling a reclaimed source.
     arch_enable_irq(intid, target_lp);
@@ -514,18 +537,19 @@ pub fn interrupt_status(asid: AddressSpaceId, cap: DeviceCap) -> Result<(u32, u6
     let DeviceObject::Interrupt(irq) = object else {
         return Err(DeviceError::WrongType);
     };
-    let intid = irq.intid as usize;
-    Ok((IRQ_PENDING[intid].load(Ordering::Acquire), IRQ_COUNT[intid].load(Ordering::Acquire)))
+    let intid = irq.intid;
+    let slot = route_slot(intid).expect("[dev] inspected interrupt has no routing slot");
+    Ok((IRQ_PENDING[slot].load(Ordering::Acquire), IRQ_COUNT[slot].load(Ordering::Acquire)))
 }
 
 /// Mask an interrupt source and remove its route. Idempotent.
 fn unroute_interrupt(intid: u32) {
-    if (intid as usize) < MAX_ROUTED_INTID {
+    if let Some(slot) = route_slot(intid) {
         // Invalidate queued wakes before clearing the route. A delivery racing
         // these stores may enqueue either generation, but neither can match a
         // subsequently rebound route.
-        ROUTE_GENERATION[intid as usize].fetch_add(1, Ordering::AcqRel);
-        ROUTE_TABLE[intid as usize].store(0, Ordering::Release);
+        ROUTE_GENERATION[slot].fetch_add(1, Ordering::AcqRel);
+        ROUTE_TABLE[slot].store(0, Ordering::Release);
     }
     arch_disable_irq(intid);
 }
@@ -574,10 +598,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
 /// authority is reclaimed when a driver domain is torn down (architecture
 /// doc §13, success criterion 9).
 pub fn interrupt_route_owner(intid: u32) -> Option<AddressSpaceId> {
-    if intid as usize >= MAX_ROUTED_INTID {
-        return None;
-    }
-    match ROUTE_TABLE[intid as usize].load(Ordering::Acquire) {
+    let slot = route_slot(intid)?;
+    match ROUTE_TABLE[slot].load(Ordering::Acquire) {
         0 => None,
         packed => Some(unpack_route(packed).0),
     }
@@ -642,11 +664,11 @@ pub fn close_address_space(asid: AddressSpaceId) {
 ///
 /// Returns `true` if the INTID was claimed by a bound driver interrupt.
 pub fn deliver_interrupt(intid: u32) -> bool {
-    if intid as usize >= MAX_ROUTED_INTID {
+    let Some(slot) = route_slot(intid) else {
         return false;
-    }
-    let route_generation = ROUTE_GENERATION[intid as usize].load(Ordering::Acquire);
-    let packed = ROUTE_TABLE[intid as usize].load(Ordering::Acquire);
+    };
+    let route_generation = ROUTE_GENERATION[slot].load(Ordering::Acquire);
+    let packed = ROUTE_TABLE[slot].load(Ordering::Acquire);
     if packed == 0 {
         return false;
     }
@@ -655,14 +677,14 @@ pub fn deliver_interrupt(intid: u32) -> bool {
     arch_disable_irq(intid);
     arch_clear_irq_pending(intid);
 
-    IRQ_PENDING[intid as usize].fetch_add(1, Ordering::AcqRel);
-    IRQ_COUNT[intid as usize].fetch_add(1, Ordering::AcqRel);
+    IRQ_PENDING[slot].fetch_add(1, Ordering::AcqRel);
+    IRQ_COUNT[slot].fetch_add(1, Ordering::AcqRel);
 
     let (asid, cq) = unpack_route(packed);
     sched_trace!(
         "[sched] irq-deliver INTID={} count={} -> AS={} CQ={}",
         intid,
-        IRQ_COUNT[intid as usize].load(Ordering::Acquire),
+        IRQ_COUNT[slot].load(Ordering::Acquire),
         asid,
         cq
     );
@@ -684,7 +706,9 @@ pub fn deliver_interrupt(intid: u32) -> bool {
 pub fn drain_deferred_wakes() -> usize {
     let mut drained = 0u32;
     while let Ok(wake) = DEFERRED_WAKES.pop() {
-        let index = wake.intid as usize;
+        let Some(index) = route_slot(wake.intid) else {
+            continue;
+        };
         if ROUTE_GENERATION[index].load(Ordering::Acquire) != wake.route_generation {
             continue;
         }
