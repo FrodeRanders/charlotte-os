@@ -120,6 +120,29 @@ off at EL1 rather than EL2:
 On real hardware or KVM the upstream Limine fix remains the correct long-term
 answer; the EL1-handoff firmware is the TCG-compatible path.
 
+### Progress
+
+**TF-A EL1 handoff works.** The BL33 entry EL is chosen in
+`plat/qemu/common/qemu_bl2_setup.c` (`qemu_get_spsr_for_bl33_entry`): it was
+`el_implemented(2) ? MODE_EL2 : MODE_EL1`, changed to unconditionally
+`MODE_EL1`. TF-A for `qemu_sbsa` is built with `aarch64-elf-gcc`
+(`CROSS_COMPILE=aarch64-elf- aarch64-oc=aarch64-elf-objcopy`), the FIP is
+packed with `tools/fiptool/fiptool create --tb-fw bl2.bin --soc-fw bl31.bin`
+(host-fixtool needs `-D_UUID_T -D_DARWIN_C_SOURCE` and
+`OPENSSL_DIR=/opt/homebrew/opt/openssl@3` on macOS), and `SBSA_FLASH0.fd` is
+assembled as the original BL1 (0x0) followed by the new FIP at `0x12000`
+(`dd bs=1 seek=73728`).
+
+With the rebuilt BL2/BL31 (original BL1 kept — the freshly built BL1 panics),
+the chain reaches: BL1 -> BL2 -> BL31 -> **UEFI firmware** (the r1mikey
+`SBSA_FLASH1.fd`). The EL1 handoff is confirmed.
+
+**Remaining: the prebuilt edk2 UEFI hangs at EL1.** The r1mikey
+`SBSA_FLASH1.fd` was built for EL2; under the EL1 handoff it prints the UEFI
+banner then stalls before the front page. edk2 QemuSbsa must be built for an
+EL1 handoff (or the UEFI must tolerate EL1) to proceed to Limine and the
+kernel.
+
 ## Tooling notes
 
 - Firmware: prebuilt SbsaQemu UEFI (`SBSA_FLASH0.fd`/`SBSA_FLASH1.fd`, truncated
