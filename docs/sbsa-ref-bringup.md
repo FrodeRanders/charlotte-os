@@ -196,6 +196,30 @@ low-memory ACPI tables is the next step (see the discovery code in
 A reproducible build script for the firmware is at
 `scripts/build-sbsa-firmware.sh`.
 
+### Milestone: sbsa-ref boots and runs the self-test suite
+
+**The kernel boots on sbsa-ref and passes most of the self-test suite.** The
+ACPI GIC discovery bug was that the Multiple APIC Description Table's signature
+is **`"APIC"`**, not `"MADT"`; searching for `b"APIC"` resolves the real GIC
+bases (`0x40060000`/`0x40080000`) and the kernel proceeds through GIC init into
+the tests.
+
+Passing on sbsa-ref: EL0, EL0 IPC (endpoint/blocking/cross-AS/memory
+copy/move/cancel), device (MMIO + SPI), cq-wait, async, sitas, service, and
+raft (elects a leader).
+
+Remaining failures (platform-specific device tests):
+- **`nvme`** — the NVMe driver's MSI-X allocation probes the QEMU `virt`
+  GICv2M frame (`0x08020000`), which sbsa-ref does not provide (it uses the GIC
+  ITS); the probe aborts. Needs ITS/MSI support or a graceful skip when MSI is
+  unavailable.
+- **`uart`** — the console-driver test stalls: its PL011 MMIO/IRQ grants are
+  hardcoded to the `virt` geometry. Needs the PL011 IRQ/address resolved for
+  sbsa-ref (or discovery).
+
+These are the same "hardcoded platform geometry" class of issue as the original
+GIC/PL011 constants, and are the natural next bring-up items.
+
 ## Tooling notes
 
 - Firmware: prebuilt SbsaQemu UEFI (`SBSA_FLASH0.fd`/`SBSA_FLASH1.fd`, truncated
