@@ -159,6 +159,43 @@ tool itself on macOS:
 - The resulting `SBSA_FLASH0.fd`/`SBSA_FLASH1.fd` would then contain the EL1
   TF-A (already built) plus an EL1-capable UEFI.
 
+### Milestone: the full boot chain works
+
+**The entire chain now boots under QEMU TCG:**
+
+```
+TF-A (BL1 -> BL2 -> BL31, EL1 handoff)
+  -> edk2 QemuSbsa UEFI (built for EL1)
+  -> Limine BOOTAA64.EFI
+  -> Catten kernel
+  -> heap, name service, observability, ACPI parsing (XSDT, 8 tables)
+```
+
+Key fixes that unblocked the UEFI at EL1:
+
+- **`SIP_SVC_GET_CPU_TOPOLOGY` (SMC 202)**: the current edk2 QemuSbsa
+  `HardwareInfoLib` requires it and TF-A v2.11 does not implement it, so the
+  UEFI looped in `ResetShutdown()`. Implemented in
+  `plat/qemu/qemu_sbsa/sbsa_sip_svc.c` (read `/cpus/topology` from the DTB,
+  return sockets/clusters/cores/threads).
+- **edk2 build tool**: `-p` leaves `PlatformFile` as a plain string which the
+  workspace database cannot inspect (`'str' object has no attribute 'Type'`).
+  Patched `LoadConfiguration` to convert it to a `PathClass`. Recent edk2 also
+  renamed the toolchain `GCC5` -> `GCC`, and the QemuSbsa build needs `iasl`
+  (`brew install acpica`), the BaseTools wrappers on `PATH`, and a workspace
+  where `edk2-platforms`/`edk2-non-osi` are real subdirectories.
+
+**Remaining: a kernel-side ACPI read fault.** After ACPI parsing begins, the
+kernel takes a data abort at `FAR = 0xffff0000_08000c10` (physical `0x8000c10`,
+a low address not covered by the higher-half direct map). The kernel's ACPI
+discovery reads tables through the HHDM, but at least one ACPI structure lives
+below the HHDM-mapped region on sbsa-ref. Fixing the kernel's handling of
+low-memory ACPI tables is the next step (see the discovery code in
+`environment/acpi/sdt/discovery.rs` and the ACPI table map).
+
+A reproducible build script for the firmware is at
+`scripts/build-sbsa-firmware.sh`.
+
 ## Tooling notes
 
 - Firmware: prebuilt SbsaQemu UEFI (`SBSA_FLASH0.fd`/`SBSA_FLASH1.fd`, truncated
