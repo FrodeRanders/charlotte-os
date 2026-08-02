@@ -143,6 +143,22 @@ banner then stalls before the front page. edk2 QemuSbsa must be built for an
 EL1 handoff (or the UEFI must tolerate EL1) to proceed to Limine and the
 kernel.
 
+### edk2 build status
+
+The edk2 QemuSbsa build is in progress but currently blocked on the edk2 build
+tool itself on macOS:
+
+- edk2 + edk2-platforms + edk2-non-osi cloned (latest), BaseTools compiled,
+  submodules updated, `GCC5_AARCH64_PREFIX=aarch64-elf-`.
+- The `build` tool fails silently (`- Failed -`, 0 s) during `Build.__init__`;
+  invoking `Build(...)` directly reveals:
+  `WorkspaceDatabase.CreateBuildObject: 'str' object has no attribute 'Type'`
+  in `GetToolChainAndFamilyFromDsc` — a version mismatch between edk2 master
+  and edk2-platforms master. Pinning edk2 to a matching stable release and/or
+  resolving the workspace-path handling is the next step.
+- The resulting `SBSA_FLASH0.fd`/`SBSA_FLASH1.fd` would then contain the EL1
+  TF-A (already built) plus an EL1-capable UEFI.
+
 ## Tooling notes
 
 - Firmware: prebuilt SbsaQemu UEFI (`SBSA_FLASH0.fd`/`SBSA_FLASH1.fd`, truncated
