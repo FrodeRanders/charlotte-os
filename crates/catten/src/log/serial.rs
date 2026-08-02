@@ -6,13 +6,13 @@
 //! and enabled it before handing control to the kernel, so we only need to push
 //! bytes into the transmit FIFO.
 //!
-//! The device is reached through the higher half direct map (HHDM). Because the
-//! kernel requests Limine base revision 0 on AArch64, the low 4 GiB (including
-//! this MMIO) is HHDM-mapped from the very first instruction of `bsp_main`,
-//! which is what makes this usable as an *early* console.
-//!
-//! The MMIO base is the fixed QEMU `virt` default for now; once device-tree
-//! parsing is implemented the UART should be discovered from the `/pl011` node.
+//! The device is reached through the higher half direct map (HHDM). The kernel
+//! requests Limine base revision 6, whose HHDM does *not* cover MMIO, so
+//! [`init`] maps the PL011 page explicitly before any output; the very first
+//! bytes of `bsp_main` are therefore the console becoming usable as an *early*
+//! console. The UART base is discovered from the SPCR ACPI table where
+//! available (e.g. QEMU `sbsa-ref`, real ARM servers) and falls back to the
+//! QEMU `virt` default otherwise.
 //!
 //! See the ARM PrimeCell UART (PL011) Technical Reference Manual (ARM DDI 0183).
 

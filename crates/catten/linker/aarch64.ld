@@ -3,7 +3,7 @@ OUTPUT_FORMAT(elf64-littleaarch64)
 OUTPUT_ARCH(aarch64)
 
 /* We want this symbol to be our entry point */
-ENTRY(bsp_main)
+ENTRY(_start)
 
 /* Define the program headers we want so the bootloader gives us the right */
 /* MMU permissions */

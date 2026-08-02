@@ -85,6 +85,66 @@ use crate::{
 const KERNEL_VERSION: (u64, u64, u64) = (0, 8, 1);
 static INIT_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
 static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
+/// The kernel entry point, linked as the ELF entry (`ENTRY(_start)` in
+/// `linker/aarch64.ld`).
+///
+/// Limine base revision 6 enters a kernel at **EL2 with VHE** when the boot
+/// firmware hands off at EL2 (e.g. QEMU `sbsa-ref`, ARM servers). This kernel
+/// targets EL1/EL0, so the entry descends to EL1 before `bsp_main`: the MMU and
+/// interrupt setup all program EL1 system registers, and EL2 (an optional
+/// hypervisor level) is not where the OS wants to live.
+///
+/// On EL2 entry, Limine has already built the kernel's page tables and left
+/// them in the VHE-redirected EL2 register bank (`TTBR0_EL1`/`TTBR1_EL1`/...).
+/// We capture that state, clear `HCR_EL2.E2H` so the `*_EL1` names address the
+/// real EL1 bank, program EL1's MMU, and `eret` down to EL1h. On EL1 entry
+/// (virt) we simply continue.
+#[cfg(target_arch = "aarch64")]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _start() -> ! {
+    core::arch::naked_asm!(
+        // The EL field is bits 3:2; EL2 is 0b10 (0x8).
+        "mrs x1, CurrentEL",
+        "and x1, x1, #0xc",
+        "cmp x1, #0x8",
+        "b.ne 2f",
+        // --- At EL2 (VHE per Limine's handoff) ---
+        // Capture the kernel's MMU state from the VHE-redirected EL2 bank.
+        "mrs x2, ttbr0_el1",
+        "mrs x3, ttbr1_el1",
+        "mrs x4, tcr_el1",
+        "mrs x5, mair_el1",
+        "mrs x6, sctlr_el1",
+        // Clear E2H so the *_EL1 names now address the EL1 register bank.
+        "mrs x7, hcr_el2",
+        "bic x7, x7, #(1 << 34)",
+        "msr hcr_el2, x7",
+        "isb",
+        // Program the EL1 bank with the kernel's page tables.
+        "msr ttbr0_el1, x2",
+        "msr ttbr1_el1, x3",
+        "msr tcr_el1, x4",
+        "msr mair_el1, x5",
+        "msr sctlr_el1, x6",
+        "isb",
+        "dsb sy",
+        "isb",
+        // Descend to EL1h at the continuation below.
+        "adrp x0, 2f",
+        "add x0, x0, #:lo12:2f",
+        "msr elr_el2, x0",
+        "mov x0, #0x5", // SPSR.M[3:0] = EL1h
+        "msr spsr_el2, x0",
+        "isb",
+        "eret",
+        "2:",
+        // Now at EL1 with the kernel's own page tables active.
+        "b {entry}",
+        entry = sym bsp_main,
+    );
+}
+
 /// This is the bootstrap processor's entry point into the kernel. The `bsp_main` function is
 /// called by the bootloader after setting up the environment. It is made C ABI compatible so
 /// that it can be called by Limine or any other Limine Boot Protocol compliant bootloader.
