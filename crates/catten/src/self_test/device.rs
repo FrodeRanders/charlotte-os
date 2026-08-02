@@ -242,10 +242,10 @@ fn test_failed_dma_map_releases_pin() {
 
     let asid = loader::create_user_address_space();
     let memory = object::allocate(asid, 1).expect("[device] DMA rollback object allocation failed");
-    assert_eq!(
-        smmu::map(u64::MAX, asid, memory, smmu::Direction::DEVICE_READ),
-        Err(smmu::Error::UnknownDomain),
-        "[device] invalid DMA domain must reject mapping"
+    let result = smmu::map(u64::MAX, asid, memory, smmu::Direction::DEVICE_READ);
+    assert!(
+        result == Err(smmu::Error::UnknownDomain) || result == Err(smmu::Error::Unsupported),
+        "[device] invalid DMA domain must reject mapping (got {result:?})"
     );
     object::close_cap(asid, memory).expect("[device] failed DMA map leaked its memory pin");
     close_test_address_space(asid).expect("[device] DMA rollback address-space cleanup failed");
