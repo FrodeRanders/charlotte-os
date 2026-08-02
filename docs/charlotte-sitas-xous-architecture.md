@@ -224,6 +224,22 @@ hardware tag is concurrently occupied, runtime domain creation reports resource
 exhaustion; it does not panic the kernel. Boot-critical built-in services still
 treat exhaustion as a fatal configuration error.
 
+> **Platform caveat — hardware ASIDs are not honored under Apple's
+> Hypervisor.framework.** Everything above assumes the hardware includes the
+> ASID tag in TLB matching and returns it from `mrs ttbr0_el1`. HVF does not:
+> the register reads back base-only at EL0, and ASIDs do not isolate user
+> translations. Because all user address spaces map the same low virtual
+> addresses, switching between them without flushing the TLB translates through
+> stale entries from the previous domain, corrupting arbitrary state (observed
+> as kernel data aborts, wrong syscall results, and "deadline expired" panics
+> across the EL0 suite). Under `hvf_compat`, `switch_ctx` therefore issues
+> `tlbi vmalle1is` (a whole-TLB flush) on every context switch, and the SVC
+> handler attributes syscalls from a per-LP tracked logical ASID
+> (`CURRENT_LOGICAL_ASID`) rather than from `mrs ttbr0_el1`. On real hardware or
+> TCG, the ASID fast path stands; do not "fix" the HVF fallback into the
+> unconditional path, and never reintroduce a `ttbr0_el1` readback for caller
+> attribution.
+
 ## 2.2 Endpoints
 
 Endpoints answer:

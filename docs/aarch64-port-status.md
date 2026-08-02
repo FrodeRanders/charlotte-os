@@ -156,6 +156,45 @@ exception log and `lldb` on the QEMU gdb stub:
 5. **GICv2 vs GICv3, and unmapped MMIO.** QEMU `virt` does not default to GICv3;
    the driver requires `-M virt,gic-version=3`. GIC (and UART) MMIO also had to
    be explicitly mapped as Device memory because Limine only HHDM-maps real RAM.
+6. **HVF strips hardware ASIDs from TTBR0** (see the dedicated section below).
+   `mrs ttbr0_el1` reads back the base address with the ASID bits gone, so the
+   kernel cannot derive the caller's address space from the register, and its
+   ASID-based TLB isolation silently degrades. This is the single most
+   subtle platform difference on the AArch64 port; read the "HVF and hardware
+   ASIDs" section before doing any work that reads or trusts `TTBR0_EL1`.
+
+## HVF and hardware ASIDs (read before trusting TTBR0_EL1)
+
+Apple's Hypervisor.framework does **not** preserve the hardware ASID bits
+(bits 63:48 of `TTBR0_EL1`) when a guest reads the register while running at
+EL0, and the ASID tags are not used to isolate user translations. Two concrete
+consequences, both encountered on the port:
+
+1. **`mrs ttbr0_el1` is unreliable at EL0.** Writing `0x2000_0000_4007_e000`
+   (base `0x4007e000`, ASID 2) and reading it back yields `0x4007e000`. The old
+   SVC handler reconstructed the caller's ASID by scanning the address-space
+   table for a matching `get_ttbr0()` and panicked under HVF. The SVC handler
+   now tracks the running thread's logical ASID per-LP
+   (`CURRENT_LOGICAL_ASID`, updated by `cond_yield_lp`) instead of reading the
+   register.
+2. **ASID-based TLB isolation is broken, so stale translations alias across
+   address spaces.** Every user address space maps the *same low virtual
+   addresses* (code at `0x10000`, result pages, stacks at `0x100_0000`). The
+   kernel keeps them distinct in the TLB purely via the hardware ASID; by
+   design `switch_ctx` does **not** flush the TLB between user address spaces
+   and `tlbi` invalidation is ASID-qualified (`vae1is`/`aside1is`). With ASIDs
+   non-functional under HVF, switching from address space A to B left stale
+   entries mapping A's physical frames, so a thread executed/corrupted through
+   another domain's pages. This surfaced as a cascade of unrelated-looking
+   failures: kernel data aborts at bogus addresses (`FAR = 0x5`), wrong syscall
+   return values, `completion submit` failing with `UnknownAddressSpace`, and
+   dozens of "self-test deadline expired" panics in EL0 service tests.
+
+**Fix:** under the `hvf_compat` feature (enabled by `--hvf`),
+`switch_ctx` issues `tlbi vmalle1is` — a whole-TLB flush — on *every* context
+switch, restoring isolation. Normal (TCG) builds keep the ASID fast path.
+Regard anything that assumes hardware ASIDs work under HVF as broken by
+default.
 
 ## Remaining work / known limitations
 

@@ -174,6 +174,14 @@ two-node Raft election are boot-tested under QEMU TCG. See
 for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
 `--disco-test`, `--dns-test`, `--tcpip-test`, `--http-test`).
 
+> **HVF caveat:** Apple's Hypervisor.framework does not preserve the hardware
+> ASID bits of `TTBR0_EL1`, so ASID-based TLB isolation and `mrs ttbr0_el1`
+> caller attribution do not work under `--hvf`. HVF builds rely on the
+> `hvf_compat` fallback (whole-TLB flush on every context switch, per-LP
+> tracked caller ASID). See the "HVF and hardware ASIDs" section of
+> [`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) before debugging
+> under HVF.
+
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 
 ---

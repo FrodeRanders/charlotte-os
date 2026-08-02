@@ -68,6 +68,29 @@ resumed. \textbf{Root cause:} the x86-64 trampoline entered a \texttt{hlt} loop
 when a thread returned, instead of calling \texttt{abort()}. \textbf{Fix:} make
 the x86-64 trampoline call \texttt{abort} on return.
 
+\subsection{Hypervisors that strip TTBR0 ASIDs break TLB isolation}
+
+\textbf{Symptom:} under Apple's Hypervisor.framework, an unrelated-looking
+cascade of failures --- kernel data aborts at bogus addresses, wrong syscall
+return values, \texttt{completion submit} failing with
+\texttt{UnknownAddressSpace}, and "self-test deadline expired" panics across
+almost every EL0 service test. TCG was always green. \textbf{Root cause:} the
+kernel isolates user address spaces in the TLB purely via the hardware ASID
+encoded in \texttt{TTBR0\_EL1}: context switches deliberately do not flush the
+TLB, and \texttt{tlbi} maintenance is ASID-qualified. HVF does not preserve the
+ASID bits --- \texttt{mrs ttbr0\_el1} reads back the base-only value --- so user
+address spaces, which all map the same low virtual addresses, alias in the TLB;
+switching domains left stale entries that translated a thread through another
+domain's pages, corrupting arbitrary state. The SVC handler, which derived the
+caller's ASID by scanning for a matching \texttt{ttbr0\_el1} readback, then
+panicked. \textbf{Fix:} under \texttt{hvf\_compat}, \texttt{switch\_ctx} issues
+\texttt{tlbi vmalle1is} (a whole-TLB flush) on every context switch, and the SVC
+handler attributes syscalls from a per-LP tracked logical ASID instead of the
+register. \textbf{Lesson:} never trust that a translation-context register's
+tag bits survive a hypervisor round trip, and never rely on ASID-based TLB
+isolation without re-verifying it on every platform. See
+\emph{AArch64 Port Status} for the full write-up.
+
 \section{Key insights}
 
 \begin{enumerate}

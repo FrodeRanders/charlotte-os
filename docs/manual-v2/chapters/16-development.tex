@@ -15,6 +15,10 @@ services, or run the self-tests.
         is opt-in. The virtio-net smoke test runs under TCG; HVF is unsuitable
         for its direct EL0 device-MMIO path. KVM is an optional Linux
         accelerator, not a networking requirement.
+        \textbf{HVF also does not honor hardware ASIDs} --- see the
+        \emph{AArch64 Port Status} write-up --- so HVF builds rely on the
+        \texttt{hvf\_compat} whole-TLB-flush-on-switch fallback. Do not assume
+        ASID-based TLB isolation works when debugging under \texttt{--hvf}.
     \item \textbf{Build dependencies:} \texttt{cargo}, \texttt{just} (optional,
         for convenience targets in the Justfile).
 \end{itemize}

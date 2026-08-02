@@ -376,9 +376,16 @@ pub unsafe extern "C" fn switch_ctx(
         // address space's authoritative software record, and synchronise so
         // subsequent EL0 accesses use the new mappings.
         "msr ttbr0_el1, x4",
-        // User address spaces carry distinct hardware ASIDs in TTBR0, so a
-        // context switch selects a tagged translation context without flushing
-        // unrelated TLB entries. Tag reuse is fenced during AS teardown.
+        // In normal builds each user address space carries a distinct hardware
+        // ASID in TTBR0, so a context switch selects a tagged translation
+        // context without flushing unrelated TLB entries (tag reuse is fenced
+        // during AS teardown). Under HVF the ASID bits of TTBR0 are not
+        // preserved, so all user address spaces alias the same low virtual
+        // addresses in the TLB; without a flush a thread can translate a VA
+        // through another address space's stale entry. Flush the entire TLB on
+        // every switch to restore isolation under hvf_compat.
+        #[cfg(feature = "hvf_compat")]
+        "tlbi vmalle1is",
         "dsb ish",
         "isb",
         // Restore callee-saved registers.

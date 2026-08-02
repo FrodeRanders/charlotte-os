@@ -118,6 +118,14 @@ authoritative record.
 \section{Known limitations}
 
 \begin{itemize}
+    \item \textbf{HVF does not honor hardware ASIDs.} Apple's
+        Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
+        read and does not use them to isolate user translations, so the kernel's
+        ASID-based TLB fast path is unsafe there. Under \texttt{hvf\_compat},
+        \texttt{switch\_ctx} flushes the whole TLB on every context switch
+        (\texttt{tlbi vmalle1is}) and the SVC handler attributes syscalls from a
+        per-LP tracked logical ASID rather than a \texttt{ttbr0\_el1} readback.
+        See \emph{AArch64 Port Status} for the full diagnosis.
     \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists;
         the EL0 test and real-EL0 user thread are AArch64-only.
     \item \textbf{Virtio-net runtime:} initialization and transmit submission
