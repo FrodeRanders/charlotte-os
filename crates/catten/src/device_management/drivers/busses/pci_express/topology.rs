@@ -760,7 +760,12 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                 };
                 if phys_base != 0 {
                     #[cfg(target_arch = "aarch64")]
-                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi()
+                    // Only program MSI-X when the kernel's MSI mechanism (a
+                    // GICv2m frame) actually exists: probing the fixed GICv2m
+                    // address faults on sbsa-ref, which uses the GIC ITS.
+                    if crate::cpu::isa::interrupts::gic::msi_available()
+                        && let Some(message) =
+                            crate::cpu::isa::interrupts::gic::allocate_v2m_msi()
                         && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
                             message,

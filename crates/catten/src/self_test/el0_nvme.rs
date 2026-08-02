@@ -78,6 +78,18 @@ fn wait_for_nvme() -> (usize, u32, u32, Option<u64>) {
 extern "C" fn verify_el0_nvme() {
     let ns = TEST_STATE.lock().as_ref().copied().expect("[nvme] test state missing");
     logln!("[nvme] verifier running, discovering NVMe...");
+
+    // MSI-X setup relies on the kernel's GICv2m MSI allocator, which only
+    // works where the MADT publishes a GICv2m frame at the address the kernel
+    // uses (QEMU virt). On sbsa-ref MSI goes through the GIC ITS (not yet
+    // supported); the gicv2m probe would fault. Report unsupported before
+    // touching the frame.
+    if !crate::cpu::isa::interrupts::gic::msi_available() {
+        logln!("[nvme] SKIP: no supported GICv2m MSI frame in the ACPI MADT; NVMe test not run.");
+        crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
+        return;
+    }
+
     let (bar0, intid, requester_id, msi_address) = wait_for_nvme();
 
     // Protected DMA requires an SMMU to exist and to map this requester to a

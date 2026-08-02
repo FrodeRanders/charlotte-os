@@ -66,6 +66,17 @@ pub fn spcr_uart_base() -> Option<u64> {
     (base != 0).then_some(base)
 }
 
+/// The console UART's interrupt (a GIC SPI INTID) from the SPCR table, if
+/// present. Layout: after the GAS, `InterruptType` (1) + `PCATCompatible` (1),
+/// then the 32-bit `Interrupt` field.
+pub fn spcr_uart_irq() -> Option<u32> {
+    const SPCR_INTERRUPT_OFFSET: u64 = 36 + 1 + 3 + 12 + 1 + 1;
+    let spcr = find_table_physical(*b"SPCR")?;
+    let irq =
+        unsafe { (PAddr::from(spcr + SPCR_INTERRUPT_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned() };
+    (irq != 0).then_some(irq)
+}
+
 /// The GIC distributor and redistributor base addresses from the MADT.
 ///
 /// Returns `(gicd_base, gicr_base)`. The GICD base comes from the GIC

@@ -396,6 +396,29 @@ static GICV2M_ALLOCATED: AtomicU64 = AtomicU64::new(0);
 static GICV2M_SPI_BASE: AtomicU32 = AtomicU32::new(0);
 static GICV2M_SPI_COUNT: AtomicU32 = AtomicU32::new(0);
 
+/// Whether the kernel's MSI mechanism — a GICv2m MSI frame — is present on
+/// this platform. QEMU `virt` places one at `GICD + 0x20000`; `sbsa-ref` uses
+/// the GIC ITS (not yet supported), so probing the fixed GICv2m address there
+/// faults. Callers gate MSI-X setup on this rather than touching the absent
+/// frame.
+pub fn msi_available() -> bool {
+    #[cfg(feature = "acpi")]
+    {
+        // The allocator programs the hardcoded QEMU-virt GICv2m frame, which
+        // sits at `GICD + 0x20000` on virt (GICD = 0x0800_0000). sbsa-ref's GICD
+        // is 0x4006_0000 and MSI goes through the GIC ITS (not yet supported);
+        // probing the absent frame there faults. Derive availability from the
+        // discovered GICD base rather than a MADT GICv2m entry, which QEMU virt
+        // does not publish.
+        return crate::environment::acpi::sdt::discovery::madt_gic_bases()
+            .is_some_and(|(gicd, _)| gicd == GICD_BASE_FALLBACK as u64);
+    }
+    #[cfg(not(feature = "acpi"))]
+    {
+        true
+    }
+}
+
 /// Allocate one SPI from the GICv2m MSI frame and return the PCI message that
 /// asserts it. The v2m frame converts a 32-bit INTID write to `SETSPI_NS` into
 /// an edge-triggered GIC SPI, so no ITS command queue is required.

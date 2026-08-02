@@ -55,11 +55,29 @@ const fn packed_name(bytes: &[u8]) -> u64 {
 }
 
 #[cfg(target_arch = "aarch64")]
-/// QEMU `virt` PL011 UART: MMIO base and its GIC SPI (INTID 33 = SPI 1).
+/// The console PL011 MMIO base, discovered from the SPCR ACPI table (the QEMU
+/// `virt` default `0x0900_0000` is used when ACPI is absent). On `sbsa-ref` and
+/// real ARM servers the console PL011 lives at a different address.
 #[cfg(target_arch = "aarch64")]
-const PL011_BASE: usize = 0x0900_0000;
+fn pl011_base() -> usize {
+    #[cfg(feature = "acpi")]
+    if let Some(base) = crate::environment::acpi::sdt::discovery::spcr_uart_base() {
+        return base as usize;
+    }
+    0x0900_0000
+}
+
 #[cfg(target_arch = "aarch64")]
-const PL011_INTID: u32 = 33;
+/// The console PL011's GIC SPI INTID, discovered from the SPCR table (QEMU
+/// `virt` uses INTID 33).
+#[cfg(target_arch = "aarch64")]
+fn pl011_intid() -> u32 {
+    #[cfg(feature = "acpi")]
+    if let Some(irq) = crate::environment::acpi::sdt::discovery::spcr_uart_irq() {
+        return irq;
+    }
+    33
+}
 
 #[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;
@@ -107,9 +125,9 @@ pub fn test_el0_uart() {
             &name_service,
             ConnectionRights::CALL,
             DriverGrant {
-                mmio_phys_base: PL011_BASE,
+                mmio_phys_base: pl011_base(),
                 mmio_pages: 1,
-                intid: PL011_INTID,
+                intid: pl011_intid(),
                 dma_requester_id: None,
                 dma_msi_address: None,
             },
@@ -206,7 +224,7 @@ extern "C" fn verify_el0_uart() {
             crate::cpu::scheduler::yield_lp();
         }
     }
-    crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+    crate::cpu::isa::interrupts::gic::set_spi_pending(pl011_intid());
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         let mut next_repend = crate::cpu::scheduler::monotonic_millis().saturating_add(250);
@@ -215,7 +233,7 @@ extern "C" fn verify_el0_uart() {
             // Rare safety-net re-pend if the first delivery did not land.
             let now = crate::cpu::scheduler::monotonic_millis();
             if now >= next_repend {
-                crate::cpu::isa::interrupts::gic::set_spi_pending(PL011_INTID);
+                crate::cpu::isa::interrupts::gic::set_spi_pending(pl011_intid());
                 next_repend = now.saturating_add(250);
             }
             crate::cpu::scheduler::yield_lp();
@@ -271,7 +289,7 @@ extern "C" fn verify_el0_uart() {
         }
     }
     assert_eq!(
-        crate::device::interrupt_route_owner(PL011_INTID),
+        crate::device::interrupt_route_owner(pl011_intid()),
         Some(driver_asid),
         "[uart] live driver must own the PL011 interrupt route"
     );
@@ -289,7 +307,7 @@ extern "C" fn verify_el0_uart() {
     // Device reset: teardown must have reclaimed the interrupt route (and the
     // MMIO mapping with the address space).
     assert_eq!(
-        crate::device::interrupt_route_owner(PL011_INTID),
+        crate::device::interrupt_route_owner(pl011_intid()),
         None,
         "[uart] teardown must unroute the crashed driver's interrupt"
     );
@@ -319,9 +337,9 @@ extern "C" fn verify_el0_uart() {
         &state.name_service,
         ConnectionRights::CALL,
         DriverGrant {
-            mmio_phys_base: PL011_BASE,
+            mmio_phys_base: pl011_base(),
             mmio_pages: 1,
-            intid: PL011_INTID,
+            intid: pl011_intid(),
             dma_requester_id: None,
             dma_msi_address: None,
         },
@@ -354,7 +372,7 @@ extern "C" fn verify_el0_uart() {
     let reply = wait_reply(write, "generation-2 console write reply");
     assert_eq!(reply.result, 0, "[uart] generation-2 console write must succeed");
     assert_eq!(
-        crate::device::interrupt_route_owner(PL011_INTID),
+        crate::device::interrupt_route_owner(pl011_intid()),
         Some(driver2_asid),
         "[uart] restarted driver must own the PL011 interrupt route"
     );
