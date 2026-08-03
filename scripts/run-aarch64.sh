@@ -14,6 +14,8 @@
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
 #   --display      Build with framebuffer console (flanterm), boot with ramfb
+#   --sbsa-ref     Boot the QEMU sbsa-ref machine with the TF-A + edk2 firmware
+#                  built by scripts/build-sbsa-firmware.sh (SBSA_FLASH0/1.fd)
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)
 #   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
@@ -59,6 +61,7 @@ TIMEOUT=""
 CLEAN_BUILD="0"
 SCHEDULER_TRACE="0"
 DEBUG_SNAPSHOT="0"
+SBSA_REF="0"
 INSTANCE=""
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
@@ -68,6 +71,7 @@ while [ "$#" -gt 0 ]; do
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --display)     DISPLAY_MODE="1"; shift ;;
+        --sbsa-ref)    SBSA_REF="1"; shift ;;
         --gdb)         GDB="-S"; shift ;;
         --gdb-port)
             [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
@@ -136,6 +140,14 @@ if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
 fi
 if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
     echo "error: --tcpip-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+if [ "$SBSA_REF" = "1" ] && [ "$USE_HVF" = "1" ]; then
+    echo "error: --sbsa-ref is incompatible with --hvf (the sbsa-ref machine needs TCG)" >&2
+    exit 1
+fi
+if [ "$SBSA_REF" = "1" ] && [ "$NET_TEST" = "1" ]; then
+    echo "error: network tests are virt-only; --sbsa-ref has no --net-test" >&2
     exit 1
 fi
 if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
@@ -292,31 +304,85 @@ mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FIL
 mcopy -i "$IMAGE" "$KERNEL" "::/catten"
 mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 
-# --- NVMe persistent disk image ---
-NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
-if [ ! -f "$NVME_IMAGE" ]; then
-    echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
-    dd if=/dev/zero of="$NVME_IMAGE" bs=1048576 count=16 status=none
-else
-    echo ">>> Reusing existing NVMe disk image ${NVME_IMAGE}"
+# --- NVMe persistent disk image (virt only; sbsa-ref boots the image itself) ---
+if [ "$SBSA_REF" != "1" ]; then
+    NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
+    if [ ! -f "$NVME_IMAGE" ]; then
+        echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
+        dd if=/dev/zero of="$NVME_IMAGE" bs=1048576 count=16 status=none
+    else
+        echo ">>> Reusing existing NVMe disk image ${NVME_IMAGE}"
+    fi
+fi
+
+# --- sbsa-ref firmware check ---
+# The sbsa-ref machine boots from the TF-A + edk2 firmware produced by
+# scripts/build-sbsa-firmware.sh, not from QEMU's own UEFI (-bios). Locate
+# SBSA_FLASH0/1.fd and fail with a pointer to the build script if absent.
+if [ "$SBSA_REF" = "1" ]; then
+    resolve_firmware() {
+        local name="$1"
+        local env_override="${2:-}"
+        if [ -n "$env_override" ] && [ -f "$env_override" ]; then
+            echo "$env_override"
+            return 0
+        fi
+        for dir in "$ROOT_DIR/target/firmware" "$ROOT_DIR/target/firmware-src/out"; do
+            if [ -f "$dir/$name" ]; then
+                echo "$dir/$name"
+                return 0
+            fi
+        done
+        return 1
+    }
+    SBSA_FLASH0="$(resolve_firmware SBSA_FLASH0.fd "${CATTEN_SBSA_FLASH0:-}")" \
+        || SBSA_FLASH0=""
+    SBSA_FLASH1="$(resolve_firmware SBSA_FLASH1.fd "${CATTEN_SBSA_FLASH1:-}")" \
+        || SBSA_FLASH1=""
+    if [ -z "$SBSA_FLASH0" ] || [ -z "$SBSA_FLASH1" ]; then
+        echo "error: sbsa-ref firmware is missing (looked for SBSA_FLASH0/1.fd" >&2
+        echo "       under target/firmware/ and target/firmware-src/out/, or" >&2
+        echo "       CATTEN_SBSA_FLASH0 / CATTEN_SBSA_FLASH1 if set)." >&2
+        echo >&2
+        echo "       Build it first:" >&2
+        echo "         scripts/build-sbsa-firmware.sh" >&2
+        echo >&2
+        echo "       (That builds TF-A v2.11 + edk2 with the tracked patches in" >&2
+        echo "        patches/ and writes SBSA_FLASH0.fd / SBSA_FLASH1.fd.)" >&2
+        exit 1
+    fi
+    echo ">>> sbsa-ref firmware: $SBSA_FLASH0 / $SBSA_FLASH1"
 fi
 
 # --- QEMU options ---
-MACHINE="virt,gic-version=3,msi=gicv2m"
-if [ "$USE_HVF" != "1" ]; then
-    MACHINE="${MACHINE},iommu=smmuv3,default-bus-bypass-iommu=off"
+if [ "$SBSA_REF" = "1" ]; then
+    MACHINE="sbsa-ref"
+    QEMU_OPTS=(
+        -M "$MACHINE"
+        -cpu neoverse-n1
+        -m 512M
+        -pflash "$SBSA_FLASH0"
+        -pflash "$SBSA_FLASH1"
+        -drive "if=none,file=${IMAGE},format=raw,id=nvme0"
+        -device "nvme,drive=nvme0,serial=cat0"
+    )
+else
+    MACHINE="virt,gic-version=3,msi=gicv2m"
+    if [ "$USE_HVF" != "1" ]; then
+        MACHINE="${MACHINE},iommu=smmuv3,default-bus-bypass-iommu=off"
+    fi
+    QEMU_OPTS=(
+        -M "$MACHINE"
+        -m 512M
+        -bios "$FIRMWARE"
+        -drive "file=${IMAGE},format=raw,if=none,id=boot0"
+        -device "virtio-blk-pci,drive=boot0,addr=3"
+    )
 fi
-QEMU_OPTS=(
-    -M "$MACHINE"
-    -m 512M
-    -bios "$FIRMWARE"
-    -drive "file=${IMAGE},format=raw,if=none,id=boot0"
-    -device "virtio-blk-pci,drive=boot0,addr=3"
-)
 
 if [ "$USE_HVF" = "1" ]; then
     QEMU_OPTS+=(-accel hvf -cpu host)
-else
+elif [ "$SBSA_REF" != "1" ]; then
     QEMU_OPTS+=(-cpu cortex-a710)
 fi
 
@@ -340,10 +406,15 @@ if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then
     QEMU_OPTS+=(-monitor "unix:/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
 fi
 
-QEMU_OPTS+=(
-    -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
-    -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2"
-)
+if [ "$SBSA_REF" != "1" ]; then
+    # The sbsa-ref boot image already IS the NVMe drive (see the sbsa-ref
+    # QEMU_OPTS above); the virt flow's separate persistent NVMe disk does not
+    # apply there.
+    QEMU_OPTS+=(
+        -drive "if=none,file=${NVME_IMAGE},format=raw,id=nvme0"
+        -device "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2"
+    )
+fi
 
 if [ "$NET_TEST" = "1" ]; then
     QEMU_OPTS+=(-nic none)
