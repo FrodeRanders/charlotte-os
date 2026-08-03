@@ -226,14 +226,14 @@ impl TimerQueue {
     pub(crate) fn ensure_event(&mut self, event: TimerEvent) {
         let key = event.key.expect("ensure_event requires a keyed event");
         if self.events.iter().any(|queued| queued.key == Some(key)) {
-            // A keyed event (the scheduler quantum) carries a fresh deadline on
-            // every dispatch: the comment on `TimerEventKey` states each
-            // dispatch resets the same per-LP deadline. Keeping the stale
-            // entry (just `rearm_front`) would arm the hardware comparator for
-            // an already-passed time, so the timer fires spuriously or, if the
-            // interrupt is transiently masked, never again. Replace the stale
-            // entry with the new one (which re-sorts and re-arms the head).
-            self.events.retain(|queued| queued.key != Some(key));
+            // Software presence does not prove that the LP comparator is
+            // still programmed. In particular, the initial quantum can be
+            // queued before local interrupt-controller initialization resets
+            // or masks the hardware timer. Reconcile without moving the
+            // existing deadline; a past deadline becomes the minimal prompt
+            // timeout in `rearm_front`.
+            self.rearm_front();
+            return;
         }
         self.add_event(event);
     }
