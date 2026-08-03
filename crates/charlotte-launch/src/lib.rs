@@ -6,8 +6,12 @@ pub const CQ_VADDR: usize = 0x0000_0000_0001_1000;
 pub const CQ_ENTRIES: u32 = 32;
 pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 pub const INPUT_CAPACITY: usize = 4096;
-pub const HEAP_VADDR: usize = 0x0000_0000_0001_3000;
-pub const HEAP_SIZE: usize = 0xd000;
+pub const HEAP_VADDR: usize = 0x0000_0000_0030_0000;
+/// Per-domain heap arena. 256 KiB: the object store's mount allocates a bitmap
+/// (up to ~32 KiB) plus a directory entry vector (up to ~64 KiB for a 128 MiB
+/// disk) while formatting. The arena sits well above the services' ELF load
+/// segments (which start at `0x20000`) and below the status page (`0x7f0000`).
+pub const HEAP_SIZE: usize = 0x40000;
 /// Mutable program status/output page, deliberately separate from launch
 /// configuration so applications cannot overwrite their launch contract.
 // Kept below the per-shard CQ reservation at 0x0080_0000 and well above the

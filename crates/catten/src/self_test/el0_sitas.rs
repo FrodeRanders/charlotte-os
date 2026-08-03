@@ -45,9 +45,9 @@ const SITAS_CQ_VADDR: usize = 0x0000_0000_0001_1000;
 #[cfg(target_arch = "aarch64")]
 const SITAS_INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 #[cfg(target_arch = "aarch64")]
-const SITAS_HEAP_VADDR: usize = 0x0000_0000_0001_3000;
+const SITAS_HEAP_VADDR: usize = charlotte_launch::HEAP_VADDR;
 #[cfg(target_arch = "aarch64")]
-const SITAS_HEAP_PAGES: usize = 13;
+const SITAS_HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / 4096;
 #[cfg(target_arch = "aarch64")]
 const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 
