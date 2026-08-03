@@ -20,6 +20,13 @@
 //! ([`verify_el0_result`]) is spawned to poll the result page (via its HHDM
 //! alias) once the scheduler is active and assert the sentinel and returned
 //! cap, panicking on mismatch or timeout.
+//!
+//! **Why the stub is hand-written assembly:** like the sibling syscall-level
+//! tests (`el0_ipc`, `el0_pingpong`), the stub runs at EL0 with no runtime —
+//! no crt0, heap, panic handler or config-page parsing — so the first EL0
+//! exercise isolates the SVC dispatch path as the only variable under test.
+//! Higher-level EL0 tests load Rust-compiled ELFs via `load_domain`; this
+//! minimal stub is deliberately assembly (embedded through `core::arch::asm!`).
 
 #[cfg(target_arch = "aarch64")]
 use core::sync::atomic::{

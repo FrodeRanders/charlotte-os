@@ -5,6 +5,22 @@
 //! connection delegation seeded by the kernel, send, call, receive, reply, and
 //! reply polling. The userspace stubs never receive or pass ASIDs; authority is
 //! represented only by caps in their own protection domains.
+//!
+//! ### Why these stubs are hand-written assembly, not Rust
+//!
+//! This is a deliberate minimal-surface syscall-ABI test. The EL0 stubs
+//! included below run with **no runtime at all** — no crt0, no heap, no panic
+//! handler, no config-page parsing — and drive the kernel purely through raw
+//! `svc` traps and fixed virtual addresses. A failure therefore isolates the
+//! kernel's SVC dispatch and IPC/capability code as the *only* variable under
+//! test. Loading a Rust ELF would layer the whole `catten-rt` runtime on top,
+//! so a bug in crt0, the panic handler or config-page parsing could mask or
+//! mimic a syscall-ABI bug. The higher-level EL0 tests (`el0_uart`,
+//! `el0_nvme`, `el0_raft`, `el0_service`, `el0_sitas`, ...) already load
+//! Rust-compiled ELFs via `load_domain`; hand-written assembly is deliberately
+//! kept only for the syscall-level smoke tests. The stubs are kept in Rust
+//! source through `global_asm!(include_str!(...))` so they compile with the
+//! kernel rather than being a build-system artifact.
 
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -27,6 +43,8 @@ use crate::memory::{
 };
 
 #[cfg(target_arch = "aarch64")]
+// Hand-written EL0 syscall-ABI stubs; see the module doc for why these are
+// assembly rather than Rust ELFs (minimal-surface syscall-ABI isolation).
 core::arch::global_asm!(include_str!("el0_ipc.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_block.asm"));

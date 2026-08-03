@@ -14,6 +14,17 @@
 //!   result page · EXIT
 //!
 //! Requires >= 2 LPs; skipped otherwise.
+//!
+//! ### Why this runs as hand-written assembly, not Rust
+//!
+//! Like [`super::el0_ipc`], this is a minimal-surface syscall-ABI test: the
+//! two stubs run at EL0 with no runtime (no crt0, heap, panic handler or
+//! config-page parsing), driving the kernel purely through raw `svc` traps and
+//! fixed virtual addresses. A failure isolates the SVC dispatch, mailbox and
+//! completion-kernel code as the only variable under test. Higher-level EL0
+//! tests load Rust-compiled ELFs via `load_domain`; assembly is deliberately
+//! kept for this syscall-level smoke test, and embedded in Rust source via
+//! `global_asm!(include_str!(...))`.
 
 #[cfg(target_arch = "aarch64")]
 use crate::completion;
@@ -36,6 +47,8 @@ use crate::memory::{
 };
 
 #[cfg(target_arch = "aarch64")]
+// Hand-written EL0 syscall-ABI stub; see the module doc for why this is
+// assembly rather than a Rust ELF (minimal-surface syscall-ABI isolation).
 core::arch::global_asm!(include_str!("el0_pingpong.asm"));
 
 /// VADDRs in the demo's user address space.
