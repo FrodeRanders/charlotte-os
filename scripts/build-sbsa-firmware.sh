@@ -31,16 +31,23 @@ NCPU="$(sysctl -n hw.ncpu 2>/dev/null || echo 8)"
 echo ">>> Working directory: $WORKDIR"
 
 clone() {
-    local repo="$1" dir="$2"
+    local repo="$1" dir="$2" branch="${3:-}"
     if [ ! -d "$dir" ]; then
-        git clone --depth 1 "$repo" "$dir"
+        if [ -n "$branch" ]; then
+            git clone --depth 1 --branch "$branch" "$repo" "$dir"
+        else
+            git clone --depth 1 "$repo" "$dir"
+        fi
     else
         echo "    (reusing $dir)"
     fi
 }
 
 echo ">>> Cloning sources"
-clone https://github.com/ARM-software/arm-trusted-firmware.git "$WORKDIR/tf-a"
+# TF-A v2.11: the sbsa-ref images are built from the v2.11 tag (the prebuilt
+# upstream BL1 in edk2-non-osi is v2.11.0-774, and later TF-A moved the SRAM
+# layout so a v2.11 BL1 cannot load a master BL2).
+clone https://github.com/ARM-software/arm-trusted-firmware.git "$WORKDIR/tf-a" v2.11
 clone https://github.com/tianocore/edk2.git "$WORKDIR/edk2"
 clone https://github.com/tianocore/edk2-platforms.git "$WORKDIR/edk2-platforms"
 clone https://github.com/tianocore/edk2-non-osi.git "$WORKDIR/edk2-non-osi"
@@ -110,6 +117,17 @@ s = s.replace(
     '\tcase SIP_SVC_GET_CPU_NODE:\n\t\tindex = x1;\n\t\tif (index < PLATFORM_CORE_COUNT) {\n\t\t\tSMC_RET3(handle, NULL,\n\t\t\t\tdynamic_platform_info.cpu[index].nodeid,\n\t\t\t\tdynamic_platform_info.cpu[index].mpidr);\n\t\t} else {\n\t\t\tSMC_RET1(handle, SMC_ARCH_CALL_INVAL_PARAM);\n\t\t}\n\n\tcase SIP_SVC_GET_CPU_TOPOLOGY:\n\t\tSMC_RET5(handle, NULL,\n\t\t\tcpu_topology.sockets,\n\t\t\tcpu_topology.clusters,\n\t\t\tcpu_topology.cores,\n\t\t\tcpu_topology.threads);', 1)
 open(p, 'w').write(s)
 EOF
+fi
+
+# (3) Disable GIC security (GICD_CTLR.DS=1) in BL31. The whole boot chain runs
+#     at Non-secure EL1, and with DS=0 QEMU drops NS writes to GICD_IGROUPR and
+#     reports LPIs as Group 0, which silently breaks SPI + MSI delivery to the
+#     kernel. See docs/sbsa-ref-bringup.md "GIC security". This patch is applied
+#     with `git apply` (TF-A is a git checkout) from the tracked patch file.
+GICPATCH="$PWD/patches/tf-a/0001-sbsa-gic-disable-security-ds.patch"
+if ! grep -q "CTLR_DS_BIT" "$WORKDIR/tf-a/plat/qemu/qemu_sbsa/sbsa_gic.c"; then
+    echo ">>> TF-A: disabling GIC security (DS=1) in plat_qemu_gic_init"
+    git -C "$WORKDIR/tf-a" apply "$GICPATCH"
 fi
 
 # =============================================================================

@@ -241,14 +241,34 @@ Non-secure kernel in three ways that silently break device interrupt delivery:
    (the kernel's FIQ vector does not ack it), so it stays pending forever and,
    via the hpplpi cache, outranks/masks every other interrupt on that CPU.
 
-**Firmware fix (`SBSA_FLASH0-ds1.fd`, TF-A v2.11 + `plat_qemu_gic_init`
-setting `GICD_CTLR.DS=1` at EL3):** with `DS=1` the NS kernel's `GICD_IGROUPR`
-writes take effect (its SPIs become Group 1 NS and are deliverable as IRQ), and
-QEMU tags LPIs Group 1 NS so they are acked/EOI'd normally instead of wedging
-the CPU. The EL3 write is the only way to set `DS` (the NS write mask forbids
-it). Built with TF-A v2.11 (matching the v2.11 BL1) plus the existing EL1
-handoff + `SIP_SVC_GET_CPU_TOPOLOGY` patches; the FIP is packed into
-`SBSA_FLASH0.fd` at `0x12000` after the original BL1.
+ **Firmware fix (TF-A v2.11 + `plat_qemu_gic_init` setting `GICD_CTLR.DS=1` at
+EL3):** with `DS=1` the NS kernel's `GICD_IGROUPR` writes take effect (its SPIs
+become Group 1 NS and are deliverable as IRQ), and QEMU tags LPIs Group 1 NS so
+they are acked/EOI'd normally instead of wedging the CPU. The EL3 write is the
+only way to set `DS` (the NS write mask forbids it).
+
+**Reproducing the firmware (version control):** the patched third-party TF-A
+is *not* vendored (the source stays upstream); instead the delta is tracked as
+a patch file and applied by the build script:
+
+- `patches/tf-a/0001-sbsa-gic-disable-security-ds.patch` — the `DS=1` change to
+  `plat/qemu/qemu_sbsa/sbsa_gic.c` (committed, reviewable).
+- `scripts/build-sbsa-firmware.sh` pins the TF-A clone to the **v2.11** tag
+  (the images are built from v2.11; the prebuilt upstream BL1 is v2.11.0-774,
+  and later TF-A moved the SRAM layout so a v2.11 BL1 cannot load a master
+  BL2), then applies, in order: the EL1 BL33 handoff patch, the
+  `SIP_SVC_GET_CPU_TOPOLOGY` (SMC 202) patch, and the tracked `DS=1` patch
+  before building BL2/BL31 and packing the FIP.
+- The resulting `SBSA_FLASH0.fd` places the original BL1 at `0x0` and the new
+  FIP (BL2 + BL31, `--tb-fw`/`--soc-fw`) at `0x12000`.
+
+Build tooling notes (macOS): TF-A's v2.11 makefiles need GNU make 4.x
+(`gmake`) and GNU sed (`gsed`) on `PATH` — the system make 3.81 / BSD sed
+fail on `make_helpers/toolchain.mk` and the version-detection helpers — and
+`aarch64-elf-gcc`. If `libc.a`/`libfdt.a` come out empty after a failed build,
+`aarch64-elf-ar cr build/qemu_sbsa/release/lib/libc.a build/.../libc/*.o` (and
+likewise for `libfdt`) then re-run. The current image is saved at
+`target/firmware/SBSA_FLASH0-ds1.fd` (gitignored under `target/`).
 
 **Kernel fix (committed):** QEMU re-pends the per-LP timer PPI (INTID 27)
 almost continuously, and the distributor caches one "highest priority pending
