@@ -103,6 +103,50 @@ EL2-resident features.
   as it already can via the `_start` descent).
 - Add a TCG/HVF EL2 test mode so this is exercised before real hardware.
 
+#### Why EL2 — what it constructively buys
+
+EL2 is not merely "where real firmware enters us"; it is an *isolation
+authority* that CharlotteOS's capability model is unusually well-placed to
+use. Two models:
+
+- **Separate hypervisor at EL2** (kernel stays at EL1, a thin hypervisor
+  isolates it), or
+- **VHE — the kernel itself at EL2** with stage-2 isolating every EL0 domain.
+  This is the cheaper option and the likely default for a single kernel.
+
+Concrete uses, strongest first:
+
+1. **Capability-root at EL2 (headline).** If the authoritative capability
+   table / minting authority lives at EL2, even a compromised EL1 kernel
+   cannot forge or mint capabilities — it can only use what it was granted.
+   This gives a *compromise-resistant microkernel*: the isolation already
+   granted to EL0 drivers is extended to the kernel itself. CharlotteOS's
+   capability abstraction already provides the right primitive; EL2 is where
+   its root belongs. Design sketch: `docs/el2-capability-root.md`.
+2. **Stage-2 defense-in-depth for EL0 driver domains.** A second, unforgeable
+   "you may only touch what you were granted" layer even if a domain's stage-1
+   page table is corrupted. This is the CPU-side twin of the SMMU (which
+   polices DMA): the two compose into complete capability enforcement.
+3. **Virtual interrupt mediation (vGIC).** Deliver *virtual* interrupts per
+   domain, keeping the real GIC and interrupt-grant routing under EL2.
+4. **Per-domain time (virtual counter).** Separate virtual timers/counters for
+   sandboxing, accounting, and cross-domain timing-side-channel protection.
+5. **Trapping for per-domain policy.** Trap-and-emulate CPU features (SIMD/SVE,
+   debug/PMU, system registers) so "this domain may use the PMU" becomes an
+   EL2-enforced grant, matching the device-grant model.
+6. **Trusted boot / attestation root.** EL2 holds the measurement root and
+   verifies EL1 before releasing kernel secrets or bootstrapping the
+   capability root.
+7. **Functional:** guest-OS hosting (a Linux VM for compatibility), domain
+   checkpoint/migration via stage-2, virtual devices, and an EL1 "kernel
+   firewall" for audit.
+
+Cost/considerations: a separate hypervisor adds a second privileged codebase;
+**VHE keeps it to one kernel at EL2** and is the pragmatic first step.
+Capability-rooting at EL2 is a genuine redesign of *where* authority lives —
+high value, high effort. Whatever is chosen must keep the EL1 path working on
+the emulated targets, which remain the dev baseline.
+
 ### Phase 2 — remove QEMU-shape assumptions
 - Re-validate the GIC SPI/LPI/timer priorities against a platform whose timer
   PPI is not continuously re-pended; only keep tuning that is architecturally
@@ -143,6 +187,8 @@ EL2-resident features.
 
 ## References
 
+- `docs/el2-capability-root.md` — the EL2 capability-root design sketch (the
+  headline security use for the EL2 layer).
 - `docs/sbsa-ref-bringup.md` — the emulated bring-up, the GIC/LPI/heap fixes,
   and the reproducible firmware.
 - `docs/aarch64-port-status.md` — the earlier `virt` port status and port-wide
