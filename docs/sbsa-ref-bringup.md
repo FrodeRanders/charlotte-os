@@ -209,19 +209,48 @@ copy/move/cancel), device (MMIO + SPI), cq-wait, async, sitas, service, uart
 (console driver via discovered PL011 base/IRQ from the SPCR), and raft (elects
 a leader). The boot completes (boot-done marker).
 
-Remaining on sbsa-ref:
-- **`nvme`** — the GIC ITS + LPI MSI path is implemented: the kernel discovers
-  the ITS (`0x44081000`), programs the NVMe's MSI-X via `MAPD`/`MAPC`/`MAPTI`
-  (device ID = the PCI Requester ID), and enables LPI delivery on the
-  redistributor. The NVMe driver now spawns on sbsa-ref with a real MSI-X
-  vector (`address=0x44091040 data=0 intid=8192`) and a DMA domain. However the
-  driver's EL0 init does not progress (its status frame stays zero) and its
-  client spin-polls `IpcReplyPoll` waiting for a registration that never
-  arrives — a driver-spawn/ELF-execution issue on sbsa-ref that is separate
-  from the (working) ITS/MSI plumbing.
+Remaining on sbsa-ref (latest): `nvme`, `raft-storage`, `scheduler-lifecycle`
+(15/18 pass, 0 fail; the NVMe driver runs its EL0 init and programs MSI-X, but
+its completion interrupt is not yet reliably delivered).
 
-The virt/TCG baseline remains fully green (`SELFTEST COMPLETE: passed=18
-failed=0`), with the NVMe test running and passing against the real GICv2m.
+### GIC security: the SPI/LPI delivery blocker (root-caused Aug 2026)
+
+The sbsa-ref GIC has `has-security-extensions=true`, and this boot chain never
+runs any secure world (everything is Non-secure EL1 because QEMU TCG's EL2 is
+unreliable). With `GICD_CTLR.DS=0` QEMU enforces the security model against the
+Non-secure kernel in three ways that silently break device interrupt delivery:
+
+1. **Non-secure writes to `GICD_IGROUPR` are dropped.** The distributor's
+   `GICD_IGROUPR` write handler ignores NS accesses while `DS=0`, so the
+   kernel's `enable_spi` can never move an SPI into Group 1 NS. Every SPI
+   stays Group 0.
+2. **Group 0 SPIs are masked from the pending scan.** `gicd_int_pending()`
+   only includes an SPI whose group is enabled in `GICD_CTLR`; Group 0 SPIs
+   require `EnableGrp0` (bit 0), which the NS kernel is also forbidden from
+   setting (the NS `GICD_CTLR` write mask is just bit 1). So a Group 0 SPI is
+   never eligible for signalling.
+3. **LPIs are reported as Group 0.** `update_for_one_lpi()` sets
+   `hpp->grp = ds ? G1NS : G0`. With `DS=0` a pending LPI is signalled as FIQ
+   (the kernel's FIQ vector does not ack it), so it stays pending forever and,
+   via the hpplpi cache, outranks/masks every other interrupt on that CPU.
+
+**Firmware fix (`SBSA_FLASH0-ds1.fd`, TF-A v2.11 + `plat_qemu_gic_init`
+setting `GICD_CTLR.DS=1` at EL3):** with `DS=1` the NS kernel's `GICD_IGROUPR`
+writes take effect (its SPIs become Group 1 NS and are deliverable as IRQ), and
+QEMU tags LPIs Group 1 NS so they are acked/EOI'd normally instead of wedging
+the CPU. The EL3 write is the only way to set `DS` (the NS write mask forbids
+it). Built with TF-A v2.11 (matching the v2.11 BL1) plus the existing EL1
+handoff + `SIP_SVC_GET_CPU_TOPOLOGY` patches; the FIP is packed into
+`SBSA_FLASH0.fd` at `0x12000` after the original BL1.
+
+**Kernel fix (committed):** QEMU re-pends the per-LP timer PPI (INTID 27)
+almost continuously, and the distributor caches one "highest priority pending
+interrupt" per CPU. With both the timer PPI and a device SPI at the same
+priority (`0xa0`), the cached hppi keeps the lower INTID (the timer), so
+`SPI 33` (the PL011's IRQ) was permanently outranked. `enable_spi` now gives
+device SPIs priority `0x50`, strictly above the timer PPI, so a pending SPI
+always wins the cached-hppi tie. This makes the device and uart self-tests pass
+reliably on sbsa-ref.
 
 These are the same "hardcoded platform geometry" class of issue as the original
 GIC/PL011 constants, and are the natural next bring-up items.
