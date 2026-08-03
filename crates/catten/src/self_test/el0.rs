@@ -2,12 +2,12 @@
 //! kernel's syscall dispatch → return path *and* its side effects.
 //!
 //! This is the first real-EL0 exercise in the kernel. It:
-//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ
-//!    ring page, and a writable result page.
+//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ ring page, and a
+//!    writable result page.
 //! 2. Writes a small hand-written AArch64 stub to the code page.
 //! 3. Creates a user thread whose entry point is the mapped code page.
-//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned
-//!    capability and a sentinel to the result page, then loops via `wfe`.
+//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned capability and a sentinel
+//!    to the result page, then loops via `wfe`.
 //!
 //! When the user thread runs, `SVC #1` traps to `sync_dispatcher`, which decodes
 //! ESR_EL1.EC, builds a TrapFrame, dispatches to the submit handler (which
