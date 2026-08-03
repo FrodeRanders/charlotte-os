@@ -1,3 +1,29 @@
+//! Self-test: the EL0 Raft service — leader election and durable recovery.
+//!
+//! Two deferred verifier tests exercise the `raft.elf` protection domain
+//! through the name service and launch manifest, without any hardcoded ASID,
+//! LP or kernel object id leaking into the EL0 domain.
+//!
+//! What is tested:
+//! - [`test_el0_raft`] spawns two Raft nodes (`r1`, `r2`) with no imposed registration order and
+//!   waits for the pair to elect exactly one leader; the nodes exchange state through the
+//!   mailbox/endpoint ABI and the name service retains the deferred lookups so ordering cannot mask
+//!   a broken synchronization path. Outcome: exactly one node reaches the leader state
+//!   (follower/leader states `3`/`1` in either order) with a nonzero term.
+//! - [`test_persistent_raft`] (used by the NVMe test) spawns a single node whose manifest requests
+//!   durable storage, waits for it to reach a leader term, stops it, respawns it with the same
+//!   manifest, and asserts the restarted node recovers and *advances* its durable term. Outcome:
+//!   term/vote state survives a process restart on the NVMe-backed object store, proving the
+//!   storage stack is durable.
+//!
+//! Why: Raft election exercises the full cross-domain message path (deferred
+//! name lookup, delegated connections, typed mailbox dispatch) and the
+//! NVMe-backed variant is the end-to-end proof that the block/object-store
+//! stack persists data across crashes.
+//!
+//! Expected outcome: each verifier logs `SUCCESS` and calls
+//! [`crate::self_test::results::pass`] for `TestId::Raft` / `TestId::RaftStorage`;
+//! the authoritative coordinator then reports both bits passed.
 #[cfg(target_arch = "aarch64")]
 mod inner {
     use crate::{

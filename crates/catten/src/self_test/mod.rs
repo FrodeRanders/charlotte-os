@@ -1,9 +1,123 @@
 //! # Kernel Self-Test Subsystem
 //!
-//! This subsystem contains diagnostic tests meant to test the kernel itself and aid in development
-//! and troubleshooting. Almost all subsystems with the exception of drivers should have at least
-//! some tests in this module. In software engineering terminology the tests in this module should
-//! be whitebox integration tests that can be run after Catten initializes itself.
+//! Whitebox integration tests that run after Catten has initialized itself,
+//! meant to validate the kernel and aid development and troubleshooting.
+//! Almost every subsystem except drivers has coverage here. The suite is
+//! compiled into the kernel and invoked from `run_self_tests` on the boot
+//! path; it is also the canonical smoke test used by `scripts/run-aarch64.sh`
+//! to prove a boot image (virt or `--sbsa-ref`) is healthy.
+//!
+//! ## Execution model
+//!
+//! The tests split into two phases, because most of the kernel's *async*
+//! machinery requires the scheduler to be running while self-tests start on
+//! the boot path before the BSP ever yields:
+//!
+//! - **Synchronous, boot-path tests** run inline from `run_self_tests` and complete before
+//!   `finalize_and_start_coordinator` is called. These exercise kernel APIs that return directly:
+//!   the physical/virtual memory allocators, memory-object capability tables, the
+//!   completion-capability table, the kernel-side IPC endpoint ABI, syscall dispatch, the bounded
+//!   IPI queue, shard-local state/mailboxes, and running-statistics math.
+//! - **Deferred verifiers** are kernel threads registered via [`results::spawn_verifier`] that run
+//!   once the scheduler is active. Each owns one bit in the authoritative [`results`] bitmap and
+//!   reports success/failure through [`results::pass`] / [`results::fail`]. These cover everything
+//!   that needs a real scheduler, real user address spaces, real EL0 execution, a live GIC, or a
+//!   second guest on the network.
+//!
+//! ## Test matrix (grouped by subsystem)
+//!
+//! Memory and heap:
+//! - [`memory::pmem`] / [`memory::vmem`] / [`memory::allocator`] — physical and virtual page
+//!   allocators and the HHDM/linear mapping; outcome: frames, regions and HHDM aliases are
+//!   allocated/freed with correct addresses and no overlap.
+//! - [`memory::object`] — memory-object capability tables (map/unmap, borrow, reclaim); outcome:
+//!   capabilities round-trip and teardown reclaims pins.
+//! - [`statistics`] — running-mean/variance accumulator; outcome: canonical sample set yields the
+//!   documented count/min/max/variance.
+//!
+//! Completion / async syscall ABI:
+//! - [`completion`] — completion-capability submission table, buffer-ownership contract, observer
+//!   signal path, submission backpressure; outcome: the kernel-side submit/observe path is correct
+//!   (the EL0 entry is a later phase).
+//! - [`cq`] / [`cq_completion`] — the shared-memory CQ ring producer logic and its integration with
+//!   completion; outcome: ring entries appear with the correct values and overflow/pending counts
+//!   are exact.
+//! - [`cq_wait`] — the blocking, wake-aware CQ wait used by the reactor; outcome: a blocked thread
+//!   is released by a completion, by an explicit wake, by a per-shard wake, and by an IPC on a
+//!   CQ-bound endpoint.
+//!
+//! IPC:
+//! - [`ipc`] — the kernel-side endpoint IPC ABI (create, mint, delegate, send, call, reply) and
+//!   vector-IPC transaction rollback; outcome: endpoints and connections behave as specified and
+//!   failed transactions leave no orphaned state.
+//! - [`adversarial`] — negative tests (success criterion 12); outcome: every
+//!   capability/memory-transfer misuse returns the documented error instead of corrupting kernel
+//!   state.
+//! - [`syscall`] — the syscall dispatcher; outcome: every dispatch route handles a synthetic
+//!   `TrapFrame` correctly.
+//!
+//! Scheduling and per-LP primitives:
+//! - [`ipi`] — the bounded cross-LP IPI queue; outcome: try-push reports backpressure when full and
+//!   closures drain/execute.
+//! - [`shard`] — lock-free `ShardLocal<T>` and typed `ShardMailbox<M>`; outcome: owner/borrow
+//!   discipline and bounded send/receive hold.
+//! - [`scheduler_lifecycle`] — timer, migration and cross-LP retirement; outcome: threads
+//!   migrate/retire without lost timers or dangling LP state.
+//! - [`statistics`] is exercised here as a kernel utility.
+//!
+//! EL0 (userspace) execution — each spawns a real protection domain and
+//! verifies the SVC ABI + capability model end to end:
+//! - [`el0`] — a hand-written stub executes a syscall at EL0; outcome: the syscall round-trips and
+//!   writes its result back.
+//! - [`el0_ipc`] — endpoint IPC from EL0 (create, mint, delegate, call, receive, reply, blocking
+//!   receive, cross-AS, memory-move/copy/cancel); outcome: the scalar endpoint ABI works from
+//!   userspace with no ASID/LP leakage.
+//! - [`el0_demo`] — async + cross-LP work placement via the syscall ABI; outcome: a worker pinned
+//!   to another LP completes a shared-CQ round trip.
+//! - [`el0_pingpong`] — two shards communicate cross-LP over the full svc ABI; outcome: the
+//!   mailbox/capability handshake completes with correct data.
+//! - [`el0_sitas`] — loads the Rust-compiled sitas/catten-user ELF and runs `basic_kv`; outcome: a
+//!   real ELF's PT_LOAD segments map and execute.
+//! - [`el0_service`] — the name service + service manager (Phase 3); outcome: services
+//!   register/lookup by name and restart semantics (teardown, stale-connection rejection,
+//!   generation bump) hold.
+//! - [`el0_raft`] — two-node Raft leader election and NVMe-backed persistent recovery; outcome:
+//!   exactly one leader is elected and a restarted node recovers and advances its durable term.
+//!
+//! Device model:
+//! - [`device`] — device capabilities (MMIO regions, interrupt objects); outcome: grants/unmaps and
+//!   interrupt delivery to a completion queue work both via the kernel path and through a real GIC
+//!   SPI.
+//! - [`el0_uart`] — Phase 8 userspace UART driver; outcome: a client writes through a real EL0
+//!   driver and a delegated PL011 interrupt completes a deferred read; teardown/restart reclaim and
+//!   re-grant cleanly.
+//! - [`el0_nvme`] — Phase 1 NVMe block driver + object store; outcome: a 12 KiB write/flush/read
+//!   round trip with real MSI-X completions, an object-store format/mount, and (with storage)
+//!   persistent Raft recovery.
+//!
+//! Networking (feature-gated, `target_arch = "aarch64"`):
+//! - [`el0_net`] (`virtio_net_test`), [`el0_disco`] (`disco_net_test`), [`el0_dns`]
+//!   (`dns_net_test`), [`el0_tcpip`] (`tcpip_net_test`), [`el0_http`] (`http_net_test`) —
+//!   virtio-net, cluster discovery, the distributed name service over Raft, the smoltcp adapter,
+//!   and an HTTP server. These need matching PCI hardware (or a second QEMU guest) and are skipped
+//!   in the ordinary disk-only build.
+//!
+//! ## Results and expected outcome
+//!
+//! [`results`] is the authoritative completion tracker. The boot suite
+//! registers 18 tests; each network feature adds one more. A deferred
+//! coordinator thread prints periodic `SELFTEST WAITING` summaries and, when
+//! every registered test has either passed or failed, a single final line:
+//!
+//! ```text
+//! SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff ...
+//! ```
+//!
+//! **Expected outcome on both virt/TCG and sbsa-ref: `passed=18 failed=0
+//! pending=0`** (the bitmap `0x3ffff` covers the 18 registered boot tests).
+//! `run_self_tests` itself returns after the synchronous tests; the final
+//! authoritative verdict is produced by the coordinator thread and observed
+//! by `scripts/run-aarch64.sh` under `--timeout`.
 
 pub mod adversarial;
 pub mod completion;

@@ -1,4 +1,29 @@
 //! Authoritative completion state for deferred kernel self-tests.
+//!
+//! The selftest suite's tests that need a running scheduler or a real EL0
+//! domain run as *deferred verifiers*: each is a kernel thread registered
+//! with one bit in a per-test bitmap. This module tracks which tests are
+//! registered (`EXPECTED`), which have passed (`PASSED`) or failed
+//! (`FAILED`), and — once [`finalize_and_start_coordinator`] is called after
+//! boot — runs a coordinator thread that prints periodic `SELFTEST WAITING`
+//! summaries and, when every registered test has resolved, a single
+//! authoritative `SELFTEST COMPLETE` line with pass/fail/pending counts and
+//! bitmaps.
+//!
+//! Why: boot-path tests cannot block on asynchronous results (the scheduler
+//! is not running), so the verdict must come from a thread that yields. The
+//! coordinator deliberately avoids timer-based sleeps so the authoritative
+//! result is never itself dependent on the timer-wake path under test.
+//!
+//! Expected outcome: `register_boot_suite` registers the 18 boot tests (plus
+//! any feature-gated network tests), every verifier reports exactly once via
+//! [`pass`]/[`fail`] (asserting it was registered and has not already
+//! resolved), and the coordinator terminates with `failed=0 pending=0` — on
+//! virt/TCG and sbsa-ref this is `passed=18 failed=0 pending=0`.
+//!
+//! A panic in a verifier is routed through [`fail_verifier_tid`] (installed
+//! by the panic handler) so a crashing verifier atomically fails its own bit
+//! instead of hanging the boot.
 
 use core::sync::atomic::{
     AtomicBool,

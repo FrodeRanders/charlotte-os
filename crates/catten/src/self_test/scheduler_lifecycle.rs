@@ -1,4 +1,29 @@
 //! Scheduler timer, migration, and cross-LP retirement regression coverage.
+//!
+//! A deferred kernel-thread verifier exercises three scheduler guarantees
+//! that are easy to break silently:
+//!
+//! - **Timer-affinity retention** — workers co-located on LP0 at boot freeze their established home
+//!   (`migration_safe = false`) and must still be on that LP after a `sleep_millis(128)` (several
+//!   timer wakes). Stale generation-free admission of a live thread must be rejected
+//!   (`submit_new_thread` / `submit_woken_thread` with a stale generation fail). Outcome: timer
+//!   wakes do not migrate a thread whose affinity was established while queued, and generation
+//!   checks block stale re-admission.
+//! - **Runtime rebalance** — after the affinity phase, a coordinator induces a controlled imbalance
+//!   and a *sustained-window sampling* mechanism migrates the workers, certifying `migration_safe`
+//!   threads. Outcome: the certified-migration counter advances to the target.
+//! - **Cross-LP remote abort** — a thread is aborted from a different LP; the abort must retire the
+//!   target's state without wedging either LP. (Skipped when fewer than two LPs exist.)
+//!
+//! Why: these are the scheduler paths (boot-time co-location, generation
+//! fencing, sampling-based migration, remote abort) that the rest of the
+//! suite depends on for deterministic EL0 test scheduling, and they only
+//! exercise correctly once the scheduler is live.
+//!
+//! Expected outcome: the deferred verifier reaches
+//! `maybe_report_success` and calls
+//! [`crate::self_test::results::pass`] for `TestId::SchedulerLifecycle`; the
+//! authoritative coordinator then reports that bit passed.
 
 use alloc::{
     sync::Weak,

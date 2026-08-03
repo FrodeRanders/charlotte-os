@@ -1,4 +1,42 @@
-//! Self-test: Phase 1 userspace NVMe block device driver + object store.
+//! Self-test: the userspace NVMe block device driver + object store.
+//!
+//! The deepest end-to-end storage test. A deferred verifier runs after the
+//! scheduler is active and drives the whole stack through real protection
+//! domains: PCI topology discovery → a userspace driver granted the BAR0
+//! MMIO window, its completion IRQ and a protected-DMA (SMMU) domain → the
+//! node name service → an object store on top of the block device → a
+//! persistent object client → and finally durable Raft recovery.
+//!
+//! Phases (each must succeed for the verifier to call
+//! [`crate::self_test::results::pass`] for `TestId::Nvme`):
+//!
+//! 1. **Discovery / grants** — the verifier looks up the first NVMe controller in the published PCI
+//!    topology and spawns `nvme.elf` with `DriverGrant` capabilities (MMIO base, interrupt, SMMU
+//!    requester id, MSI-X address). Platforms without an MSI-capable GIC or an SMMU stream report
+//!    the test unsupported (`results::fail`) instead of faulting. Outcome: the driver domain
+//!    initializes the controller from EL0 using only its capabilities.
+//! 2. **Block I/O round trip** — a client sends a 12 KiB write, flush and read through the driver;
+//!    the driver submits NVMe commands, and the device's MSI-X completion is delivered as an
+//!    interrupt to the driver's completion queue. Outcome: the round trip verifies, the MSI-X
+//!    completion counter is nonzero, and the SMMU reports no translation faults.
+//! 3. **Object store** — `objstore.elf` connects to the block device and formats/mounts; an object
+//!    client then persists a **2 MiB + 4 KiB** object (exercising PRP-list DMA at scale) and
+//!    verifies it reads back with the exact size and payload length. Outcome: the persistent object
+//!    round trip verifies.
+//! 4. **Durability** — [`super::el0_service::verify_persistent_upgrade`] and
+//!    [`super::el0_raft::test_persistent_raft`] restart domains that depend on the object store.
+//!    Outcome: term/vote state survives a process restart on the NVMe-backed store.
+//!
+//! Why: this is the proof that the whole driver model — capability grants,
+//! userspace MMIO, SMMU-protected DMA, and real GIC ITS/MSI interrupt delivery
+//! (on sbsa-ref) — works together, and that the object store is actually
+//! durable. It is also the test that forced the GIC security (`DS=1`), LPI
+//! delivery, SPI priority and EL0-heap fixes documented in
+//! `docs/sbsa-ref-bringup.md`.
+//!
+//! Expected outcome: the verifier logs
+//! `SUCCESS: storage stack and persistent Raft recovery verified` and the
+//! authoritative coordinator reports `TestId::Nvme` passed.
 #![cfg(target_arch = "aarch64")]
 
 use crate::{

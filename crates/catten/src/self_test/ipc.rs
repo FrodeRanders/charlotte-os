@@ -1,4 +1,28 @@
-//! Self-tests for endpoint IPC.
+//! Self-tests for the kernel-side endpoint IPC ABI.
+//!
+//! Whitebox integration tests that drive the IPC endpoints directly from
+//! kernel threads (no EL0 domain), covering the scalar and vector connection
+//! contract the EL0 tests build on:
+//!
+//! - [`test_endpoint_ipc`] — endpoint creation, connection minting, scalar send/call/receive/reply,
+//!   and reply polling. Outcome: the round-trip returns the expected values and caps are closed
+//!   cleanly.
+//! - [`test_endpoint_ipc_connection_attach`] — attaching a capability (and a borrowed buffer) to a
+//!   connection in transit. Outcome: the attached cap arrives at the receiver and the borrow is
+//!   accounted.
+//! - [`test_endpoint_ipc_connection_copy`] — copying a memory object across a connection into the
+//!   receiver's address space. Outcome: the bytes arrive intact and the mapping is correct.
+//! - [`test_vector_ipc_transaction_rollback`] — a vector IPC that fails part way through must roll
+//!   back every side effect. Outcome: no orphaned connection, capability or mapping remains after
+//!   the failed transaction.
+//!
+//! Why: these pin the kernel-side IPC state machine (connection ownership,
+//! cap/delegation authority, transaction atomicity) that every EL0
+//! endpoint/name-service test depends on, so a regression here is isolated
+//! from userspace before the EL0 tests run.
+//!
+//! Expected outcome: all assertions pass; the tests log their success and the
+//! boot suite reports them as part of the synchronous phase.
 
 use crate::{
     cpu::isa::{
