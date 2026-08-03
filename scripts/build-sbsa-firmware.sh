@@ -53,82 +53,46 @@ clone https://github.com/tianocore/edk2-platforms.git "$WORKDIR/edk2-platforms"
 clone https://github.com/tianocore/edk2-non-osi.git "$WORKDIR/edk2-non-osi"
 
 # =============================================================================
-# TF-A patches
+# Third-party patches (tracked patch files under patches/, applied with git
+# apply; every repo below is a git checkout). Idempotent: each application is
+# guarded by a marker grep so re-runs skip already-patched trees.
 # =============================================================================
 
-# (1) Hand BL33 (UEFI/Limine) off at EL1 instead of EL2.
-TFBL2="$WORKDIR/tf-a/plat/qemu/common/qemu_bl2_setup.c"
-if ! grep -q "CharlotteOS" "$TFBL2"; then
-    echo ">>> TF-A: forcing BL33 entry at EL1"
-    perl -0pi -e 's/\t\/\* Figure out what mode we enter the non-secure world in \*\//\t\/\* CharlotteOS: hand the bootloader (BL33) off at EL1.\n\t * QEMU TCG EL2 is unreliable and the kernel targets EL1\/EL0. *\//' "$TFBL2"
-    perl -0pi -e 's/mode = \(el_implemented\(2\) != EL_IMPL_NONE\) \? MODE_EL2 : MODE_EL1;/mode = MODE_EL1;/' "$TFBL2"
-fi
-
-# (2) Implement SIP_SVC_GET_CPU_TOPOLOGY (SMC 202), required by the current
-#     edk2 QemuSbsa HardwareInfoLib but missing from TF-A v2.11. Without it the
-#     UEFI loops calling ResetShutdown().
-SVC="$WORKDIR/tf-a/plat/qemu/qemu_sbsa/sbsa_sip_svc.c"
-if ! grep -q "GET_CPU_TOPOLOGY" "$SVC"; then
-    echo ">>> TF-A: adding SIP_SVC_GET_CPU_TOPOLOGY (SMC 202)"
-    # define
-    perl -0pi -e 's/#define SIP_SVC_GET_CPU_NODE SIP_FUNCTION_ID\(201\)/#define SIP_SVC_GET_CPU_NODE SIP_FUNCTION_ID(201)\n#define SIP_SVC_GET_CPU_TOPOLOGY SIP_FUNCTION_ID(202)/' "$SVC"
-    # topology storage
-    perl -0pi -e 's/} dynamic_platform_info;/} dynamic_platform_info;\n\nstatic struct {\n\tuint32_t sockets;\n\tuint32_t clusters;\n\tuint32_t cores;\n\tuint32_t threads;\n} cpu_topology;/' "$SVC"
-    # reader (insert before sip_svc_init)
-    python3 - "$SVC" <<'EOF'
-import sys
-p = sys.argv[1]
-s = open(p).read()
-reader = '''
-void read_cpu_topology_from_dt(void *dtb)
-{
-	int node;
-	const fdt32_t *prop;
-
-	node = fdt_path_offset(dtb, "/cpus/topology");
-	if (node < 0) {
-		cpu_topology.sockets = 1;
-		cpu_topology.clusters = 1;
-		cpu_topology.cores = dynamic_platform_info.num_cpus;
-		cpu_topology.threads = 1;
-		return;
-	}
-	prop = fdt_getprop(dtb, node, "threads", NULL);
-	cpu_topology.threads = prop ? fdt32_ld(prop) : 1;
-	prop = fdt_getprop(dtb, node, "cores", NULL);
-	cpu_topology.cores = prop ? fdt32_ld(prop) : dynamic_platform_info.num_cpus;
-	prop = fdt_getprop(dtb, node, "clusters", NULL);
-	cpu_topology.clusters = prop ? fdt32_ld(prop) : 1;
-	prop = fdt_getprop(dtb, node, "sockets", NULL);
-	cpu_topology.sockets = prop ? fdt32_ld(prop) : 1;
+apply_patch() {
+    local repo="$1" patch="$2" marker="$3" file="$4" what="$5"
+    if ! grep -q "$marker" "$repo/$file"; then
+        echo ">>> $what"
+        git -C "$repo" apply "$patch"
+    else
+        echo "    ($(basename "$patch") already applied)"
+    fi
 }
 
-'''
-marker = 'void sip_svc_init(void)'
-assert marker in s
-s = s.replace(marker, reader + marker, 1)
-# call it in sip_svc_init
-s = s.replace(
-    '\tread_cpuinfo_from_dt(dtb);',
-    '\tread_cpuinfo_from_dt(dtb);\n\tread_cpu_topology_from_dt(dtb);', 1)
-# SMC case
-s = s.replace(
-    '\tcase SIP_SVC_GET_CPU_NODE:\n\t\tindex = x1;\n\t\tif (index < PLATFORM_CORE_COUNT) {\n\t\t\tSMC_RET3(handle, NULL,\n\t\t\t\tdynamic_platform_info.cpu[index].nodeid,\n\t\t\t\tdynamic_platform_info.cpu[index].mpidr);\n\t\t} else {\n\t\t\tSMC_RET1(handle, SMC_ARCH_CALL_INVAL_PARAM);\n\t\t}',
-    '\tcase SIP_SVC_GET_CPU_NODE:\n\t\tindex = x1;\n\t\tif (index < PLATFORM_CORE_COUNT) {\n\t\t\tSMC_RET3(handle, NULL,\n\t\t\t\tdynamic_platform_info.cpu[index].nodeid,\n\t\t\t\tdynamic_platform_info.cpu[index].mpidr);\n\t\t} else {\n\t\t\tSMC_RET1(handle, SMC_ARCH_CALL_INVAL_PARAM);\n\t\t}\n\n\tcase SIP_SVC_GET_CPU_TOPOLOGY:\n\t\tSMC_RET5(handle, NULL,\n\t\t\tcpu_topology.sockets,\n\t\t\tcpu_topology.clusters,\n\t\t\tcpu_topology.cores,\n\t\t\tcpu_topology.threads);', 1)
-open(p, 'w').write(s)
-EOF
-fi
+PATCHES="$PWD/patches"
+
+# (1) Hand BL33 (UEFI/Limine) off at EL1 instead of EL2 (QEMU TCG EL2 is
+#     unreliable and the kernel targets EL1/EL0).
+apply_patch "$WORKDIR/tf-a" \
+    "$PATCHES/tf-a/0002-sbsa-bl33-entry-el1.patch" \
+    "CharlotteOS" "plat/qemu/common/qemu_bl2_setup.c" \
+    "TF-A: forcing BL33 entry at EL1"
+
+# (2) SIP_SVC_GET_CPU_TOPOLOGY (SMC 202), required by the current edk2
+#     QemuSbsa HardwareInfoLib but missing from TF-A v2.11; without it the
+#     UEFI loops calling ResetShutdown().
+apply_patch "$WORKDIR/tf-a" \
+    "$PATCHES/tf-a/0003-sbsa-sip-smc-cpu-topology.patch" \
+    "GET_CPU_TOPOLOGY" "plat/qemu/qemu_sbsa/sbsa_sip_svc.c" \
+    "TF-A: adding SIP_SVC_GET_CPU_TOPOLOGY (SMC 202)"
 
 # (3) Disable GIC security (GICD_CTLR.DS=1) in BL31. The whole boot chain runs
 #     at Non-secure EL1, and with DS=0 QEMU drops NS writes to GICD_IGROUPR and
 #     reports LPIs as Group 0, which silently breaks SPI + MSI delivery to the
-#     kernel. See docs/sbsa-ref-bringup.md "GIC security". This patch is applied
-#     with `git apply` (TF-A is a git checkout) from the tracked patch file.
-GICPATCH="$PWD/patches/tf-a/0001-sbsa-gic-disable-security-ds.patch"
-if ! grep -q "CTLR_DS_BIT" "$WORKDIR/tf-a/plat/qemu/qemu_sbsa/sbsa_gic.c"; then
-    echo ">>> TF-A: disabling GIC security (DS=1) in plat_qemu_gic_init"
-    git -C "$WORKDIR/tf-a" apply "$GICPATCH"
-fi
+#     kernel. See docs/sbsa-ref-bringup.md "GIC security".
+apply_patch "$WORKDIR/tf-a" \
+    "$PATCHES/tf-a/0001-sbsa-gic-disable-security-ds.patch" \
+    "CTLR_DS_BIT" "plat/qemu/qemu_sbsa/sbsa_gic.c" \
+    "TF-A: disabling GIC security (DS=1) in plat_qemu_gic_init"
 
 # =============================================================================
 # Build TF-A + fiptool + FIP
@@ -161,29 +125,12 @@ cp "$WORKDIR/fiptool-unpack/bl1.bin" "$WORKDIR/fiptool-unpack/bl1.bin.orig"
 # =============================================================================
 # Patch the edk2 build tool
 # =============================================================================
-BUILDPY="$WORKDIR/edk2/BaseTools/Source/Python/build/build.py"
-if ! grep -q "isinstance(self.PlatformFile" "$BUILDPY"; then
-    echo ">>> Patching edk2 build tool (-p PathClass conversion)"
-    python3 - "$BUILDPY" <<'EOF'
-import sys
-p = sys.argv[1]
-s = open(p).read()
-old = """            self.PlatformFile = PathClass(NormFile(PlatformFile, self.WorkspaceDir), self.WorkspaceDir)
-
-        self.GetToolChainAndFamilyFromDsc (self.PlatformFile)"""
-new = """            self.PlatformFile = PathClass(NormFile(PlatformFile, self.WorkspaceDir), self.WorkspaceDir)
-        else:
-            # -p was given: BuildOptions.PlatformFile is a plain string; convert
-            # it to a PathClass so the workspace database can inspect it.
-            if not isinstance(self.PlatformFile, PathClass):
-                self.PlatformFile = PathClass(NormFile(self.PlatformFile, self.WorkspaceDir), self.WorkspaceDir)
-
-        self.GetToolChainAndFamilyFromDsc (self.PlatformFile)"""
-assert old in s, "edk2 build.py pattern not found"
-s = s.replace(old, new)
-open(p, 'w').write(s)
-EOF
-fi
+# edk2's build.py only converts PlatformFile to a PathClass when no -p was
+# given; the SbsaQemu build passes -p, so convert the plain string there too.
+apply_patch "$WORKDIR/edk2" \
+    "$PATCHES/edk2/0001-build-py-pathclass-p.patch" \
+    "isinstance(self.PlatformFile" "BaseTools/Source/Python/build/build.py" \
+    "edk2: patching build tool (-p PathClass conversion)"
 
 # =============================================================================
 # Build edk2 QemuSbsa UEFI

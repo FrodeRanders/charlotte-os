@@ -1,0 +1,16 @@
+diff --git a/BaseTools/Source/Python/build/build.py b/BaseTools/Source/Python/build/build.py
+index 3cd99b7..2005aa5 100644
+--- a/BaseTools/Source/Python/build/build.py
++++ b/BaseTools/Source/Python/build/build.py
+@@ -971,6 +971,11 @@ class Build():
+                                     ExtraData="No active platform specified in target.txt or command line! Nothing can be built.\n")
+ 
+             self.PlatformFile = PathClass(NormFile(PlatformFile, self.WorkspaceDir), self.WorkspaceDir)
++        else:
++            # -p was given: BuildOptions.PlatformFile is a plain string; convert
++            # it to a PathClass so the workspace database can inspect it.
++            if not isinstance(self.PlatformFile, PathClass):
++                self.PlatformFile = PathClass(NormFile(self.PlatformFile, self.WorkspaceDir), self.WorkspaceDir)
+ 
+         self.GetToolChainAndFamilyFromDsc (self.PlatformFile)
+ 

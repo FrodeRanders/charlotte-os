@@ -1,0 +1,16 @@
+diff --git a/plat/qemu/common/qemu_bl2_setup.c b/plat/qemu/common/qemu_bl2_setup.c
+index 60acb25..4cac938 100644
+--- a/plat/qemu/common/qemu_bl2_setup.c
++++ b/plat/qemu/common/qemu_bl2_setup.c
+@@ -258,8 +258,9 @@ static uint32_t qemu_get_spsr_for_bl33_entry(void)
+ #ifdef __aarch64__
+ 	unsigned int mode;
+ 
+-	/* Figure out what mode we enter the non-secure world in */
+-	mode = (el_implemented(2) != EL_IMPL_NONE) ? MODE_EL2 : MODE_EL1;
++	/* CharlotteOS: hand the bootloader (BL33) off at EL1.
++	 * QEMU TCG EL2 is unreliable and the kernel targets EL1/EL0. */
++	mode = MODE_EL1;
+ 
+ 	/*
+ 	 * TODO: Consider the possibility of specifying the SPSR in

@@ -247,20 +247,28 @@ become Group 1 NS and are deliverable as IRQ), and QEMU tags LPIs Group 1 NS so
 they are acked/EOI'd normally instead of wedging the CPU. The EL3 write is the
 only way to set `DS` (the NS write mask forbids it).
 
-**Reproducing the firmware (version control):** the patched third-party TF-A
-is *not* vendored (the source stays upstream); instead the delta is tracked as
-a patch file and applied by the build script:
+**Reproducing the firmware (version control):** the patched third-party
+deltas are *not* vendored (the sources stay upstream); each is tracked as a
+patch file under `patches/` and applied by `scripts/build-sbsa-firmware.sh`
+(via a single `apply_patch` helper that runs `git apply` on the checkout,
+guarded by a marker grep so re-runs are idempotent):
 
-- `patches/tf-a/0001-sbsa-gic-disable-security-ds.patch` — the `DS=1` change to
-  `plat/qemu/qemu_sbsa/sbsa_gic.c` (committed, reviewable).
-- `scripts/build-sbsa-firmware.sh` pins the TF-A clone to the **v2.11** tag
-  (the images are built from v2.11; the prebuilt upstream BL1 is v2.11.0-774,
-  and later TF-A moved the SRAM layout so a v2.11 BL1 cannot load a master
-  BL2), then applies, in order: the EL1 BL33 handoff patch, the
-  `SIP_SVC_GET_CPU_TOPOLOGY` (SMC 202) patch, and the tracked `DS=1` patch
-  before building BL2/BL31 and packing the FIP.
-- The resulting `SBSA_FLASH0.fd` places the original BL1 at `0x0` and the new
-  FIP (BL2 + BL31, `--tb-fw`/`--soc-fw`) at `0x12000`.
+- `patches/tf-a/0001-sbsa-gic-disable-security-ds.patch` — the `DS=1` change
+  to `plat/qemu/qemu_sbsa/sbsa_gic.c`;
+- `patches/tf-a/0002-sbsa-bl33-entry-el1.patch` — hand BL33 (UEFI/Limine) off
+  at EL1 (`plat/qemu/common/qemu_bl2_setup.c`);
+- `patches/tf-a/0003-sbsa-sip-smc-cpu-topology.patch` —
+  `SIP_SVC_GET_CPU_TOPOLOGY` (SMC 202), missing from TF-A v2.11 and required by
+  the edk2 QemuSbsa HardwareInfoLib (`sbsa_sip_svc.c`);
+- `patches/edk2/0001-build-py-pathclass-p.patch` — convert a `-p`-given
+  `PlatformFile` string to a `PathClass` in edk2's `build.py`.
+
+The build script pins the TF-A clone to the **v2.11** tag (the images are
+built from v2.11; the prebuilt upstream BL1 is v2.11.0-774, and later TF-A
+moved the SRAM layout so a v2.11 BL1 cannot load a master BL2); edk2 /
+edk2-platforms / edk2-non-osi are cloned from their default branches, matching
+the original build. The resulting `SBSA_FLASH0.fd` places the original BL1 at
+`0x0` and the new FIP (BL2 + BL31, `--tb-fw`/`--soc-fw`) at `0x12000`.
 
 Build tooling notes (macOS): TF-A's v2.11 makefiles need GNU make 4.x
 (`gmake`) and GNU sed (`gsed`) on `PATH` — the system make 3.81 / BSD sed
