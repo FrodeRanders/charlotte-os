@@ -38,9 +38,8 @@ pub fn find_table_physical(signature: [u8; 4]) -> Option<u64> {
     }
     let data_len = xsdt.length as usize - size_of::<SdtHeader>();
     let entry_count = data_len / size_of::<u64>();
-    let entries = unsafe {
-        (PAddr::from(xsdt_addr) + size_of::<SdtHeader>()).into_hhdm_ptr::<u64>()
-    };
+    let entries =
+        unsafe { (PAddr::from(xsdt_addr) + size_of::<SdtHeader>()).into_hhdm_ptr::<u64>() };
     for i in 0..entry_count {
         let table_addr = unsafe { entries.add(i).read_unaligned() };
         let header: &SdtHeader = unsafe { &*PAddr::from(table_addr).into_hhdm_ptr::<SdtHeader>() };
@@ -72,8 +71,9 @@ pub fn spcr_uart_base() -> Option<u64> {
 pub fn spcr_uart_irq() -> Option<u32> {
     const SPCR_INTERRUPT_OFFSET: u64 = 36 + 1 + 3 + 12 + 1 + 1;
     let spcr = find_table_physical(*b"SPCR")?;
-    let irq =
-        unsafe { (PAddr::from(spcr + SPCR_INTERRUPT_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned() };
+    let irq = unsafe {
+        (PAddr::from(spcr + SPCR_INTERRUPT_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned()
+    };
     (irq != 0).then_some(irq)
 }
 
@@ -83,8 +83,8 @@ pub fn spcr_uart_irq() -> Option<u32> {
 /// Distributor entry; the GICR base from that entry's GICR field, falling back
 /// to a GIC Redistributor entry if the field is absent.
 pub fn madt_gic_bases() -> Option<(u64, u64)> {
-    const GIC_DISTRIBUTOR: u8 = 0xC;
-    const GIC_REDISTRIBUTOR: u8 = 0xE;
+    const GIC_DISTRIBUTOR: u8 = 0xc;
+    const GIC_REDISTRIBUTOR: u8 = 0xe;
     const MADT_HEADER_SIZE: u64 = 36 + 4 + 4; // SdtHeader + LAPIC address + flags
     const GICD_ENTRY_BASE_OFFSET: u64 = 8;
     const GICD_ENTRY_GICR_OFFSET: u64 = 44;
@@ -105,9 +105,10 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
         }
         match entry_type {
             GIC_DISTRIBUTOR => {
-                gicd =
-                    unsafe { (PAddr::from(ptr + GICD_ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>())
-                        .read_unaligned() };
+                gicd = unsafe {
+                    (PAddr::from(ptr + GICD_ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>())
+                        .read_unaligned()
+                };
                 let gicr_field = unsafe {
                     (PAddr::from(ptr + GICD_ENTRY_GICR_OFFSET).into_hhdm_ptr::<u64>())
                         .read_unaligned()
@@ -138,8 +139,8 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
 /// some firmware revisions use an adjacent type for it, so both 0x0E and 0x0F
 /// entries are considered and the first with a plausible ITS MMIO base wins.
 pub fn madt_its_base() -> Option<u64> {
-    const GIC_ITS: u8 = 0x0E;
-    const GIC_ITS_ALT: u8 = 0x0F;
+    const GIC_ITS: u8 = 0x0e;
+    const GIC_ITS_ALT: u8 = 0x0f;
     const MADT_HEADER_SIZE: u64 = 36 + 4 + 4;
     const ENTRY_BASE_OFFSET: u64 = 8;
 
@@ -156,8 +157,7 @@ pub fn madt_its_base() -> Option<u64> {
         }
         if entry_type == GIC_ITS || entry_type == GIC_ITS_ALT {
             let base = unsafe {
-                (PAddr::from(ptr + ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>())
-                    .read_unaligned()
+                (PAddr::from(ptr + ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>()).read_unaligned()
             };
             // A plausible ITS MMIO base lives in the server MMIO window (not
             // the garbage from a misaligned read or a RAM address).

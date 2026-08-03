@@ -31,8 +31,8 @@ const GICR_PENDBASER: usize = 0x0078;
 // IDBits must keep QEMU's pending-table scan (1 << (IDBits + 1) bits) inside
 // the single allocated frame; 13 covers LPIs 8192..16383 within 4 KiB.
 const GICR_PROP_IDBITS: u64 = 13;
-const GICR_PROP_PHYADDR: u64 = 0x0000_FFFF_FFFF_F000; // bits [51:12]
-const GICR_PEND_PHYADDR: u64 = 0x0000_FFFF_FFFF_0000; // bits [51:16]
+const GICR_PROP_PHYADDR: u64 = 0x0000_ffff_ffff_f000; // bits [51:12]
+const GICR_PEND_PHYADDR: u64 = 0x0000_ffff_ffff_0000; // bits [51:16]
 
 /// LPI priority (upper nibble of the config byte). Numerically lower values are
 /// higher priority; the value must sit below the `ICC_PMR_EL1` threshold
@@ -52,7 +52,11 @@ fn alloc_aligned_frame(alignment: usize) -> Option<PAddr> {
         let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().ok()?;
         if u64::from(frame) % alignment as u64 == 0 {
             unsafe {
-                core::ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, alignment.min(crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE));
+                core::ptr::write_bytes(
+                    frame.into_hhdm_mut::<u8>(),
+                    0,
+                    alignment.min(crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE),
+                );
             }
             return Some(frame);
         }
@@ -63,14 +67,19 @@ fn alloc_aligned_frame(alignment: usize) -> Option<PAddr> {
 /// Shared property table: one byte per LPI, indexed by `intid - LPI_BASE`.
 static PROP_TABLE: LazyLock<Option<PAddr>> = LazyLock::new(|| {
     let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().ok()?;
-    unsafe { core::ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE) };
+    unsafe {
+        core::ptr::write_bytes(
+            frame.into_hhdm_mut::<u8>(),
+            0,
+            crate::cpu::isa::aarch64::memory::paging::PAGE_SIZE,
+        )
+    };
     Some(frame)
 });
 
 /// Shared pending table: one bit per LPI, 64 KiB-aligned per QEMU's
 /// GICR_PENDBASER. The GIC writes pending state here and clears it on EOI.
-static PEND_TABLE: LazyLock<Option<PAddr>> =
-    LazyLock::new(|| alloc_aligned_frame(0x1_0000));
+static PEND_TABLE: LazyLock<Option<PAddr>> = LazyLock::new(|| alloc_aligned_frame(0x1_0000));
 
 /// Whether `intid` is an LPI.
 pub fn is_lpi(intid: u32) -> bool {
@@ -91,11 +100,7 @@ pub fn configure_lpis() {
             GICR_PROPBASER,
             (u64::from(prop) & GICR_PROP_PHYADDR) | GICR_PROP_IDBITS,
         );
-        super::mmio_write64(
-            base,
-            GICR_PENDBASER,
-            u64::from(pend) & GICR_PEND_PHYADDR,
-        );
+        super::mmio_write64(base, GICR_PENDBASER, u64::from(pend) & GICR_PEND_PHYADDR);
         // Enabling LPI delivery makes the redistributor walk its pending
         // table; wait for that write to complete (RWP) as `enable_private_int`
         // does for the PPI configuration, so the redistributor is quiescent

@@ -99,6 +99,11 @@ static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_c
 /// We capture that state, clear `HCR_EL2.E2H` so the `*_EL1` names address the
 /// real EL1 bank, program EL1's MMU, and `eret` down to EL1h. On EL1 entry
 /// (virt) we simply continue.
+///
+/// # Safety
+/// This is the raw EL1/EL2 entry point invoked by the bootloader (Limine):
+/// it must be entered with the expected exception level and a valid kernel
+/// image, and it does not return.
 #[cfg(target_arch = "aarch64")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]

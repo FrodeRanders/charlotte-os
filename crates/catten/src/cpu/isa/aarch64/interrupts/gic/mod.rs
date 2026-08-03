@@ -309,7 +309,11 @@ impl LocalIntCtlrIfce for GicV3 {
         // is idempotent and safe to repeat from each core as it comes online.
         unsafe {
             let ctlr = mmio_read32(gicd_base(), GICD_CTLR);
-            mmio_write32(gicd_base(), GICD_CTLR, ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS);
+            mmio_write32(
+                gicd_base(),
+                GICD_CTLR,
+                ctlr | GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_GRP1_NS,
+            );
             // Ensure SPI group registers do not matter here; SPIs are wired up
             // by the external interrupt controller path when devices attach.
             let _ = GICD_IGROUPR;
@@ -318,8 +322,14 @@ impl LocalIntCtlrIfce for GicV3 {
         Self::cpu_interface_init();
         // SGIs are private interrupts too. Configure every IPI used by the
         // kernel explicitly instead of relying on firmware/reset defaults.
-        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR, DEFAULT_PRIORITY);
-        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR, DEFAULT_PRIORITY);
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR,
+            DEFAULT_PRIORITY,
+        );
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR,
+            DEFAULT_PRIORITY,
+        );
         Self::enable_private_int(
             crate::cpu::isa::constants::interrupt_vectors::SCHEDULER_IPI_VECTOR,
             DEFAULT_PRIORITY,
@@ -444,8 +454,8 @@ pub fn msi_available() -> bool {
         // sits at `GICD + 0x20000` on virt (GICD = 0x0800_0000). sbsa-ref's GICD
         // is 0x4006_0000 and MSI goes through the GIC ITS. Derive v2m
         // availability from the discovered GICD base.
-        return crate::environment::acpi::sdt::discovery::madt_gic_bases()
-            .is_some_and(|(gicd, _)| gicd == GICD_BASE_FALLBACK as u64);
+        crate::environment::acpi::sdt::discovery::madt_gic_bases()
+            .is_some_and(|(gicd, _)| gicd == GICD_BASE_FALLBACK as u64)
     }
     #[cfg(not(feature = "acpi"))]
     {
@@ -460,7 +470,7 @@ pub fn allocate_msi(
     device_id: u32,
 ) -> Option<
     crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
-> {
+>{
     if its::available() {
         return its::allocate_msi(device_id);
     }

@@ -15,19 +15,30 @@
 //! command queue, and one interrupt translation table. One device (the NVMe)
 //! is mapped with event 0 to LPI `LPI_BASE`.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{
+    AtomicU32,
+    Ordering,
+};
 
-use spin::{LazyLock, Mutex};
-
-use crate::{
-    cpu::isa::{
-        aarch64::memory::{address::paddr::PAddr, paging::PAGE_SIZE},
-        interface::memory::address::PhysicalAddress,
-    },
-    memory::{KERNEL_AS, PHYSICAL_FRAME_ALLOCATOR},
+use spin::{
+    LazyLock,
+    Mutex,
 };
 
 use super::lpi::LPI_BASE;
+use crate::{
+    cpu::isa::{
+        aarch64::memory::{
+            address::paddr::PAddr,
+            paging::PAGE_SIZE,
+        },
+        interface::memory::address::PhysicalAddress,
+    },
+    memory::{
+        KERNEL_AS,
+        PHYSICAL_FRAME_ALLOCATOR,
+    },
+};
 
 // ITS register offsets (relative to the ITS MMIO base).
 const GITS_CTLR: usize = 0x0000;
@@ -50,12 +61,12 @@ const GITS_CTLR_ENABLE: u32 = 1 << 0;
 // offset >> 5 (i.e. a command index).
 const GITS_CBASER_VALID: u64 = 1 << 63;
 const GITS_CBASER_SIZE: u64 = 0; // 1 page -> 128 command slots
-const GITS_CBASER_PHYADDR: u64 = 0x0000_FFFF_FFFF_F000; // bits [51:12]
+const GITS_CBASER_PHYADDR: u64 = 0x0000_ffff_ffff_f000; // bits [51:12]
 
 const GITS_BASER_VALID: u64 = 1 << 63;
 const GITS_BASER_SIZE: u64 = 0; // 1 page
 const GITS_BASER_PAGESIZE_4K: u64 = 0; // bits [9:8] = 0
-const GITS_BASER_PHYADDR: u64 = 0x0000_FFFF_FFFF_F000; // bits [47:12]
+const GITS_BASER_PHYADDR: u64 = 0x0000_ffff_ffff_f000; // bits [47:12]
 
 // Command queue: one 4 KiB frame holds 128 32-byte command slots.
 const GITS_CMDQ_ENTRY_SIZE: usize = 32;
@@ -65,15 +76,14 @@ const GITS_CMDQ_NR_ENTRIES: usize = PAGE_SIZE / GITS_CMDQ_ENTRY_SIZE;
 const GITS_CMD_MAPD: u64 = 0x08;
 const GITS_CMD_MAPC: u64 = 0x09;
 const GITS_CMD_SYNC: u64 = 0x05;
-const GITS_CMD_MAPTI: u64 = 0x0A;
-const GITS_CMD_INVALL: u64 = 0x0D;
+const GITS_CMD_MAPTI: u64 = 0x0a;
+const GITS_CMD_INVALL: u64 = 0x0d;
 
 // Command field masks (per ARM GICv3 spec, as encoded by Linux's ITS driver).
-const CMD_EVENTID_MASK: u64 = 0xFFFF_FFFF; // word 1, bits [31:0]
-const CMD_SIZE_MASK: u64 = 0x1F; // word 1, bits [4:0]
-const CMD_ITT_MASK: u64 = 0x0000_FFFF_FFFF_FF00; // word 2, bits [51:8]
-const CMD_TARGET_MASK: u64 = 0x0000_FFFF_FFFF_0000; // word 2, bits [51:16]
-const CMD_COLLECTION_MASK: u64 = 0xFFFF; // word 2, bits [15:0]
+const CMD_EVENTID_MASK: u64 = 0xffff_ffff; // word 1, bits [31:0]
+const CMD_SIZE_MASK: u64 = 0x1f; // word 1, bits [4:0]
+const CMD_ITT_MASK: u64 = 0x0000_ffff_ffff_ff00; // word 2, bits [51:8]
+const CMD_COLLECTION_MASK: u64 = 0xffff; // word 2, bits [15:0]
 const CMD_VALID: u64 = 1 << 63; // word 2, bit 63
 
 /// Number of event IDs per device: `1 << (size + 1)`. Two slots cover event 0.
@@ -96,21 +106,32 @@ struct ItsState {
     cmd_write: usize,
 }
 
-static ITS_STATE: LazyLock<Mutex<Option<ItsState>>> =
-    LazyLock::new(|| Mutex::new(None));
+static ITS_STATE: LazyLock<Mutex<Option<ItsState>>> = LazyLock::new(|| Mutex::new(None));
 /// First allocated device ID, used to size the (single) NVMe ITE.
 static NEXT_LPI: AtomicU32 = AtomicU32::new(LPI_BASE);
 
 unsafe fn mmio_read32(base: usize, offset: usize) -> u32 {
-    unsafe { core::ptr::read_volatile(PAddr::from(base as u64).into_hhdm_ptr::<u32>().byte_add(offset)) }
+    unsafe {
+        core::ptr::read_volatile(PAddr::from(base as u64).into_hhdm_ptr::<u32>().byte_add(offset))
+    }
 }
 
 unsafe fn mmio_write32(base: usize, offset: usize, value: u32) {
-    unsafe { core::ptr::write_volatile(PAddr::from(base as u64).into_hhdm_mut::<u32>().byte_add(offset), value) }
+    unsafe {
+        core::ptr::write_volatile(
+            PAddr::from(base as u64).into_hhdm_mut::<u32>().byte_add(offset),
+            value,
+        )
+    }
 }
 
 unsafe fn mmio_write64(base: usize, offset: usize, value: u64) {
-    unsafe { core::ptr::write_volatile(PAddr::from(base as u64).into_hhdm_mut::<u64>().byte_add(offset), value) }
+    unsafe {
+        core::ptr::write_volatile(
+            PAddr::from(base as u64).into_hhdm_mut::<u64>().byte_add(offset),
+            value,
+        )
+    }
 }
 
 /// The ITS MMIO base, discovered from the ACPI MADT (a GIC ITS entry), if the
@@ -228,8 +249,7 @@ fn mapd(state: &mut ItsState, device_id: u32) {
 fn mapc(state: &mut ItsState) {
     let mut w2 = (ITS_COLLECTION as u64) & CMD_COLLECTION_MASK;
     // QEMU treats the MAPC target (word 2 bits [51:16]) as a processor number;
-    // 0 addresses logical processor 0.
-    w2 |= 0 & CMD_TARGET_MASK;
+    // 0 addresses logical processor 0. w2's target field is already zero.
     w2 |= CMD_VALID;
     encode_command(state, [GITS_CMD_MAPC, 0, w2, 0]);
 }
@@ -252,7 +272,7 @@ fn invall(state: &mut ItsState) {
 /// property table, and return the message the device programs into MSI-X.
 pub fn allocate_msi(device_id: u32) -> Option<
     crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
-> {
+>{
     use crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage;
 
     ensure_initialized();

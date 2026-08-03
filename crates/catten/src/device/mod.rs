@@ -202,12 +202,14 @@ fn route_slot(intid: u32) -> Option<usize> {
     None
 }
 
-static ROUTE_TABLE: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
+static ROUTE_TABLE: [AtomicU64; TOTAL_ROUTE_SLOTS] =
+    [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
 /// Generation of each interrupt route. It advances on every bind and unroute,
 /// fencing deferred wakes that were queued for a previous driver lifetime.
 static ROUTE_GENERATION: [AtomicU64; TOTAL_ROUTE_SLOTS] =
     [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
-static IRQ_PENDING: [AtomicU32; TOTAL_ROUTE_SLOTS] = [const { AtomicU32::new(0) }; TOTAL_ROUTE_SLOTS];
+static IRQ_PENDING: [AtomicU32; TOTAL_ROUTE_SLOTS] =
+    [const { AtomicU32::new(0) }; TOTAL_ROUTE_SLOTS];
 static IRQ_COUNT: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
 
 /// Deferred `(asid, cq)` wakes queued by interrupt context, delivered by
