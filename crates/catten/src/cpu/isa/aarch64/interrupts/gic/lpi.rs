@@ -28,7 +28,9 @@ const GICR_PENDBASER: usize = 0x0078;
 
 // QEMU's GICR_PROPBASER / GICR_PENDBASER layouts: IDBits at bits [0:5],
 // PhysicalAddress at bits [51:12] (PROP) or [51:16] (PEND, 64 KiB aligned).
-const GICR_PROP_IDBITS: u64 = 15; // LPIs 8192..65535; enough for LPI 8192
+// IDBits must keep QEMU's pending-table scan (1 << (IDBits + 1) bits) inside
+// the single allocated frame; 13 covers LPIs 8192..16383 within 4 KiB.
+const GICR_PROP_IDBITS: u64 = 13;
 const GICR_PROP_PHYADDR: u64 = 0x0000_FFFF_FFFF_F000; // bits [51:12]
 const GICR_PEND_PHYADDR: u64 = 0x0000_FFFF_FFFF_0000; // bits [51:16]
 
@@ -89,8 +91,15 @@ pub fn configure_lpis() {
             GICR_PENDBASER,
             u64::from(pend) & GICR_PEND_PHYADDR,
         );
+        // Enabling LPI delivery makes the redistributor walk its pending
+        // table; wait for that write to complete (RWP) as `enable_private_int`
+        // does for the PPI configuration, so the redistributor is quiescent
+        // before any SPI is routed.
         let ctlr = super::mmio_read32(base, GICR_CTLR);
         super::mmio_write32(base, GICR_CTLR, ctlr | GICR_CTLR_LPI_ENABLE);
+        while super::mmio_read32(base, GICR_CTLR) & super::GICR_CTLR_RWP != 0 {
+            core::hint::spin_loop();
+        }
     }
 }
 
