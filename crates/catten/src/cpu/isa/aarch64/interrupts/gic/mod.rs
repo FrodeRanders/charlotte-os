@@ -145,6 +145,10 @@ const PMR_ALLOW_ALL: u64 = 0xff;
 /// Default priority assigned to the interrupts we enable. It must be numerically
 /// lower than the PMR threshold so the interrupt is not masked.
 const DEFAULT_PRIORITY: u8 = 0xa0;
+/// Priority for shared peripheral interrupts: strictly higher (lower value)
+/// than the timer PPI's `DEFAULT_PRIORITY` so a busy timer never starves a
+/// device SPI on QEMU's equal-priority INTID tie-break.
+const SPI_PRIORITY: u8 = 0x50;
 
 #[derive(Debug)]
 pub enum Error {
@@ -553,8 +557,12 @@ pub fn enable_spi(intid: u32, target_lp: LpId) {
         let mut group = mmio_read32(gicd_base(), GICD_IGROUPR + word * 4);
         group |= 1 << bit;
         mmio_write32(gicd_base(), GICD_IGROUPR + word * 4, group);
-        // Runnable priority (numerically below the PMR threshold).
-        mmio_write8(gicd_base(), GICD_IPRIORITYR + intid as usize, DEFAULT_PRIORITY);
+        // Runnable priority (numerically below the PMR threshold). SPIs get a
+        // higher priority than the per-LP timer PPI (both default to 0xa0): on
+        // QEMU the timer PPI is re-pended almost continuously, and at equal
+        // priority the distributor's cached hppi picks the lower INTID, so the
+        // timer (27) permanently outranks SPI 33.
+        mmio_write8(gicd_base(), GICD_IPRIORITYR + intid as usize, SPI_PRIORITY);
         // Affinity routing (ARE_NS): translate the scheduler's logical LP id
         // to the PE's MPIDR affinity. AP startup order is nondeterministic, so
         // LP ids and Aff0 values are not interchangeable.
