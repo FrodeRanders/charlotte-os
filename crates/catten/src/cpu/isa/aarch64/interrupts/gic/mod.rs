@@ -149,6 +149,11 @@ const DEFAULT_PRIORITY: u8 = 0xa0;
 /// than the timer PPI's `DEFAULT_PRIORITY` so a busy timer never starves a
 /// device SPI on QEMU's equal-priority INTID tie-break.
 const SPI_PRIORITY: u8 = 0x50;
+/// Priority for the per-LP scheduler timer PPI. Deliberately low (0xf0) so a
+/// pending device SPI (`SPI_PRIORITY` 0x50) or LPI (>= 0x80 in QEMU) always
+/// preempts the continuously re-pended timer; the timer still fires whenever
+/// nothing higher is pending.
+const TIMER_PRIORITY: u8 = 0xf0;
 
 #[derive(Debug)]
 pub enum Error {
@@ -225,6 +230,13 @@ impl GicV3 {
             asm!("msr ICC_PMR_EL1, {}", in(reg) PMR_ALLOW_ALL, options(nomem, nostack, preserves_flags));
             // Enable Group 1 interrupts at the CPU interface.
             asm!("msr ICC_IGRPEN1_EL1, {}", in(reg) 1u64, options(nomem, nostack, preserves_flags));
+            // The UEFI firmware may leave an acknowledged-but-never-EOI'd
+            // interrupt (e.g. an NVMe MSI it consumed while loading the
+            // kernel) active in the Group 0/1 active-priority registers. That
+            // stale running priority would mask later deliveries, so clear
+            // the active-priority registers before enabling Group 1.
+            asm!("msr ICC_AP0R0_EL1, xzr", options(nomem, nostack, preserves_flags));
+            asm!("msr ICC_AP1R0_EL1, xzr", options(nomem, nostack, preserves_flags));
             asm!("isb", options(nomem, nostack, preserves_flags));
         }
     }
@@ -232,7 +244,7 @@ impl GicV3 {
     /// Configure a private interrupt (SGI or PPI, INTID 0-31) on this core's
     /// redistributor: assign it to Group 1, give it a runnable priority, and
     /// enable it.
-    fn enable_private_int(intid: u32) {
+    fn enable_private_int(intid: u32, priority: u8) {
         let rd = gicr_rd_base();
         let sgi = gicr_sgi_base();
         unsafe {
@@ -253,7 +265,7 @@ impl GicV3 {
             let prio_ptr = PAddr::from(sgi as u64)
                 .into_hhdm_mut::<u8>()
                 .byte_add(GICR_IPRIORITYR + intid as usize);
-            core::ptr::write_volatile(prio_ptr, DEFAULT_PRIORITY);
+            core::ptr::write_volatile(prio_ptr, priority);
             // Enable the interrupt.
             mmio_write32(sgi, GICR_ISENABLER0, 1 << intid);
             while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
@@ -306,14 +318,22 @@ impl LocalIntCtlrIfce for GicV3 {
         Self::cpu_interface_init();
         // SGIs are private interrupts too. Configure every IPI used by the
         // kernel explicitly instead of relying on firmware/reset defaults.
-        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR);
-        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR);
+        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::ASYNC_IPI_VECTOR, DEFAULT_PRIORITY);
+        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::SYNC_IPI_VECTOR, DEFAULT_PRIORITY);
         Self::enable_private_int(
             crate::cpu::isa::constants::interrupt_vectors::SCHEDULER_IPI_VECTOR,
+            DEFAULT_PRIORITY,
         );
         // Enable the EL1 virtual timer PPI (INTID 27) so the scheduler tick is
-        // delivered to this core.
-        Self::enable_private_int(crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR);
+        // delivered to this core. Its priority is strictly below a device SPI's
+        // (`SPI_PRIORITY`) and below every enabled LPI (QEMU LPIs are always
+        // >= 0x80 because the config byte's bit 7 is both the enable and the
+        // top priority bit): the timer must never win the cached-hppi
+        // preemption tie against a device interrupt.
+        Self::enable_private_int(
+            crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR,
+            TIMER_PRIORITY,
+        );
         // Enable LPI delivery on this redistributor (required for ITS MSIs).
         lpi::configure_lpis();
     }

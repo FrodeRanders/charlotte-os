@@ -36,8 +36,13 @@ const GICR_PEND_PHYADDR: u64 = 0x0000_FFFF_FFFF_0000; // bits [51:16]
 
 /// LPI priority (upper nibble of the config byte). Numerically lower values are
 /// higher priority; the value must sit below the `ICC_PMR_EL1` threshold
-/// (`0xff`) to pass the priority filter.
-const LPI_PRIORITY: u8 = 0x0a;
+/// (`0xff`) to pass the priority filter. QEMU reads the enable bit as bit 7
+/// (`LPI_CTE_ENABLED`) and the priority as `byte & 0xfc`, so with the
+/// `(PRIO << 4) | 1` encoding `0x09` produces byte `0x91`: enabled, effective
+/// priority `0x90` — strictly above the timer PPI's `DEFAULT_PRIORITY` (0xa0)
+/// so a pending LPI wins the cached-hppi tie against the continuously
+/// re-pended per-LP timer.
+const LPI_PRIORITY: u8 = 0x09;
 
 /// Allocate a zeroed frame that is `alignment`-aligned. The physical frame
 /// allocator hands out page frames; this skips any that are not aligned,

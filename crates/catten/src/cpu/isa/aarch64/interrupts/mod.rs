@@ -275,7 +275,8 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 pub extern "C" fn irq_dispatcher() {
     let intid = gic::acknowledge_int();
     // INTIDs 1020-1023 are special/spurious and require no handling or EOI.
-    if intid >= 1020 {
+    // LPIs (>= 8192) are valid device interrupts and must be dispatched.
+    if (1020..=1023).contains(&intid) {
         return;
     }
     match intid {
