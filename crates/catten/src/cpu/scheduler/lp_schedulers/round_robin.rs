@@ -153,14 +153,16 @@ impl LpScheduler for RoundRobin {
 
     fn clear_ctx_switch_pending(&self) {
         self.timer_event_observer.pending.store(false, Ordering::Release);
-        // An idle LP is woken explicitly when work is admitted, so periodic
-        // round-robin ticks only waste host CPU and immediately return to the
-        // same idle thread. Arm a quantum only for real runnable work.
-        if !self.is_idle {
-            self.set_next_timer_event();
-        } else {
-            TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
-        }
+        // Always re-arm the quantum so the timer keeps firing on this LP.
+        // Skipping it while idle left the LP asleep after the boot rush: a
+        // thread admitted later (e.g. the NVMe driver sharing this LP) never
+        // woke it when the admission IPI was unreliable, and a spin-poller on a
+        // non-idle LP was never preempted once the deadline queue emptied and
+        // stopped the hardware timer. Firing every quantum (10 ms) is cheap —
+        // an idle LP wakes, finds nothing runnable, and re-arms — and it both
+        // preempts over-running threads and lets the IRQ tail pick up freshly
+        // admitted work.
+        self.set_next_timer_event();
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {
