@@ -315,6 +315,50 @@ domain completes the transfer without translation faults.
 These are the same "hardcoded platform geometry" class of issue as the original
 GIC/PL011 constants, and are the natural next bring-up items.
 
+## Repository / session provenance
+
+Where the bring-up landed and what happened to the earlier plan:
+
+- `main` is a strict **fast-forward** of the old `bringup/sbsa-ref` branch
+  (23 bring-up commits; `main` = old branch tip `7899da2`). All subsequent work
+  (fmt/clippy, self-test annotations, docs) is committed directly on `main`.
+- `main` is ahead of `myfork/main` (24 commits); **nothing has been pushed**,
+  and the user wants the history kept as-is (no squash).
+- The originally planned **fairness fixes** — preemptive scheduler,
+  yield-from-syscall, userspace poll-yielding — were **superseded**: the
+  diagnose-and-fix work on the GIC/ITS/LPI path (stage 1) reached completion
+  and the user stepped back to assess real-hardware readiness. Nothing is
+  pending from the old plan.
+- Key commits: `500a08e` / `172d769` (firmware patchify + build script pin to
+  TF-A v2.11), `a97710c` (fmt + clippy), `95d0b87` (self-test annotations),
+  `7899da2` (`run-aarch64.sh --sbsa-ref` + firmware-presence check).
+- The assembler stubs (`el0_ipc.asm`, `el0_pingpong.asm`, etc.) run at EL0
+  with no runtime so failures isolate the syscall-ABI path; rationale is
+  documented in the `el0.rs`, `el0_ipc.rs`, `el0_pingpong.rs` module docs.
+  No Rust replacement is planned.
+
+## Where the pieces live (relevant files)
+
+- GIC priorities / SPI enable: `crates/catten/src/cpu/isa/aarch64/interrupts/gic/mod.rs`
+  (`SPI_PRIORITY = 0x50`, `TIMER_PRIORITY = 0xf0`, `enable_spi`, `msi_available()`,
+  APR-clear at GIC init).
+- LPI priority / property tables: `crates/catten/src/cpu/isa/aarch64/interrupts/gic/lpi.rs`
+  (`LPI_PRIORITY = 0x09`, PROP/PEND tables, `configure_lpis()`).
+- ITS driver: `crates/catten/src/cpu/isa/aarch64/interrupts/gic/its.rs`
+  (the `mapc` clippy fix removed the always-zero `CMD_TARGET_MASK`).
+- Spurious check (now `1020..=1023`): `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`.
+- Heap mapping loop: `crates/catten/src/service/loader.rs` (now quiet) over `HEAP_PAGES`.
+- Heap geometry: `crates/charlotte-launch/src/lib.rs`
+  (`HEAP_VADDR = 0x300000`, `HEAP_SIZE = 0x40000`).
+- Kernel entry / EL2→EL1 descent: `crates/catten/src/main.rs` (`_start`;
+  `# Safety` doc added).
+- Self-test annotations: `crates/catten/src/self_test/` module docs
+  (`mod.rs`, `el0.rs`, `el0_ipc.rs`, `el0_pingpong.rs`, `el0_nvme.rs`,
+  `el0_raft.rs`, `ipc.rs`, `results.rs`, `scheduler_lifecycle.rs`,
+  `statistics.rs`).
+- Canonical firmware: `target/firmware/SBSA_FLASH0.fd` / `SBSA_FLASH1.fd`
+  (gitignored under `target/`; `SBSA_FLASH0-ds1.fd` is the DS=1 build copy).
+
 ## Tooling notes
 
 - `scripts/run-aarch64.sh release --sbsa-ref --timeout 40` boots sbsa-ref with
