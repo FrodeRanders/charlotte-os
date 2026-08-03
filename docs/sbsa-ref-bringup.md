@@ -209,11 +209,16 @@ copy/move/cancel), device (MMIO + SPI), cq-wait, async, sitas, service, uart
 (console driver via discovered PL011 base/IRQ from the SPCR), and raft (elects
 a leader). The boot completes (boot-done marker).
 
-Remaining on sbsa-ref (latest): the NVMe driver now performs a full 12 KiB
-PRP-list write/flush/read round trip with MSI-X completing via the ITS, and
-the device/uart/SPI tests pass. The remaining `nvme` failure is the object
-store's `ObjStore::mount` block I/O, which stalls after a few reads; the
-`raft-storage`/`scheduler-lifecycle` tests also still pend. (~16/18 pass.)
+**Status: the full self-test suite passes on sbsa-ref (18/18), matching
+virt/TCG.** The last gap was the object store: its mount allocates a bitmap
+plus a directory-entry vector (~96 KiB for a 128 MiB disk) while formatting,
+which exceeded the 52 KiB per-domain EL0 heap — the store OOM'd after the two
+superblock reads and aborted. The heap is now 256 KiB (`HEAP_SIZE = 0x40000`)
+and relocated to `0x300000` (above the services' ELF load segments at `0x20000`,
+below the status page at `0x7f0000`) so the larger arena doesn't collide with
+the image; the sitas self-test's own heap mapping uses the shared constants.
+With that, the NVMe storage stack and the persistent Raft recovery pass on
+sbsa-ref alongside every other test.
 
 ### GIC security: the SPI/LPI delivery blocker (root-caused Aug 2026)
 
