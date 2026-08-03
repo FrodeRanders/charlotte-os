@@ -185,6 +185,68 @@ the emulated targets, which remain the dev baseline.
   round trip verified on silicon; the object store survives a power-loss/
   restart (durable Raft recovery).
 
+## Non-server targets (Raspberry Pi)
+
+A complementary, much cheaper real-silicon track. Not a SystemReady SR
+rehearsal: both the Pi 4 (BCM2711, Cortex-A72) and the Pi 5 (BCM2712,
+Cortex-A76) use a **GIC-400 in GICv2 mode** — verified from the BCM2712
+device tree (`interrupt-controller@7fff9000` = `arm,gic-400`, node named
+`gicv2`; GICD/GICC/GICH/GICV only, no redistributor, no ITS). There are
+**no LPIs, no ITS, and no SMMU** anywhere on the Pi. The server-class crown
+jewels (GICv3+ITS LPI delivery, SMMU-protected DMA, MSI-X-via-ITS) therefore
+have **no target** on a Pi. What a Pi does provide, cheaply:
+
+- **Real EL2/VHE silicon** — exactly the validation QEMU TCG cannot give.
+  Pi 5 (A76, ARMv8.2) has VHE; Pi 4 (A72, ARMv8.0) has EL2 but no VHE. This
+  directly de-risks Phase 1 (EL2 readiness) and the EL2 capability-root
+  design (`docs/el2-capability-root.md`).
+- **Real timers/GIC/MMIO/timing** — to re-validate the QEMU-shape
+  assumptions (Phase 2) on real silicon.
+- **A second interrupt-controller family** — GICv2 exercises the
+  `ExternalInterruptControllerIfce` abstraction for the first time; one
+  GICv2 backend covers both Pi generations.
+- **Real storage/NVMe** — the Pi 5 M.2 HAT+ slot is PCIe with working
+  MSI-X.
+- **Real USB / GPIO / Ethernet / SD** — driver coverage beyond virtio.
+
+### What transfers
+
+- Boot via the official Pi UEFI + Limine (the existing chain). The Pi 4
+  UEFI provides ACPI tables (reuse the MADT/SPCR/GTDT discovery); the Pi 5
+  UEFI's ACPI support needs verifying — the kernel's DT parsing path is
+  still `todo!()`.
+- Console: PL011 (Pi 5 SoC PL011 at `0x107d001000`, SPI 121; Pi 4 at
+  `0xfe201000`).
+- Generic timer, scheduler, IPC, EL0 model, object store / Raft (given a
+  block device).
+- PSCI (`method = "smc"`) for secondary cores on Pi 5.
+
+### Required work
+
+1. **GICv2 backend (GIC-400)** — distributor init (GICD only, no GICR),
+   SPI targeting via `GICD_ITARGETSR`/`ICFGR` instead of v3 `IROUTER`, no
+   LPI/PEND tables, and the MMIO GICC CPU interface if the system-register
+   (SRE) path is unavailable. The `ICC_*_EL1` CPU-interface code largely
+   carries over.
+2. **MSI path** — the Pi 4 PCIe has no MSI at all (INTx/polling only; NVMe
+   not viable). The Pi 5 PCIe MSI-X works via the vendor **MIP controller**
+   (`brcm,bcm2712-mip-intc`, `msi-base-spi = <128>`), which translates MSI
+   writes into plain SPIs — a new transport, distinct from the sbsa-ref ITS
+   path.
+3. **No SMMU** — add a "no SMMU, identity DMA" fallback. Watch the Pi 5
+   `dma-ranges`, which restrict low-speed-peripheral DMA to the lower 1 GB
+   ("emulate a contiguous 30-bit range").
+4. **New drivers** — SDHCI (`sdio1`, SPI 273) for SD; a USB host stack
+   (missing today); a real NIC (the Pi 4 ethernet is USB-attached, so it
+   needs USB first; the Pi 5 ethernet lives on the RP1 southbridge).
+
+### Placement
+
+A Pi 5 (ideally) is a **Phase 1/2 enabler**: the cheapest real-silicon EL2/
+VHE test bed and a way to re-validate the emulation-shaped assumptions — not
+a substitute for the server track, which still needs GICv3/ITS/LPI/SMMU
+validated on a real SystemReady SR platform or under KVM.
+
 ## References
 
 - `docs/el2-capability-root.md` — the EL2 capability-root design sketch (the
@@ -199,3 +261,6 @@ the emulated targets, which remain the dev baseline.
 - `scripts/run-aarch64.sh` (`--sbsa-ref`) and `scripts/build-sbsa-firmware.sh`.
 - Kernel entry / EL descent: `crates/catten/src/main.rs`.
 - GIC/ITS/LPI: `crates/catten/src/cpu/isa/aarch64/interrupts/gic/`.
+- Pi facts (GICv2, MIP MSI, SDHCI, PL011, DMA ranges): the BCM2712 device
+  tree `arch/arm64/boot/dts/broadcom/bcm2712.dtsi` in the Raspberry Pi Linux
+  tree.
