@@ -209,9 +209,11 @@ copy/move/cancel), device (MMIO + SPI), cq-wait, async, sitas, service, uart
 (console driver via discovered PL011 base/IRQ from the SPCR), and raft (elects
 a leader). The boot completes (boot-done marker).
 
-Remaining on sbsa-ref (latest): `nvme`, `raft-storage`, `scheduler-lifecycle`
-(15/18 pass, 0 fail; the NVMe driver runs its EL0 init and programs MSI-X, but
-its completion interrupt is not yet reliably delivered).
+Remaining on sbsa-ref (latest): the NVMe driver now performs a full 12 KiB
+PRP-list write/flush/read round trip with MSI-X completing via the ITS, and
+the device/uart/SPI tests pass. The remaining `nvme` failure is the object
+store's `ObjStore::mount` block I/O, which stalls after a few reads; the
+`raft-storage`/`scheduler-lifecycle` tests also still pend. (~16/18 pass.)
 
 ### GIC security: the SPI/LPI delivery blocker (root-caused Aug 2026)
 
@@ -251,6 +253,31 @@ priority (`0xa0`), the cached hppi keeps the lower INTID (the timer), so
 device SPIs priority `0x50`, strictly above the timer PPI, so a pending SPI
 always wins the cached-hppi tie. This makes the device and uart self-tests pass
 reliably on sbsa-ref.
+
+### NVMe LPI (MSI) delivery: the `intid >= 1020` spurious bug
+
+The irq_dispatcher's spurious check `if intid >= 1020 { return; }` treated
+every INTID 1020+ as a spurious interrupt — including the valid LPI `8192`
+delivered by the ITS. So the NVMe driver's MSI-X completion was acknowledged
+and then silently dropped; the driver polled instead of waking on its CQ.
+Restricted the check to `1020..=1023`.
+
+Supporting fixes that make the LPI delivery reliable on QEMU:
+- clear the Group 0/1 active-priority registers at GIC init (the UEFI
+  firmware can leave an acknowledged-but-never-EOI'd NVMe MSI active, wedging
+  the running priority);
+- QEMU reports an enabled LPI's priority as `byte & 0xfc` (always >= 0x80,
+  because the config byte's bit 7 is both the enable and the top priority
+  bit), so the timer PPI must sit below that: the per-LP timer now uses
+  `TIMER_PRIORITY` `0xf0` (below `SPI_PRIORITY` 0x50 and every enabled LPI)
+  so a busy timer can't win the cached-hppi preemption tie against a device
+  interrupt;
+- `LPI_PRIORITY` raised so the property-table byte stays enabled (bit 7) while
+  keeping an effective priority (0x90) above the timer.
+
+With these, the NVMe self-test runs its full 12 KiB PRP-list round trip, the
+ITS delivers MSI-X completion interrupts to the driver's CQ, and the SMMU
+domain completes the transfer without translation faults.
 
 These are the same "hardcoded platform geometry" class of issue as the original
 GIC/PL011 constants, and are the natural next bring-up items.
