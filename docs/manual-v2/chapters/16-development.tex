@@ -153,7 +153,8 @@ x86-64):
         teardown).
     \item \texttt{el0\_uart.rs} --- userspace UART driver (delegated MMIO +
         IRQ, crash recovery).
-    \item \texttt{el0\_sitas.rs} --- sitas executor integration.
+    \item \texttt{el0\_sitas.rs} --- sitas executor integration: sharded KV
+        plus the mailbox index demo (Section~9.8).
     \item \texttt{scheduler\_lifecycle.rs} --- spawn, block, wake, abort,
         migration-safe migration, timer-wait affinity.
     \item \texttt{ipc.rs} --- IPC path tests (scalar, memory, delegation,

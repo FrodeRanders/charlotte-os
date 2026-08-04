@@ -56,6 +56,13 @@ The main additions and extensions currently maintained here are:
   replacement generation, transfer state, synchronize registration, and
   invalidate stale connections. This remains prototype work rather than a
   production upgrade framework.
+- **Sitas shard runtime at EL0:** the `sitas` no_std shard-per-core runtime
+  (external crates) runs as a real EL0 image (`catten-user`) boot-tested by
+  the kernel. A mailbox index demo shows the division of responsibility:
+  scanner shards route entries to logical assemblers through typed owned
+  messages in userspace, and the coordinator merges and verifies the result,
+  while the kernel only supplies the address space, LP-pinned thread spawn,
+  and the completion-queue wait/wake.
 - **Architecture and implementation documentation:** Markdown design notes and
   the LaTeX manual in [`docs/manual-v2`](docs/manual-v2) distinguish implemented
   behavior from intended architecture and record known limitations.

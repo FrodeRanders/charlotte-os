@@ -210,4 +210,150 @@ of several async sources.'' The executor doesn't need to build a reactor on top 
         path fast and the trusted computing base small.
 \end{enumerate}
 
+\section{A worked example: the mailbox index build}
+
+The mailbox index build is the end-to-end sitas demo that runs at EL0 on
+CharlotteOS. It is the \texttt{no\_std} counterpart of the host-side
+\texttt{sharded\_index\_mailbox} example in the sitas repository: scanner
+shards generate records, route each key to a logical assembler work unit
+through a typed mailbox, and the assemblers sort and return the completed
+runs, after which the coordinator merges and verifies the final index. It
+is the same shared-nothing, message-passing pattern as the sharded KV
+service, but with routing between logical work units, real parallelism, and
+a verifiable product.
+
+The demo lives in \texttt{sitas\_core::mailbox\_index}
+(\texttt{crates/sitas-core/src/mailbox\_index.rs} in the sitas checkout)
+and runs inside \texttt{catten-user}, the EL0 sitas image that the
+kernel's \texttt{el0\_sitas} self-test loads and verifies.
+
+\subsection{The workload}
+
+The record set is generated on the fly; there are no files. The demo uses
+512 records over two shard threads and three logical assembler work units.
+A record's key is a pure function of its index (a SplitMix64 avalanche
+over \texttt{seed} XOR \texttt{index}), so any thread can re-derive any key
+without storing the data set. An index entry is a \texttt{(key, offset)}
+pair.
+
+\begin{itemize}
+    \item \textbf{Scanners} --- two producer threads, one per shard. Each
+        generates its contiguous partition of records, routes every key to
+        an assembler with a key hash, batches the entries, and sends the
+        batches as owned messages.
+    \item \textbf{Assemblers} --- three logical work units. Two are placed
+        on shards 0 and 1; the third is deliberately placed on shard 0 so
+        that logical naming and physical placement are visibly separate.
+        Each assembler receives its entries, sorts them into a run, and
+        hands the completed run to the coordinator as an owned value.
+    \item \textbf{Coordinator} --- the main thread. It spawns the shard
+        threads, waits for all three runs, k-way merges them, verifies the
+        final index, and writes the verified record count to the status
+        page.
+\end{itemize}
+
+\subsection{Kernel and userspace responsibilities}
+
+The demo is a deliberately clean slice through the responsibility divide.
+
+\textbf{The kernel supplies:}
+
+\begin{itemize}
+    \item An address space with mapped user pages (code, heap, CQ ring,
+        status page) and nothing else: no file, network, or mailbox
+        syscalls are used anywhere in the demo.
+    \item \texttt{spawn\_thread} via SVC, which pins each shard thread to
+        its LP.
+    \item The completion queue: a ring mapped read/write into user memory,
+        with \texttt{CQ\_WAIT}/\texttt{CQ\_WAKE} as the only blocking
+        primitive.
+\end{itemize}
+
+\textbf{Userspace (the sitas \texttt{no\_std} lane) supplies:}
+
+\begin{itemize}
+    \item One \texttt{ShardExecutor} per shard, polling its futures and
+        blocking in the unified wait (Section~9.3).
+    \item The typed mailboxes (\texttt{ShardSender}/\texttt{ShardReceiver})
+        that carry work between shards without ever crossing the kernel
+        boundary (Section~9.5).
+    \item All of the logic: routing, batching, backpressure, sorting, the
+        merge, and the verification.
+\end{itemize}
+
+The kernel never sees a message, a key, or a run. It only ever sees threads
+being spawned and threads blocking on the completion queue. That is the
+division of responsibility this OS is built around: the kernel is authority
+isolation, thread placement, and wakeups; everything else --- state, work,
+and the ownership discipline --- is ordinary Rust in userspace.
+
+\subsection{The mailbox path}
+
+The typed channel carries \texttt{IndexMessage}:
+
+\begin{verbatim}
+enum IndexMessage {
+    Entries { from: ShardId, batch: Vec<IndexEntry> },
+    ProducerDone { from: ShardId },
+}
+\end{verbatim}
+
+Senders are cloned into every scanner; each receiver moves into its
+assembler shard, and assemblers are started before scanners so receivers
+exist before producers begin. The \texttt{no\_std} channel exposes a
+non-blocking \texttt{try\_send}; a producer whose mailbox is full parks
+briefly on the runtime's \texttt{ShardParker} and retries, rather than
+spinning. The assembler task awaits \texttt{receiver.recv()}; the await
+parks the shard in its reactor wait, and the sending side's channel waker
+re-queues exactly that task and releases the reactor --- the same
+channel-waker-to-reactor chain as the sharded KV service (Section~9.5).
+
+\subsection{Coordination without joining}
+
+CharlotteOS threads have a cooperative lifecycle, and joining is not yet
+implemented (\texttt{RawJoinHandle::join} returns an error). The demo
+therefore coordinates like the sharded KV requester: the coordinator joins
+nothing. It parks and polls the result mailbox until all three runs
+arrive, then verifies. A parked coordinator consumes no CPU, and a stolen
+or coalesced wake costs at most one park interval.
+
+\subsection{Verification}
+
+Verification checks the product, not the implementation path:
+
+\begin{enumerate}
+    \item Every run is internally sorted.
+    \item A k-way merge over the runs is globally sorted and contains all
+        512 records.
+    \item Every entry's key equals the deterministic key of its offset,
+        and the offsets form a complete bijection of the record range
+        (checked with an XOR invariant).
+    \item Exactly one run arrives per work unit.
+\end{enumerate}
+
+On success the demo writes 512 to status-page offset 1, next to the
+\texttt{basic\_kv} result at offset 0. The kernel's deferred verifier polls
+both words and reports:
+
+\begin{verbatim}
+[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified 512 records.
+\end{verbatim}
+
+A failed demo writes the failure sentinel \texttt{0xBADC0DE} instead, which
+the verifier turns into a failed self-test.
+
+\subsection{Why this demo matters}
+
+The mailbox index build shows the architecture working as designed:
+mutable state is owned, work is transferred as owned values, shards
+communicate without locks or kernel crossings, and the kernel stays a thin
+substrate. Because the demo is written against the \texttt{no\_std}
+\texttt{ShardRuntime} seam, the identical code path runs on a Unix host
+through \texttt{sitas-unix} with a plain \texttt{cargo test} and on
+CharlotteOS through the kernel syscall backend: the runtime is not rewritten
+or emulated for either side. That is the Rust-affine version of the old
+division of labour: the kernel contributes the primitives that only it can
+provide, and the language contributes the discipline that userspace is
+trusted to enforce.
+
 \endinput
