@@ -307,14 +307,28 @@ parks the shard in its reactor wait, and the sending side's channel waker
 re-queues exactly that task and releases the reactor --- the same
 channel-waker-to-reactor chain as the sharded KV service (Section~9.5).
 
-\subsection{Coordination without joining}
+\subsection{Coordination and joining}
 
-CharlotteOS threads have a cooperative lifecycle, and joining is not yet
-implemented (\texttt{RawJoinHandle::join} returns an error). The demo
-therefore coordinates like the sharded KV requester: the coordinator joins
-nothing. It parks and polls the result mailbox until all three runs
-arrive, then verifies. A parked coordinator consumes no CPU, and a stolen
-or coalesced wake costs at most one park interval.
+The demo coordinates like the sharded KV requester: the coordinator parks and
+polls the result mailbox until all three runs arrive, then verifies. A parked
+coordinator consumes no CPU, and a stolen or coalesced wake costs at most one
+park interval.
+
+Joining shard threads is also real on CharlotteOS now. A shard thread
+terminates itself with \texttt{thread\_exit} once its closure completes (a
+user thread has no ``returned'' trap, so the trampoline must ask the kernel
+to reap it), and the kernel's \texttt{ObserveThreadExit} syscall registers a
+completion capability as an exit-observer of that thread: when the kernel
+reaps the thread, the capability fires through the ordinary completion ABI.
+The backend's \texttt{CharlotteJoinHandle} wraps this --- \texttt{join}
+blocks in the kernel's completion wait and then reads the closure's return
+value from a per-spawn result slot, and \texttt{is\_finished} polls the
+capability. The \texttt{catten-user} join probe exercises it: it spawns two
+shard threads that return 40 and 41, joins both, and writes the sum (81) to
+the status page. The coordinator of the mailbox demo itself does not join
+because work completion (all runs arrived) already implies the shards are
+done --- but a caller that needs ``the thread really exited'' has the
+kernel-backed primitive.
 
 \subsection{Verification}
 
@@ -330,12 +344,13 @@ Verification checks the product, not the implementation path:
     \item Exactly one run arrives per work unit.
 \end{enumerate}
 
-On success the demo writes 1024 (the number of records) to status-page 
-offset 1, next to the \texttt{basic\_kv} result at offset 0. The kernel's deferred 
-verifier polls both words and reports:
+On success the demo writes 1024 (the number of records) to status-page
+offset 1 and the join probe writes 81 to offset 2, next to the
+\texttt{basic\_kv} result at offset 0. The kernel's deferred verifier polls
+all three words and reports:
 
 \begin{verbatim}
-[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified 1024 records.
+[sitas] SUCCESS: basic_kv total_len=3, mailbox index verified 1024 records, join probe sum 81
 \end{verbatim}
 
 A failed demo writes the failure sentinel \texttt{0xBADC0DE} instead, which
