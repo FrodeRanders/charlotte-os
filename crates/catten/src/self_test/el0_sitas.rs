@@ -445,11 +445,9 @@ extern "C" fn verify_el0_sitas() {
             }
             if index != 0 {
                 assert_eq!(
-                    index,
-                    SITAS_MAILBOX_INDEX_COUNT,
+                    index, SITAS_MAILBOX_INDEX_COUNT,
                     "[sitas] mailbox_index: expected verified record count {:#x}, got {:#x}",
-                    SITAS_MAILBOX_INDEX_COUNT,
-                    index
+                    SITAS_MAILBOX_INDEX_COUNT, index
                 );
             }
         } else if sentinel != 0 && sentinel != 0xc0de {
