@@ -8,7 +8,10 @@
 //!
 //! The binary calls `basic_kv::basic_kv_test`, which exercises `ShardedKv`
 //! over `CharlotteReactor`: it creates a KV store, puts keys, reads one back,
-//! and writes the total key count to the result page.
+//! and writes the total key count to the result page. It then runs
+//! `mailbox_index::mailbox_index_test`, the sharded scanner -> mailbox ->
+//! assembler index demo, which writes its verified record count next to it.
+//! The verifier checks both status-page words.
 
 #[cfg(target_arch = "aarch64")]
 use core::sync::atomic::{
@@ -50,6 +53,10 @@ const SITAS_HEAP_VADDR: usize = charlotte_launch::HEAP_VADDR;
 const SITAS_HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / 4096;
 #[cfg(target_arch = "aarch64")]
 const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
+/// Verified record count `mailbox_index::mailbox_index_test` writes on success
+/// (mirrors `sitas_core::mailbox_index::RECORD_COUNT`).
+#[cfg(target_arch = "aarch64")]
+const SITAS_MAILBOX_INDEX_COUNT: u32 = 512;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
@@ -423,16 +430,34 @@ extern "C" fn verify_el0_sitas() {
             teardown_sitas_domain();
             return;
         }
-        if sentinel != 0 && sentinel != 0xc0de {
+        if sentinel == 3 {
+            // basic_kv result present: now wait for the mailbox-index demo,
+            // which writes its verified record count one u32 further on.
+            let index = unsafe { core::ptr::read_volatile(result.add(1)) };
+            if index == SITAS_MAILBOX_INDEX_COUNT {
+                logln!(
+                    "[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified {} records.",
+                    index
+                );
+                crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
+                teardown_sitas_domain();
+                return;
+            }
+            if index != 0 {
+                assert_eq!(
+                    index,
+                    SITAS_MAILBOX_INDEX_COUNT,
+                    "[sitas] mailbox_index: expected verified record count {:#x}, got {:#x}",
+                    SITAS_MAILBOX_INDEX_COUNT,
+                    index
+                );
+            }
+        } else if sentinel != 0 && sentinel != 0xc0de {
             assert_eq!(
                 sentinel, 3,
                 "[sitas] basic_kv: expected total_len result 3, got {:#x}",
                 sentinel
             );
-            logln!("[sitas] SUCCESS: basic_kv ran at EL0, produced total_len {:#x}.", sentinel);
-            crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
-            teardown_sitas_domain();
-            return;
         }
         deadline.assert_pending("SITAS result");
         yield_lp();
