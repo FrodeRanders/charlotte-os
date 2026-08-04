@@ -46,7 +46,7 @@ jobs:
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout 6c074d5c3b6334efbeaa1fede8c9adbe488c52ec
+          git -C "$SITAS_DIR" checkout 729e4617de4a60ba9b9525bbf76e81b619b684fb
           scripts/build-catten-services.sh --embed
           scripts/build-catten-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
@@ -124,7 +124,7 @@ jobs:
           if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
             SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
             git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-            git -C "$SITAS_DIR" checkout 6c074d5c3b6334efbeaa1fede8c9adbe488c52ec
+            git -C "$SITAS_DIR" checkout 729e4617de4a60ba9b9525bbf76e81b619b684fb
             scripts/build-catten-services.sh --embed
             scripts/build-catten-user.sh --embed
             export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
@@ -163,7 +163,7 @@ jobs:
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout 6c074d5c3b6334efbeaa1fede8c9adbe488c52ec
+          git -C "$SITAS_DIR" checkout 729e4617de4a60ba9b9525bbf76e81b619b684fb
 
       # Keep CI on the same multicore, MSI-X/NVMe configuration and marker
       # list used by developers. This also rebuilds the embedded EL0 bundle.
