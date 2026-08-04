@@ -323,19 +323,19 @@ Verification checks the product, not the implementation path:
 \begin{enumerate}
     \item Every run is internally sorted.
     \item A k-way merge over the runs is globally sorted and contains all
-        512 records.
+        1024 records.
     \item Every entry's key equals the deterministic key of its offset,
         and the offsets form a complete bijection of the record range
         (checked with an XOR invariant).
     \item Exactly one run arrives per work unit.
 \end{enumerate}
 
-On success the demo writes 512 to status-page offset 1, next to the
-\texttt{basic\_kv} result at offset 0. The kernel's deferred verifier polls
-both words and reports:
+On success the demo writes 1024 (the number of records) to status-page 
+offset 1, next to the \texttt{basic\_kv} result at offset 0. The kernel's deferred 
+verifier polls both words and reports:
 
 \begin{verbatim}
-[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified 512 records.
+[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified 1024 records.
 \end{verbatim}
 
 A failed demo writes the failure sentinel \texttt{0xBADC0DE} instead, which
@@ -347,7 +347,7 @@ The mailbox index build shows the architecture working as designed:
 mutable state is owned, work is transferred as owned values, shards
 communicate without locks or kernel crossings, and the kernel stays a thin
 substrate. Because the demo is written against the \texttt{no\_std}
-\texttt{ShardRuntime} seam, the identical code path runs on a Unix host
+\texttt{ShardRuntime}, the identical code path runs on a Unix host
 through \texttt{sitas-unix} with a plain \texttt{cargo test} and on
 CharlotteOS through the kernel syscall backend: the runtime is not rewritten
 or emulated for either side. That is the Rust-affine version of the old
