@@ -56,7 +56,7 @@ const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 /// Verified record count `mailbox_index::mailbox_index_test` writes on success
 /// (mirrors `sitas_core::mailbox_index::RECORD_COUNT`).
 #[cfg(target_arch = "aarch64")]
-const SITAS_MAILBOX_INDEX_COUNT: u32 = 512;
+const SITAS_MAILBOX_INDEX_COUNT: u32 = 1024;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;

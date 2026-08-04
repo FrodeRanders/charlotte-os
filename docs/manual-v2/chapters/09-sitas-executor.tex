@@ -229,12 +229,11 @@ kernel's \texttt{el0\_sitas} self-test loads and verifies.
 
 \subsection{The workload}
 
-The record set is generated on the fly; there are no files. The demo uses
-512 records over two shard threads and three logical assembler work units.
-A record's key is a pure function of its index (a SplitMix64 avalanche
-over \texttt{seed} XOR \texttt{index}), so any thread can re-derive any key
-without storing the data set. An index entry is a \texttt{(key, offset)}
-pair.
+The demo uses 1024 synthetically generated records over two shard threads 
+and three logical assembler work units. A record's key is a pure function of its 
+index (a SplitMix64 avalanche over \texttt{seed} XOR \texttt{index}), so any 
+thread can re-derive any key without storing the data set. An index entry is 
+a \texttt{(key, offset)} pair.
 
 \begin{itemize}
     \item \textbf{Scanners} --- two producer threads, one per shard. Each
