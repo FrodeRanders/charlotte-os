@@ -381,7 +381,9 @@ fn main(ctx: Context) -> ! {
     // "Software lives in the object store": upload the signed artifact to the
     // (node-local, for now) store. `GREET_NAME` is the deployed name the
     // cluster will assign.
-    if upload_artifact(obj_conn, dns::DEPLOY_OBJECT_ID, &deploy::artifact_bytes()).is_err() {
+    if upload_artifact(obj_conn, dns::artifact_object_id(GREET_NAME), &deploy::artifact_bytes())
+        .is_err()
+    {
         fail(STAGE_FAIL);
     }
     config::write::<u32>(0, STAGE_UPLOADED);

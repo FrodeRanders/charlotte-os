@@ -43,6 +43,9 @@ dns_net_test = ["disco_net_test"]
 # signed artifact to the peer node, the remote agent picks it up and serves
 # it across the network, and the artifact migrates between nodes.
 deploy_net_test = ["dns_net_test"]
+# Run the clusterctl administration test: upload/deploy/status through the
+# cluster administration service, plus the serial admin console.
+clusterctl_test = ["deploy_net_test"]
 # Run the TCP/IP test: the smoltcp userspace adapter served through the
 # frouter, exchanging TCP data between two guests on a QEMU stream LAN.
 tcpip_net_test = ["virtio_net_test"]

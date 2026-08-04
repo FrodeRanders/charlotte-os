@@ -173,3 +173,9 @@ name = "agent"
 path = "src/bin/agent.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "clusterctl"
+path = "src/bin/clusterctl.rs"
+test = false
+bench = false

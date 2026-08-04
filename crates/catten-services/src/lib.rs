@@ -693,6 +693,20 @@ pub mod dns {
     /// Stable object-store id of the deploy demo payload.
     pub const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
 
+    /// Tag for the cluster-wide artifact namespace in the object store.
+    ///
+    /// Artifact ids are cluster-global: every node stores the artifact for a
+    /// logical name at the same derived id (`artifact_object_id`), so the
+    /// physical reference in a deployment record is the pair
+    /// `(node_key, artifact_object_id(name))` and the node dimension never
+    /// leaks into the identifier itself.
+    pub const ARTIFACT_ID_TAG: u64 = 0xfffe_0000_0000_0000;
+
+    /// The stable, cluster-wide object-store id for a logical artifact name.
+    pub fn artifact_object_id(name: &[u8]) -> u64 {
+        ARTIFACT_ID_TAG | (super::node_identity::fnv1a(name) & 0x0000_ffff_ffff_ffff)
+    }
+
     /// Cluster signature (placeholder MAC) over a deployment record.
     pub fn deploy_mac(artifact: &[u8], object_id: u64, node_key: u64) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
@@ -758,13 +772,63 @@ pub mod deploy {
         hash
     }
 
-    /// The full stored artifact: MAC header followed by the payload.
-    pub fn artifact_bytes() -> alloc::vec::Vec<u8> {
-        let mut bytes = alloc::vec::Vec::with_capacity(8 + GREET_PAYLOAD.len());
-        bytes.extend_from_slice(&payload_mac(GREET_PAYLOAD).to_le_bytes());
-        bytes.extend_from_slice(GREET_PAYLOAD);
+    /// The stored artifact blob for an arbitrary payload: MAC header followed
+    /// by the payload. Every node stores the same artifact under the same
+    /// derived object id (`dns::artifact_object_id`), so the cluster-wide
+    /// artifact identity is the (name, content) pair and the node dimension
+    /// lives only in the deployment manifest record.
+    pub fn sign_payload(payload: &[u8]) -> alloc::vec::Vec<u8> {
+        let mut bytes = alloc::vec::Vec::with_capacity(8 + payload.len());
+        bytes.extend_from_slice(&payload_mac(payload).to_le_bytes());
+        bytes.extend_from_slice(payload);
         bytes
     }
+
+    /// The full stored greet artifact: MAC header followed by the payload.
+    pub fn artifact_bytes() -> alloc::vec::Vec<u8> {
+        sign_payload(GREET_PAYLOAD)
+    }
+}
+
+/// Protocol of the cluster administration service (`clusterctl`): the
+/// "outside" interface to a cluster. It wraps the raw dns manifest ops and
+/// the object store behind admin-level operations: upload a signed artifact,
+/// deploy it to a node, and query the deployment manifest.
+///
+/// Artifact names are bare cluster-global names ("greet"); the object-store
+/// id is derived from the name (`dns::artifact_object_id`), and the node
+/// dimension appears only in the deployment record.
+pub mod clusterctl {
+    pub const INTERFACE: u64 = super::name(b"CTL");
+    pub const VERSION: u32 = 1;
+    /// The service's short name (packed LE).
+    pub const NAME: u64 = super::name(b"ctl");
+
+    /// Upload an artifact. `arg0` is the packed artifact name; the attached
+    /// memory object holds `[payload_len:u64 LE][payload]`. The service signs
+    /// it with the cluster secret and writes `[mac][payload]` to the local
+    /// object store at the artifact's derived id. The reply is the object id.
+    pub const OP_UPLOAD: u32 = 1;
+    /// Deploy an artifact to a node. `arg0` is the packed artifact name; the
+    /// attached memory object holds `[node_key:u64 LE]`. The service derives
+    /// the object id and submits the assignment through the local dns; the
+    /// reply is the committed manifest generation (deferred until it has
+    /// replicated).
+    pub const OP_DEPLOY: u32 = 2;
+    /// Query the deployment manifest. `arg0` is the packed artifact name; the
+    /// reply moves the 32-byte deployment record
+    /// `[generation][object_id][node_key][mac]`, or is `ERR_NOT_FOUND`.
+    pub const OP_STATUS: u32 = 3;
+    /// Placeholder for the future blank-start key ceremony. Currently replies
+    /// `ERR_NOT_IMPLEMENTED`; the cluster secret is still a build-time
+    /// constant.
+    pub const OP_KEYCEREMONY: u32 = 4;
+
+    pub const ERR_NOT_FOUND: i64 = -1;
+    pub const ERR_NOT_LEADER: i64 = -2;
+    pub const ERR_TOO_LARGE: i64 = -3;
+    pub const ERR_UPLOAD_FAILED: i64 = -10;
+    pub const ERR_NOT_IMPLEMENTED: i64 = -64;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

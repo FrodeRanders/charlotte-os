@@ -176,8 +176,8 @@ mod inner {
 
         // "greet" packed LE (matches catten_services::deploy::NAME).
         const GREET_NAME: u64 = 0x0000_0074_6565_7267;
-        // catten_services::dns::DEPLOY_OBJECT_ID.
-        const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
+        // catten_services::dns::artifact_object_id(b"greet").
+        const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
         const DNS_OP_DEPLOY: u32 = 8;
         const DNS_OP_GET: u32 = 1;
         // catten_services::deploy::GREET_VALUE.

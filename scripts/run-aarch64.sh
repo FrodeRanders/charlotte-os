@@ -247,6 +247,7 @@ if [ "$DNS_TEST" = "1" ]; then
 fi
 if [ "$DEPLOY_TEST" = "1" ]; then
     FEATURES="${FEATURES},deploy_net_test"
+    FEATURES="${FEATURES},clusterctl_test"
 fi
 if [ "$TCPIP_TEST" = "1" ]; then
     FEATURES="${FEATURES},tcpip_net_test"

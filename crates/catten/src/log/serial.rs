@@ -43,12 +43,14 @@ const PL011_BASE_FALLBACK: usize = 0x0900_0000;
 /// runs from `early_logln!` before any `init()` has completed.
 static PL011_BASE: AtomicUsize = AtomicUsize::new(PL011_BASE_FALLBACK);
 
-/// Data register: writing a byte transmits it.
+/// Data register: writing a byte transmits it; reading it receives a byte.
 const UARTDR: usize = 0x00;
 /// Flag register.
 const UARTFR: usize = 0x18;
 /// Flag register bit: transmit FIFO full.
 const UARTFR_TXFF: u32 = 1 << 5;
+/// Flag register bit: receive FIFO empty.
+const UARTFR_RXFE: u32 = 1 << 4;
 
 /// The global serial console instance guarding ordered access to the UART.
 pub static SERIAL: Mutex<Pl011> = Mutex::new(Pl011);
@@ -96,6 +98,23 @@ impl Pl011 {
     #[inline]
     fn is_tx_full() -> bool {
         unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTFR)) & UARTFR_TXFF != 0 }
+    }
+
+    /// Receive a byte if the RX FIFO holds one. Returns `None` when no input
+    /// is available (used by the kernel admin console).
+    #[inline]
+    pub fn try_get_byte(&self) -> Option<u8> {
+        if !READY.load(Ordering::Acquire) {
+            return None;
+        }
+        let flags = unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTFR)) };
+        if flags & UARTFR_RXFE != 0 {
+            return None;
+        }
+        let value = unsafe { core::ptr::read_volatile(Self::reg_ptr(UARTDR)) };
+        // The upper bits hold line/overrun/parity status; only the low byte
+        // is data.
+        Some((value & 0xff) as u8)
     }
 
     /// Transmit a single byte, spinning while the FIFO is full.

@@ -126,6 +126,8 @@ pub mod cq_completion;
 pub mod cq_wait;
 pub mod device;
 pub mod el0;
+#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+pub mod el0_clusterctl;
 pub mod el0_demo;
 #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
 pub mod el0_disco;
@@ -250,6 +252,8 @@ pub fn run_self_tests() {
     logln!("Skipping EL0 dns test (enable dns_net_test with matching PCI hardware).");
     #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
     el0_tcpip::test_el0_tcpip();
+    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    el0_clusterctl::test_el0_clusterctl();
     #[cfg(all(not(feature = "tcpip_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 tcpip test (enable tcpip_net_test with matching PCI hardware).");
     #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
