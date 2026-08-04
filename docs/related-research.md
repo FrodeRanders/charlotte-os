@@ -6,7 +6,7 @@ This note identifies operating-systems and distributed-systems research related 
 
 - [`charlotte-networking-architecture.md`](charlotte-networking-architecture.md)
 - [`charlotte-sitas-xous-architecture.md`](charlotte-sitas-xous-architecture.md)
-- [`manual-v2/charlotte.pdf`](manual-v2/charlotte.pdf), especially Chapters 11 and 16
+- [`manual-v2/charlotte.pdf`](manual-v2/charlotte.pdf), especially Chapters 11 and 16, and Chapter 17 (the server-class cluster vision)
 
 These do not descend from one research tradition and shamelessly combine good ideas from:
 
@@ -103,7 +103,7 @@ service lookup
 
 - Andrew S. Tanenbaum, Sape J. Mullender, and Robbert van Renesse, [Using Sparse Capabilities in a Distributed Operating System](https://www.inf.fu-berlin.de/lehre/SS11/compsec/TanenbaumMR1986.pdf)
 - Andrew S. Tanenbaum et al., [The Amoeba Distributed Operating System -- A Status Report](https://www.sciencedirect.com/science/article/pii/0140366491900589)
-- Robbert van Renesse, Hans van Staveren, and Andrew S. Tanenbaum, [The Performance of the Amoeba Distributed Operating System](https://citeseerx.ist.psu.edu/document?doi=34707b0ea4b6402aa266422f3cfff8444cf8cb11&repid=rep1&type=pdf)
+- Robbert van Renesse, Hans van Staveren, and Andrew S. Tanenbaum, [Performance of the world's fastest distributed operating system](https://dl.acm.org/doi/abs/10.1145/54289.54291)
 - Sape J. Mullender, [The Amoeba Distributed Operating System](https://ir.cwi.nl/pub/18386/18386A.pdf)
 
 #### Relevant questions
@@ -1075,6 +1075,12 @@ For architecture refinement, the most useful reading order is:
 10. **Capsicum and CHERI**  
     Inform compatibility-layer confinement and memory safety.
 
+11. **Borg, Omega, and Kubernetes**  
+    Grounds the cluster-placement half of the server-class cluster vision (Chapter 17).
+
+12. **TUF and SWIM**  
+    Ground the signing/bootstrap and auto-discovery halves of the cluster vision.
+
 ---
 
 ## 14. Overall assessment
@@ -1118,3 +1124,95 @@ are defined and tested.
 The remaining gap is concentrated at the protocol and distributed-systems 
 layers: durable state, versioned state transfer, externally visible effects, 
 idempotent retry, uncertain outcomes, and bounded recovery.
+
+---
+
+## 15. Server-class cluster vision: deployment, placement, and signing
+
+Chapter 17 of the manual (Server-Class Cluster Vision) describes intended
+architecture for clusters of interchangeable server-class ARM nodes:
+software is deployed to a named cluster rather than to named servers, the
+cluster decides placement (declared affinity first, observed
+inter-dependency second, cross-node migration third), nodes are "dumb"
+compute over a shared object store, and software is validated against a
+cluster-wide signing key held in replicated state. The related work falls
+into four groups.
+
+### 15.1 Interchangeable compute and processor pools
+
+- **Amoeba** (Section 2.1) is the historical ancestor of the "pool of
+  processors" model: terminals submit work that runs on any processor in
+  the pool, with capability-based network-wide RPC. Amoeba deliberately did
+  not implement process migration, which is the vision's extension.
+- **Plan 9** splits the machine into terminals, CPU servers, and file
+  servers, and centralizes authentication and key management in
+  `factotum` -- an early "cluster holds the keys, not the node".
+- **Inferno** continues Plan 9's model with a portable virtual machine and
+  code distributed as data.
+- **Jini / JavaSpaces** (Sun, later Apache River) contribute multicast
+  discovery, registration through a lookup service, and the tuple-space
+  "write, take, pick up" object model -- close to "software uploaded to the
+  object store and picked up by whichever node it is assigned to".
+- **MOSIX / openMosix** implement a single system image with automatic
+  resource discovery and transparent process migration.
+
+### 15.2 Cluster-level placement and migration
+
+- Brendan Burns, Brian Grant, David Oppenheimer, Eric Brewer, and John
+  Wilkes, [Borg, Omega, and Kubernetes: Lessons from Three Decades of
+  Platform-as-a-Service](https://queue.acm.org/detail.cfm?id=2898444), ACM
+  Queue 14(1), 2016. Established "deploy to the cluster, not the machine":
+  declarative specs, cluster-side placement with constraints and packing,
+  interchangeable machines.
+- **HashiCorp Nomad and Consul** -- cluster scheduling with
+  affinity/anti-affinity constraints, gossip membership
+  ([https://github.com/hashicorp/memberlist](https://github.com/hashicorp/memberlist)).
+- **VMware DRS and vMotion** -- declared affinity rules, load-observed
+  rebalancing, and live migration with a network-level switchover: the
+  full "affinity, observe, migrate" arc.
+- **Erlang/OTP distribution** -- node discovery, hot code loading, and the
+  "load, register, redirect, retire" upgrade pattern.
+- A. Keren and A. Barak, [Opportunity Cost Algorithms for Reduction of I/O
+  and Interprocess Communication Overhead in a Computing
+  Cluster](https://ieeexplore.ieee.org/document/1158313), IEEE TPDS 14(1),
+  2003. The earliest direct treatment of communication-aware placement,
+  and the closest research precedent for interop-observed placement at
+  OS-service granularity.
+
+### 15.3 Trust, signing, and bootstrap
+
+- **TUF (The Update Framework)** -- [theupdateframework.io](https://theupdateframework.io).
+  Signed metadata describing which keys are trusted, with versioning and
+  expiration; designed around key-compromise resilience. The root-key
+  ceremony is the model for injecting key material into a blank-start
+  cluster.
+- **Uptane** -- [uptane.github.io](https://uptane.github.io). Automotive
+  software-update security with offline and build-time key provisioning:
+  matches the "bake a secret into the server binary at build time, but
+  allow a blank start" option.
+- **Sigstore / Cosign / Notary** -- the current artifact-signing ecosystem
+  at deployment time.
+- **Remote attestation and measured boot** (TPM, ARM CCA, AMD SEV-SNP,
+  Intel SGX) -- hardware roots of trust that complement cluster-level
+  validation of software with node-level validation of hardware.
+
+### 15.4 Membership and artifact stores
+
+- A. Gupta, K. Birman, and R. van Renesse, [SWIM: Scalable
+  Weakly-consistent Infection-style Process Group Membership
+  Protocol](https://www.cs.cornell.edu/projects/quicksilver/public_pdfs/SWIM.pdf),
+  DSN 2002. Gossip membership and failure detection for auto-discovery;
+  production form is HashiCorp
+  [https://github.com/hashicorp/memberlist](https://github.com/hashicorp/memberlist).
+- **Nix** -- [nixos.org](https://nixos.org). Content-addressed,
+  hash-verified software store: the artifact-identity half of "software
+  lives in the object store".
+- **OCI container registries** with signed manifests (Notary/Cosign) -- the
+  deployment-time equivalent.
+
+The gap this vision targets: none of the above combines cluster-level
+placement with the ownership discipline and the kernel/userspace boundary
+this OS is built on. Interop-observed placement at OS-service granularity
+is largely unexplored since Keren and Barak (2003); the shard-level
+message-flow observability this OS already has (manual Chapter 9) is a
+plausible basis for going beyond the existing literature.

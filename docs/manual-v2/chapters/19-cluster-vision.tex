@@ -1,0 +1,355 @@
+\chapter{Server-Class Cluster Vision}
+
+This chapter is a forward-looking statement of intent, not a description of
+current behaviour. It sketches how CharlotteOS should scale from a single
+machine to a cluster of server-class ARM nodes, and what that implies for
+deployment, identity, and placement. Where a mechanism already exists, the
+text says so and points at the chapter that documents it; where it does not,
+the text describes the intended shape so the gap is explicit.
+
+\section{The vision: interchangeable compute}
+
+Server-class ARM processors with many cores are commodity hardware. The
+individual server is not interesting as a machine: it has no identity worth
+managing, no software worth deploying to by name, and no state worth
+treating as special. Servers are compute units over an interchangeable
+object store. As servers boot, they assemble themselves into clusters, and
+the cluster --- not the server --- becomes the unit that software is
+deployed to and routed through.
+
+This inverts the familiar model. Instead of deploying software to one or
+more named servers, software is deployed to a named cluster, and the
+cluster selects an optimal placement of load among its nodes based on how
+the deployed components interoperate. Components that interoperate heavily
+should land on the same cluster node; components that barely talk may be
+spread arbitrarily. The placement decision is made in and by the cluster
+itself, from rules it holds in its shared state, not by an operator
+manually mapping software to machines.
+
+The same idea already exists one level down: the shard-per-core model
+(Chapter~9) treats the cores of one machine as interchangeable executors
+over owned state, and the scheduler (Chapter~10) moves work between them.
+This chapter scales that notion to a cluster of machines. A cluster node
+plays the role of a core; the shared object store plays the role of owned
+state; and the cluster as a whole is the shared-nothing machine.
+
+\section{What is already in place}
+
+The vision is not written on a blank sheet. The following mechanisms are
+implemented and verified, and each maps onto a role in the cluster:
+
+\begin{itemize}
+    \item \textbf{Cross-machine consensus.} The Graft core replicates the
+        \texttt{dns} catalog state machine across two QEMU guests on a
+        stream Ethernet segment, serving remote invocation through
+        \texttt{dns::OP\_CALL} (Chapter~14). Cluster-wide shared state ---
+        the signing key, the deployment catalog, placement rules --- is a
+        replicated state machine of exactly this kind.
+
+    \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
+        fragmented across Ethernet frames and reassembled at the receiver
+        (Chapter~13). This is the transport the discovery, deployment, and
+        migration protocols run over.
+
+    \item \textbf{The interchangeable object store.} The NVMe-backed
+        object store with generation-selected directory records and
+        copy-on-write replacement (Chapter~15) is the store that software
+        artifacts are uploaded to and that Raft state persists in.
+
+    \item \textbf{Stateful replacement.} Live service upgrade transfers a
+        service's state as a memory object, tracks generations, invalidates
+        stale connections, and re-registers the new instance through the
+        name service (Chapter~16). Cross-node migration is the same handoff
+        with a network hop.
+
+    \item \textbf{Service isolation and routing.} Services live in separate
+        address spaces with delegated capabilities (Chapter~11), and the
+        name service --- replicated across nodes --- is the routing table
+        for ``somewhere in the cluster''.
+
+    \item \textbf{Certified work migration.} The scheduler migrates threads
+        between LPs with generation-validated handoff and sustained-window
+        load rebalancing (Chapter~10). The per-node precedent for the
+        cluster rebalancer.
+
+    \item \textbf{Observation substrate.} The sitas executor exposes task
+        counts, poll counts, queue depth, and shard snapshots (Chapter~9).
+        Shard-to-shard message flow can be measured; aggregating those
+        measurements across nodes is the runtime input to placement.
+
+    \item \textbf{Signed binaries at the boundary.} The EL0 loader already
+        validates ELF structure, rejects writable-executable segments, and
+        maps images with page-level permissions (Chapter~19). Cryptographic
+        validation of the artifact extends this boundary rather than
+        replacing it.
+\end{itemize}
+
+\section{The dumb server}
+
+A cluster node boots with a minimal, fixed program set: the crt0 runtime,
+the cluster client, and the drivers needed to reach storage and the
+network. There is no shell, no interactive administration, and no
+per-node software repository. A node is provisioned by the cluster, not by
+an administrator sitting at its console.
+
+When a new node boots, it must first find its cluster and then be accepted
+by it:
+
+\begin{enumerate}
+    \item \textbf{Auto-discovery.} The node contacts the cluster through
+        broadcast discovery or a configured seed, following the discovery
+        options already discussed for Raft peers (Chapter~14). Discovery
+        yields a connection to the cluster leader.
+
+    \item \textbf{Receiving cluster identity.} The node receives the
+        cluster's public signing key from the cluster. From that moment the
+        node can validate any software the cluster asks it to load; it never
+        needs a per-server key or a per-server trust decision.
+
+    \item \textbf{Joining the shared state.} The node becomes a member of
+        the replicated state machine and begins to receive deployment
+        assignments and placement decisions from the cluster.
+\end{enumerate}
+
+A fresh cluster must be able to start with no key material at all. In this
+un-initialised state the cluster can still form --- discovery, elections,
+and the replicated log work without keys --- but no software can be
+validated yet. An explicit, active operation provides the key information
+through the cluster leader; from then on it prevails in the shared cluster
+state and is replicated to every member. If a secret is required to verify
+the very first key injection, it is sufficient to store it in the server
+binary at build time --- but starting blank must be possible. The cluster
+does not trust a node's word; it trusts the key it holds in its replicated
+state.
+
+\section{Cluster-wide software deployment}
+
+Software is an artifact in the object store, and deployment is the act of
+assigning artifacts to cluster nodes. The pipeline has three stages:
+
+\begin{enumerate}
+    \item \textbf{Signing.} As a step in deployment, the software artifact
+        is cryptographically signed centrally with the cluster's signing
+        key. Signing is a cluster-wide, shared act, not a per-node act.
+
+    \item \textbf{Validation.} Each node validates what it loads against
+        the cluster public key it received on joining. Validation is
+        cluster-aware: the trust anchor is cluster state, replicated and
+        shared, so no node carries private trust material and no node can be
+        coerced into accepting software the cluster has not signed. This is
+        the distributed form of the ELF validation the loader already
+        performs locally (Chapter~16).
+
+    \item \textbf{Assignment.} The cluster instructs a node to pick up a
+        specific artifact from the object store and prepare it. The node
+        fetches, validates, and runs; it does not decide what to run.
+\end{enumerate}
+
+Deployment targets the cluster, and the cluster's routing table --- the
+replicated name service --- determines how a deployed program is reached.
+Some programs are callable from anywhere in the cluster and may live on any
+node that has picked them up; others, such as drivers and per-node
+infrastructure, must run at every node. Choosing between ``somewhere in
+the cluster'' and ``at every node'' is the same placement decision as
+choosing a shard for a service (Chapter~9), applied at the cluster scale.
+
+\section{Placement: affinity, observation, migration}
+
+Placement is the cluster's answer to ``which node runs this component?''
+The vision proposes three phases:
+
+\subsection{Declared affinity}
+
+Initially, the deployer declares expected interoperation: the deployment
+manifest annotates components with the other components they interoperate
+with heavily. The placement controller respects these declarations and
+co-locates communicating components on the same node, mirroring how shard
+placement keeps heavily communicating tasks on the same core. This is
+static, cheap, and good enough to start.
+
+\subsection{Observation}
+
+Declared affinity is a guess. The cluster should observe actual
+inter-dependency at runtime: shard-to-shard message counts and byte flows
+are already visible at the executor level (Chapter~9), and the distributed
+name service can aggregate which components actually call which. Observed
+behaviour overrides the declared guess as evidence accumulates, in the
+same way the scheduler's sustained-window rebalancing replaces a static
+per-LP assignment with a load-observed one (Chapter~10).
+
+\subsection{Cross-node migration}
+
+If re-balancing is handled over the cluster the way it is over processor
+cores, then a component can migrate between nodes while the cluster keeps
+serving it. The protocol follows the live-upgrade handoff (Chapter~16),
+scaled across the network:
+
+\begin{enumerate}
+    \item The cluster instructs the target node to load and prepare the
+        component from the object store: fetch, validate, and start it in
+        its own address space.
+    \item The new instance registers in the distributed name service, which
+        increments the generation for that name.
+    \item Clients that resolve the name now reach the new instance;
+        clients holding the old connection observe \texttt{EndpointClosed}
+        and re-resolve.
+    \item Once the name service points at the new instance, the cluster
+        closes the component down on the previous node, reclaiming its
+        resources.
+\end{enumerate}
+
+Each step uses an existing, verified primitive --- memory-object state
+transfer, generation tracking, endpoint invalidation, name-service
+reregistration (Chapter~16). What is new is orchestrating those primitives
+across nodes from the replicated cluster state.
+
+\section{What is new}
+
+The gap between the vision and the current implementation is a set of
+coordination pieces, all of which sit on top of mechanisms that already
+exist:
+
+\begin{itemize}
+    \item \textbf{Cluster discovery and key distribution.} The join
+        protocol that hands a booting node a connection to the leader and
+        the cluster's public signing key (Chapter~14's discovery options
+        become the transport).
+
+    \item \textbf{Key injection into cluster state.} The blank-start
+        bootstrapping operation that primes a fresh cluster's replicated
+        state with its signing key, administered through the leader.
+
+    \item \textbf{Signed artifact validation.} Extending the EL0 loader
+        with cryptographic verification against the cluster key, so a node
+        rejects anything the cluster has not signed.
+
+    \item \textbf{Deployment manifest in cluster state.} A replicated
+        catalog of artifacts, assignments, declared affinity, and
+        ``somewhere'' versus ``every node'' placement policy --- a state
+        machine on the Graft core like the \texttt{dns} catalog.
+
+    \item \textbf{Cluster-wide metrics aggregation.} Collecting the
+        shard-level observation data from every node into the cluster
+        state, so placement decisions are made from cluster-wide evidence.
+
+    \item \textbf{The placement controller.} The component that turns
+        declared affinity, observed interoperation, and node capacity into
+        assignments, and that initiates cross-node migration when the
+        observed behaviour justifies it.
+\end{itemize}
+
+None of these require new kernel primitives. They require composing the
+consensus, storage, name-service, and live-upgrade machinery into a
+deployment system, and trusting the same discipline the rest of the OS is
+built on: explicit ownership, bounded communication, and decisions made
+from shared, replicated state rather than from per-machine configuration.
+
+\section{Related work}
+
+The vision has strong historical precedents and equally strong modern
+parallels. None of them combine cluster-level placement with the ownership
+discipline and kernel/userspace boundary this OS is built on, but each is a
+useful point of comparison.
+
+\subsection{Historical distributed operating systems}
+
+\begin{itemize}
+    \item \textbf{Amoeba} (Vrije Universiteit Amsterdam) is the closest
+        ancestor for the ``pool of processors'' model: terminals submit
+        work that runs on any processor in the pool, dedicated machines act
+        as file and directory servers, and threads communicate by
+        network-wide RPC with capability-based access. Amoeba deliberately
+        did not migrate processes; cross-node migration is this vision's
+        extension of that model.
+
+    \item \textbf{Plan 9} (Bell Labs) splits the machine into terminals, CPU
+        servers, and file servers, and centralizes authentication and key
+        management in a dedicated daemon (\texttt{factotum}) --- an early
+        instance of ``the cluster holds the keys, not the node.''
+
+    \item \textbf{Inferno} (Bell Labs) continues Plan 9's model with a
+        portable virtual machine and code distributed as data over the
+        network.
+
+    \item \textbf{Jini / JavaSpaces} (Sun, later Apache River) contribute
+        the discovery pattern: services find a lookup service by multicast,
+        register, and hand clients a proxy; \texttt{JavaSpaces} is a tuple
+        space in which objects are written, taken, and picked up --- close
+        to ``software uploaded to the object store and picked up by
+        whichever node it is assigned to.''
+
+    \item \textbf{MOSIX} is the single-system-image cluster: automatic
+        resource discovery, transparent process migration, and no need to
+        know where a program runs. Its research program includes
+        communication-aware placement (Keren and Barak, ``Opportunity Cost
+        Algorithms for Reduction of I/O and Interprocess Communication
+        Overhead in a Computing Cluster,'' IEEE TPDS 2003), the earliest
+        direct treatment of interop-driven placement.
+\end{itemize}
+
+\subsection{Cluster managers and placement products}
+
+\begin{itemize}
+    \item \textbf{Borg / Omega / Kubernetes} (Burns, Grant, Oppenheimer,
+        Brewer, and Wilkes, ``Borg, Omega, and Kubernetes: Lessons from
+        Three Decades of Platform-as-a-Service,'' ACM Queue 2016) established
+        the modern shape: software is deployed to a cluster of machines,
+        placement is a cluster decision made from constraints and packing,
+        and machines are interchangeable.
+
+    \item \textbf{HashiCorp Nomad and Consul} pair cluster scheduling with
+        affinity and anti-affinity constraints and gossip-based membership.
+
+    \item \textbf{VMware DRS and vMotion} implement the full placement arc:
+        declared affinity rules, load-observed rebalancing, and live
+        migration with a network-level switchover.
+
+    \item \textbf{Erlang/OTP distribution} provides node discovery, hot
+        code loading, and the ``load, register, redirect, retire'' upgrade
+        pattern.
+\end{itemize}
+
+\subsection{Trust, signing, and bootstrap}
+
+\begin{itemize}
+    \item \textbf{TUF} (The Update Framework) defines signed metadata that
+        describes which keys are trusted, with versioning and expiration;
+        its root-key ceremony is the model for injecting key material into a
+        blank-start cluster.
+
+    \item \textbf{Uptane} (automotive software update security) shows the
+        offline and build-time key provisioning patterns --- the ``bake a
+        secret into the binary at build time, but allow a blank start''
+        option.
+
+    \item \textbf{Sigstore / Cosign / Notary} are the current artifact
+        signing ecosystem at deployment time.
+
+    \item \textbf{Remote attestation and measured boot} (TPM, ARM CCA,
+        SEV-SNP) complement cluster-level validation with a hardware root
+        of trust for the node itself.
+\end{itemize}
+
+\subsection{Membership and artifact stores}
+
+\begin{itemize}
+    \item \textbf{SWIM} (Gupta, Birman, and van Renesse, DSN 2002) and its
+        production form \textbf{memberlist} provide gossip membership and
+        failure detection for the auto-discovery step.
+
+    \item \textbf{Nix} is the content-addressed, hash-verified software
+        store: the artifact-identity half of ``software lives in the object
+        store.''
+
+    \item OCI container registries with signed manifests are the
+        deployment-time equivalent.
+\end{itemize}
+
+The least-explored territory in this space is inter-dependency-observed
+placement at OS-service granularity: Keren and Barak (2003) is the closest
+work, and it predates the modern cluster managers by a decade. The
+observation substrate this OS already has --- shard-level message flow and
+executor snapshots (Chapter~9) --- is a plausible basis for going further
+than the existing literature.
+
+\endinput

@@ -128,6 +128,20 @@ In short, it optimises for dependable service execution: isolated authority,
 explicit ownership, bounded asynchronous communication, predictable multicore
 locality, and rapid recovery.
 
+## Vision: server-class clusters
+
+The long-term direction is to scale this model from one machine to a cluster:
+interchangeable server-class ARM nodes assemble themselves into clusters on
+boot, software is deployed to a named cluster rather than to named servers,
+and the cluster decides placement --- initially from declared component
+affinity, eventually from observed inter-dependency, with cross-node
+migration of running components. Nodes are "dumb" compute over a shared
+object store, validating signed software against a cluster-wide key held in
+replicated state. This is intended architecture, not current behaviour;
+Chapter 17 of [the manual](docs/manual-v2) ("Server-Class Cluster Vision")
+describes it in detail against what already exists (consensus, the
+distributed name service, the object store, and live upgrade).
+
 That should make it particularly interesting for:
 - Control systems and appliances.
 - Storage or network services with strict latency requirements.
