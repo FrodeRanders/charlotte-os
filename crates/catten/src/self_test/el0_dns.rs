@@ -58,8 +58,22 @@ mod inner {
         include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/dns.elf"));
     const ECHO_ELF: &[u8] =
         include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
+    #[cfg(feature = "deploy_net_test")]
+    const AGENT_ELF: &[u8] =
+        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/agent.elf"));
 
     static mut TEST_STATE: Option<NameServiceHandle> = None;
+
+    /// FNV-1a (the same hash the node-identity scheme uses to derive member
+    /// names from NIC MACs).
+    fn fnv1a(bytes: &[u8]) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for byte in bytes {
+            hash ^= *byte as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
 
     fn spawn_with_manifest(
         image: &[u8],
@@ -120,7 +134,11 @@ mod inner {
         let call =
             ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem).ok()?;
         ipc::wait_reply(KERNEL_ASID, call).ok()?;
-        ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
+        let result = ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result);
+        // Release the operation and its memory object so callers may retry in
+        // a loop without exhausting the kernel heap.
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+        result
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
@@ -140,6 +158,184 @@ mod inner {
         logln!("[dns] verifier deferred (waits for discovery + Raft election + replication)");
     }
 
+    /// The cluster-deployment phase of the dns self-test (`deploy_net_test`):
+    /// the leader deploys the `greet` artifact to the *other* node, the
+    /// remote agent picks it up, verifies its cluster signature, registers the
+    /// name, and serves it across the network; the leader then re-deploys to
+    /// its own node and the service migrates (the old host retires, the new
+    /// host takes over, generation fencing prevents the old host's unregister
+    /// from clobbering the new registration).
+    #[cfg(feature = "deploy_net_test")]
+    fn run_deploy_phase(
+        ns: &NameServiceHandle,
+        is_leader: bool,
+        dns_conn: u64,
+        dns_cfg: *const u8,
+    ) {
+        use crate::cpu::scheduler::yield_lp;
+
+        // "greet" packed LE (matches catten_services::deploy::NAME).
+        const GREET_NAME: u64 = 0x0000_0074_6565_7267;
+        // catten_services::dns::DEPLOY_OBJECT_ID.
+        const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
+        const DNS_OP_DEPLOY: u32 = 8;
+        const DNS_OP_GET: u32 = 1;
+        // catten_services::deploy::GREET_VALUE.
+        const GREET_VALUE: i64 = 0x2d72_6574_7375_6c63;
+        const AGENT_STAGE_IDENTITY: u32 = 2;
+        const AGENT_STAGE_UPLOADED: u32 = 4;
+        const AGENT_STAGE_SERVING: u32 = 6;
+        const AGENT_STAGE_RETIRED: u32 = 7;
+
+        logln!("[deploy] testing cluster deployment and migration...");
+
+        // Spawn the local deploy agent. Its status page first publishes this
+        // guest's node key (offset 16), then the uploaded stage.
+        let agent = spawn_with_manifest(AGENT_ELF, ns, &[]);
+        logln!("[deploy] agent spawned (asid={})", agent.asid);
+        let agent_cfg: *const u8 = {
+            let base: *mut u8 = agent.status_frame.into();
+            base
+        };
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        while status_word(agent_cfg, 0) < AGENT_STAGE_IDENTITY {
+            deadline.assert_pending("EL0 deploy agent identity");
+            yield_lp();
+        }
+        let my_key = status_word(agent_cfg, 16) as u64;
+        let key_a = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff;
+        let key_b = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff;
+        let peer_key = if my_key == key_a {
+            key_b
+        } else {
+            key_a
+        };
+        assert!(
+            my_key == key_a || my_key == key_b,
+            "[deploy] unexpected local node key {my_key:#x}"
+        );
+        logln!("[deploy] this node key = {my_key:#x}, peer = {peer_key:#x}");
+
+        while status_word(agent_cfg, 0) < AGENT_STAGE_UPLOADED {
+            deadline.assert_pending("EL0 deploy agent artifact upload");
+            yield_lp();
+        }
+        logln!("[deploy] agent uploaded the artifact to the object store.");
+
+        // The leader deploys the artifact to the peer node (cross-node
+        // hosting is the point of the cluster).
+        if is_leader {
+            let mut request = Vec::with_capacity(16);
+            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
+            request.extend_from_slice(&peer_key.to_le_bytes());
+            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            logln!("[deploy] peer deployment result = {deploy:?}");
+            assert!(
+                deploy.is_some_and(|generation| generation >= 1),
+                "[deploy] peer deployment must return its committed generation"
+            );
+        }
+
+        // The remote agent registers the deployed name; the catalog carries
+        // alpha + greet on every replica.
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) < 2 {
+            deadline.assert_pending("EL0 deploy remote registration");
+            yield_lp();
+        }
+        logln!("[deploy] catalog carries the deployed name.");
+
+        // Invoke the deployed service by name; the leader's call crosses the
+        // network to the hosting peer.
+        let mut request = Vec::with_capacity(12);
+        request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+        request.extend_from_slice(&0i64.to_le_bytes());
+        let result = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
+        logln!("[deploy] cross-node greet result = {result:?}");
+        assert_eq!(
+            result,
+            Some(GREET_VALUE),
+            "[deploy] cross-node invocation of the deployed artifact must return its payload value"
+        );
+
+        // The leader re-deploys the artifact to its own node: the service
+        // migrates. The new host registers a fresh generation; the old host
+        // retires and its generation-fenced unregister cannot clobber it.
+        if is_leader {
+            let mut request = Vec::with_capacity(16);
+            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
+            request.extend_from_slice(&my_key.to_le_bytes());
+            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            logln!("[deploy] migration deployment result = {deploy:?}");
+            assert!(
+                deploy.is_some_and(|generation| generation >= 2),
+                "[deploy] migration deployment must return a newer generation"
+            );
+        }
+
+        // After migration the local agent serves only if this node is the
+        // leader (the new host); otherwise it must have retired.
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let expected_stage = if is_leader {
+            AGENT_STAGE_SERVING
+        } else {
+            AGENT_STAGE_RETIRED
+        };
+        while status_word(agent_cfg, 0) != expected_stage {
+            deadline.assert_pending("EL0 deploy migration handover");
+            yield_lp();
+        }
+        logln!("[deploy] local agent stage {} after migration.", status_word(agent_cfg, 0));
+
+        // The deployed service must still be reachable after the handover.
+        // The old host retires before the new host registers, so a call can
+        // land in the gap; retry until the name resolves to the new host.
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let post_migration;
+        loop {
+            let mut request = Vec::with_capacity(12);
+            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+            request.extend_from_slice(&0i64.to_le_bytes());
+            let result = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
+            if result == Some(GREET_VALUE) {
+                post_migration = result;
+                break;
+            }
+            deadline.assert_pending("EL0 deploy post-migration reachability");
+            crate::cpu::scheduler::sleep_millis(250);
+            yield_lp();
+        }
+        logln!("[deploy] post-migration greet result = {post_migration:?}");
+        assert_eq!(
+            post_migration,
+            Some(GREET_VALUE),
+            "[deploy] the deployed artifact must remain reachable across migration"
+        );
+
+        // Barrier: keep this guest alive until the follower has *acknowledged*
+        // a post-migration reply. The runner kills this QEMU the moment
+        // SELFTEST COMPLETE prints; if the leader finished before the
+        // follower's verification reply was delivered, the follower would
+        // lose its peer mid-verification. Serving the call is not enough --
+        // the reply must have reached the follower's transport.
+        if is_leader {
+            let acked_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+            let acks_before = status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS);
+            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS)
+                == acks_before
+            {
+                acked_deadline.assert_pending("EL0 deploy follower reply acknowledged");
+                yield_lp();
+            }
+            logln!("[deploy] leader's post-migration reply was acknowledged by the follower.");
+        }
+
+        logln!(
+            "[deploy] SUCCESS: the cluster deployed a signed artifact to the peer node, served it \
+             across the network, and migrated it without losing the name."
+        );
+    }
+
     extern "C" fn verify_el0_dns() {
         use crate::cpu::scheduler::yield_lp;
 
@@ -149,14 +345,6 @@ mod inner {
         // The cluster discovery service is spawned by the disco self-test
         // (disco_net_test is implied by dns_net_test); the dns service waits on
         // its registration for the peer set.
-        fn fnv1a(bytes: &[u8]) -> u64 {
-            let mut hash = 0xcbf2_9ce4_8422_2325u64;
-            for byte in bytes {
-                hash ^= *byte as u64;
-                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-            }
-            hash
-        }
         let member_a = alloc::format!(
             "test-cluster:{:08x}",
             fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff
@@ -453,6 +641,9 @@ mod inner {
                 echo_generation
             );
         }
+
+        #[cfg(feature = "deploy_net_test")]
+        run_deploy_phase(ns, is_leader, dns_conn, dns_cfg);
 
         logln!(
             "[dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote \

@@ -672,6 +672,42 @@ pub mod dns {
     /// memory object contain the expected distributed generation. The reply
     /// is that generation on success.
     pub const OP_UNREGISTER: u32 = 7;
+    /// Replicate a deployment record. `arg0` is the packed artifact name; the
+    /// attached memory object holds `[object_id:u64 LE][node_key:u64 LE]`.
+    /// The cluster signs the record with the shared deployment secret before
+    /// committing it; the reply is the committed deployment generation.
+    pub const OP_DEPLOY: u32 = 8;
+    /// Query the deployment record for `arg0` (packed artifact name). The
+    /// reply moves a page holding
+    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE][mac:u64 LE]`,
+    /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
+    /// Answered from locally applied cluster state (the caller polls).
+    pub const OP_DEPLOY_QUERY: u32 = 9;
+
+    /// Placeholder cluster deployment secret. Real cryptography (and the
+    /// blank-start key ceremony) is future work; for now deployments are
+    /// signed with an FNV-1a MAC keyed with this constant, shared by the
+    /// deploy authority (the dns service) and the node agents.
+    pub const DEPLOY_SECRET: &[u8] = b"charlotte-cluster-deploy-secret-v1";
+
+    /// Stable object-store id of the deploy demo payload.
+    pub const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
+
+    /// Cluster signature (placeholder MAC) over a deployment record.
+    pub fn deploy_mac(artifact: &[u8], object_id: u64, node_key: u64) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for byte in artifact
+            .iter()
+            .copied()
+            .chain(object_id.to_le_bytes())
+            .chain(node_key.to_le_bytes())
+            .chain(DEPLOY_SECRET.iter().copied())
+        {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
 
     /// Shared byte offsets in the DNS service's diagnostic status page.
     pub use charlotte_launch::dns_status as status;
@@ -690,6 +726,45 @@ pub mod dns {
     pub const ERR_UNCERTAIN: i64 = -5;
     pub const ERR_BUSY: i64 = -6;
     pub const ERR_STALE_GENERATION: i64 = -7;
+}
+
+/// Protocol of the cluster-deployment demo artifact: a tiny service that the
+/// per-node deploy agent hosts under whatever name the cluster manifest
+/// assigns it. The artifact is a signed blob in the object store; `OP_GET`
+/// returns its leading eight bytes as the scalar result, proving that the
+/// calling node reached the exact artifact the cluster assigned and the
+/// serving node verified.
+pub mod deploy {
+    pub const INTERFACE: u64 = super::name(b"DPLY");
+    pub const VERSION: u32 = 1;
+    /// The demo artifact's deployment name (packed LE).
+    pub const NAME: u64 = super::name(b"greet");
+    pub const OP_GET: u32 = 1;
+
+    /// The demo payload blob: `[mac:u64 LE][GREET_PAYLOAD]` stored in the
+    /// object store at `dns::DEPLOY_OBJECT_ID`.
+    pub const GREET_PAYLOAD: &[u8] = b"cluster-greeting-v1";
+    /// The scalar value `OP_GET` returns: the payload's first eight bytes
+    /// ("cluster-" little-endian).
+    pub const GREET_VALUE: u64 = 0x2d72_6574_7375_6c63;
+
+    /// Placeholder payload signature: FNV-1a over `payload ++ DEPLOY_SECRET`.
+    pub fn payload_mac(payload: &[u8]) -> u64 {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for byte in payload.iter().copied().chain(super::dns::DEPLOY_SECRET.iter().copied()) {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
+
+    /// The full stored artifact: MAC header followed by the payload.
+    pub fn artifact_bytes() -> alloc::vec::Vec<u8> {
+        let mut bytes = alloc::vec::Vec::with_capacity(8 + GREET_PAYLOAD.len());
+        bytes.extend_from_slice(&payload_mac(GREET_PAYLOAD).to_le_bytes());
+        bytes.extend_from_slice(GREET_PAYLOAD);
+        bytes
+    }
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.
@@ -947,6 +1022,88 @@ pub mod runregister {
 
     pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
         if frame.len() < 12 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let owner_len = frame[1] as usize;
+        let owner_off = 2;
+        if frame.len() < owner_off + owner_len + 1 + 8 {
+            return None;
+        }
+        let owner = frame[owner_off..owner_off + owner_len].to_vec();
+        let name_len_off = owner_off + owner_len;
+        let name_len = frame[name_len_off] as usize;
+        let name_off = name_len_off + 1;
+        if frame.len() != name_off + name_len + 8 {
+            return None;
+        }
+        let name = frame[name_off..name_off + name_len].to_vec();
+        let generation = u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
+        Some((owner, name, generation))
+    }
+}
+
+/// Remote-registration wire protocol carried over the reliable message layer.
+///
+/// A service can be hosted on any node, but only the Raft leader may commit
+/// catalog entries. When a follower's dns receives `OP_REGISTER` for a
+/// service hosted on its own node, it relays a register request to the
+/// leader; the leader commits the two-phase register/activate pair naming the
+/// follower's node as owner, and replies with the committed generation. The
+/// frame carries the owner (hosting node) and the service name; the reply
+/// adds the generation. The transport prepends the type tag:
+/// ```text
+/// request: 0x15 | owner_len:u8 | owner | name_len:u8 | name
+/// reply:   0x16 | owner_len:u8 | owner | name_len:u8 | name | generation:u64
+/// ```
+pub mod rregister {
+    pub const TAG_REQUEST: u8 = 0x15;
+    pub const TAG_REPLY: u8 = 0x16;
+
+    pub fn encode_request(owner: &[u8], name: &[u8]) -> alloc::vec::Vec<u8> {
+        let owner_len = owner.len().min(255);
+        let name_len = name.len().min(255);
+        let mut frame = alloc::vec::Vec::with_capacity(1 + owner_len + name_len);
+        frame.push(owner_len as u8);
+        frame.extend_from_slice(&owner[..owner_len]);
+        frame.push(name_len as u8);
+        frame.extend_from_slice(&name[..name_len]);
+        frame
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)> {
+        if frame.len() < 3 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let owner_len = frame[1] as usize;
+        let owner_off = 2;
+        if frame.len() < owner_off + owner_len + 1 {
+            return None;
+        }
+        let owner = frame[owner_off..owner_off + owner_len].to_vec();
+        let name_len_off = owner_off + owner_len;
+        let name_len = frame[name_len_off] as usize;
+        let name_off = name_len_off + 1;
+        if frame.len() != name_off + name_len {
+            return None;
+        }
+        let name = frame[name_off..].to_vec();
+        Some((owner, name))
+    }
+
+    pub fn encode_reply(owner: &[u8], name: &[u8], generation: u64) -> alloc::vec::Vec<u8> {
+        let owner_len = owner.len().min(255);
+        let name_len = name.len().min(255);
+        let mut frame = alloc::vec::Vec::with_capacity(1 + owner_len + name_len + 8);
+        frame.push(owner_len as u8);
+        frame.extend_from_slice(&owner[..owner_len]);
+        frame.push(name_len as u8);
+        frame.extend_from_slice(&name[..name_len]);
+        frame.extend_from_slice(&generation.to_le_bytes());
+        frame
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
+        if frame.len() < 11 || frame[0] != TAG_REPLY {
             return None;
         }
         let owner_len = frame[1] as usize;

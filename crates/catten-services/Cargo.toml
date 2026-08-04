@@ -167,3 +167,9 @@ name = "dns"
 path = "src/bin/dns.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "agent"
+path = "src/bin/agent.rs"
+test = false
+bench = false

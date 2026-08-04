@@ -39,6 +39,10 @@ disco_cross_node_test = ["disco_net_test"]
 # Run the distributed name service test: a Raft group over the network whose
 # catalog replicates name registrations across the cluster.
 dns_net_test = ["disco_net_test"]
+# Run the cluster-deployment phase of the dns test: the leader deploys a
+# signed artifact to the peer node, the remote agent picks it up and serves
+# it across the network, and the artifact migrates between nodes.
+deploy_net_test = ["dns_net_test"]
 # Run the TCP/IP test: the smoltcp userspace adapter served through the
 # frouter, exchanging TCP data between two guests on a QEMU stream LAN.
 tcpip_net_test = ["virtio_net_test"]

@@ -40,6 +40,14 @@ pub mod dns_status {
     pub const REMOTE_QUERY_REPLY_ACKS: usize = 48;
 }
 
+/// Status-page offsets written by the cluster deploy agent.
+pub mod agent_status {
+    /// Lifecycle stage: 4 = artifact uploaded, 6 = serving, 7 = retired.
+    pub const STAGE: usize = 0;
+    /// The replicated deployment generation this agent is serving.
+    pub const SERVED_GENERATION: usize = 8;
+}
+
 pub const LAUNCH_HEADER_OFFSET: usize = 2112;
 pub const CAPABILITY_VECTOR_OFFSET: usize = 2224;
 pub const CAPABILITY_VECTOR_CAPACITY: usize = 32;

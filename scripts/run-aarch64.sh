@@ -24,6 +24,9 @@
 #   --net-test     Build and run the virtio-net test under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
 #   --disco-test   Run the cluster discovery test (implies --net-test)
+#   --deploy-test  Run the cluster-deployment test (implies --dns-test):
+#               deploys a signed artifact to the peer node, serves it across
+#               the network, and migrates it between nodes.
 #   --dns-test     Run the distributed name service test (Raft over the
 #               network; both guests must run it, implies --disco-test)
 #   --tcpip-test  Run the TCP/IP test: smoltcp adapter over the frouter,
@@ -53,6 +56,7 @@ NET_TEST="0"
 RELMSG_TEST="0"
 DISCO_TEST="0"
 DNS_TEST="0"
+DEPLOY_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
 LIVE_UPGRADE_TEST="0"
@@ -83,6 +87,7 @@ while [ "$#" -gt 0 ]; do
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
+        --deploy-test)  NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --net-listen)
@@ -239,6 +244,9 @@ if [ "$DISCO_TEST" = "1" ]; then
 fi
 if [ "$DNS_TEST" = "1" ]; then
     FEATURES="${FEATURES},dns_net_test"
+fi
+if [ "$DEPLOY_TEST" = "1" ]; then
+    FEATURES="${FEATURES},deploy_net_test"
 fi
 if [ "$TCPIP_TEST" = "1" ]; then
     FEATURES="${FEATURES},tcpip_net_test"
