@@ -137,9 +137,19 @@ and the cluster decides placement --- initially from declared component
 affinity, eventually from observed inter-dependency, with cross-node
 migration of running components. Nodes are "dumb" compute over a shared
 object store, validating signed software against a cluster-wide key held in
-replicated state. This is intended architecture, not current behaviour;
-Chapter 17 of [the manual](docs/manual-v2) ("Server-Class Cluster Vision")
-describes it in detail against what already exists (consensus, the
+replicated state.
+
+A first end-to-end slice of this is implemented and boot-tested on the
+two-guest QEMU cluster (`scripts/run-aarch64.sh --deploy-test`): the
+deployment manifest is replicated Raft state, an agent on the assigned node
+picks up and verifies a signed artifact, serves it across the network, and
+migrates it between nodes without losing its name; `clusterctl` (plus a
+serial admin console) provides the outside upload/deploy/status interface.
+The object store is still per-node, the cluster secret is a build-time
+constant, and the signatures are placeholder FNV-1a MACs --- the honest
+simulations are called out in Chapter 17 of
+[the manual](docs/manual-v2) ("Server-Class Cluster Vision"), which
+describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).
 
 That should make it particularly interesting for:

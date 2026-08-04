@@ -244,6 +244,107 @@ deployment system, and trusting the same discipline the rest of the OS is
 built on: explicit ownership, bounded communication, and decisions made
 from shared, replicated state rather than from per-machine configuration.
 
+\section{An implemented slice}
+
+A first end-to-end slice of the vision is implemented and boot-tested on the
+two-guest cluster (the \texttt{--deploy-test} QEMU flow): a signed artifact
+is deployed to a named node through the replicated manifest, the remote
+agent picks it up, verifies it, serves it across the network, and the
+artifact is migrated between nodes without losing its name. Both guests pass
+the full boot suite (\texttt{passed=22 failed=0 pending=0} on each). This
+section records exactly what is real and what is simulated, so the boundary
+between the two is explicit.
+
+\subsection{The replicated deployment manifest}
+
+The distributed name service's Raft catalog (Chapter~14) now also carries the
+\textbf{deployment manifest}: an \texttt{artifact $\rightarrow$
+\{object\_id, node\_key, generation, mac\}} map committed through the same
+log as name registrations. A deployment is therefore a cluster decision in
+the true sense: it replicates to every node, survives leader changes, and is
+generation-fenced like the name catalog. \texttt{OP\_DEPLOY} submits a
+record; \texttt{OP\_DEPLOY\_QUERY} reads the local replica's applied state.
+
+\subsection{Cross-node hosting}
+
+Hosting a service on a node other than the Raft leader required one new
+piece: the \textbf{remote-register relay}. A service hosted on the follower
+is registered through the leader (the only node allowed to commit catalog
+entries), and the leader relays the committed generation back. The two-phase
+register/activate and the generation-fenced endpoint-death unregister are
+preserved across the relay, so a retiring host can never clobber a
+replacement's registration.
+
+\subsection{The agent}
+
+Each node runs an \texttt{agent}: it polls the manifest for assignments
+addressed to its node key, verifies the cluster signature over the
+deployment record, fetches the artifact from the object store and verifies
+the payload signature, registers the deployed name in the distributed
+catalog, and serves it. When the cluster re-assigns the artifact elsewhere,
+the agent retires and exits; its endpoint close is observed by the dns,
+which generation-fences the unregister. Cross-node invocation of the
+deployed service rides the existing \texttt{OP\_CALL} relay, so a client on
+either node reaches the artifact wherever it currently lives.
+
+\subsection{clusterctl and the admin console}
+
+\texttt{clusterctl} is the ``outside'' administration interface. It wraps
+the dns manifest ops and the object store behind three operations:
+\texttt{upload} (sign a payload with the cluster secret and store it under
+the artifact's derived cluster-wide id), \texttt{deploy} (submit the
+assignment), and \texttt{status} (query the committed record). A kernel
+serial console --- \texttt{--deploy-test} run interactively, without a
+runner timeout --- lets an operator type \texttt{upload},
+\texttt{deploy}, and \texttt{status} commands at the QEMU terminal and watch
+them execute against the live cluster.
+
+\subsection{Naming}
+
+Artifact names are bare cluster-global names (``\texttt{greet}''); the
+object-store id is \emph{derived} from the name (a \texttt{0xfffe...} tag
+over FNV-1a), so every node stores the same artifact under the same id, and
+the node dimension appears only in the deployment record. This is the naming
+scheme the vision assumes, now concrete.
+
+\subsection{What is simulated}
+
+The slice deliberately simulates the hard parts of the vision, and the
+simulations are the next work items:
+
+\begin{itemize}
+    \item \textbf{Per-node object store.} Storage is still per-node: the
+        artifact is staged on each node (the agent uploads it at boot, or
+        clusterctl uploads it) rather than fetched from a cluster-wide
+        store. A networked artifact-fetch path is not implemented.
+
+    \item \textbf{Build-time secret.} The cluster secret is a shared
+        constant in the binaries; the blank-start key ceremony is a stub
+        (\texttt{OP\_KEYCEREMONY} replies \texttt{ERR\_NOT\_IMPLEMENTED}).
+
+    \item \textbf{Placeholder cryptography.} ``Signatures'' are FNV-1a
+        keyed hashes, not real signatures, and the EL0 loader is not yet
+        extended to verify cluster-signed images (the NVMe-ELF upgrade path
+        remains hash-equality-constrained, Chapter~16).
+
+    \item \textbf{The artifact is a payload, not an arbitrary ELF.} The
+        deployed unit is a fixed demo payload; the agent serves it because
+        it was built to. Deploying arbitrary service binaries end to end is
+        the runtime-artifact-pickup work.
+
+    \item \textbf{The admin is kernel-side.} The console is a kernel
+        thread, not a real out-of-band management plane.
+\end{itemize}
+
+\subsection{What the slice proves}
+
+Even with the simulations, the slice demonstrates the load-bearing pieces of
+the vision working together: placement is a replicated cluster decision;
+services are hosted cross-node and stay reachable through the distributed
+name service; generation fencing makes migration safe; and the deployment
+and administration surface exists as a protocol, so each stub can be
+replaced without reshaping the rest.
+
 \section{Related work}
 
 The vision has strong historical precedents and equally strong modern
