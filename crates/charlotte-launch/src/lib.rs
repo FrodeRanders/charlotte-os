@@ -244,3 +244,21 @@ pub struct CapabilityRecord {
 const _: [(); 104] = [(); core::mem::size_of::<LaunchHeader>()];
 const _: [(); 24] = [(); core::mem::size_of::<ManifestRecord>()];
 const _: [(); 16] = [(); core::mem::size_of::<CapabilityRecord>()];
+
+/// The demo cluster's Ed25519 public key, injected at build time.
+///
+/// This is the cluster's signing authority as shipped in the kernel images:
+/// nodes validate artifacts against it. The matching private key never enters
+/// the cluster --- it is held off-cluster (the `tools/cluster-sign` tool) and
+/// used to sign artifacts before upload. The same key can also be committed
+/// to the replicated cluster state by the key ceremony (`clusterctl
+/// OP_KEYCEREMONY`), which is how a node "obtains the public key from the
+/// cluster" on join; the build-time copy is the bootstrap trust anchor.
+pub const CLUSTER_PUBLIC_KEY: [u8; 32] = [
+    0x3d, 0xdc, 0x95, 0xc2, 0x6b, 0xd5, 0xf4, 0x02, 0x2d, 0x95, 0xa4, 0xc6, 0xc8, 0xd0, 0x74, 0xf5,
+    0x77, 0xf1, 0x1a, 0xf7, 0x87, 0x3e, 0x52, 0x7b, 0x01, 0x8b, 0x21, 0xbe, 0x2c, 0x03, 0x54, 0x63,
+];
+
+/// Launch-manifest key under which the kernel hands the cluster public key to
+/// services (agents, clusterctl).
+pub const CLUSTER_KEY_MANIFEST_KEY: u64 = manifest_key(b"ckey");

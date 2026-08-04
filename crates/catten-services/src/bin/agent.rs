@@ -88,6 +88,43 @@ fn lookup(ns_connection: u64, name: u64) -> u64 {
     }
 }
 
+/// The cluster's public key as committed by the key ceremony, read through
+/// the local dns replica (replicated state).
+fn read_cluster_key(dns_conn: u64) -> Option<[u8; 32]> {
+    let call = ipc_scalar_call(dns_conn, dns::OP_KEY, 0);
+    if call == 0 {
+        return None;
+    }
+    let (status, size, _returned_connection, memory) = ipc_reply_wait_with_memory(call);
+    ipc_close(call);
+    if memory == 0 || (status as i64) < 0 || size < 32 {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        return None;
+    }
+    if memory_map(memory, DATA_VADDR, false) != 0 {
+        memory_close(memory);
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
+    }
+    memory_unmap(memory);
+    memory_close(memory);
+    Some(key)
+}
+
+/// The build-time cluster public key, as the kernel wrote it into the launch
+/// manifest when it spawned this service.
+fn manifest_cluster_key(ctx: &Context) -> Option<[u8; 32]> {
+    match ctx.manifest_value(charlotte_launch::CLUSTER_KEY_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => <[u8; 32]>::try_from(bytes).ok(),
+        _ => None,
+    }
+}
+
 /// This node's cluster key: the FNV-1a of its NIC MAC (truncated to 32 bits,
 /// matching the node-name suffix the dns derives for the cluster members).
 fn local_node_key(ns_connection: u64) -> Option<u64> {
@@ -180,7 +217,7 @@ fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
 
 /// Read the artifact at `object_id` from the object store and verify both the
 /// payload MAC and the payload bytes.
-fn fetch_and_verify(obj_conn: u64, object_id: u64) -> Result<(), ()> {
+fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Result<(), ()> {
     let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
     if read == 0 {
         return Err(());
@@ -190,7 +227,8 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64) -> Result<(), ()> {
     if returned_connection != 0 {
         ipc_close(returned_connection);
     }
-    let expected = 8 + deploy::GREET_PAYLOAD.len();
+    // The artifact is `[ed25519_signature:64][payload]`.
+    let expected = 64 + deploy::GREET_PAYLOAD.len();
     if status != 0 || size as usize != expected || returned_memory == 0 {
         if returned_memory != 0 {
             memory_close(returned_memory);
@@ -201,15 +239,17 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64) -> Result<(), ()> {
         memory_close(returned_memory);
         return Err(());
     }
-    let stored_mac = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) };
-    let mut payload = [0u8; 32];
-    for (index, byte) in payload.iter_mut().enumerate().take(deploy::GREET_PAYLOAD.len()) {
-        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + 8 + index) as *const u8) };
+    let len = size as usize;
+    let mut artifact = alloc::vec::Vec::with_capacity(len);
+    for index in 0..len {
+        artifact.push(unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) });
     }
     memory_unmap(returned_memory);
     memory_close(returned_memory);
-    if deploy::payload_mac(&payload[..deploy::GREET_PAYLOAD.len()]) != stored_mac
-        || payload[..deploy::GREET_PAYLOAD.len()] != *deploy::GREET_PAYLOAD
+    // The artifact must be signed with the cluster's private key and match
+    // the payload this agent is built to serve.
+    if !deploy::verify_artifact(cluster_key, &artifact)
+        || artifact[64..] != *deploy::GREET_PAYLOAD
     {
         return Err(());
     }
@@ -315,10 +355,7 @@ fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, gene
                 if memory != 0 {
                     memory_close(memory);
                 }
-                let still_mine = entry.is_some_and(|entry| {
-                    entry.node_key == my_node_key
-                        && entry.mac == dns::deploy_mac(GREET_NAME, entry.object_id, entry.node_key)
-                });
+                let still_mine = entry.is_some_and(|entry| entry.node_key == my_node_key);
                 if !still_mine {
                     config::write::<u32>(0, STAGE_RETIRED);
                     unsafe { thread_exit() }
@@ -378,10 +415,22 @@ fn main(ctx: Context) -> ! {
     config::write::<u64>(16, my_node_key);
     config::write::<u32>(0, STAGE_IDENTITY);
 
+    // The cluster's public key: prefer the key committed by the ceremony
+    // (obtained from the cluster), else the build-time copy the kernel
+    // handed us in the launch manifest.
+    let cluster_key = match read_cluster_key(dns_conn) {
+        Some(key) => key,
+        None => match manifest_cluster_key(&ctx) {
+            Some(key) => key,
+            None => fail(STAGE_FAIL),
+        },
+    };
+    config::write::<u32>(0, STAGE_UPLOADED);
+
     // "Software lives in the object store": upload the signed artifact to the
     // (node-local, for now) store. `GREET_NAME` is the deployed name the
     // cluster will assign.
-    if upload_artifact(obj_conn, dns::artifact_object_id(GREET_NAME), &deploy::artifact_bytes())
+    if upload_artifact(obj_conn, dns::artifact_object_id(GREET_NAME), deploy::GREET_ARTIFACT)
         .is_err()
     {
         fail(STAGE_FAIL);
@@ -390,12 +439,11 @@ fn main(ctx: Context) -> ! {
 
     loop {
         if let Some(entry) = query_deployment(dns_conn, deploy::NAME) {
-            // The assignment is a cluster decision: verify its signature
-            // against the shared deployment secret before acting.
-            let mac_ok = entry.mac == dns::deploy_mac(GREET_NAME, entry.object_id, entry.node_key);
+            // The assignment is a cluster decision (committed by consensus).
+            // If it names this node, the artifact must validate against the
+            // cluster's public key before it is served.
             if entry.node_key == my_node_key
-                && mac_ok
-                && fetch_and_verify(obj_conn, entry.object_id).is_ok()
+                && fetch_and_verify(obj_conn, entry.object_id, &cluster_key).is_ok()
             {
                 serve(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
             }

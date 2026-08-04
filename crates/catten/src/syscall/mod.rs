@@ -244,6 +244,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::SpawnThread => sys_spawn_thread(frame),
         SyscallNumber::ThreadExit => sys_thread_exit(frame),
         SyscallNumber::ObserveThreadExit => sys_observe_thread_exit(frame),
+        SyscallNumber::GetTid => sys_get_tid(frame),
         SyscallNumber::MailboxSend => sys_mailbox_send(frame),
         SyscallNumber::MailboxRecv => sys_mailbox_recv(frame),
         SyscallNumber::CompletionWaitTimeout => sys_completion_wait_timeout(frame),
@@ -676,6 +677,17 @@ pub fn close_mailbox_address_space(asid: AddressSpaceId) {
             );
         }
     }
+}
+
+/// Report the calling thread's kernel thread id.
+fn sys_get_tid(frame: &mut TrapFrame) {
+    let tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_tid()
+        .unwrap_or(0);
+    frame.regs[0] = tid as u64;
 }
 
 fn sys_mailbox_send(frame: &mut TrapFrame) {

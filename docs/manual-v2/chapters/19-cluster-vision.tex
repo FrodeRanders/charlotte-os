@@ -217,11 +217,16 @@ exist:
 
     \item \textbf{Key injection into cluster state.} The blank-start
         bootstrapping operation that primes a fresh cluster's replicated
-        state with its signing key, administered through the leader.
+        state with its signing key, administered through the leader. (The
+        injection mechanism exists --- \texttt{OP\_KEYCEREMONY} commits the
+        key --- but nothing yet validates the injected key against the
+        build-time anchor.)
 
     \item \textbf{Signed artifact validation.} Extending the EL0 loader
         with cryptographic verification against the cluster key, so a node
-        rejects anything the cluster has not signed.
+        rejects anything the cluster has not signed. (The agent-side
+        verification is implemented --- Section~17.7 --- but the loader and
+        arbitrary-ELF path are not yet.)
 
     \item \textbf{Deployment manifest in cluster state.} A replicated
         catalog of artifacts, assignments, declared affinity, and
@@ -307,9 +312,22 @@ over FNV-1a), so every node stores the same artifact under the same id, and
 the node dimension appears only in the deployment record. This is the naming
 scheme the vision assumes, now concrete.
 
-\subsection{What is simulated}
+\subsection{Cryptography: real signatures, honest boundaries}
 
-The slice deliberately simulates the hard parts of the vision, and the
+Artifact validation uses real Ed25519 signatures. The cluster's
+\emph{private} key never enters the cluster: it is held off-cluster (the
+\texttt{tools/cluster-sign} host tool), and artifacts are signed with it
+before upload. The matching \emph{public} key is injected into the cluster
+two ways: it is embedded in the kernel image at build time (the bootstrap
+trust anchor, handed to services through the launch manifest), and it is
+committed to the replicated state by the key ceremony
+(\texttt{OP\_KEYCEREMONY} \rightarrow{} \texttt{OP\_SET\_KEY}), which is
+how a joining node obtains the key from the cluster on join. The agent
+verifies each artifact against this key before serving it; the deployment
+record needs no signature because the Raft consensus that committed it is
+its authenticity.
+
+The slice still simulates the hard parts of the vision, and the
 simulations are the next work items:
 
 \begin{itemize}
@@ -318,19 +336,19 @@ simulations are the next work items:
         clusterctl uploads it) rather than fetched from a cluster-wide
         store. A networked artifact-fetch path is not implemented.
 
-    \item \textbf{Build-time secret.} The cluster secret is a shared
-        constant in the binaries; the blank-start key ceremony is a stub
-        (\texttt{OP\_KEYCEREMONY} replies \texttt{ERR\_NOT\_IMPLEMENTED}).
-
-    \item \textbf{Placeholder cryptography.} ``Signatures'' are FNV-1a
-        keyed hashes, not real signatures, and the EL0 loader is not yet
-        extended to verify cluster-signed images (the NVMe-ELF upgrade path
-        remains hash-equality-constrained, Chapter~16).
+    \item \textbf{The ceremony is unvalidated.} The key ceremony commits
+        whatever key it is given; nothing yet verifies the injected key
+        against the build-time anchor (a blank-start cluster could in
+        principle be primed with any key). The trust decision --- the IT
+        department's key, injected once during establishment --- is
+        operational, not yet cryptographic.
 
     \item \textbf{The artifact is a payload, not an arbitrary ELF.} The
         deployed unit is a fixed demo payload; the agent serves it because
         it was built to. Deploying arbitrary service binaries end to end is
-        the runtime-artifact-pickup work.
+        the runtime-artifact-pickup work, and the EL0 loader is not yet
+        extended to verify cluster-signed images (the NVMe-ELF upgrade path
+        remains hash-equality-constrained, Chapter~16).
 
     \item \textbf{The admin is kernel-side.} The console is a kernel
         thread, not a real out-of-band management plane.

@@ -176,10 +176,12 @@ fn main(ctx: Context) -> ! {
                         clusterctl::ERR_TOO_LARGE
                     } else {
                         match read_payload(&message) {
-                            Some(payload) => {
+                            Some(artifact) => {
                                 let object_id = dns::artifact_object_id(&name);
-                                let blob = catten_services::deploy::sign_payload(&payload);
-                                if store_artifact(obj_conn, object_id, &blob) {
+                                // The artifact is stored as-is: a pre-signed
+                                // blob from off-cluster. Nodes validate it
+                                // against the cluster public key at pickup.
+                                if store_artifact(obj_conn, object_id, &artifact) {
                                     object_id as i64
                                 } else {
                                     clusterctl::ERR_UPLOAD_FAILED
@@ -278,8 +280,57 @@ fn main(ctx: Context) -> ! {
                     }
                 }
                 clusterctl::OP_KEYCEREMONY => {
+                    let result = match read_key(&message) {
+                        Some(_key) => {
+                            // Forward the key to the dns, which commits it to
+                            // the replicated state (leader-only; the reply is
+                            // deferred until the ceremony record commits).
+                            let call = ipc_scalar_call_move(
+                                dns_conn,
+                                dns::OP_SET_KEY,
+                                0,
+                                message.memory,
+                            );
+                            if call == 0 {
+                                clusterctl::ERR_NOT_LEADER
+                            } else {
+                                let (generation, _) =
+                                    unsafe { wait_reply(call, REPLY_SPINS) };
+                                ipc_close(call);
+                                generation
+                            }
+                        }
+                        None => clusterctl::ERR_TOO_LARGE,
+                    };
                     if message.reply != 0 {
-                        ipc_reply(message.reply, clusterctl::ERR_NOT_IMPLEMENTED);
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_KEY => {
+                    // Pass the replicated cluster key through from the dns.
+                    let call = ipc_scalar_call(dns_conn, dns::OP_KEY, 0);
+                    if call == 0 {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                        }
+                        continue;
+                    }
+                    let (status, size, _returned_connection, memory) =
+                        ipc_reply_wait_with_memory(call);
+                    ipc_close(call);
+                    if memory == 0 || (status as i64) < 0 {
+                        if memory != 0 {
+                            memory_close(memory);
+                        }
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                        }
+                        continue;
+                    }
+                    if message.reply != 0 {
+                        ipc_reply_move(message.reply, memory, size as i64);
+                    } else {
+                        memory_close(memory);
                     }
                 }
                 _ => {
@@ -290,6 +341,22 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+/// The 32 cluster-key bytes attached to an `OP_KEYCEREMONY` call.
+fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
+    if message.memory == 0 {
+        return None;
+    }
+    if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
+    }
+    memory_unmap(message.memory);
+    Some(key)
 }
 
 /// The node key attached to an `OP_DEPLOY` call: `[node_key:u64 LE]`.

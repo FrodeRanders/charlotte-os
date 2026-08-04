@@ -276,14 +276,27 @@ pub fn sleep_millis(milliseconds: u64) {
 }
 
 /// Registers an observer to be notified when the specified thread exits.
+///
+/// The master-thread table is taken in **write** mode for the whole
+/// check-and-register sequence. Thread retirement (`retire_requested_threads`)
+/// removes the dying thread from the same table, so this write lock makes the
+/// race between "the thread is still registered" and "the thread is already
+/// gone" impossible: either the observer is registered before the thread is
+/// taken (and fires when the thread is dropped), or the lookup fails here and
+/// the caller completes the capability immediately. Without the write lock, a
+/// thread could be taken and dropped between the lookup and the registration,
+/// orphaning the observer forever.
 pub fn observe_thread_exit(
     thread_id: ThreadId,
     observer: Weak<dyn Observer>,
 ) -> Result<(), system_scheduler::Error> {
-    if let Ok(thread) = MASTER_THREAD_TABLE.read().get(thread_id) {
+    let table = MASTER_THREAD_TABLE.write();
+    if let Ok(thread) = table.get(thread_id) {
         thread.register_observer(observer);
+        drop(table);
         Ok(())
     } else {
+        drop(table);
         Err(system_scheduler::Error::InvalidThread)
     }
 }

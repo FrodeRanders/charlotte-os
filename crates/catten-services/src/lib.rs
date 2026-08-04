@@ -683,12 +683,15 @@ pub mod dns {
     /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
     /// Answered from locally applied cluster state (the caller polls).
     pub const OP_DEPLOY_QUERY: u32 = 9;
-
-    /// Placeholder cluster deployment secret. Real cryptography (and the
-    /// blank-start key ceremony) is future work; for now deployments are
-    /// signed with an FNV-1a MAC keyed with this constant, shared by the
-    /// deploy authority (the dns service) and the node agents.
-    pub const DEPLOY_SECRET: &[u8] = b"charlotte-cluster-deploy-secret-v1";
+    /// Commit the cluster's Ed25519 public key to the replicated state (the
+    /// key ceremony). `arg0` is unused; the attached memory object holds the
+    /// 32 key bytes. The reply is the committed key generation (deferred
+    /// until it has replicated).
+    pub const OP_SET_KEY: u32 = 10;
+    /// Read the cluster public key from locally applied state. The reply
+    /// moves a page holding the 32 key bytes, or is `ERR_NOT_FOUND` when no
+    /// ceremony has committed a key yet.
+    pub const OP_KEY: u32 = 11;
 
     /// Stable object-store id of the deploy demo payload.
     pub const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
@@ -705,22 +708,6 @@ pub mod dns {
     /// The stable, cluster-wide object-store id for a logical artifact name.
     pub fn artifact_object_id(name: &[u8]) -> u64 {
         ARTIFACT_ID_TAG | (super::node_identity::fnv1a(name) & 0x0000_ffff_ffff_ffff)
-    }
-
-    /// Cluster signature (placeholder MAC) over a deployment record.
-    pub fn deploy_mac(artifact: &[u8], object_id: u64, node_key: u64) -> u64 {
-        let mut hash = 0xcbf2_9ce4_8422_2325u64;
-        for byte in artifact
-            .iter()
-            .copied()
-            .chain(object_id.to_le_bytes())
-            .chain(node_key.to_le_bytes())
-            .chain(DEPLOY_SECRET.iter().copied())
-        {
-            hash ^= byte as u64;
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        hash
     }
 
     /// Shared byte offsets in the DNS service's diagnostic status page.
@@ -755,38 +742,42 @@ pub mod deploy {
     pub const NAME: u64 = super::name(b"greet");
     pub const OP_GET: u32 = 1;
 
-    /// The demo payload blob: `[mac:u64 LE][GREET_PAYLOAD]` stored in the
-    /// object store at `dns::DEPLOY_OBJECT_ID`.
+    /// The demo payload.
     pub const GREET_PAYLOAD: &[u8] = b"cluster-greeting-v1";
     /// The scalar value `OP_GET` returns: the payload's first eight bytes
     /// ("cluster-" little-endian).
     pub const GREET_VALUE: u64 = 0x2d72_6574_7375_6c63;
 
-    /// Placeholder payload signature: FNV-1a over `payload ++ DEPLOY_SECRET`.
-    pub fn payload_mac(payload: &[u8]) -> u64 {
-        let mut hash = 0xcbf2_9ce4_8422_2325u64;
-        for byte in payload.iter().copied().chain(super::dns::DEPLOY_SECRET.iter().copied()) {
-            hash ^= byte as u64;
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    /// The pre-signed greet artifact: `[ed25519_signature:64][payload]`.
+    ///
+    /// Generated off-cluster with `tools/cluster-sign` and the cluster's
+    /// private key (which never enters the OS); nodes verify the signature
+    /// against the cluster public key before serving. Every node stages the
+    /// same artifact under the same derived object id.
+    pub const GREET_ARTIFACT: &[u8] = &[
+        0x6b, 0x60, 0x4a, 0x5c, 0xee, 0x1c, 0x34, 0x16, 0x75, 0x38, 0x81, 0x3b, 0x36, 0xba, 0x00, 0xfb,
+        0x73, 0x35, 0x3d, 0x96, 0x62, 0x47, 0x4b, 0x89, 0x6a, 0xb1, 0x5c, 0x5d, 0x98, 0x51, 0x4b, 0x3c,
+        0x87, 0x23, 0xc7, 0x13, 0xde, 0xe6, 0x3c, 0xb3, 0x0d, 0x01, 0x3c, 0x64, 0x6c, 0x14, 0x13, 0x76,
+        0x3b, 0x5d, 0xff, 0x3a, 0x93, 0x6a, 0x64, 0x93, 0x84, 0x11, 0x8f, 0x3b, 0xe6, 0x08, 0xad, 0x0c,
+        0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2d, 0x67, 0x72, 0x65, 0x65, 0x74, 0x69, 0x6e, 0x67,
+        0x2d, 0x76, 0x31,
+    ];
+
+    /// Verify an artifact blob `[signature:64][payload]` against the cluster
+    /// public key (Ed25519). The payload's identity beyond the signature is
+    /// left to the caller.
+    pub fn verify_artifact(public_key: &[u8; 32], artifact: &[u8]) -> bool {
+        if artifact.len() < 64 {
+            return false;
         }
-        hash
-    }
-
-    /// The stored artifact blob for an arbitrary payload: MAC header followed
-    /// by the payload. Every node stores the same artifact under the same
-    /// derived object id (`dns::artifact_object_id`), so the cluster-wide
-    /// artifact identity is the (name, content) pair and the node dimension
-    /// lives only in the deployment manifest record.
-    pub fn sign_payload(payload: &[u8]) -> alloc::vec::Vec<u8> {
-        let mut bytes = alloc::vec::Vec::with_capacity(8 + payload.len());
-        bytes.extend_from_slice(&payload_mac(payload).to_le_bytes());
-        bytes.extend_from_slice(payload);
-        bytes
-    }
-
-    /// The full stored greet artifact: MAC header followed by the payload.
-    pub fn artifact_bytes() -> alloc::vec::Vec<u8> {
-        sign_payload(GREET_PAYLOAD)
+        let (signature, payload) = artifact.split_at(64);
+        let Ok(public_key) = ed25519_compact::PublicKey::from_slice(public_key) else {
+            return false;
+        };
+        let Ok(signature) = ed25519_compact::Signature::from_slice(signature) else {
+            return false;
+        };
+        public_key.verify(payload, &signature).is_ok()
     }
 }
 
@@ -805,9 +796,12 @@ pub mod clusterctl {
     pub const NAME: u64 = super::name(b"ctl");
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
-    /// memory object holds `[payload_len:u64 LE][payload]`. The service signs
-    /// it with the cluster secret and writes `[mac][payload]` to the local
-    /// object store at the artifact's derived id. The reply is the object id.
+    /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
+    /// artifact is a pre-signed blob `[ed25519_signature:64][payload]`
+    /// produced off-cluster with the cluster's private key. The service
+    /// stores it as-is at the artifact's derived id; nodes validate the
+    /// signature against the cluster public key at pickup. The reply is the
+    /// object id.
     pub const OP_UPLOAD: u32 = 1;
     /// Deploy an artifact to a node. `arg0` is the packed artifact name; the
     /// attached memory object holds `[node_key:u64 LE]`. The service derives
@@ -819,16 +813,22 @@ pub mod clusterctl {
     /// reply moves the 32-byte deployment record
     /// `[generation][object_id][node_key][mac]`, or is `ERR_NOT_FOUND`.
     pub const OP_STATUS: u32 = 3;
-    /// Placeholder for the future blank-start key ceremony. Currently replies
-    /// `ERR_NOT_IMPLEMENTED`; the cluster secret is still a build-time
-    /// constant.
+    /// Commit the cluster's Ed25519 public key to the replicated state (the
+    /// key ceremony, performed once during cluster establishment). `arg0` is
+    /// unused; the attached memory object holds the 32 key bytes. The key is
+    /// the one the IT department's private key matches; after it is
+    /// committed, every joining node obtains it from the cluster. The reply
+    /// is the committed key generation.
     pub const OP_KEYCEREMONY: u32 = 4;
+    /// Read the cluster public key committed by the ceremony. The reply moves
+    /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
+    /// first ceremony.
+    pub const OP_KEY: u32 = 5;
 
     pub const ERR_NOT_FOUND: i64 = -1;
     pub const ERR_NOT_LEADER: i64 = -2;
     pub const ERR_TOO_LARGE: i64 = -3;
     pub const ERR_UPLOAD_FAILED: i64 = -10;
-    pub const ERR_NOT_IMPLEMENTED: i64 = -64;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

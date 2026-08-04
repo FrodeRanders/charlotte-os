@@ -145,9 +145,12 @@ deployment manifest is replicated Raft state, an agent on the assigned node
 picks up and verifies a signed artifact, serves it across the network, and
 migrates it between nodes without losing its name; `clusterctl` (plus a
 serial admin console) provides the outside upload/deploy/status interface.
-The object store is still per-node, the cluster secret is a build-time
-constant, and the signatures are placeholder FNV-1a MACs --- the honest
-simulations are called out in Chapter 17 of
+Artifacts carry real Ed25519 signatures produced off-cluster with
+`tools/cluster-sign`; the public key is injected at build time and committed
+to the replicated state by the key ceremony, and the agent validates every
+artifact against it before serving. The object store is still per-node, and
+the ceremony does not yet validate the injected key against the build-time
+anchor --- the honest simulations are called out in Chapter 17 of
 [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), which
 describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).

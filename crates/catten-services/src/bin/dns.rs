@@ -63,6 +63,7 @@ use catten_services::{
         encode_deploy,
         encode_lookup_query,
         encode_register,
+        encode_set_cluster_key,
         encode_unregister_generation,
     },
     net,
@@ -185,6 +186,12 @@ enum PendingRegistration {
         automatic_term: Option<u64>,
     },
     Deploy {
+        log_index: u64,
+        reply: u64,
+    },
+    /// Leader-side: the key ceremony committed the cluster public key; the
+    /// reply reports the committed key generation.
+    SetKey {
         log_index: u64,
         reply: u64,
     },
@@ -475,6 +482,24 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
     } else {
         None
     }
+}
+
+/// Read the 32 key bytes attached to an `OP_SET_KEY` request.
+fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
+    if message.memory == 0 {
+        return None;
+    }
+    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        memory_close(message.memory);
+        return None;
+    }
+    let mut key = [0u8; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + index) as *const u8) };
+    }
+    memory_unmap(message.memory);
+    memory_close(message.memory);
+    Some(key)
 }
 
 /// Reply by moving a page containing `bytes`.
@@ -1346,14 +1371,13 @@ fn main(ctx: Context) -> ! {
                     } else {
                         match request {
                             Some((object_id, node_key)) => {
-                                // A cluster decision: sign the assignment with
-                                // the shared deployment secret and commit it
-                                // to the replicated manifest. The reply is
-                                // deferred until the command is committed
-                                // (pending_registers below).
-                                let mac = dns::deploy_mac(&artifact, object_id, node_key);
+                                // A cluster decision: commit the assignment
+                                // to the replicated manifest. Its
+                                // authenticity is the Raft consensus; the
+                                // reply is deferred until the command is
+                                // committed (pending_registers below).
                                 match node.submit_command(
-                                    encode_deploy(&artifact, object_id, node_key, mac),
+                                    encode_deploy(&artifact, object_id, node_key),
                                     node.millis(),
                                 ) {
                                     Ok(log_index) => {
@@ -1387,16 +1411,55 @@ fn main(ctx: Context) -> ! {
                     // replicated to this replica. Agents poll, so no read
                     // barrier is required.
                     if let Some(entry) = catalog.deployment(&artifact) {
-                        let mut bytes = Vec::with_capacity(32);
+                        let mut bytes = Vec::with_capacity(24);
                         bytes.extend_from_slice(&entry.generation.to_le_bytes());
                         bytes.extend_from_slice(&entry.object_id.to_le_bytes());
                         bytes.extend_from_slice(&entry.node_key.to_le_bytes());
-                        bytes.extend_from_slice(&entry.mac.to_le_bytes());
                         reply_move_bytes(message.reply, &bytes);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
+                    continue;
+                }
+
+                dns::OP_SET_KEY => {
+                    let result = if node.state != NodeState::Leader {
+                        dns::ERR_NOT_LEADER
                     } else {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                        match read_key(&message) {
+                            Some(key) => {
+                                // The key ceremony: commit the cluster's
+                                // public key to the replicated state. The
+                                // reply is deferred until it has committed.
+                                match node.submit_command(
+                                    encode_set_cluster_key(&key),
+                                    node.millis(),
+                                ) {
+                                    Ok(log_index) => {
+                                        pending_registers.push(PendingRegistration::SetKey {
+                                            log_index,
+                                            reply: message.reply,
+                                        });
+                                        continue;
+                                    }
+                                    Err(code) => code,
+                                }
+                            }
+                            None => dns::ERR_TOO_LARGE,
                         }
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_KEY => {
+                    // Answered from locally applied state: the ceremony's
+                    // record replicates to every node.
+                    if let Some(key) = catalog.cluster_key() {
+                        reply_move_bytes(message.reply, &key);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
                     }
                     continue;
                 }
@@ -1685,6 +1748,10 @@ fn main(ctx: Context) -> ! {
                     log_index,
                     ..
                 }
+                | PendingRegistration::SetKey {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::RemotePrepare {
                     log_index,
                     ..
@@ -1709,6 +1776,20 @@ fn main(ctx: Context) -> ! {
                 } => {
                     // The deployment is committed and replicated: report the
                     // manifest generation to the deployer.
+                    let generation = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        .unwrap_or(0);
+                    if reply != 0 {
+                        ipc_reply(reply, generation as i64);
+                    }
+                }
+                PendingRegistration::SetKey {
+                    reply,
+                    ..
+                } => {
                     let generation = node
                         .command_result(log_index)
                         .and_then(|bytes| bytes.get(..8))

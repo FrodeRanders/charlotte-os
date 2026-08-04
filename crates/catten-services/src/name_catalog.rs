@@ -6,18 +6,21 @@
 //! a registration is committed; resolving it to a connection stays a local
 //! operation on the hosting node.
 //!
-//! The same state machine also carries the cluster **deployment manifest**:
-//! `artifact -> {object_id, node_key, generation, mac}`. A deployment is a
+//! The same state machine also carries the cluster **deployment manifest**
+//! (`artifact -> {object_id, node_key, generation}`) and the cluster's
+//! **Ed25519 public key** (committed by the key ceremony). A deployment is a
 //! cluster decision, so it lives in replicated state next to the name
 //! catalog; node-local agents read it and act on the assignments addressed
-//! to them.
+//! to them. The deployment record itself needs no signature: its
+//! authenticity comes from the Raft consensus that committed it.
 //!
 //! ## Log command encoding
 //!
 //! ```text
 //! register:   0x01 | name_len:u32 | name | node_len:u32 | node
 //! unregister: 0x02 | name_len:u32 | name
-//! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64 | mac:u64
+//! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64
+//! set-key:    0x07 | key:[u8; 32]
 //! ```
 use alloc::{
     collections::BTreeMap,
@@ -35,10 +38,12 @@ const CMD_UNREGISTER: u8 = 0x02;
 const CMD_ACTIVATE: u8 = 0x03;
 const CMD_UNREGISTER_GENERATION: u8 = 0x04;
 const CMD_DEPLOY: u8 = 0x05;
+const CMD_SET_CLUSTER_KEY: u8 = 0x07;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
 const CATALOG_MAGIC_V4: u64 = 0x4341_5441_4c4f_4734; // "CATALOG4"
+const CATALOG_MAGIC_V5: u64 = 0x4341_5441_4c4f_4735; // "CATALOG5"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -56,20 +61,19 @@ pub struct CatalogEntry {
 /// this artifact, and from which object-store object?".
 ///
 /// `node_key` is the packed cluster node identity (the FNV-1a of the node's
-/// NIC MAC); `mac` is a placeholder cluster signature over the record
-/// (FNV-1a keyed with the deployment secret) until real cryptography is
-/// introduced.
+/// NIC MAC). The record needs no signature: the Raft consensus that
+/// committed it is its authenticity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeploymentEntry {
     pub object_id: u64,
     pub node_key: u64,
     pub generation: u64,
-    pub mac: u64,
 }
 
 pub struct NameCatalog {
     entries: spin::Mutex<BTreeMap<Vec<u8>, CatalogEntry>>,
     deployments: spin::Mutex<BTreeMap<Vec<u8>, DeploymentEntry>>,
+    cluster_key: spin::Mutex<Option<[u8; 32]>>,
     last_apply: spin::Mutex<Option<Vec<u8>>>,
 }
 
@@ -78,6 +82,7 @@ impl NameCatalog {
         Arc::new(Self {
             entries: spin::Mutex::new(BTreeMap::new()),
             deployments: spin::Mutex::new(BTreeMap::new()),
+            cluster_key: spin::Mutex::new(None),
             last_apply: spin::Mutex::new(None),
         })
     }
@@ -107,6 +112,12 @@ impl NameCatalog {
 
     pub fn deployment_count(&self) -> usize {
         self.deployments.lock().len()
+    }
+
+    /// The cluster's Ed25519 public key committed by the key ceremony, or
+    /// `None` before the first ceremony.
+    pub fn cluster_key(&self) -> Option<[u8; 32]> {
+        *self.cluster_key.lock()
     }
 
     /// Snapshot copy of the whole `name -> {node, generation}` catalog.
@@ -203,9 +214,7 @@ impl NameCatalog {
                 };
                 let (object_id, after_object) =
                     read_u64(command, after_artifact).unwrap_or((0, after_artifact));
-                let (node_key, after_node) =
-                    read_u64(command, after_object).unwrap_or((0, after_object));
-                let (mac, _) = read_u64(command, after_node).unwrap_or((0, after_node));
+                let (node_key, _) = read_u64(command, after_object).unwrap_or((0, after_object));
                 let mut deployments = self.deployments.lock();
                 let generation =
                     deployments.get(artifact).map_or(1, |entry| entry.generation.saturating_add(1));
@@ -215,9 +224,24 @@ impl NameCatalog {
                         object_id,
                         node_key,
                         generation,
-                        mac,
                     },
                 );
+                generation.to_le_bytes().to_vec()
+            }
+            Some(CMD_SET_CLUSTER_KEY) => {
+                let Some(key) = command.get(1..1 + 32) else {
+                    return Vec::new();
+                };
+                let Ok(key) = <[u8; 32]>::try_from(key) else {
+                    return Vec::new();
+                };
+                let generation = self
+                    .cluster_key
+                    .lock()
+                    .is_some()
+                    .then_some(2u64)
+                    .unwrap_or(1);
+                *self.cluster_key.lock() = Some(key);
                 generation.to_le_bytes().to_vec()
             }
             _ => Vec::new(),
@@ -231,13 +255,15 @@ impl NameCatalog {
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1;
         }
-        // V4 appends the deployment manifest: count + records.
+        // V5 appends the deployment manifest (count + records) and the
+        // cluster key (present flag + 32 bytes).
         size += 4;
         for artifact in deployments.keys() {
-            size += 4 + artifact.len() + 8 + 8 + 8 + 8;
+            size += 4 + artifact.len() + 8 + 8 + 8;
         }
+        size += 1 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V4.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V5.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -254,7 +280,13 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.object_id.to_le_bytes());
             buf.extend_from_slice(&entry.node_key.to_le_bytes());
             buf.extend_from_slice(&entry.generation.to_le_bytes());
-            buf.extend_from_slice(&entry.mac.to_le_bytes());
+        }
+        if let Some(key) = *self.cluster_key.lock() {
+            buf.push(1);
+            buf.extend_from_slice(&key);
+        } else {
+            buf.push(0);
+            buf.extend_from_slice(&[0u8; 32]);
         }
         buf
     }
@@ -268,6 +300,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V2
             && magic != CATALOG_MAGIC_V3
             && magic != CATALOG_MAGIC_V4
+            && magic != CATALOG_MAGIC_V5
         {
             return;
         }
@@ -292,7 +325,10 @@ impl NameCatalog {
             } else {
                 (1, after_node)
             };
-            let (active, after_entry) = if magic == CATALOG_MAGIC_V3 || magic == CATALOG_MAGIC_V4 {
+            let (active, after_entry) = if magic == CATALOG_MAGIC_V3
+                || magic == CATALOG_MAGIC_V4
+                || magic == CATALOG_MAGIC_V5
+            {
                 let Some(active) = data.get(after_generation) else {
                     return;
                 };
@@ -313,7 +349,7 @@ impl NameCatalog {
         *self.entries.lock() = entries;
 
         let mut deployments = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V4 {
+        if magic == CATALOG_MAGIC_V4 || magic == CATALOG_MAGIC_V5 {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
             };
@@ -335,8 +371,15 @@ impl NameCatalog {
                 let Some((generation, after_generation)) = read_u64(data, after_node) else {
                     return;
                 };
-                let Some((mac, after_mac)) = read_u64(data, after_generation) else {
-                    return;
+                // V4 carried a placeholder MAC after the generation; V5 does
+                // not (the record's authenticity is the Raft consensus).
+                let after_entry = if magic == CATALOG_MAGIC_V4 {
+                    match read_u64(data, after_generation) {
+                        Some((_, after_mac)) => after_mac,
+                        None => return,
+                    }
+                } else {
+                    after_generation
                 };
                 deployments.insert(
                     artifact.to_vec(),
@@ -344,13 +387,27 @@ impl NameCatalog {
                         object_id,
                         node_key,
                         generation,
-                        mac,
                     },
                 );
-                pos = after_mac;
+                pos = after_entry;
             }
         }
         *self.deployments.lock() = deployments;
+
+        if magic == CATALOG_MAGIC_V5 {
+            let Some(present) = data.get(pos) else {
+                return;
+            };
+            let Some(key) = data.get(pos + 1..pos + 1 + 32) else {
+                return;
+            };
+            if *present != 0 {
+                let Ok(key) = <[u8; 32]>::try_from(key) else {
+                    return;
+                };
+                *self.cluster_key.lock() = Some(key);
+            }
+        }
     }
 }
 
@@ -402,11 +459,10 @@ impl QueryableStateMachine for NameCatalog {
             Some(QUERY_DEPLOY) => {
                 let artifact = query.get(1..).unwrap_or_default();
                 self.deployment(artifact).map_or_else(Vec::new, |entry| {
-                    let mut result = Vec::with_capacity(32);
+                    let mut result = Vec::with_capacity(24);
                     result.extend_from_slice(&entry.generation.to_le_bytes());
                     result.extend_from_slice(&entry.object_id.to_le_bytes());
                     result.extend_from_slice(&entry.node_key.to_le_bytes());
-                    result.extend_from_slice(&entry.mac.to_le_bytes());
                     result
                 })
             }
@@ -514,26 +570,32 @@ pub fn encode_deploy_query(artifact: &[u8]) -> Vec<u8> {
 
 /// Decode the deployment record returned by a deployment query.
 pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
-    if bytes.len() < 32 {
+    if bytes.len() < 24 {
         return None;
     }
     Some(DeploymentEntry {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
         node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
-        mac: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
     })
 }
 
 /// Encode a deployment command: assign `artifact` (stored at `object_id`) to
-/// the node identified by `node_key`, with the cluster signature `mac`.
-pub fn encode_deploy(artifact: &[u8], object_id: u64, node_key: u64, mac: u64) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 24);
+/// the node identified by `node_key`.
+pub fn encode_deploy(artifact: &[u8], object_id: u64, node_key: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 16);
     buf.push(CMD_DEPLOY);
     buf.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
     buf.extend_from_slice(artifact);
     buf.extend_from_slice(&object_id.to_le_bytes());
     buf.extend_from_slice(&node_key.to_le_bytes());
-    buf.extend_from_slice(&mac.to_le_bytes());
+    buf
+}
+
+/// Encode a key-ceremony command: commit the cluster's Ed25519 public key.
+pub fn encode_set_cluster_key(key: &[u8; 32]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 32);
+    buf.push(CMD_SET_CLUSTER_KEY);
+    buf.extend_from_slice(key);
     buf
 }

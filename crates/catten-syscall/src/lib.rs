@@ -99,6 +99,7 @@ pub enum SyscallNumber {
     ThreadStatistics = 59,
     IpcConnectionWatchClosed = 60,
     ObserveThreadExit = 61,
+    GetTid = 62,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -168,12 +169,13 @@ impl TryFrom<u16> for SyscallNumber {
             59 => Ok(Self::ThreadStatistics),
             60 => Ok(Self::IpcConnectionWatchClosed),
             61 => Ok(Self::ObserveThreadExit),
+            62 => Ok(Self::GetTid),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::ObserveThreadExit as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::GetTid as u16;
 
 // ---- observability wire format ---------------------------------------------
 

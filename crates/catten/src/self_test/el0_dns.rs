@@ -190,8 +190,18 @@ mod inner {
         logln!("[deploy] testing cluster deployment and migration...");
 
         // Spawn the local deploy agent. Its status page first publishes this
-        // guest's node key (offset 16), then the uploaded stage.
-        let agent = spawn_with_manifest(AGENT_ELF, ns, &[]);
+        // guest's node key (offset 16), then the uploaded stage. The launch
+        // manifest carries the cluster's build-time public key, the agent's
+        // bootstrap trust anchor for validating artifacts.
+        let agent = spawn_with_manifest(
+            AGENT_ELF,
+            ns,
+            &[ManifestEntry {
+                key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
+            }],
+        );
         logln!("[deploy] agent spawned (asid={})", agent.asid);
         let agent_cfg: *const u8 = {
             let base: *mut u8 = agent.status_frame.into();
@@ -228,6 +238,10 @@ mod inner {
             let mut request = Vec::with_capacity(16);
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&peer_key.to_le_bytes());
+            logln!(
+                "[deploy] calling OP_DEPLOY on the peer (object {:#x} node {peer_key:#x})",
+                DEPLOY_OBJECT_ID
+            );
             let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
             logln!("[deploy] peer deployment result = {deploy:?}");
             assert!(
@@ -239,7 +253,17 @@ mod inner {
         // The remote agent registers the deployed name; the catalog carries
         // alpha + greet on every replica.
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let mut gate_spins: u64 = 0;
         while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) < 2 {
+            gate_spins += 1;
+            if gate_spins.is_multiple_of(2_000_000) {
+                let stage = status_word(agent_cfg, 0);
+                let catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
+                logln!(
+                    "[deploy] waiting for remote registration: catalog={catalog} \
+                     local-agent-stage={stage}"
+                );
+            }
             deadline.assert_pending("EL0 deploy remote registration");
             yield_lp();
         }
@@ -369,7 +393,11 @@ mod inner {
             ManifestEntry {
                 key: ELECTION_KEY,
                 flags: 0,
-                value: ManifestValue::Unsigned(400),
+                // Generous for the debug kernel behind the QEMU socketpair:
+                // the network RTT is milliseconds-to-tens-of-milliseconds
+                // under boot load, and an election timeout this short makes
+                // leader elections race the transport.
+                value: ManifestValue::Unsigned(2_000),
             },
             ManifestEntry {
                 key: MEMBER_KEY,

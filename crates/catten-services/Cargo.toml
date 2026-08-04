@@ -102,6 +102,7 @@ charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
 charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
+ed25519-compact = { version = "2.3.1", default-features = false }
 
 [profile.dev]
 panic = "abort"

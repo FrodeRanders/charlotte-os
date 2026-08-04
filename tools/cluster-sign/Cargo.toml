@@ -1,0 +1,9 @@
+[package]
+name = "cluster-sign"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ed25519-compact = "2.3.1"
+
+[workspace]
