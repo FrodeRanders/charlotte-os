@@ -243,6 +243,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::CompletionClose => sys_completion_close(frame),
         SyscallNumber::SpawnThread => sys_spawn_thread(frame),
         SyscallNumber::ThreadExit => sys_thread_exit(frame),
+        SyscallNumber::ObserveThreadExit => sys_observe_thread_exit(frame),
         SyscallNumber::MailboxSend => sys_mailbox_send(frame),
         SyscallNumber::MailboxRecv => sys_mailbox_recv(frame),
         SyscallNumber::CompletionWaitTimeout => sys_completion_wait_timeout(frame),
@@ -588,6 +589,19 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
 fn sys_thread_exit(_frame: &mut TrapFrame) {
     // `abort` deschedules the thread, reaps it, and never returns.
     crate::cpu::scheduler::abort();
+}
+
+/// Register a completion capability that fires when thread `regs[1]` exits,
+/// so EL0 can join it through the ordinary completion ABI. The capability is
+/// registered as an exit-observer of the thread; when the kernel reaps the
+/// thread, the observer completes the capability and wakes any waiter.
+fn sys_observe_thread_exit(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let tid = frame.regs[1] as crate::cpu::scheduler::threads::ThreadId;
+    match crate::completion::observe_thread_exit(asid, tid) {
+        Ok(cap) => frame.regs[0] = cap,
+        Err(_) => frame.regs[0] = u64::MAX,
+    }
 }
 
 use spin::LazyLock;

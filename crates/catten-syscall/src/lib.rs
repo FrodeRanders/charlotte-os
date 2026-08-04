@@ -98,6 +98,7 @@ pub enum SyscallNumber {
     DmaUnmap = 58,
     ThreadStatistics = 59,
     IpcConnectionWatchClosed = 60,
+    ObserveThreadExit = 61,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -166,12 +167,13 @@ impl TryFrom<u16> for SyscallNumber {
             58 => Ok(Self::DmaUnmap),
             59 => Ok(Self::ThreadStatistics),
             60 => Ok(Self::IpcConnectionWatchClosed),
+            61 => Ok(Self::ObserveThreadExit),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::IpcConnectionWatchClosed as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::ObserveThreadExit as u16;
 
 // ---- observability wire format ---------------------------------------------
 
@@ -783,6 +785,21 @@ pub unsafe fn thread_exit() -> ! {
     loop {
         core::hint::spin_loop();
     }
+}
+
+/// Register a completion capability that fires when the EL0 thread `tid` is
+/// reaped by the kernel, exposing thread joining through the ordinary
+/// completion ABI (`wait`/`poll`/`close`).
+///
+/// Returns the completion capability, or `u64::MAX` when `tid` is invalid or
+/// the capability table is full.
+///
+/// # Safety
+/// `tid` must be a thread id previously returned by
+/// [`spawn_thread`](spawn_thread) in the caller's address space.
+#[inline(always)]
+pub unsafe fn observe_thread_exit(tid: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::ObserveThreadExit, tid, 0, 0) }
 }
 
 /// Send a 64-bit message to the target LP's global mailbox.

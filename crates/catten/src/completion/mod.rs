@@ -683,6 +683,45 @@ pub fn submit_worker(
     Ok(cap)
 }
 
+/// Register a completion capability that fires when the EL0 thread `tid`
+/// exits, exposing thread joining to userspace through the ordinary
+/// completion ABI. This is the syscall-facing half of `submit_worker`: the
+/// caller (typically a shard runtime) spawns the thread and then observes its
+/// exit with this helper, so `wait` on the returned capability blocks exactly
+/// until the thread has been reaped.
+///
+/// If the thread was already reaped before the observer could be registered,
+/// the capability completes immediately rather than leaving the joiner
+/// waiting for an observer that can never fire.
+pub(crate) fn observe_thread_exit(
+    asid: AddressSpaceId,
+    tid: crate::cpu::scheduler::threads::ThreadId,
+) -> Result<CompletionCap, SubmitError> {
+    let cap = submit(asid, OpCode::Nop, None)?;
+    let observer = Arc::new(CompletionExitObserver {
+        asid,
+        cap,
+        result: OpResult::Ok(0),
+    });
+    match crate::cpu::scheduler::observe_thread_exit(
+        tid,
+        Arc::downgrade(&observer) as Weak<dyn Observer>,
+    ) {
+        Ok(()) => {
+            if let Ok(completion) = completion_of(asid, cap) {
+                completion.set_exit_observer(observer);
+            }
+            Ok(cap)
+        }
+        Err(_) => {
+            // The thread is gone; its exit already happened. Complete now so
+            // the joiner observes a terminal state immediately.
+            let _ = complete(asid, cap, OpResult::Ok(0));
+            Ok(cap)
+        }
+    }
+}
+
 /// Kernel-side completion hook: the worker/driver executing `cap`'s operation
 /// finished. Transitions the operation to `Completed`, publishes the entry to
 /// the AS's CQ ring (if attached), and wakes awaiting threads.

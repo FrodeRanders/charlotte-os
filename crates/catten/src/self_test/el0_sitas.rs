@@ -10,8 +10,10 @@
 //! over `CharlotteReactor`: it creates a KV store, puts keys, reads one back,
 //! and writes the total key count to the result page. It then runs
 //! `mailbox_index::mailbox_index_test`, the sharded scanner -> mailbox ->
-//! assembler index demo, which writes its verified record count next to it.
-//! The verifier checks both status-page words.
+//! assembler index demo, which writes its verified record count next to it,
+//! and finally a join probe that spawns value-returning shard threads and
+//! joins them through the kernel-backed join handle. The verifier checks all
+//! three status-page words.
 
 #[cfg(target_arch = "aarch64")]
 use core::sync::atomic::{
@@ -57,6 +59,10 @@ const SITAS_STATUS_VADDR: usize = charlotte_launch::STATUS_VADDR;
 /// (mirrors `sitas_core::mailbox_index::RECORD_COUNT`).
 #[cfg(target_arch = "aarch64")]
 const SITAS_MAILBOX_INDEX_COUNT: u32 = 1024;
+/// Sum of the joined shard values the `catten-user` join probe writes on
+/// success (closures return 40 and 41).
+#[cfg(target_arch = "aarch64")]
+const SITAS_JOIN_PROBE_SUM: u32 = 81;
 
 #[cfg(target_arch = "aarch64")]
 const PAGE_SIZE: usize = 4096;
@@ -431,19 +437,32 @@ extern "C" fn verify_el0_sitas() {
             return;
         }
         if sentinel == 3 {
-            // basic_kv result present: now wait for the mailbox-index demo,
-            // which writes its verified record count one u32 further on.
+            // basic_kv result present: wait for the mailbox-index demo, which
+            // writes its verified record count one u32 further on.
             let index = unsafe { core::ptr::read_volatile(result.add(1)) };
             if index == SITAS_MAILBOX_INDEX_COUNT {
-                logln!(
-                    "[sitas] SUCCESS: basic_kv total_len=3 and mailbox index verified {} records.",
-                    index
-                );
-                crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
-                teardown_sitas_domain();
-                return;
-            }
-            if index != 0 {
+                // Mailbox index verified: wait for the join probe, which
+                // writes the sum of its joined shard values after that.
+                let join = unsafe { core::ptr::read_volatile(result.add(2)) };
+                if join == SITAS_JOIN_PROBE_SUM {
+                    logln!(
+                        "[sitas] SUCCESS: basic_kv total_len=3, mailbox index verified {} \
+                         records, join probe sum {}",
+                        index,
+                        join
+                    );
+                    crate::self_test::results::pass(crate::self_test::results::TestId::Sitas);
+                    teardown_sitas_domain();
+                    return;
+                }
+                if join != 0 {
+                    assert_eq!(
+                        join, SITAS_JOIN_PROBE_SUM,
+                        "[sitas] join probe: expected joined sum {:#x}, got {:#x}",
+                        SITAS_JOIN_PROBE_SUM, join
+                    );
+                }
+            } else if index != 0 {
                 assert_eq!(
                     index, SITAS_MAILBOX_INDEX_COUNT,
                     "[sitas] mailbox_index: expected verified record count {:#x}, got {:#x}",
@@ -466,10 +485,10 @@ extern "C" fn verify_el0_sitas() {
 fn teardown_sitas_domain() {
     let asid = SITAS_ASID.swap(usize::MAX, Ordering::AcqRel);
     if asid != usize::MAX {
-        // `basic_kv` spawns pinned no-std shard executors whose raw join
-        // handles currently have no shutdown protocol. Once the committed
-        // result is verified, terminate every thread in the test domain so
-        // those executors do not keep two LPs permanently runnable.
+        // Shard threads now terminate themselves (`thread_exit` from the
+        // sitas trampoline), so this is a safety net rather than the primary
+        // shutdown: abort anything that is still alive so the test domain's
+        // threads do not keep LPs permanently runnable.
         crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read().abort_as_threads(asid);
     }
 }
