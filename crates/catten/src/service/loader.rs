@@ -341,21 +341,14 @@ pub fn try_create_user_address_space_handle()
 /// cluster's build-time public key; anything else is refused. Images without
 /// a note still load (enforcement of mandatory signing is future work), but
 /// the policy is visible in the boot log.
-fn verify_image_signature(image: &[u8]) {
+fn verify_image_signature(image: &[u8]) -> Result<(), ()> {
     use charlotte_launch::signature_note::{
         VerifyOutcome,
         verify_elf,
     };
     match verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY) {
-        VerifyOutcome::Valid => {}
-        VerifyOutcome::Invalid => {
-            panic!("[loader] refusing to load an ELF with an invalid cluster signature")
-        }
-        VerifyOutcome::Unsigned => {
-            crate::logln!(
-                "[loader] ELF has no cluster signature note; loading without verification"
-            );
-        }
+        VerifyOutcome::Valid => Ok(()),
+        VerifyOutcome::Invalid | VerifyOutcome::Unsigned => Err(()),
     }
 }
 
@@ -363,7 +356,9 @@ fn verify_image_signature(image: &[u8]) {
 /// virtual address.
 pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
     let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
-    verify_image_signature(image);
+    verify_image_signature(image).unwrap_or_else(|_| {
+        panic!("[loader] refusing to load an ELF that is not validly signed by the cluster")
+    });
     let mut load_segments = 0usize;
 
     for i in 0..phnum {
@@ -423,12 +418,20 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
 /// (endpoint readiness binding, timed waits, detached operations). The
 /// domain is not started.
 pub fn load_domain(image: &[u8]) -> LoadedDomain {
-    try_load_domain(image).expect("[loader] hardware address-space identifiers exhausted")
+    match try_load_domain(image) {
+        Ok(loaded) => loaded,
+        Err(AddressSpaceRegistrationError::SignatureVerificationFailed) => {
+            panic!("[loader] refusing to load an ELF that is not validly signed by the cluster")
+        }
+        Err(_) => panic!("[loader] hardware address-space identifiers exhausted"),
+    }
 }
 
 /// Load a domain while reporting finite hardware-ASID exhaustion to callers
 /// which accept runtime service-creation requests.
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
+    verify_image_signature(image)
+        .map_err(|_| AddressSpaceRegistrationError::SignatureVerificationFailed)?;
     let address_space = try_create_user_address_space_handle()?;
     let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);

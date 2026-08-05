@@ -334,15 +334,22 @@ state by the key ceremony (\texttt{OP\_KEYCEREMONY} $\rightarrow$
 \texttt{OP\_SET\_KEY}), which is how a joining node obtains the key from
 the cluster on join.
 
-The kernel's EL0 loader verifies the note before mapping any domain: a
-signed-but-invalid image is refused outright, an unsigned image still loads
-(and logs the policy), and the deploy agent additionally verifies the note
-and the artifact's SHA-256 identity before serving it. The deployed
-artifact is a real binary --- the \texttt{greet} service ELF, signed by the
-build pipeline and staged into the object store --- fetched, verified,
-served across the network, and migrated like any other artifact. The
-deployment record needs no signature because the Raft consensus that
-committed it is its authenticity.
+The kernel's EL0 loader verifies the note before mapping any domain, and
+signing is \emph{mandatory}: an image that is unsigned or invalidly signed
+is refused outright (the live-upgrade syscall fails gracefully; every other
+load path panics). The build pipeline signs every staged service ELF with
+the cluster's private key --- by default the version-controlled
+\emph{development} keypair in
+\texttt{tools/cluster-sign/dev-key.hex}, whose public half is the embedded
+\texttt{CLUSTER\_PUBLIC\_KEY}; a live key can be substituted at build time
+via \texttt{CLUSTER\_SIGN\_PRIVATE\_KEY} (rebuilding the kernel with its
+public half embedded). The deploy agent additionally verifies the note and
+the artifact's SHA-256 identity before serving it. The deployed artifact is
+a real binary --- the \texttt{greet} service ELF, signed by the build
+pipeline and staged into the object store --- fetched, verified, served
+across the network, and migrated like any other artifact. The deployment
+record needs no signature because the Raft consensus that committed it is
+its authenticity.
 
 The slice still simulates the hard parts of the vision, and the
 simulations are the next work items:
@@ -360,11 +367,12 @@ simulations are the next work items:
         department's key, injected once during establishment --- is
         operational, not yet cryptographic.
 
-    \item \textbf{Signing is not yet mandatory.} The loader refuses
-        signed-but-invalid images but still loads unsigned ones; making
-        every service ELF carry a valid signature (and refusing the rest)
-        is the enforcement step. The NVMe-ELF upgrade path remains
-        hash-equality-constrained (Chapter~16).
+    \item \textbf{The development key is version-controlled.} Every
+        staged ELF is signed with the dev keypair in the repository; the
+        real production key lives at the IT department and would be
+        substituted at build time. The NVMe-ELF upgrade path remains
+        hash-equality-constrained (Chapter~16) and now additionally requires
+        a validly signed image to load.
 
     \item \textbf{The admin is kernel-side.} The console is a kernel
         thread, not a real out-of-band management plane.

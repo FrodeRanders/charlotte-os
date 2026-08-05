@@ -2,9 +2,12 @@
 //! artifacts.
 //!
 //! The cluster's *private* key never enters the cluster: it is held here, at
-//! the "IT department". The matching public key is injected into the cluster
-//! (embedded in the kernel build and/or committed to the replicated state by
-//! the key ceremony) and used by cluster nodes to validate artifacts.
+//! the "IT department" (for development, the version-controlled keypair in
+//! `dev-key.hex`; a live key can be substituted via the
+//! `CLUSTER_SIGN_PRIVATE_KEY` build-script variable). The matching public
+//! key is injected into the cluster (embedded in the kernel build and/or
+//! committed to the replicated state by the key ceremony) and used by
+//! cluster nodes to validate artifacts.
 //!
 //! ELF artifacts are signed *in place*: the tool adds a `SHT_NOTE` section
 //! (`.note.charlotte-sig`) carrying the 64-byte Ed25519 signature. The

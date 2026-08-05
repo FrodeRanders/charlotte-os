@@ -1,0 +1,11 @@
+# CharlotteOS cluster development signing key.
+#
+# This is the *private* key of the version-controlled development keypair
+# (the demo key from `cluster-sign generate`); the matching public key is
+# embedded in the kernel as charlotte_launch::CLUSTER_PUBLIC_KEY. The build
+# pipeline signs every staged service ELF with it, so the EL0 loader can
+# enforce that every loaded image is cluster-signed. It is a development
+# key: nothing that ships would ever use it. Override with the
+# CLUSTER_SIGN_PRIVATE_KEY environment variable to sign with a live key
+# (and rebuild the kernel with the matching public key embedded).
+40be67ef70344da61676fbf898dc8e63f3c79d628ae90bb91d3a83948e48947d3ddc95c26bd5f4022d95a4c6c8d074f577f11af7873e527b018b21be2c035463

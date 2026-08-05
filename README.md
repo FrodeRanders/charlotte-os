@@ -148,12 +148,13 @@ serial admin console) provides the outside upload/deploy/status interface.
 Artifacts are real ELF binaries signed in place with Ed25519: the signature
 lives in a standard `.note.charlotte-sig` ELF note (added by
 `tools/cluster-sign elf-sign`), the public key is injected at build time and
-committed to the replicated state by the key ceremony, and both the EL0
-loader (refusing signed-but-invalid images) and the deploy agent validate
-artifacts against it before serving. The object store is still per-node,
-signing is not yet mandatory, and the ceremony does not yet validate the
-injected key against the build-time anchor --- the honest simulations are
-called out in Chapter 17 of
+committed to the replicated state by the key ceremony, and the EL0 loader
+(which refuses any unsigned or invalidly signed image --- the build pipeline
+signs every staged service ELF with the version-controlled development key
+in `tools/cluster-sign/dev-key.hex`) and the deploy agent validate artifacts
+against it before serving. The object store is still per-node, and the
+ceremony does not yet validate the injected key against the build-time
+anchor --- the honest simulations are called out in Chapter 17 of
 [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), which
 describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).

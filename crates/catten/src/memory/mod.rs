@@ -93,6 +93,9 @@ pub enum AddressSpaceCloseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpaceRegistrationError {
     HardwareAsidExhausted,
+    /// The image failed cluster signature verification (unsigned or
+    /// invalidly signed); loading it is refused.
+    SignatureVerificationFailed,
 }
 
 /// Serializes allocation and teardown across resource cleanup. This prevents
