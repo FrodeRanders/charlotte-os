@@ -47,27 +47,10 @@ mod inner {
     const HELLO_NAME: u64 = 0x0000_006f_6c6c_6568;
     // catten_services::dns::artifact_object_id(b"hello").
     const HELLO_OBJECT_ID: u64 = 0xfffe_d846_80aa_bd0b;
-    // The pre-signed hello artifact (Ed25519 signature || payload), produced
-    // off-cluster with tools/cluster-sign and the cluster's private key. The
-    // cluster stores it as-is; nodes validate it against the public key.
-    const HELLO_ARTIFACT: &[u8] = &[
-        0x61, 0xd0, 0xe1, 0xd0, 0x32, 0xe8, 0x65, 0x9f, 0xe5, 0xd7, 0x38, 0x13, 0x6e, 0x22, 0xf8,
-        0x99, 0x8f, 0x57, 0x22, 0x9c, 0x50, 0x9a, 0xc9, 0xb0, 0x25, 0x92, 0x63, 0x00, 0xa6, 0x61,
-        0xd6, 0xd8, 0xd9, 0xdf, 0xf0, 0x19, 0xaa, 0xd5, 0x4c, 0xbf, 0xfd, 0x24, 0x90, 0xc4, 0xde,
-        0x65, 0x6f, 0x51, 0x15, 0xb2, 0xac, 0xd2, 0x27, 0x6d, 0xf7, 0x50, 0x77, 0x08, 0x61, 0xa4,
-        0xeb, 0x37, 0xf8, 0x0f, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x2d, 0x63, 0x6c, 0x75, 0x73, 0x74,
-        0x65, 0x72,
-    ];
-    // The pre-signed greet artifact, for the console's `upload greet` (which
-    // re-stages the signed blob rather than an unsigned payload).
-    const GREET_ARTIFACT: &[u8] = &[
-        0x6b, 0x60, 0x4a, 0x5c, 0xee, 0x1c, 0x34, 0x16, 0x75, 0x38, 0x81, 0x3b, 0x36, 0xba, 0x00,
-        0xfb, 0x73, 0x35, 0x3d, 0x96, 0x62, 0x47, 0x4b, 0x89, 0x6a, 0xb1, 0x5c, 0x5d, 0x98, 0x51,
-        0x4b, 0x3c, 0x87, 0x23, 0xc7, 0x13, 0xde, 0xe6, 0x3c, 0xb3, 0x0d, 0x01, 0x3c, 0x64, 0x6c,
-        0x14, 0x13, 0x76, 0x3b, 0x5d, 0xff, 0x3a, 0x93, 0x6a, 0x64, 0x93, 0x84, 0x11, 0x8f, 0x3b,
-        0xe6, 0x08, 0xad, 0x0c, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2d, 0x67, 0x72, 0x65,
-        0x65, 0x74, 0x69, 0x6e, 0x67, 0x2d, 0x76, 0x31,
-    ];
+    // The note-signed greet ELF (the shared artifact constant) is uploaded
+    // under the hello name too; the cluster stores it as-is and nodes
+    // validate it against the cluster public key at pickup.
+    const HELLO_ARTIFACT: &[u8] = crate::self_test::GREET_ARTIFACT;
     const CTL_STAGE_SERVING: u32 = 6;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
@@ -221,8 +204,8 @@ mod inner {
         unsafe { CTL_CONN = ctl_conn };
 
         // --- Programmatic flow through clusterctl ---
-        // 1. Upload the pre-signed artifact (signature || payload). The cluster stores it as-is;
-        //    validation happens at pickup.
+        // 1. Upload the note-signed artifact ELF. The cluster stores it as-is; validation happens
+        //    at pickup.
         let mut request = Vec::with_capacity(8 + HELLO_ARTIFACT.len());
         request.extend_from_slice(&(HELLO_ARTIFACT.len() as u64).to_le_bytes());
         request.extend_from_slice(HELLO_ARTIFACT);
@@ -390,7 +373,7 @@ mod inner {
                 // artifact; anything else stores the given bytes as-is, so
                 // only a payload signed off-cluster will validate at pickup.
                 let artifact = match (name, payload) {
-                    (b"greet", None) => GREET_ARTIFACT,
+                    (b"greet", None) => crate::self_test::GREET_ARTIFACT,
                     (_, None) => {
                         logln!(
                             "[admin] usage: upload <name> [<payload>] (no signed artifact for {})",

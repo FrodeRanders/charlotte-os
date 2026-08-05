@@ -147,6 +147,60 @@ mod inner {
         ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.cap.unwrap_or(0))
     }
 
+    /// Stage the deploy artifact into the object store: create the object at
+    /// `object_id`, set its size, write the bytes, and flush. Mirrors the
+    /// agent's former self-staging; the kernel does it for the demo so the
+    /// artifact bytes can live kernel-side.
+    fn stage_deploy_artifact(
+        ns: &NameServiceHandle,
+        object_id: u64,
+        bytes: &[u8],
+    ) -> Result<(), ()> {
+        const OBJSTORE_NAME: u64 = 0x0000_0000_006a_626f; // "obj" packed LE.
+        const OBJ_OP_CREATE_AT: u32 = 8;
+        const OBJ_OP_SET_SIZE: u32 = 9;
+        const OBJ_OP_WRITE: u32 = 3;
+        const OBJ_OP_FLUSH: u32 = 6;
+        const OBJ_ERR_OK: i64 = 0;
+
+        let kernel_ns = kernel_ns_connection(ns);
+        let obj_conn = lookup_service(kernel_ns, OBJSTORE_NAME).expect("[deploy] objstore lookup");
+
+        let call = ipc::scalar_call(KERNEL_ASID, obj_conn, OBJ_OP_CREATE_AT, object_id)
+            .expect("[deploy] objstore create call");
+        ipc::wait_reply(KERNEL_ASID, call).expect("[deploy] objstore create reply");
+        let result = ipc::poll_reply(KERNEL_ASID, call)
+            .expect("[deploy] objstore create poll")
+            .expect("[deploy] objstore create replied");
+        if result.result != OBJ_ERR_OK && result.result != 1 {
+            return Err(());
+        }
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+
+        let size_bytes = (bytes.len() as u64).to_le_bytes();
+        let call = call_with_memory(obj_conn, OBJ_OP_SET_SIZE, object_id, &size_bytes)
+            .expect("[deploy] objstore set-size result");
+        if call != OBJ_ERR_OK {
+            return Err(());
+        }
+        let call = call_with_memory(obj_conn, OBJ_OP_WRITE, object_id, bytes)
+            .expect("[deploy] objstore write result");
+        if call != OBJ_ERR_OK {
+            return Err(());
+        }
+        let call = ipc::scalar_call(KERNEL_ASID, obj_conn, OBJ_OP_FLUSH, 0)
+            .expect("[deploy] objstore flush");
+        ipc::wait_reply(KERNEL_ASID, call).expect("[deploy] objstore flush reply");
+        let result = ipc::poll_reply(KERNEL_ASID, call)
+            .expect("[deploy] objstore flush poll")
+            .expect("[deploy] objstore flush replied");
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+        if result.result != OBJ_ERR_OK {
+            return Err(());
+        }
+        Ok(())
+    }
+
     pub fn test_el0_dns() {
         logln!("Testing distributed name service (Raft over the network)...");
         let name_service = supervisor::node_name_service();
@@ -180,14 +234,44 @@ mod inner {
         const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
         const DNS_OP_DEPLOY: u32 = 8;
         const DNS_OP_GET: u32 = 1;
-        // catten_services::deploy::GREET_VALUE.
-        const GREET_VALUE: i64 = 0x2d72_6574_7375_6c63;
+        // catten_services::deploy::GREET_VALUE: the deployed artifact's
+        // leading eight bytes, the little-endian ELF header.
+        const GREET_VALUE: i64 = 0x0001_0102_464c_457f;
         const AGENT_STAGE_IDENTITY: u32 = 2;
-        const AGENT_STAGE_UPLOADED: u32 = 4;
         const AGENT_STAGE_SERVING: u32 = 6;
         const AGENT_STAGE_RETIRED: u32 = 7;
 
         logln!("[deploy] testing cluster deployment and migration...");
+
+        // The deployed artifact is a note-signed ELF: it must verify against
+        // the cluster's public key, and a tampered copy must be refused.
+        let artifact = crate::self_test::GREET_ARTIFACT;
+        use charlotte_launch::signature_note::VerifyOutcome;
+        assert_eq!(
+            charlotte_launch::signature_note::verify_elf(
+                artifact,
+                &charlotte_launch::CLUSTER_PUBLIC_KEY
+            ),
+            VerifyOutcome::Valid,
+            "[deploy] the deployed artifact must carry a valid cluster signature"
+        );
+        let mut tampered = alloc::vec![0u8; artifact.len()];
+        tampered.copy_from_slice(artifact);
+        tampered[artifact.len() / 2] ^= 0x01;
+        assert_eq!(
+            charlotte_launch::signature_note::verify_elf(
+                &tampered,
+                &charlotte_launch::CLUSTER_PUBLIC_KEY
+            ),
+            VerifyOutcome::Invalid,
+            "[deploy] a tampered artifact must fail signature verification"
+        );
+        assert_eq!(
+            charlotte_launch::sha256::digest(artifact),
+            charlotte_launch::GREET_ARTIFACT_SHA256,
+            "[deploy] the deployed artifact hash constant must match the artifact"
+        );
+        logln!("[deploy] artifact is a note-signed ELF; tampering is refused.");
 
         // Spawn the local deploy agent. Its status page first publishes this
         // guest's node key (offset 16), then the uploaded stage. The launch
@@ -226,11 +310,14 @@ mod inner {
         );
         logln!("[deploy] this node key = {my_key:#x}, peer = {peer_key:#x}");
 
-        while status_word(agent_cfg, 0) < AGENT_STAGE_UPLOADED {
-            deadline.assert_pending("EL0 deploy agent artifact upload");
-            yield_lp();
+        // "Software lives in the object store": stage the signed artifact
+        // into the (node-local, for now) store before the cluster deploys it.
+        // A real cluster would fetch it from a cluster-wide store instead;
+        // the per-node staging is one of the documented simulations.
+        if stage_deploy_artifact(ns, DEPLOY_OBJECT_ID, artifact).is_err() {
+            panic!("[deploy] failed to stage the deploy artifact into the object store");
         }
-        logln!("[deploy] agent uploaded the artifact to the object store.");
+        logln!("[deploy] staged the note-signed artifact into the object store.");
 
         // The leader deploys the artifact to the peer node (cross-node
         // hosting is the point of the cluster).

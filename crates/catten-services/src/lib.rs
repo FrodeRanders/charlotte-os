@@ -679,7 +679,7 @@ pub mod dns {
     pub const OP_DEPLOY: u32 = 8;
     /// Query the deployment record for `arg0` (packed artifact name). The
     /// reply moves a page holding
-    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE][mac:u64 LE]`,
+    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE]`,
     /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
     /// Answered from locally applied cluster state (the caller polls).
     pub const OP_DEPLOY_QUERY: u32 = 9;
@@ -731,10 +731,10 @@ pub mod dns {
 
 /// Protocol of the cluster-deployment demo artifact: a tiny service that the
 /// per-node deploy agent hosts under whatever name the cluster manifest
-/// assigns it. The artifact is a signed blob in the object store; `OP_GET`
-/// returns its leading eight bytes as the scalar result, proving that the
-/// calling node reached the exact artifact the cluster assigned and the
-/// serving node verified.
+/// assigns it. The artifact is a note-signed ELF in the object store
+/// (`.note.charlotte-sig`); `OP_GET` returns its leading eight bytes as the
+/// scalar result, proving that the calling node reached the exact artifact
+/// the cluster assigned and the serving node verified.
 pub mod deploy {
     pub const INTERFACE: u64 = super::name(b"DPLY");
     pub const VERSION: u32 = 1;
@@ -742,43 +742,10 @@ pub mod deploy {
     pub const NAME: u64 = super::name(b"greet");
     pub const OP_GET: u32 = 1;
 
-    /// The demo payload.
-    pub const GREET_PAYLOAD: &[u8] = b"cluster-greeting-v1";
-    /// The scalar value `OP_GET` returns: the payload's first eight bytes
-    /// ("cluster-" little-endian).
-    pub const GREET_VALUE: u64 = 0x2d72_6574_7375_6c63;
-
-    /// The pre-signed greet artifact: `[ed25519_signature:64][payload]`.
-    ///
-    /// Generated off-cluster with `tools/cluster-sign` and the cluster's
-    /// private key (which never enters the OS); nodes verify the signature
-    /// against the cluster public key before serving. Every node stages the
-    /// same artifact under the same derived object id.
-    pub const GREET_ARTIFACT: &[u8] = &[
-        0x6b, 0x60, 0x4a, 0x5c, 0xee, 0x1c, 0x34, 0x16, 0x75, 0x38, 0x81, 0x3b, 0x36, 0xba, 0x00, 0xfb,
-        0x73, 0x35, 0x3d, 0x96, 0x62, 0x47, 0x4b, 0x89, 0x6a, 0xb1, 0x5c, 0x5d, 0x98, 0x51, 0x4b, 0x3c,
-        0x87, 0x23, 0xc7, 0x13, 0xde, 0xe6, 0x3c, 0xb3, 0x0d, 0x01, 0x3c, 0x64, 0x6c, 0x14, 0x13, 0x76,
-        0x3b, 0x5d, 0xff, 0x3a, 0x93, 0x6a, 0x64, 0x93, 0x84, 0x11, 0x8f, 0x3b, 0xe6, 0x08, 0xad, 0x0c,
-        0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x2d, 0x67, 0x72, 0x65, 0x65, 0x74, 0x69, 0x6e, 0x67,
-        0x2d, 0x76, 0x31,
-    ];
-
-    /// Verify an artifact blob `[signature:64][payload]` against the cluster
-    /// public key (Ed25519). The payload's identity beyond the signature is
-    /// left to the caller.
-    pub fn verify_artifact(public_key: &[u8; 32], artifact: &[u8]) -> bool {
-        if artifact.len() < 64 {
-            return false;
-        }
-        let (signature, payload) = artifact.split_at(64);
-        let Ok(public_key) = ed25519_compact::PublicKey::from_slice(public_key) else {
-            return false;
-        };
-        let Ok(signature) = ed25519_compact::Signature::from_slice(signature) else {
-            return false;
-        };
-        public_key.verify(payload, &signature).is_ok()
-    }
+    /// The scalar value `OP_GET` returns: the deployed artifact's leading
+    /// eight bytes — the little-endian ELF header of the note-signed `greet`
+    /// binary (`0x7f 'E' 'L' 'F' 2 1 1 0`).
+    pub const GREET_VALUE: u64 = 0x0001_0102_464c_457f;
 }
 
 /// Protocol of the cluster administration service (`clusterctl`): the
@@ -797,11 +764,11 @@ pub mod clusterctl {
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
-    /// artifact is a pre-signed blob `[ed25519_signature:64][payload]`
-    /// produced off-cluster with the cluster's private key. The service
-    /// stores it as-is at the artifact's derived id; nodes validate the
-    /// signature against the cluster public key at pickup. The reply is the
-    /// object id.
+    /// artifact is a note-signed ELF (`.note.charlotte-sig`) produced
+    /// off-cluster with `tools/cluster-sign elf-sign` and the cluster's
+    /// private key. The service stores it as-is at the artifact's derived
+    /// id; nodes validate the signature against the cluster public key at
+    /// pickup. The reply is the object id.
     pub const OP_UPLOAD: u32 = 1;
     /// Deploy an artifact to a node. `arg0` is the packed artifact name; the
     /// attached memory object holds `[node_key:u64 LE]`. The service derives
@@ -811,7 +778,7 @@ pub mod clusterctl {
     pub const OP_DEPLOY: u32 = 2;
     /// Query the deployment manifest. `arg0` is the packed artifact name; the
     /// reply moves the 32-byte deployment record
-    /// `[generation][object_id][node_key][mac]`, or is `ERR_NOT_FOUND`.
+    /// `[generation][object_id][node_key]`, or is `ERR_NOT_FOUND`.
     pub const OP_STATUS: u32 = 3;
     /// Commit the cluster's Ed25519 public key to the replicated state (the
     /// key ceremony, performed once during cluster establishment). `arg0` is

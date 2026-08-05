@@ -335,10 +335,35 @@ pub fn try_create_user_address_space_handle()
     crate::memory::register_user_address_space(AddressSpace::new_user())
 }
 
+/// Verify the ELF image's cluster signature note before anything is mapped.
+///
+/// An image that carries a `.note.charlotte-sig` must verify against the
+/// cluster's build-time public key; anything else is refused. Images without
+/// a note still load (enforcement of mandatory signing is future work), but
+/// the policy is visible in the boot log.
+fn verify_image_signature(image: &[u8]) {
+    use charlotte_launch::signature_note::{
+        VerifyOutcome,
+        verify_elf,
+    };
+    match verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY) {
+        VerifyOutcome::Valid => {}
+        VerifyOutcome::Invalid => {
+            panic!("[loader] refusing to load an ELF with an invalid cluster signature")
+        }
+        VerifyOutcome::Unsigned => {
+            crate::logln!(
+                "[loader] ELF has no cluster signature note; loading without verification"
+            );
+        }
+    }
+}
+
 /// Map all `PT_LOAD` segments of `image` into `asid` and return the entry
 /// virtual address.
 pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
     let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
+    verify_image_signature(image);
     let mut load_segments = 0usize;
 
     for i in 0..phnum {

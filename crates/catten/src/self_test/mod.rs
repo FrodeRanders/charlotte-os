@@ -119,6 +119,15 @@
 //! authoritative verdict is produced by the coordinator thread and observed
 //! by `scripts/run-aarch64.sh` under `--timeout`.
 
+/// The cluster-deployed artifact: the note-signed ELF of the `greet` service,
+/// staged by `scripts/build-catten-services.sh --embed` (which also runs
+/// `tools/cluster-sign elf-sign` over it) and embedded here. The deploy
+/// phase stages it into the object store, the clusterctl demo and the serial
+/// console upload it, and the signature note is verified by the EL0 loader
+/// and the deploy agent.
+pub const GREET_ARTIFACT: &[u8] =
+    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/greet.elf"));
+
 pub mod adversarial;
 pub mod completion;
 pub mod cq;

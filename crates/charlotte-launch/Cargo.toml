@@ -9,3 +9,6 @@ name = "charlotte_launch"
 path = "src/lib.rs"
 test = false
 bench = false
+
+[dependencies]
+ed25519-compact = { version = "2.3.1", default-features = false }

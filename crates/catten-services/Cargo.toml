@@ -102,7 +102,6 @@ charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
 charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
-ed25519-compact = { version = "2.3.1", default-features = false }
 
 [profile.dev]
 panic = "abort"
@@ -178,5 +177,11 @@ bench = false
 [[bin]]
 name = "clusterctl"
 path = "src/bin/clusterctl.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "greet"
+path = "src/bin/greet.rs"
 test = false
 bench = false

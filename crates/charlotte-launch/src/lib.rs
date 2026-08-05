@@ -21,6 +21,10 @@ pub const STATUS_PAGE_SIZE: u32 = 4096;
 
 /// DNS service status-page ABI shared by the EL0 service and its kernel boot
 /// verifier. Every field is an aligned little-endian `u32` byte offset.
+pub mod sha256;
+
+pub mod signature_note;
+
 pub mod dns_status {
     pub const STAGE: usize = 0;
     pub const PEER_COUNT: usize = 8;
@@ -262,3 +266,14 @@ pub const CLUSTER_PUBLIC_KEY: [u8; 32] = [
 /// Launch-manifest key under which the kernel hands the cluster public key to
 /// services (agents, clusterctl).
 pub const CLUSTER_KEY_MANIFEST_KEY: u64 = manifest_key(b"ckey");
+
+/// SHA-256 of the cluster-deployed artifact (the note-signed `greet` ELF):
+/// the deployed artifact's identity, checked by the agent against what it
+/// fetches from the object store. Printed by `tools/cluster-sign elf-sign`
+/// and pasted here; the pipeline's `--check` mode verifies it against the
+/// staged artifact. (The artifact bytes themselves live kernel-side, where
+/// the deploy demo stages them into the object store.)
+pub const GREET_ARTIFACT_SHA256: [u8; 32] = [
+    0xed, 0x08, 0x5c, 0x01, 0xc8, 0x0f, 0x17, 0xc5, 0xb7, 0x45, 0x8d, 0xe6, 0xcb, 0x12, 0x2b, 0xa3,
+    0x01, 0x80, 0xfb, 0xc9, 0xb5, 0x1a, 0x69, 0xa8, 0xcb, 0x34, 0x15, 0xe8, 0xe5, 0x2b, 0xa2, 0x69,
+];

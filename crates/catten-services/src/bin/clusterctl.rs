@@ -91,7 +91,9 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     }
     memory_close(size_cap);
 
-    let data = memory_alloc(1);
+    // The artifact is an ELF (tens of KiB): the data cap must span every
+    // page the bytes occupy, not a single page.
+    let data = memory_alloc(bytes.len().div_ceil(4096).max(1));
     if data == 0 || memory_map(data, DATA_VADDR, true) != 0 {
         return false;
     }
@@ -120,7 +122,9 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
         return None;
     }
     let len = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) } as usize;
-    if len == 0 || len > 4088 {
+    // Artifacts are ELFs (tens of KiB); the payload region is the mapped
+    // memory object, not a single page.
+    if len == 0 || len > 128 * 1024 {
         return None;
     }
     let mut payload = alloc::vec::Vec::with_capacity(len);

@@ -224,9 +224,9 @@ exist:
 
     \item \textbf{Signed artifact validation.} Extending the EL0 loader
         with cryptographic verification against the cluster key, so a node
-        rejects anything the cluster has not signed. (The agent-side
-        verification is implemented --- Section~17.7 --- but the loader and
-        arbitrary-ELF path are not yet.)
+        rejects anything the cluster has not signed. (Implemented in
+        Section~17.7 via signature notes; making signing mandatory is the
+        remaining step.)
 
     \item \textbf{Deployment manifest in cluster state.} A replicated
         catalog of artifacts, assignments, declared affinity, and
@@ -314,27 +314,40 @@ scheme the vision assumes, now concrete.
 
 \subsection{Cryptography: real signatures, honest boundaries}
 
-Artifact validation uses real Ed25519 signatures. The cluster's
-\emph{private} key never enters the cluster: it is held off-cluster (the
-\texttt{tools/cluster-sign} host tool), and artifacts are signed with it
-before upload. The matching \emph{public} key is injected into the cluster
-two ways: it is embedded in the kernel image at build time (the bootstrap
-trust anchor, handed to services through the launch manifest), and it is
-committed to the replicated state by the key ceremony
-(\texttt{OP\_KEYCEREMONY} \rightarrow{} \texttt{OP\_SET\_KEY}), which is
-how a joining node obtains the key from the cluster on join. The agent
-verifies each artifact against this key before serving it; the deployment
-record needs no signature because the Raft consensus that committed it is
-its authenticity.
+Artifact validation uses real Ed25519 signatures embedded in the ELF
+itself. The cluster's \emph{private} key never enters the cluster: it is
+held off-cluster (the \texttt{tools/cluster-sign} host tool), and the
+deployed binary is signed with it before upload. The signature lives in a
+standard ELF \texttt{SHT\_NOTE} section (\texttt{.note.charlotte-sig},
+note type \texttt{"CLS1"}, 64-byte Ed25519 descriptor): the signature
+covers the SHA-256 of the whole file with the note's descriptor bytes
+treated as zeros --- a signature cannot cover itself, the same trick PE
+Authenticode uses --- so the signed bytes are deterministic. The matching
+\emph{public} key is injected into the cluster two ways: it is embedded in
+the kernel image at build time (the bootstrap trust anchor, handed to
+services through the launch manifest), and it is committed to the replicated
+state by the key ceremony (\texttt{OP\_KEYCEREMONY} \rightarrow{}
+\texttt{OP\_SET\_KEY}), which is how a joining node obtains the key from
+the cluster on join.
+
+The kernel's EL0 loader verifies the note before mapping any domain: a
+signed-but-invalid image is refused outright, an unsigned image still loads
+(and logs the policy), and the deploy agent additionally verifies the note
+and the artifact's SHA-256 identity before serving it. The deployed
+artifact is a real binary --- the \texttt{greet} service ELF, signed by the
+build pipeline and staged into the object store --- fetched, verified,
+served across the network, and migrated like any other artifact. The
+deployment record needs no signature because the Raft consensus that
+committed it is its authenticity.
 
 The slice still simulates the hard parts of the vision, and the
 simulations are the next work items:
 
 \begin{itemize}
     \item \textbf{Per-node object store.} Storage is still per-node: the
-        artifact is staged on each node (the agent uploads it at boot, or
-        clusterctl uploads it) rather than fetched from a cluster-wide
-        store. A networked artifact-fetch path is not implemented.
+        artifact is staged on each node (the kernel stages it for the demo)
+        rather than fetched from a cluster-wide store. A networked
+        artifact-fetch path is not implemented.
 
     \item \textbf{The ceremony is unvalidated.} The key ceremony commits
         whatever key it is given; nothing yet verifies the injected key
@@ -343,12 +356,11 @@ simulations are the next work items:
         department's key, injected once during establishment --- is
         operational, not yet cryptographic.
 
-    \item \textbf{The artifact is a payload, not an arbitrary ELF.} The
-        deployed unit is a fixed demo payload; the agent serves it because
-        it was built to. Deploying arbitrary service binaries end to end is
-        the runtime-artifact-pickup work, and the EL0 loader is not yet
-        extended to verify cluster-signed images (the NVMe-ELF upgrade path
-        remains hash-equality-constrained, Chapter~16).
+    \item \textbf{Signing is not yet mandatory.} The loader refuses
+        signed-but-invalid images but still loads unsigned ones; making
+        every service ELF carry a valid signature (and refusing the rest)
+        is the enforcement step. The NVMe-ELF upgrade path remains
+        hash-equality-constrained (Chapter~16).
 
     \item \textbf{The admin is kernel-side.} The console is a kernel
         thread, not a real out-of-band management plane.

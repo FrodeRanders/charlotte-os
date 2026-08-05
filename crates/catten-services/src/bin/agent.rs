@@ -44,7 +44,6 @@ use catten_syscall::*;
 
 /// Status-page stage markers (offset 0).
 const STAGE_IDENTITY: u32 = 2;
-const STAGE_UPLOADED: u32 = 4;
 const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
 const STAGE_FAIL: u32 = 0xdead;
@@ -148,59 +147,9 @@ fn local_node_key(ns_connection: u64) -> Option<u64> {
     Some(node_identity::fnv1a(&local_mac) & 0xffff_ffff)
 }
 
-/// Upload `bytes` to the object store at `object_id` (create-at, set size,
-/// move-write, flush). `ERR_EXISTS` is success: the artifact is already in
-/// the store.
-fn upload_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> Result<(), ()> {
-    let create = ipc_scalar_call(obj_conn, objstore::OP_CREATE_AT, object_id);
-    if create == 0 {
-        return Err(());
-    }
-    let created = catten_services::spin_reply(create).0;
-    if created != objstore::ERR_OK && created != objstore::ERR_EXISTS {
-        return Err(());
-    }
-    if created == objstore::ERR_EXISTS {
-        return Ok(());
-    }
-
-    let size_cap = memory_alloc(1);
-    if size_cap == 0 || memory_map(size_cap, SIZE_VADDR, true) != 0 {
-        return Err(());
-    }
-    unsafe {
-        (SIZE_VADDR as *mut u64).write_unaligned(bytes.len() as u64);
-    }
-    memory_unmap(size_cap);
-    let set_size =
-        ipc_scalar_call_borrow_read(obj_conn, objstore::OP_SET_SIZE, object_id, size_cap);
-    if set_size == 0 || catten_services::spin_reply(set_size).0 != objstore::ERR_OK {
-        return Err(());
-    }
-    memory_close(size_cap);
-
-    let data = memory_alloc(1);
-    if data == 0 || memory_map(data, DATA_VADDR, true) != 0 {
-        return Err(());
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(bytes.as_ptr(), DATA_VADDR as *mut u8, bytes.len());
-    }
-    memory_unmap(data);
-    let write = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, data);
-    if write == 0 || catten_services::spin_reply(write).0 != objstore::ERR_OK {
-        return Err(());
-    }
-    let flush = ipc_scalar_call(obj_conn, objstore::OP_FLUSH, 0);
-    if flush == 0 || catten_services::spin_reply(flush).0 != objstore::ERR_OK {
-        return Err(());
-    }
-    Ok(())
-}
-
 /// Blocking query of the replicated deployment manifest for `packed_name`
-/// (packed LE). Used by the pre-serve polling loop, where nothing invokes the
-/// agent yet, so blocking on the dns reply cannot deadlock.
+/// (packed LE). Used by the polling loop, where nothing invokes the agent
+/// yet, so blocking on the dns reply cannot deadlock.
 fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
     let call = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, packed_name);
     if call == 0 {
@@ -215,8 +164,9 @@ fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
     entry
 }
 
-/// Read the artifact at `object_id` from the object store and verify both the
-/// payload MAC and the payload bytes.
+/// Read the artifact at `object_id` from the object store, verify that it is
+/// exactly the deployed artifact (SHA-256 identity) and that its signature
+/// note validates against the cluster's public key.
 fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Result<(), ()> {
     let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
     if read == 0 {
@@ -227,9 +177,7 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Re
     if returned_connection != 0 {
         ipc_close(returned_connection);
     }
-    // The artifact is `[ed25519_signature:64][payload]`.
-    let expected = 64 + deploy::GREET_PAYLOAD.len();
-    if status != 0 || size as usize != expected || returned_memory == 0 {
+    if status != 0 || returned_memory == 0 {
         if returned_memory != 0 {
             memory_close(returned_memory);
         }
@@ -246,10 +194,14 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Re
     }
     memory_unmap(returned_memory);
     memory_close(returned_memory);
-    // The artifact must be signed with the cluster's private key and match
-    // the payload this agent is built to serve.
-    if !deploy::verify_artifact(cluster_key, &artifact)
-        || artifact[64..] != *deploy::GREET_PAYLOAD
+    // The artifact is the note-signed `greet` ELF: it must be exactly the
+    // artifact this agent is built to serve, and its signature note must
+    // validate against the cluster's public key.
+    if charlotte_launch::sha256::digest(&artifact) != charlotte_launch::GREET_ARTIFACT_SHA256 {
+        return Err(());
+    }
+    if charlotte_launch::signature_note::verify_elf(&artifact, cluster_key)
+        != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
         return Err(());
     }
@@ -417,7 +369,9 @@ fn main(ctx: Context) -> ! {
 
     // The cluster's public key: prefer the key committed by the ceremony
     // (obtained from the cluster), else the build-time copy the kernel
-    // handed us in the launch manifest.
+    // handed us in the launch manifest. The kernel pre-stages the signed
+    // artifact into the object store; this agent only fetches, verifies, and
+    // serves.
     let cluster_key = match read_cluster_key(dns_conn) {
         Some(key) => key,
         None => match manifest_cluster_key(&ctx) {
@@ -425,17 +379,6 @@ fn main(ctx: Context) -> ! {
             None => fail(STAGE_FAIL),
         },
     };
-    config::write::<u32>(0, STAGE_UPLOADED);
-
-    // "Software lives in the object store": upload the signed artifact to the
-    // (node-local, for now) store. `GREET_NAME` is the deployed name the
-    // cluster will assign.
-    if upload_artifact(obj_conn, dns::artifact_object_id(GREET_NAME), deploy::GREET_ARTIFACT)
-        .is_err()
-    {
-        fail(STAGE_FAIL);
-    }
-    config::write::<u32>(0, STAGE_UPLOADED);
 
     loop {
         if let Some(entry) = query_deployment(dns_conn, deploy::NAME) {

@@ -15,6 +15,12 @@ panic = "abort"
 lto = true
 opt-level = 3
 
+# ed25519-compact's windowed-scalar slide relies on wrapping i8 arithmetic;
+# with debug overflow checks its verifier can panic on valid inputs. The
+# crypto math is deliberately wrapping; keep checks everywhere else.
+[profile.dev.package.ed25519-compact]
+overflow-checks = false
+
 [profile.release]
 debug = "none"
 debug-assertions = false
