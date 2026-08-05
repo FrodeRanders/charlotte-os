@@ -264,11 +264,13 @@ between the two is explicit.
 
 The distributed name service's Raft catalog (Chapter~14) now also carries the
 \textbf{deployment manifest}: an \texttt{artifact $\rightarrow$
-\{object\_id, node\_key, generation, mac\}} map committed through the same
+\{object\_id, node\_key, generation\}} map committed through the same
 log as name registrations. A deployment is therefore a cluster decision in
 the true sense: it replicates to every node, survives leader changes, and is
-generation-fenced like the name catalog. \texttt{OP\_DEPLOY} submits a
-record; \texttt{OP\_DEPLOY\_QUERY} reads the local replica's applied state.
+generation-fenced like the name catalog. The record carries no signature:
+the Raft consensus that committed it is its authenticity.
+\texttt{OP\_DEPLOY} submits a record; \texttt{OP\_DEPLOY\_QUERY} reads
+the local replica's applied state.
 
 \subsection{Cross-node hosting}
 
@@ -283,26 +285,28 @@ replacement's registration.
 \subsection{The agent}
 
 Each node runs an \texttt{agent}: it polls the manifest for assignments
-addressed to its node key, verifies the cluster signature over the
-deployment record, fetches the artifact from the object store and verifies
-the payload signature, registers the deployed name in the distributed
-catalog, and serves it. When the cluster re-assigns the artifact elsewhere,
-the agent retires and exits; its endpoint close is observed by the dns,
-which generation-fences the unregister. Cross-node invocation of the
-deployed service rides the existing \texttt{OP\_CALL} relay, so a client on
-either node reaches the artifact wherever it currently lives.
+addressed to its node key, fetches the artifact from the object store,
+verifies that it is exactly the assigned artifact (SHA-256 identity) and
+that its signature note validates against the cluster's public key,
+registers the deployed name in the distributed catalog, and serves it. When
+the cluster re-assigns the artifact elsewhere, the agent retires and exits;
+its endpoint close is observed by the dns, which generation-fences the
+unregister. Cross-node invocation of the deployed service rides the existing
+\texttt{OP\_CALL} relay, so a client on either node reaches the artifact
+wherever it currently lives.
 
 \subsection{clusterctl and the admin console}
 
 \texttt{clusterctl} is the ``outside'' administration interface. It wraps
 the dns manifest ops and the object store behind three operations:
-\texttt{upload} (sign a payload with the cluster secret and store it under
-the artifact's derived cluster-wide id), \texttt{deploy} (submit the
-assignment), and \texttt{status} (query the committed record). A kernel
-serial console --- \texttt{--deploy-test} run interactively, without a
-runner timeout --- lets an operator type \texttt{upload},
-\texttt{deploy}, and \texttt{status} commands at the QEMU terminal and watch
-them execute against the live cluster.
+\texttt{upload} (store a note-signed artifact as-is under the artifact's
+derived cluster-wide id --- the cluster never signs, it validates at
+pickup), \texttt{deploy} (submit the assignment), and \texttt{status}
+(query the committed record). A kernel serial console ---
+\texttt{--deploy-test} run interactively, without a runner timeout --- lets
+an operator type \texttt{upload}, \texttt{deploy}, and \texttt{status}
+commands at the QEMU terminal and watch them execute against the live
+cluster.
 
 \subsection{Naming}
 
@@ -326,7 +330,7 @@ Authenticode uses --- so the signed bytes are deterministic. The matching
 \emph{public} key is injected into the cluster two ways: it is embedded in
 the kernel image at build time (the bootstrap trust anchor, handed to
 services through the launch manifest), and it is committed to the replicated
-state by the key ceremony (\texttt{OP\_KEYCEREMONY} \rightarrow{}
+state by the key ceremony (\texttt{OP\_KEYCEREMONY} $\rightarrow$
 \texttt{OP\_SET\_KEY}), which is how a joining node obtains the key from
 the cluster on join.
 
