@@ -48,19 +48,16 @@ const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
 const STAGE_FAIL: u32 = 0xdead;
 
-/// The deployed artifact's name bytes ("greet", matching `deploy::NAME`).
-const GREET_NAME: &[u8] = b"greet";
-
 const DATA_VADDR: usize = 0x0000_0000_2000_0000;
-const SIZE_VADDR: usize = 0x0000_0000_0070_0000;
 const REPLY_SPINS: u64 = 50_000_000;
 
-/// A replicated deployment record as decoded from `OP_DEPLOY_QUERY`.
+/// A replicated deployment record as decoded from `OP_DEPLOY_QUERY`
+/// (`[generation][object_id][node_key]`, no signature: the Raft consensus
+/// that committed the record is its authenticity).
 struct DeploymentInfo {
     generation: u64,
     object_id: u64,
     node_key: u64,
-    mac: u64,
 }
 
 fn fail(stage: u32) -> ! {
@@ -331,7 +328,7 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if memory_map(memory, DATA_VADDR, false) != 0 {
         return None;
     }
-    let mut bytes = [0u8; 32];
+    let mut bytes = [0u8; 24];
     for (index, byte) in bytes.iter_mut().enumerate() {
         *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
     }
@@ -340,7 +337,6 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
         node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
-        mac: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
     })
 }
 
