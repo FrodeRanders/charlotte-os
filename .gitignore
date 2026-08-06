@@ -14,3 +14,4 @@ tmp/
 docs/tla/states/
 docs/tla/*_TTrace_*.tla
 docs/tla/*_TTrace_*.bin
+__pycache__/
