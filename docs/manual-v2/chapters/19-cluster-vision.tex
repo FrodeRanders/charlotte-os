@@ -1,11 +1,14 @@
 \chapter{Server-Class Cluster Vision}
 
-This chapter is a forward-looking statement of intent, not a description of
-current behaviour. It sketches how CharlotteOS should scale from a single
-machine to a cluster of server-class ARM nodes, and what that implies for
-deployment, identity, and placement. Where a mechanism already exists, the
-text says so and points at the chapter that documents it; where it does not,
-the text describes the intended shape so the gap is explicit.
+This chapter has two roles. It records the cluster mechanisms that are now
+implemented and boot-tested, and it describes the larger server-class system
+those mechanisms are intended to become. The implemented boundary is a
+two-node QEMU cluster with replicated naming and deployment state, signed
+ELF artifacts, per-node NVMe object stores, deployment agents, remote
+invocation, and a stateless assignment handoff. Dynamic membership, shared
+artifact storage, stateful cross-node migration, and automatic placement are
+still vision. The distinction is stated explicitly below rather than leaving
+future tense to imply that demonstrated mechanisms do not exist.
 
 \section{The vision: interchangeable compute}
 
@@ -38,7 +41,7 @@ This chapter scales that notion to a cluster of machines. A cluster node
 plays the role of a core; the shared object store plays the role of owned
 state; and the cluster as a whole is the shared-nothing machine.
 
-\section{What is already in place}
+\section{Implemented foundation}
 
 The vision is not written on a blank sheet. The following mechanisms are
 implemented and verified, and each maps onto a role in the cluster:
@@ -47,25 +50,28 @@ implemented and verified, and each maps onto a role in the cluster:
     \item \textbf{Cross-machine consensus.} The Graft core replicates the
         \texttt{dns} catalog state machine across two QEMU guests on a
         stream Ethernet segment, serving remote invocation through
-        \texttt{dns::OP\_CALL} (Chapter~14). Cluster-wide shared state ---
-        the signing key, the deployment catalog, placement rules --- is a
-        replicated state machine of exactly this kind.
+        \texttt{dns::OP\_CALL} (Chapter~14). The same replicated catalog now
+        carries the set-once cluster signing key and deployment assignments.
+        Placement rules are not yet part of that state machine.
 
     \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
         fragmented across Ethernet frames and reassembled at the receiver
-        (Chapter~13). This is the transport the discovery, deployment, and
-        migration protocols run over.
+        (Chapter~13). Remote name-service calls, deployment coordination, and
+        the demonstrated assignment handoff run over this transport.
 
-    \item \textbf{The interchangeable object store.} The NVMe-backed
+    \item \textbf{Persistent per-node object stores.} The NVMe-backed
         object store with generation-selected directory records and
-        copy-on-write replacement (Chapter~15) is the store that software
-        artifacts are uploaded to and that Raft state persists in.
+        copy-on-write replacement (Chapter~15) stores service artifacts and
+        persistent Raft state. The current image producer places the same
+        signed bundle on each node; a networked, interchangeable artifact
+        store is not yet implemented.
 
-    \item \textbf{Stateful replacement.} Live service upgrade transfers a
+    \item \textbf{Local stateful replacement.} Live service upgrade transfers a
         service's state as a memory object, tracks generations, invalidates
         stale connections, and re-registers the new instance through the
-        name service (Chapter~16). Cross-node migration is the same handoff
-        with a network hop.
+        name service (Chapter~16). The two-node cluster test reassigns and
+        restarts a stateless service while preserving its name; transferring
+        mutable service state over the network remains future work.
 
     \item \textbf{Service isolation and routing.} Services live in separate
         address spaces with delegated capabilities (Chapter~11), and the
@@ -82,41 +88,50 @@ implemented and verified, and each maps onto a role in the cluster:
         Shard-to-shard message flow can be measured; aggregating those
         measurements across nodes is the runtime input to placement.
 
-    \item \textbf{Signed binaries at the boundary.} The EL0 loader already
-        validates ELF structure, rejects writable-executable segments, and
-        maps images with page-level permissions (Chapter~19). Cryptographic
-        validation of the artifact extends this boundary rather than
-        replacing it.
+    \item \textbf{Signed binaries at the boundary.} The EL0 loader validates
+        ELF structure, rejects writable-executable segments, maps images with
+        page-level permissions, and now requires a valid Ed25519 CLS2 note
+        bound to the requested service name (Chapters~15 and~16). Store
+        lookup, administration ingress, and deployment recheck that identity.
 \end{itemize}
 
-\section{The dumb server}
+\section{Target node model and current bootstrap}
 
-A cluster node boots with a minimal, fixed program set: the crt0 runtime,
-the cluster client, and the drivers needed to reach storage and the
-network. There is no shell, no interactive administration, and no
-per-node software repository. A node is provisioned by the cluster, not by
-an administrator sitting at its console.
+The implemented kernel embeds only five signed bootstrap services:
+\texttt{ns}, \texttt{nvme}, \texttt{objstore}, \texttt{uart}, and
+\texttt{observe}. They are sufficient to establish naming, reach persistent
+storage, and expose the early console and observation paths. All other staged
+services are loaded on first use from the signed bundle in the initial NVMe
+object-store image and cached in kernel memory. Thus service binaries no
+longer generally have to be linked into the kernel image.
 
-When a new node boots, it must first find its cluster and then be accepted
-by it:
+The production target remains a node with no shell, no per-node package
+manager, and no manually curated software repository. The current
+\texttt{--deploy-test} serial command loop is a kernel-side test and
+administration shim, not that production management plane.
+
+The current two-node test starts a statically described pair of voters. A
+future node that joins an existing cluster must instead complete three steps:
 
 \begin{enumerate}
     \item \textbf{Auto-discovery.} The node contacts the cluster through
         broadcast discovery or a configured seed, following the discovery
-        options already discussed for Raft peers (Chapter~14). Discovery
-        yields a connection to the cluster leader.
+        mechanisms discussed for Raft peers (Chapter~14). Discovery exists as
+        a service and is exercised on the test network, but dynamic Raft
+        membership admission is not yet implemented.
 
-    \item \textbf{Receiving cluster identity.} The node receives the
-        cluster's public signing key from the cluster. From that moment the
-        node can validate any software the cluster asks it to load; it never
-        needs a per-server key or a per-server trust decision.
+    \item \textbf{Receiving cluster identity.} The replicated catalog can
+        distribute the set-once public signing key. Today that key must equal
+        the build-time bootstrap anchor; blank-start establishment and key
+        rotation are not implemented.
 
     \item \textbf{Joining the shared state.} The node becomes a member of
         the replicated state machine and begins to receive deployment
-        assignments and placement decisions from the cluster.
+        assignments. The test agents already consume assignments, but no
+        automatic placement controller currently produces them.
 \end{enumerate}
 
-A fresh cluster must be able to start with no key material at all. In this
+A production cluster should be able to start with no key material at all. In this
 un-initialised state the cluster can still form --- discovery, elections,
 and the replicated log work without keys --- but no software can be
 validated yet. An explicit, active operation provides the key information
@@ -127,39 +142,41 @@ binary at build time --- but starting blank must be possible. The cluster
 does not trust a node's word; it trusts the key it holds in its replicated
 state.
 
-\section{Cluster-wide software deployment}
+\section{Implemented deployment pipeline and production target}
 
 Software is an artifact in the object store, and deployment is the act of
-assigning artifacts to cluster nodes. The pipeline has three stages:
+assigning artifacts to cluster nodes. The demonstrated pipeline implements
+three stages, with the storage and trust-bootstrap limitations stated below:
 
 \begin{enumerate}
     \item \textbf{Blessing and signing.} A version-controlled policy admits
         the artifact and it is signed centrally with the cluster key. Signed
         metadata binds its logical name, class, release and rollback counter,
         parallel-instance permission, and an optional SHA-256 link to retained
-        SBOM/build-provenance evidence. This is a cluster-wide act, not a
-        per-node act.
+        SBOM/build-provenance evidence. The host-side build and
+        \texttt{cluster-sign} tooling implement this step; nodes never receive
+        the private key.
 
-    \item \textbf{Validation.} Each node validates what it loads against
-        the cluster public key it received on joining. Validation is
-        cluster-aware: the trust anchor is cluster state, replicated and
-        shared, so no node carries private trust material and no node can be
-        coerced into accepting software the cluster has not signed. This is
-        the distributed form of the ELF validation the loader already
-        performs locally (Chapter~16).
+    \item \textbf{Validation.} Each node validates every loaded ELF against
+        the public bootstrap anchor and, in the deployment path, the matching
+        replicated key. The loader, object-store resolver, administration
+        ingress, and agent enforce signature, logical-name, and digest checks.
+        The current set-once ceremony distributes the build-time anchor; it
+        is not yet a general key-enrolment protocol.
 
-    \item \textbf{Assignment.} The cluster instructs a node to pick up a
-        specific immutable artifact digest from the object store and prepare it. The node
-        fetches, validates, and runs; it does not decide what to run.
+    \item \textbf{Assignment.} A Raft-committed record instructs a named node
+        to load a specific object id and immutable ELF digest. Its agent
+        fetches, validates, and runs the artifact. At present the object is
+        fetched from that node's locally staged NVMe store, not through a
+        cluster-wide artifact-fetch protocol.
 \end{enumerate}
 
 Deployment targets the cluster, and the cluster's routing table --- the
 replicated name service --- determines how a deployed program is reached.
-Some programs are callable from anywhere in the cluster and may live on any
-node that has picked them up; others, such as drivers and per-node
-infrastructure, must run at every node. Choosing between ``somewhere in
-the cluster'' and ``at every node'' is the same placement decision as
-choosing a shard for a service (Chapter~9), applied at the cluster scale.
+The implemented catalog has one active owner and one explicit node assignment
+per artifact. The policy contract can express ``somewhere'', replicas, and
+``every eligible node'', but realizing those choices and routing among
+multiple owners remain placement-controller work.
 
 This does not make third-party dependencies disappear. It moves the trust
 boundary to controlled ingress. A build may contain third-party code, but the
@@ -172,25 +189,24 @@ source attestation remain supply-chain responsibilities outside the kernel.
 \section{Placement: affinity, observation, migration}
 
 Placement is the cluster's answer to ``which node runs this component?''
-The vision proposes three phases:
+One part is implemented as a shared validation contract; the controller and
+runtime feedback loop remain vision.
 
-\subsection{Declared affinity}
+\subsection{Declared policy: implemented contract}
 
-Initially, the deployer declares expected interoperation: the deployment
-manifest annotates components with the other components they interoperate
-with heavily. The placement controller respects these declarations and
-co-locates communicating components on the same node, mirroring how shard
-placement keeps heavily communicating tasks on the same core. This is
-static, cheap, and good enough to start.
+The intended first controller will use declared interoperation: components
+that communicate heavily should share an affinity group and be co-located
+when availability constraints permit. This mirrors shard placement that
+keeps heavily communicating tasks on the same core.
 
 The shared \texttt{PlacementPolicy} contract makes the declaration precise:
 desired replicas, maximum instances per node, minimum distinct nodes,
 ``every eligible node'', affinity group, and anti-affinity group. A policy
 requesting concurrent replicas is invalid unless the artifact's signed CLS2
-metadata includes \texttt{PARALLEL\_INSTANCES}. The present state machine
-still commits one assignment per artifact; replica-set realization,
-multi-owner name routing, and the placement controller remain beyond the
-implemented slice.
+metadata includes \texttt{PARALLEL\_INSTANCES}. This type and its validation
+are implemented and host-tested. The policy is not yet stored in the
+replicated manifest or consumed by a controller: the present state machine
+still commits one explicit assignment per artifact.
 
 \subsection{Observation}
 
@@ -202,17 +218,22 @@ behaviour overrides the declared guess as evidence accumulates, in the
 same way the scheduler's sustained-window rebalancing replaces a static
 per-LP assignment with a load-observed one (Chapter~10).
 
-\subsection{Cross-node migration}
+\subsection{Demonstrated assignment handoff and future state transfer}
 
-If re-balancing is handled over the cluster the way it is over processor
-cores, then a component can migrate between nodes while the cluster keeps
-serving it. The protocol follows the live-upgrade handoff (Chapter~16),
-scaled across the network:
+The two-node test already demonstrates a stateless assignment handoff: it
+starts the signed \texttt{greet} artifact on one node, invokes it remotely,
+reassigns it to the other node, retires the old instance, and verifies that
+the name remains reachable. Generation fencing prevents the retiring owner
+from unregistering its replacement.
+
+A stateful cross-node migration will have to extend that protocol with the
+live-upgrade state handoff from Chapter~16:
 
 \begin{enumerate}
-    \item The cluster instructs the target node to load and prepare the
-        component from the object store: fetch, validate, and start it in
-        its own address space.
+    \item The cluster instructs the target node to fetch, validate, and
+        prepare the component in its own address space.
+    \item The old instance exports explicitly owned mutable state and that
+        state is transferred to and accepted by the prepared instance.
     \item The new instance registers in the distributed name service, which
         increments the generation for that name.
     \item Clients that resolve the name now reach the new instance;
@@ -223,36 +244,30 @@ scaled across the network:
         resources.
 \end{enumerate}
 
-Each step uses an existing, verified primitive --- memory-object state
-transfer, generation tracking, endpoint invalidation, name-service
-reregistration (Chapter~16). What is new is orchestrating those primitives
-across nodes from the replicated cluster state.
+Generation tracking, endpoint invalidation, name-service re-registration,
+and local memory-object state transfer are verified primitives. Network
+transport and ownership fencing for mutable state are not yet implemented;
+the existing cluster handoff starts the same immutable artifact with fresh
+service state.
 
-\section{What is new}
+\section{Remaining implementation boundary}
 
 The gap between the vision and the current implementation is a set of
 coordination pieces, all of which sit on top of mechanisms that already
 exist:
 
 \begin{itemize}
-    \item \textbf{Cluster discovery and key distribution.} The join
-        protocol that hands a booting node a connection to the leader and
-        the cluster's public signing key (Chapter~14's discovery options
-        become the transport).
+    \item \textbf{Dynamic membership.} Discovery traffic exists, but the
+        admission protocol that changes the Raft voter set and hands a new
+        node its durable cluster identity remains to be built.
 
     \item \textbf{Key injection into cluster state.} The current ceremony
         commits only the build-time anchor and is set-once and idempotent.
         A genuinely blank start and authenticated key rotation remain.
 
-    \item \textbf{Signed artifact validation.} This boundary is implemented:
-        the loader requires a valid signature, while store lookup,
-        administration ingress, and deployment also require the signed
-        logical identity to match the requested name.
-
-    \item \textbf{Deployment manifest in cluster state.} A replicated
-        catalog of artifacts, immutable digests, assignments, declared affinity, and
-        ``somewhere'' versus ``every node'' placement policy --- a state
-        machine on the Graft core like the \texttt{dns} catalog.
+    \item \textbf{Shared artifact availability.} The manifest is replicated,
+        but artifact bytes are currently pre-staged independently on each
+        node. Network fetch, repair, and replication policy remain.
 
     \item \textbf{Cluster-wide metrics aggregation.} Collecting the
         shard-level observation data from every node into the cluster
@@ -262,23 +277,35 @@ exist:
         declared affinity, observed interoperation, and node capacity into
         assignments, and that initiates cross-node migration when the
         observed behaviour justifies it.
+
+    \item \textbf{Replica-set realization and routing.} Multiple placements,
+        failure-domain enforcement, and selection among several active owners
+        must be added before the parallel-instance policy has runtime effect.
+
+    \item \textbf{Stateful cross-node migration.} The current handoff proves
+        reassignment, retirement, and name continuity for a stateless service;
+        transferring mutable state with explicit ownership remains.
+
+    \item \textbf{Production administration authority.} The userspace
+        \texttt{clusterctl} protocol exists, but its raw mutation endpoint and
+        kernel serial shim do not yet enforce the intended separately
+        delegated cluster-administrator capability.
 \end{itemize}
 
-Most of these are userspace coordination. The implemented slice adds one
-narrow kernel mechanism: only the supervisor-designated deployment agent may
-start or retire a verified, name-bound ELF memory object. The rest requires
-composing the consensus, storage, name-service, and live-upgrade machinery into a
-deployment system, and trusting the same discipline the rest of the OS is
-built on: explicit ownership, bounded communication, and decisions made
-from shared, replicated state rather than from per-machine configuration.
+Most remaining pieces are userspace coordination. The implemented slice adds
+one narrow kernel mechanism: only the supervisor-designated deployment agent
+may start or retire a verified, name-bound ELF memory object. Future work must
+preserve the same discipline as the current path: explicit ownership, bounded
+communication, and replicated decisions rather than per-machine
+configuration.
 
-\section{An implemented slice}
+\section{Demonstrated two-node deployment slice}
 
 A first end-to-end slice of the vision is implemented and boot-tested on the
 two-guest cluster (the \texttt{--deploy-test} QEMU flow): a signed artifact
 is deployed to a named node through the replicated manifest, the remote
 agent picks it up, verifies it, serves it across the network, and the
-artifact is migrated between nodes without losing its name. Both guests pass
+artifact assignment is handed to the other node without losing its name. Both guests pass
 the full boot suite (\texttt{passed=22 failed=0 pending=0} on each). This
 section records exactly what is real and what is simulated, so the boundary
 between the two is explicit.
@@ -288,12 +315,12 @@ between the two is explicit.
 The distributed name service's Raft catalog (Chapter~14) now also carries the
 \textbf{deployment manifest}: an \texttt{artifact $\rightarrow$
 \{object\_id, artifact\_sha256, node\_key, generation\}} map committed through the same
-log as name registrations. A deployment is therefore a cluster decision in
-the true sense: it replicates to every node, survives leader changes, and is
-generation-fenced like the name catalog. The record carries no separate
-signature: Raft determines authoritative ordered state. That is agreement,
-not caller authorization; the raw mutation endpoint still needs a separately
-delegated cluster-administrator capability before it is a production plane.
+log as name registrations. A deployment is therefore ordered and replicated
+cluster state rather than per-node configuration, and it is generation-fenced
+like the name catalog. The record carries no separate artifact signature:
+Raft provides agreement on the record, not caller authorization. The raw
+mutation endpoint still needs a separately delegated cluster-administrator
+capability before it is a production plane.
 \texttt{OP\_DEPLOY} submits a record; \texttt{OP\_DEPLOY\_QUERY} reads
 the local replica's applied state.
 
@@ -362,8 +389,9 @@ Authenticode uses --- so the signed bytes are deterministic. The matching
 the kernel image at build time (the bootstrap trust anchor, handed to
 services through the launch manifest), and it is committed to the replicated
 state by the key ceremony (\texttt{OP\_KEYCEREMONY} $\rightarrow$
-\texttt{OP\_SET\_KEY}), which is how a joining node obtains the key from
-the cluster on join.
+\texttt{OP\_SET\_KEY}). This demonstrates the replicated distribution path
+that a future dynamically joining node can use; current test membership is
+static and the replicated key must equal the build-time anchor.
 
 The kernel's EL0 loader verifies the note before mapping any domain, and
 signing is \emph{mandatory}: an image that is unsigned or invalidly signed
@@ -378,9 +406,10 @@ public half embedded). Store resolution and deployment additionally verify
 the signed name, and the manifest pins the complete ELF SHA-256. The deployed artifact is
 a real binary --- the \texttt{greet} service ELF, signed by the build
 pipeline and staged into the object store --- fetched, verified, executed, served
-across the network, and migrated like any other artifact. The deployment
-record needs no signature because the Raft consensus that committed it is
-its authenticity.
+across the network, and reassigned through the demonstrated stateless handoff. The deployment
+record is agreed by Raft, but that agreement is not an authorization proof;
+the production mutation path still requires the administrator authority
+described above.
 
 The slice still simulates the hard parts of the vision, and the
 simulations are the next work items:
@@ -416,12 +445,13 @@ simulations are the next work items:
 
 \subsection{What the slice proves}
 
-Even with the simulations, the slice demonstrates the load-bearing pieces of
-the vision working together: placement is a replicated cluster decision;
+Even with these limitations, the slice demonstrates the load-bearing pieces
+working together: an explicit node assignment is replicated cluster state;
 services are hosted cross-node and stay reachable through the distributed
-name service; generation fencing makes migration safe; and the deployment
-and administration surface exists as a protocol, so each stub can be
-replaced without reshaping the rest.
+name service; generation fencing makes a stateless assignment handoff safe;
+and deployment and administration exist as protocols. It does not yet prove
+automatic placement, stateful migration, dynamic membership, or production
+authorization.
 
 \section{Related work}
 
