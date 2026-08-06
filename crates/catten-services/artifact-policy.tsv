@@ -1,0 +1,34 @@
+# name             class       release rollback flags provenance-sha256
+#
+# Build-time blessing allowlist. Flags are the CLS2 artifact flags from
+# charlotte-launch::signature_note. `-` means that no external SBOM or source
+# attestation is linked yet; production policy should provide its SHA-256.
+ns                 bootstrap   1       1        0x0   -
+echo               service     1       1        0x0   -
+client             service     1       1        0x0   -
+uart               bootstrap   1       1        0x0   -
+cclient            service     1       1        0x0   -
+servicemgr         service     1       1        0x0   -
+sitas-user         service     1       1        0x0   -
+raft               service     1       1        0x0   -
+nvme               bootstrap   1       1        0x0   -
+nvme_client        service     1       1        0x0   -
+objstore           bootstrap   1       1        0x0   -
+objstore_client    service     1       1        0x0   -
+fs                 service     1       1        0x0   -
+net                service     1       1        0x0   -
+nclient            service     1       1        0x0   -
+relmsg             service     1       1        0x0   -
+rclient            service     1       1        0x0   -
+tcpip              service     1       1        0x0   -
+tcpclient          service     1       1        0x0   -
+httpd              service     1       1        0x0   -
+observe            bootstrap   1       1        0x0   -
+disco              service     1       1        0x0   -
+frouter            service     1       1        0x0   -
+dns                service     1       1        0x0   -
+agent              service     1       1        0x0   -
+clusterctl         admin       1       1        0x0   -
+# greet is explicitly safe to replicate in parallel, stateless, and forbidden
+# from fetching executable code at runtime.
+greet              service     1       1        0x7   -

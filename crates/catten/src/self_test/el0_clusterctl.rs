@@ -33,9 +33,6 @@ mod inner {
         },
     };
 
-    const CTL_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/clusterctl.elf"));
-
     // "ctl" packed LE; catten_services::clusterctl.
     const CTL_NAME: u64 = 0x0000_0000_006c_7463;
     const CTL_OP_UPLOAD: u32 = 1;
@@ -43,14 +40,10 @@ mod inner {
     const CTL_OP_STATUS: u32 = 3;
     const CTL_OP_KEYCEREMONY: u32 = 4;
     const CTL_OP_KEY: u32 = 5;
-    // "hello" packed LE.
-    const HELLO_NAME: u64 = 0x0000_006f_6c6c_6568;
-    // catten_services::dns::artifact_object_id(b"hello").
-    const HELLO_OBJECT_ID: u64 = 0xfffe_d846_80aa_bd0b;
-    // The note-signed greet ELF (the shared artifact constant) is uploaded
-    // under the hello name too; the cluster stores it as-is and nodes
-    // validate it against the cluster public key at pickup.
-    const HELLO_ARTIFACT: &[u8] = crate::self_test::GREET_ARTIFACT;
+    // "agent" packed LE. This artifact is independently signed as `agent`;
+    // using greet bytes under an alias would correctly fail CLS2 identity
+    // binding and is no longer a valid upload test.
+    const TEST_ARTIFACT_NAME: u64 = 0x0000_0074_6e65_6761;
     const CTL_STAGE_SERVING: u32 = 6;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
@@ -63,7 +56,10 @@ mod inner {
     static mut CTL_CONN: u64 = 0;
 
     fn spawn_clusterctl(ns: &NameServiceHandle) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(CTL_ELF);
+        let addr = crate::service::loader::load_domain(
+            crate::service::store::service_elf(b"clusterctl")
+                .expect("[el0_clusterctl] clusterctl.elf"),
+        );
         let conn = ipc::connection_delegate(
             ns.domain.asid,
             ns.endpoint_cap,
@@ -204,16 +200,34 @@ mod inner {
         unsafe { CTL_CONN = ctl_conn };
 
         // --- Programmatic flow through clusterctl ---
-        // 1. Upload the note-signed artifact ELF. The cluster stores it as-is; validation happens
-        //    at pickup.
-        let mut request = Vec::with_capacity(8 + HELLO_ARTIFACT.len());
-        request.extend_from_slice(&(HELLO_ARTIFACT.len() as u64).to_le_bytes());
-        request.extend_from_slice(HELLO_ARTIFACT);
-        let uploaded = call_with_memory_reply(ctl_conn, CTL_OP_UPLOAD, HELLO_NAME, &request);
+        // 1. A valid signature for the wrong logical name is not sufficient: ingress must reject
+        //    substitution before touching the store.
+        let wrong_artifact = crate::service::store::service_elf(b"greet")
+            .expect("[clusterctl] greet substitution test artifact");
+        let mut wrong_request = Vec::with_capacity(8 + wrong_artifact.len());
+        wrong_request.extend_from_slice(&(wrong_artifact.len() as u64).to_le_bytes());
+        wrong_request.extend_from_slice(wrong_artifact);
+        let rejected =
+            call_with_memory_reply(ctl_conn, CTL_OP_UPLOAD, TEST_ARTIFACT_NAME, &wrong_request);
+        assert_eq!(
+            rejected.map(|(result, _)| result),
+            Some(-11),
+            "[clusterctl] a greet-signed ELF must not be accepted as agent"
+        );
+
+        // Upload an artifact whose CLS2 metadata blesses this exact name.
+        let test_artifact =
+            crate::service::store::service_elf(b"agent").expect("[clusterctl] agent artifact");
+        let expected_object_id = charlotte_launch::artifact_object_id(b"agent");
+        let mut request = Vec::with_capacity(8 + test_artifact.len());
+        request.extend_from_slice(&(test_artifact.len() as u64).to_le_bytes());
+        request.extend_from_slice(test_artifact);
+        let uploaded =
+            call_with_memory_reply(ctl_conn, CTL_OP_UPLOAD, TEST_ARTIFACT_NAME, &request);
         logln!("[clusterctl] upload result = {uploaded:?}");
         assert_eq!(
             uploaded.map(|(result, _)| result),
-            Some(HELLO_OBJECT_ID as i64),
+            Some(expected_object_id as i64),
             "[clusterctl] upload must return the derived artifact object id"
         );
 
@@ -233,14 +247,14 @@ mod inner {
             // Best-effort deploy attempt (cheap when not the leader).
             if deployed_generation.is_none()
                 && let Some((generation, _)) =
-                    call_with_memory_reply(ctl_conn, CTL_OP_DEPLOY, HELLO_NAME, &request)
+                    call_with_memory_reply(ctl_conn, CTL_OP_DEPLOY, TEST_ARTIFACT_NAME, &request)
                 && generation >= 1
             {
                 deployed_generation = Some(generation);
             }
 
             let Some((status, memory)) =
-                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, HELLO_NAME, &[])
+                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, TEST_ARTIFACT_NAME, &[])
             else {
                 status_deadline.assert_pending("EL0 clusterctl status");
                 yield_lp();
@@ -373,7 +387,8 @@ mod inner {
                 // artifact; anything else stores the given bytes as-is, so
                 // only a payload signed off-cluster will validate at pickup.
                 let artifact = match (name, payload) {
-                    (b"greet", None) => crate::self_test::GREET_ARTIFACT,
+                    (b"greet", None) => crate::service::store::service_elf(b"greet")
+                        .expect("[admin] greet artifact in object store"),
                     (_, None) => {
                         logln!(
                             "[admin] usage: upload <name> [<payload>] (no signed artifact for {})",

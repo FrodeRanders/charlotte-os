@@ -17,8 +17,12 @@
 //!
 //! A kernel verifier thread confirms the client completed its writes, then
 //! exercises the driver's *delegated* interrupt authority end to end: it
-//! software-pends the real PL011 SPI through the GIC and observes the driver
-//! acknowledge it from EL0 (success criterion 8).
+//! injects a delivery at the kernel's device-interrupt routing boundary and
+//! observes the driver acknowledge it from EL0 (success criterion 8). The
+//! separate device-capability test covers delivery through the physical GIC;
+//! using the real, level-triggered PL011 SPI here would make the result depend
+//! on how an emulator treats a software-pended interrupt while the UART's RX
+//! line is deasserted.
 
 use crate::logln;
 #[cfg(target_arch = "aarch64")]
@@ -36,12 +40,6 @@ use crate::{
         ServiceDomain,
     },
 };
-
-#[cfg(target_arch = "aarch64")]
-const UART_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/uart.elf"));
-#[cfg(target_arch = "aarch64")]
-const CCLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/cclient.elf"));
 
 #[cfg(target_arch = "aarch64")]
 const fn packed_name(bytes: &[u8]) -> u64 {
@@ -121,7 +119,7 @@ pub fn test_el0_uart() {
         logln!("[uart] using node name service (asid={})", ns_asid);
 
         let driver = supervisor::spawn_driver_with_name_service(
-            UART_ELF,
+            crate::service::store::service_elf(b"uart").expect("[el0_uart] uart.elf"),
             &name_service,
             ConnectionRights::CALL,
             DriverGrant {
@@ -136,8 +134,11 @@ pub fn test_el0_uart() {
         let driver_asid = driver.asid;
         logln!("[uart] driver spawned (asid={}) with PL011 MMIO + IRQ grants", driver_asid);
 
-        let client =
-            supervisor::spawn_with_name_service(CCLIENT_ELF, &name_service, ConnectionRights::CALL);
+        let client = supervisor::spawn_with_name_service(
+            crate::service::store::service_elf(b"cclient").expect("[el0_uart] cclient.elf"),
+            &name_service,
+            ConnectionRights::CALL,
+        );
         let client_config = client.status_frame;
         let client_asid = client.asid;
         logln!("[uart] console client spawned (asid={})", client_asid);
@@ -213,10 +214,12 @@ extern "C" fn verify_el0_uart() {
 
     // --- Phase B: drive the delegated interrupt. Wait until the driver has
     // actually retained the deferred read (its READ_ARMED marker), then
-    // software-pend the real PL011 SPI through the GIC exactly once. The wake
-    // is coalesced and not lost even if the driver has not yet re-entered its
-    // wait, so a single pend suffices; a rare re-pend guards against a dropped
-    // delivery without storming the scheduler with wakes. ---
+    // inject one delivery at the device-routing boundary. The device test has
+    // already exercised the physical GIC path with an edge-configured
+    // synthetic SPI; the PL011 source is level-triggered and its real RX line
+    // is deliberately deasserted in this test. The injected delivery still
+    // traverses the production route table, pending-count coalescing,
+    // deferred CQ wake, EL0 acknowledgement, and retained IPC reply. ---
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
@@ -224,18 +227,14 @@ extern "C" fn verify_el0_uart() {
             crate::cpu::scheduler::yield_lp();
         }
     }
-    crate::cpu::isa::interrupts::gic::set_spi_pending(pl011_intid());
+    assert!(
+        crate::device::deliver_interrupt(pl011_intid()),
+        "[uart] injected PL011 interrupt must have a live delegated route"
+    );
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        let mut next_repend = crate::cpu::scheduler::monotonic_millis().saturating_add(250);
         while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
             deadline.assert_pending("UART interrupt-driven deferred read");
-            // Rare safety-net re-pend if the first delivery did not land.
-            let now = crate::cpu::scheduler::monotonic_millis();
-            if now >= next_repend {
-                crate::cpu::isa::interrupts::gic::set_spi_pending(pl011_intid());
-                next_repend = now.saturating_add(250);
-            }
             crate::cpu::scheduler::yield_lp();
         }
     }
@@ -333,7 +332,7 @@ extern "C" fn verify_el0_uart() {
 
     // Restart: a fresh instance with freshly minted device grants.
     let driver2 = supervisor::spawn_driver_with_name_service(
-        UART_ELF,
+        crate::service::store::service_elf(b"uart").expect("[el0_uart] uart.elf"),
         &state.name_service,
         ConnectionRights::CALL,
         DriverGrant {

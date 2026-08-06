@@ -49,19 +49,8 @@ use crate::{
     },
 };
 
-#[cfg(target_arch = "aarch64")]
-const NVME_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme.elf"));
-#[cfg(target_arch = "aarch64")]
-const OBJSTORE_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore.elf"));
-const OBJSTORE_CLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/objstore_client.elf"));
-const ECHO_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
 const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 const OBJSTORE_TEST_DONE_NAME: u64 = u64::from_le_bytes(*b"objdone\0");
-#[cfg(target_arch = "aarch64")]
-const NVME_CLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nvme_client.elf"));
 
 #[cfg(target_arch = "aarch64")]
 static TEST_STATE: spin::LazyLock<
@@ -144,7 +133,7 @@ extern "C" fn verify_el0_nvme() {
 
     // --- Spawn NVMe driver ---
     let driver = supervisor::spawn_driver_with_name_service(
-        NVME_ELF,
+        crate::service::store::service_elf(b"nvme").expect("[el0_nvme] nvme.elf"),
         &ns,
         ConnectionRights::CALL,
         DriverGrant {
@@ -161,10 +150,38 @@ extern "C" fn verify_el0_nvme() {
     };
     logln!("[nvme] driver spawned (asid={})", driver.asid);
 
+    // The object store is embedded and must be up before any store-sourced
+    // service is fetched (the client and object-client ELFs now come from
+    // the store).
+    // --- Spawn object store via name service (deferred lookup) ---
+    let objstore = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"objstore").expect("[el0_nvme] objstore.elf"),
+        &ns,
+        ConnectionRights::CALL,
+    );
+    let obj_cfg: *const u32 = {
+        let base: *mut u8 = objstore.status_frame.into();
+        base as *const u32
+    };
+    logln!("[nvme] objstore spawned (asid={})", objstore.asid);
+
+    // Wait for object store to register
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+    while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
+        deadline.assert_pending("EL0 nvme objstore registration");
+        crate::cpu::scheduler::yield_lp();
+    }
+
+    logln!("[nvme] NVMe driver and object store both initialised and registered.");
+
     // Start the client immediately. Its single deferred lookup must be woken
     // by the driver's later registration; verifier ordering must not mask a
     // broken name-service synchronization path.
-    let client = supervisor::spawn_with_name_service(NVME_CLIENT_ELF, &ns, ConnectionRights::CALL);
+    let client = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"nvme_client").expect("[el0_nvme] nvme_client.elf"),
+        &ns,
+        ConnectionRights::CALL,
+    );
     let client_cfg: *const u32 = {
         let base: *mut u8 = client.status_frame.into();
         base as *const u32
@@ -196,22 +213,6 @@ extern "C" fn verify_el0_nvme() {
     );
     logln!("[nvme] SMMU domain completed the transfer without translation faults");
 
-    // --- Spawn object store via name service (deferred lookup) ---
-    let objstore = supervisor::spawn_with_name_service(OBJSTORE_ELF, &ns, ConnectionRights::CALL);
-    let obj_cfg: *const u32 = {
-        let base: *mut u8 = objstore.status_frame.into();
-        base as *const u32
-    };
-    logln!("[nvme] objstore spawned (asid={})", objstore.asid);
-
-    // Wait for object store to register
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-    while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
-        deadline.assert_pending("EL0 nvme objstore registration");
-        crate::cpu::scheduler::yield_lp();
-    }
-
-    logln!("[nvme] NVMe driver and object store both initialised and registered.");
     let completion_ns = crate::ipc::connection_delegate(
         ns.domain.asid,
         ns.endpoint_cap,
@@ -227,9 +228,10 @@ extern "C" fn verify_el0_nvme() {
     )
     .expect("[nvme] object-client completion lookup");
     let object_client = supervisor::spawn_with_name_service_and_data(
-        OBJSTORE_CLIENT_ELF,
+        crate::service::store::service_elf(b"objstore_client")
+            .expect("[el0_nvme] objstore_client.elf"),
         &ns,
-        ECHO_ELF,
+        crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf"),
         ELF_SIZE_KEY,
     );
     let object_cfg: *const u32 = {
@@ -264,7 +266,10 @@ extern "C" fn verify_el0_nvme() {
         unsafe { core::ptr::read_volatile(object_cfg.add(1)) }
     );
     assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(1)) }, 2 * 1024 * 1024 + 4096);
-    assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(2)) }, ECHO_ELF.len() as u32);
+    assert_eq!(
+        unsafe { core::ptr::read_volatile(object_cfg.add(2)) },
+        crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf").len() as u32
+    );
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");
     // The completion service reports that the client finished its work, not
     // that the scheduler has reaped its initial thread. Wait for that separate

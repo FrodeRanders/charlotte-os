@@ -226,17 +226,21 @@ impl GicV3 {
             sre |= 1;
             asm!("msr ICC_SRE_EL1, {}", in(reg) sre, options(nomem, nostack, preserves_flags));
             asm!("isb", options(nomem, nostack, preserves_flags));
-            // Allow all interrupt priorities through.
-            asm!("msr ICC_PMR_EL1, {}", in(reg) PMR_ALLOW_ALL, options(nomem, nostack, preserves_flags));
-            // Enable Group 1 interrupts at the CPU interface.
-            asm!("msr ICC_IGRPEN1_EL1, {}", in(reg) 1u64, options(nomem, nostack, preserves_flags));
             // The UEFI firmware may leave an acknowledged-but-never-EOI'd
             // interrupt (e.g. an NVMe MSI it consumed while loading the
             // kernel) active in the Group 0/1 active-priority registers. That
-            // stale running priority would mask later deliveries, so clear
-            // the active-priority registers before enabling Group 1.
+            // stale running priority would mask later deliveries. Disable
+            // Group 1 while repairing this CPU-interface state: changing the
+            // active-priority registers while the group is enabled is outside
+            // the GIC initialization sequence and QEMU may clear the group
+            // enable as a side effect.
+            asm!("msr ICC_IGRPEN1_EL1, xzr", options(nomem, nostack, preserves_flags));
             asm!("msr ICC_AP0R0_EL1, xzr", options(nomem, nostack, preserves_flags));
             asm!("msr ICC_AP1R0_EL1, xzr", options(nomem, nostack, preserves_flags));
+            // Allow all interrupt priorities through, then enable Group 1 only
+            // after the interface state is fully initialized.
+            asm!("msr ICC_PMR_EL1, {}", in(reg) PMR_ALLOW_ALL, options(nomem, nostack, preserves_flags));
+            asm!("msr ICC_IGRPEN1_EL1, {}", in(reg) 1u64, options(nomem, nostack, preserves_flags));
             asm!("isb", options(nomem, nostack, preserves_flags));
         }
     }
@@ -376,6 +380,9 @@ impl LocalIntCtlrIfce for GicV3 {
         if aff0 >= 16 {
             return Err(Error::InvalidLpId);
         }
+        // Aff3 is in [55:48], RangeSelector in [47:44], IRM in [40], Aff2 in
+        // [39:32], INTID in [27:24], and Aff1 in [23:16]. Do not confuse this
+        // system-register format with the memory-mapped GICv2 GICD_SGIR.
         let sgi1r: u64 = (aff3 << 48)
             | (aff2 << 32)
             | ((target_vector as u64 & 0xf) << 24)

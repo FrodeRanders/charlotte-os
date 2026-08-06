@@ -36,15 +36,6 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const ECHO_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
-#[cfg(target_arch = "aarch64")]
-const CLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/client.elf"));
-#[cfg(target_arch = "aarch64")]
-const SERVICEMGR_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/servicemgr.elf"));
-
-#[cfg(target_arch = "aarch64")]
 const fn packed_name(bytes: &[u8]) -> u64 {
     let mut packed = [0u8; 8];
     let mut i = 0;
@@ -96,14 +87,20 @@ pub fn test_el0_service() {
         let ns_tid = name_service.domain.tid;
         logln!("[service] using node name service (asid={}, tid={})", ns_asid, ns_tid);
 
-        let echo =
-            supervisor::spawn_with_name_service(ECHO_ELF, &name_service, ConnectionRights::CALL);
+        let echo = supervisor::spawn_with_name_service(
+            crate::service::store::service_elf(b"echo").expect("[el0_service] echo.elf"),
+            &name_service,
+            ConnectionRights::CALL,
+        );
         let echo_asid = echo.asid;
         let echo_tid = echo.tid;
         logln!("[service] echo service spawned (asid={}, tid={})", echo_asid, echo_tid);
 
-        let client =
-            supervisor::spawn_with_name_service(CLIENT_ELF, &name_service, ConnectionRights::CALL);
+        let client = supervisor::spawn_with_name_service(
+            crate::service::store::service_elf(b"client").expect("[el0_service] client.elf"),
+            &name_service,
+            ConnectionRights::CALL,
+        );
         let client_asid = client.asid;
         let client_tid = client.tid;
         logln!("[service] client spawned (asid={}, tid={})", client_asid, client_tid);
@@ -306,8 +303,11 @@ extern "C" fn verify_el0_service() {
         "[service] stale connection to restarted service must fail EndpointClosed"
     );
 
-    let echo2 =
-        supervisor::spawn_with_name_service(ECHO_ELF, &state.name_service, ConnectionRights::CALL);
+    let echo2 = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"echo").expect("[el0_service] echo.elf"),
+        &state.name_service,
+        ConnectionRights::CALL,
+    );
     let echo2_asid = echo2.asid;
     logln!("[service] echo service restarted (asid={})", echo2_asid);
 
@@ -338,7 +338,10 @@ extern "C" fn verify_el0_service() {
     state.echo = Some(echo2);
 
     // --- live handoff (Phase D), initiated entirely by the EL0 manager. ---
-    let service_manager = supervisor::spawn_service_manager(SERVICEMGR_ELF, &state.name_service);
+    let service_manager = supervisor::spawn_service_manager(
+        crate::service::store::service_elf(b"servicemgr").expect("[el0_service] servicemgr.elf"),
+        &state.name_service,
+    );
     logln!(
         "[service] service manager spawned (asid={}, tid={})",
         service_manager.asid,

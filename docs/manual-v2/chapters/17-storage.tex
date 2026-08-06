@@ -188,6 +188,35 @@ accidental corruption, but is not cryptographic authentication.
     \item \textbf{FLUSH} --- flush the underlying block device.
 \end{itemize}
 
+\subsection{The initial service-artifact store}
+
+The kernel no longer embeds every EL0 program. The host build produces an
+architecture-qualified service bundle, blesses every ELF according to
+\texttt{crates/catten-services/artifact-policy.tsv}, and
+\texttt{scripts/make-nvme-image.py} writes one object per logical service into
+an initial version-3 object-store image. The kernel embeds only the bootstrap
+set needed to reach storage (name service, NVMe, object store, UART, and the
+system observer). Other services are resolved by logical name, read through
+the object-store protocol on first use, identity-checked, and cached for the
+boot. The ordinary loader independently enforces the ELF and signature policy
+before mapping.
+
+The signature record is CLS2, an identity-bearing ELF note. Besides signing
+the complete bytes, it binds the logical service name, artifact class, release
+and rollback counter, policy flags, signing-key id, and an optional provenance
+digest. Consequently a validly signed \texttt{dns} ELF cannot occupy the
+\texttt{raft} slot. A deployment generation also carries the complete ELF
+SHA-256, preventing an object replaced under the same logical name from
+changing already-committed code.
+
+The runner fingerprints the whole blessed bundle. It rebuilds an instance's
+initial NVMe image when that fingerprint changes, while
+\texttt{--reuse-storage} deliberately retains an older store and emits a
+staleness warning. \texttt{--fresh-storage} always recreates it. This separates
+development reproducibility from explicit persistence experiments. The image
+producer refuses an object-id collision rather than silently replacing an
+earlier service.
+
 \section{Raft persistence}
 
 The Raft service can use in-memory stores, optionally try persistent stores,

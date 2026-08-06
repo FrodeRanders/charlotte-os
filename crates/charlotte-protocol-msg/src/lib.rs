@@ -6,7 +6,8 @@
 //! control — the "Reliable Message Layer" of the architecture.
 //!
 //! Messages carry:
-//! - A 64-bit sender-session identifier (new for each service instance)
+//! - A 64-bit session identifier (the sender session on data frames; the acknowledged sender
+//!   session on ACK-only frames)
 //! - A 32-bit sequence number (monotonic, per-session; one per *message*, shared by all fragments)
 //! - A 32-bit acknowledgement number (cumulative)
 //! - A 16-bit payload length
@@ -22,17 +23,18 @@
 //! receiver reassembles contiguous fragments of the expected message before
 //! delivering one application message.
 //!
-//! `FLAG_SYN` asserts the sender-session field. Receivers use a new session to
-//! reset both directions' sequence spaces after a unilateral service restart;
-//! recently retired sessions are rejected so delayed old frames cannot roll
-//! the connection state backward.
+//! `FLAG_SYN` asserts the session field. On data frames, receivers use a new
+//! sender session to reset receive ordering after a sender restart. ACK-only
+//! frames echo the data frame's session, allowing a sender to reject delayed
+//! ACKs from an abandoned session. ACK and payload are deliberately not
+//! combined because the one session field cannot identify both directions.
 //!
 //! ## Wire format (Ethertype 0x88B5, allocated to CharlotteOS)
 //!
 //! ```text
 //!  0..2   EtherType = 0x88B5
 //!  2..4   Fragment offset (u16, big-endian; 0 unless FLAG_FRAG is set)
-//!  4..12  Sender session (u64, big-endian)
+//!  4..12  Session (u64, big-endian; sender on data, acknowledged on ACK)
 //! 12..16  Sequence number (u32, big-endian)
 //! 16..20  Ack number (u32, big-endian)
 //! 20..22  Payload length (u16, big-endian)

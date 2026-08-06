@@ -880,6 +880,15 @@ continued operation after a remote-node crash have not yet been validated.
 > catalog. The design below describes the model it realizes; the general
 > `raft` service binary and per-node `ns.rs` refactor remain future work.
 
+Remote invocation does not synchronously enter an arbitrary local service
+from the DNS/Raft reactor. Local lookup and the eventual service call are
+bounded pending operations advanced on later reactor turns. A failed or slow
+service therefore cannot stop heartbeats, prevent relmsg receive draining, or
+fill the peer queue; callers receive a bounded error (and `ERR_UNCERTAIN` once
+execution may have begun). Duplicate remote calls are suppressed while the
+local operation is pending and retained in the acknowledged-result window
+after it completes.
+
 Each existing node-local name service becomes a replica of one logical
 cluster service by running the registry as a `StateMachine` on top of Raft:
 
@@ -905,10 +914,14 @@ granting the registering caller connection-minting authority. A name with no
 local endpoint remains a catalog-only registration.
 
 Raft and DNS control messages share relmsg's per-peer serialized transport.
-Only one send may be in flight per peer. Consecutive queued AppendEntries are
-coalesced, while non-Raft control traffic keeps its FIFO position, so a slow
-emulator does not accumulate obsolete heartbeats ahead of retraction or call
-traffic.
+Only one send may be in flight per peer. Consecutive queued AppendEntries
+requests and their serially ordered responses are coalesced, while non-Raft
+control traffic keeps its relative FIFO order and is placed ahead of queued,
+supersedable append traffic. Heartbeats are emitted only on a bounded fraction
+of the Raft election timeout. The underlying stop-and-wait retry lease is two
+seconds, below the DNS remote-call deadline, so a lost heartbeat cannot hold
+the only per-peer slot for tens of seconds and starve retraction, placement, or
+invocation messages.
 
 Kernel capability identifiers and endpoint objects are local to one machine
 and must not be placed in the Raft log. Replicated registrations instead

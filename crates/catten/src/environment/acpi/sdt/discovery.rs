@@ -83,11 +83,17 @@ pub fn spcr_uart_irq() -> Option<u32> {
 /// Distributor entry; the GICR base from that entry's GICR field, falling back
 /// to a GIC Redistributor entry if the field is absent.
 pub fn madt_gic_bases() -> Option<(u64, u64)> {
+    const GIC_CPU_INTERFACE: u8 = 0x0b;
     const GIC_DISTRIBUTOR: u8 = 0xc;
     const GIC_REDISTRIBUTOR: u8 = 0xe;
     const MADT_HEADER_SIZE: u64 = 36 + 4 + 4; // SdtHeader + LAPIC address + flags
     const GICD_ENTRY_BASE_OFFSET: u64 = 8;
-    const GICD_ENTRY_GICR_OFFSET: u64 = 44;
+    // A GICC structure carries the redistributor base for that CPU at offset
+    // 60. The system-wide GICR structure carries the discovery-range base at
+    // offset 4.  A GIC Distributor structure is only 24 bytes long and has no
+    // redistributor field; reading one at offset 44 crosses into the following
+    // MADT entry and can silently turn unrelated bytes into a bogus MMIO base.
+    const GICC_ENTRY_GICR_OFFSET: u64 = 60;
     const GICR_ENTRY_BASE_OFFSET: u64 = 4;
 
     let madt = find_table_physical(*b"APIC")?;
@@ -104,18 +110,23 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
             break;
         }
         match entry_type {
+            GIC_CPU_INTERFACE if entry_len >= GICC_ENTRY_GICR_OFFSET + 8 => {
+                let rbase = unsafe {
+                    (PAddr::from(ptr + GICC_ENTRY_GICR_OFFSET).into_hhdm_ptr::<u64>())
+                        .read_unaligned()
+                };
+                // Per-CPU GICC entries normally enumerate consecutive
+                // redistributors.  Retain the lowest base as the start of the
+                // discovery range used by the GIC driver.
+                if rbase != 0 && (gicr == 0 || rbase < gicr) {
+                    gicr = rbase;
+                }
+            }
             GIC_DISTRIBUTOR => {
                 gicd = unsafe {
                     (PAddr::from(ptr + GICD_ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>())
                         .read_unaligned()
                 };
-                let gicr_field = unsafe {
-                    (PAddr::from(ptr + GICD_ENTRY_GICR_OFFSET).into_hhdm_ptr::<u64>())
-                        .read_unaligned()
-                };
-                if gicr_field != 0 {
-                    gicr = gicr_field;
-                }
             }
             GIC_REDISTRIBUTOR => {
                 let rbase = unsafe {
@@ -130,17 +141,16 @@ pub fn madt_gic_bases() -> Option<(u64, u64)> {
         }
         ptr += entry_len;
     }
-    (gicd != 0).then_some((gicd, gicr))
+    (gicd != 0 && gicr != 0).then_some((gicd, gicr))
 }
 
 /// The GIC ITS base address from the MADT, if the platform publishes one.
 ///
-/// QEMU `sbsa-ref` emits a GIC ITS entry whose 64-bit base sits at offset 8;
-/// some firmware revisions use an adjacent type for it, so both 0x0E and 0x0F
-/// entries are considered and the first with a plausible ITS MMIO base wins.
+/// QEMU `sbsa-ref` emits a GIC ITS entry whose 64-bit base sits at offset 8.
+/// MADT type 0x0E is the distinct GIC Redistributor structure and must never be
+/// interpreted as an ITS: doing so directs ITS command writes into GICR MMIO.
 pub fn madt_its_base() -> Option<u64> {
-    const GIC_ITS: u8 = 0x0e;
-    const GIC_ITS_ALT: u8 = 0x0f;
+    const GIC_ITS: u8 = 0x0f;
     const MADT_HEADER_SIZE: u64 = 36 + 4 + 4;
     const ENTRY_BASE_OFFSET: u64 = 8;
 
@@ -155,7 +165,7 @@ pub fn madt_its_base() -> Option<u64> {
         if entry_len == 0 || ptr + entry_len > end {
             break;
         }
-        if entry_type == GIC_ITS || entry_type == GIC_ITS_ALT {
+        if entry_type == GIC_ITS {
             let base = unsafe {
                 (PAddr::from(ptr + ENTRY_BASE_OFFSET).into_hhdm_ptr::<u64>()).read_unaligned()
             };

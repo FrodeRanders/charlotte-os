@@ -26,7 +26,6 @@ use crate::{
         AddressSpaceHandle,
         AddressSpaceId,
         AddressSpaceRegistrationError,
-        KERNEL_AS,
         PHYSICAL_FRAME_ALLOCATOR,
         linear::{
             MemoryMapping,
@@ -331,16 +330,15 @@ pub fn create_user_address_space_handle() -> AddressSpaceHandle {
 /// ASID exhaustion into a kernel panic.
 pub fn try_create_user_address_space_handle()
 -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    let _kas = KERNEL_AS.lock();
     crate::memory::register_user_address_space(AddressSpace::new_user())
 }
 
 /// Verify the ELF image's cluster signature note before anything is mapped.
 ///
-/// An image that carries a `.note.charlotte-sig` must verify against the
-/// cluster's build-time public key; anything else is refused. Images without
-/// a note still load (enforcement of mandatory signing is future work), but
-/// the policy is visible in the boot log.
+/// Every image must carry a valid identity-bearing cluster signature.  Name
+/// binding is enforced by the artifact store/deployment boundary; this final
+/// loader gate independently protects every mapping path against unsigned or
+/// tampered bytes.
 fn verify_image_signature(image: &[u8]) -> Result<(), ()> {
     use charlotte_launch::signature_note::{
         VerifyOutcome,
@@ -348,7 +346,9 @@ fn verify_image_signature(image: &[u8]) -> Result<(), ()> {
     };
     match verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY) {
         VerifyOutcome::Valid => Ok(()),
-        VerifyOutcome::Invalid | VerifyOutcome::Unsigned => Err(()),
+        VerifyOutcome::Invalid | VerifyOutcome::Unsigned | VerifyOutcome::ArtifactMismatch => {
+            Err(())
+        }
     }
 }
 

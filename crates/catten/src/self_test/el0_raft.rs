@@ -48,16 +48,15 @@ mod inner {
     const STORAGE_KEY: u64 = charlotte_launch::manifest_key(b"storage");
     const STORAGE_REQUIRED: u64 = 2;
 
-    const RAFT_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/raft.elf"));
-
     static mut RAFT_NS: Option<NameServiceHandle> = None;
 
     fn spawn_raft_node(
         manifest: &[ManifestEntry<'_>],
         ns_handle: &NameServiceHandle,
     ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(RAFT_ELF);
+        let addr = crate::service::loader::load_domain(
+            crate::service::store::service_elf(b"raft").expect("[el0_raft] raft.elf"),
+        );
         let conn = crate::ipc::connection_delegate(
             ns_handle.domain.asid,
             ns_handle.endpoint_cap,
@@ -110,7 +109,7 @@ mod inner {
             let base: *mut u8 = second.status_frame.into();
             base as *const u32
         };
-        let mut polls = 0u64;
+        let mut next_report = crate::cpu::scheduler::monotonic_millis().saturating_add(1_000);
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         loop {
             let first_state = unsafe { core::ptr::read_volatile(first_status.add(2)) };
@@ -132,8 +131,8 @@ mod inner {
                     return (first_term, second_term);
                 }
             }
-            polls += 1;
-            if polls.is_multiple_of(100) {
+            let now = crate::cpu::scheduler::monotonic_millis();
+            if now >= next_report {
                 let first_stage = unsafe { core::ptr::read_volatile(first_status) };
                 let second_stage = unsafe { core::ptr::read_volatile(second_status) };
                 crate::logln!(
@@ -144,6 +143,7 @@ mod inner {
                     first_state,
                     second_state
                 );
+                next_report = now.saturating_add(1_000);
             }
             deadline.assert_pending(label);
             // Yield rather than blocking on a timer: a timer wake that is not
@@ -160,7 +160,7 @@ mod inner {
             base as *const u32
         };
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-        let mut poll = 0u64;
+        let mut next_report = 0u64;
         loop {
             let stage = unsafe { core::ptr::read_volatile(status) };
             let state = unsafe { core::ptr::read_volatile(status.add(2)) };
@@ -170,7 +170,8 @@ mod inner {
                 crate::logln!("[raft-storage] {} reached term {}.", label, term);
                 return term;
             }
-            if poll.is_multiple_of(100) {
+            let now = crate::cpu::scheduler::monotonic_millis();
+            if now >= next_report {
                 crate::logln!(
                     "[raft-storage] {} waiting: stage={}, state={}, term={}, durable={}",
                     label,
@@ -179,9 +180,9 @@ mod inner {
                     term,
                     durable
                 );
+                next_report = now.saturating_add(1_000);
             }
             deadline.assert_pending(label);
-            poll += 1;
             yield_lp();
         }
     }

@@ -11,6 +11,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir>}"
+BUNDLE="$(cd "$BUNDLE" && pwd)"
+POLICY="$ROOT/crates/catten-services/artifact-policy.tsv"
 
 if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
     PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
@@ -22,10 +24,25 @@ fi
 
 for elf in "$BUNDLE"/*.elf; do
     [ -f "$elf" ] || continue
+    name="$(basename "$elf" .elf)"
+    matches="$(awk -v wanted="$name" '$1 == wanted { count++ } END { print count + 0 }' "$POLICY")"
+    if [ "$matches" -ne 1 ]; then
+        echo "error: $name must have exactly one blessing policy row in $POLICY" >&2
+        exit 1
+    fi
+    row="$(awk -v wanted="$name" '$1 == wanted { print; exit }' "$POLICY")"
+    read -r policy_name class version rollback flags provenance <<EOF
+$row
+EOF
+    if [ "$policy_name" != "$name" ]; then
+        echo "error: blessing policy parser mismatch for $name" >&2
+        exit 1
+    fi
     # The tool builds cleanly only when cargo's config discovery starts
     # outside the repo (the root config pins build-std for the kernel
     # toolchain); run it from /tmp with an explicit manifest path.
     (cd /tmp && cargo run --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
-        -- elf-sign "$elf" "$PRIVATE_KEY" >/dev/null)
-    echo ">>> Signed $(basename "$elf")."
+        -- elf-sign "$elf" "$name" "$PRIVATE_KEY" "$class" "$version" "$rollback" \
+        "$flags" "$provenance" >/dev/null)
+    echo ">>> Blessed $(basename "$elf") as $name ($class, release $version, flags $flags)."
 done

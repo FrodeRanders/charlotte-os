@@ -119,15 +119,6 @@
 //! authoritative verdict is produced by the coordinator thread and observed
 //! by `scripts/run-aarch64.sh` under `--timeout`.
 
-/// The cluster-deployed artifact: the note-signed ELF of the `greet` service,
-/// staged by `scripts/build-catten-services.sh --embed` (which also runs
-/// `tools/cluster-sign elf-sign` over it) and embedded here. The deploy
-/// phase stages it into the object store, the clusterctl demo and the serial
-/// console upload it, and the signature note is verified by the EL0 loader
-/// and the deploy agent.
-pub const GREET_ARTIFACT: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/greet.elf"));
-
 pub mod adversarial;
 pub mod completion;
 pub mod cq;
@@ -186,7 +177,12 @@ pub(crate) fn close_test_address_space(
     crate::memory::close_user_address_space_handle(handle)
 }
 
-pub fn run_self_tests() {
+/// Run the non-blocking, kernel-internal portion of the boot suite.
+///
+/// This phase is intentionally completed before application processors enter
+/// their schedulers: several low-level table and capability tests assume they
+/// are the only mutator of global test state.
+pub fn run_synchronous_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {
         #[cfg(not(target_arch = "aarch64"))]
@@ -194,8 +190,6 @@ pub fn run_self_tests() {
         #[cfg(target_arch = "aarch64")]
         {
             results::register(results::TestId::Service);
-            el0_service::test_el0_service();
-            logln!("Live-upgrade verifier is pending.");
             return;
         }
     }
@@ -228,7 +222,33 @@ pub fn run_self_tests() {
     shard::test_shard_local();
     shard::test_shard_mailbox();
     statistics::test_running_statistics();
+}
+
+/// Admit the scheduler/EL0 portion of the boot suite.
+///
+/// Store-backed service resolution in this phase may yield, so callers must
+/// execute it from a scheduler-owned kernel thread after the AP schedulers are
+/// live.
+pub fn run_deferred_self_tests() {
+    if cfg!(feature = "live_upgrade_test") {
+        #[cfg(target_arch = "aarch64")]
+        {
+            el0_service::test_el0_service();
+            logln!("Live-upgrade verifier is pending.");
+            return;
+        }
+    }
     el0::test_el0_syscall_round_trip();
+    // The disk stack is registered first: every other service-bearing test
+    // loads its ELF from the object store, which comes up as part of the
+    // NVMe test. Registering it early lets the later tests' store reads
+    // retry without deadlocking the registration thread.
+    #[cfg(target_arch = "aarch64")]
+    el0_nvme::test_el0_nvme();
+    #[cfg(target_arch = "aarch64")]
+    el0_uart::test_el0_uart();
+    #[cfg(target_arch = "aarch64")]
+    el0_sitas::test_el0_sitas();
     el0_raft::test_el0_raft();
     el0_ipc::test_el0_endpoint_ipc();
     el0_ipc::test_el0_endpoint_ipc_blocking_receive();
@@ -238,7 +258,6 @@ pub fn run_self_tests() {
     el0_ipc::test_el0_endpoint_ipc_memory_cancel();
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
-    el0_sitas::test_el0_sitas();
     #[cfg(target_arch = "aarch64")]
     el0_service::test_el0_service();
     cq::test_cq_ring();
@@ -269,9 +288,12 @@ pub fn run_self_tests() {
     el0_http::test_el0_http();
     #[cfg(all(not(feature = "http_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 http test (enable http_net_test with matching PCI hardware).");
-    #[cfg(target_arch = "aarch64")]
-    el0_nvme::test_el0_nvme();
-    #[cfg(target_arch = "aarch64")]
-    el0_uart::test_el0_uart();
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
+}
+
+/// Run both boot-suite phases in sequence. Boot code normally calls the two
+/// phase-specific entry points around scheduler activation.
+pub fn run_self_tests() {
+    run_synchronous_self_tests();
+    run_deferred_self_tests();
 }

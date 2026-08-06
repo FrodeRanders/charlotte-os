@@ -100,6 +100,9 @@ pub enum SyscallNumber {
     IpcConnectionWatchClosed = 60,
     ObserveThreadExit = 61,
     GetTid = 62,
+    MemorySize = 63,
+    SpawnArtifact = 64,
+    RetireArtifact = 65,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -170,12 +173,15 @@ impl TryFrom<u16> for SyscallNumber {
             60 => Ok(Self::IpcConnectionWatchClosed),
             61 => Ok(Self::ObserveThreadExit),
             62 => Ok(Self::GetTid),
+            63 => Ok(Self::MemorySize),
+            64 => Ok(Self::SpawnArtifact),
+            65 => Ok(Self::RetireArtifact),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::GetTid as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::RetireArtifact as u16;
 
 // ---- observability wire format ---------------------------------------------
 
@@ -319,6 +325,9 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             57 => asm!("svc #57", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             58 => asm!("svc #58", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             60 => asm!("svc #60", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            63 => asm!("svc #63", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            64 => asm!("svc #64", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            65 => asm!("svc #65", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -1059,6 +1068,14 @@ pub fn memory_alloc(pages: usize) -> u64 {
     unsafe { svc3(SyscallNumber::MemoryAlloc, pages as u64, 0, 0) }
 }
 
+/// Return the capacity, in bytes, of a memory-object capability, or zero for
+/// an invalid capability. This lets receivers validate length prefixes before
+/// touching potentially unbacked pages.
+#[inline(always)]
+pub fn memory_size(cap: u64) -> usize {
+    unsafe { svc3(SyscallNumber::MemorySize, cap, 0, 0) as usize }
+}
+
 /// Map a memory object at `base_vaddr`. Returns a memory status code.
 #[inline(always)]
 pub fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCode {
@@ -1131,6 +1148,23 @@ pub unsafe fn spawn_upgrade(
     target_connection: u64,
 ) -> u64 {
     unsafe { svc4(SyscallNumber::SpawnUpgrade, elf_cap, elf_size, state_cap, target_connection) }
+}
+
+/// Start the exact signed ELF held by `elf_cap` under `artifact_name`.
+/// This succeeds only for the uniquely delegated node deployment agent and
+/// only when the CLS2 signed identity matches the packed name. The kernel
+/// consumes `elf_cap` on both success and failure.
+#[inline(always)]
+pub fn spawn_artifact(elf_cap: u64, elf_size: usize, artifact_name: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::SpawnArtifact, elf_cap, elf_size as u64, artifact_name) }
+}
+
+/// Retire the domain created by [`spawn_artifact`]. Returns 1 while thread
+/// retirement is in progress, 0 once resources and endpoints are reclaimed,
+/// and `u64::MAX` when the caller lacks deployment authority.
+#[inline(always)]
+pub fn retire_artifact() -> u64 {
+    unsafe { svc3(SyscallNumber::RetireArtifact, 0, 0, 0) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.

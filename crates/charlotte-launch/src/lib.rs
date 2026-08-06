@@ -19,11 +19,40 @@ pub const HEAP_SIZE: usize = 0x40000;
 pub const STATUS_VADDR: usize = 0x0000_0000_007f_0000;
 pub const STATUS_PAGE_SIZE: u32 = 4096;
 
+/// Maximum ELF size accepted at the cluster-administration ingress and by the
+/// kernel's deployment-agent launch gate. Keeping one shared bound prevents a
+/// blessed artifact from being accepted into the store but rejected when its
+/// assigned node tries to execute it.
+pub const MAX_ARTIFACT_ELF_SIZE: usize = 4 * 1024 * 1024;
+
 /// DNS service status-page ABI shared by the EL0 service and its kernel boot
 /// verifier. Every field is an aligned little-endian `u32` byte offset.
 pub mod sha256;
 
+pub mod placement;
 pub mod signature_note;
+
+/// FNV-1a 64, the cluster's identity hash (node keys, artifact ids).
+pub fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+/// Tag for the cluster-wide artifact namespace in the object store.
+pub const ARTIFACT_ID_TAG: u64 = 0xfffe_0000_0000_0000;
+
+/// The stable, cluster-wide object-store id for a logical artifact name:
+/// every node stores the artifact for a name at the same derived id.
+pub fn artifact_object_id(name: &[u8]) -> u64 {
+    ARTIFACT_ID_TAG | (fnv1a(name) & 0x0000_ffff_ffff_ffff)
+}
+
+/// The object store's packed name in the name service.
+pub const OBJSTORE_NAME: u64 = 0x0000_0000_006a_626f; // "obj" packed LE.
 
 pub mod dns_status {
     pub const STAGE: usize = 0;
@@ -266,14 +295,3 @@ pub const CLUSTER_PUBLIC_KEY: [u8; 32] = [
 /// Launch-manifest key under which the kernel hands the cluster public key to
 /// services (agents, clusterctl).
 pub const CLUSTER_KEY_MANIFEST_KEY: u64 = manifest_key(b"ckey");
-
-/// SHA-256 of the cluster-deployed artifact (the note-signed `greet` ELF):
-/// the deployed artifact's identity, checked by the agent against what it
-/// fetches from the object store. Printed by `tools/cluster-sign elf-sign`
-/// and pasted here; the pipeline's `--check` mode verifies it against the
-/// staged artifact. (The artifact bytes themselves live kernel-side, where
-/// the deploy demo stages them into the object store.)
-pub const GREET_ARTIFACT_SHA256: [u8; 32] = [
-    0xed, 0x08, 0x5c, 0x01, 0xc8, 0x0f, 0x17, 0xc5, 0xb7, 0x45, 0x8d, 0xe6, 0xcb, 0x12, 0x2b, 0xa3,
-    0x01, 0x80, 0xfb, 0xc9, 0xb5, 0x1a, 0x69, 0xa8, 0xcb, 0x34, 0x15, 0xe8, 0xe5, 0x2b, 0xa2, 0x69,
-];

@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -25,7 +25,7 @@
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --deploy-test  Run the cluster-deployment test (implies --dns-test):
-#               deploys a signed artifact to the peer node, serves it across
+#               deploys a signed artifact to the peer node, executes it across
 #               the network, and migrates it between nodes.
 #   --dns-test     Run the distributed name service test (Raft over the
 #               network; both guests must run it, implies --disco-test)
@@ -43,6 +43,8 @@
 #   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
+#   --fresh-storage  Recreate this instance's NVMe store from the blessed bundle
+#   --reuse-storage  Keep it even when the blessed bundle changed (explicitly stale)
 #
 set -euo pipefail
 
@@ -66,6 +68,8 @@ CLEAN_BUILD="0"
 SCHEDULER_TRACE="0"
 DEBUG_SNAPSHOT="0"
 SBSA_REF="0"
+FRESH_STORAGE="0"
+REUSE_STORAGE="0"
 INSTANCE=""
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
@@ -109,6 +113,8 @@ while [ "$#" -gt 0 ]; do
         --timeout)
             [ "$#" -ge 2 ] || { echo "Missing value for --timeout" >&2; exit 1; }
             TIMEOUT="$2"; shift 2 ;;
+        --fresh-storage) FRESH_STORAGE="1"; shift ;;
+        --reuse-storage) REUSE_STORAGE="1"; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -316,11 +322,39 @@ mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
 # --- NVMe persistent disk image (virt only; sbsa-ref boots the image itself) ---
 if [ "$SBSA_REF" != "1" ]; then
     NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
-    if [ ! -f "$NVME_IMAGE" ]; then
-        echo ">>> Creating persistent NVMe disk image ${NVME_IMAGE} (16 MiB)..."
-        dd if=/dev/zero of="$NVME_IMAGE" bs=1048576 count=16 status=none
+    NVME_BUNDLE_HASH="${NVME_IMAGE}.bundle-sha256"
+    BUNDLE_DIGESTS=""
+    for service_elf in "$CATTEN_AARCH64_SERVICE_BUNDLE"/*.elf; do
+        if command -v sha256sum >/dev/null 2>&1; then
+            service_digest="$(sha256sum "$service_elf" | awk '{print $1}')"
+        else
+            service_digest="$(shasum -a 256 "$service_elf" | awk '{print $1}')"
+        fi
+        BUNDLE_DIGESTS="${BUNDLE_DIGESTS}$(basename "$service_elf"):${service_digest}
+"
+    done
+    if command -v sha256sum >/dev/null 2>&1; then
+        CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | sha256sum | awk '{print $1}')"
     else
-        echo ">>> Reusing existing NVMe disk image ${NVME_IMAGE}"
+        CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | shasum -a 256 | awk '{print $1}')"
+    fi
+    STORED_BUNDLE_HASH="$(test -f "$NVME_BUNDLE_HASH" && tr -d '[:space:]' < "$NVME_BUNDLE_HASH" || true)"
+    if [ "$REUSE_STORAGE" = "1" ] && [ -f "$NVME_IMAGE" ]; then
+        echo ">>> Reusing NVMe disk image ${NVME_IMAGE} by explicit request."
+        if [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
+            echo "warning: its service bundle is stale; store-loaded services may not match this build" >&2
+        fi
+    elif [ ! -f "$NVME_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
+        || [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
+        # The initial image is produced host-side: an object-store volume
+        # pre-seeded with the signed service ELFs the kernel loads from the
+        # store at boot (the embedded bundle covers only the bootstrap set).
+        echo ">>> Producing initial NVMe disk image ${NVME_IMAGE} from the signed bundle..."
+        python3 "${ROOT_DIR}/scripts/make-nvme-image.py" \
+            "$NVME_IMAGE" "$CATTEN_AARCH64_SERVICE_BUNDLE"
+        printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$NVME_BUNDLE_HASH"
+    else
+        echo ">>> Reusing NVMe disk image ${NVME_IMAGE} (blessed bundle unchanged)."
     fi
 fi
 
@@ -452,6 +486,11 @@ if [ "$NET_TEST" = "1" ]; then
     QEMU_OPTS+=(
         -device "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=${NET_MAC},addr=1"
     )
+    if [ "${CATTEN_QEMU_NET_DUMP:-0}" = "1" ]; then
+        QEMU_OPTS+=(
+            -object "filter-dump,id=charlotte-net-dump,netdev=charlotte-net,file=/tmp/charlotte${INSTANCE_SUFFIX}-net.pcap"
+        )
+    fi
 fi
 
 if [ "$DISPLAY_MODE" = "1" ]; then

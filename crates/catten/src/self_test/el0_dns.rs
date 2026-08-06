@@ -54,14 +54,6 @@ mod inner {
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
-    const DNS_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/dns.elf"));
-    const ECHO_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
-    #[cfg(feature = "deploy_net_test")]
-    const AGENT_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/agent.elf"));
-
     static mut TEST_STATE: Option<NameServiceHandle> = None;
 
     /// FNV-1a (the same hash the node-identity scheme uses to derive member
@@ -126,7 +118,8 @@ mod inner {
 
     fn status_word(base: *const u8, offset: usize) -> u32 {
         debug_assert_eq!(offset % core::mem::align_of::<u32>(), 0);
-        unsafe { core::ptr::read_volatile(base.add(offset).cast::<u32>()) }
+        let slot = unsafe { &*base.add(offset).cast::<core::sync::atomic::AtomicU32>() };
+        slot.load(core::sync::atomic::Ordering::Acquire)
     }
 
     fn call_with_memory(kernel_conn: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
@@ -161,7 +154,10 @@ mod inner {
         const OBJ_OP_SET_SIZE: u32 = 9;
         const OBJ_OP_WRITE: u32 = 3;
         const OBJ_OP_FLUSH: u32 = 6;
+        // charlotte-protocol-objstore v1 status values (the kernel does not
+        // otherwise depend on the userspace protocol crate).
         const OBJ_ERR_OK: i64 = 0;
+        const OBJ_ERR_EXISTS: i64 = 5;
 
         let kernel_ns = kernel_ns_connection(ns);
         let obj_conn = lookup_service(kernel_ns, OBJSTORE_NAME).expect("[deploy] objstore lookup");
@@ -172,7 +168,10 @@ mod inner {
         let result = ipc::poll_reply(KERNEL_ASID, call)
             .expect("[deploy] objstore create poll")
             .expect("[deploy] objstore create replied");
-        if result.result != OBJ_ERR_OK && result.result != 1 {
+        // The initial disk image now carries the signed service bundle,
+        // including `greet`. Treat an existing artifact as an update target;
+        // SET_SIZE + WRITE below atomically replaces its object contents.
+        if result.result != OBJ_ERR_OK && result.result != OBJ_ERR_EXISTS {
             return Err(());
         }
         let _ = ipc::close_cap(KERNEL_ASID, call);
@@ -215,7 +214,7 @@ mod inner {
     /// The cluster-deployment phase of the dns self-test (`deploy_net_test`):
     /// the leader deploys the `greet` artifact to the *other* node, the
     /// remote agent picks it up, verifies its cluster signature, registers the
-    /// name, and serves it across the network; the leader then re-deploys to
+    /// name, and executes it across the network; the leader then re-deploys to
     /// its own node and the service migrates (the old host retires, the new
     /// host takes over, generation fencing prevents the old host's unregister
     /// from clobbering the new registration).
@@ -245,12 +244,15 @@ mod inner {
 
         // The deployed artifact is a note-signed ELF: it must verify against
         // the cluster's public key, and a tampered copy must be refused.
-        let artifact = crate::self_test::GREET_ARTIFACT;
+        let artifact = crate::service::store::service_elf(b"greet")
+            .expect("[deploy] greet artifact in object store");
+        let artifact_digest = charlotte_launch::sha256::digest(artifact);
         use charlotte_launch::signature_note::VerifyOutcome;
         assert_eq!(
-            charlotte_launch::signature_note::verify_elf(
+            charlotte_launch::signature_note::verify_elf_for_name(
                 artifact,
-                &charlotte_launch::CLUSTER_PUBLIC_KEY
+                &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                b"greet",
             ),
             VerifyOutcome::Valid,
             "[deploy] the deployed artifact must carry a valid cluster signature"
@@ -259,17 +261,13 @@ mod inner {
         tampered.copy_from_slice(artifact);
         tampered[artifact.len() / 2] ^= 0x01;
         assert_eq!(
-            charlotte_launch::signature_note::verify_elf(
+            charlotte_launch::signature_note::verify_elf_for_name(
                 &tampered,
-                &charlotte_launch::CLUSTER_PUBLIC_KEY
+                &charlotte_launch::CLUSTER_PUBLIC_KEY,
+                b"greet",
             ),
             VerifyOutcome::Invalid,
             "[deploy] a tampered artifact must fail signature verification"
-        );
-        assert_eq!(
-            charlotte_launch::sha256::digest(artifact),
-            charlotte_launch::GREET_ARTIFACT_SHA256,
-            "[deploy] the deployed artifact hash constant must match the artifact"
         );
         logln!("[deploy] artifact is a note-signed ELF; tampering is refused.");
 
@@ -278,7 +276,7 @@ mod inner {
         // manifest carries the cluster's build-time public key, the agent's
         // bootstrap trust anchor for validating artifacts.
         let agent = spawn_with_manifest(
-            AGENT_ELF,
+            crate::service::store::service_elf(b"agent").expect("[el0_dns] agent.elf"),
             ns,
             &[ManifestEntry {
                 key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
@@ -286,6 +284,7 @@ mod inner {
                 value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
             }],
         );
+        crate::service::supervisor::authorize_deployment_agent(&agent);
         logln!("[deploy] agent spawned (asid={})", agent.asid);
         let agent_cfg: *const u8 = {
             let base: *mut u8 = agent.status_frame.into();
@@ -322,9 +321,10 @@ mod inner {
         // The leader deploys the artifact to the peer node (cross-node
         // hosting is the point of the cluster).
         if is_leader {
-            let mut request = Vec::with_capacity(16);
+            let mut request = Vec::with_capacity(48);
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&peer_key.to_le_bytes());
+            request.extend_from_slice(&artifact_digest);
             logln!(
                 "[deploy] calling OP_DEPLOY on the peer (object {:#x} node {peer_key:#x})",
                 DEPLOY_OBJECT_ID
@@ -358,11 +358,29 @@ mod inner {
 
         // Invoke the deployed service by name; the leader's call crosses the
         // network to the hosting peer.
-        let mut request = Vec::with_capacity(12);
-        request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-        request.extend_from_slice(&0i64.to_le_bytes());
-        let result = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
-        logln!("[deploy] cross-node greet result = {result:?}");
+        // The leader may apply the committed activation one heartbeat before
+        // the owner replica learns the new leader_commit and applies that
+        // generation locally. Generation fencing correctly rejects a call in
+        // this brief window, so retry the idempotent probe until both applied
+        // views converge.
+        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+        let result;
+        let mut attempts = 0u32;
+        loop {
+            let mut request = Vec::with_capacity(12);
+            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+            request.extend_from_slice(&0i64.to_le_bytes());
+            let attempt = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
+            attempts = attempts.saturating_add(1);
+            if attempt == Some(GREET_VALUE) {
+                result = attempt;
+                break;
+            }
+            deadline.assert_pending("EL0 deploy owner-generation convergence");
+            crate::cpu::scheduler::sleep_millis(250);
+            yield_lp();
+        }
+        logln!("[deploy] cross-node greet result = {result:?} after {attempts} attempt(s)");
         assert_eq!(
             result,
             Some(GREET_VALUE),
@@ -372,10 +390,18 @@ mod inner {
         // The leader re-deploys the artifact to its own node: the service
         // migrates. The new host registers a fresh generation; the old host
         // retires and its generation-fenced unregister cannot clobber it.
+        // Snapshot before publishing the migration. The follower cannot make
+        // its post-migration verification call until it observes that newer
+        // assignment, so any later ACK proves the final reply crossed the
+        // transport. Sampling after the call is racy: the ACK may already
+        // have arrived, leaving the leader waiting for an unrelated next one.
+        let acks_before_migration =
+            is_leader.then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS));
         if is_leader {
-            let mut request = Vec::with_capacity(16);
+            let mut request = Vec::with_capacity(48);
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&my_key.to_le_bytes());
+            request.extend_from_slice(&artifact_digest);
             let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
             logln!("[deploy] migration deployment result = {deploy:?}");
             assert!(
@@ -394,6 +420,7 @@ mod inner {
         };
         while status_word(agent_cfg, 0) != expected_stage {
             deadline.assert_pending("EL0 deploy migration handover");
+            crate::cpu::scheduler::sleep_millis(10);
             yield_lp();
         }
         logln!("[deploy] local agent stage {} after migration.", status_word(agent_cfg, 0));
@@ -431,11 +458,12 @@ mod inner {
         // the reply must have reached the follower's transport.
         if is_leader {
             let acked_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-            let acks_before = status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS);
+            let acks_before = acks_before_migration.expect("leader ACK snapshot");
             while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS)
                 == acks_before
             {
                 acked_deadline.assert_pending("EL0 deploy follower reply acknowledged");
+                crate::cpu::scheduler::sleep_millis(10);
                 yield_lp();
             }
             logln!("[deploy] leader's post-migration reply was acknowledged by the follower.");
@@ -498,7 +526,11 @@ mod inner {
             },
         ];
 
-        let dns = spawn_with_manifest(DNS_ELF, ns, &dns_manifest);
+        let dns = spawn_with_manifest(
+            crate::service::store::service_elf(b"dns").expect("[el0_dns] dns.elf"),
+            ns,
+            &dns_manifest,
+        );
         logln!("[dns] dns spawned (asid={})", dns.asid);
 
         // Give each startup phase its own budget. In particular, do not spend
@@ -614,7 +646,7 @@ mod inner {
             yield_lp();
         }
         let echo = crate::service::supervisor::spawn_with_name_service(
-            ECHO_ELF,
+            crate::service::store::service_elf(b"echo").expect("[el0_dns] echo.elf"),
             ns,
             ConnectionRights::CALL,
         );
@@ -669,7 +701,20 @@ mod inner {
         let mut request = Vec::new();
         request.extend_from_slice(&ECHO_OP_ECHO.to_le_bytes());
         request.extend_from_slice(&42i64.to_le_bytes());
-        let echo_result = call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &request);
+        // The catalog entry can reach a follower before that replica has
+        // learned the current leader (and the two QEMU guests need not boot at
+        // the same rate).  Echo is idempotent, so transient routing/election
+        // errors are safely retryable until both applied views converge.
+        let deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        let echo_result = loop {
+            let result = call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &request);
+            if result == Some(42) {
+                break result;
+            }
+            deadline.assert_pending("EL0 dns remote echo leader convergence");
+            crate::cpu::scheduler::sleep_millis(250);
+            yield_lp();
+        };
         logln!("[dns] remote echo result = {echo_result:?}");
         assert_eq!(
             echo_result,

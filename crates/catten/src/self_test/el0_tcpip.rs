@@ -23,11 +23,6 @@ mod inner {
         },
     };
 
-    const TCPIP_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/tcpip.elf"));
-    const TCPCLIENT_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/tcpclient.elf"));
-
     // "SENT" packed LE; written to config word 0 by tcpclient on success.
     const CLIENT_SENTINEL: u32 = 0x5345_4e54;
 
@@ -87,7 +82,11 @@ mod inner {
 
         let ns = unsafe { TCPIP_NS.as_ref() }.expect("[tcpip] test state missing");
 
-        let tcpip = spawn_binary(TCPIP_ELF, ns, &[]);
+        let tcpip = spawn_binary(
+            crate::service::store::service_elf(b"tcpip").expect("[el0_tcpip] tcpip.elf"),
+            ns,
+            &[],
+        );
         logln!("[tcpip] service spawned (asid={})", tcpip.asid);
         let tcpip_cfg: *const u32 = {
             let base: *mut u8 = tcpip.status_frame.into();
@@ -104,7 +103,11 @@ mod inner {
 
         // Spawn the smoke client; it self-configures its role from the NIC MAC
         // and performs the cross-node TCP exchange.
-        let client = spawn_binary(TCPCLIENT_ELF, ns, &[]);
+        let client = spawn_binary(
+            crate::service::store::service_elf(b"tcpclient").expect("[el0_tcpip] tcpclient.elf"),
+            ns,
+            &[],
+        );
         let client_cfg: *const u32 = {
             let base: *mut u8 = client.status_frame.into();
             base as *const u32

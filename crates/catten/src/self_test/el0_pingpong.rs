@@ -272,7 +272,10 @@ extern "C" fn verify_ping_pong() {
     let frame = unsafe { PP_RESULT_FRAME }.expect("PP: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
-    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    // Ping's ABI-level wait is itself allowed 60 seconds. The verifier must
+    // not fail the suite (and tear down a networking peer) before that tested
+    // operation has reached its own deadline under a loaded debug build.
+    let deadline = crate::self_test::results::Deadline::after_millis(65_000);
     loop {
         let s0 = unsafe { core::ptr::read_volatile(result) };
         let s1 = unsafe { core::ptr::read_volatile(result.add(4)) };

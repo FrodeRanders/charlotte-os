@@ -302,6 +302,7 @@ pub extern "C" fn irq_dispatcher() {
                 .lock()
                 .set_ctx_switch_pending();
         }
+
         _ => {
             if crate::device::smmu::handle_interrupt(intid) {
                 gic::end_of_int(intid);

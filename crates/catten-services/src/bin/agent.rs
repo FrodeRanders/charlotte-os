@@ -1,23 +1,16 @@
 //! Cluster deploy agent: the node-side "picker-upper" of the server-class
-//! cluster vision (manual Chapter 17).
+//! cluster vision (manual Chapter 19).
 //!
 //! Each agent:
 //!
-//! 1. Uploads the demo artifact (a MAC-signed payload blob) to its node-local object store -- the
-//!    sketch's stand-in for "software lives in the interchangeable cluster object store".
-//! 2. Polls the replicated deployment manifest (the dns catalog) for assignments addressed to its
-//!    node key.
-//! 3. For each assignment: verifies the cluster signature over the deployment record, picks the
-//!    payload up from the object store, verifies the payload signature, registers the deployed name
-//!    in the distributed name service, and serves it.
-//! 4. When the cluster re-assigns the artifact elsewhere (migration), the agent stops serving and
-//!    exits; the dns endpoint-close watch unregisters its generation with fencing, so the new
-//!    generation is never clobbered.
-//!
-//! The signatures are placeholder FNV-1a MACs keyed with the shared
-//! deployment secret (real cryptography and the blank-start key ceremony are
-//! future work). The node key and poll interval arrive in the launch
-//! manifest, written by the kernel self-test.
+//! 1. Polls the replicated deployment manifest for assignments to this node.
+//! 2. Fetches the pinned object-store bytes, verifies their SHA-256 and CLS2
+//!    name-bound cluster signature, and passes the memory object to the
+//!    privileged deployment syscall.
+//! 3. The kernel loads that exact ELF in a fresh address space; the service
+//!    registers locally and the agent publishes it to the distributed catalog.
+//! 4. On reassignment the agent retires and reclaims the spawned domain. The
+//!    resulting endpoint close drives generation-fenced distributed removal.
 #![no_std]
 #![no_main]
 
@@ -52,16 +45,17 @@ const DATA_VADDR: usize = 0x0000_0000_2000_0000;
 const REPLY_SPINS: u64 = 50_000_000;
 
 /// A replicated deployment record as decoded from `OP_DEPLOY_QUERY`
-/// (`[generation][object_id][node_key]`, no signature: the Raft consensus
-/// that committed the record is its authenticity).
+/// (`[generation][object_id][node_key][artifact_sha256]`; Raft establishes
+/// the authoritative generation and the digest pins its exact bytes).
 struct DeploymentInfo {
     generation: u64,
     object_id: u64,
     node_key: u64,
+    artifact_digest: [u8; 32],
 }
 
 fn fail(stage: u32) -> ! {
-    config::write::<u32>(0, stage);
+    config::write_u32_release(0, stage);
     unsafe { thread_exit() }
 }
 
@@ -164,7 +158,12 @@ fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
 /// Read the artifact at `object_id` from the object store, verify that it is
 /// exactly the deployed artifact (SHA-256 identity) and that its signature
 /// note validates against the cluster's public key.
-fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Result<(), ()> {
+fn fetch_and_verify(
+    obj_conn: u64,
+    object_id: u64,
+    expected_digest: &[u8; 32],
+    cluster_key: &[u8; 32],
+) -> Result<(u64, usize), ()> {
     let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
     if read == 0 {
         return Err(());
@@ -174,7 +173,8 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Re
     if returned_connection != 0 {
         ipc_close(returned_connection);
     }
-    if status != 0 || returned_memory == 0 {
+    let len = usize::try_from(size).map_err(|_| ())?;
+    if status != 0 || returned_memory == 0 || len == 0 || len > memory_size(returned_memory) {
         if returned_memory != 0 {
             memory_close(returned_memory);
         }
@@ -184,59 +184,47 @@ fn fetch_and_verify(obj_conn: u64, object_id: u64, cluster_key: &[u8; 32]) -> Re
         memory_close(returned_memory);
         return Err(());
     }
-    let len = size as usize;
     let mut artifact = alloc::vec::Vec::with_capacity(len);
     for index in 0..len {
         artifact.push(unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) });
     }
     memory_unmap(returned_memory);
-    memory_close(returned_memory);
     // The artifact is the note-signed `greet` ELF: it must be exactly the
     // artifact this agent is built to serve, and its signature note must
     // validate against the cluster's public key.
-    if charlotte_launch::sha256::digest(&artifact) != charlotte_launch::GREET_ARTIFACT_SHA256 {
+    if charlotte_launch::sha256::digest(&artifact) != *expected_digest {
+        memory_close(returned_memory);
         return Err(());
     }
-    if charlotte_launch::signature_note::verify_elf(&artifact, cluster_key)
+    if charlotte_launch::signature_note::verify_elf_for_name(
+        &artifact,
+        cluster_key,
+        b"greet",
+    )
         != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
+        memory_close(returned_memory);
         return Err(());
     }
-    Ok(())
+    Ok((returned_memory, len))
 }
 
-/// Register the deployed name locally and in the distributed catalog, bind the
-/// endpoint, and serve `OP_GET` until the cluster re-assigns the artifact.
-///
-/// The serve loop never blocks on the dns: the publish reply and the
-/// retirement query are polled, so a caller's `OP_GET` is always answered
-/// even while the catalog entry is still replicating. (A blocking query here
-/// would deadlock: the dns waits for our reply inside `invoke_local` while we
-/// wait for its query reply.)
-fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, generation: u64) -> ! {
-    let endpoint = ipc_endpoint_create(deploy::INTERFACE, deploy::VERSION, 8);
-    if endpoint == 0 {
+/// Publish the independently running artifact domain, then supervise it until
+/// the assignment moves elsewhere.
+fn supervise(
+    dns_conn: u64,
+    ns_connection: u64,
+    my_node_key: u64,
+    poll_ms: u64,
+    generation: u64,
+) -> ! {
+    // A blocking node-name lookup is the startup synchronization: it proves
+    // that the spawned ELF, not this agent, created and registered its endpoint.
+    let service_connection = lookup(ns_connection, deploy::NAME);
+    if service_connection == 0 {
         fail(STAGE_FAIL);
     }
-    let register = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_REGISTER,
-        deploy::NAME,
-        endpoint,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    let local = if register == 0 {
-        None
-    } else {
-        let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
-        (generation >= 1).then_some(generation)
-    };
-    if local.is_none() {
-        fail(STAGE_FAIL);
-    }
-    if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
-        fail(STAGE_FAIL);
-    }
+    ipc_close(service_connection);
 
     // Publish through the dns. The reply is deferred until the catalog entry
     // has replicated (locally through the leader, or relayed to it); poll it
@@ -255,29 +243,6 @@ fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, gene
     let mut published = false;
     loop {
         cq_wait_timeout(1, poll_ms, 0);
-        // Drain and reply to pending calls first, unconditionally.
-        loop {
-            let message = ipc_recv(endpoint);
-            if message.status == ipc_status::NO_MESSAGE {
-                break;
-            }
-            if message.status == ipc_status::ENDPOINT_CLOSED {
-                unsafe { thread_exit() }
-            }
-            match message.opcode {
-                deploy::OP_GET => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, deploy::GREET_VALUE as i64);
-                    }
-                }
-                _ => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, -1);
-                    }
-                }
-            }
-        }
-
         // Publish progress: has the catalog registration committed?
         if !published {
             let (status, result, _returned_connection) = ipc_reply_poll(publish);
@@ -286,7 +251,7 @@ fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, gene
                 if result >= 1 {
                     published = true;
                     config::write::<u64>(8, generation);
-                    config::write::<u32>(0, STAGE_SERVING);
+                    config::write_u32_release(0, STAGE_SERVING);
                 } else {
                     fail(STAGE_FAIL);
                 }
@@ -306,7 +271,15 @@ fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, gene
                 }
                 let still_mine = entry.is_some_and(|entry| entry.node_key == my_node_key);
                 if !still_mine {
-                    config::write::<u32>(0, STAGE_RETIRED);
+                    loop {
+                        let retirement = retire_artifact();
+                        match retirement {
+                            0 => break,
+                            1 => cq_wait_timeout(1, poll_ms.min(25), 0),
+                            _ => fail(STAGE_FAIL),
+                        };
+                    }
+                    config::write_u32_release(0, STAGE_RETIRED);
                     unsafe { thread_exit() }
                 }
                 deploy_query = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, deploy::NAME);
@@ -318,8 +291,8 @@ fn serve(dns_conn: u64, ns_connection: u64, my_node_key: u64, poll_ms: u64, gene
     }
 }
 
-/// Decode a `OP_DEPLOY_QUERY` reply page (32 bytes, `[generation][object_id]
-/// [node_key][mac]`), mapped at `DATA_VADDR`. Returns `None` when the memory
+/// Decode a `OP_DEPLOY_QUERY` reply page (56 bytes, `[generation][object_id]
+/// [node_key][artifact_sha256]`), mapped at `DATA_VADDR`. Returns `None` when the memory
 /// cap is absent (the query errored or found nothing).
 fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if memory == 0 {
@@ -328,7 +301,10 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if memory_map(memory, DATA_VADDR, false) != 0 {
         return None;
     }
-    let mut bytes = [0u8; 24];
+    if memory_size(memory) < 56 {
+        return None;
+    }
+    let mut bytes = [0u8; 56];
     for (index, byte) in bytes.iter_mut().enumerate() {
         *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
     }
@@ -337,6 +313,7 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
         node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
+        artifact_digest: bytes[24..56].try_into().ok()?,
     })
 }
 
@@ -361,20 +338,19 @@ fn main(ctx: Context) -> ! {
         None => fail(STAGE_FAIL),
     };
     config::write::<u64>(16, my_node_key);
-    config::write::<u32>(0, STAGE_IDENTITY);
+    config::write_u32_release(0, STAGE_IDENTITY);
 
     // The cluster's public key: prefer the key committed by the ceremony
     // (obtained from the cluster), else the build-time copy the kernel
     // handed us in the launch manifest. The kernel pre-stages the signed
     // artifact into the object store; this agent only fetches, verifies, and
     // serves.
-    let cluster_key = match read_cluster_key(dns_conn) {
-        Some(key) => key,
-        None => match manifest_cluster_key(&ctx) {
-            Some(key) => key,
-            None => fail(STAGE_FAIL),
-        },
-    };
+    let cluster_key = manifest_cluster_key(&ctx).unwrap_or_else(|| fail(STAGE_FAIL));
+    if read_cluster_key(dns_conn).is_some_and(|replicated| replicated != cluster_key) {
+        // Replicated state may distribute the bootstrap anchor, but it may
+        // not replace it without an authenticated key-rotation protocol.
+        fail(STAGE_FAIL);
+    }
 
     loop {
         if let Some(entry) = query_deployment(dns_conn, deploy::NAME) {
@@ -382,9 +358,17 @@ fn main(ctx: Context) -> ! {
             // If it names this node, the artifact must validate against the
             // cluster's public key before it is served.
             if entry.node_key == my_node_key
-                && fetch_and_verify(obj_conn, entry.object_id, &cluster_key).is_ok()
+                && let Ok((artifact_cap, artifact_size)) = fetch_and_verify(
+                    obj_conn,
+                    entry.object_id,
+                    &entry.artifact_digest,
+                    &cluster_key,
+                )
             {
-                serve(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
+                if spawn_artifact(artifact_cap, artifact_size, deploy::NAME) == 0 {
+                    fail(STAGE_FAIL);
+                }
+                supervise(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
             }
         }
         cq_wait_timeout(1, poll_ms, 0);

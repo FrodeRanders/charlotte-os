@@ -26,14 +26,12 @@ mod inner {
     const NODE_ID_KEY: u64 = charlotte_launch::manifest_key(b"node-id");
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
 
-    #[cfg(target_arch = "aarch64")]
-    const DISCO_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/disco.elf"));
-
     static mut DISCO_NS: Option<NameServiceHandle> = None;
 
     fn spawn_disco(manifest: &[ManifestEntry<'_>], ns_handle: &NameServiceHandle) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(DISCO_ELF);
+        let addr = crate::service::loader::load_domain(
+            crate::service::store::service_elf(b"disco").expect("[el0_disco] disco.elf"),
+        );
         let conn = crate::ipc::connection_delegate(
             ns_handle.domain.asid,
             ns_handle.endpoint_cap,

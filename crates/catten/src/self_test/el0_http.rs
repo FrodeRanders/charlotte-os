@@ -42,17 +42,6 @@ mod inner {
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
-    const TCPIP_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/tcpip.elf"));
-    const HTTPD_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/httpd.elf"));
-    const DISCO_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/disco.elf"));
-    const DNS_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/dns.elf"));
-    const RELMSG_ELF: &[u8] =
-        include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relmsg.elf"));
-
     static mut HTTP_NS: Option<NameServiceHandle> = None;
 
     fn spawn_binary(
@@ -181,7 +170,11 @@ mod inner {
                 value: ManifestValue::Bytes(&[10, 0, 2, 2]),
             },
         ];
-        let tcpip = spawn_binary(TCPIP_ELF, ns, &tcpip_manifest);
+        let tcpip = spawn_binary(
+            crate::service::store::service_elf(b"tcpip").expect("[el0_http] tcpip.elf"),
+            ns,
+            &tcpip_manifest,
+        );
         logln!("[http] tcpip spawned (asid={})", tcpip.asid);
         let tcpip_cfg: *const u32 = {
             let base: *mut u8 = tcpip.status_frame.into();
@@ -198,7 +191,7 @@ mod inner {
         // Stand up a single-node cluster (disco + dns) so the report can show
         // the distributed name service's catalog as the cluster view.
         let disco = spawn_binary(
-            DISCO_ELF,
+            crate::service::store::service_elf(b"disco").expect("[el0_http] disco.elf"),
             ns,
             &[
                 ManifestEntry {
@@ -225,7 +218,11 @@ mod inner {
 
             // The dns needs the reliable-message transport registered even
             // with a single-node cluster (it is the Raft transport).
-            let relmsg = spawn_binary(RELMSG_ELF, ns, &[]);
+            let relmsg = spawn_binary(
+                crate::service::store::service_elf(b"relmsg").expect("[el0_http] relmsg.elf"),
+                ns,
+                &[],
+            );
             logln!("[http] relmsg spawned (asid={})", relmsg.asid);
             let relmsg_cfg: *const u32 = {
                 let base: *mut u8 = relmsg.status_frame.into();
@@ -237,7 +234,7 @@ mod inner {
                 logln!("[http] relmsg registered.");
 
                 let dns = spawn_binary(
-                    DNS_ELF,
+                    crate::service::store::service_elf(b"dns").expect("[el0_http] dns.elf"),
                     ns,
                     &[
                         ManifestEntry {
@@ -286,7 +283,11 @@ mod inner {
             }
         }
 
-        let httpd = spawn_binary(HTTPD_ELF, ns, &[]);
+        let httpd = spawn_binary(
+            crate::service::store::service_elf(b"httpd").expect("[el0_http] httpd.elf"),
+            ns,
+            &[],
+        );
         let httpd_cfg: *const u32 = {
             let base: *mut u8 = httpd.status_frame.into();
             base as *const u32

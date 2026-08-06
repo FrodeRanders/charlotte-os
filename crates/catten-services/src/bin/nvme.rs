@@ -801,14 +801,18 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        if irq_delivery {
-            // MSI-X is active: endpoint readiness and device interrupts both
-            // wake this CQ, so remain asleep until real work arrives.
+        if irq_delivery && io.outstanding == 0 {
+            // With no command in flight, endpoint readiness or a device
+            // interrupt is the only useful work. Sleep indefinitely so an
+            // idle driver consumes no CPU.
             cq_wait(1, 0);
         } else {
-            // Compatibility fallback for platforms without an interrupt
-            // route. Keep polling bounded, but do not turn an idle VM into a
-            // 1 kHz timer workload.
+            // Poll in-flight commands on a bounded watchdog even when MSI-X
+            // is configured. Binding an IRQ proves that a route exists, not
+            // that every edge will be delivered; sleeping indefinitely after
+            // one lost edge deadlocks the block service and every client above
+            // it. The timeout is armed only while I/O is outstanding (or when
+            // no interrupt route exists), preserving zero-cost idle sleep.
             cq_wait_timeout(1, 10, 0);
         }
 

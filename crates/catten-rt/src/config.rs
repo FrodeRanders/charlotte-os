@@ -212,6 +212,41 @@ pub fn write<T: Copy>(offset: usize, value: T) {
     }
 }
 
+/// Publish a 32-bit status value to another thread or protection domain.
+///
+/// Unlike [`write`], this is a synchronization operation: a reader using
+/// [`read_u32_acquire`] that observes `value` also observes all writes that
+/// preceded this publication. Lifecycle stages and ready flags shared across
+/// LPs must use this API rather than volatile access.
+pub fn write_u32_release(offset: usize, value: u32) {
+    use core::sync::atomic::{
+        AtomicU32,
+        Ordering,
+    };
+
+    assert!(offset.is_multiple_of(core::mem::align_of::<AtomicU32>()));
+    assert!(offset.saturating_add(core::mem::size_of::<AtomicU32>()) <= STATUS_PAGE_SIZE as usize);
+    let slot = unsafe { &*((STATUS_VADDR + offset) as *const AtomicU32) };
+    slot.store(value, Ordering::Release);
+}
+
+/// Acquire a 32-bit status value published by [`write_u32_release`].
+///
+/// # Safety
+///
+/// The location must be initialized and used exclusively as an `AtomicU32`.
+pub unsafe fn read_u32_acquire(offset: usize) -> u32 {
+    use core::sync::atomic::{
+        AtomicU32,
+        Ordering,
+    };
+
+    assert!(offset.is_multiple_of(core::mem::align_of::<AtomicU32>()));
+    assert!(offset.saturating_add(core::mem::size_of::<AtomicU32>()) <= STATUS_PAGE_SIZE as usize);
+    let value = unsafe { &*((STATUS_VADDR + offset) as *const AtomicU32) };
+    value.load(Ordering::Acquire)
+}
+
 /// Pointer to the canonical output/status area at the start of the status page.
 pub fn output_ptr<T>() -> *mut T {
     (STATUS_VADDR + OUTPUT_OFFSET) as *mut T

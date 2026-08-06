@@ -102,6 +102,7 @@ use catten_syscall::{
     memory_alloc,
     memory_close,
     memory_map,
+    memory_size,
     memory_unmap,
     poll as completion_poll,
     submit_detached_timer,
@@ -139,6 +140,41 @@ struct CompletedCall {
     result: i64,
     peer: alloc::string::String,
     settled_after_ack: u64,
+}
+
+enum LocalCallDestination {
+    Client {
+        reply: u64,
+    },
+    Remote {
+        caller: Vec<u8>,
+        session: u64,
+        call_id: u64,
+        target_generation: u64,
+        peer: alloc::string::String,
+        settled_after_ack: u64,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum LocalCallStage {
+    Lookup,
+    Invoke,
+}
+
+/// A node-local service invocation advanced by the dns reactor.
+///
+/// Lookup and invocation are deliberately asynchronous: blocking this thread
+/// on an arbitrary service would also stop Raft heartbeats and relmsg receive
+/// draining, allowing one failed service to destabilize the cluster catalog.
+struct PendingLocalCall {
+    completion: u64,
+    connection: u64,
+    opcode: u32,
+    arg: i64,
+    deadline: u64,
+    stage: LocalCallStage,
+    destination: LocalCallDestination,
 }
 
 enum PendingQueryKind {
@@ -398,23 +434,90 @@ fn drive_inbound(
     }
 }
 
-/// Invoke a service registered with the node-local name service, returning
-/// its scalar result.
-fn invoke_local(ns_conn: u64, name: &[u8], opcode: u32, arg: i64) -> i64 {
+/// Begin a service invocation through the node-local name service. The caller
+/// must retain and poll the returned state from its reactor.
+fn begin_local_call(
+    ns_conn: u64,
+    name: &[u8],
+    opcode: u32,
+    arg: i64,
+    deadline: u64,
+    destination: LocalCallDestination,
+) -> Result<PendingLocalCall, i64> {
     let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
     if lookup == 0 {
-        return dns::ERR_NOT_FOUND;
+        return Err(dns::ERR_NOT_FOUND);
     }
-    let (generation, conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || conn == 0 {
-        return dns::ERR_NOT_FOUND;
+    Ok(PendingLocalCall {
+        completion: lookup,
+        connection: 0,
+        opcode,
+        arg,
+        deadline,
+        stage: LocalCallStage::Lookup,
+        destination,
+    })
+}
+
+/// Advance one local invocation without blocking the Raft reactor. Returns a
+/// terminal scalar result when lookup/invocation finishes or its deadline
+/// expires.
+fn poll_local_call(call: &mut PendingLocalCall, now: u64) -> Option<i64> {
+    if now >= call.deadline {
+        ipc_close(call.completion);
+        if call.connection != 0 {
+            ipc_close(call.connection);
+            call.connection = 0;
+        }
+        // Once invocation was submitted the target may have executed even if
+        // its reply did not arrive. Preserve that uncertainty for callers.
+        return Some(match call.stage {
+            LocalCallStage::Lookup => dns::ERR_NOT_FOUND,
+            LocalCallStage::Invoke => dns::ERR_UNCERTAIN,
+        });
     }
-    let call = ipc_scalar_call(conn, opcode, arg as u64);
-    if call == 0 {
-        return dns::ERR_NOT_FOUND;
+
+    let (status, result, returned_connection, memory) =
+        ipc_reply_poll_with_memory(call.completion);
+    if status == 1 {
+        return None;
     }
-    let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-    result
+    ipc_close(call.completion);
+    if memory != 0 {
+        memory_close(memory);
+    }
+
+    match call.stage {
+        LocalCallStage::Lookup => {
+            if status != 0 || result < 1 || returned_connection == 0 {
+                if returned_connection != 0 {
+                    ipc_close(returned_connection);
+                }
+                return Some(dns::ERR_NOT_FOUND);
+            }
+            let completion = ipc_scalar_call(returned_connection, call.opcode, call.arg as u64);
+            if completion == 0 {
+                ipc_close(returned_connection);
+                return Some(dns::ERR_NOT_FOUND);
+            }
+            call.completion = completion;
+            call.connection = returned_connection;
+            call.stage = LocalCallStage::Invoke;
+            None
+        }
+        LocalCallStage::Invoke => {
+            if returned_connection != 0 {
+                ipc_close(returned_connection);
+            }
+            ipc_close(call.connection);
+            call.connection = 0;
+            Some(if status == 0 {
+                result as i64
+            } else {
+                dns::ERR_UNCERTAIN
+            })
+        }
+    }
 }
 
 /// Read the `[opcode:u32 LE][arg:i64 LE]` request from an `OP_CALL` memory
@@ -448,10 +551,14 @@ fn read_generation(message: &catten_syscall::IpcMessage) -> Option<u64> {
     Some(generation)
 }
 
-/// Read an `OP_DEPLOY` request: `[object_id:u64 LE][node_key:u64 LE]` from the
-/// attached memory object.
-fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64)> {
+/// Read an `OP_DEPLOY` request:
+/// `[object_id:u64][node_key:u64][artifact_sha256:32]`.
+fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64, [u8; 32])> {
     if message.memory == 0 {
+        return None;
+    }
+    if memory_size(message.memory) < 48 {
+        memory_close(message.memory);
         return None;
     }
     if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
@@ -460,9 +567,13 @@ fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64
     }
     let object_id = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
     let node_key = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 8) as *const u64) };
+    let mut digest = [0u8; 32];
+    for (index, byte) in digest.iter_mut().enumerate() {
+        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 16 + index) as *const u8) };
+    }
     memory_unmap(message.memory);
     memory_close(message.memory);
-    Some((object_id, node_key))
+    Some((object_id, node_key, digest))
 }
 
 /// Resolve the local name-service registration for `name`: either the
@@ -487,6 +598,10 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
 /// Read the 32 key bytes attached to an `OP_SET_KEY` request.
 fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
     if message.memory == 0 {
+        return None;
+    }
+    if memory_size(message.memory) < 32 {
+        memory_close(message.memory);
         return None;
     }
     if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
@@ -563,7 +678,7 @@ fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(dns::status::STAGE, 1);
+    config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
         Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
         _ => b"default".to_vec(),
@@ -576,12 +691,15 @@ fn main(ctx: Context) -> ! {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 300,
     };
+    // Keep heartbeats comfortably below the election timeout without
+    // flooding the serialized relmsg path on a slow emulator.
+    let heartbeat_interval_ms = (election_timeout_ms / 4).clamp(25, 250);
 
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => fatal(1),
     };
-    config::write::<u32>(dns::status::STAGE, 2);
+    config::write_u32_release(dns::status::STAGE, 2);
 
     // MAC and persisted node identity.
     let net_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
@@ -642,13 +760,13 @@ fn main(ctx: Context) -> ! {
         }
         fatal(19);
     }
-    config::write::<u32>(dns::status::STAGE, 3);
+    config::write_u32_release(dns::status::STAGE, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
     if !wait_for_boot_done(ns_conn) {
         fatal(7);
     }
-    config::write::<u32>(dns::status::STAGE, 4);
+    config::write_u32_release(dns::status::STAGE, 4);
 
     let relmsg_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, relmsg::NAME);
     if relmsg_lookup == 0 {
@@ -666,7 +784,7 @@ fn main(ctx: Context) -> ! {
     if disco_generation < 1 || disco_conn == 0 {
         fatal(11);
     }
-    config::write::<u32>(dns::status::STAGE, 5);
+    config::write_u32_release(dns::status::STAGE, 5);
 
     // The dns endpoint: services register and look up through this service.
     let endpoint = ipc_endpoint_create(dns::INTERFACE, dns::VERSION, 16);
@@ -691,7 +809,7 @@ fn main(ctx: Context) -> ! {
         fatal(15);
     }
     let dns_session = generation as u64;
-    config::write::<u32>(dns::status::STAGE, 6);
+    config::write_u32_release(dns::status::STAGE, 6);
 
     // Resolve the configured voter identities to transient MAC routes. The
     // launch manifest grants voting authority; discovery never does.
@@ -725,7 +843,7 @@ fn main(ctx: Context) -> ! {
             discovery_rounds += 1;
         }
     }
-    config::write::<u32>(dns::status::STAGE, 7);
+    config::write_u32_release(dns::status::STAGE, 7);
 
     let mut peers = Vec::new();
     let me = Peer::voter(node_name_str.clone(), 0);
@@ -740,7 +858,7 @@ fn main(ctx: Context) -> ! {
         transport.add_peer(peer_name, mac);
         peers.push(Peer::voter(peer_name.clone(), 0));
     }
-    config::write::<u32>(dns::status::PEER_COUNT, peers.len() as u32);
+    config::write_u32_release(dns::status::PEER_COUNT, peers.len() as u32);
 
     let catalog = NameCatalog::new();
     // A clustered voter must retain term, vote, log, and snapshot state.
@@ -767,7 +885,7 @@ fn main(ctx: Context) -> ! {
         snapshot_min_entries: 0,
         snapshot_chunk_bytes: 1200,
     });
-    config::write::<u32>(dns::status::STAGE, 8);
+    config::write_u32_release(dns::status::STAGE, 8);
 
     let cq = ctx.completion_queue_layout();
     let mut recv_pending: u64 = 0;
@@ -777,6 +895,7 @@ fn main(ctx: Context) -> ! {
     let mut pending_registers: Vec<PendingRegistration> = Vec::new();
     let mut in_flight_calls: Vec<InFlightCall> = Vec::new();
     let mut completed_calls: VecDeque<CompletedCall> = VecDeque::new();
+    let mut pending_local_calls: Vec<PendingLocalCall> = Vec::new();
     let mut next_reply_ordinal: BTreeMap<alloc::string::String, u64> = BTreeMap::new();
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
@@ -784,17 +903,14 @@ fn main(ctx: Context) -> ! {
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+    let mut last_heartbeat_broadcast = 0u64;
 
     loop {
-        let (_, timed_out) = cq_wait_timeout(
-            1,
-            if timer_armed {
-                1_000
-            } else {
-                LOOP_TICK_MS
-            },
-            0,
-        );
+        // The detached timer owns Raft timekeeping, but inbound IPC replies
+        // are not guaranteed to wake this CQ. Bound the reactor sleep to its
+        // loop period so the relmsg receive queue cannot fill behind an
+        // armed-but-delayed timer.
+        let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
         let mut tick_due = !timer_armed && timed_out != 0;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
@@ -853,17 +969,21 @@ fn main(ctx: Context) -> ! {
                                                 && completed.call_id == call_id
                                         })
                                         .map(|completed| completed.result);
-                                    let reply_ordinal = next_reply_ordinal
-                                        .entry(source_peer.clone())
-                                        .or_insert_with(|| {
-                                            transport.acknowledged_count_for(
-                                                &source_peer,
-                                                catten_services::rcall::TAG_REPLY,
-                                            )
-                                        });
-                                    *reply_ordinal = reply_ordinal.saturating_add(1);
+                                    let duplicate_pending = pending_local_calls.iter().any(|call| {
+                                        matches!(
+                                            &call.destination,
+                                            LocalCallDestination::Remote {
+                                                caller: pending_caller,
+                                                session: pending_session,
+                                                call_id: pending_call_id,
+                                                ..
+                                            } if pending_caller == &caller
+                                                && *pending_session == session
+                                                && *pending_call_id == call_id
+                                        )
+                                    });
 
-                                    if cached_result.is_none()
+                                    if cached_result.is_none() && !duplicate_pending
                                         && completed_calls.len() >= DEDUP_WINDOW
                                         && let Some(index) =
                                             completed_calls.iter().position(|completed| {
@@ -875,50 +995,128 @@ fn main(ctx: Context) -> ! {
                                     {
                                         completed_calls.remove(index);
                                     }
-                                    let has_dedup_capacity = completed_calls.len() < DEDUP_WINDOW;
-                                    let result = cached_result.unwrap_or_else(|| {
-                                        if !has_dedup_capacity {
-                                            return dns::ERR_BUSY;
-                                        }
-                                        match catalog.lookup(&target) {
-                                            Some(owner)
-                                                if owner.node == node_name
-                                                    && owner.generation == target_generation =>
-                                            {
-                                                invoke_local(ns_conn, &target, opcode, arg)
+                                    let remote_pending = pending_local_calls
+                                        .iter()
+                                        .filter(|call| {
+                                            matches!(
+                                                call.destination,
+                                                LocalCallDestination::Remote { .. }
+                                            )
+                                        })
+                                        .count();
+                                    let has_dedup_capacity = completed_calls.len() + remote_pending
+                                        < DEDUP_WINDOW;
+
+                                    if !duplicate_pending {
+                                        let mut reserved_reply_ordinal = None;
+                                        let result = if let Some(result) = cached_result {
+                                            Some(result)
+                                        } else if !has_dedup_capacity {
+                                            Some(dns::ERR_BUSY)
+                                        } else {
+                                            match catalog.lookup(&target) {
+                                                Some(owner)
+                                                    if owner.node == node_name
+                                                        && owner.generation
+                                                            == target_generation =>
+                                                {
+                                                    if pending_local_calls.len()
+                                                        >= MAX_IN_FLIGHT_CALLS
+                                                    {
+                                                        Some(dns::ERR_BUSY)
+                                                    } else {
+                                                        let reply_ordinal = next_reply_ordinal
+                                                            .entry(source_peer.clone())
+                                                            .or_insert_with(|| {
+                                                                transport
+                                                                    .acknowledged_count_for(
+                                                                        &source_peer,
+                                                                        catten_services::rcall::TAG_REPLY,
+                                                                    )
+                                                            });
+                                                        *reply_ordinal =
+                                                            reply_ordinal.saturating_add(1);
+                                                        reserved_reply_ordinal =
+                                                            Some(*reply_ordinal);
+                                                        let destination =
+                                                            LocalCallDestination::Remote {
+                                                                caller: caller.clone(),
+                                                                session,
+                                                                call_id,
+                                                                target_generation,
+                                                                peer: source_peer.clone(),
+                                                                settled_after_ack: reserved_reply_ordinal
+                                                                    .expect("reply ordinal reserved"),
+                                                            };
+                                                        match begin_local_call(
+                                                            ns_conn,
+                                                            &target,
+                                                            opcode,
+                                                            arg,
+                                                            node.millis().saturating_add(
+                                                                REMOTE_CALL_TIMEOUT_MS,
+                                                            ),
+                                                            destination,
+                                                        ) {
+                                                            Ok(call) => {
+                                                                pending_local_calls.push(call);
+                                                                None
+                                                            }
+                                                            Err(result) => Some(result),
+                                                        }
+                                                    }
+                                                }
+                                                Some(owner) if owner.node == node_name => {
+                                                    Some(dns::ERR_STALE_GENERATION)
+                                                }
+                                                _ => Some(dns::ERR_NOT_FOUND),
                                             }
-                                            Some(owner) if owner.node == node_name => {
-                                                dns::ERR_STALE_GENERATION
+                                        };
+
+                                        if let Some(result) = result {
+                                            let settled_after_ack =
+                                                reserved_reply_ordinal.unwrap_or_else(|| {
+                                                    let reply_ordinal = next_reply_ordinal
+                                                        .entry(source_peer.clone())
+                                                        .or_insert_with(|| {
+                                                            transport.acknowledged_count_for(
+                                                                &source_peer,
+                                                                catten_services::rcall::TAG_REPLY,
+                                                            )
+                                                        });
+                                                    *reply_ordinal =
+                                                        reply_ordinal.saturating_add(1);
+                                                    *reply_ordinal
+                                                });
+                                            if cached_result.is_none() && has_dedup_capacity {
+                                                completed_calls.push_back(CompletedCall {
+                                                    caller,
+                                                    session,
+                                                    call_id,
+                                                    result,
+                                                    peer: source_peer.clone(),
+                                                    settled_after_ack,
+                                                });
                                             }
-                                            _ => dns::ERR_NOT_FOUND,
+                                            remote_calls_served =
+                                                remote_calls_served.wrapping_add(1);
+    config::write_u32_release(
+                                                dns::status::REMOTE_CALLS_SERVED,
+                                                remote_calls_served,
+                                            );
+                                            let reply = catten_services::rcall::encode_reply(
+                                                session,
+                                                call_id,
+                                                target_generation,
+                                                result,
+                                            );
+                                            transport.send_message(
+                                                &source_peer,
+                                                catten_services::rcall::TAG_REPLY,
+                                                reply,
+                                            );
                                         }
-                                    });
-                                    if cached_result.is_none() && has_dedup_capacity {
-                                        completed_calls.push_back(CompletedCall {
-                                            caller,
-                                            session,
-                                            call_id,
-                                            result,
-                                            peer: source_peer.clone(),
-                                            settled_after_ack: *reply_ordinal,
-                                        });
                                     }
-                                    remote_calls_served = remote_calls_served.wrapping_add(1);
-                                    config::write::<u32>(
-                                        dns::status::REMOTE_CALLS_SERVED,
-                                        remote_calls_served,
-                                    );
-                                    let reply = catten_services::rcall::encode_reply(
-                                        session,
-                                        call_id,
-                                        target_generation,
-                                        result,
-                                    );
-                                    transport.send_message(
-                                        &source_peer,
-                                        catten_services::rcall::TAG_REPLY,
-                                        reply,
-                                    );
                                 }
                             }
                             Some(catten_services::rcall::TAG_REPLY) => {
@@ -948,7 +1146,7 @@ fn main(ctx: Context) -> ! {
                                     && source_peer.as_bytes() == caller
                                 {
                                     remote_queries_served = remote_queries_served.wrapping_add(1);
-                                    config::write::<u32>(
+    config::write_u32_release(
                                         dns::status::REMOTE_QUERIES_SERVED,
                                         remote_queries_served,
                                     );
@@ -1015,7 +1213,28 @@ fn main(ctx: Context) -> ! {
                                                 Some(status)
                                             } else if let Some(entry) = entry {
                                                 if entry.node == node_name {
-                                                    Some(invoke_local(ns_conn, &name, opcode, arg))
+                                                    if pending_local_calls.len()
+                                                        >= MAX_IN_FLIGHT_CALLS
+                                                    {
+                                                        Some(dns::ERR_BUSY)
+                                                    } else {
+                                                        match begin_local_call(
+                                                            ns_conn,
+                                                            &name,
+                                                            opcode,
+                                                            arg,
+                                                            node.millis().saturating_add(
+                                                                REMOTE_CALL_TIMEOUT_MS,
+                                                            ),
+                                                            LocalCallDestination::Client { reply },
+                                                        ) {
+                                                            Ok(call) => {
+                                                                pending_local_calls.push(call);
+                                                                None
+                                                            }
+                                                            Err(result) => Some(result),
+                                                        }
+                                                    }
                                                 } else if in_flight_calls.len()
                                                     >= MAX_IN_FLIGHT_CALLS
                                                 {
@@ -1164,7 +1383,7 @@ fn main(ctx: Context) -> ! {
                                     };
                                     if generation >= 1 && connection != 0 {
                                         let close_watch = ipc_connection_watch_closed(connection);
-                                        config::write::<u32>(
+    config::write_u32_release(
                                             dns::status::PUBLICATION_LIFECYCLE,
                                             if close_watch == u64::MAX {
                                                 u32::MAX
@@ -1213,15 +1432,14 @@ fn main(ctx: Context) -> ! {
                 }
             }
         }
-
         transport.drain_outbound();
         transport.reap_acks();
-        config::write::<u32>(
+    config::write_u32_release(
             dns::status::REMOTE_CALL_ACKS,
             transport.acknowledged_count(catten_services::rcall::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
         );
-        config::write::<u32>(
+    config::write_u32_release(
             dns::status::REMOTE_QUERY_REPLY_ACKS,
             transport.acknowledged_count(catten_services::rquery::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
@@ -1229,9 +1447,8 @@ fn main(ctx: Context) -> ! {
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
-            config::write::<u32>(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
+            config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
         }
-
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
@@ -1245,8 +1462,7 @@ fn main(ctx: Context) -> ! {
                 break;
             }
             served += 1;
-            config::write::<u32>(dns::status::IPC_REQUESTS_SERVED, served);
-
+            config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
             match message.opcode {
                 dns::OP_REGISTER => {
                     let name = packed_name(message.arg0);
@@ -1370,14 +1586,19 @@ fn main(ctx: Context) -> ! {
                         dns::ERR_NOT_LEADER
                     } else {
                         match request {
-                            Some((object_id, node_key)) => {
+                            Some((object_id, node_key, artifact_digest)) => {
                                 // A cluster decision: commit the assignment
                                 // to the replicated manifest. Its
                                 // authenticity is the Raft consensus; the
                                 // reply is deferred until the command is
                                 // committed (pending_registers below).
                                 match node.submit_command(
-                                    encode_deploy(&artifact, object_id, node_key),
+                                    encode_deploy(
+                                        &artifact,
+                                        object_id,
+                                        node_key,
+                                        &artifact_digest,
+                                    ),
                                     node.millis(),
                                 ) {
                                     Ok(log_index) => {
@@ -1411,10 +1632,11 @@ fn main(ctx: Context) -> ! {
                     // replicated to this replica. Agents poll, so no read
                     // barrier is required.
                     if let Some(entry) = catalog.deployment(&artifact) {
-                        let mut bytes = Vec::with_capacity(24);
+                        let mut bytes = Vec::with_capacity(56);
                         bytes.extend_from_slice(&entry.generation.to_le_bytes());
                         bytes.extend_from_slice(&entry.object_id.to_le_bytes());
                         bytes.extend_from_slice(&entry.node_key.to_le_bytes());
+                        bytes.extend_from_slice(&entry.artifact_digest);
                         reply_move_bytes(message.reply, &bytes);
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);
@@ -1427,7 +1649,7 @@ fn main(ctx: Context) -> ! {
                         dns::ERR_NOT_LEADER
                     } else {
                         match read_key(&message) {
-                            Some(key) => {
+                            Some(key) if key == charlotte_launch::CLUSTER_PUBLIC_KEY => {
                                 // The key ceremony: commit the cluster's
                                 // public key to the replicated state. The
                                 // reply is deferred until it has committed.
@@ -1445,6 +1667,7 @@ fn main(ctx: Context) -> ! {
                                     Err(code) => code,
                                 }
                             }
+                            Some(_) => dns::ERR_UNTRUSTED_KEY,
                             None => dns::ERR_TOO_LARGE,
                         }
                     };
@@ -1645,7 +1868,26 @@ fn main(ctx: Context) -> ! {
                     } else {
                         match linearizable_entry(&node, &name) {
                             Ok(Some(owner)) if owner.node == node_name => {
-                                invoke_local(ns_conn, &name, opcode, arg)
+                                if pending_local_calls.len() >= MAX_IN_FLIGHT_CALLS {
+                                    dns::ERR_BUSY
+                                } else {
+                                    match begin_local_call(
+                                        ns_conn,
+                                        &name,
+                                        opcode,
+                                        arg,
+                                        node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                        LocalCallDestination::Client {
+                                            reply: message.reply,
+                                        },
+                                    ) {
+                                        Ok(call) => {
+                                            pending_local_calls.push(call);
+                                            continue;
+                                        }
+                                        Err(result) => result,
+                                    }
+                                }
                             }
                             Ok(Some(owner)) => {
                                 // Remote: relay to the hosting node's dns over
@@ -1950,7 +2192,7 @@ fn main(ctx: Context) -> ! {
                         == Some(generation);
                     if activated && connection != 0 {
                         let close_watch = ipc_connection_watch_closed(connection);
-                        config::write::<u32>(
+    config::write_u32_release(
                             dns::status::PUBLICATION_LIFECYCLE,
                             if close_watch == u64::MAX {
                                 u32::MAX
@@ -2044,7 +2286,7 @@ fn main(ctx: Context) -> ! {
                     publication.close_watch = u64::MAX;
                     publication.connection = 0;
                     publication.endpoint_closed = true;
-                    config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 2);
+                    config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 2);
                 }
             }
 
@@ -2111,7 +2353,7 @@ fn main(ctx: Context) -> ! {
                             now,
                         )
                     {
-                        config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 3);
+                        config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 3);
                         pending_registers.push(PendingRegistration::Unregister {
                             log_index,
                             reply: 0,
@@ -2122,7 +2364,7 @@ fn main(ctx: Context) -> ! {
                         });
                     }
                 } else if let Some(leader) = node.known_leader_id.as_ref() {
-                    config::write::<u32>(dns::status::PUBLICATION_LIFECYCLE, 4);
+                    config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 4);
                     transport.send_message(
                         leader,
                         catten_services::runregister::TAG_REQUEST,
@@ -2135,6 +2377,61 @@ fn main(ctx: Context) -> ! {
                 }
             }
             publication_index += 1;
+        }
+
+        // Advance node-local invocations without ever parking the Raft
+        // reactor on a service reply. This keeps heartbeats, relmsg receive,
+        // and unrelated catalog requests moving even when a target service is
+        // slow or has failed.
+        let mut index = 0;
+        while index < pending_local_calls.len() {
+            let Some(result) = poll_local_call(&mut pending_local_calls[index], node.millis())
+            else {
+                index += 1;
+                continue;
+            };
+            let call = pending_local_calls.swap_remove(index);
+            match call.destination {
+                LocalCallDestination::Client {
+                    reply,
+                } => {
+                    if reply != 0 {
+                        ipc_reply(reply, result);
+                    }
+                }
+                LocalCallDestination::Remote {
+                    caller,
+                    session,
+                    call_id,
+                    target_generation,
+                    peer,
+                    settled_after_ack,
+                } => {
+                    completed_calls.push_back(CompletedCall {
+                        caller,
+                        session,
+                        call_id,
+                        result,
+                        peer: peer.clone(),
+                        settled_after_ack,
+                    });
+                    remote_calls_served = remote_calls_served.wrapping_add(1);
+    config::write_u32_release(
+                        dns::status::REMOTE_CALLS_SERVED,
+                        remote_calls_served,
+                    );
+                    transport.send_message(
+                        &peer,
+                        catten_services::rcall::TAG_REPLY,
+                        catten_services::rcall::encode_reply(
+                            session,
+                            call_id,
+                            target_generation,
+                            result,
+                        ),
+                    );
+                }
+            }
         }
 
         // A timeout cannot prove whether a remote target executed before its
@@ -2183,14 +2480,18 @@ fn main(ctx: Context) -> ! {
             if node.check_timeout() {
                 node.start_election(node.millis());
             }
+            if node.state == NodeState::Leader
+                && node.millis().saturating_sub(last_heartbeat_broadcast)
+                    >= heartbeat_interval_ms
+            {
+                node.broadcast_heartbeat(node.millis());
+                last_heartbeat_broadcast = node.millis();
+            }
             timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
         }
-        if node.state == NodeState::Leader {
-            node.broadcast_heartbeat(node.millis());
-        }
 
-        config::write::<u32>(dns::status::CURRENT_TERM, node.current_term as u32);
-        config::write::<u32>(
+        config::write_u32_release(dns::status::CURRENT_TERM, node.current_term as u32);
+    config::write_u32_release(
             dns::status::RAFT_STATE,
             match node.state {
                 NodeState::Candidate => 2,
@@ -2198,7 +2499,7 @@ fn main(ctx: Context) -> ! {
                 NodeState::Follower => 1,
             },
         );
-        config::write::<u32>(dns::status::CATALOG_ENTRIES, catalog.registered_count() as u32);
+        config::write_u32_release(dns::status::CATALOG_ENTRIES, catalog.registered_count() as u32);
     }
 }
 

@@ -303,7 +303,7 @@ impl Completion {
     }
 
     /// A terminal result has been posted (whether or not it has been drained).
-    fn is_terminal(&self) -> bool {
+    pub(crate) fn is_terminal(&self) -> bool {
         matches!(self.inner.lock().state, OpState::Completed(_) | OpState::Observed)
     }
 

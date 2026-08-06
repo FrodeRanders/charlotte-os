@@ -142,9 +142,11 @@ impl RelmsgRaftTransport {
     fn queue_rpc(&self, peer_id: &str, tag: u8, payload: Vec<u8>) {
         let mut outbound = self.outbound.lock();
         let queue = outbound.entry(peer_id.to_string()).or_default();
-        // Coalesce queued heartbeats: a newer AppendEntries supersedes an older
-        // one already waiting, so a slow ACK cannot starve other traffic
-        // (relmsg allows one in-flight send per peer).
+        // Coalesce queued AppendEntries requests. A newer unsent request
+        // supersedes an older heartbeat/replication attempt. Responses are
+        // deliberately not coalesced: they report the outcome of distinct
+        // requests and discarding one can hide a rejection or successful
+        // replication transition from the leader.
         if queue.iter().any(|queued| queued.0 == tag && queued.1 == payload) {
             return;
         }
@@ -152,6 +154,18 @@ impl RelmsgRaftTransport {
             && queue.last().is_some_and(|(queued_tag, _)| *queued_tag == tag)
         {
             *queue.last_mut().expect("queue last") = (tag, payload);
+        } else if !matches!(tag, TAG_APPEND_REQUEST | TAG_APPEND_RESPONSE) {
+            // Preserve the order of application/control messages, but place
+            // them ahead of queued, supersedable AppendEntries traffic. An
+            // append already in flight remains non-preemptible; relmsg's
+            // bounded retry lease limits that delay.
+            let position = queue
+                .iter()
+                .position(|(queued_tag, _)| {
+                    matches!(*queued_tag, TAG_APPEND_REQUEST | TAG_APPEND_RESPONSE)
+                })
+                .unwrap_or(queue.len());
+            queue.insert(position, (tag, payload));
         } else {
             queue.push((tag, payload));
         }

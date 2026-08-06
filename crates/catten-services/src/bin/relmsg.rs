@@ -54,7 +54,6 @@ use charlotte_protocol_msg::{
     pack_address_and_len,
     parse_frame_header_checked,
     set_fragment_offset,
-    set_sequence,
     unpack_address_and_len,
 };
 use charlotte_protocol_net::decode_status;
@@ -112,6 +111,10 @@ fn try_assemble(reassembly: &Reassembly) -> Option<Vec<u8>> {
 
 struct Peer {
     mac: [u8; 6],
+    /// Locally chosen wire-session identity for this peer. Abandoning an
+    /// unacknowledged sequence starts a fresh session so the same sequence
+    /// number can never denote two different messages.
+    tx_session: u64,
     next_tx_seq: u32,
     next_rx_seq: u32,
     pending: Option<Outbound>,
@@ -121,9 +124,10 @@ struct Peer {
 }
 
 impl Peer {
-    fn new(mac: [u8; 6]) -> Self {
+    fn new(mac: [u8; 6], tx_session: u64) -> Self {
         Self {
             mac,
+            tx_session,
             next_tx_seq: 1,
             next_rx_seq: 1,
             pending: None,
@@ -157,32 +161,26 @@ impl Peer {
         Some(restarted)
     }
 
-    fn reset_transmit_session(&mut self) {
+    /// Retire an uncertain transmit session after its retry lease expires.
+    ///
+    /// Reusing the abandoned sequence in the same session would be unsafe:
+    /// the peer may have delivered the old message and only its ACK was lost.
+    /// Advancing the session lets the peer reset its receive sequence while
+    /// rejecting delayed frames from the retired session.
+    fn abandon_transmit_session(&mut self) {
+        self.tx_session = self.tx_session.wrapping_add(1).max(1);
         self.next_tx_seq = 1;
-        let Some(pending) = self.pending.as_mut() else {
-            return;
-        };
-        pending.seq = 1;
-        pending.retries = 0;
-        for frame in &mut pending.frames {
-            let header: &mut [u8; charlotte_protocol_msg::HEADER_SIZE] = (&mut frame
-                [ETHERNET_HEADER_SIZE..FRAME_HEADER_SIZE])
-                .try_into()
-                .expect("relmsg header slice");
-            set_sequence(header, 1);
-        }
-        self.next_tx_seq = 2;
     }
 }
 
-fn peer_index(peers: &mut Vec<Peer>, mac: [u8; 6]) -> Option<usize> {
+fn peer_index(peers: &mut Vec<Peer>, mac: [u8; 6], local_session: u64) -> Option<usize> {
     if let Some(index) = peers.iter().position(|peer| peer.mac == mac) {
         return Some(index);
     }
     if peers.len() >= relmsg::MAX_PEERS {
         return None;
     }
-    peers.push(Peer::new(mac));
+    peers.push(Peer::new(mac, local_session));
     Some(peers.len() - 1)
 }
 
@@ -263,6 +261,7 @@ fn retransmit_pending(net_conn: u64, peers: &mut [Peer]) {
         if pending.retries >= relmsg::MAX_RETRIES {
             let pending = peer.pending.take().expect("pending checked above");
             ipc_reply(pending.reply, relmsg::ERR_PEER_UNREACHABLE);
+            peer.abandon_transmit_session();
             continue;
         }
         pending.retries += 1;
@@ -288,26 +287,35 @@ fn process_frame(
     if destination != local_mac || source == local_mac {
         return;
     }
-    let Some(index) = peer_index(peers, source) else {
+    let Some(index) = peer_index(peers, source, local_session) else {
         return;
     };
-    let Some(peer_restarted) = peers[index].accept_session(remote_session, flags) else {
-        return;
-    };
-    if peer_restarted {
-        peers[index].reset_transmit_session();
-    }
     if flags & FLAG_ACK != 0 {
+        // ACK-only frames carry the session being acknowledged, not a new
+        // receive-side session belonging to the ACK sender. Fence completion
+        // on both values: sequence numbers restart at one whenever a retry
+        // lease advances `tx_session`, so sequence equality alone would let a
+        // delayed ACK complete a call from the replacement session.
+        if payload_len != 0 {
+            return;
+        }
         let peer = &mut peers[index];
-        if peer.pending.as_ref().is_some_and(|pending| pending.seq == ack) {
+        if remote_session == peer.tx_session
+            && peer.pending.as_ref().is_some_and(|pending| pending.seq == ack)
+        {
             let pending = peer.pending.take().expect("pending checked above");
             ipc_reply(pending.reply, pending.payload_len as i64);
         }
-    }
-
-    if payload_len == 0 {
         return;
     }
+
+    if peers[index].accept_session(remote_session, flags).is_none() || payload_len == 0 {
+        return;
+    }
+    // The peer's receive session and our transmit session are independent.
+    // A peer restart resets only receive-side ordering above. Resetting
+    // `next_tx_seq` here would reuse a sequence number in our still-live
+    // transmit session and could make a delayed ACK complete the wrong call.
     let payload_len = payload_len as usize;
     let payload = &frame[FRAME_HEADER_SIZE..FRAME_HEADER_SIZE + payload_len];
     let is_frag = flags & FLAG_FRAG != 0;
@@ -405,8 +413,15 @@ fn process_frame(
     // Cumulative acknowledgement: duplicates are acknowledged again, while
     // out-of-order frames acknowledge the last contiguous sequence.
     let last_contiguous = peers[index].next_rx_seq.wrapping_sub(1);
-    let ack_frame =
-        make_frame(source, local_mac, local_session, 0, last_contiguous, FLAG_SYN | FLAG_ACK, &[]);
+    let ack_frame = make_frame(
+        source,
+        local_mac,
+        remote_session,
+        0,
+        last_contiguous,
+        FLAG_SYN | FLAG_ACK,
+        &[],
+    );
     let _ = send_frame(net_conn, &ack_frame);
 }
 
@@ -516,7 +531,7 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
-                let Some(index) = peer_index(&mut peers, destination) else {
+                let Some(index) = peer_index(&mut peers, destination, local_session) else {
                     memory_close(message.memory);
                     ipc_reply(message.reply, relmsg::ERR_PEER_UNREACHABLE);
                     continue;
@@ -554,8 +569,15 @@ fn main(ctx: Context) -> ! {
                     } else {
                         FLAG_SYN | FLAG_FRAG | FLAG_MORE
                     };
-                    let mut frame =
-                        make_frame(destination, local_mac, local_session, seq, 0, flags, chunk);
+                    let mut frame = make_frame(
+                        destination,
+                        local_mac,
+                        peers[index].tx_session,
+                        seq,
+                        0,
+                        flags,
+                        chunk,
+                    );
                     if flags & FLAG_FRAG != 0 {
                         let header: &mut [u8; charlotte_protocol_msg::HEADER_SIZE] = (&mut frame
                             [ETHERNET_HEADER_SIZE..FRAME_HEADER_SIZE])

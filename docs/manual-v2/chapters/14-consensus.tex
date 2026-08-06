@@ -245,9 +245,21 @@ replication, leader election, and fault tolerance.
 
 Raft RPCs and DNS control messages use one serialized relmsg queue per peer.
 Because QEMU may acknowledge that queue slowly, consecutive queued
-AppendEntries heartbeats are coalesced. Non-Raft control messages retain their
-FIFO position, preventing obsolete heartbeat backlog from starving service
-retraction and invocation traffic.
+AppendEntries requests and their serially ordered responses are coalesced, and
+heartbeats are generated only at a bounded fraction of the election timeout.
+Non-Raft control messages retain their relative FIFO order but pass queued,
+supersedable append traffic. A two-second stop-and-wait retry lease is shorter
+than the DNS remote-call deadline, preventing one lost heartbeat from holding
+the peer's only transmission slot long enough to starve service retraction,
+placement, or invocation traffic.
+
+The DNS process also never waits synchronously for an arbitrary local service
+while running this reactor. Name lookup and local invocation are retained as
+bounded pending operations and polled on later turns. Consequently a failed
+service cannot stop Raft heartbeats or relmsg receive draining. A timeout before
+execution is reported as a retryable lookup failure; after invocation has been
+submitted it is reported as an uncertain outcome. Duplicate remote calls are
+suppressed both while pending and in the acknowledged-result window.
 
 \section{Relationship to the name service}
 

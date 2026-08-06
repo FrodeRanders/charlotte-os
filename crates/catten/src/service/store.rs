@@ -1,0 +1,179 @@
+//! The service-ELF registry: where the kernel gets the userspace binaries
+//! it loads.
+//!
+//! Only a small bootstrap set is embedded in the kernel image — the name
+//! service, the disk stack (`ns`, `nvme`, `objstore`), the `uart` service
+//! the earliest synchronous test needs, and the system observer the kernel
+//! starts during boot — everything else lives in the object store on the
+//! boot disk. An initial NVMe image produced by `scripts/make-nvme-image.py`
+//! stages the signed ELFs, and the registry reads them from the store the
+//! first time a test asks for one, then caches them for the rest of the
+//! boot. The EL0 loader enforces a valid cluster signature on whatever
+//! source the bytes come from, so the store-sourced path is exactly as
+//! trusted as the embedded one.
+
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
+
+use crate::{
+    ipc,
+    memory::KERNEL_ASID,
+};
+
+const OBJ_OP_READ: u32 = 4;
+
+// This is a loader resource bound, not an object-store format limit. Keep it
+// comfortably above the largest staged service while preventing corrupted or
+// misconfigured store contents from consuming an unbounded amount of kernel
+// heap before the ELF verifier can reject them.
+const MAX_SERVICE_ELF_SIZE: usize = 4 * 1024 * 1024;
+
+// The embedded bootstrap set. `CATTEN_AARCH64_SERVICE_BUNDLE` points at the
+// staged, signed bundle (the build pipeline signs every ELF in it).
+macro_rules! bootstrap_elf {
+    ($name:literal, $file:literal) => {
+        ($name, include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/", $file, ".elf")))
+    };
+}
+
+const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
+    bootstrap_elf!(b"ns", "ns"),
+    bootstrap_elf!(b"nvme", "nvme"),
+    bootstrap_elf!(b"objstore", "objstore"),
+    bootstrap_elf!(b"uart", "uart"),
+    // The system observer is started by the kernel itself during boot,
+    // before the disk stack is up, so it must be embedded too.
+    bootstrap_elf!(b"observe", "observe"),
+];
+
+/// Loaded, store-sourced service images, keyed by the artifact name.
+static STORE_ELFS: spin::Mutex<alloc::vec::Vec<(&'static [u8], &'static [u8])>> =
+    spin::Mutex::new(alloc::vec::Vec::new());
+
+/// Serialize cache misses without holding a spin lock across IPC waits. This
+/// avoids duplicate object-store reads when several boot tasks request the
+/// same image concurrently while still allowing the active reader and the
+/// objstore service to run on any LP.
+static STORE_READER_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct StoreReaderGuard;
+
+impl Drop for StoreReaderGuard {
+    fn drop(&mut self) {
+        STORE_READER_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
+fn cached_elf(name: &[u8]) -> Option<&'static [u8]> {
+    STORE_ELFS
+        .lock()
+        .iter()
+        .find_map(|(cached_name, image)| (*cached_name == name).then_some(*image))
+}
+
+/// Resolve a service ELF by its artifact name.
+///
+/// The bootstrap set is embedded; anything else is read from the object
+/// store (blocking until the store service is up) and cached. The returned
+/// bytes are the signed ELF that the loader verifies before mapping.
+pub fn service_elf(name: &'static [u8]) -> Option<&'static [u8]> {
+    for (candidate, image) in BOOTSTRAP_ELFS {
+        if *candidate == name {
+            return verified_for_name(name, image).then_some(image);
+        }
+    }
+    if let Some(image) = cached_elf(name) {
+        return Some(image);
+    }
+
+    // Acquire a yield-friendly single-flight gate. Recheck the cache after
+    // every wait because the previous reader may have loaded this same image.
+    let _reader = loop {
+        if STORE_READER_ACTIVE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            break StoreReaderGuard;
+        }
+        crate::cpu::scheduler::yield_lp();
+        if let Some(image) = cached_elf(name) {
+            return Some(image);
+        }
+    };
+    if let Some(image) = cached_elf(name) {
+        return Some(image);
+    }
+
+    // The store read blocks until the objstore service is up; the cache and
+    // its spin lock remain free while IPC and block I/O make progress.
+    let image = read_from_store(name)?;
+    if !verified_for_name(name, &image) {
+        crate::logln!("[store] refusing ELF whose signed identity is not {:?}", name);
+        return None;
+    }
+    let image: &'static [u8] = alloc::vec::Vec::leak(image);
+    STORE_ELFS.lock().push((name, image));
+    Some(image)
+}
+
+fn verified_for_name(name: &[u8], image: &[u8]) -> bool {
+    charlotte_launch::signature_note::verify_elf_for_name(
+        image,
+        &charlotte_launch::CLUSTER_PUBLIC_KEY,
+        name,
+    ) == charlotte_launch::signature_note::VerifyOutcome::Valid
+}
+
+/// Read one object (the signed ELF) from the object store by its derived
+/// cluster-wide artifact id. Retries until the objstore service is up.
+fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
+    let name_service = crate::service::supervisor::node_name_service();
+    let kernel_ns = match ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        KERNEL_ASID,
+        crate::ipc::ConnectionRights::CALL,
+    ) {
+        Ok(conn) => conn,
+        Err(error) => {
+            crate::logln!("[store] delegate failed: {error:?}");
+            return None;
+        }
+    };
+
+    // The name service defers this one call until objstore registers. Boot's
+    // store-dependent phase runs in a scheduler-owned kernel thread, so use
+    // the ordinary waitable IPC path rather than issuing and leaking repeated
+    // polling calls under load.
+    let lookup =
+        ipc::scalar_call(KERNEL_ASID, kernel_ns, 2, charlotte_launch::OBJSTORE_NAME).ok()?;
+    ipc::wait_reply(KERNEL_ASID, lookup).ok()?;
+    let obj_conn = ipc::poll_reply(KERNEL_ASID, lookup).ok().flatten()?.cap?;
+    let _ = ipc::close_cap(KERNEL_ASID, lookup);
+
+    let object_id = charlotte_launch::artifact_object_id(name);
+    let read = ipc::scalar_call(KERNEL_ASID, obj_conn, OBJ_OP_READ, object_id).ok()?;
+    ipc::wait_reply(KERNEL_ASID, read).ok()?;
+    let reply = ipc::poll_reply(KERNEL_ASID, read).ok().flatten()?;
+    let _ = ipc::close_cap(KERNEL_ASID, read);
+    let _ = ipc::close_cap(KERNEL_ASID, obj_conn);
+    let _ = ipc::close_cap(KERNEL_ASID, kernel_ns);
+    if reply.result < 0 {
+        return None;
+    }
+    let memory = reply.memory?;
+    let size = reply.result as usize;
+    if size == 0 || size > MAX_SERVICE_ELF_SIZE {
+        crate::logln!("[store] refusing {size}-byte service ELF for {:?}", name);
+        let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+        return None;
+    }
+    // Snapshot through the memory object's direct-map frames. Reusing one
+    // temporary virtual address here used to make correctness depend on TLB
+    // state when successive cache misses ran on different LPs.
+    let bytes = crate::memory::object::snapshot_bytes(KERNEL_ASID, memory, size).ok();
+    let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+    bytes
+}

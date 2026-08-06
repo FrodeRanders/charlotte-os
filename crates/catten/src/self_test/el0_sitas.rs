@@ -68,10 +68,6 @@ const SITAS_JOIN_PROBE_SUM: u32 = 81;
 const PAGE_SIZE: usize = 4096;
 /// The Rust-compiled sitas-based catten-user ELF.
 #[cfg(target_arch = "aarch64")]
-const SITAS_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/sitas-user.elf"));
-
-#[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
 static SITAS_ASID: AtomicUsize = AtomicUsize::new(usize::MAX);
@@ -291,6 +287,11 @@ pub fn test_el0_sitas() {
     {
         logln!("Testing EL0 sitas (Rust-compiled catten-user binary)...");
 
+        // The sitas binary lives in the object store, which comes up during
+        // the NVMe test. The sitas test is registered after it, and the
+        // store read retries with a yield if the store thread is still
+        // starting up, so no coordinator wait is needed here.
+
         // --- create user address space ---
         let user_as = {
             let _kas = KERNEL_AS.lock();
@@ -299,7 +300,10 @@ pub fn test_el0_sitas() {
         let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
         SITAS_ASID.store(asid, Ordering::Release);
 
-        let entry_vaddr = load_user_elf(asid, SITAS_ELF);
+        let entry_vaddr = load_user_elf(
+            asid,
+            crate::service::store::service_elf(b"sitas-user").expect("[el0_sitas] sitas-user.elf"),
+        );
 
         // --- map config page (catten-rt reads ASID from offset 16) ---
         let config_frame = PHYSICAL_FRAME_ALLOCATOR

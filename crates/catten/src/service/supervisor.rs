@@ -6,15 +6,6 @@
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
 #![cfg(target_arch = "aarch64")]
 
-#[cfg(target_arch = "aarch64")]
-const ECHO_UPGRADE_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/echo.elf"));
-#[cfg(target_arch = "aarch64")]
-const NODE_NAME_SERVICE_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/ns.elf"));
-#[cfg(target_arch = "aarch64")]
-const OBSERVABILITY_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/observe.elf"));
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
 const NODE_NAME_SERVICE_VERSION: u32 = 1;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
@@ -107,6 +98,18 @@ pub(crate) static LIVE_UPGRADE_MANAGER_ASID: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+/// Reuse-safe identity of the one node agent allowed to create deployed
+/// protection domains. Registration under the name `agent` does not grant
+/// this authority; the kernel supervisor delegates it explicitly.
+pub(crate) static DEPLOYMENT_AGENT_ASID: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+/// The domain currently owned by the deployment agent on this node.
+pub(crate) static DEPLOYED_DOMAIN: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<ServiceDomain>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
 /// Kernel-private connection to the node name service, minted when the node
 /// registry starts, used by the supervisor to publish the boot-done marker.
 static KERNEL_NS_CONN: spin::LazyLock<
@@ -124,7 +127,7 @@ const NS_OP_REGISTER: u32 = 1;
 /// settle before declaring the node ready for cluster communication.
 const BOOT_SETTLE_MS: u64 = 3_000;
 
-fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
+pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
     let tid = spawn_thread(loaded.asid, entry);
@@ -178,7 +181,7 @@ pub fn start_node_name_service() -> NameServiceHandle {
     let mut node = NODE_NAME_SERVICE.lock();
     assert!(node.is_none(), "[supervisor] node name service already started");
     let handle = spawn_name_service(
-        NODE_NAME_SERVICE_ELF,
+        crate::service::store::service_elf(b"ns").expect("[supervisor] ns service elf"),
         NODE_NAME_SERVICE_INTERFACE,
         NODE_NAME_SERVICE_VERSION,
         NODE_NAME_SERVICE_QUEUE_CAPACITY,
@@ -295,7 +298,9 @@ pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceD
     let mut observer = SYSTEM_OBSERVER_ASID.lock();
     assert!(observer.is_none(), "[supervisor] system observer already started");
 
-    let loaded = loader::load_domain(OBSERVABILITY_ELF);
+    let loaded = loader::load_domain(
+        crate::service::store::service_elf(b"observe").expect("[supervisor] observe service elf"),
+    );
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
@@ -352,6 +357,15 @@ pub fn spawn_service_manager(image: &[u8], name_service: &NameServiceHandle) -> 
     *LIVE_UPGRADE_NS.lock() = Some(*name_service);
     *LIVE_UPGRADE_MANAGER_ASID.lock() = Some(domain.address_space);
     domain
+}
+
+/// Delegate node deployment authority to an already-created agent domain.
+/// Kept separate from ordinary spawning because the cluster test supplies a
+/// manifest before the agent starts.
+pub fn authorize_deployment_agent(domain: &ServiceDomain) {
+    let mut authorized = DEPLOYMENT_AGENT_ASID.lock();
+    assert!(authorized.is_none(), "[supervisor] deployment agent already authorized");
+    *authorized = Some(domain.address_space);
 }
 
 /// The device authority a driver manager grants to a driver protection
@@ -486,6 +500,10 @@ pub fn teardown_domain(domain: ServiceDomain) {
     if *manager == Some(domain.address_space) {
         *manager = None;
     }
+    let mut agent = DEPLOYMENT_AGENT_ASID.lock();
+    if *agent == Some(domain.address_space) {
+        *agent = None;
+    }
 }
 
 /// Load and start a replacement service domain, handing it the old
@@ -584,17 +602,18 @@ pub fn spawn_upgrade(
 /// 0 = echo service.  Returns None for unknown selectors.
 pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
     match selector {
-        0 => Some(ECHO_UPGRADE_ELF),
+        0 => Some(
+            crate::service::store::service_elf(b"echo").expect("[supervisor] echo service elf"),
+        ),
         _ => None,
     }
 }
 
-/// Persistent service images are not yet signed, so only accept an exact copy
-/// of an image that was authenticated as part of the kernel build.
-///
-/// This deliberately treats the object-store checksum as corruption detection,
-/// not as executable provenance. A signed service-package format can broaden
-/// this policy without weakening the current bootstrap trust boundary.
+/// Persistent service images are trusted by their cluster signature: the EL0
+/// loader refuses anything that is not validly signed, so provenance here is
+/// the signature note, not a byte-for-byte match against a kernel-embedded
+/// copy (the old hash-equality constraint, which the signing work removed).
 pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
-    image == ECHO_UPGRADE_ELF
+    charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+        == charlotte_launch::signature_note::VerifyOutcome::Valid
 }

@@ -1,19 +1,18 @@
 //! Cluster administration service: the programmatic "outside" interface to a
-//! cluster (manual Chapter 17).
+//! cluster (manual Chapter 19).
 //!
 //! `clusterctl` wraps the raw dns manifest ops and the object store behind
 //! admin-level operations:
 //!
-//! 1. `OP_UPLOAD` signs an uploaded payload with the cluster secret and stores it in the
-//!    (node-local) object store under the artifact's derived cluster-wide id
-//!    (`dns::artifact_object_id`).
+//! 1. `OP_UPLOAD` verifies an offline CLS2 signature and logical identity,
+//!    then stores the immutable ELF under its derived cluster-wide id.
 //! 2. `OP_DEPLOY` assigns the artifact to a node by submitting a deployment record through the
 //!    local dns (the manifest is replicated cluster state).
 //! 3. `OP_STATUS` reports the committed deployment record.
 //!
 //! Artifact names are bare cluster-global names; the node dimension appears
-//! only in the deployment record. The key ceremony is a placeholder: the
-//! cluster secret remains a build-time constant (`dns::DEPLOY_SECRET`).
+//! only in the deployment record. The private signing key never enters this
+//! service; its build-time public anchor constrains the key ceremony.
 #![no_std]
 #![no_main]
 
@@ -23,6 +22,7 @@ catten_rt::entry!(main);
 
 use catten_rt::{
     Context,
+    ManifestValue,
     config,
 };
 use catten_services::{
@@ -112,19 +112,63 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     true
 }
 
+/// Hash the exact object-store bytes that a deployment generation selects.
+/// This prevents a later overwrite at the same name-derived object id from
+/// silently changing code under an already committed assignment.
+fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
+    let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
+    if read == 0 {
+        return None;
+    }
+    let (status, size, returned_connection, memory) = ipc_reply_wait_with_memory(read);
+    ipc_close(read);
+    if returned_connection != 0 {
+        ipc_close(returned_connection);
+    }
+    let len = usize::try_from(size).ok()?;
+    if status != 0 || memory == 0 || len == 0 || len > memory_size(memory) {
+        if memory != 0 {
+            memory_close(memory);
+        }
+        return None;
+    }
+    if memory_map(memory, DATA_VADDR, false) != 0 {
+        memory_close(memory);
+        return None;
+    }
+    let mut hasher = charlotte_launch::sha256::Sha256::new();
+    for index in 0..len {
+        hasher.update(&[unsafe {
+            core::ptr::read_volatile((DATA_VADDR + index) as *const u8)
+        }]);
+    }
+    memory_unmap(memory);
+    memory_close(memory);
+    Some(hasher.finalize())
+}
+
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
 /// memory object. The memory layout is `[payload_len:u64 LE][payload]`.
 fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
     if message.memory == 0 {
         return None;
     }
+    let capacity = memory_size(message.memory);
+    if capacity < 8 {
+        memory_close(message.memory);
+        return None;
+    }
     if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        memory_close(message.memory);
         return None;
     }
     let len = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) } as usize;
-    // Artifacts are ELFs (tens of KiB); the payload region is the mapped
-    // memory object, not a single page.
-    if len == 0 || len > 128 * 1024 {
+    // The payload region is the complete multi-page memory object. Apply the
+    // same admission bound as the kernel launch gate so ingress and execution
+    // cannot disagree about an otherwise valid artifact.
+    if len == 0 || len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE || len > capacity - 8 {
+        memory_unmap(message.memory);
+        memory_close(message.memory);
         return None;
     }
     let mut payload = alloc::vec::Vec::with_capacity(len);
@@ -137,6 +181,13 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
 }
 
 fn main(ctx: Context) -> ! {
+    let trusted_key = match ctx.manifest_value(charlotte_launch::CLUSTER_KEY_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => match <[u8; 32]>::try_from(bytes) {
+            Ok(key) => key,
+            Err(_) => fail(0xdea5),
+        },
+        _ => fail(0xdea5),
+    };
     let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| fail(0xdea0));
     let obj_conn = lookup(ns_connection, objstore::NAME);
     let dns_conn = lookup(ns_connection, dns::NAME);
@@ -182,10 +233,17 @@ fn main(ctx: Context) -> ! {
                         match read_payload(&message) {
                             Some(artifact) => {
                                 let object_id = dns::artifact_object_id(&name);
-                                // The artifact is stored as-is: a pre-signed
-                                // blob from off-cluster. Nodes validate it
-                                // against the cluster public key at pickup.
-                                if store_artifact(obj_conn, object_id, &artifact) {
+                                // Ingress is a trust boundary: the signature
+                                // must bless this exact logical name before
+                                // any object-store slot can be modified.
+                                let trusted = charlotte_launch::signature_note::verify_elf_for_name(
+                                    &artifact,
+                                    &trusted_key,
+                                    &name,
+                                ) == charlotte_launch::signature_note::VerifyOutcome::Valid;
+                                if !trusted {
+                                    clusterctl::ERR_UNTRUSTED_ARTIFACT
+                                } else if store_artifact(obj_conn, object_id, &artifact) {
                                     object_id as i64
                                 } else {
                                     clusterctl::ERR_UPLOAD_FAILED
@@ -208,6 +266,14 @@ fn main(ctx: Context) -> ! {
                         match read_node_key(&message) {
                             Some(node_key) => {
                                 let object_id = dns::artifact_object_id(&name);
+                                let Some(artifact_digest) =
+                                    stored_artifact_digest(obj_conn, object_id)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                                    }
+                                    continue;
+                                };
                                 // The dns commits the deployment; its reply is
                                 // deferred until the manifest entry has
                                 // replicated.
@@ -223,6 +289,11 @@ fn main(ctx: Context) -> ! {
                                         core::ptr::write_volatile(
                                             (DATA_VADDR + 8) as *mut u64,
                                             node_key,
+                                        );
+                                        core::ptr::copy_nonoverlapping(
+                                            artifact_digest.as_ptr(),
+                                            (DATA_VADDR + 16) as *mut u8,
+                                            artifact_digest.len(),
                                         );
                                     }
                                     memory_unmap(request);
@@ -285,16 +356,27 @@ fn main(ctx: Context) -> ! {
                 }
                 clusterctl::OP_KEYCEREMONY => {
                     let result = match read_key(&message) {
-                        Some(_key) => {
+                        Some(key) if key == trusted_key => {
                             // Forward the key to the dns, which commits it to
                             // the replicated state (leader-only; the reply is
                             // deferred until the ceremony record commits).
-                            let call = ipc_scalar_call_move(
-                                dns_conn,
-                                dns::OP_SET_KEY,
-                                0,
-                                message.memory,
-                            );
+                            let key_memory = memory_alloc(1);
+                            if key_memory == 0 || memory_map(key_memory, DATA_VADDR, true) != 0 {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, clusterctl::ERR_UPLOAD_FAILED);
+                                }
+                                continue;
+                            }
+                            unsafe {
+                                core::ptr::copy_nonoverlapping(
+                                    key.as_ptr(),
+                                    DATA_VADDR as *mut u8,
+                                    key.len(),
+                                );
+                            }
+                            memory_unmap(key_memory);
+                            let call =
+                                ipc_scalar_call_move(dns_conn, dns::OP_SET_KEY, 0, key_memory);
                             if call == 0 {
                                 clusterctl::ERR_NOT_LEADER
                             } else {
@@ -304,6 +386,7 @@ fn main(ctx: Context) -> ! {
                                 generation
                             }
                         }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_KEY,
                         None => clusterctl::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
@@ -352,7 +435,12 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
     if message.memory == 0 {
         return None;
     }
+    if memory_size(message.memory) < 32 {
+        memory_close(message.memory);
+        return None;
+    }
     if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        memory_close(message.memory);
         return None;
     }
     let mut key = [0u8; 32];
@@ -360,6 +448,7 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
         *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
     }
     memory_unmap(message.memory);
+    memory_close(message.memory);
     Some(key)
 }
 
@@ -368,7 +457,12 @@ fn read_node_key(message: &catten_syscall::IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
+    if memory_size(message.memory) < 8 {
+        memory_close(message.memory);
+        return None;
+    }
     if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        memory_close(message.memory);
         return None;
     }
     let node_key = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) };

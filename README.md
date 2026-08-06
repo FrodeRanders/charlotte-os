@@ -56,6 +56,12 @@ The main additions and extensions currently maintained here are:
   replacement generation, transfer state, synchronize registration, and
   invalidate stale connections. This remains prototype work rather than a
   production upgrade framework.
+- **Store-backed, blessed service artifacts:** the kernel embeds only the
+  bootstrap storage path; the remaining AArch64 service ELFs are loaded by
+  logical name from an initial NVMe object-store image. CLS2 Ed25519 notes bind
+  bytes to name, class, release/rollback policy, parallel-instance permission,
+  and optional provenance evidence. The runner refreshes stale seed images,
+  while deployment pins the complete artifact SHA-256.
 - **Sitas shard runtime at EL0:** the `sitas` no_std shard-per-core runtime
   (external crates) runs as a real EL0 image (`catten-user`) boot-tested by
   the kernel. A mailbox index demo shows the division of responsibility:
@@ -135,26 +141,34 @@ interchangeable server-class ARM nodes assemble themselves into clusters on
 boot, software is deployed to a named cluster rather than to named servers,
 and the cluster decides placement --- initially from declared component
 affinity, eventually from observed inter-dependency, with cross-node
-migration of running components. Nodes are "dumb" compute over a shared
+migration of running components. Placement policy distinguishes replica count,
+per-node instance capacity, affinity/co-location, and anti-affinity. Multiple
+instances are legal only when the signed artifact policy blesses parallel
+execution. Nodes are "dumb" compute over a shared
 object store, validating signed software against a cluster-wide key held in
 replicated state.
 
 A first end-to-end slice of this is implemented and boot-tested on the
 two-guest QEMU cluster (`scripts/run-aarch64.sh --deploy-test`): the
-deployment manifest is replicated Raft state, an agent on the assigned node
-picks up and verifies a signed artifact, serves it across the network, and
+deployment manifest is replicated Raft state and pins an immutable digest. An
+agent with narrowly delegated deployment authority picks up and verifies the
+artifact; the kernel starts that exact ELF in a separate address space, and
+the service serves across the network and
 migrates it between nodes without losing its name; `clusterctl` (plus a
 serial admin console) provides the outside upload/deploy/status interface.
-Artifacts are real ELF binaries signed in place with Ed25519: the signature
+Artifacts are real ELF binaries blessed and signed in place with Ed25519: the signature
 lives in a standard `.note.charlotte-sig` ELF note (added by
 `tools/cluster-sign elf-sign`), the public key is injected at build time and
 committed to the replicated state by the key ceremony, and the EL0 loader
 (which refuses any unsigned or invalidly signed image --- the build pipeline
 signs every staged service ELF with the version-controlled development key
-in `tools/cluster-sign/dev-key.hex`) and the deploy agent validate artifacts
-against it before serving. The object store is still per-node, and the
-ceremony does not yet validate the injected key against the build-time
-anchor --- the honest simulations are called out in Chapter 17 of
+in `tools/cluster-sign/dev-key.hex`) and the deploy path validate both bytes
+and logical identity. Known third-party-containing services can therefore be
+admitted once with an SBOM/provenance digest and traded internally without
+runtime Internet dependency fetching. The object store is still per-node,
+replica-set placement is not implemented, and the mutation endpoint still
+needs a separately delegated administrator capability --- these boundaries
+are called out in Chapter 19 of
 [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), which
 describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).

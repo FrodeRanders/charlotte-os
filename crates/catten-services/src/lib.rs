@@ -604,9 +604,11 @@ pub mod relmsg {
     /// message-length ceiling in the address/length packing.
     pub const MAX_MSG: usize = 65535;
     pub const RETRANSMIT_MS: u64 = 200;
-    /// Permit peers that boot at different speeds to rendezvous without
-    /// making an application-level send wait forever.
-    pub const MAX_RETRIES: u32 = 150;
+    /// Bound one stop-and-wait transmission to two seconds. Raft retries
+    /// heartbeats and replication at its own layer; retaining a lost
+    /// heartbeat for 30 seconds would monopolize the peer's only in-flight
+    /// slot beyond DNS's five-second remote-call deadline.
+    pub const MAX_RETRIES: u32 = 10;
 }
 
 /// Cluster discovery protocol (`charlotte-protocol-disco` v1).
@@ -673,13 +675,15 @@ pub mod dns {
     /// is that generation on success.
     pub const OP_UNREGISTER: u32 = 7;
     /// Replicate a deployment record. `arg0` is the packed artifact name; the
-    /// attached memory object holds `[object_id:u64 LE][node_key:u64 LE]`.
-    /// The cluster signs the record with the shared deployment secret before
-    /// committing it; the reply is the committed deployment generation.
+    /// attached memory object holds
+    /// `[object_id:u64 LE][node_key:u64 LE][artifact_sha256:32]`. The digest
+    /// pins this generation to one immutable, blessed ELF; the reply is the
+    /// committed deployment generation.
     pub const OP_DEPLOY: u32 = 8;
     /// Query the deployment record for `arg0` (packed artifact name). The
     /// reply moves a page holding
-    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE]`,
+    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE]
+    /// [artifact_sha256:32]`,
     /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
     /// Answered from locally applied cluster state (the caller polls).
     pub const OP_DEPLOY_QUERY: u32 = 9;
@@ -703,11 +707,11 @@ pub mod dns {
     /// physical reference in a deployment record is the pair
     /// `(node_key, artifact_object_id(name))` and the node dimension never
     /// leaks into the identifier itself.
-    pub const ARTIFACT_ID_TAG: u64 = 0xfffe_0000_0000_0000;
+    pub const ARTIFACT_ID_TAG: u64 = charlotte_launch::ARTIFACT_ID_TAG;
 
     /// The stable, cluster-wide object-store id for a logical artifact name.
     pub fn artifact_object_id(name: &[u8]) -> u64 {
-        ARTIFACT_ID_TAG | (super::node_identity::fnv1a(name) & 0x0000_ffff_ffff_ffff)
+        charlotte_launch::artifact_object_id(name)
     }
 
     /// Shared byte offsets in the DNS service's diagnostic status page.
@@ -727,6 +731,7 @@ pub mod dns {
     pub const ERR_UNCERTAIN: i64 = -5;
     pub const ERR_BUSY: i64 = -6;
     pub const ERR_STALE_GENERATION: i64 = -7;
+    pub const ERR_UNTRUSTED_KEY: i64 = -8;
 }
 
 /// Protocol of the cluster-deployment demo artifact: a tiny service that the
@@ -777,8 +782,9 @@ pub mod clusterctl {
     /// replicated).
     pub const OP_DEPLOY: u32 = 2;
     /// Query the deployment manifest. `arg0` is the packed artifact name; the
-    /// reply moves the 32-byte deployment record
-    /// `[generation][object_id][node_key]`, or is `ERR_NOT_FOUND`.
+    /// reply moves the 56-byte deployment record
+    /// `[generation][object_id][node_key][artifact_sha256]`, or is
+    /// `ERR_NOT_FOUND`.
     pub const OP_STATUS: u32 = 3;
     /// Commit the cluster's Ed25519 public key to the replicated state (the
     /// key ceremony, performed once during cluster establishment). `arg0` is
@@ -796,6 +802,10 @@ pub mod clusterctl {
     pub const ERR_NOT_LEADER: i64 = -2;
     pub const ERR_TOO_LARGE: i64 = -3;
     pub const ERR_UPLOAD_FAILED: i64 = -10;
+    /// The ELF is unsigned, signed by another key, or blessed for a
+    /// different logical artifact name.
+    pub const ERR_UNTRUSTED_ARTIFACT: i64 = -11;
+    pub const ERR_UNTRUSTED_KEY: i64 = -12;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

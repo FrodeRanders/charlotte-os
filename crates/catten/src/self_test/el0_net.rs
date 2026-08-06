@@ -23,27 +23,6 @@ use crate::{
 };
 
 #[cfg(target_arch = "aarch64")]
-const NET_ELF: &[u8] = include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/net.elf"));
-#[cfg(target_arch = "aarch64")]
-#[cfg(not(feature = "relmsg_net_test"))]
-const NET_CLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/nclient.elf"));
-#[cfg(feature = "relmsg_net_test")]
-const NET_CLIENT_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/rclient.elf"));
-#[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
-const RELMSG_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/relmsg.elf"));
-#[cfg(any(
-    feature = "relmsg_net_test",
-    feature = "disco_net_test",
-    feature = "tcpip_net_test",
-    feature = "http_net_test"
-))]
-const FROUTER_ELF: &[u8] =
-    include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/frouter.elf"));
-
-#[cfg(target_arch = "aarch64")]
 #[cfg(not(feature = "relmsg_net_test"))]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(feature = "relmsg_net_test")]
@@ -97,7 +76,7 @@ extern "C" fn verify_el0_net() {
     logln!("[net] verifier running, waiting for PCI topology...");
     let (bar0, mmio_pages, intid, requester_id, msi_address) = wait_for_virtio_net();
     let driver = supervisor::spawn_driver_with_name_service(
-        NET_ELF,
+        crate::service::store::service_elf(b"net").expect("[el0_net] net.elf"),
         ns,
         ConnectionRights::CALL,
         DriverGrant {
@@ -115,7 +94,11 @@ extern "C" fn verify_el0_net() {
 
     #[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
     let relmsg_config = {
-        let relmsg = supervisor::spawn_with_name_service(RELMSG_ELF, ns, ConnectionRights::CALL);
+        let relmsg = supervisor::spawn_with_name_service(
+            crate::service::store::service_elf(b"relmsg").expect("[el0_net] relmsg.elf"),
+            ns,
+            ConnectionRights::CALL,
+        );
         logln!("[relmsg] service spawned (asid={})", relmsg.asid);
         relmsg.status_frame
     };
@@ -128,7 +111,11 @@ extern "C" fn verify_el0_net() {
         feature = "http_net_test"
     ))]
     let frouter_config = {
-        let frouter = supervisor::spawn_with_name_service(FROUTER_ELF, ns, ConnectionRights::CALL);
+        let frouter = supervisor::spawn_with_name_service(
+            crate::service::store::service_elf(b"frouter").expect("[el0_net] frouter.elf"),
+            ns,
+            ConnectionRights::CALL,
+        );
         logln!("[frouter] frame demux spawned (asid={})", frouter.asid);
         let base: *mut u8 = frouter.status_frame.into();
         unsafe { crate::self_test::FROUTER_STATUS_FRAME = base as usize };
@@ -140,7 +127,11 @@ extern "C" fn verify_el0_net() {
     ))]
     let _ = frouter_config;
 
-    let client = supervisor::spawn_with_name_service(NET_CLIENT_ELF, ns, ConnectionRights::CALL);
+    let client = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"nclient").expect("[el0_net] nclient.elf"),
+        ns,
+        ConnectionRights::CALL,
+    );
     let client_config = client.status_frame;
     let client_asid = client.asid;
     logln!("[net] client spawned (asid={})", client_asid);

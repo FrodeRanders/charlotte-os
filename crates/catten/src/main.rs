@@ -84,6 +84,8 @@ use crate::{
 
 const KERNEL_VERSION: (u64, u64, u64) = (0, 8, 1);
 static INIT_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
+static INTERRUPT_INIT_BARRIER: LazyLock<Barrier> =
+    LazyLock::new(|| Barrier::new(get_lp_count() as usize));
 static YIELD_BARRIER: LazyLock<Barrier> = LazyLock::new(|| Barrier::new(get_lp_count() as usize));
 /// The kernel entry point, linked as the ELF entry (`ENTRY(_start)` in
 /// `linker/aarch64.ld`).
@@ -189,6 +191,13 @@ pub extern "C" fn bsp_main() -> ! {
     logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
+    // Deferred verifiers and EL0 bootstrap services may begin running while
+    // `run_self_tests` is still registering the suite. Interrupt delivery must
+    // therefore be ready before any of those threads are admitted, rather than
+    // being deferred until the final hand-off to the scheduler.
+    mask_interrupts!();
+    LocalIntCtlr::init_lp();
+    INTERRUPT_INIT_BARRIER.wait();
     #[cfg(target_arch = "aarch64")]
     {
         let name_service = crate::service::supervisor::start_node_name_service();
@@ -216,7 +225,38 @@ pub extern "C" fn bsp_main() -> ! {
         }
         Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
     }
-    self_test::run_self_tests();
+    self_test::run_synchronous_self_tests();
+    // The remaining boot work resolves store-backed ELFs and therefore may
+    // yield while the NVMe/object-store bootstrap domains run. Execute it in a
+    // scheduler-owned context: yielding from this raw BSP entry stack would
+    // abandon the continuation because it has no Thread record to re-admit.
+    let continuation = crate::cpu::scheduler::spawn_thread_on_lp(
+        crate::memory::KERNEL_ASID,
+        finish_boot,
+        get_lp_id(),
+    );
+    logln!("Boot continuation spawned with ID = {continuation}.");
+    // The global-state probes above are complete. Release the APs into their
+    // idle schedulers before the continuation admits EL0 work; store-backed
+    // service discovery may then yield and make progress on any LP.
+    YIELD_BARRIER.wait();
+    unmask_interrupts!();
+    yield_lp();
+    /* We've switched into thread context and never come back. */
+    unsafe { unreachable_unchecked() }
+}
+
+/// Finish boot from a scheduler-owned kernel thread.
+///
+/// Store-backed service resolution can block cooperatively, so this phase may
+/// be suspended and later resumed just like every other kernel thread.
+extern "C" fn finish_boot() {
+    // The synchronous half of the self-test suite predates kernel preemption
+    // and deliberately runs as one transaction. Keep this continuation
+    // locally non-preemptible; explicit yields still switch to EL0/services,
+    // whose own saved PSTATE enables interrupt delivery while they run.
+    mask_interrupts!();
+    self_test::run_deferred_self_tests();
     logln!("System Information:");
     logln!("CPU Vendor: {}", (CpuInfo::get_vendor()));
     logln!("CPU Model: {}", (CpuInfo::get_model()));
@@ -271,22 +311,7 @@ pub extern "C" fn bsp_main() -> ! {
         );
     }
     logln!("Submitted all initial kernel threads.");
-    logln!(
-        "LP {}: Bootstrapping complete. Yielding the processor to the scheduler.",
-        (get_lp_id())
-    );
-    YIELD_BARRIER.wait();
-    LocalIntCtlr::init_lp();
-    logln!(
-        "LP {}: Initialized local interrupt controller. Yielding the processor to the scheduler.",
-        (get_lp_id())
-    );
-    // Do not permit an IRQ-tail context switch to abandon the BSP boot
-    // context before its local GIC and timer interrupt have been configured.
     unmask_interrupts!();
-    yield_lp();
-    /* We've switched into thread context and never come back */
-    unsafe { unreachable_unchecked() }
 }
 
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
@@ -310,14 +335,12 @@ pub unsafe extern "C" fn ap_main(_cpuinfo: &MpInfo) -> ! {
     mask_interrupts!();
     INIT_BARRIER.wait();
     let lp_id = get_lp_id();
-    logln!("LP {lp_id}: Bootstrapping complete.");
-    YIELD_BARRIER.wait();
     logln!("LP {lp_id}: Starting local interrupt controller initialization.");
     LocalIntCtlr::init_lp();
-    logln!(
-        "LP {lp_id}: Initialized local interrupt controller. Yielding the processor to the \
-         scheduler."
-    );
+    logln!("LP {lp_id}: Initialized local interrupt controller.");
+    INTERRUPT_INIT_BARRIER.wait();
+    logln!("LP {lp_id}: Bootstrapping complete.");
+    YIELD_BARRIER.wait();
     unmask_interrupts!();
     yield_lp();
     /* We've switched into thread context and never come back */

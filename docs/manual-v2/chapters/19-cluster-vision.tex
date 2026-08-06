@@ -22,7 +22,12 @@ more named servers, software is deployed to a named cluster, and the
 cluster selects an optimal placement of load among its nodes based on how
 the deployed components interoperate. Components that interoperate heavily
 should land on the same cluster node; components that barely talk may be
-spread arbitrarily. The placement decision is made in and by the cluster
+spread arbitrarily. Placement is not a one-component/one-node map. A
+component explicitly blessed as safe for parallel execution may have several
+instances, and an affinity group may place instances beside tightly dependent
+components. Replica anti-affinity and minimum failure-domain rules remain
+independent: co-location for latency must not accidentally defeat
+availability. The placement decision is made in and by the cluster
 itself, from rules it holds in its shared state, not by an operator
 manually mapping software to machines.
 
@@ -128,9 +133,12 @@ Software is an artifact in the object store, and deployment is the act of
 assigning artifacts to cluster nodes. The pipeline has three stages:
 
 \begin{enumerate}
-    \item \textbf{Signing.} As a step in deployment, the software artifact
-        is cryptographically signed centrally with the cluster's signing
-        key. Signing is a cluster-wide, shared act, not a per-node act.
+    \item \textbf{Blessing and signing.} A version-controlled policy admits
+        the artifact and it is signed centrally with the cluster key. Signed
+        metadata binds its logical name, class, release and rollback counter,
+        parallel-instance permission, and an optional SHA-256 link to retained
+        SBOM/build-provenance evidence. This is a cluster-wide act, not a
+        per-node act.
 
     \item \textbf{Validation.} Each node validates what it loads against
         the cluster public key it received on joining. Validation is
@@ -141,7 +149,7 @@ assigning artifacts to cluster nodes. The pipeline has three stages:
         performs locally (Chapter~16).
 
     \item \textbf{Assignment.} The cluster instructs a node to pick up a
-        specific artifact from the object store and prepare it. The node
+        specific immutable artifact digest from the object store and prepare it. The node
         fetches, validates, and runs; it does not decide what to run.
 \end{enumerate}
 
@@ -152,6 +160,14 @@ node that has picked them up; others, such as drivers and per-node
 infrastructure, must run at every node. Choosing between ``somewhere in
 the cluster'' and ``at every node'' is the same placement decision as
 choosing a shard for a service (Chapter~9), applied at the cluster scale.
+
+This does not make third-party dependencies disappear. It moves the trust
+boundary to controlled ingress. A build may contain third-party code, but the
+resulting self-contained ELF, policy, and provenance reference are blessed
+once. Nodes trade that immutable artifact inside the cluster; they do not run
+package managers or fetch executable dependencies from the Internet during
+placement. Reproducible builds, vulnerability policy, SBOM production, and
+source attestation remain supply-chain responsibilities outside the kernel.
 
 \section{Placement: affinity, observation, migration}
 
@@ -166,6 +182,15 @@ with heavily. The placement controller respects these declarations and
 co-locates communicating components on the same node, mirroring how shard
 placement keeps heavily communicating tasks on the same core. This is
 static, cheap, and good enough to start.
+
+The shared \texttt{PlacementPolicy} contract makes the declaration precise:
+desired replicas, maximum instances per node, minimum distinct nodes,
+``every eligible node'', affinity group, and anti-affinity group. A policy
+requesting concurrent replicas is invalid unless the artifact's signed CLS2
+metadata includes \texttt{PARALLEL\_INSTANCES}. The present state machine
+still commits one assignment per artifact; replica-set realization,
+multi-owner name routing, and the placement controller remain beyond the
+implemented slice.
 
 \subsection{Observation}
 
@@ -215,21 +240,17 @@ exist:
         the cluster's public signing key (Chapter~14's discovery options
         become the transport).
 
-    \item \textbf{Key injection into cluster state.} The blank-start
-        bootstrapping operation that primes a fresh cluster's replicated
-        state with its signing key, administered through the leader. (The
-        injection mechanism exists --- \texttt{OP\_KEYCEREMONY} commits the
-        key --- but nothing yet validates the injected key against the
-        build-time anchor.)
+    \item \textbf{Key injection into cluster state.} The current ceremony
+        commits only the build-time anchor and is set-once and idempotent.
+        A genuinely blank start and authenticated key rotation remain.
 
-    \item \textbf{Signed artifact validation.} Extending the EL0 loader
-        with cryptographic verification against the cluster key, so a node
-        rejects anything the cluster has not signed. (Implemented in
-        Section~17.7 via signature notes; making signing mandatory is the
-        remaining step.)
+    \item \textbf{Signed artifact validation.} This boundary is implemented:
+        the loader requires a valid signature, while store lookup,
+        administration ingress, and deployment also require the signed
+        logical identity to match the requested name.
 
     \item \textbf{Deployment manifest in cluster state.} A replicated
-        catalog of artifacts, assignments, declared affinity, and
+        catalog of artifacts, immutable digests, assignments, declared affinity, and
         ``somewhere'' versus ``every node'' placement policy --- a state
         machine on the Graft core like the \texttt{dns} catalog.
 
@@ -243,8 +264,10 @@ exist:
         observed behaviour justifies it.
 \end{itemize}
 
-None of these require new kernel primitives. They require composing the
-consensus, storage, name-service, and live-upgrade machinery into a
+Most of these are userspace coordination. The implemented slice adds one
+narrow kernel mechanism: only the supervisor-designated deployment agent may
+start or retire a verified, name-bound ELF memory object. The rest requires
+composing the consensus, storage, name-service, and live-upgrade machinery into a
 deployment system, and trusting the same discipline the rest of the OS is
 built on: explicit ownership, bounded communication, and decisions made
 from shared, replicated state rather than from per-machine configuration.
@@ -264,11 +287,13 @@ between the two is explicit.
 
 The distributed name service's Raft catalog (Chapter~14) now also carries the
 \textbf{deployment manifest}: an \texttt{artifact $\rightarrow$
-\{object\_id, node\_key, generation\}} map committed through the same
+\{object\_id, artifact\_sha256, node\_key, generation\}} map committed through the same
 log as name registrations. A deployment is therefore a cluster decision in
 the true sense: it replicates to every node, survives leader changes, and is
-generation-fenced like the name catalog. The record carries no signature:
-the Raft consensus that committed it is its authenticity.
+generation-fenced like the name catalog. The record carries no separate
+signature: Raft determines authoritative ordered state. That is agreement,
+not caller authorization; the raw mutation endpoint still needs a separately
+delegated cluster-administrator capability before it is a production plane.
 \texttt{OP\_DEPLOY} submits a record; \texttt{OP\_DEPLOY\_QUERY} reads
 the local replica's applied state.
 
@@ -287,8 +312,11 @@ replacement's registration.
 Each node runs an \texttt{agent}: it polls the manifest for assignments
 addressed to its node key, fetches the artifact from the object store,
 verifies that it is exactly the assigned artifact (SHA-256 identity) and
-that its signature note validates against the cluster's public key,
-registers the deployed name in the distributed catalog, and serves it. When
+that its signature note validates both the bytes and requested logical name,
+then invokes a deployment-authority syscall. The kernel snapshots,
+revalidates, maps, and starts that exact ELF in a fresh address space. The ELF
+registers its own local endpoint; the agent only publishes it in the
+distributed catalog and supervises the assignment. When
 the cluster re-assigns the artifact elsewhere, the agent retires and exits;
 its endpoint close is observed by the dns, which generation-fences the
 unregister. Cross-node invocation of the deployed service rides the existing
@@ -300,8 +328,8 @@ wherever it currently lives.
 \texttt{clusterctl} is the ``outside'' administration interface. It wraps
 the dns manifest ops and the object store behind three operations:
 \texttt{upload} (store a note-signed artifact as-is under the artifact's
-derived cluster-wide id --- the cluster never signs, it validates at
-pickup), \texttt{deploy} (submit the assignment), and \texttt{status}
+derived cluster-wide id after checking that CLS2 blesses the requested name),
+\texttt{deploy} (hash the stored bytes and submit the pinned assignment), and \texttt{status}
 (query the committed record). A kernel serial console ---
 \texttt{--deploy-test} run interactively, without a runner timeout --- lets
 an operator type \texttt{upload}, \texttt{deploy}, and \texttt{status}
@@ -314,7 +342,9 @@ Artifact names are bare cluster-global names (``\texttt{greet}''); the
 object-store id is \emph{derived} from the name (a \texttt{0xfffe...} tag
 over FNV-1a), so every node stores the same artifact under the same id, and
 the node dimension appears only in the deployment record. This is the naming
-scheme the vision assumes, now concrete.
+scheme the slice currently uses. The host image producer detects and refuses
+collisions in the complete bundle; production should move from a truncated
+48-bit name hash to a collision-resolving or fully content-addressed namespace.
 
 \subsection{Cryptography: real signatures, honest boundaries}
 
@@ -323,9 +353,10 @@ itself. The cluster's \emph{private} key never enters the cluster: it is
 held off-cluster (the \texttt{tools/cluster-sign} host tool), and the
 deployed binary is signed with it before upload. The signature lives in a
 standard ELF \texttt{SHT\_NOTE} section (\texttt{.note.charlotte-sig},
-note type \texttt{"CLS1"}, 64-byte Ed25519 descriptor): the signature
-covers the SHA-256 of the whole file with the note's descriptor bytes
-treated as zeros --- a signature cannot cover itself, the same trick PE
+note type \texttt{"CLS2"}). Its descriptor contains the logical name,
+artifact class and flags, release, rollback counter, signing-key id, optional
+provenance digest, and the 64-byte Ed25519 signature. The signature covers the
+SHA-256 of the whole file with only the signature field treated as zeros --- a signature cannot cover itself, the same trick PE
 Authenticode uses --- so the signed bytes are deterministic. The matching
 \emph{public} key is injected into the cluster two ways: it is embedded in
 the kernel image at build time (the bootstrap trust anchor, handed to
@@ -343,10 +374,10 @@ the cluster's private key --- by default the version-controlled
 \texttt{tools/cluster-sign/dev-key.hex}, whose public half is the embedded
 \texttt{CLUSTER\_PUBLIC\_KEY}; a live key can be substituted at build time
 via \texttt{CLUSTER\_SIGN\_PRIVATE\_KEY} (rebuilding the kernel with its
-public half embedded). The deploy agent additionally verifies the note and
-the artifact's SHA-256 identity before serving it. The deployed artifact is
+public half embedded). Store resolution and deployment additionally verify
+the signed name, and the manifest pins the complete ELF SHA-256. The deployed artifact is
 a real binary --- the \texttt{greet} service ELF, signed by the build
-pipeline and staged into the object store --- fetched, verified, served
+pipeline and staged into the object store --- fetched, verified, executed, served
 across the network, and migrated like any other artifact. The deployment
 record needs no signature because the Raft consensus that committed it is
 its authenticity.
@@ -356,26 +387,31 @@ simulations are the next work items:
 
 \begin{itemize}
     \item \textbf{Per-node object store.} Storage is still per-node: the
-        artifact is staged on each node (the kernel stages it for the demo)
+        host image producer stages the blessed bundle on each initial NVMe volume
         rather than fetched from a cluster-wide store. A networked
         artifact-fetch path is not implemented.
 
-    \item \textbf{The ceremony is unvalidated.} The key ceremony commits
-        whatever key it is given; nothing yet verifies the injected key
-        against the build-time anchor (a blank-start cluster could in
-        principle be primed with any key). The trust decision --- the IT
-        department's key, injected once during establishment --- is
-        operational, not yet cryptographic.
+    \item \textbf{Bootstrap-key rotation is absent.} Establishment now
+        accepts only the build-time anchor and replicated state is set-once.
+        Blank-start trust establishment and authenticated overlapping key
+        rotation are not implemented.
 
     \item \textbf{The development key is version-controlled.} Every
         staged ELF is signed with the dev keypair in the repository; the
         real production key lives at the IT department and would be
         substituted at build time. The NVMe-ELF upgrade path remains
-        hash-equality-constrained (Chapter~16) and now additionally requires
-        a validly signed image to load.
+        identity- and signature-constrained (Chapter~16).
 
     \item \textbf{The admin is kernel-side.} The console is a kernel
-        thread, not a real out-of-band management plane.
+        thread, not a real out-of-band management plane. Its raw mutation path
+        also lacks the intended separately delegated cluster-administrator
+        capability.
+
+    \item \textbf{Replica placement is a contract, not a controller.} The
+        policy representation and signed parallel-safety gate exist, but the
+        current manifest has one node assignment per artifact and name routing
+        has one active owner. Multiple placements and load-balanced routing
+        remain to be implemented.
 \end{itemize}
 
 \subsection{What the slice proves}

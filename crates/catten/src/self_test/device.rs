@@ -306,11 +306,20 @@ extern "C" fn irq_waiter() {
     device_phase(1, irq, 0);
 
     // Round 1: released by the deterministic kernel delivery path.
-    completion::wait_on_cq(DEV_ASID, 0, 1);
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    let (pending, count) = loop {
+        let _ = completion::wait_on_cq_timeout(DEV_ASID, 0, 1, 100);
+        let status =
+            device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 1 failed");
+        if status.0 != 0 {
+            break status;
+        }
+        // A CQ is deliberately a unified readiness source. A stale or
+        // unrelated generation may release the wait, so the interrupt
+        // object's pending counter remains the authoritative condition.
+        deadline.assert_pending("device round 1 interrupt");
+    };
     device_phase(2, irq, 0);
-    let (pending, count) =
-        device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 1 failed");
-    assert!(pending >= 1, "[device] round 1 must observe a pending interrupt");
     assert!(count >= 1, "[device] round 1 lifetime count must advance");
     let consumed = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 1 failed");
     assert_eq!(consumed, pending, "[device] ack must consume the pending count");
@@ -324,11 +333,17 @@ extern "C" fn irq_waiter() {
     // interrupt path (dispatcher → deliver_interrupt → CQ wake).
     spin_until(&ROUND2_START, "round 2 start");
     device_phase(4, irq, 0);
-    completion::wait_on_cq(DEV_ASID, 0, 1);
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    let pending = loop {
+        let _ = completion::wait_on_cq_timeout(DEV_ASID, 0, 1, 100);
+        let (pending, _) =
+            device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 2 failed");
+        if pending != 0 {
+            break pending;
+        }
+        deadline.assert_pending("device round 2 interrupt");
+    };
     device_phase(5, irq, 0);
-    let (pending, _) =
-        device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 2 failed");
-    assert!(pending >= 1, "[device] round 2 must observe a pending interrupt");
     let _ = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 2 failed");
     ROUND2_RELEASED.store(1, Ordering::Release);
     device_phase(6, u64::from(pending), 0);
@@ -370,18 +385,19 @@ extern "C" fn irq_driver() {
     // pending counter nor the waiter reports delivery, reassert the source at
     // a modest interval. Never re-pend after delivery, since doing so while the
     // source is masked would create an artificial second interrupt on ack.
-    let mut waits = 0u32;
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    let mut next_reassert = crate::cpu::scheduler::monotonic_millis().saturating_add(16);
     while ROUND2_RELEASED.load(Ordering::Acquire) == 0 {
-        waits += 1;
         deadline.assert_pending("round 2 GIC delivery");
-        crate::cpu::scheduler::sleep_millis(1);
-        if waits.is_multiple_of(16) {
+        crate::cpu::scheduler::yield_lp();
+        let now = crate::cpu::scheduler::monotonic_millis();
+        if now >= next_reassert {
             let (pending, _) = device::interrupt_status(DEV_ASID, irq)
                 .expect("[device] status while awaiting round 2 failed");
             if pending == 0 {
                 crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
             }
+            next_reassert = now.saturating_add(16);
         }
     }
     device_phase(14, irq, 0);
@@ -420,6 +436,9 @@ fn spin_until(flag: &AtomicU32, what: &str) {
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while flag.load(Ordering::Acquire) == 0 {
         deadline.assert_pending(what);
-        crate::cpu::scheduler::sleep_millis(1);
+        // This is an atomic thread-to-thread handoff. Depending on a timer to
+        // poll it makes the interrupt test fail when an otherwise unrelated
+        // timer PPI is delayed on the coordinator's LP.
+        crate::cpu::scheduler::yield_lp();
     }
 }

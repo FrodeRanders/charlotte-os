@@ -123,6 +123,8 @@ pub mod call_no {
     pub const MEMORY_UNMAP: u16 = SyscallNumber::MemoryUnmap as u16;
     /// Close memory object cap x1.
     pub const MEMORY_CLOSE: u16 = SyscallNumber::MemoryClose as u16;
+    /// Return memory object x1's byte capacity, or zero for an invalid cap.
+    pub const MEMORY_SIZE: u16 = SyscallNumber::MemorySize as u16;
     /// Send scalar message with moved memory cap x4.
     pub const IPC_SCALAR_SEND_MOVE: u16 = SyscallNumber::IpcScalarSendMove as u16;
     /// Call with moved memory cap x4. Returns pending-call cap.
@@ -202,6 +204,11 @@ pub mod call_no {
     /// supervisor finds the owner ASID).  Returns the new generation in x0,
     /// or 0 on failure.
     pub const SPAWN_UPGRADE: u16 = SyscallNumber::SpawnUpgrade as u16;
+    /// Start a signed, name-bound ELF. Restricted to the delegated node
+    /// deployment agent.
+    pub const SPAWN_ARTIFACT: u16 = SyscallNumber::SpawnArtifact as u16;
+    /// Abort and reclaim the deployment agent's current child domain.
+    pub const RETIRE_ARTIFACT: u16 = SyscallNumber::RetireArtifact as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
     /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
     pub const IPC_VECTOR_SEND: u16 = SyscallNumber::IpcVectorSend as u16;
@@ -269,6 +276,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MemoryMap => sys_memory_map(frame),
         SyscallNumber::MemoryUnmap => sys_memory_unmap(frame),
         SyscallNumber::MemoryClose => sys_memory_close(frame),
+        SyscallNumber::MemorySize => sys_memory_size(frame),
         SyscallNumber::IpcScalarSendMove => sys_ipc_scalar_send_move(frame),
         SyscallNumber::IpcScalarCallMove => sys_ipc_scalar_call_move(frame),
         SyscallNumber::IpcReplyMove => sys_ipc_reply_move(frame),
@@ -298,6 +306,22 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
             #[cfg(not(target_arch = "aarch64"))]
             {
                 frame.regs[0] = 0;
+            }
+        }
+        SyscallNumber::SpawnArtifact => {
+            #[cfg(target_arch = "aarch64")]
+            sys_spawn_artifact(frame);
+            #[cfg(not(target_arch = "aarch64"))]
+            {
+                frame.regs[0] = 0;
+            }
+        }
+        SyscallNumber::RetireArtifact => {
+            #[cfg(target_arch = "aarch64")]
+            sys_retire_artifact(frame);
+            #[cfg(not(target_arch = "aarch64"))]
+            {
+                frame.regs[0] = u64::MAX;
             }
         }
         SyscallNumber::IpcVectorSend => sys_ipc_vector_send(frame),
@@ -868,6 +892,16 @@ fn sys_memory_close(frame: &mut TrapFrame) {
     };
 }
 
+fn sys_memory_size(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    frame.regs[0] = object::info(asid, cap)
+        .ok()
+        .and_then(|info| info.pages.checked_mul(4096))
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .unwrap_or(0);
+}
+
 fn sys_memory_get_phys(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
@@ -1253,13 +1287,18 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         .get_tid()
         .expect("COMPLETION_WAIT_TIMEOUT: no running thread");
 
+    // Keep the object used for both registration and the lost-wake check.
+    // Looking it up twice would be harmless while this capability remains
+    // open, but one Arc makes the synchronization relationship explicit.
+    let completion =
+        crate::completion::completion_of(asid, cap).expect("COMPLETION_WAIT_TIMEOUT: unknown cap");
+
     // Block on the completion.
     let generation = SYSTEM_SCHEDULER
         .read()
         .block_thread_with_constraint_generation(
             tid,
-            &*crate::completion::completion_of(asid, cap)
-                .expect("COMPLETION_WAIT_TIMEOUT: unknown cap"),
+            completion.as_ref(),
             crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
         )
         .expect("COMPLETION_WAIT_TIMEOUT: failed to block thread");
@@ -1276,6 +1315,15 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
     // any threads run.
     crate::timers::enqueue_event(timer_event);
+
+    // Close the same lost-wake window as completion::wait(): the operation
+    // may have completed after the fast-path poll but before its observer was
+    // registered. In that case Completion::signal() saw no waiter, so make
+    // the now-blocked thread runnable before yielding. A later completion
+    // races safely with this idempotent generation-checked admission.
+    if completion.is_terminal() {
+        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+    }
 
     yield_lp();
 
@@ -1531,4 +1579,114 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
 
     // Report the new domain's ASID as evidence.
     frame.regs[0] = loaded.asid as u64;
+}
+
+#[cfg(target_arch = "aarch64")]
+fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bool {
+    crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock().is_some_and(|handle| {
+        handle.id() == caller_asid && crate::memory::address_space_handle_is_current(handle)
+    })
+}
+
+#[cfg(target_arch = "aarch64")]
+fn sys_spawn_artifact(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    let elf_cap = frame.regs[1];
+    let size = usize::try_from(frame.regs[2]).ok();
+    let packed_name = frame.regs[3];
+    let close_input = || {
+        if elf_cap != 0 {
+            let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+        }
+    };
+    if !deployment_agent_authorized(caller_asid)
+        || elf_cap == 0
+        || size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
+        || crate::service::supervisor::DEPLOYED_DOMAIN.lock().is_some()
+    {
+        close_input();
+        frame.regs[0] = 0;
+        return;
+    }
+    let name_bytes = packed_name.to_le_bytes();
+    let name_len = name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
+    if name_len == 0 {
+        close_input();
+        frame.regs[0] = 0;
+        return;
+    }
+    let image = match crate::memory::object::snapshot_bytes(
+        caller_asid,
+        elf_cap,
+        size.expect("size checked above"),
+    ) {
+        Ok(image) => image,
+        Err(_) => {
+            close_input();
+            frame.regs[0] = 0;
+            return;
+        }
+    };
+    close_input();
+    if charlotte_launch::signature_note::verify_elf_for_name(
+        &image,
+        &charlotte_launch::CLUSTER_PUBLIC_KEY,
+        &name_bytes[..name_len],
+    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+        || !crate::service::loader::validate_user_elf(&image)
+    {
+        frame.regs[0] = 0;
+        return;
+    }
+    let loaded = match crate::service::loader::try_load_domain(&image) {
+        Ok(loaded) => loaded,
+        Err(_) => {
+            frame.regs[0] = 0;
+            return;
+        }
+    };
+    let name_service = crate::service::supervisor::node_name_service();
+    let bootstrap = match crate::ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        crate::ipc::ConnectionRights::CALL,
+    ) {
+        Ok(cap) => cap,
+        Err(_) => {
+            let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
+            frame.regs[0] = 0;
+            return;
+        }
+    };
+    crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap);
+    crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
+    let domain = crate::service::supervisor::start_domain(loaded);
+    *crate::service::supervisor::DEPLOYED_DOMAIN.lock() = Some(domain);
+    frame.regs[0] = domain.asid as u64;
+}
+
+#[cfg(target_arch = "aarch64")]
+fn sys_retire_artifact(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    if !deployment_agent_authorized(caller_asid) {
+        frame.regs[0] = u64::MAX;
+        return;
+    }
+    let mut deployed = crate::service::supervisor::DEPLOYED_DOMAIN.lock();
+    let Some(domain) = *deployed else {
+        frame.regs[0] = 0;
+        return;
+    };
+    if !crate::service::supervisor::domain_exited(&domain) {
+        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .abort_as_threads(domain.asid);
+        frame.regs[0] = 1;
+        return;
+    }
+    let domain = deployed.take().expect("deployed domain checked above");
+    drop(deployed);
+    crate::service::supervisor::teardown_domain(domain);
+    frame.regs[0] = 0;
 }

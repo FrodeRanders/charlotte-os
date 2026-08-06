@@ -54,6 +54,7 @@ use crate::{
             spawn_thread,
             spawn_thread_on_lp,
             system_scheduler::{
+                LP_LOAD_SUMMARIES,
                 REBALANCE_SUCCESSES,
                 SYSTEM_SCHEDULER,
                 get_thread_id,
@@ -77,7 +78,6 @@ use crate::{
 pub static SCHEDULER_LIFECYCLE_PROGRESS: AtomicU64 = AtomicU64::new(0);
 static SCHEDULER_LIFECYCLE_WORKERS_DONE: AtomicU64 = AtomicU64::new(0);
 static RUNTIME_REBALANCE_TARGET: AtomicU64 = AtomicU64::new(u64::MAX);
-static RUNTIME_REBALANCE_WORKERS_DONE: AtomicU64 = AtomicU64::new(0);
 static RUNTIME_REBALANCE_DONE: AtomicBool = AtomicBool::new(false);
 static REMOTE_ABORT_DONE: AtomicBool = AtomicBool::new(false);
 static SCHEDULER_LIFECYCLE_REPORTED: AtomicBool = AtomicBool::new(false);
@@ -167,23 +167,45 @@ extern "C" fn runtime_rebalance_coordinator() {
     sleep_millis(3_000);
     let target = REBALANCE_SUCCESSES.load(Ordering::Acquire) + 1;
     RUNTIME_REBALANCE_TARGET.store(target, Ordering::Release);
-    for _ in 0..WORKER_COUNT {
+
+    // Construct an actual sustained imbalance instead of assuming that three
+    // extra LP0 threads outweigh whatever the rest of the concurrently
+    // booting suite happened to place on LP1. Include enough margin for this
+    // coordinator to exit after spawning the workload while preserving the
+    // scheduler's minimum two-thread load difference.
+    let lp_count = get_lp_count();
+    let lp0_load = LP_LOAD_SUMMARIES[0].load(Ordering::Acquire);
+    let busiest_other = (1..lp_count)
+        .map(|lp| LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
+        .max()
+        .unwrap_or(0);
+    let workers =
+        busiest_other.saturating_add(4).saturating_sub(lp0_load).max(WORKER_COUNT as usize);
+    logln!(
+        "[scheduler runtime rebalance] constructing LP0 load {lp0_load}+{workers} against busiest \
+         peer load {busiest_other}."
+    );
+    for _ in 0..workers {
         spawn_migratable_thread_on_lp(KERNEL_ASID, runtime_rebalance_worker, 0);
     }
 }
 
 extern "C" fn runtime_rebalance_worker() {
     let target = RUNTIME_REBALANCE_TARGET.load(Ordering::Acquire);
+    let deadline = crate::self_test::results::Deadline::after_millis(15_000);
     while REBALANCE_SUCCESSES.load(Ordering::Acquire) < target {
+        deadline.assert_pending("certified runtime scheduler migration");
         crate::cpu::scheduler::yield_lp();
     }
-    if RUNTIME_REBALANCE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
+    if RUNTIME_REBALANCE_DONE
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
         logln!(
             "[scheduler runtime rebalance] sustained-window sampling advanced certified \
              migrations to {}; starting cross-LP abort regression.",
             REBALANCE_SUCCESSES.load(Ordering::Relaxed)
         );
-        RUNTIME_REBALANCE_DONE.store(true, Ordering::Release);
         start_remote_abort_regression();
     }
 }

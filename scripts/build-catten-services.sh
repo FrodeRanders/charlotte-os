@@ -48,22 +48,32 @@ if [ "$MODE" = "embed" ]; then
     "$ROOT/scripts/sign-service-elfs.sh" "$BUNDLE"
     echo ">>> Staged and signed AArch64 EL0 service bundle at $BUNDLE."
 elif [ "$MODE" = "check" ]; then
-    # The staged ELFs are deliberately not byte-identical to the build
-    # output (each carries an embedded signature note); verify the
-    # signatures instead, and require every staged service to be present.
+    # Reproduce the signed bundle from the just-built binaries and compare it
+    # byte-for-byte. Signature validity alone does not prove that a staged ELF
+    # corresponds to current source.
+    CHECK_BUNDLE="$(mktemp -d /tmp/catten-service-check.XXXXXX)"
+    trap 'rm -rf -- "$CHECK_BUNDLE"' EXIT
+    for service in "${SERVICES[@]}"; do
+        install -m 0755 "$OUTPUT/$service" "$CHECK_BUNDLE/$service.elf"
+    done
+    "$ROOT/scripts/sign-service-elfs.sh" "$CHECK_BUNDLE" >/dev/null
     stale=0
     for service in "${SERVICES[@]}"; do
         if [ ! -f "$BUNDLE/$service.elf" ]; then
             echo "error: staged AArch64 $service.elf is missing" >&2
+            stale=1
+        elif ! cmp -s "$BUNDLE/$service.elf" "$CHECK_BUNDLE/$service.elf"; then
+            echo "error: staged AArch64 $service.elf is stale" >&2
             stale=1
         fi
     done
     for elf in "$BUNDLE"/*.elf; do
         [ -f "$elf" ] || continue
         if ! (cd /tmp && cargo run --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
-            -- elf-verify "$elf" "3ddc95c26bd5f4022d95a4c6c8d074f577f11af7873e527b018b21be2c035463" \
+            -- elf-verify "$elf" "$(basename "$elf" .elf)" \
+            "3ddc95c26bd5f4022d95a4c6c8d074f577f11af7873e527b018b21be2c035463" \
             >/dev/null 2>&1); then
-            echo "error: staged AArch64 $(basename "$elf") signature is invalid" >&2
+            echo "error: staged AArch64 $(basename "$elf") signature or identity is invalid" >&2
             stale=1
         fi
     done

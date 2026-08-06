@@ -26,9 +26,8 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
     ipc_endpoint_create,
-    ipc_recv,
+    ipc_recv_block,
     ipc_reply,
     ipc_scalar_call_connection,
     ipc_status,
@@ -70,7 +69,11 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 6); // stage: serving
 
     loop {
-        let message = ipc_recv(endpoint);
+        // This service owns no completion queue work other than endpoint
+        // readiness. Block directly on the endpoint so every subsequent
+        // invocation wakes it; an unbound `cq_wait` after the first request
+        // left the service asleep forever.
+        let message = ipc_recv_block(endpoint);
         if message.status == ipc_status::ENDPOINT_CLOSED {
             unsafe { thread_exit() };
         }
@@ -91,7 +94,6 @@ fn main(ctx: Context) -> ! {
                 }
             }
         }
-        cq_wait(1, 0);
     }
 }
 
