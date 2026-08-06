@@ -404,7 +404,8 @@ impl NameCatalog {
                         None => return,
                     }
                 } else if magic == CATALOG_MAGIC_V6 {
-                    let Some(digest) = data.get(after_generation..after_generation.saturating_add(32))
+                    let Some(digest) =
+                        data.get(after_generation..after_generation.saturating_add(32))
                     else {
                         return;
                     };

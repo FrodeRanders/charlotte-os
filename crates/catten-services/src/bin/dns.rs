@@ -477,8 +477,7 @@ fn poll_local_call(call: &mut PendingLocalCall, now: u64) -> Option<i64> {
         });
     }
 
-    let (status, result, returned_connection, memory) =
-        ipc_reply_poll_with_memory(call.completion);
+    let (status, result, returned_connection, memory) = ipc_reply_poll_with_memory(call.completion);
     if status == 1 {
         return None;
     }
@@ -511,11 +510,13 @@ fn poll_local_call(call: &mut PendingLocalCall, now: u64) -> Option<i64> {
             }
             ipc_close(call.connection);
             call.connection = 0;
-            Some(if status == 0 {
-                result as i64
-            } else {
-                dns::ERR_UNCERTAIN
-            })
+            Some(
+                if status == 0 {
+                    result as i64
+                } else {
+                    dns::ERR_UNCERTAIN
+                },
+            )
         }
     }
 }
@@ -1434,12 +1435,12 @@ fn main(ctx: Context) -> ! {
         }
         transport.drain_outbound();
         transport.reap_acks();
-    config::write_u32_release(
+        config::write_u32_release(
             dns::status::REMOTE_CALL_ACKS,
             transport.acknowledged_count(catten_services::rcall::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
         );
-    config::write_u32_release(
+        config::write_u32_release(
             dns::status::REMOTE_QUERY_REPLY_ACKS,
             transport.acknowledged_count(catten_services::rquery::TAG_REPLY).min(u32::MAX as u64)
                 as u32,
@@ -1593,12 +1594,7 @@ fn main(ctx: Context) -> ! {
                                 // reply is deferred until the command is
                                 // committed (pending_registers below).
                                 match node.submit_command(
-                                    encode_deploy(
-                                        &artifact,
-                                        object_id,
-                                        node_key,
-                                        &artifact_digest,
-                                    ),
+                                    encode_deploy(&artifact, object_id, node_key, &artifact_digest),
                                     node.millis(),
                                 ) {
                                     Ok(log_index) => {
@@ -1653,10 +1649,9 @@ fn main(ctx: Context) -> ! {
                                 // The key ceremony: commit the cluster's
                                 // public key to the replicated state. The
                                 // reply is deferred until it has committed.
-                                match node.submit_command(
-                                    encode_set_cluster_key(&key),
-                                    node.millis(),
-                                ) {
+                                match node
+                                    .submit_command(encode_set_cluster_key(&key), node.millis())
+                                {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::SetKey {
                                             log_index,
@@ -2192,7 +2187,7 @@ fn main(ctx: Context) -> ! {
                         == Some(generation);
                     if activated && connection != 0 {
                         let close_watch = ipc_connection_watch_closed(connection);
-    config::write_u32_release(
+                        config::write_u32_release(
                             dns::status::PUBLICATION_LIFECYCLE,
                             if close_watch == u64::MAX {
                                 u32::MAX
@@ -2416,7 +2411,7 @@ fn main(ctx: Context) -> ! {
                         settled_after_ack,
                     });
                     remote_calls_served = remote_calls_served.wrapping_add(1);
-    config::write_u32_release(
+                    config::write_u32_release(
                         dns::status::REMOTE_CALLS_SERVED,
                         remote_calls_served,
                     );
@@ -2481,8 +2476,7 @@ fn main(ctx: Context) -> ! {
                 node.start_election(node.millis());
             }
             if node.state == NodeState::Leader
-                && node.millis().saturating_sub(last_heartbeat_broadcast)
-                    >= heartbeat_interval_ms
+                && node.millis().saturating_sub(last_heartbeat_broadcast) >= heartbeat_interval_ms
             {
                 node.broadcast_heartbeat(node.millis());
                 last_heartbeat_broadcast = node.millis();
@@ -2491,7 +2485,7 @@ fn main(ctx: Context) -> ! {
         }
 
         config::write_u32_release(dns::status::CURRENT_TERM, node.current_term as u32);
-    config::write_u32_release(
+        config::write_u32_release(
             dns::status::RAFT_STATE,
             match node.state {
                 NodeState::Candidate => 2,

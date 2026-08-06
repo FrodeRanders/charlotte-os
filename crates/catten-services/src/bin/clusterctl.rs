@@ -4,8 +4,8 @@
 //! `clusterctl` wraps the raw dns manifest ops and the object store behind
 //! admin-level operations:
 //!
-//! 1. `OP_UPLOAD` verifies an offline CLS2 signature and logical identity,
-//!    then stores the immutable ELF under its derived cluster-wide id.
+//! 1. `OP_UPLOAD` verifies an offline CLS2 signature and logical identity, then stores the
+//!    immutable ELF under its derived cluster-wide id.
 //! 2. `OP_DEPLOY` assigns the artifact to a node by submitting a deployment record through the
 //!    local dns (the manifest is replicated cluster state).
 //! 3. `OP_STATUS` reports the committed deployment record.
@@ -138,9 +138,7 @@ fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
     }
     let mut hasher = charlotte_launch::sha256::Sha256::new();
     for index in 0..len {
-        hasher.update(&[unsafe {
-            core::ptr::read_volatile((DATA_VADDR + index) as *const u8)
-        }]);
+        hasher.update(&[unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) }]);
     }
     memory_unmap(memory);
     memory_close(memory);
@@ -240,7 +238,8 @@ fn main(ctx: Context) -> ! {
                                     &artifact,
                                     &trusted_key,
                                     &name,
-                                ) == charlotte_launch::signature_note::VerifyOutcome::Valid;
+                                )
+                                    == charlotte_launch::signature_note::VerifyOutcome::Valid;
                                 if !trusted {
                                     clusterctl::ERR_UNTRUSTED_ARTIFACT
                                 } else if store_artifact(obj_conn, object_id, &artifact) {
@@ -380,8 +379,7 @@ fn main(ctx: Context) -> ! {
                             if call == 0 {
                                 clusterctl::ERR_NOT_LEADER
                             } else {
-                                let (generation, _) =
-                                    unsafe { wait_reply(call, REPLY_SPINS) };
+                                let (generation, _) = unsafe { wait_reply(call, REPLY_SPINS) };
                                 ipc_close(call);
                                 generation
                             }

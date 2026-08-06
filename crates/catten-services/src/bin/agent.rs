@@ -4,13 +4,12 @@
 //! Each agent:
 //!
 //! 1. Polls the replicated deployment manifest for assignments to this node.
-//! 2. Fetches the pinned object-store bytes, verifies their SHA-256 and CLS2
-//!    name-bound cluster signature, and passes the memory object to the
-//!    privileged deployment syscall.
-//! 3. The kernel loads that exact ELF in a fresh address space; the service
-//!    registers locally and the agent publishes it to the distributed catalog.
-//! 4. On reassignment the agent retires and reclaims the spawned domain. The
-//!    resulting endpoint close drives generation-fenced distributed removal.
+//! 2. Fetches the pinned object-store bytes, verifies their SHA-256 and CLS2 name-bound cluster
+//!    signature, and passes the memory object to the privileged deployment syscall.
+//! 3. The kernel loads that exact ELF in a fresh address space; the service registers locally and
+//!    the agent publishes it to the distributed catalog.
+//! 4. On reassignment the agent retires and reclaims the spawned domain. The resulting endpoint
+//!    close drives generation-fenced distributed removal.
 #![no_std]
 #![no_main]
 
@@ -196,11 +195,7 @@ fn fetch_and_verify(
         memory_close(returned_memory);
         return Err(());
     }
-    if charlotte_launch::signature_note::verify_elf_for_name(
-        &artifact,
-        cluster_key,
-        b"greet",
-    )
+    if charlotte_launch::signature_note::verify_elf_for_name(&artifact, cluster_key, b"greet")
         != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
         memory_close(returned_memory);

@@ -413,15 +413,8 @@ fn process_frame(
     // Cumulative acknowledgement: duplicates are acknowledged again, while
     // out-of-order frames acknowledge the last contiguous sequence.
     let last_contiguous = peers[index].next_rx_seq.wrapping_sub(1);
-    let ack_frame = make_frame(
-        source,
-        local_mac,
-        remote_session,
-        0,
-        last_contiguous,
-        FLAG_SYN | FLAG_ACK,
-        &[],
-    );
+    let ack_frame =
+        make_frame(source, local_mac, remote_session, 0, last_contiguous, FLAG_SYN | FLAG_ACK, &[]);
     let _ = send_frame(net_conn, &ack_frame);
 }
 
