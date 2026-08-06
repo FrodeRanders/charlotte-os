@@ -327,8 +327,9 @@ fn run() -> Result<()> {
             .ok_or_else(|| "metadata self-test construction failed".to_owned())?
             .with_key_id(&charlotte_launch::CLUSTER_PUBLIC_KEY)
             .with_provenance_digest([0x5a; 32]);
-            let decoded = signature_note::decode_metadata(&signature_note::encode_descriptor(metadata))
-                .ok_or_else(|| "metadata self-test decode failed".to_owned())?;
+            let decoded =
+                signature_note::decode_metadata(&signature_note::encode_descriptor(metadata))
+                    .ok_or_else(|| "metadata self-test decode failed".to_owned())?;
             if decoded != metadata {
                 return Err("metadata self-test round trip failed".to_owned());
             }
