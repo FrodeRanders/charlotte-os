@@ -23,7 +23,7 @@ authoritative record.
     CQ\_WAIT/CQ\_WAKE, per-shard CQ partitioning, backlog batching, 32-byte
     completion records & Done \\
 7 & Sitas endpoint/CQ backend: endpoint readiness binding, unified shard
-    wait, ShardExecutor (budgeted polling), ShardParker seam (spin free),
+    wait, ShardExecutor (budgeted polling), ShardParker (spin free),
     per-shard CQ rings & Done \\
 8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
     interrupt-driven deferred reads, crash recovery & Done \\
@@ -98,8 +98,7 @@ authoritative record.
 
     \item \textbf{Sitas integration:} sitas-core compiles for aarch64-none.
         sitas-charlotte links against the kernel's syscall ABI. Per-shard CQ
-        rings mapped by the loader contract. ShardParker seam retires
-        busy-waiting.
+        rings mapped by the loader contract. ShardParker retires busy-waiting.
 
     \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net},
         \texttt{charlotte-protocol-msg}.

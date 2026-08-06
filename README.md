@@ -139,7 +139,7 @@ locality, and rapid recovery.
 The long-term direction is to scale this model from one machine to a cluster:
 interchangeable server-class ARM nodes assemble themselves into clusters on
 boot, software is deployed to a named cluster rather than to named servers,
-and the cluster decides placement --- initially from declared component
+and the cluster decides placement -- initially from declared component
 affinity, eventually from observed inter-dependency, with cross-node
 migration of running components. Placement policy distinguishes replica count,
 per-node instance capacity, affinity/co-location, and anti-affinity. Multiple
@@ -153,24 +153,23 @@ two-guest QEMU cluster (`scripts/run-aarch64.sh --deploy-test`): the
 deployment manifest is replicated Raft state and pins an immutable digest. An
 agent with narrowly delegated deployment authority picks up and verifies the
 artifact; the kernel starts that exact ELF in a separate address space, and
-the service serves across the network and
-migrates it between nodes without losing its name; `clusterctl` (plus a
-serial admin console) provides the outside upload/deploy/status interface.
-Artifacts are real ELF binaries blessed and signed in place with Ed25519: the signature
-lives in a standard `.note.charlotte-sig` ELF note (added by
-`tools/cluster-sign elf-sign`), the public key is injected at build time and
-committed to the replicated state by the key ceremony, and the EL0 loader
-(which refuses any unsigned or invalidly signed image --- the build pipeline
-signs every staged service ELF with the version-controlled development key
-in `tools/cluster-sign/dev-key.hex`) and the deploy path validate both bytes
-and logical identity. Known third-party-containing services can therefore be
-admitted once with an SBOM/provenance digest and traded internally without
-runtime Internet dependency fetching. The object store is still per-node,
-replica-set placement is not implemented, and the mutation endpoint still
-needs a separately delegated administrator capability --- these boundaries
-are called out in Chapter 19 of
-[the manual](docs/manual-v2) ("Server-Class Cluster Vision"), which
-describes the vision against what already exists (consensus, the
+the service serves across the network and reassign it between nodes without 
+losing its name; `clusterctl` (plus a serial admin console) provides the outside 
+upload/deploy/status interface. Artifacts are real ELF binaries blessed and 
+signed in place with Ed25519: the signature lives in a standard 
+`.note.charlotte-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
+the public key is injected at build time and committed to the replicated state 
+by the key ceremony, and the EL0 loader (which refuses any unsigned or invalidly 
+signed image -- the build pipeline signs every staged service ELF with the 
+version-controlled development key in `tools/cluster-sign/dev-key.hex`) and 
+the deploy path validate both bytes and logical identity. Known 
+third-party-containing services can therefore be admitted once with an 
+SBOM/provenance digest and traded internally without runtime Internet 
+dependency fetching. The object store is still per-node, replica-set placement 
+is not implemented, and the mutation endpoint still needs a separately 
+delegated administrator capability. These boundaries are called out in 
+Chapter 17 of [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), 
+which describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).
 
 That should make it particularly interesting for:

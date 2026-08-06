@@ -7,21 +7,19 @@ two-node QEMU cluster with replicated naming and deployment state, signed
 ELF artifacts, per-node NVMe object stores, deployment agents, remote
 invocation, and a stateless assignment handoff. Dynamic membership, shared
 artifact storage, stateful cross-node migration, and automatic placement are
-still vision. The distinction is stated explicitly below rather than leaving
-future tense to imply that demonstrated mechanisms do not exist.
+still vision.
 
 \section{The vision: interchangeable compute}
 
-Server-class ARM processors with many cores are commodity hardware. The
-individual server is not interesting as a machine: it has no identity worth
-managing, no software worth deploying to by name, and no state worth
-treating as special. Servers are compute units over an interchangeable
+Server-class ARM processors with many cores are becoming commodity hardware. 
+Any individual server is not interesting as such: no software worth deploying to by name, 
+and no state worth treating as special. Servers are compute units over an interchangeable
 object store. As servers boot, they assemble themselves into clusters, and
-the cluster --- not the server --- becomes the unit that software is
+the cluster --- not individual servers --- becomes the unit that software is
 deployed to and routed through.
 
-This inverts the familiar model. Instead of deploying software to one or
-more named servers, software is deployed to a named cluster, and the
+This inverts the familiar software deployment model. Instead of deploying software
+to one or more named servers, software is deployed to a named cluster, and the
 cluster selects an optimal placement of load among its nodes based on how
 the deployed components interoperate. Components that interoperate heavily
 should land on the same cluster node; components that barely talk may be
@@ -43,8 +41,8 @@ state; and the cluster as a whole is the shared-nothing machine.
 
 \section{Implemented foundation}
 
-The vision is not written on a blank sheet. The following mechanisms are
-implemented and verified, and each maps onto a role in the cluster:
+The following mechanisms are implemented and verified, and each maps 
+onto a role in the cluster:
 
 \begin{itemize}
     \item \textbf{Cross-machine consensus.} The Graft core replicates the
@@ -368,10 +366,12 @@ cluster.
 Artifact names are bare cluster-global names (``\texttt{greet}''); the
 object-store id is \emph{derived} from the name (a \texttt{0xfffe...} tag
 over FNV-1a), so every node stores the same artifact under the same id, and
-the node dimension appears only in the deployment record. This is the naming
-scheme the slice currently uses. The host image producer detects and refuses
-collisions in the complete bundle; production should move from a truncated
-48-bit name hash to a collision-resolving or fully content-addressed namespace.
+the node dimension appears only in the deployment record. This naming
+scheme may be replaced later. 
+
+The host image producer detects and refuses collisions in the complete 
+bundle; production should move from a truncated 48-bit name hash to 
+a collision-resolving or fully content-addressed namespace.
 
 \subsection{Cryptography: real signatures, honest boundaries}
 
