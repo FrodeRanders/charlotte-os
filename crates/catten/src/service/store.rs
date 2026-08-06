@@ -12,6 +12,8 @@
 //! source the bytes come from, so the store-sourced path is exactly as
 //! trusted as the embedded one.
 
+#![cfg(target_arch = "aarch64")]
+
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
