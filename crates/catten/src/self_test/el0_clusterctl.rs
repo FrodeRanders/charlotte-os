@@ -261,7 +261,12 @@ mod inner {
                 continue;
             };
             if let Some(memory) = memory.filter(|_| status >= 0) {
-                record = read_moved_memory(memory, 0x0000_0000_0060_1000, 24);
+                record = read_moved_memory(
+                    memory,
+                    crate::self_test::scratch::allocate_scratch_page()
+                        .expect("[clusterctl] kernel scratch"),
+                    24,
+                );
                 break;
             }
             status_deadline.assert_pending("EL0 clusterctl status replication");
@@ -306,7 +311,12 @@ mod inner {
                 continue;
             };
             if let Some(memory) = memory.filter(|_| status >= 0) {
-                let key = read_moved_memory(memory, 0x0000_0000_0060_1000, 32);
+                let key = read_moved_memory(
+                    memory,
+                    crate::self_test::scratch::allocate_scratch_page()
+                        .expect("[clusterctl] kernel scratch"),
+                    32,
+                );
                 assert_eq!(
                     key.as_slice(),
                     &charlotte_launch::CLUSTER_PUBLIC_KEY,
@@ -461,7 +471,12 @@ mod inner {
                     logln!("[admin] status: {status}");
                     return;
                 };
-                let bytes = read_moved_memory(memory, 0x0000_0000_0060_1000, 32);
+                let bytes = read_moved_memory(
+                    memory,
+                    crate::self_test::scratch::allocate_scratch_page()
+                        .expect("[clusterctl] kernel scratch"),
+                    32,
+                );
                 let generation = u64::from_le_bytes(bytes[0..8].try_into().expect("generation"));
                 let object_id = u64::from_le_bytes(bytes[8..16].try_into().expect("object id"));
                 let node_key = u64::from_le_bytes(bytes[16..24].try_into().expect("node key"));

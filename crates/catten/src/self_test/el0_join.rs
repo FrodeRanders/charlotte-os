@@ -51,11 +51,9 @@ pub mod inner {
     const DISCO_OP_CLUSTER_STATUS: u32 = 6;
     const DISCO_OP_PROBE: u32 = 1;
     const RAFT_OP_CLUSTER_STATUS: u32 = 9;
-    // Dedicated kernel-side scratch for moved-memory reads. Must not share
-    // the vaddr used by other deferred verifiers (el0_clusterctl maps replies
-    // at 0x601000): the deferred verifiers run concurrently, and interleaved
-    // maps at the same kernel vaddr would race and corrupt both sides.
-    const MEM_BASE: usize = 0x0000_0000_0060_2000;
+    // The kernel-side scratch page for moved-memory reads comes from the
+    // shared scratch allocator, so no other deferred verifier can own the
+    // same vaddr (a fixed vaddr once collided with el0_clusterctl's).
     const MEM_LEN: usize = 4096;
 
     const ROLE_LEADER: u8 = 3;
@@ -141,11 +139,30 @@ pub mod inner {
     }
 
     fn read_moved_memory(cap: u64, len: usize) -> Vec<u8> {
+        // One scratch page per verifier, reused across the loop iterations:
+        // the reads are sequential, and the allocator region is finite.
+        static SCRATCH: core::sync::atomic::AtomicUsize =
+            core::sync::atomic::AtomicUsize::new(0);
+        let mem_base = match SCRATCH.load(core::sync::atomic::Ordering::Relaxed) {
+            0 => {
+                let fresh = crate::self_test::scratch::allocate_scratch_page()
+                    .expect("[join] kernel scratch");
+                SCRATCH.store(fresh, core::sync::atomic::Ordering::Relaxed);
+                fresh
+            }
+            existing => existing,
+        };
         let mut bytes = Vec::new();
-        if crate::memory::object::map(crate::memory::KERNEL_ASID, cap, MEM_BASE.into(), false).is_ok()
+        if crate::memory::object::map(
+            crate::memory::KERNEL_ASID,
+            cap,
+            mem_base.into(),
+            false,
+        )
+        .is_ok()
         {
             for index in 0..len {
-                bytes.push(unsafe { core::ptr::read_volatile((MEM_BASE + index) as *const u8) });
+                bytes.push(unsafe { core::ptr::read_volatile((mem_base + index) as *const u8) });
             }
             let _ = crate::memory::object::unmap(crate::memory::KERNEL_ASID, cap);
         }

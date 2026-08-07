@@ -127,6 +127,7 @@ pub mod cq_wait;
 pub mod device;
 pub mod el0;
 #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+pub mod scratch;
 pub mod el0_clusterctl;
 pub mod el0_demo;
 #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
