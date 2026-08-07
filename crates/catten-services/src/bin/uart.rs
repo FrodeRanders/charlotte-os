@@ -60,6 +60,8 @@ const READ_ARMED_OFFSET: usize = 4; // u32 set to 1 while a deferred read is ret
 const IRQ_COUNT_OFFSET: usize = 8; // u32 interrupts acknowledged
 const SERVED_OFFSET: usize = 12; // u32 write requests served
 
+static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
 #[inline]
 unsafe fn uart_put(byte: u8) {
     let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
@@ -145,7 +147,8 @@ fn main(ctx: Context) -> ! {
     // Unmask the PL011 receive interrupt so real received data raises the
     // delegated interrupt (the self-test drives it via a software-pended SPI).
     unsafe {
-        core::ptr::write_volatile((UART_MMIO_VADDR + pl011::IMSC) as *mut u32, pl011::IMSC_RXIM);
+        let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+        core::ptr::write_volatile((base + pl011::IMSC) as *mut u32, pl011::IMSC_RXIM);
     }
     config::write::<u32>(STAGE_OFFSET, 5); // serving
 
@@ -164,7 +167,8 @@ fn main(ctx: Context) -> ! {
         // leaves an interrupt asserted after restart; re-arming it then
         // creates an IRQ/CQ wake storm that can starve endpoint requests.
         unsafe {
-            core::ptr::write_volatile((UART_MMIO_VADDR + pl011::ICR) as *mut u32, pl011::IMSC_RXIM);
+            let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+            core::ptr::write_volatile((base + pl011::ICR) as *mut u32, pl011::IMSC_RXIM);
         }
 
         // Drain device interrupts: acknowledge and re-arm the source,

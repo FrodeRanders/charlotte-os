@@ -58,9 +58,16 @@ struct RegistryCatalog<'a>(&'a Registry);
 
 impl catten_services::broker::Catalog for RegistryCatalog<'_> {
     fn resolve(&self, name: &[u8]) -> Option<catten_services::broker::CatalogTarget> {
-        self.0.get(name).map(|registration| catten_services::broker::CatalogTarget {
-            generation: registration.generation as u64,
-            connection: registration.connection,
+        // The unregister tombstone (connection == 0) is not a live
+        // registration: resolving it would make KeyedWaitlist::park return
+        // the waiter instead of parking it, and the lookup path would then
+        // discard the reply token (a lost reply and a forever-stalled
+        // caller).
+        self.0.get(name).and_then(|registration| {
+            (registration.connection != 0).then(|| catten_services::broker::CatalogTarget {
+                generation: registration.generation as u64,
+                connection: registration.connection,
+            })
         })
     }
 }

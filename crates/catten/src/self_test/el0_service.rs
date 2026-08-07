@@ -153,7 +153,35 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     let manager = manager_reply.cap.expect("persistent manager connection");
     let upgrade =
         ipc::scalar_call(client_asid, manager, 1, NAME_ECHO).expect("persistent manager upgrade");
-    let upgraded = wait_reply_k2(client_asid, upgrade, "persistent upgrade completion");
+    let ns_status: *const u32 = {
+        let base: *mut u8 = name_service.domain.status_frame.into();
+        base as *const u32
+    };
+    let mut persistent_upgrade_value = None;
+    let mut persistent_upgrade_polls = 0u64;
+    spin_until(
+        || {
+            persistent_upgrade_polls += 1;
+            if persistent_upgrade_polls.is_multiple_of(1_000) {
+                logln!(
+                    "[service] persistent upgrade waiting: ns_waiters={}, ns_handled={}",
+                    unsafe { core::ptr::read_volatile(ns_status.add(12)) },
+                    unsafe { core::ptr::read_volatile(ns_status.add(4)) }
+                );
+            }
+            match ipc::poll_reply(client_asid, upgrade) {
+                Ok(Some(reply)) => {
+                    persistent_upgrade_value = Some(reply);
+                    true
+                }
+                Ok(None) => false,
+                Err(error) => panic!("[service] persistent upgrade reply failed: {:?}", error),
+            }
+        },
+        "persistent upgrade completion",
+    );
+    ipc::close_cap(client_asid, upgrade).expect("persistent upgrade pending-call close");
+    let upgraded = persistent_upgrade_value.expect("persistent upgrade reply missing");
     assert!(upgraded.result > 0, "persistent ELF upgrade failed");
 
     let lookup =
@@ -379,10 +407,17 @@ extern "C" fn verify_el0_service() {
         || {
             upgrade_polls += 1;
             if upgrade_polls.is_multiple_of(1_000) {
+                let ns_status: *const u32 = {
+                    let base: *mut u8 = state.name_service.domain.status_frame.into();
+                    base as *const u32
+                };
                 logln!(
-                    "[service] waiting for manager: stage={}, error={}",
+                    "[service] waiting for manager: stage={}, error={}, ns_waiters={}, ns_stage={}, ns_gen={}",
                     unsafe { core::ptr::read_volatile(manager_status) },
-                    unsafe { core::ptr::read_volatile(manager_status.add(2)) }
+                    unsafe { core::ptr::read_volatile(manager_status.add(2)) },
+                    unsafe { core::ptr::read_volatile(ns_status.add(12)) },
+                    unsafe { core::ptr::read_volatile(ns_status) },
+                    unsafe { core::ptr::read_volatile(ns_status.add(4)) }
                 );
             }
             match ipc::poll_reply(kclient2_asid, upgrade) {

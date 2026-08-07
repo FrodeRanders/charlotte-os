@@ -98,6 +98,7 @@ pub(crate) static LIVE_UPGRADE_MANAGER_ASID: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+
 /// Reuse-safe identity of the one node agent allowed to create deployed
 /// protection domains. Registration under the name `agent` does not grant
 /// this authority; the kernel supervisor delegates it explicitly.
