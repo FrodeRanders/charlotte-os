@@ -34,7 +34,6 @@ use catten_syscall::{
 };
 
 const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
-const CHUNK_VADDR: usize = 0x0000_0000_3000_0000;
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;
 const METADATA_IO_BYTES: usize = 32 * 1024;
@@ -420,10 +419,11 @@ impl ObjStore {
         if self.find_index(id).is_none() {
             return objstore::ERR_NOT_FOUND;
         }
-        if size_cap == 0 || memory_map(size_cap, BUFFER_VADDR, false) != 0 {
+        let (buffer_vaddr_map_status, buffer_vaddr) = memory_map_any(size_cap, false);
+        if size_cap == 0 || buffer_vaddr_map_status != 0 {
             return objstore::ERR_IO_ERROR;
         }
-        let size = unsafe { core::ptr::read_unaligned(BUFFER_VADDR as *const u64) };
+        let size = unsafe { core::ptr::read_unaligned(buffer_vaddr as *const u64) };
         memory_unmap(size_cap);
         let Ok(size) = u32::try_from(size) else {
             return objstore::ERR_TOO_LARGE;
@@ -744,13 +744,14 @@ impl ObjStore {
             let count_bytes = (bytes - offset).min(chunk_bytes);
             let count = u32::try_from(count_bytes / self.dev.block_size as usize).ok()?;
             let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
+        let (chunk_vaddr_map_status, chunk_vaddr) = memory_map_any(memory, false);
             if memory == 0
                 || !self.dev.read_blocks_keep(
                     lba + (offset / self.dev.block_size as usize) as u64,
                     count,
                     memory,
                 )
-                || memory_map(memory, CHUNK_VADDR, false) != 0
+                || chunk_vaddr_map_status != 0
             {
                 if memory != 0 {
                     memory_close(memory);
@@ -759,7 +760,7 @@ impl ObjStore {
             }
             unsafe {
                 core::ptr::copy_nonoverlapping(
-                    CHUNK_VADDR as *const u8,
+                    chunk_vaddr as *const u8,
                     result.as_mut_ptr().add(offset),
                     count_bytes,
                 );
@@ -786,7 +787,8 @@ impl ObjStore {
             let count_bytes = (total - offset).min(chunk_bytes);
             let count = (count_bytes / self.dev.block_size as usize) as u32;
             let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
-            if memory == 0 || memory_map(memory, CHUNK_VADDR, true) != 0 {
+        let (chunk_vaddr_2_map_status, chunk_vaddr_2) = memory_map_any(memory, true);
+            if memory == 0 || chunk_vaddr_2_map_status != 0 {
                 if memory != 0 {
                     memory_close(memory);
                 }
@@ -794,11 +796,11 @@ impl ObjStore {
             }
             let source_bytes = bytes.len().saturating_sub(offset).min(count_bytes);
             unsafe {
-                core::ptr::write_bytes(CHUNK_VADDR as *mut u8, 0, count_bytes);
+                core::ptr::write_bytes(chunk_vaddr_2 as *mut u8, 0, count_bytes);
                 if source_bytes != 0 {
                     core::ptr::copy_nonoverlapping(
                         bytes.as_ptr().add(offset),
-                        CHUNK_VADDR as *mut u8,
+                        chunk_vaddr_2 as *mut u8,
                         source_bytes,
                     );
                 }
@@ -819,7 +821,8 @@ impl ObjStore {
     }
 
     fn transfer_object(&self, memory: u64, extents: &[Extent], size: u32, write: bool) -> bool {
-        if memory_map(memory, BUFFER_VADDR, !write) != 0 {
+        let (buffer_vaddr_2_map_status, buffer_vaddr_2) = memory_map_any(memory, !write);
+        if buffer_vaddr_2_map_status != 0 {
             return false;
         }
         let chunk_bytes = MAX_IO_BYTES.min((u16::MAX as usize) * self.dev.block_size as usize);
@@ -833,7 +836,8 @@ impl ObjStore {
                     (size as usize - offset).min(extent_bytes - extent_offset).min(chunk_bytes);
                 let blocks = bytes.div_ceil(self.dev.block_size as usize) as u32;
                 let chunk = memory_alloc(bytes.div_ceil(PAGE_SIZE));
-                if chunk == 0 || memory_map(chunk, CHUNK_VADDR, true) != 0 {
+        let (chunk_vaddr_3_map_status, chunk_vaddr_3) = memory_map_any(chunk, true);
+                if chunk == 0 || chunk_vaddr_3_map_status != 0 {
                     if chunk != 0 {
                         memory_close(chunk);
                     }
@@ -843,8 +847,8 @@ impl ObjStore {
                 if write {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
-                            (BUFFER_VADDR + offset) as *const u8,
-                            CHUNK_VADDR as *mut u8,
+                            (buffer_vaddr_2 + offset) as *const u8,
+                            chunk_vaddr_3 as *mut u8,
                             bytes,
                         );
                     }
@@ -862,14 +866,15 @@ impl ObjStore {
                     break;
                 }
                 if !write {
-                    if memory_map(chunk, CHUNK_VADDR, false) != 0 {
+        let (chunk_vaddr_4_map_status, chunk_vaddr_4) = memory_map_any(chunk, false);
+                    if chunk_vaddr_4_map_status != 0 {
                         memory_close(chunk);
                         ok = false;
                         break;
                     }
                     unsafe {
                         core::ptr::copy_nonoverlapping(
-                            CHUNK_VADDR as *const u8,
+                            chunk_vaddr_4 as *const u8,
                             (BUFFER_VADDR + offset) as *mut u8,
                             bytes,
                         );
@@ -917,12 +922,13 @@ fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
         }
         return None;
     }
-    if memory_map(memory, CHUNK_VADDR, false) != 0 {
+        let (chunk_vaddr_5_map_status, chunk_vaddr_5) = memory_map_any(memory, false);
+    if chunk_vaddr_5_map_status != 0 {
         memory_close(memory);
         return None;
     }
     let bytes =
-        unsafe { core::slice::from_raw_parts(CHUNK_VADDR as *const u8, dev.block_size as usize) };
+        unsafe { core::slice::from_raw_parts(chunk_vaddr_5 as *const u8, dev.block_size as usize) };
     let result = decode_superblock(bytes);
     memory_unmap(memory);
     memory_close(memory);
@@ -1111,10 +1117,11 @@ fn bitmap_range_used(bitmap: &[u8], start: u32, blocks: u32) -> bool {
 }
 
 fn hash_memory(memory: u64, size: usize) -> Option<u64> {
-    if memory_map(memory, BUFFER_VADDR, false) != 0 {
+        let (buffer_vaddr_3_map_status, buffer_vaddr_3) = memory_map_any(memory, false);
+    if buffer_vaddr_3_map_status != 0 {
         return None;
     }
-    let bytes = unsafe { core::slice::from_raw_parts(BUFFER_VADDR as *const u8, size) };
+    let bytes = unsafe { core::slice::from_raw_parts(buffer_vaddr_3 as *const u8, size) };
     let result = content_hash(bytes);
     memory_unmap(memory);
     Some(result)

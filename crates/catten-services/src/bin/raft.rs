@@ -35,7 +35,6 @@ use catten_graft::{
     },
     wire::{
         RAFT_RPC_MEMORY_SIZE,
-        SCRATCH_VADDR,
         decode_append_request,
         decode_snapshot_request,
         decode_vote_request,
@@ -95,7 +94,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     submit_detached_timer,
     thread_exit,
@@ -103,7 +102,6 @@ use catten_syscall::{
 
 const LOOP_TICK_MS: u64 = 25;
 /// Scratch for inbound relmsg frames (distinct from the RPC memory scratch).
-const RX_SCRATCH: usize = 0x0000_0000_0082_1000;
 /// Cadence for re-querying discovery for MAC routes and cluster posture.
 const DISCO_QUERY_MS: u64 = 2_000;
 const RAFT_TIMER_COOKIE: u64 = 0x5241_4654_5449_434b;
@@ -132,12 +130,13 @@ fn write_payload_to_mem(payload: &[u8]) -> Option<u64> {
     if cap == 0 {
         return None;
     }
-    if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+        let (scratch_vaddr_1_map_status, scratch_vaddr_1) = memory_map_any(cap, true);
+    if scratch_vaddr_1_map_status != 0 {
         memory_close(cap);
         return None;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(payload.as_ptr(), SCRATCH_VADDR as *mut u8, payload.len());
+        core::ptr::copy_nonoverlapping(payload.as_ptr(), scratch_vaddr_1 as *mut u8, payload.len());
     }
     memory_unmap(cap);
     Some(cap)
@@ -151,12 +150,13 @@ fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
         }
         return None;
     }
-    let map_status = memory_map(cap, SCRATCH_VADDR, false);
+        let (scratch_vaddr_2_map_status, scratch_vaddr_2) = memory_map_any(cap, false);
+    let map_status = scratch_vaddr_2_map_status;
     if map_status != 0 {
         memory_close(cap);
         return None;
     }
-    let value = unsafe { core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, length).to_vec() };
+    let value = unsafe { core::slice::from_raw_parts(scratch_vaddr_2 as *const u8, length).to_vec() };
     memory_unmap(cap);
     memory_close(cap);
     Some(value)
@@ -722,9 +722,10 @@ fn main(ctx: Context) -> ! {
                 ipc_close(disco_query);
                 disco_query = 0;
                 if memory != 0 {
-                    if memory_map(memory, RX_SCRATCH, false) == 0 {
+        let (rx_scratch_2_map_status, rx_scratch_2_vaddr) = memory_map_any(memory, false);
+                    if rx_scratch_2_map_status == 0 {
                         let bytes = unsafe {
-                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, 4096)
+                            core::slice::from_raw_parts(rx_scratch_2_vaddr as *const u8, 4096)
                         };
                         if let Some((_self_role, _self_raft_id, _self_leader_id, peers)) =
                             parse_cluster_answer(bytes)
@@ -850,11 +851,12 @@ fn main(ctx: Context) -> ! {
                 raft::OP_FRAME => {
                     let frame_len = message.arg0 as usize;
                     if message.memory != 0 {
-                        if memory_map(message.memory, RX_SCRATCH, false) == 0
+        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
+                        if rx_scratch_map_status == 0
                             && (15..=4096).contains(&frame_len)
                         {
                             let frame = unsafe {
-                                core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len)
+                                core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
                             };
                             let mut source_mac = [0u8; 6];
                             source_mac.copy_from_slice(&frame[6..12]);

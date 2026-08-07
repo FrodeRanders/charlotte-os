@@ -103,6 +103,7 @@ pub enum SyscallNumber {
     MemorySize = 63,
     SpawnArtifact = 64,
     RetireArtifact = 65,
+    MemoryMapAny = 66,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -1080,6 +1081,15 @@ pub fn memory_size(cap: u64) -> usize {
 #[inline(always)]
 pub fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCode {
     unsafe { svc3(SyscallNumber::MemoryMap, cap, base_vaddr as u64, writable as u64) }
+}
+
+/// Map a memory object at a kernel-assigned scratch address in the caller's
+/// address space. Returns `(MemoryStatusCode, vaddr)`; the vaddr is valid
+/// only when the status is `OK`.
+pub fn memory_map_any(cap: u64, writable: bool) -> (MemoryStatusCode, usize) {
+    let (status, vaddr, _) =
+        unsafe { svc3_x2(SyscallNumber::MemoryMapAny, cap, writable as u64, 0) };
+    (status as MemoryStatusCode, vaddr as usize)
 }
 
 /// Unmap a memory object from the caller. Returns a memory status code.

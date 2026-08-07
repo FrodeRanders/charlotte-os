@@ -47,6 +47,7 @@ pub enum MemoryObjectError {
     FrameAllocFailed,
     FrameFreeFailed,
     MissingRight,
+    OutOfScratch,
     LendingActive,
     NotLent,
 }
@@ -364,6 +365,37 @@ pub(crate) fn write_bytes(
         copied += count;
     }
     Ok(())
+}
+
+/// The per-address-space scratch window: a large *virtual* region (only
+/// backed by physical frames while a cap is mapped into it) where
+/// [`map_any`] assigns pages so services never hardcode scratch vaddrs.
+/// The base sits well above the ELF load and heap of any user address
+/// space; each AS has its own page table, so the same window base is valid
+/// in every AS.
+const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
+const SCRATCH_WINDOW_SIZE: u64 = 0x2000_0000; // 512 MiB
+const SCRATCH_WINDOW_PAGES: usize = 4096;
+static SCRATCH_WINDOW_NEXT: [core::sync::atomic::AtomicUsize; 64] =
+    [const { core::sync::atomic::AtomicUsize::new(0) }; 64];
+
+/// Map a memory object into the calling address space's scratch window at a
+/// kernel-assigned virtual address and return it. Pages are handed out
+/// monotonically and never reused (the window is virtual, so exhaustion is
+/// not a practical concern), which makes collisions impossible by
+/// construction.
+pub fn map_any(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    writable: bool,
+) -> Result<VAddr, MemoryObjectError> {
+    let slot = SCRATCH_WINDOW_NEXT[asid as usize].fetch_add(PAGE_SIZE, core::sync::atomic::Ordering::Relaxed);
+    if slot >= SCRATCH_WINDOW_PAGES {
+        return Err(MemoryObjectError::OutOfScratch);
+    }
+    let base = VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64));
+    map(asid, cap, base, writable)?;
+    Ok(base)
 }
 
 pub fn map(

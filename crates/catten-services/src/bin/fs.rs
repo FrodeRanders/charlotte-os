@@ -38,7 +38,6 @@ use catten_syscall::{
 };
 
 const REPLY_SPINS: u64 = u64::MAX;
-const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
 const ROOT_ID: u64 = 100;
 const MAX_DIR_SIZE: usize = 4096;
 
@@ -62,14 +61,15 @@ fn objstore_connect(ns_conn: u64) -> Option<u64> {
 
 fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     let size_mem = memory_alloc(1);
-    if size_mem == 0 || memory_map(size_mem, BUFFER_VADDR, true) != 0 {
+        let (buffer_vaddr_map_status, buffer_vaddr) = memory_map_any(size_mem, true);
+    if size_mem == 0 || buffer_vaddr_map_status != 0 {
         if size_mem != 0 {
             memory_close(size_mem);
         }
         return false;
     }
     unsafe {
-        (BUFFER_VADDR as *mut u64).write_unaligned(data.len() as u64);
+        (buffer_vaddr as *mut u64).write_unaligned(data.len() as u64);
     }
     memory_unmap(size_mem);
     let size_call =
@@ -89,12 +89,13 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     if mem == 0 {
         return false;
     }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 {
+        let (buffer_vaddr_2_map_status, buffer_vaddr_2) = memory_map_any(mem, true);
+    if buffer_vaddr_2_map_status != 0 {
         memory_close(mem);
         return false;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, len);
+        core::ptr::copy_nonoverlapping(data.as_ptr(), buffer_vaddr_2 as *mut u8, len);
     }
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, mem);
@@ -121,14 +122,15 @@ fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
         }
         return None;
     }
-    if memory_map(mem, BUFFER_VADDR, false) != 0 {
+        let (buffer_vaddr_3_map_status, buffer_vaddr_3) = memory_map_any(mem, false);
+    if buffer_vaddr_3_map_status != 0 {
         memory_close(mem);
         return None;
     }
     let size = result as usize;
     let mut buf = alloc::vec![0u8; size];
     unsafe {
-        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), size);
+        core::ptr::copy_nonoverlapping(buffer_vaddr_3 as *const u8, buf.as_mut_ptr(), size);
     }
     memory_unmap(mem);
     memory_close(mem);
@@ -396,10 +398,11 @@ fn main(ctx: Context) -> ! {
                     let name_len = (message.arg0 & 0xff) as usize;
                     if message.reply != 0 {
                         let name = if message.memory != 0 && name_len > 0 {
-                            if memory_map(message.memory, BUFFER_VADDR, false) == 0 {
+        let (buffer_vaddr_4_map_status, buffer_vaddr_4) = memory_map_any(message.memory, false);
+                            if buffer_vaddr_4_map_status == 0 {
                                 let nm = unsafe {
                                     let bytes = core::slice::from_raw_parts(
-                                        BUFFER_VADDR as *const u8,
+                                        buffer_vaddr_4 as *const u8,
                                         name_len,
                                     );
                                     core::str::from_utf8(bytes).ok().unwrap_or("")
@@ -436,11 +439,12 @@ fn main(ctx: Context) -> ! {
                         if let Some(data) = ffs.op_read(file_id) {
                             let mem = memory_alloc(data.len().max(1).div_ceil(4096));
                             if mem != 0 {
-                                memory_map(mem, BUFFER_VADDR, true);
+        let (buffer_vaddr_5_map_status, buffer_vaddr_5) = memory_map_any(mem, true);
+                                buffer_vaddr_5_map_status;
                                 unsafe {
                                     core::ptr::copy_nonoverlapping(
                                         data.as_ptr(),
-                                        BUFFER_VADDR as *mut u8,
+                                        buffer_vaddr_5 as *mut u8,
                                         data.len(),
                                     );
                                 }
@@ -458,7 +462,8 @@ fn main(ctx: Context) -> ! {
                     let file_id = message.arg0;
                     if message.reply != 0 {
                         let result = if message.memory != 0 {
-                            if memory_map(message.memory, BUFFER_VADDR, false) == 0 {
+        let (buffer_vaddr_6_map_status, buffer_vaddr_6) = memory_map_any(message.memory, false);
+                            if buffer_vaddr_6_map_status == 0 {
                                 let len = ffs.pending_sizes.lock().remove(&file_id).unwrap_or(4096);
                                 let valid = len == 0
                                     || memory_get_phys_page(
@@ -467,11 +472,12 @@ fn main(ctx: Context) -> ! {
                                     ) != 0;
                                 let ok = valid && {
                                     let data = unsafe {
-                                        core::slice::from_raw_parts(BUFFER_VADDR as *const u8, len)
+                                        core::slice::from_raw_parts(buffer_vaddr_6 as *const u8, len)
                                     };
                                     ffs.op_write(file_id, data)
                                 };
                                 memory_unmap(message.memory);
+        let (buffer_vaddr_7_map_status, buffer_vaddr_7) = memory_map_any(message.memory, false);
                                 if ok {
                                     0
                                 } else {
@@ -488,10 +494,12 @@ fn main(ctx: Context) -> ! {
                 }
                 fs::OP_SET_SIZE => {
                     let file_id = message.arg0;
+                    let (buffer_vaddr_7_map_status, buffer_vaddr_7) =
+                        memory_map_any(message.memory, false);
                     let result = if message.memory != 0
-                        && memory_map(message.memory, BUFFER_VADDR, false) == 0
+                        && buffer_vaddr_7_map_status == 0
                     {
-                        let size = unsafe { core::ptr::read_unaligned(BUFFER_VADDR as *const u64) };
+                        let size = unsafe { core::ptr::read_unaligned(buffer_vaddr_7 as *const u64) };
                         memory_unmap(message.memory);
                         match usize::try_from(size) {
                             Ok(size) => {
@@ -522,11 +530,12 @@ fn main(ctx: Context) -> ! {
                         let data = ffs.op_list(parent_id);
                         let mem = memory_alloc(1);
                         if mem != 0 {
-                            memory_map(mem, BUFFER_VADDR, true);
+        let (buffer_vaddr_8_map_status, buffer_vaddr_8) = memory_map_any(mem, true);
+                            buffer_vaddr_8_map_status;
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
                                     data.as_ptr(),
-                                    BUFFER_VADDR as *mut u8,
+                                    buffer_vaddr_8 as *mut u8,
                                     data.len().min(4096),
                                 );
                             }
@@ -557,11 +566,12 @@ fn read_name_from_msg(memory: u64, name_len: usize) -> alloc::string::String {
     if memory == 0 || name_len == 0 {
         return alloc::string::String::new();
     }
-    if memory_map(memory, BUFFER_VADDR, false) != 0 {
+        let (buffer_vaddr_9_map_status, buffer_vaddr_9) = memory_map_any(memory, false);
+    if buffer_vaddr_9_map_status != 0 {
         return alloc::string::String::new();
     }
     let s = unsafe {
-        let bytes = core::slice::from_raw_parts(BUFFER_VADDR as *const u8, name_len.min(128));
+        let bytes = core::slice::from_raw_parts(buffer_vaddr_9 as *const u8, name_len.min(128));
         core::str::from_utf8(bytes).ok().unwrap_or("")
     };
     memory_unmap(memory);

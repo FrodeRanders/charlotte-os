@@ -37,7 +37,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -60,9 +60,6 @@ use charlotte_protocol_net::decode_status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_OFFSET: usize = 0;
-const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
-const TX_SCRATCH: usize = 0x0000_0000_0090_1000;
-const PAYLOAD_SCRATCH: usize = 0x0000_0000_0090_2000;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const RETIRED_SESSION_WINDOW: usize = 8;
@@ -192,12 +189,13 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     if cap == 0 {
         return false;
     }
-    if memory_map(cap, TX_SCRATCH, true) != 0 {
+        let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
+    if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(frame.as_ptr(), TX_SCRATCH as *mut u8, frame.len());
+        core::ptr::copy_nonoverlapping(frame.as_ptr(), tx_scratch_vaddr as *mut u8, frame.len());
     }
     memory_unmap(cap);
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
@@ -328,11 +326,12 @@ fn process_frame(
         if !is_frag {
             // Single-frame message: deliver immediately.
             let cap = memory_alloc(1);
-            if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+        let (payload_scratch_3_map_status, payload_scratch_3_vaddr) = memory_map_any(cap, true);
+            if cap != 0 && payload_scratch_3_map_status == 0 {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         payload.as_ptr(),
-                        PAYLOAD_SCRATCH as *mut u8,
+                        payload_scratch_3_vaddr as *mut u8,
                         payload_len,
                     );
                 }
@@ -387,11 +386,12 @@ fn process_frame(
                 let total = message_bytes.len();
                 let pages = total.div_ceil(4096).max(1);
                 let cap = memory_alloc(pages);
-                if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+        let (payload_scratch_2_map_status, payload_scratch_2_vaddr) = memory_map_any(cap, true);
+                if cap != 0 && payload_scratch_2_map_status == 0 {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             message_bytes.as_ptr(),
-                            PAYLOAD_SCRATCH as *mut u8,
+                            payload_scratch_2_vaddr as *mut u8,
                             total,
                         );
                     }
@@ -534,13 +534,14 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_BUSY);
                     continue;
                 }
-                if memory_map(message.memory, PAYLOAD_SCRATCH, false) != 0 {
+        let (payload_scratch_map_status, payload_scratch_vaddr) = memory_map_any(message.memory, false);
+                if payload_scratch_map_status != 0 {
                     memory_close(message.memory);
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
                 let payload = unsafe {
-                    core::slice::from_raw_parts(PAYLOAD_SCRATCH as *const u8, payload_len)
+                    core::slice::from_raw_parts(payload_scratch_vaddr as *const u8, payload_len)
                 };
                 let seq = peers[index].next_tx_seq;
 
@@ -627,9 +628,10 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
-                if memory_map(message.memory, RX_SCRATCH, false) == 0 {
+        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
+                if rx_scratch_map_status == 0 {
                     let frame =
-                        unsafe { core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len) };
+                        unsafe { core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len) };
                     process_frame(
                         net_conn,
                         local_mac,

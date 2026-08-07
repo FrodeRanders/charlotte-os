@@ -24,7 +24,6 @@ use catten_rt::{
 };
 use catten_services::{
     MAX_NAME_LEN,
-    NAME_SCRATCH_VADDR,
     broker::EventBroker,
     ns,
 };
@@ -39,12 +38,11 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
 
-const STATUS_SCRATCH: usize = 0x0000_0000_0011_0000;
 const STATUS_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
@@ -92,7 +90,8 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
         }
         return None;
     }
-    if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
+        let (name_scratch_vaddr_0_map_status, name_scratch_vaddr_0) = memory_map_any(message.memory, false);
+    if unsafe { name_scratch_vaddr_0_map_status } != 0 {
         unsafe {
             memory_close(message.memory);
         }
@@ -100,7 +99,7 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     }
     let mut key = Vec::with_capacity(len);
     unsafe {
-        let src = NAME_SCRATCH_VADDR as *const u8;
+        let src = name_scratch_vaddr_0 as *const u8;
         for i in 0..len {
             key.push(core::ptr::read_volatile(src.add(i)));
         }
@@ -114,11 +113,12 @@ fn read_generation(message: &IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-    if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
+        let (name_scratch_vaddr_1_map_status, name_scratch_vaddr_1) = memory_map_any(message.memory, false);
+    if unsafe { name_scratch_vaddr_1_map_status } != 0 {
         unsafe { memory_close(message.memory) };
         return None;
     }
-    let generation = unsafe { core::ptr::read_volatile(NAME_SCRATCH_VADDR as *const u64) };
+    let generation = unsafe { core::ptr::read_volatile(name_scratch_vaddr_1 as *const u64) };
     unsafe {
         memory_unmap(message.memory);
         memory_close(message.memory);
@@ -396,7 +396,8 @@ fn main(ctx: Context) -> ! {
                     }
                     continue;
                 }
-                if memory_map(cap, STATUS_SCRATCH, true) != 0 {
+        let (status_scratch_map_status, status_scratch_vaddr) = memory_map_any(cap, true);
+                if status_scratch_map_status != 0 {
                     memory_close(cap);
                     if message.reply != 0 {
                         unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
@@ -406,15 +407,15 @@ fn main(ctx: Context) -> ! {
                 let mut length = 0usize;
                 unsafe {
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
                         ns::STATUS_MAGIC,
                     );
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *mut u32,
                         registry.len() as u32,
                     );
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
                         waitlist.len() as u32,
                     );
                 }
@@ -426,12 +427,12 @@ fn main(ctx: Context) -> ! {
                     }
                     unsafe {
                         core::ptr::write_volatile(
-                            (STATUS_SCRATCH + length) as *mut u8,
+                            (status_scratch_vaddr + length) as *mut u8,
                             name_len as u8,
                         );
                         core::ptr::copy_nonoverlapping(
                             key.as_ptr(),
-                            (STATUS_SCRATCH + length + 1) as *mut u8,
+                            (status_scratch_vaddr + length + 1) as *mut u8,
                             name_len,
                         );
                     }

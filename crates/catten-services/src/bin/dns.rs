@@ -102,7 +102,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_size,
     memory_unmap,
     poll as completion_poll,
@@ -114,9 +114,6 @@ use charlotte_protocol_msg::unpack_address_and_len;
 const LOOP_TICK_MS: u64 = 25;
 const RAFT_TIMER_COOKIE: u64 = 0x444e_535f_5449_434b;
 const REPLY_SPINS: u64 = u64::MAX;
-const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
-const LIST_SCRATCH: usize = 0x0000_0000_0090_1000;
-const CATALOG_SCRATCH: usize = 0x0000_0000_0090_2000;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
@@ -306,11 +303,12 @@ fn reply_lookup(
     }
 
     let cap = memory_alloc(1);
-    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+        let (list_scratch_9_map_status, list_scratch_9_vaddr) = memory_map_any(cap, true);
+    if cap != 0 && list_scratch_9_map_status == 0 {
         unsafe {
             core::ptr::copy_nonoverlapping(
                 entry.node.as_ptr(),
-                LIST_SCRATCH as *mut u8,
+                list_scratch_9_vaddr as *mut u8,
                 entry.node.len(),
             );
         }
@@ -390,13 +388,14 @@ fn query_disco_peers(disco_conn: u64) -> Vec<([u8; 6], Vec<u8>)> {
         return Vec::new();
     }
     let len = result as usize;
-    if memory_map(memory, LIST_SCRATCH, false) != 0 {
+        let (list_scratch_8_map_status, list_scratch_8_vaddr) = memory_map_any(memory, false);
+    if list_scratch_8_map_status != 0 {
         memory_close(memory);
         return Vec::new();
     }
     let mut buf = Vec::with_capacity(len);
     unsafe {
-        let src = LIST_SCRATCH as *const u8;
+        let src = list_scratch_8_vaddr as *const u8;
         for i in 0..len {
             buf.push(core::ptr::read_volatile(src.add(i)));
         }
@@ -528,12 +527,13 @@ fn read_call_request(message: &catten_syscall::IpcMessage) -> (u32, i64) {
     if message.memory == 0 {
         return (0, 0);
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        let (list_scratch_7_map_status, list_scratch_7_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_7_map_status != 0 {
         memory_close(message.memory);
         return (0, 0);
     }
-    let opcode = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u32) };
-    let arg = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 4) as *const i64) };
+    let opcode = unsafe { core::ptr::read_volatile(list_scratch_7_vaddr as *const u32) };
+    let arg = unsafe { core::ptr::read_volatile((list_scratch_7_vaddr + 4) as *const i64) };
     memory_unmap(message.memory);
     memory_close(message.memory);
     (opcode, arg)
@@ -543,11 +543,12 @@ fn read_generation(message: &catten_syscall::IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        let (list_scratch_6_map_status, list_scratch_6_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_6_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let generation = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
+    let generation = unsafe { core::ptr::read_volatile(list_scratch_6_vaddr as *const u64) };
     memory_unmap(message.memory);
     memory_close(message.memory);
     Some(generation)
@@ -563,15 +564,16 @@ fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        let (list_scratch_5_map_status, list_scratch_5_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_5_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let object_id = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
-    let node_key = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 8) as *const u64) };
+    let object_id = unsafe { core::ptr::read_volatile(list_scratch_5_vaddr as *const u64) };
+    let node_key = unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 8) as *const u64) };
     let mut digest = [0u8; 32];
     for (index, byte) in digest.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 16 + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 16 + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -610,7 +612,8 @@ fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::
         }
         return None;
     }
-    if unsafe { memory_map(message.memory, LIST_SCRATCH, false) } != 0 {
+        let (list_scratch_4_map_status, list_scratch_4_vaddr) = memory_map_any(message.memory, false);
+    if unsafe { list_scratch_4_map_status } != 0 {
         unsafe {
             memory_close(message.memory);
         }
@@ -618,7 +621,7 @@ fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::
     }
     let mut name = alloc::vec::Vec::with_capacity(len);
     unsafe {
-        let src = LIST_SCRATCH as *const u8;
+        let src = list_scratch_4_vaddr as *const u8;
         for index in 0..len {
             name.push(core::ptr::read_volatile(src.add(index)));
         }
@@ -708,13 +711,14 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+        let (list_scratch_3_map_status, list_scratch_3_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_3_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
     let mut key = [0u8; 32];
     for (index, byte) in key.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((list_scratch_3_vaddr + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -730,9 +734,10 @@ fn reply_move_bytes(reply: u64, bytes: &[u8]) {
         return;
     }
     let cap = memory_alloc(1);
-    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+        let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
+    if cap != 0 && list_scratch_2_map_status == 0 {
         unsafe {
-            core::ptr::copy_nonoverlapping(bytes.as_ptr(), LIST_SCRATCH as *mut u8, bytes.len());
+            core::ptr::copy_nonoverlapping(bytes.as_ptr(), list_scratch_2_vaddr as *mut u8, bytes.len());
         }
         memory_unmap(cap);
         ipc_reply_move(reply, cap, bytes.len() as i64);
@@ -758,14 +763,15 @@ fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
 
 fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64) -> u64 {
     let memory = memory_alloc(1);
-    if memory == 0 || memory_map(memory, LIST_SCRATCH, true) != 0 {
+        let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(memory, true);
+    if memory == 0 || list_scratch_map_status != 0 {
         if memory != 0 {
             memory_close(memory);
         }
         return 0;
     }
     unsafe {
-        core::ptr::write_volatile(LIST_SCRATCH as *mut u64, generation);
+        core::ptr::write_volatile(list_scratch_vaddr as *mut u64, generation);
     }
     memory_unmap(memory);
     let call = ipc_scalar_call_move(
@@ -1044,9 +1050,10 @@ fn main(ctx: Context) -> ! {
                 recv_pending = 0;
                 if memory != 0 {
                     let (source_mac, len) = unpack_address_and_len(result);
-                    if memory_map(memory, RX_SCRATCH, false) == 0 {
+        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(memory, false);
+                    if rx_scratch_map_status == 0 {
                         let frame = unsafe {
-                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, len as usize)
+                            core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, len as usize)
                         };
                         match frame.first().copied() {
                             Some(catten_services::rcall::TAG_REQUEST) => {
@@ -1955,7 +1962,8 @@ fn main(ctx: Context) -> ! {
                         }
                         continue;
                     }
-                    if memory_map(cap, CATALOG_SCRATCH, true) != 0 {
+        let (catalog_scratch_map_status, catalog_scratch_vaddr) = memory_map_any(cap, true);
+                    if catalog_scratch_map_status != 0 {
                         memory_close(cap);
                         if message.reply != 0 {
                             ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
@@ -1966,7 +1974,7 @@ fn main(ctx: Context) -> ! {
                     let mut length = 4usize;
                     unsafe {
                         core::ptr::write_volatile(
-                            CATALOG_SCRATCH as *mut u32,
+                            catalog_scratch_vaddr as *mut u32,
                             entries.len() as u32,
                         );
                     }
@@ -1978,26 +1986,26 @@ fn main(ctx: Context) -> ! {
                         }
                         unsafe {
                             core::ptr::write_volatile(
-                                (CATALOG_SCRATCH + length) as *mut u8,
+                                (catalog_scratch_vaddr + length) as *mut u8,
                                 name_len as u8,
                             );
                             core::ptr::copy_nonoverlapping(
                                 name.as_ptr(),
-                                (CATALOG_SCRATCH + length + 1) as *mut u8,
+                                (catalog_scratch_vaddr + length + 1) as *mut u8,
                                 name_len,
                             );
                             core::ptr::write_volatile(
-                                (CATALOG_SCRATCH + length + 1 + name_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 1 + name_len) as *mut u8,
                                 node_len as u8,
                             );
                             core::ptr::copy_nonoverlapping(
                                 entry.node.as_ptr(),
-                                (CATALOG_SCRATCH + length + 2 + name_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 2 + name_len) as *mut u8,
                                 node_len,
                             );
                             core::ptr::copy_nonoverlapping(
                                 entry.generation.to_le_bytes().as_ptr(),
-                                (CATALOG_SCRATCH + length + 2 + name_len + node_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 2 + name_len + node_len) as *mut u8,
                                 8,
                             );
                         }

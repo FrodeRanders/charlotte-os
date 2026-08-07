@@ -39,12 +39,7 @@ use core::sync::atomic::{
 catten_rt::entry!(main);
 
 // Simple bump allocator for queue virtual addresses
-static NEXT_VADDR: AtomicUsize = AtomicUsize::new(0x0000_0000_0050_0000);
 static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
-
-fn alloc_vaddr(pages: usize) -> usize {
-    NEXT_VADDR.fetch_add(pages * PAGE_SIZE, Ordering::Relaxed)
-}
 
 use catten_rt::{
     Context,
@@ -186,8 +181,8 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
     if cap == 0 {
         return None;
     }
-    let vaddr = alloc_vaddr(pages);
-    if memory_map(cap, vaddr, true) != 0 {
+    let (map_status, vaddr) = memory_map_any(cap, true);
+    if map_status != 0 {
         memory_close(cap);
         return None;
     }

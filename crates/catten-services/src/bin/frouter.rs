@@ -56,7 +56,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -76,7 +76,6 @@ const ROUTES_OFFSET: usize = 20;
 const FRAME_MAX: usize = 4096;
 const ETHERTYPE_OFFSET: usize = 12;
 const ETHERNET_HEADER_MIN: usize = 14;
-const SCRATCH: usize = 0x0000_0000_0090_0000;
 /// Poll interval for the NIC receive call. The driver's `OP_RECV` reply only
 /// completes when a frame arrives, so while no frames are flowing we poll it
 /// (instead of blocking) and re-run the optional-consumer route lookups each
@@ -137,11 +136,12 @@ fn add_route_if_missing(
 /// Peek the EtherType field (bytes 12..14, big-endian) of a frame held in a
 /// moved memory object, without consuming the object.
 fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
-    if frame_len < ETHERNET_HEADER_MIN || memory_map(memory, SCRATCH, false) != 0 {
+        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(memory, false);
+    if frame_len < ETHERNET_HEADER_MIN || scratch_2_map_status != 0 {
         return 0;
     }
     let ethertype = unsafe {
-        let base = SCRATCH as *const u8;
+        let base = scratch_2_vaddr as *const u8;
         u16::from_be_bytes([
             core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET)),
             core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET + 1)),
@@ -229,7 +229,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                         continue;
                     }
-                    if memory_map(cap, SCRATCH, true) != 0 {
+        let (scratch_map_status, scratch_vaddr) = memory_map_any(cap, true);
+                    if scratch_map_status != 0 {
                         memory_close(cap);
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                         continue;
@@ -246,7 +247,7 @@ fn main(ctx: Context) -> ! {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             words.as_ptr(),
-                            SCRATCH as *mut u32,
+                            scratch_vaddr as *mut u32,
                             words.len(),
                         );
                     }

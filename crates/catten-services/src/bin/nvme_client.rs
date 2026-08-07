@@ -18,8 +18,6 @@ use catten_services::{
 };
 use catten_syscall::*;
 
-const WRITE_VADDR: usize = 0x0000_0000_0060_0000;
-const READ_VADDR: usize = 0x0000_0000_0061_0000;
 
 fn main(ctx: Context) -> ! {
     let ns_connection = match ctx.bootstrap_cap() {
@@ -82,13 +80,14 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
 
-    if memory_map(write_mem, WRITE_VADDR, true) != 0 {
+        let (write_vaddr_map_status, write_vaddr_vaddr) = memory_map_any(write_mem, true);
+    if write_vaddr_map_status != 0 {
         config::write::<u32>(0, 0xdea2);
         unsafe { thread_exit() };
     }
     for i in 0..transfer_bytes {
         unsafe {
-            ((WRITE_VADDR + i) as *mut u8).write_volatile((i as u8).wrapping_mul(37) ^ 0xa5);
+            ((write_vaddr_vaddr + i) as *mut u8).write_volatile((i as u8).wrapping_mul(37) ^ 0xa5);
         }
     }
     memory_unmap(write_mem);
@@ -121,12 +120,13 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
 
-    if memory_map(read_mem, READ_VADDR, false) != 0 {
+        let (read_vaddr_map_status, read_vaddr_vaddr) = memory_map_any(read_mem, false);
+    if read_vaddr_map_status != 0 {
         config::write::<u32>(0, 0xdea6);
         unsafe { thread_exit() };
     }
     for i in 0..transfer_bytes {
-        let actual = unsafe { ((READ_VADDR + i) as *const u8).read_volatile() };
+        let actual = unsafe { ((read_vaddr_vaddr + i) as *const u8).read_volatile() };
         let expected = (i as u8).wrapping_mul(37) ^ 0xa5;
         if actual != expected {
             config::write::<u32>(0, 0xdea7);

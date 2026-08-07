@@ -41,7 +41,6 @@ use charlotte_protocol_disco::{
 use catten_syscall::*;
 
 const DATA_VADDR: usize = 0x0000_0000_2000_0000;
-const SIZE_VADDR: usize = 0x0000_0000_0070_0000;
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_SERVING: u32 = 6;
 
@@ -83,11 +82,12 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     }
 
     let size_cap = memory_alloc(1);
-    if size_cap == 0 || memory_map(size_cap, SIZE_VADDR, true) != 0 {
+        let (size_vaddr_map_status, size_vaddr_vaddr) = memory_map_any(size_cap, true);
+    if size_cap == 0 || size_vaddr_map_status != 0 {
         return false;
     }
     unsafe {
-        (SIZE_VADDR as *mut u64).write_unaligned(bytes.len() as u64);
+        (size_vaddr_vaddr as *mut u64).write_unaligned(bytes.len() as u64);
     }
     memory_unmap(size_cap);
     let set_size =
@@ -100,11 +100,12 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     // The artifact is an ELF (tens of KiB): the data cap must span every
     // page the bytes occupy, not a single page.
     let data = memory_alloc(bytes.len().div_ceil(4096).max(1));
-    if data == 0 || memory_map(data, DATA_VADDR, true) != 0 {
+        let (data_vaddr_9_map_status, data_vaddr_9_vaddr) = memory_map_any(data, true);
+    if data == 0 || data_vaddr_9_map_status != 0 {
         return false;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(bytes.as_ptr(), DATA_VADDR as *mut u8, bytes.len());
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), data_vaddr_9_vaddr as *mut u8, bytes.len());
     }
     memory_unmap(data);
     let write = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, data);
@@ -138,13 +139,14 @@ fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
         }
         return None;
     }
-    if memory_map(memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_8_map_status, data_vaddr_8_vaddr) = memory_map_any(memory, false);
+    if data_vaddr_8_map_status != 0 {
         memory_close(memory);
         return None;
     }
     let mut hasher = charlotte_launch::sha256::Sha256::new();
     for index in 0..len {
-        hasher.update(&[unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) }]);
+        hasher.update(&[unsafe { core::ptr::read_volatile((data_vaddr_8_vaddr + index) as *const u8) }]);
     }
     memory_unmap(memory);
     memory_close(memory);
@@ -162,11 +164,12 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_7_map_status, data_vaddr_7_vaddr) = memory_map_any(message.memory, false);
+    if data_vaddr_7_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let len = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) } as usize;
+    let len = unsafe { core::ptr::read_volatile(data_vaddr_7_vaddr as *const u64) } as usize;
     // The payload region is the complete multi-page memory object. Apply the
     // same admission bound as the kernel launch gate so ingress and execution
     // cannot disagree about an otherwise valid artifact.
@@ -283,21 +286,22 @@ fn main(ctx: Context) -> ! {
                                 // deferred until the manifest entry has
                                 // replicated.
                                 let request = memory_alloc(1);
-                                if request == 0 || memory_map(request, DATA_VADDR, true) != 0 {
+        let (data_vaddr_6_map_status, data_vaddr_6_vaddr) = memory_map_any(request, true);
+                                if request == 0 || data_vaddr_6_map_status != 0 {
                                     clusterctl::ERR_UPLOAD_FAILED
                                 } else {
                                     unsafe {
                                         core::ptr::write_volatile(
-                                            DATA_VADDR as *mut u64,
+                                            data_vaddr_6_vaddr as *mut u64,
                                             object_id,
                                         );
                                         core::ptr::write_volatile(
-                                            (DATA_VADDR + 8) as *mut u64,
+                                            (data_vaddr_6_vaddr + 8) as *mut u64,
                                             node_key,
                                         );
                                         core::ptr::copy_nonoverlapping(
                                             artifact_digest.as_ptr(),
-                                            (DATA_VADDR + 16) as *mut u8,
+                                            (data_vaddr_6_vaddr + 16) as *mut u8,
                                             artifact_digest.len(),
                                         );
                                     }
@@ -381,7 +385,8 @@ fn main(ctx: Context) -> ! {
                             // the replicated state (leader-only; the reply is
                             // deferred until the ceremony record commits).
                             let key_memory = memory_alloc(1);
-                            if key_memory == 0 || memory_map(key_memory, DATA_VADDR, true) != 0 {
+        let (data_vaddr_5_map_status, data_vaddr_5_vaddr) = memory_map_any(key_memory, true);
+                            if key_memory == 0 || data_vaddr_5_map_status != 0 {
                                 if message.reply != 0 {
                                     ipc_reply(message.reply, clusterctl::ERR_UPLOAD_FAILED);
                                 }
@@ -390,7 +395,7 @@ fn main(ctx: Context) -> ! {
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
                                     key.as_ptr(),
-                                    DATA_VADDR as *mut u8,
+                                    data_vaddr_5_vaddr as *mut u8,
                                     key.len(),
                                 );
                             }
@@ -455,10 +460,11 @@ fn main(ctx: Context) -> ! {
                                 ipc_close(status_call);
                                 let mut outcome = clusterctl::ERR_NO_CLUSTER;
                                 if memory != 0 && status == 0 {
-                                    if memory_map(memory, DATA_VADDR, false) == 0 {
+        let (data_vaddr_4_map_status, data_vaddr_4_vaddr) = memory_map_any(memory, false);
+                                    if data_vaddr_4_map_status == 0 {
                                         let bytes = unsafe {
                                             core::slice::from_raw_parts(
-                                                DATA_VADDR as *const u8,
+                                                data_vaddr_4_vaddr as *const u8,
                                                 size as usize,
                                             )
                                         };
@@ -546,14 +552,15 @@ fn run_join(
         return clusterctl::ERR_NO_CLUSTER;
     };
     let payload = memory_alloc(1);
-    if payload == 0 || memory_map(payload, DATA_VADDR, true) != 0 {
+        let (data_vaddr_3_map_status, data_vaddr_3_vaddr) = memory_map_any(payload, true);
+    if payload == 0 || data_vaddr_3_map_status != 0 {
         if payload != 0 {
             memory_close(payload);
         }
         return clusterctl::ERR_UPLOAD_FAILED;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(spec_buf.as_ptr(), DATA_VADDR as *mut u8, spec_len);
+        core::ptr::copy_nonoverlapping(spec_buf.as_ptr(), data_vaddr_3_vaddr as *mut u8, spec_len);
     }
     memory_unmap(payload);
     let call = ipc_scalar_call_move(leader_raft, raft::OP_ADD_SERVER, spec_len as u64, payload);
@@ -579,13 +586,14 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(message.memory, false);
+    if data_vaddr_2_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
     let mut key = [0u8; 32];
     for (index, byte) in key.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((data_vaddr_2_vaddr + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -601,11 +609,12 @@ fn read_node_key(message: &catten_syscall::IpcMessage) -> Option<u64> {
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(message.memory, false);
+    if data_vaddr_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let node_key = unsafe { core::ptr::read_volatile(DATA_VADDR as *const u64) };
+    let node_key = unsafe { core::ptr::read_volatile(data_vaddr_vaddr as *const u64) };
     memory_unmap(message.memory);
     memory_close(message.memory);
     Some(node_key)

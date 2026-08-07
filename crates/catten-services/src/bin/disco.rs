@@ -58,7 +58,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -83,10 +83,6 @@ use charlotte_protocol_disco::{
 use charlotte_protocol_net::decode_status;
 
 const REPLY_SPINS: u64 = 50_000_000;
-const TX_SCRATCH: usize = 0x0000_0000_0090_0000;
-const RX_SCRATCH: usize = 0x0000_0000_0090_1000;
-const LIST_SCRATCH: usize = 0x0000_0000_0090_2000;
-const RSTAT_SCRATCH: usize = 0x0000_0000_0090_3000;
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;
@@ -202,8 +198,9 @@ impl ClusterProbe {
 
     fn consume_status(&mut self, memory: u64) -> bool {
         let mut changed = false;
-        if memory_map(memory, RSTAT_SCRATCH, false) == 0 {
-            let bytes = unsafe { core::slice::from_raw_parts(RSTAT_SCRATCH as *const u8, 4096) };
+        let (rstat_scratch_map_status, rstat_scratch_vaddr) = memory_map_any(memory, false);
+        if rstat_scratch_map_status == 0 {
+            let bytes = unsafe { core::slice::from_raw_parts(rstat_scratch_vaddr as *const u8, 4096) };
             if let Some((state, _term, _commit, _members, leader_id, self_id)) =
                 raft::parse_cluster_status(bytes)
             {
@@ -291,13 +288,14 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
         return false;
     }
     config::write::<u32>(40, 2);
-    if memory_map(cap, TX_SCRATCH, true) != 0 {
+        let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
+    if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
     }
     config::write::<u32>(40, 3);
     unsafe {
-        core::ptr::copy_nonoverlapping(frame.as_ptr(), TX_SCRATCH as *mut u8, frame.len());
+        core::ptr::copy_nonoverlapping(frame.as_ptr(), tx_scratch_vaddr as *mut u8, frame.len());
     }
     memory_unmap(cap);
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
@@ -619,9 +617,10 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(message.reply, -1);
                         continue;
                     }
-                    if memory_map(message.memory, RX_SCRATCH, false) == 0 {
+        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
+                    if rx_scratch_map_status == 0 {
                         let frame = unsafe {
-                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len)
+                            core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
                         };
                         handle_frame(
                             net_conn,
@@ -664,11 +663,12 @@ fn main(ctx: Context) -> ! {
                         buf.extend_from_slice(&peer.node_id[..peer.node_id.len().min(255)]);
                     }
                     let cap = memory_alloc(1);
-                    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+        let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
+                    if cap != 0 && list_scratch_2_map_status == 0 {
                         unsafe {
                             core::ptr::copy_nonoverlapping(
                                 buf.as_ptr(),
-                                LIST_SCRATCH as *mut u8,
+                                list_scratch_2_vaddr as *mut u8,
                                 buf.len(),
                             );
                         }
@@ -702,11 +702,12 @@ fn main(ctx: Context) -> ! {
                     );
                     if let Some(len) = len {
                         let cap = memory_alloc(1);
-                        if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+        let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(cap, true);
+                        if cap != 0 && list_scratch_map_status == 0 {
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
                                     buf.as_ptr(),
-                                    LIST_SCRATCH as *mut u8,
+                                    list_scratch_vaddr as *mut u8,
                                     len,
                                 );
                             }

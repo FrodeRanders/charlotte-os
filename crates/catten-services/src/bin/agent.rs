@@ -92,13 +92,14 @@ fn read_cluster_key(dns_conn: u64) -> Option<[u8; 32]> {
         }
         return None;
     }
-    if memory_map(memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_3_map_status, data_vaddr_3_vaddr) = memory_map_any(memory, false);
+    if data_vaddr_3_map_status != 0 {
         memory_close(memory);
         return None;
     }
     let mut key = [0u8; 32];
     for (index, byte) in key.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((data_vaddr_3_vaddr + index) as *const u8) };
     }
     memory_unmap(memory);
     memory_close(memory);
@@ -179,13 +180,14 @@ fn fetch_and_verify(
         }
         return Err(());
     }
-    if memory_map(returned_memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(returned_memory, false);
+    if data_vaddr_2_map_status != 0 {
         memory_close(returned_memory);
         return Err(());
     }
     let mut artifact = alloc::vec::Vec::with_capacity(len);
     for index in 0..len {
-        artifact.push(unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) });
+        artifact.push(unsafe { core::ptr::read_volatile((data_vaddr_2_vaddr + index) as *const u8) });
     }
     memory_unmap(returned_memory);
     // The artifact is the note-signed `greet` ELF: it must be exactly the
@@ -293,7 +295,8 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if memory == 0 {
         return None;
     }
-    if memory_map(memory, DATA_VADDR, false) != 0 {
+        let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(memory, false);
+    if data_vaddr_map_status != 0 {
         return None;
     }
     if memory_size(memory) < 56 {
@@ -301,7 +304,7 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     }
     let mut bytes = [0u8; 56];
     for (index, byte) in bytes.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((DATA_VADDR + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((data_vaddr_vaddr + index) as *const u8) };
     }
     memory_unmap(memory);
     Some(DeploymentInfo {
