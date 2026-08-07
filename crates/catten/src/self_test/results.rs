@@ -95,10 +95,11 @@ pub enum TestId {
     Tcpip = 21,
     Http = 22,
     Clusterctl = 23,
+    Join = 24,
 }
 
 impl TestId {
-    const ALL: [Self; 24] = [
+    const ALL: [Self; 25] = [
         Self::El0,
         Self::Raft,
         Self::RaftStorage,
@@ -123,6 +124,7 @@ impl TestId {
         Self::Tcpip,
         Self::Http,
         Self::Clusterctl,
+        Self::Join,
     ];
 
     const fn name(self) -> &'static str {
@@ -151,6 +153,7 @@ impl TestId {
             Self::Tcpip => "tcpip",
             Self::Http => "http",
             Self::Clusterctl => "clusterctl",
+            Self::Join => "join",
         }
     }
 }

@@ -15,6 +15,12 @@ use alloc::{
 
 use catten_graft::{
     charlotte::CharlotteTransport,
+    transport::{
+        AppendEntriesRpc,
+        InstallSnapshotRpc,
+        RaftTransport,
+        RpcCompletion,
+    },
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
@@ -49,11 +55,30 @@ use catten_services::{
         DiskLogStore,
         DiskPersistentStateStore,
     },
+    disco,
+    dns,
     ns,
     raft,
+    relmsg,
+    relmsg_transport::{
+        TAG_JOIN_REPLY,
+        TAG_JOIN_REQUEST,
+        RelmsgRaftTransport,
+        decode_join_reply,
+        decode_join_request,
+        encode_join_reply,
+        encode_join_request,
+    },
+    sleep_ms,
 };
+use charlotte_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
+};
+use charlotte_protocol_msg::unpack_address_and_len;
 use catten_syscall::{
     IpcRights,
+    ipc_reply_poll_with_memory,
     cq_read,
     cq_wait_timeout,
     ipc_close,
@@ -76,6 +101,10 @@ use catten_syscall::{
 };
 
 const LOOP_TICK_MS: u64 = 25;
+/// Scratch for inbound relmsg frames (distinct from the RPC memory scratch).
+const RX_SCRATCH: usize = 0x0000_0000_0082_1000;
+/// Cadence for re-querying discovery for MAC routes and cluster posture.
+const DISCO_QUERY_MS: u64 = 2_000;
 const RAFT_TIMER_COOKIE: u64 = 0x5241_4654_5449_434b;
 
 fn fatal(stage: u64) -> ! {
@@ -173,6 +202,137 @@ fn poll_peer_discovery(
     }
 }
 
+/// Best-effort cluster-event publishing state: the node's dns is the
+/// replicated event broker, so this node can publish conditions that
+/// dependent activities anywhere in the cluster wait on. Fires are
+/// fire-and-forget with retry; no ordering or leader status is assumed.
+struct EventFirer {
+    dns_lookup: u64,
+    dns_conn: u64,
+    established_fired: bool,
+    fired_members: alloc::vec::Vec<alloc::string::String>,
+    pending_fire: u64,
+    pending_name: alloc::vec::Vec<u8>,
+}
+
+impl EventFirer {
+    fn new() -> Self {
+        Self {
+            dns_lookup: 0,
+            dns_conn: 0,
+            established_fired: false,
+            fired_members: alloc::vec::Vec::new(),
+            pending_fire: 0,
+            pending_name: alloc::vec::Vec::new(),
+        }
+    }
+}
+
+fn fire_event(dns_conn: u64, event_name: &[u8]) -> u64 {
+    let Some(memory) = write_payload_to_mem(event_name) else {
+        return 0;
+    };
+    let call = catten_syscall::ipc_scalar_call_move(
+        dns_conn,
+        dns::OP_EVENT_FIRE,
+        event_name.len() as u64,
+        memory,
+    );
+    if call == 0 {
+        catten_syscall::memory_close(memory);
+    }
+    call
+}
+
+/// The raft service's transport is a hybrid: manifest-configured peers
+/// (same-node deployments, e.g. the raft self-test) connect through the name
+/// service, while identity-based peers on the network segment route by MAC
+/// through the reliable-message layer. The graft node sees one transport.
+struct ServiceRaftTransport {
+    ns: Arc<CharlotteTransport>,
+    mac: Arc<RelmsgRaftTransport>,
+}
+
+impl RaftTransport for ServiceRaftTransport {
+    fn set_current_millis(&self, current_millis: u64) {
+        self.ns.set_current_millis(current_millis);
+        self.mac.set_current_millis(current_millis);
+    }
+
+    fn send_vote_request(
+        &self,
+        peer: &Peer,
+        term: u64,
+        candidate_id: &str,
+        last_log_index: u64,
+        last_log_term: u64,
+    ) {
+        if self.ns.has_peer(&peer.id) {
+            self.ns.send_vote_request(peer, term, candidate_id, last_log_index, last_log_term);
+        } else {
+            self.mac.send_vote_request(peer, term, candidate_id, last_log_index, last_log_term);
+        }
+    }
+
+    fn send_append_entries(&self, rpc: AppendEntriesRpc<'_>) {
+        if self.ns.has_peer(&rpc.peer.id) {
+            self.ns.send_append_entries(rpc);
+        } else {
+            self.mac.send_append_entries(rpc);
+        }
+    }
+
+    fn send_install_snapshot(&self, rpc: InstallSnapshotRpc<'_>) {
+        if self.ns.has_peer(&rpc.peer.id) {
+            self.ns.send_install_snapshot(rpc);
+        } else {
+            self.mac.send_install_snapshot(rpc);
+        }
+    }
+
+    fn broadcast_heartbeat_complete(&self) {
+        self.ns.broadcast_heartbeat_complete();
+        self.mac.broadcast_heartbeat_complete();
+    }
+
+    fn poll_completions(&self) -> Vec<RpcCompletion> {
+        let mut completions = self.ns.poll_completions();
+        completions.extend(self.mac.poll_completions());
+        completions
+    }
+}
+
+/// Drive an inbound Raft RPC (decoded from a relmsg frame) into the node and
+/// reply to the source MAC. Mirrors the dns's relmsg raft transport usage.
+fn drive_inbound(
+    node: &mut RaftNode,
+    transport: &RelmsgRaftTransport,
+    source_mac: [u8; 6],
+    inbound: catten_services::relmsg_transport::InboundRpc,
+    millis: u64,
+) {
+    match inbound {
+        catten_services::relmsg_transport::InboundRpc::VoteRequest(request) => {
+            let response = node.handle_vote_request(request, millis);
+            if let Ok(payload) = catten_graft::wire::encode_vote_response(&response) {
+                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_VOTE_RESPONSE, payload);
+            }
+        }
+        catten_services::relmsg_transport::InboundRpc::AppendEntries(request) => {
+            let response = node.handle_append_entries(request, millis);
+            if let Ok(payload) = catten_graft::wire::encode_append_response(&response) {
+                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_APPEND_RESPONSE, payload);
+            }
+        }
+        catten_services::relmsg_transport::InboundRpc::InstallSnapshot(request) => {
+            let response = node.handle_install_snapshot(request, millis);
+            if let Ok(payload) = catten_graft::wire::encode_snapshot_response(&response) {
+                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_SNAPSHOT_RESPONSE, payload);
+            }
+        }
+    }
+}
+
 const NODE_ID_KEY: u64 = manifest_key(b"node-id");
 const PEER_ID_KEY: u64 = manifest_key(b"peer-id");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
@@ -198,10 +358,6 @@ fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 1);
-    let node_id = match ctx.manifest_value(NODE_ID_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => core::str::from_utf8(bytes).unwrap_or("r1"),
-        _ => "r1",
-    };
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 150,
@@ -223,6 +379,41 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(0, 2);
 
+    // The node id is the raft identity other nodes use to reach this node
+    // (service name `raft-{node_id}`). Without an explicit manifest override
+    // it derives from the node identity (the same name discovery advertises),
+    // so a discovered peer can always locate this node's raft endpoint.
+    // The identity is created by the discovery service (which knows the NIC
+    // MAC); this service may boot first, so the read retries briefly before
+    // falling back to the bootable "r1" placeholder.
+    let node_id: String = match ctx.manifest_value(NODE_ID_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => {
+            let id = core::str::from_utf8(bytes).unwrap_or("r1");
+            if id.is_empty() {
+                "r1".to_string()
+            } else {
+                id.to_string()
+            }
+        }
+        _ => {
+            let mut identity_retries = 120u32;
+            loop {
+                if let Some(identity) = catten_services::node_identity::NodeIdentity::load_or_create(
+                    ns_conn,
+                    cluster_id,
+                    None,
+                ) {
+                    break identity.name_str().to_string();
+                }
+                if identity_retries == 0 {
+                    break "r1".to_string();
+                }
+                identity_retries -= 1;
+                sleep_ms(250);
+            }
+        }
+    };
+
     let endpoint = ipc_endpoint_create(raft::INTERFACE, raft::VERSION, 8);
     if endpoint == 0 {
         fatal(2);
@@ -232,7 +423,8 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 3);
 
-    let name_u64 = catten_services::name(alloc::format!("raft-{}", node_id).as_bytes());
+    let name_u64 = catten_services::raft_name(node_id.as_bytes());
+    catten_syscall::el0_log(0x5241_4654, name_u64 | 0x0000_0000_0100_0000);
 
     let register = ipc_scalar_call_connection(
         ns_conn,
@@ -283,7 +475,12 @@ fn main(ctx: Context) -> ! {
         ),
     };
     config::write::<u32>(24, durable as u32);
-    let transport = Arc::new(CharlotteTransport::new());
+    let ns_transport = Arc::new(CharlotteTransport::new());
+    let mac_transport = Arc::new(RelmsgRaftTransport::new(0));
+    let transport: Arc<dyn RaftTransport> = Arc::new(ServiceRaftTransport {
+        ns: ns_transport.clone(),
+        mac: mac_transport.clone(),
+    });
 
     let mut peers = Vec::new();
     let me = Peer::voter(node_id.to_string(), name_u64);
@@ -299,7 +496,7 @@ fn main(ctx: Context) -> ! {
             continue;
         }
 
-        let peer_name = catten_services::name(alloc::format!("raft-{}", peer_id).as_bytes());
+        let peer_name = catten_services::raft_name(peer_id.as_bytes());
         peers.push(Peer::voter(peer_id.to_string(), peer_name));
         peer_specs.push((peer_id.to_string(), peer_name, 0));
     }
@@ -325,6 +522,22 @@ fn main(ctx: Context) -> ! {
 
     let cq = ctx.completion_queue_layout();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+
+    let mut events = EventFirer::new();
+
+    // Network-cluster state: the node locates peers by MAC through discovery
+    // and exchanges raft traffic over the reliable-message layer. None of
+    // this consults the local name service for remote participants — before
+    // membership the only addresses that exist are the MACs discovery saw.
+    let mut relmsg_lookup: u64 = 0;
+    let mut relmsg_conn: u64 = 0;
+    let mut disco_lookup: u64 = 0;
+    let mut disco_conn: u64 = 0;
+    let mut disco_query: u64 = 0;
+    let mut next_disco_query_ms: u64 = 0;
+    let mut recv_pending: u64 = 0;
+    let mut join_request_pending = false;
+    let mut join_accepted = false;
 
     loop {
         // Endpoint readiness and transport completions wake this reactor
@@ -357,12 +570,21 @@ fn main(ctx: Context) -> ! {
         // existing call and never creates retry storms or blocks on a peer.
         // Membership is replicated, so discovery must follow the committed
         // configuration rather than remaining frozen at the boot manifest.
-        let active_peer_ids = node
-            .cluster_configuration
-            .all_members()
-            .into_iter()
-            .map(|peer| peer.id.clone())
-            .collect::<Vec<_>>();
+        // Connect targets are the committed membership plus peers admitted
+        // by committed JOIN entries that are pending promotion: the leader
+        // must replicate those joiners up to their fences before they enter
+        // the joint configuration.
+        let mut active_peer_ids: Vec<String> = Vec::new();
+        for peer in node.cluster_configuration.all_members() {
+            if !active_peer_ids.contains(&peer.id) {
+                active_peer_ids.push(peer.id.clone());
+            }
+        }
+        for peer in node.pending_joiners() {
+            if !active_peer_ids.contains(&peer.id) {
+                active_peer_ids.push(peer.id.clone());
+            }
+        }
         peer_specs.retain(|(peer_id, _, pending)| {
             if active_peer_ids.contains(peer_id) {
                 true
@@ -370,23 +592,232 @@ fn main(ctx: Context) -> ! {
                 if *pending != 0 {
                     ipc_close(*pending);
                 }
-                transport.remove_peer(peer_id);
+                ns_transport.remove_peer(peer_id);
                 false
             }
         });
-        for peer in node.cluster_configuration.all_members() {
-            if peer.id != node.me.id && !peer_specs.iter().any(|spec| spec.0 == peer.id) {
-                let peer_name = if peer.service_name != 0 {
-                    peer.service_name
-                } else {
-                    catten_services::name(alloc::format!("raft-{}", peer.id).as_bytes())
-                };
-                peer_specs.push((peer.id.clone(), peer_name, 0));
+        for peer_id in &active_peer_ids {
+            if peer_id == &node.me.id || peer_specs.iter().any(|spec| &spec.0 == peer_id) {
+                continue;
             }
+            let peer_name = node
+                .cluster_configuration
+                .all_members()
+                .iter()
+                .find(|peer| &peer.id == peer_id)
+                .map(|peer| peer.service_name)
+                .or_else(|| {
+                    node.pending_joiners()
+                        .iter()
+                        .find(|peer| &peer.id == peer_id)
+                        .map(|peer| peer.service_name)
+                })
+                .unwrap_or_else(|| {
+                    catten_services::raft_name(peer_id.as_bytes())
+                });
+            peer_specs.push((peer_id.clone(), peer_name, 0));
         }
         for (peer_id, peer_name, pending) in &mut peer_specs {
-            poll_peer_discovery(ns_conn, peer_id, *peer_name, pending, &transport);
+            poll_peer_discovery(ns_conn, peer_id, *peer_name, pending, &ns_transport);
         }
+
+        // --- Network-cluster connections (relmsg + disco) ---
+        // The relmsg is the MAC-addressed frame transport to other nodes; the
+        // disco supplies the MAC routes and cluster posture. Both are resolved
+        // through the local name service (these services live on this node).
+        if relmsg_conn == 0 && relmsg_lookup == 0 {
+            relmsg_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, relmsg::NAME);
+        }
+        if relmsg_lookup != 0 {
+            let (status, generation, conn) = ipc_reply_poll(relmsg_lookup);
+            if status == 0 {
+                ipc_close(relmsg_lookup);
+                relmsg_lookup = 0;
+                if generation >= 1 && conn != 0 {
+                    relmsg_conn = conn;
+                    mac_transport.set_relmsg_conn(conn);
+                }
+            } else if status != 1 {
+                ipc_close(relmsg_lookup);
+                relmsg_lookup = 0;
+            }
+        }
+        if disco_conn == 0 && disco_lookup == 0 {
+            disco_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, disco::NAME);
+        }
+        if disco_lookup != 0 {
+            let (status, generation, conn) = ipc_reply_poll(disco_lookup);
+            if status == 0 {
+                ipc_close(disco_lookup);
+                disco_lookup = 0;
+                if generation >= 1 && conn != 0 {
+                    disco_conn = conn;
+                }
+            } else if status != 1 {
+                ipc_close(disco_lookup);
+                disco_lookup = 0;
+            }
+        }
+
+        // --- MAC routes + cluster posture via discovery ---
+        // Query the disco for every node on the segment: their MACs are the
+        // only addresses that exist pre-membership, and their reported roles
+        // identify the leader to apply to (or a follower whose leader hint is
+        // the redirect).
+        if disco_conn != 0 && disco_query == 0 && node.millis() >= next_disco_query_ms {
+            next_disco_query_ms = node.millis() + DISCO_QUERY_MS;
+            disco_query = ipc_scalar_call(disco_conn, disco::OP_CLUSTER_STATUS, 0);
+        }
+        if disco_query != 0 {
+            let (status, _result, _returned_connection, memory) =
+                ipc_reply_poll_with_memory(disco_query);
+            if status == 0 {
+                ipc_close(disco_query);
+                disco_query = 0;
+                if memory != 0 {
+                    if memory_map(memory, RX_SCRATCH, false) == 0 {
+                        let bytes = unsafe {
+                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, 4096)
+                        };
+                        if let Some((_self_role, _self_raft_id, _self_leader_id, peers)) =
+                            parse_cluster_answer(bytes)
+                        {
+                            // MAC routes for every discovered peer: the hybrid
+                            // transport sends via MAC for anyone not reachable
+                            // through the local name service.
+                            for (mac, _role, raft_id, _leader_id) in &peers {
+                                if !raft_id.is_empty() {
+                                    mac_transport.add_peer(
+                                        core::str::from_utf8(raft_id).unwrap_or(""),
+                                        *mac,
+                                    );
+                                }
+                            }
+                            // Auto-join: a single-node leader whose id is
+                            // lexicographically larger than a discovered
+                            // leader's applies for membership of that cluster
+                            // (the smaller id is the anchor and waits). The
+                            // join request is a MAC-addressed frame — no local
+                            // lookup of the peer exists or is needed.
+                            if !join_accepted
+                                && !join_request_pending
+                                && node.state == NodeState::Leader
+                                && node.cluster_configuration.all_members().len() == 1
+                            {
+                                if let Some((_mac, _role, raft_id, _leader_id)) = peers
+                                    .iter()
+                                    .find(|(_, role, raft_id, _)| {
+                                        *role == ROLE_LEADER
+                                            && !raft_id.is_empty()
+                                            && raft_id.as_slice() != node.me.id.as_bytes()
+                                            && node.me.id.as_bytes() > raft_id.as_slice()
+                                    })
+                                {
+                                    let target =
+                                        core::str::from_utf8(raft_id).unwrap_or("");
+                                    if let Some(payload) = encode_join_request(
+                                        node.me.id.as_bytes(),
+                                        name_u64,
+                                    ) {
+                                        mac_transport.send_message(target, TAG_JOIN_REQUEST, payload);
+                                        join_request_pending = true;
+                                        catten_syscall::el0_log(
+                                            0x5241_4654,
+                                            0x4a4f_494e,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        memory_unmap(memory);
+                    }
+                    memory_close(memory);
+                }
+            } else if status != 1 {
+                ipc_close(disco_query);
+                disco_query = 0;
+            }
+        }
+
+        // --- Inbound frames over relmsg ---
+        if relmsg_conn != 0 && recv_pending == 0 {
+            recv_pending = ipc_scalar_call(relmsg_conn, relmsg::OP_RECV, 0);
+        }
+        if recv_pending != 0 {
+            let (recv_status, result, _returned_connection, memory) =
+                ipc_reply_poll_with_memory(recv_pending);
+            if recv_status == 0 {
+                ipc_close(recv_pending);
+                recv_pending = 0;
+                if memory != 0 {
+                    let (source_mac, len) = unpack_address_and_len(result);
+                    if memory_map(memory, RX_SCRATCH, false) == 0 {
+                        let frame = unsafe {
+                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, len as usize)
+                        };
+                        match frame.first().copied() {
+                            Some(tag) if (1..=6).contains(&tag) => {
+                                if let Some(inbound) =
+                                    mac_transport.decode_inbound(&source_mac, frame)
+                                {
+                                    let millis = node.millis();
+                                    drive_inbound(
+                                        &mut node,
+                                        &mac_transport,
+                                        source_mac,
+                                        inbound,
+                                        millis,
+                                    );
+                                }
+                            }
+                            Some(TAG_JOIN_REQUEST) => {
+                                if let Some((joiner_id, service_name)) =
+                                    decode_join_request(frame)
+                                {
+                                    let (accepted, detail) = if node.state == NodeState::Leader {
+                                        let peer = Peer::voter(
+                                            core::str::from_utf8(joiner_id)
+                                                .unwrap_or("")
+                                                .to_string(),
+                                            service_name,
+                                        );
+                                        match node.submit_join(peer, node.millis()) {
+                                            Ok(index) => (index, 0u64),
+                                            Err(code) => (0, code.unsigned_abs()),
+                                        }
+                                    } else {
+                                        (0, 0xff)
+                                    };
+                                    mac_transport.send_response(
+                                        source_mac,
+                                        TAG_JOIN_REPLY,
+                                        encode_join_reply(accepted),
+                                    );
+                                    catten_syscall::el0_log(
+                                        0x5241_4654,
+                                        0x4a52_4551 | (accepted << 16) | (detail << 32),
+                                    );
+                                }
+                            }
+                            Some(TAG_JOIN_REPLY) => {
+                                if let Some(index) = decode_join_reply(frame) {
+                                    join_request_pending = false;
+                                    if index > 0 {
+                                        join_accepted = true;
+                                        catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e_41);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        memory_unmap(memory);
+                    }
+                    memory_close(memory);
+                }
+            }
+        }
+        mac_transport.drain_outbound();
+        mac_transport.reap_acks();
 
         // Drain inbound Raft traffic after processing the timer tick.
         loop {
@@ -458,6 +889,111 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                raft::OP_CLUSTER_STATUS => {
+                    catten_syscall::el0_log(0x5241_4654, 0x5555);
+                    let status: u32 = match node.state {
+                        NodeState::Follower => 1,
+                        NodeState::Candidate => 2,
+                        NodeState::Leader => 3,
+                    };
+                    let mut buf = [0u8; 256];
+                    let leader_id = node.known_leader_id.clone().unwrap_or_default();
+                    let len = raft::build_cluster_status(
+                        &mut buf,
+                        status,
+                        node.current_term,
+                        node.commit_index,
+                        node.cluster_configuration.all_members().len() as u32,
+                        leader_id.as_bytes(),
+                        node.me.id.as_bytes(),
+                    );
+                    if let Some(len) = len
+                        && let Some(memory) = write_payload_to_mem(&buf[..len])
+                    {
+                        catten_syscall::el0_log(0x5241_4654, 0x5556);
+                        ipc_reply_move(message.reply, memory, len as i64);
+                    } else if message.reply != 0 {
+                        catten_syscall::el0_log(0x5241_4654, 0x5557);
+                        ipc_reply(message.reply, -1);
+                    }
+                }
+
+                raft::OP_ADD_SERVER => {
+                    let spec: Option<(String, u64, bool)> =
+                        read_payload_from_mem(message.memory, message.arg0)
+                            .and_then(|payload| {
+                                let (id, service_name, learner) =
+                                    raft::decode_peer_spec(&payload)?;
+                                core::str::from_utf8(id)
+                                    .ok()
+                                    .map(|id| (id.to_string(), service_name, learner))
+                            });
+                    match spec {
+                        Some((id, service_name, learner)) => {
+                            if id.is_empty() {
+                                ipc_reply(message.reply, -1);
+                            } else {
+                                let peer = if learner {
+                                    Peer::learner(id, service_name)
+                                } else {
+                                    Peer::voter(id, service_name)
+                                };
+                                match node.submit_join(peer, node.millis()) {
+                                    Ok(index) => ipc_reply(message.reply, index as i64),
+                                    Err(code) => ipc_reply(message.reply, code),
+                                };
+                            }
+                        }
+                        None => {
+                            ipc_reply(message.reply, -1);
+                        }
+                    }
+                }
+
+                raft::OP_REMOVE_SERVER => {
+                    let id = read_payload_from_mem(message.memory, message.arg0)
+                        .and_then(|payload| {
+                            if payload.is_empty() {
+                                return None;
+                            }
+                            let id_len = payload[0] as usize;
+                            if id_len == 0 || id_len > 255 || payload.len() < 1 + id_len {
+                                return None;
+                            }
+                            core::str::from_utf8(&payload[1..1 + id_len])
+                                .ok()
+                                .map(|id| id.to_string())
+                        });
+                    match id {
+                        Some(id) if node.state == NodeState::Leader => {
+                            let members: Vec<Peer> = node
+                                .cluster_configuration
+                                .all_members()
+                                .into_iter()
+                                .cloned()
+                                .filter(|peer| peer.id != id)
+                                .collect();
+                            if members.is_empty() {
+                                // Refuse to decommission the last member.
+                                ipc_reply(message.reply, raft::ERR_NOT_FOUND);
+                            } else {
+                                match node
+                                    .submit_joint_configuration(members, node.millis())
+                                {
+                                    Ok(index) => ipc_reply(message.reply, index as i64),
+                                    Err(code) => ipc_reply(message.reply, code),
+                                };
+                            }
+                        }
+                        Some(_) => {
+                            ipc_reply(message.reply, raft::ERR_NOT_LEADER);
+                        }
+                        None => {
+                            ipc_reply(message.reply, -1);
+                        }
+                    }
+                }
+
                 _ => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, -1);
@@ -476,6 +1012,64 @@ fn main(ctx: Context) -> ! {
 
         if node.state == NodeState::Leader {
             node.broadcast_heartbeat(node.millis());
+        }
+
+        // --- Cluster-event publishing (best-effort) ---
+        // The dns is the replicated event broker: conditions published here
+        // (cluster established, membership.{id} after a JOIN finalizes) are
+        // committed through consensus and waited on by dependent activities,
+        // so no caller polls or assumes ordering.
+        if events.dns_lookup == 0 && events.dns_conn == 0 {
+            events.dns_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, dns::NAME);
+        }
+        if events.dns_lookup != 0 {
+            let (status, generation, conn) = ipc_reply_poll(events.dns_lookup);
+            if status == 0 {
+                ipc_close(events.dns_lookup);
+                events.dns_lookup = 0;
+                if generation >= 1 && conn != 0 {
+                    events.dns_conn = conn;
+                }
+            } else if status != 1 {
+                ipc_close(events.dns_lookup);
+                events.dns_lookup = 0;
+            }
+        }
+        if events.dns_conn != 0 && events.pending_fire == 0 {
+            if node.state == NodeState::Leader && !events.established_fired {
+                events.pending_name = b"event:established".to_vec();
+                events.pending_fire = fire_event(events.dns_conn, &events.pending_name);
+            } else {
+                for peer in node.cluster_configuration.all_members() {
+                    if peer.id != node.me.id
+                        && !events.fired_members.contains(&peer.id)
+                    {
+                        events.pending_name =
+                            alloc::format!("event:membership:{}", peer.id).into_bytes();
+                        events.pending_fire = fire_event(events.dns_conn, &events.pending_name);
+                        break;
+                    }
+                }
+            }
+        }
+        if events.pending_fire != 0 {
+            let (status, result, _conn) = ipc_reply_poll(events.pending_fire);
+            if status == 0 {
+                ipc_close(events.pending_fire);
+                events.pending_fire = 0;
+                let name = core::mem::take(&mut events.pending_name);
+                if result > 0 {
+                    if name == b"event:established" {
+                        events.established_fired = true;
+                    } else if let Some(id) = name.strip_prefix(b"event:membership:") {
+                        events.fired_members.push(
+                            core::str::from_utf8(id).unwrap_or("").to_string(),
+                        );
+                    }
+                }
+                // On failure (e.g. ERR_NOT_LEADER) the next iteration retries
+                // the same pending event.
+            }
         }
 
         // Publish one coherent observation after all state transitions in

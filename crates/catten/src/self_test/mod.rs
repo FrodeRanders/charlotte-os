@@ -135,6 +135,7 @@ pub mod el0_disco;
 pub mod el0_dns;
 #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
 pub mod el0_http;
+pub mod el0_join;
 pub mod el0_ipc;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
@@ -282,6 +283,8 @@ pub fn run_deferred_self_tests() {
     el0_tcpip::test_el0_tcpip();
     #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
     el0_clusterctl::test_el0_clusterctl();
+    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    el0_join::test_el0_join();
     #[cfg(all(not(feature = "tcpip_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 tcpip test (enable tcpip_net_test with matching PCI hardware).");
     #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]

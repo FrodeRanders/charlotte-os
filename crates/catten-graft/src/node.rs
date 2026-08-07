@@ -75,7 +75,11 @@ pub struct RaftNode {
     pub committed_configurations: BTreeMap<u64, ClusterConfiguration>,
     pub decommissioned: bool,
     pub joining: bool,
-    pub pending_join_ids: BTreeSet<String>,
+    /// Peers admitted by committed JOIN entries, keyed by peer id and mapped
+    /// to their Peer spec plus the fence: the log index of the committed
+    /// JOIN. The leader replicates to these peers and promotes them to the
+    /// joint configuration only once they have caught up to the fence.
+    pub pending_joiners: BTreeMap<String, (Peer, u64)>,
     pub pending_auto_finalize_members: Vec<String>,
     pub pending_auto_finalize_fence_index: u64,
     pub finalize_configuration_pending: bool,
@@ -185,7 +189,7 @@ impl RaftNode {
             committed_configurations: BTreeMap::new(),
             decommissioned,
             joining: false,
-            pending_join_ids: BTreeSet::new(),
+            pending_joiners: BTreeMap::new(),
             pending_auto_finalize_members,
             pending_auto_finalize_fence_index,
             finalize_configuration_pending: false,
@@ -675,7 +679,19 @@ impl RaftNode {
             return;
         }
 
-        for peer in self.cluster_configuration.all_members() {
+        // Replicate to configured members and to peers admitted by a
+        // committed JOIN entry but not yet promoted. Replication to a peer
+        // whose transport connection is not yet wired is a no-op, so
+        // iterating the union here is safe before the joiner is reachable.
+        let mut replication_peers: Vec<Peer> =
+            self.cluster_configuration.all_members().into_iter().cloned().collect();
+        for (peer, _) in self.pending_joiners.values() {
+            if !replication_peers.iter().any(|member| member.id == peer.id) {
+                replication_peers.push(peer.clone());
+            }
+        }
+
+        for peer in &replication_peers {
             if peer.id == self.me.id {
                 continue;
             }
@@ -726,6 +742,34 @@ impl RaftNode {
         }
 
         self.transport.broadcast_heartbeat_complete();
+        self.maybe_promote_pending_joiners(current_millis);
+    }
+
+    /// Promote a joiner into the joint configuration once it has caught up
+    /// to its committed JOIN fence. The joint phase then auto-finalizes via
+    /// [`maybe_auto_finalize_joint_configuration`] once the whole next
+    /// configuration acknowledges the joint entry.
+    fn maybe_promote_pending_joiners(&mut self, current_millis: u64) {
+        if self.state != NodeState::Leader || self.pending_joiners.is_empty() {
+            return;
+        }
+        let pending: Vec<(String, Peer, u64)> = self
+            .pending_joiners
+            .iter()
+            .map(|(id, (peer, fence))| (id.clone(), peer.clone(), *fence))
+            .collect();
+        for (id, peer, fence) in pending {
+            if self.match_index.get(&id).copied().unwrap_or(0) < fence {
+                continue;
+            }
+            self.pending_joiners.remove(&id);
+            let mut members: Vec<Peer> =
+                self.cluster_configuration.all_members().into_iter().cloned().collect();
+            if !members.iter().any(|member| member.id == peer.id) {
+                members.push(peer);
+            }
+            let _ = self.submit_joint_configuration(members, current_millis);
+        }
     }
 
     /// Drain completed asynchronous transport calls into the consensus state
@@ -896,7 +940,9 @@ impl RaftNode {
             return false;
         };
         if let ConfigurationCommand::Join(ref peer) = command {
-            self.pending_join_ids.insert(peer.id.clone());
+            // The fence is this entry's index: the joiner must be replicated
+            // up to the JOIN before it is promoted into the joint phase.
+            self.pending_joiners.insert(peer.id.clone(), (peer.clone(), index));
             return true;
         }
         self.cluster_configuration = match command {
@@ -967,6 +1013,13 @@ impl RaftNode {
         let command =
             configuration::encode(&ConfigurationCommand::Join(peer)).ok_or(ERR_TOO_LARGE)?;
         self.submit_command(command, current_millis)
+    }
+
+    /// Peers admitted by committed JOIN entries that have not yet been
+    /// promoted. The service layer wires transport connections for these
+    /// peers so the leader can replicate them up to their fences.
+    pub fn pending_joiners(&self) -> Vec<Peer> {
+        self.pending_joiners.values().map(|(peer, _)| peer.clone()).collect()
     }
 
     pub fn submit_finalize_configuration(&mut self, current_millis: u64) -> Result<u64, i64> {
@@ -1107,6 +1160,71 @@ mod tests {
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
         })
+    }
+
+    #[test]
+    fn join_admission_promotes_then_finalizes() {
+        // Single-voter leader: a joiner admitted by a committed JOIN entry is
+        // replicated up to its fence, promoted into the joint configuration,
+        // and auto-finalized on the expanded membership.
+        let mut node = node_with_voters(&["n1"]);
+        node.start_election(200);
+        assert_eq!(node.state, NodeState::Leader);
+
+        let joiner = Peer::voter("n2".to_string(), 0);
+        let fence = node.submit_join(joiner.clone(), 201).expect("leader accepts the join");
+
+        // On a single-voter cluster the JOIN commits locally; the joiner is
+        // pending admission and not yet a member.
+        assert!(node.is_committed(fence));
+        assert_eq!(node.pending_joiners().len(), 1);
+        assert!(!node.cluster_configuration.contains("n2"));
+
+        // The joiner acks replication up to the fence; the next heartbeat
+        // promotes it into the joint configuration.
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: fence,
+            },
+            202,
+        );
+        node.broadcast_heartbeat(203);
+        assert!(node.pending_joiners().is_empty());
+        assert!(node.cluster_configuration.is_joint_consensus());
+        assert_eq!(node.cluster_configuration.all_members().len(), 2);
+
+        // The joiner acks the joint entry, committing it and triggering the
+        // auto-finalize; the finalize entry then commits once the joiner acks
+        // it too, leaving a stable two-member configuration.
+        let joint_index = node.log_store.last_index();
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: joint_index,
+            },
+            204,
+        );
+        let finalize_index = node.log_store.last_index();
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: finalize_index,
+            },
+            205,
+        );
+        assert!(!node.cluster_configuration.is_joint_consensus());
+        assert_eq!(node.cluster_configuration.all_members().len(), 2);
+        assert!(node.cluster_configuration.contains("n2"));
     }
 
     #[test]

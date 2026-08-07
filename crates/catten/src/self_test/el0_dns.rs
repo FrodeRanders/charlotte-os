@@ -621,13 +621,21 @@ mod inner {
         }
 
         // Look the name up: it must resolve to this node (local) or a remote
-        // node; either proves the catalog entry replicated through the cluster.
-        let lookup = call(dns_conn, DNS_OP_LOOKUP, ALPHA_NAME);
+        // node; either proves the catalog entry replicated through the
+        // cluster. The leader publishes the name through a replicated
+        // commit, so a follower may observe its converged catalog slightly
+        // before the leader's own registration is authoritative; retry the
+        // lookup briefly instead of asserting on the first attempt.
+        let lookup_deadline = crate::self_test::results::Deadline::after_millis(30_000);
+        let lookup = loop {
+            let lookup = call(dns_conn, DNS_OP_LOOKUP, ALPHA_NAME);
+            if lookup == Some(DNS_RESULT_LOCAL) || lookup == Some(DNS_RESULT_REMOTE) {
+                break lookup;
+            }
+            lookup_deadline.assert_pending("EL0 dns replicated lookup");
+            yield_lp();
+        };
         logln!("[dns] lookup result = {lookup:?}");
-        assert!(
-            lookup == Some(DNS_RESULT_LOCAL) || lookup == Some(DNS_RESULT_REMOTE),
-            "[dns] replicated lookup must resolve local or remote, got {lookup:?}"
-        );
         assert_ne!(lookup, Some(DNS_ERR_NOT_FOUND), "[dns] replicated name must not be unknown");
 
         // ---- Remote invocation through the catalog ----

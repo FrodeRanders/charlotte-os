@@ -6,9 +6,16 @@
 //! run queue is empty.  When `is_idle` is true the quantum timer is not
 //! re-armed — an idle LP is woken by an admission IPI or deferred wake.
 //!
+//! How often an idle LP wakes to check for admitted work (ms). The
+//! scheduler-IPI SGI is the fast wake path; this timer is the fallback so an
+//! idle LP cannot sleep past an admission whose SGI was not delivered.
+//!
 //! A [`ThreadHandle`] pairs a [`ThreadId`] with a [`ThreadGeneration`].
 //! `next()` validates the generation against the master table before
 //! dispatching, preventing stale-handle-after-slot-reuse.
+
+/// See the module docs: the idle-wake fallback interval.
+const IDLE_WAKE_MILLIS: u64 = 50;
 
 use alloc::{
     collections::vec_deque::VecDeque,
@@ -156,10 +163,25 @@ impl LpScheduler for RoundRobin {
         // An idle LP is woken explicitly when work is admitted, so periodic
         // round-robin ticks only waste host CPU and immediately return to the
         // same idle thread. Arm a quantum only for real runnable work.
+        //
+        // An idle LP still arms a *long* wake timer rather than nothing: SGI
+        // delivery to a fully asleep LP is not dependable on every platform,
+        // so the pending-flag check in the idle loop must run periodically
+        // or an admitted/woken thread can sit Ready on an idle LP for an
+        // unbounded time. The SGI remains the fast path; the idle timer is
+        // the correctness fallback.
         if !self.is_idle {
             self.set_next_timer_event();
         } else {
-            TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
+            let wake = TimerEvent::keyed(
+                ExtDuration::from_millis(IDLE_WAKE_MILLIS as u128),
+                TimerEventKey::SchedulerQuantum,
+            );
+            wake.register_observer(
+                Arc::downgrade(&self.timer_event_observer)
+                    as alloc::sync::Weak<dyn Observer>,
+            );
+            TIMER_QUEUES.try_get_mut().unwrap().ensure_event(wake);
         }
     }
 

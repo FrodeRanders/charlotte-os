@@ -42,7 +42,7 @@ use catten_services::{
     relmsg,
     sleep_ms,
     socket,
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -640,7 +640,7 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(0, 5);
 
-    if !wait_for_boot_done(ns_conn) {
+    if !wait_for_local_ready(ns_conn) {
         fail(0xe004);
     }
     config::write::<u32>(0, 6);

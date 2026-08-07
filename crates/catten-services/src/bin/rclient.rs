@@ -79,7 +79,7 @@ fn main(ctx: Context) -> ! {
 
     // Do not initiate cluster communication until this node has finished
     // booting: messages sent during the boot storm are silently lost.
-    if !catten_services::wait_for_boot_done(ns_conn) {
+    if !catten_services::wait_for_local_ready(ns_conn) {
         unsafe { thread_exit() };
     }
     config::write::<u32>(0, 13);

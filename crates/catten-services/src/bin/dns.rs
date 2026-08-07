@@ -49,6 +49,7 @@ use catten_rt::{
     manifest_key,
 };
 use catten_services::{
+    broker::EventBroker,
     disco,
     disk_raft::{
         DiskLogStore,
@@ -77,7 +78,7 @@ use catten_services::{
         TAG_SNAPSHOT_RESPONSE,
         TAG_VOTE_RESPONSE,
     },
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -596,6 +597,108 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
     }
 }
 
+/// Read a full-length name from the moved memory object attached to an
+/// `OP_REGISTER_NAMED`/`OP_EVENT_WAIT` call. `arg0` is the byte length.
+fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
+    if message.memory == 0 {
+        return None;
+    }
+    let len = message.arg0 as usize;
+    if len == 0 || len > 128 {
+        unsafe {
+            memory_close(message.memory);
+        }
+        return None;
+    }
+    if unsafe { memory_map(message.memory, LIST_SCRATCH, false) } != 0 {
+        unsafe {
+            memory_close(message.memory);
+        }
+        return None;
+    }
+    let mut name = alloc::vec::Vec::with_capacity(len);
+    unsafe {
+        let src = LIST_SCRATCH as *const u8;
+        for index in 0..len {
+            name.push(core::ptr::read_volatile(src.add(index)));
+        }
+        memory_unmap(message.memory);
+        memory_close(message.memory);
+    }
+    Some(name)
+}
+
+/// The register/relay/submit path shared by `OP_REGISTER` and
+/// `OP_REGISTER_NAMED`. Returns `Some(code)` when the caller must reply with
+/// `code`, or `None` when the reply was deferred (the entry is committing).
+#[allow(clippy::too_many_arguments)]
+fn register_name(
+    node: &mut RaftNode,
+    ns_conn: u64,
+    transport: &RelmsgRaftTransport,
+    pending_registers: &mut alloc::vec::Vec<PendingRegistration>,
+    node_name: &[u8],
+    message: &catten_syscall::IpcMessage,
+    name: alloc::vec::Vec<u8>,
+) -> Option<i64> {
+    if name.is_empty() {
+        Some(dns::ERR_TOO_LARGE)
+    } else if node.state != NodeState::Leader {
+        // Remote host: the service lives on this node, but only the leader
+        // may commit catalog entries. Resolve the local registration and
+        // relay a register request to the leader, which commits the entry
+        // naming this node as the owner. The reply is deferred until the
+        // leader acknowledges (see rregister replies below).
+        match local_publication(ns_conn, message.connection, &name) {
+            None => Some(dns::ERR_TOO_LARGE),
+            Some((connection, local_generation)) => {
+                match node.known_leader_id.clone() {
+                    Some(leader) if transport.has_peer(&leader) => {
+                        let request = catten_services::rregister::encode_request(node_name, &name);
+                        transport.send_message(
+                            &leader,
+                            catten_services::rregister::TAG_REQUEST,
+                            request,
+                        );
+                        pending_registers.push(PendingRegistration::RemoteRegister {
+                            reply: message.reply,
+                            name,
+                            connection,
+                            local_generation,
+                        });
+                        None
+                    }
+                    _ => {
+                        if connection != 0 {
+                            ipc_close(connection);
+                        }
+                        Some(dns::ERR_NOT_LEADER)
+                    }
+                }
+            }
+        }
+    } else {
+        // Leader: commit the registration with this node as the owner.
+        // Submit once; the reactor completes the reply once the entry has
+        // replicated (see pending_registers below).
+        match node.submit_command(encode_register(&name, node_name), node.millis()) {
+            Ok(index) => {
+                let (connection, existing_local_generation) =
+                    local_publication(ns_conn, message.connection, &name).unwrap_or((0, 0));
+                pending_registers.push(PendingRegistration::Prepare {
+                    log_index: index,
+                    reply: message.reply,
+                    name,
+                    connection,
+                    existing_local_generation,
+                });
+                None
+            }
+            Err(code) => Some(code),
+        }
+    }
+}
+
 /// Read the 32 key bytes attached to an `OP_SET_KEY` request.
 fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
     if message.memory == 0 {
@@ -764,7 +867,7 @@ fn main(ctx: Context) -> ! {
     config::write_u32_release(dns::status::STAGE, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
-    if !wait_for_boot_done(ns_conn) {
+    if !wait_for_local_ready(ns_conn) {
         fatal(7);
     }
     config::write_u32_release(dns::status::STAGE, 4);
@@ -903,6 +1006,15 @@ fn main(ctx: Context) -> ! {
     let mut pending_local_unregistrations: Vec<u64> = Vec::new();
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
+
+    // Cluster-event waiters: reply tokens parked by OP_EVENT_WAIT for events
+    // that have not fired yet. Settled from the *applied* catalog each
+    // reactor iteration — the event fires when the replicated entry lands on
+    // this node, never by polling order or boot timing. This is the
+    // replicated service's event-broker face; the catalog is its catalog
+    // face (see `catten_services::broker`).
+    let mut event_waiters: catten_services::broker::KeyedWaitlist<u64> =
+        catten_services::broker::KeyedWaitlist::new();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
     let mut last_heartbeat_broadcast = 0u64;
 
@@ -1450,6 +1562,24 @@ fn main(ctx: Context) -> ! {
         if completed > 0 {
             config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
         }
+
+        // --- Cluster events ---
+        // Settle event-broker waiters from the *applied* catalog: any entry
+        // that landed in this iteration (via replication or a local commit)
+        // fires its waiters. Fulfillment is defined by consensus, never by
+        // polling order.
+        let settled = event_waiters.settle(&*catalog);
+        if !settled.is_empty() {
+            for (name, reply) in settled {
+                if reply != 0 {
+                    match catalog.lookup(&name) {
+                        Some(entry) => ipc_reply(reply, entry.generation as i64),
+                        None => ipc_reply(reply, dns::ERR_NOT_FOUND),
+                    };
+                }
+            }
+        }
+
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
@@ -1464,75 +1594,131 @@ fn main(ctx: Context) -> ! {
             }
             served += 1;
             config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
+            if served <= 24 {
+                catten_syscall::el0_log(
+                    0x444e_5300,
+                    (message.status as u64)
+                        | ((message.opcode as u64) << 8)
+                        | ((served as u64) << 24),
+                );
+            }
             match message.opcode {
                 dns::OP_REGISTER => {
                     let name = packed_name(message.arg0);
-                    let result = if name.is_empty() {
-                        dns::ERR_TOO_LARGE
-                    } else if node.state != NodeState::Leader {
-                        // Remote host: the service lives on this node, but only
-                        // the leader may commit catalog entries. Resolve the
-                        // local registration and relay a register request to
-                        // the leader, which commits the entry naming this node
-                        // as the owner. The reply is deferred until the leader
-                        // acknowledges (see rregister replies below).
-                        match local_publication(ns_conn, message.connection, &name) {
-                            None => dns::ERR_TOO_LARGE,
-                            Some((connection, local_generation)) => {
-                                match node.known_leader_id.clone() {
-                                    Some(leader) if transport.has_peer(&leader) => {
-                                        let request = catten_services::rregister::encode_request(
-                                            &node_name, &name,
-                                        );
-                                        transport.send_message(
-                                            &leader,
-                                            catten_services::rregister::TAG_REQUEST,
-                                            request,
-                                        );
-                                        pending_registers.push(
-                                            PendingRegistration::RemoteRegister {
-                                                reply: message.reply,
-                                                name,
-                                                connection,
-                                                local_generation,
-                                            },
-                                        );
-                                        continue;
+                    if let Some(result) = register_name(
+                        &mut node,
+                        ns_conn,
+                        &transport,
+                        &mut pending_registers,
+                        &node_name,
+                        &message,
+                        name,
+                    ) && message.reply != 0
+                    {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_REGISTER_NAMED => {
+                    if let Some(name) = read_named_bytes(&message)
+                        && let Some(result) = register_name(
+                            &mut node,
+                            ns_conn,
+                            &transport,
+                            &mut pending_registers,
+                            &node_name,
+                            &message,
+                            name,
+                        )
+                        && message.reply != 0
+                    {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_EVENT_FIRE => {
+                    // Commit a cluster event to the replicated catalog.
+                    // Catalog-only: the event has no local service to
+                    // publish, so the entry carries no connection and the
+                    // local name service is untouched. On a follower the
+                    // event relays to the leader through the same machinery
+                    // as registrations; the reply is deferred until the
+                    // entry replicates (pending_registers).
+                    if let Some(name) = read_named_bytes(&message) {
+                        let result = if node.state != NodeState::Leader {
+                            match node.known_leader_id.clone() {
+                                Some(leader) if transport.has_peer(&leader) => {
+                                    let request = catten_services::rregister::encode_request(
+                                        &node_name,
+                                        &name,
+                                    );
+                                    transport.send_message(
+                                        &leader,
+                                        catten_services::rregister::TAG_REQUEST,
+                                        request,
+                                    );
+                                    pending_registers.push(PendingRegistration::RemoteRegister {
+                                        reply: message.reply,
+                                        name,
+                                        connection: 0,
+                                        local_generation: 0,
+                                    });
+                                    continue;
+                                }
+                                _ => dns::ERR_NOT_LEADER,
+                            }
+                        } else {
+                            match node.submit_command(
+                                encode_register(&name, &node_name),
+                                node.millis(),
+                            ) {
+                                Ok(index) => {
+                                    pending_registers.push(PendingRegistration::Prepare {
+                                        log_index: index,
+                                        reply: message.reply,
+                                        name,
+                                        connection: 0,
+                                        existing_local_generation: 0,
+                                    });
+                                    continue;
+                                }
+                                Err(code) => code,
+                            }
+                        };
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, result);
+                        }
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                    }
+                }
+
+                dns::OP_EVENT_WAIT => {
+                    // Cluster-event wait: the event name travels in the
+                    // moved memory object (it exceeds the packed-8-byte
+                    // scalar limit). If the event has fired — the name is in
+                    // the *applied* catalog — reply with its generation now;
+                    // otherwise the event broker parks the reply token and
+                    // the reactor settles it when the replicated entry lands.
+                    if let Some(name) = read_named_bytes(&message) {
+                        match event_waiters.park(&name, message.reply, &*catalog) {
+                            Some(reply) => {
+                                match catalog.lookup(&name) {
+                                    Some(entry) if reply != 0 => {
+                                        ipc_reply(reply, entry.generation as i64);
                                     }
-                                    _ => {
-                                        if connection != 0 {
-                                            ipc_close(connection);
-                                        }
-                                        dns::ERR_NOT_LEADER
+                                    _ if reply != 0 => {
+                                        ipc_reply(reply, dns::ERR_NOT_FOUND);
                                     }
+                                    _ => {}
                                 }
                             }
+                            None => {}
                         }
-                    } else {
-                        // Leader: commit the registration with this node as
-                        // the owner. Submit once; the reactor completes the
-                        // reply once the entry has replicated (see
-                        // pending_registers below).
-                        match node.submit_command(encode_register(&name, &node_name), node.millis())
-                        {
-                            Ok(index) => {
-                                let (connection, existing_local_generation) =
-                                    local_publication(ns_conn, message.connection, &name)
-                                        .unwrap_or((0, 0));
-                                pending_registers.push(PendingRegistration::Prepare {
-                                    log_index: index,
-                                    reply: message.reply,
-                                    name,
-                                    connection,
-                                    existing_local_generation,
-                                });
-                                continue;
-                            }
-                            Err(code) => code,
-                        }
-                    };
+                        continue;
+                    }
                     if message.reply != 0 {
-                        ipc_reply(message.reply, result);
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
                     }
                 }
 
@@ -1581,6 +1767,14 @@ fn main(ctx: Context) -> ! {
                 dns::OP_DEPLOY => {
                     let artifact = packed_name(message.arg0);
                     let request = read_deploy_request(&message);
+                    catten_syscall::el0_log(
+                        0x444e_5300,
+                        match node.state {
+                            NodeState::Follower => 1,
+                            NodeState::Candidate => 2,
+                            NodeState::Leader => 3,
+                        },
+                    );
                     let result = if artifact.is_empty() {
                         dns::ERR_TOO_LARGE
                     } else if node.state != NodeState::Leader {

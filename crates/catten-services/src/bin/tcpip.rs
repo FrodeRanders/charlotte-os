@@ -41,7 +41,7 @@ use catten_services::{
     net,
     ns,
     socket,
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -204,7 +204,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 4);
 
     // Let the NIC and the link settle before ARP/IP traffic starts flowing.
-    if !wait_for_boot_done(ns_connection) {
+    if !wait_for_local_ready(ns_connection) {
         unsafe { thread_exit() };
     }
     config::write::<u32>(STAGE_OFFSET, 5);

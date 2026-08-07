@@ -111,18 +111,18 @@ pub(crate) static DEPLOYED_DOMAIN: spin::LazyLock<
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// Kernel-private connection to the node name service, minted when the node
-/// registry starts, used by the supervisor to publish the boot-done marker.
+/// registry starts, used by the supervisor to publish the local node ready-marker.
 static KERNEL_NS_CONN: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<CapabilityId>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
-/// Interface id of the marker endpoint registered under the boot-done name.
+/// Interface id of the marker endpoint registered under the local node ready name.
 /// The endpoint is never called; it only exists so the name service has
 /// something to hand out on lookup.
-const BOOT_DONE_INTERFACE: u64 = u64::from_le_bytes(*b"BOOTDONE");
+const LOCAL_READY_INTERFACE: u64 = u64::from_le_bytes(*b"BOOTDONE");
 /// `ns::OP_REGISTER` opcode (the name-service protocol lives in userspace).
 const NS_OP_REGISTER: u32 = 1;
-/// How long the boot-done publisher waits, after the boot threads are
+/// How long the local node ready publisher waits, after the boot threads are
 /// admitted, for the boot storm (deferred verifiers spawning services) to
 /// settle before declaring the node ready for cluster communication.
 const BOOT_SETTLE_MS: u64 = 3_000;
@@ -187,7 +187,7 @@ pub fn start_node_name_service() -> NameServiceHandle {
         NODE_NAME_SERVICE_QUEUE_CAPACITY,
     );
     // Retain a kernel-side connection so the supervisor can publish the
-    // boot-done marker after the boot storm settles.
+    // local-ready marker once the node's disk stack is serving.
     let kernel_conn = ipc::connection_delegate(
         handle.domain.asid,
         handle.endpoint_cap,
@@ -200,18 +200,18 @@ pub fn start_node_name_service() -> NameServiceHandle {
     handle
 }
 
-/// Spawn the thread that registers the well-known boot-done marker once the
+/// Spawn the thread that registers the well-known local node ready marker once the
 /// boot storm has settled.
 ///
 /// Network-initiating services (cluster discovery, reliable-message/Raft
 /// membership clients) block on a name-service lookup of the marker before
 /// starting to communicate, so a freshly booted node never joins a cluster
 /// mid-boot.
-pub fn start_boot_done_publisher() {
-    spawn_thread(KERNEL_ASID, boot_done_publisher);
+pub fn start_local_ready_publisher() {
+    spawn_thread(KERNEL_ASID, local_ready_publisher);
 }
 
-extern "C" fn boot_done_publisher() {
+extern "C" fn local_ready_publisher() {
     // The boot storm is the burst of deferred verifiers spawning EL0 services
     // right after the scheduler starts. Yield for a bounded settling window so
     // the NIC driver, the frame demultiplexer, and the socket transport have
@@ -220,16 +220,42 @@ extern "C" fn boot_done_publisher() {
     while monotonic_millis() < settle_until {
         yield_lp();
     }
-    publish_boot_done();
+
+    // Local business first: the marker is published only once the local disk
+    // stack (NVMe driver + object store) is actually serving — the store is
+    // the foundation node identity, the replicated log, and every
+    // store-loaded service depend on. Cluster-facing work (discovery probes,
+    // the replicated name service, membership admission) starts only after
+    // this marker, so boot ordering is defined by local readiness rather
+    // than by wall-clock luck. The disk stack comes up as part of the NVMe
+    // deferred verifier, which passes only once the object store registers.
+    let disk_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Nvme) {
+        disk_deadline.assert_pending("EL0 boot-done disk stack");
+        yield_lp();
+    }
+
+    // The boot raft test is a *local-node* test: two raft domains on two
+    // local LPs form a test-only cluster and must be torn down before the
+    // node declares itself ready, so no stale membership or transport state
+    // from that local "cluster" survives into the network cluster the node
+    // joins after this marker.
+    let raft_test_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Raft) {
+        raft_test_deadline.assert_pending("EL0 boot-done local raft test teardown");
+        yield_lp();
+    }
+
+    publish_local_ready();
 }
 
-/// Register `charlotte_launch::BOOT_DONE_NAME` in the node name service.
+/// Register `charlotte_launch::LOCAL_READY_NAME` in the node name service.
 ///
 /// The marker points at a kernel-owned endpoint that is never called; its
 /// only purpose is to let a blocking `ns::OP_LOOKUP` resolve. Called from the
-/// boot-done publisher thread.
-pub fn publish_boot_done() {
-    let endpoint = ipc::endpoint_create(KERNEL_ASID, BOOT_DONE_INTERFACE, 1, 1)
+/// local node ready publisher thread.
+pub fn publish_local_ready() {
+    let endpoint = ipc::endpoint_create(KERNEL_ASID, LOCAL_READY_INTERFACE, 1, 1)
         .expect("[supervisor] boot-done endpoint creation failed");
     let conn = ipc::connection_mint(KERNEL_ASID, endpoint, ConnectionRights::ALL)
         .expect("[supervisor] boot-done connection mint failed");
@@ -239,7 +265,7 @@ pub fn publish_boot_done() {
         KERNEL_ASID,
         ns_conn,
         NS_OP_REGISTER,
-        charlotte_launch::BOOT_DONE_NAME,
+        charlotte_launch::LOCAL_READY_NAME,
         conn,
         ConnectionRights::SEND | ConnectionRights::CALL | ConnectionRights::MINT_CONNECTION,
     )

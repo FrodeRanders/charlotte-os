@@ -51,6 +51,58 @@ pub const TAG_SNAPSHOT_REQUEST: u8 = 3;
 pub const TAG_VOTE_RESPONSE: u8 = 4;
 pub const TAG_APPEND_RESPONSE: u8 = 5;
 pub const TAG_SNAPSHOT_RESPONSE: u8 = 6;
+/// Pre-membership join handshake: a node that has located a cluster asks the
+/// leader to admit it. These are *network* frames addressed by MAC — before
+/// admission the joiner has no local name-service route to any raft peer.
+pub const TAG_JOIN_REQUEST: u8 = 7;
+pub const TAG_JOIN_REPLY: u8 = 8;
+
+/// Encode a join request: `[tag][id_len][id][service_name:8 LE]`.
+pub fn encode_join_request(joiner_id: &[u8], service_name: u64) -> Option<alloc::vec::Vec<u8>> {
+    if joiner_id.is_empty() || joiner_id.len() > 255 {
+        return None;
+    }
+    let total = 1 + 1 + joiner_id.len() + 8;
+    if total > MAX_RPC_PAYLOAD {
+        return None;
+    }
+    let mut frame = alloc::vec::Vec::with_capacity(total);
+    frame.push(TAG_JOIN_REQUEST);
+    frame.push(joiner_id.len() as u8);
+    frame.extend_from_slice(joiner_id);
+    frame.extend_from_slice(&service_name.to_le_bytes());
+    Some(frame)
+}
+
+/// Decode a join request into `(joiner_id, joiner_raft_service_name)`.
+pub fn decode_join_request(frame: &[u8]) -> Option<(&[u8], u64)> {
+    if frame.first() != Some(&TAG_JOIN_REQUEST) || frame.len() < 3 {
+        return None;
+    }
+    let id_len = frame[1] as usize;
+    if id_len == 0 || frame.len() < 2 + id_len + 8 {
+        return None;
+    }
+    let id = &frame[2..2 + id_len];
+    let service_name = u64::from_le_bytes(frame[2 + id_len..2 + id_len + 8].try_into().ok()?);
+    Some((id, service_name))
+}
+
+/// Encode a join reply carrying the committed JOIN log index (0 = refused).
+pub fn encode_join_reply(join_index: u64) -> alloc::vec::Vec<u8> {
+    let mut frame = alloc::vec::Vec::with_capacity(9);
+    frame.push(TAG_JOIN_REPLY);
+    frame.extend_from_slice(&join_index.to_le_bytes());
+    frame
+}
+
+/// Decode a join reply into the committed JOIN log index.
+pub fn decode_join_reply(frame: &[u8]) -> Option<u64> {
+    if frame.first() != Some(&TAG_JOIN_REPLY) || frame.len() < 9 {
+        return None;
+    }
+    Some(u64::from_le_bytes(frame[1..9].try_into().ok()?))
+}
 
 /// relmsg caps a message payload at `relmsg::MAX_MSG`; one byte is the tag.
 pub const MAX_RPC_PAYLOAD: usize = crate::relmsg::MAX_MSG - 1;
@@ -71,7 +123,7 @@ struct PendingSend {
 }
 
 pub struct RelmsgRaftTransport {
-    relmsg_conn: u64,
+    relmsg_conn: spin::Mutex<u64>,
     peer_macs: spin::Mutex<BTreeMap<String, [u8; 6]>>,
     /// Outbound RPCs queued per peer.
     outbound: spin::Mutex<BTreeMap<String, Vec<OutboundRpc>>>,
@@ -86,7 +138,7 @@ pub struct RelmsgRaftTransport {
 impl RelmsgRaftTransport {
     pub fn new(relmsg_conn: u64) -> Self {
         Self {
-            relmsg_conn,
+            relmsg_conn: spin::Mutex::new(relmsg_conn),
             peer_macs: spin::Mutex::new(BTreeMap::new()),
             outbound: spin::Mutex::new(BTreeMap::new()),
             pending_sends: spin::Mutex::new(BTreeMap::new()),
@@ -95,6 +147,12 @@ impl RelmsgRaftTransport {
             received_responses: spin::Mutex::new(Vec::new()),
             current_millis: spin::Mutex::new(0),
         }
+    }
+
+    /// Bind (or rebind) the relmsg connection once the name service resolves
+    /// it. Frames are only sent once a connection is bound.
+    pub fn set_relmsg_conn(&self, conn: u64) {
+        *self.relmsg_conn.lock() = conn;
     }
 
     pub fn add_peer(&self, peer_id: &str, mac: [u8; 6]) {
@@ -188,7 +246,7 @@ impl RelmsgRaftTransport {
             let Some(mac) = self.peer_macs.lock().get(peer_id).copied() else {
                 continue;
             };
-            let Some(call) = send_payload(self.relmsg_conn, &mac, tag, &payload) else {
+            let Some(call) = send_payload(*self.relmsg_conn.lock(), &mac, tag, &payload) else {
                 continue;
             };
             queue.remove(0);

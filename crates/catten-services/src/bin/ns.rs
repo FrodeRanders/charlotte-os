@@ -25,6 +25,7 @@ use catten_rt::{
 use catten_services::{
     MAX_NAME_LEN,
     NAME_SCRATCH_VADDR,
+    broker::EventBroker,
     ns,
 };
 use catten_syscall::{
@@ -53,10 +54,26 @@ struct Registration {
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
+
+/// The registry viewed as an immediate catalog (the broker's lookups).
+struct RegistryCatalog<'a>(&'a Registry);
+
+impl catten_services::broker::Catalog for RegistryCatalog<'_> {
+    fn resolve(&self, name: &[u8]) -> Option<catten_services::broker::CatalogTarget> {
+        self.0.get(name).map(|registration| catten_services::broker::CatalogTarget {
+            generation: registration.generation as u64,
+            connection: registration.connection,
+        })
+    }
+}
 /// Deferred lookups: name → reply token and the access key supplied by its
 /// caller. Retaining the key is necessary because registration may establish
-/// an access policy after the lookup has blocked.
-type Waitlist = BTreeMap<Vec<u8>, Vec<(u64, u64)>>;
+/// an access policy after the lookup has blocked. The waitlist is the
+/// service's *event-broker* face; the registry is its *catalog* face (see
+/// `catten_services::broker`).
+type Waitlist = catten_services::broker::KeyedWaitlist<(u64, u64)>;
+
+
 
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
@@ -139,19 +156,17 @@ fn register(
     }
 
     // Wake all callers only after the new generation is authoritative.
-    if let Some(waiters) = waitlist.remove(&key) {
-        for (reply, caller_key) in waiters {
-            if access_key != 0 && access_key != caller_key {
-                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
-            } else {
-                unsafe {
-                    ipc_reply_connection(
-                        reply,
-                        connection,
-                        IpcRights::SEND | IpcRights::CALL,
-                        generation,
-                    );
-                }
+    for (reply, caller_key) in waitlist.fire(&key) {
+        if access_key != 0 && access_key != caller_key {
+            unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        } else {
+            unsafe {
+                ipc_reply_connection(
+                    reply,
+                    connection,
+                    IpcRights::SEND | IpcRights::CALL,
+                    generation,
+                );
             }
         }
     }
@@ -181,8 +196,9 @@ fn lookup_or_defer(
             }
         }
         _ => {
-            // Defer: retain the reply token until the service registers.
-            waitlist.entry(key.to_vec()).or_default().push((reply, caller_key));
+            // Defer: the event broker retains the reply token until the
+            // service registers (fulfillment by the publishing side).
+            let _ = waitlist.park(key, (reply, caller_key), &RegistryCatalog(registry));
         }
     }
 }
@@ -215,7 +231,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 2);
 
     let mut registry: Registry = BTreeMap::new();
-    let mut waitlist: Waitlist = BTreeMap::new();
+    let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
     let mut handled: u32 = 0;
 
     loop {

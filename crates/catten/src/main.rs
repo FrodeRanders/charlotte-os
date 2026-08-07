@@ -295,7 +295,7 @@ extern "C" fn finish_boot() {
     // network-initiating services wait until this node is through boot before
     // communicating with the rest of the cluster.
     #[cfg(target_arch = "aarch64")]
-    crate::service::supervisor::start_boot_done_publisher();
+    crate::service::supervisor::start_local_ready_publisher();
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from
     // overloaded LPs before any of those contexts begin executing.

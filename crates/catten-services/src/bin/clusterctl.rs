@@ -27,10 +27,16 @@ use catten_rt::{
 };
 use catten_services::{
     clusterctl,
+    disco,
     dns,
     ns,
     objstore,
+    raft,
     wait_reply,
+};
+use charlotte_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
 };
 use catten_syscall::*;
 
@@ -303,12 +309,27 @@ fn main(ctx: Context) -> ! {
                                         request,
                                     );
                                     if call == 0 {
+                                        catten_syscall::el0_log(0x4354_4c00, 0x1111);
                                         clusterctl::ERR_NOT_LEADER
                                     } else {
-                                        let (generation, _) =
-                                            unsafe { wait_reply(call, REPLY_SPINS) };
+                                        let (raw_status, raw_result, _raw_cap) =
+                                            catten_syscall::ipc_reply_wait(call);
+                                        catten_syscall::el0_log(
+                                            0x4354_4c00,
+                                            0x2222
+                                                | ((raw_status as u64) << 8)
+                                                | (((raw_result as i64) << 32) as u64),
+                                        );
                                         ipc_close(call);
-                                        generation
+                                        catten_syscall::el0_log(
+                                            0x4354_4c00,
+                                            0x1112 | ((raw_result as i64 as u64) << 8),
+                                        );
+                                        if raw_status == 0 {
+                                            raw_result as i64
+                                        } else {
+                                            clusterctl::ERR_NOT_LEADER
+                                        }
                                     }
                                 }
                             }
@@ -418,12 +439,133 @@ fn main(ctx: Context) -> ! {
                         memory_close(memory);
                     }
                 }
+                clusterctl::OP_JOIN => {
+                    let result = {
+                        let disco_conn = lookup(ns_connection, disco::NAME);
+                        if disco_conn == 0 {
+                            clusterctl::ERR_NO_CLUSTER
+                        } else {
+                            let status_call =
+                                ipc_scalar_call(disco_conn, disco::OP_CLUSTER_STATUS, 0);
+                            if status_call == 0 {
+                                clusterctl::ERR_NO_CLUSTER
+                            } else {
+                                let (status, size, _returned_connection, memory) =
+                                    ipc_reply_wait_with_memory(status_call);
+                                ipc_close(status_call);
+                                let mut outcome = clusterctl::ERR_NO_CLUSTER;
+                                if memory != 0 && status == 0 {
+                                    if memory_map(memory, DATA_VADDR, false) == 0 {
+                                        let bytes = unsafe {
+                                            core::slice::from_raw_parts(
+                                                DATA_VADDR as *const u8,
+                                                size as usize,
+                                            )
+                                        };
+                                        if let Some((
+                                            _self_role,
+                                            self_raft_id,
+                                            self_leader_id,
+                                            peers,
+                                        )) = parse_cluster_answer(bytes)
+                                        {
+                                            outcome = run_join(
+                                                ns_connection,
+                                                self_raft_id,
+                                                self_leader_id,
+                                                &peers,
+                                            );
+                                        }
+                                        memory_unmap(memory);
+                                    }
+                                    memory_close(memory);
+                                } else if memory != 0 {
+                                    memory_close(memory);
+                                }
+                                outcome
+                            }
+                        }
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
                 _ => {
                     if message.reply != 0 {
                         ipc_reply(message.reply, -1);
                     }
                 }
             }
+        }
+    }
+}
+
+/// Drive a cluster join: pick an admission target from the discovery
+/// answer and ask its raft service to admit this node. Prefers a peer that
+/// reports leader; otherwise redirects through the first peer's (or this
+/// node's) leader hint; otherwise honestly reports that no cluster was
+/// found on the segment.
+fn run_join(
+    ns_connection: u64,
+    self_raft_id: &[u8],
+    self_leader_id: &[u8],
+    peers: &[([u8; 6], u8, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)],
+) -> i64 {
+    if self_raft_id.is_empty() {
+        return clusterctl::ERR_NO_CLUSTER;
+    }
+    let mut target: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+    for (_, role, raft_id, _) in peers {
+        if *role == ROLE_LEADER && !raft_id.is_empty() && target.is_empty() {
+            target = raft_id.clone();
+        }
+    }
+    for (_, _, _, leader_id) in peers {
+        if !leader_id.is_empty() && target.is_empty() {
+            target = leader_id.clone();
+        }
+    }
+    if target.is_empty() && !self_leader_id.is_empty() {
+        target = self_leader_id.to_vec();
+    }
+    if target.is_empty() {
+        return clusterctl::ERR_NO_CLUSTER;
+    }
+
+    let leader_raft = lookup(ns_connection, catten_services::raft_name(&target));
+    if leader_raft == 0 {
+        return clusterctl::ERR_NO_CLUSTER;
+    }
+
+    let self_service_name = catten_services::raft_name(self_raft_id);
+
+    let mut spec_buf = [0u8; 96];
+    let Some(spec_len) =
+        raft::encode_peer_spec(&mut spec_buf, self_raft_id, self_service_name, false)
+    else {
+        return clusterctl::ERR_NO_CLUSTER;
+    };
+    let payload = memory_alloc(1);
+    if payload == 0 || memory_map(payload, DATA_VADDR, true) != 0 {
+        if payload != 0 {
+            memory_close(payload);
+        }
+        return clusterctl::ERR_UPLOAD_FAILED;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(spec_buf.as_ptr(), DATA_VADDR as *mut u8, spec_len);
+    }
+    memory_unmap(payload);
+    let call = ipc_scalar_call_move(leader_raft, raft::OP_ADD_SERVER, spec_len as u64, payload);
+    if call == 0 {
+        clusterctl::ERR_NOT_LEADER
+    } else {
+        let (status, result, _returned) = ipc_reply_wait(call);
+        ipc_close(call);
+        if status == 0 {
+            result as i64
+        } else {
+            clusterctl::ERR_NOT_LEADER
         }
     }
 }
