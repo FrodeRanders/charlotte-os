@@ -32,7 +32,7 @@ use catten_syscall::{
     cq_wait_timeout,
     device_irq_ack,
     device_irq_bind_cq,
-    device_mmio_map,
+    device_mmio_map_any,
     device_mmio_unmap,
     dma_map,
     ipc_endpoint_bind_cq,
@@ -319,11 +319,12 @@ fn main(ctx: Context) -> ! {
         None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
-    if device_mmio_map(mmio_cap, VADDR_BAR0, true) != 0 {
+    let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
+    if mmio_map_status != 0 {
         unsafe { thread_exit() };
     }
     config::write::<u32>(STAGE_OFFSET, 3);
-    let bar0 = VADDR_BAR0 + virtio::MODERN_COMMON;
+    let bar0 = vaddr_bar0 + virtio::MODERN_COMMON;
 
     // --- virtio PCI modern initialization ---
     unsafe { w8(bar0 + virtio::M_DEVICE_STATUS, 0) };

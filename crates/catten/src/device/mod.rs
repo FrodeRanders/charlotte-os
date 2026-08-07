@@ -436,7 +436,39 @@ pub fn mmio_map(
         return Err(DeviceError::AlreadyMapped);
     }
     let (phys_base, pages) = (region.phys_base, region.pages);
+    map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable)
+}
 
+/// Map a device's MMIO region into the caller's address space at a
+/// kernel-assigned scratch address (the same window the memory layer uses,
+/// so device and memory mappings can never collide) and return it.
+pub fn mmio_map_any(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    writable: bool,
+) -> Result<VAddr, DeviceError> {
+    let mut devices = DEVICES.lock();
+    let object = lookup_mut(&mut devices, asid, cap)?;
+    let DeviceObject::Mmio(region) = object else {
+        return Err(DeviceError::WrongType);
+    };
+    let (phys_base, pages) = (region.phys_base, region.pages);
+    drop(region);
+    let base = crate::memory::object::reserve_scratch(asid, pages)
+        .map_err(|_| DeviceError::MapFailed)?;
+    map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable)?;
+    Ok(base)
+}
+
+fn map_mmio_at(
+    devices: &mut impl core::ops::DerefMut<Target = BTreeMap<AddressSpaceId, AsDeviceCaps>>,
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    base: VAddr,
+    phys_base: usize,
+    pages: usize,
+    writable: bool,
+) -> Result<(), DeviceError> {
     for index in 0..pages {
         let vaddr = base + (index * PAGE_SIZE);
         let frame = PAddr::from((phys_base + index * PAGE_SIZE) as u64);
@@ -449,7 +481,7 @@ pub fn mmio_map(
     }
 
     // Re-borrow to record the mapping (the map may have taken the AS table lock).
-    if let Ok(DeviceObject::Mmio(region)) = lookup_mut(&mut devices, asid, cap) {
+    if let Ok(DeviceObject::Mmio(region)) = lookup_mut(devices, asid, cap) {
         region.mapped = Some(base);
     }
     Ok(())

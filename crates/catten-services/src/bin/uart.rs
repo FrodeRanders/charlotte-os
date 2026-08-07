@@ -37,7 +37,7 @@ use catten_syscall::{
     cq_wait,
     device_irq_ack,
     device_irq_bind_cq,
-    device_mmio_map,
+    device_mmio_map_any,
     device_mmio_unmap,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -53,7 +53,6 @@ const REPLY_SPINS: u64 = 50_000_000;
 /// The user virtual address at which the driver maps its device register
 /// window. Chosen above the program image, runtime pages, and the long-name
 /// scratch page.
-const UART_MMIO_VADDR: usize = 0x0000_0000_0040_0000;
 
 /// Config-page output words (driver domain).
 const STAGE_OFFSET: usize = 0; // u32 progress marker
@@ -63,8 +62,9 @@ const SERVED_OFFSET: usize = 12; // u32 write requests served
 
 #[inline]
 unsafe fn uart_put(byte: u8) {
-    let fr = (UART_MMIO_VADDR + pl011::FR) as *const u32;
-    let dr = (UART_MMIO_VADDR + pl011::DR) as *mut u32;
+    let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    let fr = (base + pl011::FR) as *const u32;
+    let dr = (base + pl011::DR) as *mut u32;
     // Wait for room in the transmit FIFO, then write the byte.
     while unsafe { core::ptr::read_volatile(fr) } & pl011::FR_TXFF != 0 {
         core::hint::spin_loop();
@@ -78,8 +78,9 @@ unsafe fn uart_put(byte: u8) {
 /// device read (MMIO) from EL0.
 #[inline]
 unsafe fn uart_get() -> Option<u8> {
-    let fr = (UART_MMIO_VADDR + pl011::FR) as *const u32;
-    let dr = (UART_MMIO_VADDR + pl011::DR) as *const u32;
+    let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    let fr = (base + pl011::FR) as *const u32;
+    let dr = (base + pl011::DR) as *const u32;
     if unsafe { core::ptr::read_volatile(fr) } & pl011::FR_RXFE != 0 {
         None
     } else {
@@ -105,9 +106,11 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 2); // grants received
 
     // Map the delegated device register window as EL0 device memory.
-    if device_mmio_map(mmio_cap, UART_MMIO_VADDR, true) != 0 {
+    let (mmio_map_status, uart_mmio_vaddr) = device_mmio_map_any(mmio_cap, true);
+    if mmio_map_status != 0 {
         unsafe { thread_exit() };
     }
+    MMIO_BASE.store(uart_mmio_vaddr, core::sync::atomic::Ordering::Relaxed);
     config::write::<u32>(STAGE_OFFSET, 3); // MMIO mapped
 
     // Register the console endpoint by name.

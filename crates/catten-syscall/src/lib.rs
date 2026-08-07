@@ -104,6 +104,7 @@ pub enum SyscallNumber {
     SpawnArtifact = 64,
     RetireArtifact = 65,
     MemoryMapAny = 66,
+    DeviceMmioMapAny = 67,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -1086,6 +1087,15 @@ pub fn memory_map(cap: u64, base_vaddr: usize, writable: bool) -> MemoryStatusCo
 /// Map a memory object at a kernel-assigned scratch address in the caller's
 /// address space. Returns `(MemoryStatusCode, vaddr)`; the vaddr is valid
 /// only when the status is `OK`.
+/// Map a device MMIO region at a kernel-assigned scratch address in the
+/// caller's address space. Returns `(status, vaddr)`; the vaddr is valid
+/// only when the status is `OK`.
+pub fn device_mmio_map_any(cap: u64, writable: bool) -> (MemoryStatusCode, usize) {
+    let (status, vaddr, _) =
+        unsafe { svc3_x2(SyscallNumber::DeviceMmioMapAny, cap, writable as u64, 0) };
+    (status as MemoryStatusCode, vaddr as usize)
+}
+
 pub fn memory_map_any(cap: u64, writable: bool) -> (MemoryStatusCode, usize) {
     let (status, vaddr, _) =
         unsafe { svc3_x2(SyscallNumber::MemoryMapAny, cap, writable as u64, 0) };

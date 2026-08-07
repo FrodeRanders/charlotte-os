@@ -275,6 +275,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MemoryAlloc => sys_memory_alloc(frame),
         SyscallNumber::MemoryMap => sys_memory_map(frame),
         SyscallNumber::MemoryMapAny => sys_memory_map_any(frame),
+        SyscallNumber::DeviceMmioMapAny => sys_device_mmio_map_any(frame),
         SyscallNumber::MemoryUnmap => sys_memory_unmap(frame),
         SyscallNumber::MemoryClose => sys_memory_close(frame),
         SyscallNumber::MemorySize => sys_memory_size(frame),
@@ -857,6 +858,22 @@ fn memory_status(error: object::MemoryObjectError) -> u64 {
         object::MemoryObjectError::OutOfScratch => 14,
         object::MemoryObjectError::NotLent => 14,
         object::MemoryObjectError::OutOfScratch => 15,
+    }
+}
+
+fn sys_device_mmio_map_any(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let cap = frame.regs[1];
+    let writable = frame.regs[2] != 0;
+    match crate::device::mmio_map_any(asid, cap, writable) {
+        Ok(vaddr) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = vaddr.into();
+        }
+        Err(error) => {
+            frame.regs[0] = device_status(error);
+            frame.regs[1] = 0;
+        }
     }
 }
 

@@ -379,6 +379,22 @@ const SCRATCH_WINDOW_PAGES: usize = 4096;
 static SCRATCH_WINDOW_NEXT: [core::sync::atomic::AtomicUsize; 64] =
     [const { core::sync::atomic::AtomicUsize::new(0) }; 64];
 
+/// Reserve `pages` consecutive pages in an address space's scratch window at
+/// a kernel-assigned virtual address. Shared with the device layer so MMIO
+/// mappings come from the same window and can never collide with memory
+/// mappings.
+pub(crate) fn reserve_scratch(
+    asid: AddressSpaceId,
+    pages: usize,
+) -> Result<VAddr, MemoryObjectError> {
+    let slot = SCRATCH_WINDOW_NEXT[asid as usize]
+        .fetch_add(pages * PAGE_SIZE, core::sync::atomic::Ordering::Relaxed);
+    if slot >= SCRATCH_WINDOW_PAGES {
+        return Err(MemoryObjectError::OutOfScratch);
+    }
+    Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
+}
+
 /// Map a memory object into the calling address space's scratch window at a
 /// kernel-assigned virtual address and return it. Pages are handed out
 /// monotonically and never reused (the window is virtual, so exhaustion is
@@ -389,11 +405,7 @@ pub fn map_any(
     cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<VAddr, MemoryObjectError> {
-    let slot = SCRATCH_WINDOW_NEXT[asid as usize].fetch_add(PAGE_SIZE, core::sync::atomic::Ordering::Relaxed);
-    if slot >= SCRATCH_WINDOW_PAGES {
-        return Err(MemoryObjectError::OutOfScratch);
-    }
-    let base = VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64));
+    let base = reserve_scratch(asid, 1)?;
     map(asid, cap, base, writable)?;
     Ok(base)
 }
