@@ -267,6 +267,10 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 }
 
 /// IRQ dispatcher. Acknowledges the pending Group 1 interrupt, dispatches it,
+/// Per-LP count of delivered generic-timer PPIs (INTID 27).
+static TIMER_PPI_COUNTS: [core::sync::atomic::AtomicU64; 8] =
+    [const { core::sync::atomic::AtomicU64::new(0) }; 8];
+
 /// signals end-of-interrupt, and then performs any pending context switch. This
 /// is the async heart of the scheduler: the Generic Timer PPI advances the timer
 /// queue (which may wake threads via their observers) and marks a context switch
@@ -281,6 +285,15 @@ pub extern "C" fn irq_dispatcher() {
     }
     match intid {
         LAPIC_TIMER_VECTOR => {
+            let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
+            let count = TIMER_PPI_COUNTS[lp].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            if count.is_multiple_of(10_000) {
+                crate::early_logln!(
+                    "[timer] LP{} PPI deliveries: {}",
+                    lp,
+                    count
+                );
+            }
             // Advance the timer queue, firing any events whose deadline passed
             // (waking their observer threads) and rearming the timer.
             match crate::timers::TIMER_QUEUES.try_get_mut() {

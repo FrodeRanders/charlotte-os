@@ -596,6 +596,15 @@ fn main(ctx: Context) -> ! {
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
+            if message.status == ipc_status::OK && message.reply != 0 {
+                let served = unsafe { DIAG_RX_RAW };
+                if served < 8 {
+                    catten_syscall::el0_log(
+                        0x4449_5343,
+                        0x4000 | (message.opcode as u64) | ((served as u64) << 24),
+                    );
+                }
+            }
             if !message.is_ok() || message.reply == 0 {
                 continue;
             }

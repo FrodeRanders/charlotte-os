@@ -51,7 +51,11 @@ pub mod inner {
     const DISCO_OP_CLUSTER_STATUS: u32 = 6;
     const DISCO_OP_PROBE: u32 = 1;
     const RAFT_OP_CLUSTER_STATUS: u32 = 9;
-    const MEM_BASE: usize = 0x0000_0000_0060_1000;
+    // Dedicated kernel-side scratch for moved-memory reads. Must not share
+    // the vaddr used by other deferred verifiers (el0_clusterctl maps replies
+    // at 0x601000): the deferred verifiers run concurrently, and interleaved
+    // maps at the same kernel vaddr would race and corrupt both sides.
+    const MEM_BASE: usize = 0x0000_0000_0060_2000;
     const MEM_LEN: usize = 4096;
 
     const ROLE_LEADER: u8 = 3;
