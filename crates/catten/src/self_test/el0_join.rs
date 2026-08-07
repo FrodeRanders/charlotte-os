@@ -5,24 +5,26 @@
 //! advertises, so the local discovery service can report this node's raft
 //! role and id. The test then drives the real join path end to end:
 //!
-//! 1. Ask the local discovery service where the cluster is
-//!    (`OP_CLUSTER_STATUS`): it answers with this node's raft id/role and
-//!    every discovered peer's role and raft id — including the honest
+//! 1. Ask the local discovery service where the cluster is (`OP_CLUSTER_STATUS`): it answers with
+//!    this node's raft id/role and every discovered peer's role and raft id — including the honest
 //!    "not in a cluster" answer before the raft is serving.
-//! 2. Deterministically pick the joiner: the node with the lexicographically
-//!    *larger* raft id asks the cluster administration service to join
-//!    (`clusterctl OP_JOIN`), which locates the leader through discovery and
-//!    asks the leader's raft service to admit this node (`OP_ADD_SERVER`).
+//! 2. Deterministically pick the joiner: the node with the lexicographically *larger* raft id asks
+//!    the cluster administration service to join (`clusterctl OP_JOIN`), which locates the leader
+//!    through discovery and asks the leader's raft service to admit this node (`OP_ADD_SERVER`).
 //!    The smaller-id node is the anchor and simply waits.
-//! 3. Verify convergence: this node's raft reports a two-member
-//!    configuration (the leader commits JOIN, promotes the joiner into a
-//!    joint configuration once it catches up, and auto-finalizes).
+//! 3. Verify convergence: this node's raft reports a two-member configuration (the leader commits
+//!    JOIN, promotes the joiner into a joint configuration once it catches up, and auto-finalizes).
 //!
 //! The single-joiner rule keeps the test deterministic on the two-guest
 //! deployment: both nodes start as leaders of their own single-node cluster
 //! ("any cluster on the segment"), and exactly one of them joins the other.
 
 pub mod inner {
+    use alloc::{
+        string::String,
+        vec::Vec,
+    };
+
     use crate::{
         ipc,
         ipc::ConnectionRights,
@@ -37,10 +39,6 @@ pub mod inner {
                 ServiceDomain,
             },
         },
-    };
-    use alloc::{
-        string::String,
-        vec::Vec,
     };
 
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
@@ -105,7 +103,8 @@ pub mod inner {
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
-        let call = ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name).ok()?;
+        let call =
+            ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name).ok()?;
         ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
         ipc::poll_reply(crate::memory::KERNEL_ASID, call)
             .ok()
@@ -141,8 +140,7 @@ pub mod inner {
     fn read_moved_memory(cap: u64, len: usize) -> Vec<u8> {
         // One scratch page per verifier, reused across the loop iterations:
         // the reads are sequential, and the allocator region is finite.
-        static SCRATCH: core::sync::atomic::AtomicUsize =
-            core::sync::atomic::AtomicUsize::new(0);
+        static SCRATCH: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
         let mem_base = match SCRATCH.load(core::sync::atomic::Ordering::Relaxed) {
             0 => {
                 let fresh = crate::self_test::scratch::allocate_scratch_page()
@@ -153,13 +151,8 @@ pub mod inner {
             existing => existing,
         };
         let mut bytes = Vec::new();
-        if crate::memory::object::map(
-            crate::memory::KERNEL_ASID,
-            cap,
-            mem_base.into(),
-            false,
-        )
-        .is_ok()
+        if crate::memory::object::map(crate::memory::KERNEL_ASID, cap, mem_base.into(), false)
+            .is_ok()
         {
             for index in 0..len {
                 bytes.push(unsafe { core::ptr::read_volatile((mem_base + index) as *const u8) });
@@ -178,7 +171,8 @@ pub mod inner {
     ) -> Option<(Vec<u8>, Vec<([u8; 6], u8, Vec<u8>, Vec<u8>)>)> {
         let disco_conn = lookup_service(kernel_ns, DISCO_NAME)?;
         crate::logln!("[join] disco connection obtained");
-        let (_result, memory) = call_with_memory_reply(disco_conn, DISCO_OP_CLUSTER_STATUS, 0, &[])?;
+        let (_result, memory) =
+            call_with_memory_reply(disco_conn, DISCO_OP_CLUSTER_STATUS, 0, &[])?;
         crate::logln!("[join] disco answer received");
         let memory = memory?;
         let bytes = read_moved_memory(memory, MEM_LEN);
@@ -197,8 +191,7 @@ pub mod inner {
         let memory = memory?;
         crate::logln!("[join] raft status memory present");
         let bytes = read_moved_memory(memory, MEM_LEN);
-        let (state, term, commit, members, _leader, _self_id) =
-            parse_raft_status(&bytes)?;
+        let (state, term, commit, members, _leader, _self_id) = parse_raft_status(&bytes)?;
         crate::logln!("[join] raft status parsed: members={}", members);
         Some((state, term, commit, members))
     }
@@ -223,14 +216,7 @@ pub mod inner {
         if payload.len() < pos + 1 + self_len {
             return None;
         }
-        Some((
-            state,
-            term,
-            commit,
-            members,
-            leader,
-            payload[pos + 1..pos + 1 + self_len].to_vec(),
-        ))
+        Some((state, term, commit, members, leader, payload[pos + 1..pos + 1 + self_len].to_vec()))
     }
 
     /// FNV-1a over `raft-{id}` — the registry name of a node's raft service
@@ -261,8 +247,8 @@ pub mod inner {
         use crate::cpu::scheduler::yield_lp;
 
         let dns_conn = lookup_service(kernel_ns, DNS_NAME)?;
-        let mem = crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, event)
-            .ok()?;
+        let mem =
+            crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, event).ok()?;
         let call = ipc::scalar_call_with_memory_move(
             crate::memory::KERNEL_ASID,
             dns_conn,
@@ -359,11 +345,8 @@ pub mod inner {
                         )
                         .into_bytes()
                     } else {
-                        alloc::format!(
-                            "event:membership:{}",
-                            String::from_utf8_lossy(raft_id)
-                        )
-                        .into_bytes()
+                        alloc::format!("event:membership:{}", String::from_utf8_lossy(raft_id))
+                            .into_bytes()
                     };
                     membership_event = Some(event);
                     self_raft_id = answer_self_id;
@@ -377,21 +360,14 @@ pub mod inner {
             if now >= next_probe_ms {
                 next_probe_ms = now + 2_000;
                 if let Some(disco_conn) = lookup_service(kernel_ns, DISCO_NAME) {
-                    let _ = ipc::scalar_call(
-                        crate::memory::KERNEL_ASID,
-                        disco_conn,
-                        DISCO_OP_PROBE,
-                        0,
-                    );
+                    let _ =
+                        ipc::scalar_call(crate::memory::KERNEL_ASID, disco_conn, DISCO_OP_PROBE, 0);
                 }
             }
             discovery_deadline.assert_pending("EL0 join discovery");
             yield_lp();
         }
-        crate::logln!(
-            "[join] local raft id: {:?}",
-            self_raft_id
-        );
+        crate::logln!("[join] local raft id: {:?}", self_raft_id);
 
         // Wait for the membership event — communicated through Raft
         // consensus, resolved the moment the committed entry lands on this

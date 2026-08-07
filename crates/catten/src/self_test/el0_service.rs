@@ -412,7 +412,8 @@ extern "C" fn verify_el0_service() {
                     base as *const u32
                 };
                 logln!(
-                    "[service] waiting for manager: stage={}, error={}, ns_waiters={}, ns_stage={}, ns_gen={}",
+                    "[service] waiting for manager: stage={}, error={}, ns_waiters={}, \
+                     ns_stage={}, ns_gen={}",
                     unsafe { core::ptr::read_volatile(manager_status) },
                     unsafe { core::ptr::read_volatile(manager_status.add(2)) },
                     unsafe { core::ptr::read_volatile(ns_status.add(12)) },

@@ -178,8 +178,7 @@ impl LpScheduler for RoundRobin {
                 TimerEventKey::SchedulerQuantum,
             );
             wake.register_observer(
-                Arc::downgrade(&self.timer_event_observer)
-                    as alloc::sync::Weak<dyn Observer>,
+                Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
             );
             TIMER_QUEUES.try_get_mut().unwrap().ensure_event(wake);
         }

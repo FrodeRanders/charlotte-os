@@ -288,11 +288,7 @@ pub extern "C" fn irq_dispatcher() {
             let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
             let count = TIMER_PPI_COUNTS[lp].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
             if count.is_multiple_of(10_000) {
-                crate::early_logln!(
-                    "[timer] LP{} PPI deliveries: {}",
-                    lp,
-                    count
-                );
+                crate::early_logln!("[timer] LP{} PPI deliveries: {}", lp, count);
             }
             // Advance the timer queue, firing any events whose deadline passed
             // (waking their observer threads) and rearming the timer.

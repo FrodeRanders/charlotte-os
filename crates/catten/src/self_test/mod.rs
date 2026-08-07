@@ -126,8 +126,6 @@ pub mod cq_completion;
 pub mod cq_wait;
 pub mod device;
 pub mod el0;
-#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
-pub mod scratch;
 pub mod el0_clusterctl;
 pub mod el0_demo;
 #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
@@ -136,8 +134,8 @@ pub mod el0_disco;
 pub mod el0_dns;
 #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
 pub mod el0_http;
-pub mod el0_join;
 pub mod el0_ipc;
+pub mod el0_join;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
 #[cfg(target_arch = "aarch64")]
@@ -156,6 +154,8 @@ pub mod ipi;
 pub mod memory;
 pub mod results;
 pub mod scheduler_lifecycle;
+#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+pub mod scratch;
 pub mod shard;
 pub mod statistics;
 pub mod syscall;

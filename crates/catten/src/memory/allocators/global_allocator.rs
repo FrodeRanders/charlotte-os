@@ -64,13 +64,10 @@ pub fn init_primary_allocator() {
             .claim(base.into_mut(), INITIAL_HEAP_SIZE)
             .expect("Talc failed to claim the initial kernel heap");
         pa_lock.source.heap_ptr.store(returned_ptr.as_ptr(), Ordering::Release);
-        pa_lock
-            .source
-            .reserve_end
-            .store(
-                base.into_mut::<u8>().wrapping_add(INITIAL_HEAP_SIZE + HEAP_GROWTH_RESERVE),
-                Ordering::Release,
-            );
+        pa_lock.source.reserve_end.store(
+            base.into_mut::<u8>().wrapping_add(INITIAL_HEAP_SIZE + HEAP_GROWTH_RESERVE),
+            Ordering::Release,
+        );
         let he = returned_ptr.as_ptr();
         let tag_now = he.wrapping_sub(1).read();
         let size_now = (he.wrapping_sub(8) as *const usize).read();
