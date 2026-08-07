@@ -35,6 +35,7 @@ use catten_services::{
     frouter,
     net,
     ns,
+    raft,
     relmsg,
     sleep_ms,
     socket,
@@ -192,6 +193,7 @@ fn main(ctx: Context) -> ! {
     let mut routes: Vec<Route> = Vec::new();
     add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
     add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
+    add_route_if_missing(&mut routes, ns_conn, raft::ETHERTYPE, raft::FRAME_NAME, raft::OP_FRAME);
     add_route_if_missing(&mut routes, ns_conn, IPV4_ETHERTYPE, socket::NAME, socket::OP_FRAME);
     add_route_if_missing(&mut routes, ns_conn, ARP_ETHERTYPE, socket::NAME, socket::OP_FRAME);
     config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);

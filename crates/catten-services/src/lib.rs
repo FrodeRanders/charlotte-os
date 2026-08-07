@@ -408,6 +408,15 @@ pub mod raft {
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;
 
+    /// The raft service's own network EtherType: the reliable-message layer
+    /// is single-consumer (owned by the dns), so the raft service receives
+    /// its MAC-addressed frames through the frame demultiplexer instead.
+    pub const ETHERTYPE: u16 = 0x88b7;
+    /// Well-known name the frame demultiplexer routes `ETHERTYPE` frames to.
+    pub const FRAME_NAME: u64 = super::name(b"raft-f");
+    /// Ingress opcode the frame demultiplexer delivers frames with.
+    pub const OP_FRAME: u32 = 0x10;
+
     pub const OP_VOTE_REQUEST: u32 = 1;
     pub const OP_APPEND_ENTRIES: u32 = 2;
     pub const OP_INSTALL_SNAPSHOT: u32 = 3;

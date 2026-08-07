@@ -124,6 +124,12 @@ struct PendingSend {
 
 pub struct RelmsgRaftTransport {
     relmsg_conn: spin::Mutex<u64>,
+    /// Optional direct-net send path: when bound (the raft service's own
+    /// EtherType), frames go straight to the NIC instead of through the
+    /// reliable-message layer (which is single-consumer, owned by the dns).
+    net_conn: spin::Mutex<u64>,
+    src_mac: spin::Mutex<[u8; 6]>,
+    ethertype: spin::Mutex<u16>,
     peer_macs: spin::Mutex<BTreeMap<String, [u8; 6]>>,
     /// Outbound RPCs queued per peer.
     outbound: spin::Mutex<BTreeMap<String, Vec<OutboundRpc>>>,
@@ -139,6 +145,9 @@ impl RelmsgRaftTransport {
     pub fn new(relmsg_conn: u64) -> Self {
         Self {
             relmsg_conn: spin::Mutex::new(relmsg_conn),
+            net_conn: spin::Mutex::new(0),
+            src_mac: spin::Mutex::new([0u8; 6]),
+            ethertype: spin::Mutex::new(0),
             peer_macs: spin::Mutex::new(BTreeMap::new()),
             outbound: spin::Mutex::new(BTreeMap::new()),
             pending_sends: spin::Mutex::new(BTreeMap::new()),
@@ -153,6 +162,19 @@ impl RelmsgRaftTransport {
     /// it. Frames are only sent once a connection is bound.
     pub fn set_relmsg_conn(&self, conn: u64) {
         *self.relmsg_conn.lock() = conn;
+    }
+
+    /// Bind the direct-net send path: frames are then addressed to the peer
+    /// MACs with `ethertype` on the NIC (used by the raft service's own
+    /// EtherType; the reliable-message layer remains the default).
+    pub fn set_net_send(&self, net_conn: u64, src_mac: [u8; 6], ethertype: u16) {
+        *self.net_conn.lock() = net_conn;
+        *self.src_mac.lock() = src_mac;
+        *self.ethertype.lock() = ethertype;
+    }
+
+    pub fn net_conn(&self) -> u64 {
+        *self.net_conn.lock()
     }
 
     pub fn add_peer(&self, peer_id: &str, mac: [u8; 6]) {
@@ -246,7 +268,20 @@ impl RelmsgRaftTransport {
             let Some(mac) = self.peer_macs.lock().get(peer_id).copied() else {
                 continue;
             };
-            let Some(call) = send_payload(*self.relmsg_conn.lock(), &mac, tag, &payload) else {
+            let net_conn = *self.net_conn.lock();
+            let call = if net_conn != 0 {
+                send_payload_net(
+                    net_conn,
+                    &*self.src_mac.lock(),
+                    &mac,
+                    *self.ethertype.lock(),
+                    tag,
+                    &payload,
+                )
+            } else {
+                send_payload(*self.relmsg_conn.lock(), &mac, tag, &payload)
+            };
+            let Some(call) = call else {
                 continue;
             };
             queue.remove(0);
@@ -456,6 +491,45 @@ impl RaftTransport for RelmsgRaftTransport {
 
 /// Write `tag + payload` into a memory object and submit `relmsg::OP_SEND` to
 /// `mac`. Returns the pending call cap, or `None` on failure.
+/// Send a raw Ethernet frame directly on the NIC: the destination MAC, the
+/// transport's own source MAC, the given EtherType, then the tagged payload.
+fn send_payload_net(
+    net_conn: u64,
+    src_mac: &[u8; 6],
+    dst_mac: &[u8; 6],
+    ethertype: u16,
+    tag: u8,
+    payload: &[u8],
+) -> Option<u64> {
+    let len = 14 + 1 + payload.len();
+    if len > 4096 {
+        return None;
+    }
+    let cap = memory_alloc(1);
+    if cap == 0 {
+        return None;
+    }
+    if memory_map(cap, SCRATCH, true) != 0 {
+        memory_close(cap);
+        return None;
+    }
+    unsafe {
+        let base = SCRATCH as *mut u8;
+        core::ptr::copy_nonoverlapping(dst_mac.as_ptr(), base, 6);
+        core::ptr::copy_nonoverlapping(src_mac.as_ptr(), base.add(6), 6);
+        base.add(12).copy_from(ethertype.to_be_bytes().as_ptr(), 2);
+        base.add(14).write(tag);
+        core::ptr::copy_nonoverlapping(payload.as_ptr(), base.add(15), payload.len());
+    }
+    memory_unmap(cap);
+    let call = ipc_scalar_call_move(net_conn, crate::net::OP_SEND, len as u64, cap);
+    if call == 0 {
+        memory_close(cap);
+        return None;
+    }
+    Some(call)
+}
+
 fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Option<u64> {
     let len = payload.len() + 1;
     if len > crate::relmsg::MAX_MSG {

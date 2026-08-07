@@ -57,9 +57,10 @@ use catten_services::{
     },
     disco,
     dns,
+    frouter,
+    net,
     ns,
     raft,
-    relmsg,
     relmsg_transport::{
         TAG_JOIN_REPLY,
         TAG_JOIN_REQUEST,
@@ -75,7 +76,7 @@ use charlotte_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
-use charlotte_protocol_msg::unpack_address_and_len;
+
 use catten_syscall::{
     IpcRights,
     ipc_reply_poll_with_memory,
@@ -444,6 +445,20 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(4, generation as u32);
 
+    // Register the well-known frame name so the frame demultiplexer routes
+    // this service's EtherType to its endpoint (the OP_FRAME ingress). The
+    // frouter retries the lookup, so a later registration is fine.
+    let frame_register = ipc_scalar_call_connection(
+        ns_conn,
+        ns::OP_REGISTER,
+        raft::FRAME_NAME,
+        endpoint,
+        IpcRights::SEND | IpcRights::CALL,
+    );
+    if frame_register != 0 {
+        let _ = unsafe { wait_reply_2(frame_register) };
+    }
+
     // Storage is launch policy. The ordinary local Raft service test uses
     // memory and remains independent of NVMe. A durability deployment can
     // require the object store and wait for its name-service registration;
@@ -529,13 +544,15 @@ fn main(ctx: Context) -> ! {
     // and exchanges raft traffic over the reliable-message layer. None of
     // this consults the local name service for remote participants — before
     // membership the only addresses that exist are the MACs discovery saw.
-    let mut relmsg_lookup: u64 = 0;
-    let mut relmsg_conn: u64 = 0;
+    let mut net_lookup: u64 = 0;
+    let mut net_conn: u64 = 0;
+    let mut local_mac: [u8; 6] = [0u8; 6];
+    let mut frouter_lookup: u64 = 0;
+    let mut frouter_conn: u64 = 0;
     let mut disco_lookup: u64 = 0;
     let mut disco_conn: u64 = 0;
     let mut disco_query: u64 = 0;
     let mut next_disco_query_ms: u64 = 0;
-    let mut recv_pending: u64 = 0;
     let mut join_request_pending = false;
     let mut join_accepted = false;
 
@@ -621,25 +638,55 @@ fn main(ctx: Context) -> ! {
             poll_peer_discovery(ns_conn, peer_id, *peer_name, pending, &ns_transport);
         }
 
-        // --- Network-cluster connections (relmsg + disco) ---
-        // The relmsg is the MAC-addressed frame transport to other nodes; the
-        // disco supplies the MAC routes and cluster posture. Both are resolved
-        // through the local name service (these services live on this node).
-        if relmsg_conn == 0 && relmsg_lookup == 0 {
-            relmsg_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, relmsg::NAME);
+        // --- Network-cluster connections (net + frouter + disco) ---
+        // The NIC is the MAC-addressed frame transport; the frouter demultiplexes
+        // this service's own EtherType; the disco supplies the MAC routes and
+        // cluster posture. All three are resolved through the local name service
+        // (they live on this node).
+        if net_conn == 0 && net_lookup == 0 {
+            net_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
         }
-        if relmsg_lookup != 0 {
-            let (status, generation, conn) = ipc_reply_poll(relmsg_lookup);
+        if net_lookup != 0 {
+            let (status, generation, conn) = ipc_reply_poll(net_lookup);
             if status == 0 {
-                ipc_close(relmsg_lookup);
-                relmsg_lookup = 0;
+                ipc_close(net_lookup);
+                net_lookup = 0;
                 if generation >= 1 && conn != 0 {
-                    relmsg_conn = conn;
-                    mac_transport.set_relmsg_conn(conn);
+                    let status_call = ipc_scalar_call(conn, net::OP_STATUS, 0);
+                    if status_call != 0 {
+                        let (status, result, _cap) = catten_syscall::ipc_reply_wait(status_call);
+                        catten_syscall::ipc_close(status_call);
+                        let (link, mac) = if status == 0 {
+                            charlotte_protocol_net::decode_status(result as i64)
+                        } else {
+                            (0, [0u8; 6])
+                        };
+                        if link != 0 {
+                            net_conn = conn;
+                            local_mac = mac;
+                            mac_transport.set_net_send(conn, mac, raft::ETHERTYPE);
+                        }
+                    }
                 }
             } else if status != 1 {
-                ipc_close(relmsg_lookup);
-                relmsg_lookup = 0;
+                ipc_close(net_lookup);
+                net_lookup = 0;
+            }
+        }
+        if frouter_conn == 0 && frouter_lookup == 0 {
+            frouter_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, frouter::NAME);
+        }
+        if frouter_lookup != 0 {
+            let (status, generation, conn) = ipc_reply_poll(frouter_lookup);
+            if status == 0 {
+                ipc_close(frouter_lookup);
+                frouter_lookup = 0;
+                if generation >= 1 && conn != 0 {
+                    frouter_conn = conn;
+                }
+            } else if status != 1 {
+                ipc_close(frouter_lookup);
+                frouter_lookup = 0;
             }
         }
         if disco_conn == 0 && disco_lookup == 0 {
@@ -739,83 +786,8 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        // --- Inbound frames over relmsg ---
-        if relmsg_conn != 0 && recv_pending == 0 {
-            recv_pending = ipc_scalar_call(relmsg_conn, relmsg::OP_RECV, 0);
-        }
-        if recv_pending != 0 {
-            let (recv_status, result, _returned_connection, memory) =
-                ipc_reply_poll_with_memory(recv_pending);
-            if recv_status == 0 {
-                ipc_close(recv_pending);
-                recv_pending = 0;
-                if memory != 0 {
-                    let (source_mac, len) = unpack_address_and_len(result);
-                    if memory_map(memory, RX_SCRATCH, false) == 0 {
-                        let frame = unsafe {
-                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, len as usize)
-                        };
-                        match frame.first().copied() {
-                            Some(tag) if (1..=6).contains(&tag) => {
-                                if let Some(inbound) =
-                                    mac_transport.decode_inbound(&source_mac, frame)
-                                {
-                                    let millis = node.millis();
-                                    drive_inbound(
-                                        &mut node,
-                                        &mac_transport,
-                                        source_mac,
-                                        inbound,
-                                        millis,
-                                    );
-                                }
-                            }
-                            Some(TAG_JOIN_REQUEST) => {
-                                if let Some((joiner_id, service_name)) =
-                                    decode_join_request(frame)
-                                {
-                                    let (accepted, detail) = if node.state == NodeState::Leader {
-                                        let peer = Peer::voter(
-                                            core::str::from_utf8(joiner_id)
-                                                .unwrap_or("")
-                                                .to_string(),
-                                            service_name,
-                                        );
-                                        match node.submit_join(peer, node.millis()) {
-                                            Ok(index) => (index, 0u64),
-                                            Err(code) => (0, code.unsigned_abs()),
-                                        }
-                                    } else {
-                                        (0, 0xff)
-                                    };
-                                    mac_transport.send_response(
-                                        source_mac,
-                                        TAG_JOIN_REPLY,
-                                        encode_join_reply(accepted),
-                                    );
-                                    catten_syscall::el0_log(
-                                        0x5241_4654,
-                                        0x4a52_4551 | (accepted << 16) | (detail << 32),
-                                    );
-                                }
-                            }
-                            Some(TAG_JOIN_REPLY) => {
-                                if let Some(index) = decode_join_reply(frame) {
-                                    join_request_pending = false;
-                                    if index > 0 {
-                                        join_accepted = true;
-                                        catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e_41);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                        memory_unmap(memory);
-                    }
-                    memory_close(memory);
-                }
-            }
-        }
+        // Inbound frames arrive through the frouter's OP_FRAME ingress in the
+        // endpoint drain below; outbound RPCs flush from the transport.
         mac_transport.drain_outbound();
         mac_transport.reap_acks();
 
@@ -872,6 +844,83 @@ fn main(ctx: Context) -> ! {
                         }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, -1);
+                    }
+                }
+
+                raft::OP_FRAME => {
+                    let frame_len = message.arg0 as usize;
+                    if message.memory != 0 {
+                        if memory_map(message.memory, RX_SCRATCH, false) == 0
+                            && (15..=4096).contains(&frame_len)
+                        {
+                            let frame = unsafe {
+                                core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len)
+                            };
+                            let mut source_mac = [0u8; 6];
+                            source_mac.copy_from_slice(&frame[6..12]);
+                            let payload = &frame[14..];
+                            match payload.first().copied() {
+                                Some(tag) if (1..=6).contains(&tag) => {
+                                    if let Some(inbound) =
+                                        mac_transport.decode_inbound(&source_mac, payload)
+                                    {
+                                        let millis = node.millis();
+                                        drive_inbound(
+                                            &mut node,
+                                            &mac_transport,
+                                            source_mac,
+                                            inbound,
+                                            millis,
+                                        );
+                                    }
+                                }
+                                Some(TAG_JOIN_REQUEST) => {
+                                    if let Some((joiner_id, service_name)) =
+                                        decode_join_request(payload)
+                                    {
+                                        let (accepted, detail) =
+                                            if node.state == NodeState::Leader {
+                                                let peer = Peer::voter(
+                                                    core::str::from_utf8(joiner_id)
+                                                        .unwrap_or("")
+                                                        .to_string(),
+                                                    service_name,
+                                                );
+                                                match node.submit_join(peer, node.millis()) {
+                                                    Ok(index) => (index, 0u64),
+                                                    Err(code) => (0, code.unsigned_abs()),
+                                                }
+                                            } else {
+                                                (0, 0xff)
+                                            };
+                                        mac_transport.send_response(
+                                            source_mac,
+                                            TAG_JOIN_REPLY,
+                                            encode_join_reply(accepted),
+                                        );
+                                        catten_syscall::el0_log(
+                                            0x5241_4654,
+                                            0x4a52_4551 | (accepted << 16) | (detail << 32),
+                                        );
+                                    }
+                                }
+                                Some(TAG_JOIN_REPLY) => {
+                                    if let Some(index) = decode_join_reply(payload) {
+                                        join_request_pending = false;
+                                        if index > 0 {
+                                            join_accepted = true;
+                                            catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e_41);
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        memory_unmap(message.memory);
+                        memory_close(message.memory);
+                    }
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, 0);
                     }
                 }
 
