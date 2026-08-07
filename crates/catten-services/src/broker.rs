@@ -66,15 +66,25 @@ pub struct KeyedWaitlist<W> {
     waiters: alloc::collections::BTreeMap<alloc::vec::Vec<u8>, alloc::vec::Vec<W>>,
 }
 
-impl<W> KeyedWaitlist<W> {
-    pub fn new() -> Self {
+impl<W> Default for KeyedWaitlist<W> {
+    fn default() -> Self {
         Self {
             waiters: alloc::collections::BTreeMap::new(),
         }
     }
+}
+
+impl<W> KeyedWaitlist<W> {
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn len(&self) -> usize {
         self.waiters.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.waiters.is_empty()
     }
 }
 
@@ -93,8 +103,9 @@ impl<W> EventBroker for KeyedWaitlist<W> {
         let mut resolved = alloc::vec::Vec::new();
         let fired: alloc::vec::Vec<alloc::vec::Vec<u8>> = self
             .waiters
-            .iter()
-            .filter_map(|(name, _)| catalog.resolve(name).is_some().then(|| name.clone()))
+            .keys()
+            .filter(|name| catalog.resolve(name).is_some())
+            .cloned()
             .collect();
         for event in fired {
             if let Some(waiters) = self.waiters.remove(&event) {

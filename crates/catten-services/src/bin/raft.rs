@@ -546,7 +546,6 @@ fn main(ctx: Context) -> ! {
     // membership the only addresses that exist are the MACs discovery saw.
     let mut net_lookup: u64 = 0;
     let mut net_conn: u64 = 0;
-    let mut local_mac: [u8; 6] = [0u8; 6];
     let mut frouter_lookup: u64 = 0;
     let mut frouter_conn: u64 = 0;
     let mut disco_lookup: u64 = 0;
@@ -663,7 +662,6 @@ fn main(ctx: Context) -> ! {
                         };
                         if link != 0 {
                             net_conn = conn;
-                            local_mac = mac;
                             mac_transport.set_net_send(conn, mac, raft::ETHERTYPE);
                         }
                     }
@@ -747,33 +745,28 @@ fn main(ctx: Context) -> ! {
                             // (the smaller id is the anchor and waits). The
                             // join request is a MAC-addressed frame — no local
                             // lookup of the peer exists or is needed.
-                            if !join_accepted
+                            if let Some((_mac, _role, raft_id, _leader_id)) = peers
+                                .iter()
+                                .find(|(_, role, raft_id, _)| {
+                                    *role == ROLE_LEADER
+                                        && !raft_id.is_empty()
+                                        && raft_id.as_slice() != node.me.id.as_bytes()
+                                        && node.me.id.as_bytes() > raft_id.as_slice()
+                                })
+                                && !join_accepted
                                 && !join_request_pending
                                 && node.state == NodeState::Leader
                                 && node.cluster_configuration.all_members().len() == 1
                             {
-                                if let Some((_mac, _role, raft_id, _leader_id)) = peers
-                                    .iter()
-                                    .find(|(_, role, raft_id, _)| {
-                                        *role == ROLE_LEADER
-                                            && !raft_id.is_empty()
-                                            && raft_id.as_slice() != node.me.id.as_bytes()
-                                            && node.me.id.as_bytes() > raft_id.as_slice()
-                                    })
-                                {
-                                    let target =
-                                        core::str::from_utf8(raft_id).unwrap_or("");
-                                    if let Some(payload) = encode_join_request(
-                                        node.me.id.as_bytes(),
-                                        name_u64,
-                                    ) {
-                                        mac_transport.send_message(target, TAG_JOIN_REQUEST, payload);
-                                        join_request_pending = true;
-                                        catten_syscall::el0_log(
-                                            0x5241_4654,
-                                            0x4a4f_494e,
-                                        );
-                                    }
+                                let target =
+                                    core::str::from_utf8(raft_id).unwrap_or("");
+                                if let Some(payload) = encode_join_request(
+                                    node.me.id.as_bytes(),
+                                    name_u64,
+                                ) {
+                                    mac_transport.send_message(target, TAG_JOIN_REQUEST, payload);
+                                    join_request_pending = true;
+                                    catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e);
                                 }
                             }
                         }
@@ -911,7 +904,7 @@ fn main(ctx: Context) -> ! {
                                         join_request_pending = false;
                                         if index > 0 {
                                             join_accepted = true;
-                                            catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e_41);
+                                            catten_syscall::el0_log(0x5241_4654, 0x004a_4f49_4e41);
                                         }
                                     }
                                 }
@@ -1021,8 +1014,8 @@ fn main(ctx: Context) -> ! {
                                 .cluster_configuration
                                 .all_members()
                                 .into_iter()
-                                .cloned()
                                 .filter(|peer| peer.id != id)
+                                .cloned()
                                 .collect();
                             if members.is_empty() {
                                 // Refuse to decommission the last member.

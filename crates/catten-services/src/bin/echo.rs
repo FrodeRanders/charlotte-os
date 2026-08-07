@@ -35,7 +35,6 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
     memory_map_any,
     memory_unmap,
     thread_exit,

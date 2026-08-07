@@ -50,11 +50,6 @@ use catten_syscall::{
 
 const REPLY_SPINS: u64 = 50_000_000;
 
-/// The user virtual address at which the driver maps its device register
-/// window. Chosen above the program image, runtime pages, and the long-name
-/// scratch page.
-
-/// Config-page output words (driver domain).
 const STAGE_OFFSET: usize = 0; // u32 progress marker
 const READ_ARMED_OFFSET: usize = 4; // u32 set to 1 while a deferred read is retained
 const IRQ_COUNT_OFFSET: usize = 8; // u32 interrupts acknowledged

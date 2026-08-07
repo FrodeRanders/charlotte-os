@@ -321,7 +321,7 @@ fn main(ctx: Context) -> ! {
                                         catten_syscall::el0_log(
                                             0x4354_4c00,
                                             0x2222
-                                                | ((raw_status as u64) << 8)
+                                                | (raw_status << 8)
                                                 | (((raw_result as i64) << 32) as u64),
                                         );
                                         ipc_close(call);
@@ -515,7 +515,7 @@ fn run_join(
     ns_connection: u64,
     self_raft_id: &[u8],
     self_leader_id: &[u8],
-    peers: &[([u8; 6], u8, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)],
+    peers: &[charlotte_protocol_disco::PeerEntry],
 ) -> i64 {
     if self_raft_id.is_empty() {
         return clusterctl::ERR_NO_CLUSTER;

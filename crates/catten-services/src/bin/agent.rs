@@ -40,7 +40,6 @@ const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
 const STAGE_FAIL: u32 = 0xdead;
 
-const DATA_VADDR: usize = 0x0000_0000_2000_0000;
 const REPLY_SPINS: u64 = 50_000_000;
 
 /// A replicated deployment record as decoded from `OP_DEPLOY_QUERY`

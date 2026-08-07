@@ -64,7 +64,7 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
         // discard the reply token (a lost reply and a forever-stalled
         // caller).
         self.0.get(name).and_then(|registration| {
-            (registration.connection != 0).then(|| catten_services::broker::CatalogTarget {
+            (registration.connection != 0).then_some(catten_services::broker::CatalogTarget {
                 generation: registration.generation as u64,
                 connection: registration.connection,
             })

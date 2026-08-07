@@ -272,7 +272,7 @@ impl RelmsgRaftTransport {
             let call = if net_conn != 0 {
                 send_payload_net(
                     net_conn,
-                    &*self.src_mac.lock(),
+                    &self.src_mac.lock(),
                     &mac,
                     *self.ethertype.lock(),
                     tag,

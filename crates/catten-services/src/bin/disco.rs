@@ -149,7 +149,7 @@ impl ClusterProbe {
             if status == 0 {
                 ipc_close(self.pending_lookup);
                 self.pending_lookup = 0;
-                catten_syscall::el0_log(0x4449_5343, 0x2222 | ((generation.min(0xff) as u64) << 8) | ((conn != 0) as u64));
+                catten_syscall::el0_log(0x4449_5343, 0x2222 | ((generation.min(0xff)) << 8) | ((conn != 0) as u64));
                 if generation >= 1 && conn != 0 {
                     self.status_conn = conn;
                     self.pending_status = ipc_scalar_call(conn, raft::OP_CLUSTER_STATUS, 0);
@@ -375,6 +375,7 @@ fn send_response(
     send_raw_frame(net_conn, &response);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn learn_peer(
     peers: &mut BTreeMap<[u8; 6], DiscoveredPeer>,
     mac: [u8; 6],

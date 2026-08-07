@@ -478,11 +478,12 @@ pub mod raft {
         Some(pos + 1 + self_raft_id.len())
     }
 
-    /// Parse a packed cluster-status blob into `(state, term, commit_index,
+    /// A parsed cluster-status blob: `(state, term, commit_index,
     /// member_count, leader_id, self_raft_id)`.
-    pub fn parse_cluster_status(
-        payload: &[u8],
-    ) -> Option<(u32, u64, u64, u32, &[u8], &[u8])> {
+    pub type ClusterStatus<'a> = (u32, u64, u64, u32, &'a [u8], &'a [u8]);
+
+    /// Parse a packed cluster-status blob into a [`ClusterStatus`].
+    pub fn parse_cluster_status(payload: &[u8]) -> Option<ClusterStatus<'_>> {
         if payload.len() < CLUSTER_STATUS_HEADER_LEN {
             return None;
         }
@@ -861,11 +862,11 @@ pub mod dns {
     /// key ceremony). `arg0` is unused; the attached memory object holds the
     /// 32 key bytes. The reply is the committed key generation (deferred
     /// until it has replicated).
-    pub const OP_SET_KEY: u32 = 10;
+    pub const OP_SET_KEY: u32 = 13;
     /// Read the cluster public key from locally applied state. The reply
     /// moves a page holding the 32 key bytes, or is `ERR_NOT_FOUND` when no
     /// ceremony has committed a key yet.
-    pub const OP_KEY: u32 = 11;
+    pub const OP_KEY: u32 = 14;
 
     /// Stable object-store id of the deploy demo payload.
     pub const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;

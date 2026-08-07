@@ -855,7 +855,6 @@ fn memory_status(error: object::MemoryObjectError) -> u64 {
         object::MemoryObjectError::FrameFreeFailed => 11,
         object::MemoryObjectError::MissingRight => 12,
         object::MemoryObjectError::LendingActive => 13,
-        object::MemoryObjectError::OutOfScratch => 14,
         object::MemoryObjectError::NotLent => 14,
         object::MemoryObjectError::OutOfScratch => 15,
     }

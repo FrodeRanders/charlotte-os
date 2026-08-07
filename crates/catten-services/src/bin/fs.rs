@@ -439,8 +439,7 @@ fn main(ctx: Context) -> ! {
                         if let Some(data) = ffs.op_read(file_id) {
                             let mem = memory_alloc(data.len().max(1).div_ceil(4096));
                             if mem != 0 {
-        let (buffer_vaddr_5_map_status, buffer_vaddr_5) = memory_map_any(mem, true);
-                                buffer_vaddr_5_map_status;
+        let (_buffer_vaddr_5_map_status, buffer_vaddr_5) = memory_map_any(mem, true);
                                 unsafe {
                                     core::ptr::copy_nonoverlapping(
                                         data.as_ptr(),
@@ -529,8 +528,7 @@ fn main(ctx: Context) -> ! {
                         let data = ffs.op_list(parent_id);
                         let mem = memory_alloc(1);
                         if mem != 0 {
-        let (buffer_vaddr_8_map_status, buffer_vaddr_8) = memory_map_any(mem, true);
-                            buffer_vaddr_8_map_status;
+        let (_buffer_vaddr_8_map_status, buffer_vaddr_8) = memory_map_any(mem, true);
                             unsafe {
                                 core::ptr::copy_nonoverlapping(
                                     data.as_ptr(),

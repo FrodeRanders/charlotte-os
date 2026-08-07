@@ -46,7 +46,6 @@ const INITIAL_HEAP_SIZE: usize = mebibytes(8);
 // map-while-allocating could otherwise trigger (the reserve maps at boot,
 // before any concurrency exists).
 const HEAP_GROWTH_RESERVE: usize = mebibytes(192);
-static ACQUIRE_COUNT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 #[global_allocator]
 pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 

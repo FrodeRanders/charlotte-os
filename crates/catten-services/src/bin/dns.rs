@@ -607,16 +607,12 @@ fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::
     }
     let len = message.arg0 as usize;
     if len == 0 || len > 128 {
-        unsafe {
-            memory_close(message.memory);
-        }
+        memory_close(message.memory);
         return None;
     }
         let (list_scratch_4_map_status, list_scratch_4_vaddr) = memory_map_any(message.memory, false);
-    if unsafe { list_scratch_4_map_status } != 0 {
-        unsafe {
-            memory_close(message.memory);
-        }
+    if list_scratch_4_map_status != 0 {
+        memory_close(message.memory);
         return None;
     }
     let mut name = alloc::vec::Vec::with_capacity(len);
@@ -1708,19 +1704,14 @@ fn main(ctx: Context) -> ! {
                     // otherwise the event broker parks the reply token and
                     // the reactor settles it when the replicated entry lands.
                     if let Some(name) = read_named_bytes(&message) {
-                        match event_waiters.park(&name, message.reply, &*catalog) {
-                            Some(reply) => {
-                                match catalog.lookup(&name) {
-                                    Some(entry) if reply != 0 => {
-                                        ipc_reply(reply, entry.generation as i64);
-                                    }
-                                    _ if reply != 0 => {
-                                        ipc_reply(reply, dns::ERR_NOT_FOUND);
-                                    }
-                                    _ => {}
+                        if let Some(reply) = event_waiters.park(&name, message.reply, &*catalog) {
+                            if let Some(entry) = catalog.lookup(&name) {
+                                if reply != 0 {
+                                    ipc_reply(reply, entry.generation as i64);
                                 }
+                            } else if reply != 0 {
+                                ipc_reply(reply, dns::ERR_NOT_FOUND);
                             }
-                            None => {}
                         }
                         continue;
                     }

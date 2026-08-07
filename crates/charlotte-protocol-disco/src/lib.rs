@@ -165,17 +165,21 @@ pub fn build_extended_payload(
     pos + leader_id.len()
 }
 
+/// The cluster block of an extended response payload:
+/// `(role, raft_id, leader_id)`.
+pub type ClusterBlock<'a> = (u8, &'a [u8], &'a [u8]);
+
 /// Parse an extended response payload into
-/// `(node_id, service_name, Option<(role, raft_id, leader_id)>)` where the
-/// cluster block is `None` for legacy v1 payloads.
-pub fn parse_extended_payload(payload: &[u8]) -> Option<(&[u8], u64, Option<(u8, &[u8], &[u8])>)> {
+/// `(node_id, service_name, Option<ClusterBlock>)` where the cluster block
+/// is `None` for legacy v1 payloads.
+pub fn parse_extended_payload(payload: &[u8]) -> Option<(&[u8], u64, Option<ClusterBlock<'_>>)> {
     let (node_id, service_name) = parse_response_payload(payload)?;
     let base = 1 + node_id.len() + 8;
     let rest = &payload[base..];
     if rest.len() >= 2 {
         let role = rest[0];
         let raft_len = rest[1] as usize;
-        if rest.len() >= 2 + raft_len + 1 {
+        if rest.len() > 2 + raft_len {
             let leader_len = rest[2 + raft_len] as usize;
             if rest.len() >= 2 + raft_len + 1 + leader_len {
                 return Some((
@@ -237,11 +241,11 @@ pub fn build_cluster_answer(
         pos += 1;
         buf[pos] = peer.raft_id.len() as u8;
         pos += 1;
-        buf[pos..pos + peer.raft_id.len()].copy_from_slice(&peer.raft_id);
+        buf[pos..pos + peer.raft_id.len()].copy_from_slice(peer.raft_id);
         pos += peer.raft_id.len();
         buf[pos] = peer.leader_id.len() as u8;
         pos += 1;
-        buf[pos..pos + peer.leader_id.len()].copy_from_slice(&peer.leader_id);
+        buf[pos..pos + peer.leader_id.len()].copy_from_slice(peer.leader_id);
         pos += peer.leader_id.len();
     }
     Some(pos)
@@ -256,17 +260,14 @@ pub struct PeerClusterInfo<'a> {
     pub leader_id: &'a [u8],
 }
 
-/// Parse a packed `OP_CLUSTER_STATUS` reply into `(self_role, self_raft_id,
-/// self_leader_id, peers)` where each peer is `(mac, role, raft_id,
-/// leader_id)`.
-pub fn parse_cluster_answer(
-    bytes: &[u8],
-) -> Option<(
-    u8,
-    &[u8],
-    &[u8],
-    alloc::vec::Vec<([u8; 6], u8, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)>,
-)> {
+/// A peer entry in a cluster answer: `(mac, role, raft_id, leader_id)`.
+pub type PeerEntry = ([u8; 6], u8, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>);
+
+/// A full cluster answer: `(self_role, self_raft_id, self_leader_id, peers)`.
+pub type ClusterAnswer<'a> = (u8, &'a [u8], &'a [u8], alloc::vec::Vec<PeerEntry>);
+
+/// Parse a packed `OP_CLUSTER_STATUS` reply into a [`ClusterAnswer`].
+pub fn parse_cluster_answer(bytes: &[u8]) -> Option<ClusterAnswer<'_>> {
     let mut pos = 0usize;
     let self_role = *bytes.get(pos)?;
     pos += 1;

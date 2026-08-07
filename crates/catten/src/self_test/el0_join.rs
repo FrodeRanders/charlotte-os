@@ -48,7 +48,6 @@ pub mod inner {
     const DISCO_NAME: u64 = u64::from_le_bytes(*b"disco\0\0\0");
     const DISCO_OP_CLUSTER_STATUS: u32 = 6;
     const DISCO_OP_PROBE: u32 = 1;
-    const RAFT_OP_CLUSTER_STATUS: u32 = 9;
     // The kernel-side scratch page for moved-memory reads comes from the
     // shared scratch allocator, so no other deferred verifier can own the
     // same vaddr (a fixed vaddr once collided with el0_clusterctl's).
@@ -163,12 +162,12 @@ pub mod inner {
         bytes
     }
 
-    /// Ask the discovery service where the cluster is. Returns
-    /// `(self_raft_id, peers)` where each peer is `(mac, role, raft_id,
-    /// leader_id)`.
-    fn disco_cluster_answer(
-        kernel_ns: u64,
-    ) -> Option<(Vec<u8>, Vec<([u8; 6], u8, Vec<u8>, Vec<u8>)>)> {
+    /// A discovery cluster answer: `(self_raft_id, peers)` where each peer
+    /// is `(mac, role, raft_id, leader_id)`.
+    type JoinDiscoveryAnswer = (Vec<u8>, Vec<([u8; 6], u8, Vec<u8>, Vec<u8>)>);
+
+    /// Ask the discovery service where the cluster is.
+    fn disco_cluster_answer(kernel_ns: u64) -> Option<JoinDiscoveryAnswer> {
         let disco_conn = lookup_service(kernel_ns, DISCO_NAME)?;
         crate::logln!("[join] disco connection obtained");
         let (_result, memory) =
@@ -179,55 +178,6 @@ pub mod inner {
         let (_self_role, self_raft_id, _self_leader_id, peers) =
             charlotte_protocol_disco::parse_cluster_answer(&bytes)?;
         Some((self_raft_id.to_vec(), peers))
-    }
-
-    /// This node's raft cluster status: `(state, term, commit, members)`.
-    fn raft_cluster_status(kernel_ns: u64, raft_id: &[u8]) -> Option<(u32, u64, u64, u32)> {
-        let raft_name = raft_service_name(raft_id);
-        let raft_conn = lookup_service(kernel_ns, raft_name)?;
-        crate::logln!("[join] raft connection obtained");
-        let (_result, memory) = call_with_memory_reply(raft_conn, RAFT_OP_CLUSTER_STATUS, 0, &[])?;
-        crate::logln!("[join] raft status reply received");
-        let memory = memory?;
-        crate::logln!("[join] raft status memory present");
-        let bytes = read_moved_memory(memory, MEM_LEN);
-        let (state, term, commit, members, _leader, _self_id) = parse_raft_status(&bytes)?;
-        crate::logln!("[join] raft status parsed: members={}", members);
-        Some((state, term, commit, members))
-    }
-
-    /// Minimal local parse of the raft cluster-status blob (the kernel does
-    /// not link the services crate).
-    fn parse_raft_status(payload: &[u8]) -> Option<(u32, u64, u64, u32, Vec<u8>, Vec<u8>)> {
-        if payload.len() < 25 {
-            return None;
-        }
-        let state = u32::from_le_bytes(payload[0..4].try_into().ok()?);
-        let term = u64::from_le_bytes(payload[4..12].try_into().ok()?);
-        let commit = u64::from_le_bytes(payload[12..20].try_into().ok()?);
-        let members = u32::from_le_bytes(payload[20..24].try_into().ok()?);
-        let leader_len = payload[24] as usize;
-        if payload.len() < 25 + leader_len + 1 {
-            return None;
-        }
-        let leader = payload[25..25 + leader_len].to_vec();
-        let pos = 25 + leader_len;
-        let self_len = payload[pos] as usize;
-        if payload.len() < pos + 1 + self_len {
-            return None;
-        }
-        Some((state, term, commit, members, leader, payload[pos + 1..pos + 1 + self_len].to_vec()))
-    }
-
-    /// FNV-1a over `raft-{id}` — the registry name of a node's raft service
-    /// (mirrors `catten_services::raft_name`).
-    fn raft_service_name(id: &[u8]) -> u64 {
-        let mut hash = 0xcbf2_9ce4_8422_2325u64;
-        for byte in b"raft-".iter().copied().chain(id.iter().copied()) {
-            hash ^= byte as u64;
-            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        hash
     }
 
     const DNS_NAME: u64 = u64::from_le_bytes(*b"dns\0\0\0\0\0");
@@ -321,10 +271,9 @@ pub mod inner {
         // its own raft id from discovery and then waits on the membership
         // event — fulfillment is communicated through Raft consensus.
         let mut self_raft_id: Vec<u8> = Vec::new();
-        let mut membership_event: Option<Vec<u8>> = None;
         let mut next_probe_ms = crate::cpu::scheduler::monotonic_millis();
         let discovery_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        loop {
+        let membership_event = loop {
             if let Some((answer_self_id, peers)) = disco_cluster_answer(kernel_ns)
                 && !answer_self_id.is_empty()
             {
@@ -348,9 +297,8 @@ pub mod inner {
                         alloc::format!("event:membership:{}", String::from_utf8_lossy(raft_id))
                             .into_bytes()
                     };
-                    membership_event = Some(event);
                     self_raft_id = answer_self_id;
-                    break;
+                    break event;
                 }
                 self_raft_id = answer_self_id;
             }
@@ -366,15 +314,14 @@ pub mod inner {
             }
             discovery_deadline.assert_pending("EL0 join discovery");
             yield_lp();
-        }
+        };
         crate::logln!("[join] local raft id: {:?}", self_raft_id);
 
         // Wait for the membership event — communicated through Raft
         // consensus, resolved the moment the committed entry lands on this
         // node. No polling, no assumed sequence.
-        let event = membership_event.expect("[join] membership event name missing");
         let event_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let generation = wait_cluster_event(kernel_ns, &event, &event_deadline);
+        let generation = wait_cluster_event(kernel_ns, &membership_event, &event_deadline);
         assert!(
             generation.is_some_and(|generation| generation >= 1),
             "[join] membership event must fire through consensus, got {generation:?}"

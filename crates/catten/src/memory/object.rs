@@ -374,7 +374,6 @@ pub(crate) fn write_bytes(
 /// space; each AS has its own page table, so the same window base is valid
 /// in every AS.
 const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
-const SCRATCH_WINDOW_SIZE: u64 = 0x2000_0000; // 512 MiB
 const SCRATCH_WINDOW_PAGES: usize = 4096;
 static SCRATCH_WINDOW_NEXT: [core::sync::atomic::AtomicUsize; 64] =
     [const { core::sync::atomic::AtomicUsize::new(0) }; 64];
@@ -387,7 +386,7 @@ pub(crate) fn reserve_scratch(
     asid: AddressSpaceId,
     pages: usize,
 ) -> Result<VAddr, MemoryObjectError> {
-    let slot = SCRATCH_WINDOW_NEXT[asid as usize]
+    let slot = SCRATCH_WINDOW_NEXT[asid]
         .fetch_add(pages * PAGE_SIZE, core::sync::atomic::Ordering::Relaxed);
     if slot >= SCRATCH_WINDOW_PAGES {
         return Err(MemoryObjectError::OutOfScratch);

@@ -453,7 +453,6 @@ pub fn mmio_map_any(
         return Err(DeviceError::WrongType);
     };
     let (phys_base, pages) = (region.phys_base, region.pages);
-    drop(region);
     let base =
         crate::memory::object::reserve_scratch(asid, pages).map_err(|_| DeviceError::MapFailed)?;
     map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable)?;
