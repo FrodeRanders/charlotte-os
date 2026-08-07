@@ -717,7 +717,7 @@ fn main(ctx: Context) -> ! {
             }
             fail(0xe00e);
         }
-        let (scratch_map_status, scratch_vaddr) = memory_map_any(memory, false);
+        let (scratch_map_status, _scratch_vaddr) = memory_map_any(memory, false);
         if scratch_map_status != 0 {
             memory_close(memory);
             fail(0xe00f);

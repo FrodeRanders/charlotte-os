@@ -477,7 +477,6 @@ fn main(ctx: Context) -> ! {
                                     ffs.op_write(file_id, data)
                                 };
                                 memory_unmap(message.memory);
-        let (buffer_vaddr_7_map_status, buffer_vaddr_7) = memory_map_any(message.memory, false);
                                 if ok {
                                     0
                                 } else {
