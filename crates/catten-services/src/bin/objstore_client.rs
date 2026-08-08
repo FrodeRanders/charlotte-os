@@ -52,7 +52,7 @@ fn main(ctx: Context) -> ! {
     }
 
     let size_cap = memory_alloc(1);
-        let (size_vaddr_2_map_status, size_vaddr_2_vaddr) = memory_map_any(size_cap, true);
+    let (size_vaddr_2_map_status, size_vaddr_2_vaddr) = memory_map_any(size_cap, true);
     if size_cap == 0 || size_vaddr_2_map_status != 0 {
         fail(0xdea5);
     }
@@ -72,7 +72,7 @@ fn main(ctx: Context) -> ! {
     if data == 0 {
         fail(0xdea7);
     }
-        let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(data, true);
+    let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(data, true);
     let map_status = data_vaddr_2_map_status;
     if map_status != 0 {
         config::write::<u32>(4, map_status as u32);
@@ -114,7 +114,7 @@ fn main(ctx: Context) -> ! {
     if status != 0 || size != BYTES as u64 || returned_memory == 0 {
         fail(0xdeac);
     }
-        let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(returned_memory, false);
+    let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(returned_memory, false);
     if data_vaddr_map_status != 0 {
         fail(0xdead);
     }

@@ -33,7 +33,6 @@ use catten_syscall::{
     *,
 };
 
-const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;
 const METADATA_IO_BYTES: usize = 32 * 1024;
@@ -744,18 +743,23 @@ impl ObjStore {
             let count_bytes = (bytes - offset).min(chunk_bytes);
             let count = u32::try_from(count_bytes / self.dev.block_size as usize).ok()?;
             let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
-        let (chunk_vaddr_map_status, chunk_vaddr) = memory_map_any(memory, false);
-            if memory == 0
-                || !self.dev.read_blocks_keep(
-                    lba + (offset / self.dev.block_size as usize) as u64,
-                    count,
-                    memory,
-                )
-                || chunk_vaddr_map_status != 0
-            {
-                if memory != 0 {
-                    memory_close(memory);
-                }
+            if memory == 0 {
+                return None;
+            }
+            // The read is a borrow-write lend: the buffer must be unmapped in
+            // this address space while the server writes it via DMA. Map only
+            // after the lend completes.
+            if !self.dev.read_blocks_keep(
+                lba + (offset / self.dev.block_size as usize) as u64,
+                count,
+                memory,
+            ) {
+                memory_close(memory);
+                return None;
+            }
+            let (chunk_vaddr_map_status, chunk_vaddr) = memory_map_any(memory, false);
+            if chunk_vaddr_map_status != 0 {
+                memory_close(memory);
                 return None;
             }
             unsafe {
@@ -787,7 +791,7 @@ impl ObjStore {
             let count_bytes = (total - offset).min(chunk_bytes);
             let count = (count_bytes / self.dev.block_size as usize) as u32;
             let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
-        let (chunk_vaddr_2_map_status, chunk_vaddr_2) = memory_map_any(memory, true);
+            let (chunk_vaddr_2_map_status, chunk_vaddr_2) = memory_map_any(memory, true);
             if memory == 0 || chunk_vaddr_2_map_status != 0 {
                 if memory != 0 {
                     memory_close(memory);
@@ -836,7 +840,7 @@ impl ObjStore {
                     (size as usize - offset).min(extent_bytes - extent_offset).min(chunk_bytes);
                 let blocks = bytes.div_ceil(self.dev.block_size as usize) as u32;
                 let chunk = memory_alloc(bytes.div_ceil(PAGE_SIZE));
-        let (chunk_vaddr_3_map_status, chunk_vaddr_3) = memory_map_any(chunk, true);
+                let (chunk_vaddr_3_map_status, chunk_vaddr_3) = memory_map_any(chunk, true);
                 if chunk == 0 || chunk_vaddr_3_map_status != 0 {
                     if chunk != 0 {
                         memory_close(chunk);
@@ -866,7 +870,7 @@ impl ObjStore {
                     break;
                 }
                 if !write {
-        let (chunk_vaddr_4_map_status, chunk_vaddr_4) = memory_map_any(chunk, false);
+                    let (chunk_vaddr_4_map_status, chunk_vaddr_4) = memory_map_any(chunk, false);
                     if chunk_vaddr_4_map_status != 0 {
                         memory_close(chunk);
                         ok = false;
@@ -875,7 +879,7 @@ impl ObjStore {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             chunk_vaddr_4 as *const u8,
-                            (BUFFER_VADDR + offset) as *mut u8,
+                            (buffer_vaddr_2 + offset) as *mut u8,
                             bytes,
                         );
                     }
@@ -922,7 +926,7 @@ fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
         }
         return None;
     }
-        let (chunk_vaddr_5_map_status, chunk_vaddr_5) = memory_map_any(memory, false);
+    let (chunk_vaddr_5_map_status, chunk_vaddr_5) = memory_map_any(memory, false);
     if chunk_vaddr_5_map_status != 0 {
         memory_close(memory);
         return None;
@@ -1117,7 +1121,7 @@ fn bitmap_range_used(bitmap: &[u8], start: u32, blocks: u32) -> bool {
 }
 
 fn hash_memory(memory: u64, size: usize) -> Option<u64> {
-        let (buffer_vaddr_3_map_status, buffer_vaddr_3) = memory_map_any(memory, false);
+    let (buffer_vaddr_3_map_status, buffer_vaddr_3) = memory_map_any(memory, false);
     if buffer_vaddr_3_map_status != 0 {
         return None;
     }

@@ -131,7 +131,7 @@ impl TcpipState {
 
 /// Read a little-endian u16 payload (e.g. a port) from a moved memory object.
 fn read_port(memory: u64) -> u16 {
-        let (scratch_vaddr_6_map_status, scratch_vaddr_6_vaddr) = memory_map_any(memory, false);
+    let (scratch_vaddr_6_map_status, scratch_vaddr_6_vaddr) = memory_map_any(memory, false);
     if scratch_vaddr_6_map_status != 0 {
         return 0;
     }
@@ -264,13 +264,15 @@ fn main(ctx: Context) -> ! {
                     if cap == 0 {
                         continue;
                     }
-        let (scratch_vaddr_5_map_status, scratch_vaddr_5_vaddr) = memory_map_any(cap, true);
+                    let (scratch_vaddr_5_map_status, scratch_vaddr_5_vaddr) =
+                        memory_map_any(cap, true);
                     if scratch_vaddr_5_map_status != 0 {
                         memory_close(cap);
                         continue;
                     }
-                    let buf =
-                        unsafe { core::slice::from_raw_parts_mut(scratch_vaddr_5_vaddr as *mut u8, 4096) };
+                    let buf = unsafe {
+                        core::slice::from_raw_parts_mut(scratch_vaddr_5_vaddr as *mut u8, 4096)
+                    };
                     match sock.recv_slice(buf) {
                         Ok(0) => {
                             memory_unmap(cap);
@@ -349,13 +351,21 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-        let (_scratch_vaddr_4_map_status, scratch_vaddr_4_vaddr) = memory_map_any(msg.memory, false);
+                    let (_scratch_vaddr_4_map_status, scratch_vaddr_4_vaddr) =
+                        memory_map_any(msg.memory, false);
                     let a = unsafe { core::ptr::read_volatile(scratch_vaddr_4_vaddr as *const u8) };
-                    let b = unsafe { core::ptr::read_volatile((scratch_vaddr_4_vaddr + 1) as *const u8) };
-                    let c = unsafe { core::ptr::read_volatile((scratch_vaddr_4_vaddr + 2) as *const u8) };
-                    let d = unsafe { core::ptr::read_volatile((scratch_vaddr_4_vaddr + 3) as *const u8) };
-                    let port =
-                        unsafe { core::ptr::read_unaligned((scratch_vaddr_4_vaddr + 4) as *const u16) };
+                    let b = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 1) as *const u8)
+                    };
+                    let c = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 2) as *const u8)
+                    };
+                    let d = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 3) as *const u8)
+                    };
+                    let port = unsafe {
+                        core::ptr::read_unaligned((scratch_vaddr_4_vaddr + 4) as *const u16)
+                    };
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
                     let remote =
@@ -471,7 +481,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-        let (_scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) = memory_map_any(msg.memory, false);
+                    let (_scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) =
+                        memory_map_any(msg.memory, false);
                     let data = unsafe {
                         core::slice::from_raw_parts(scratch_vaddr_3_vaddr as *const u8, payload_len)
                     };
@@ -531,10 +542,14 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, -1);
                         continue;
                     }
-        let (scratch_vaddr_2_map_status, scratch_vaddr_2_vaddr) = memory_map_any(msg.memory, false);
+                    let (scratch_vaddr_2_map_status, scratch_vaddr_2_vaddr) =
+                        memory_map_any(msg.memory, false);
                     if scratch_vaddr_2_map_status == 0 {
                         let frame = unsafe {
-                            core::slice::from_raw_parts(scratch_vaddr_2_vaddr as *const u8, frame_len)
+                            core::slice::from_raw_parts(
+                                scratch_vaddr_2_vaddr as *const u8,
+                                frame_len,
+                            )
                         };
                         device.push_rx(frame.to_vec());
                         memory_unmap(msg.memory);
@@ -553,7 +568,7 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
                         continue;
                     }
-        let (scratch_vaddr_map_status, scratch_vaddr_vaddr) = memory_map_any(cap, true);
+                    let (scratch_vaddr_map_status, scratch_vaddr_vaddr) = memory_map_any(cap, true);
                     if scratch_vaddr_map_status != 0 {
                         memory_close(cap);
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);

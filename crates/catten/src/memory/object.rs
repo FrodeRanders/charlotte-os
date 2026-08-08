@@ -372,9 +372,13 @@ pub(crate) fn write_bytes(
 /// [`map_any`] assigns pages so services never hardcode scratch vaddrs.
 /// The base sits well above the ELF load and heap of any user address
 /// space; each AS has its own page table, so the same window base is valid
-/// in every AS.
+/// in every AS. 512 MiB gives the boot storm (every store-sourced service
+/// ELF is mapped several times: buffer, transfer chunk, copy-back, hash)
+/// comfortable headroom; exhaustion is not a practical concern because the
+/// window is virtual and pages are only committed while mapped.
 const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
-const SCRATCH_WINDOW_PAGES: usize = 4096;
+const SCRATCH_WINDOW_PAGES: usize = 512 * 1024;
+const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
 static SCRATCH_WINDOW_NEXT: [core::sync::atomic::AtomicUsize; 64] =
     [const { core::sync::atomic::AtomicUsize::new(0) }; 64];
 
@@ -386,9 +390,11 @@ pub(crate) fn reserve_scratch(
     asid: AddressSpaceId,
     pages: usize,
 ) -> Result<VAddr, MemoryObjectError> {
-    let slot = SCRATCH_WINDOW_NEXT[asid]
-        .fetch_add(pages * PAGE_SIZE, core::sync::atomic::Ordering::Relaxed);
-    if slot >= SCRATCH_WINDOW_PAGES {
+    let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
+    let slot = SCRATCH_WINDOW_NEXT[asid].fetch_add(bytes, core::sync::atomic::Ordering::Relaxed);
+    // The counter is a byte offset into the window; bound it against the
+    // byte size of the window, not its page count.
+    if slot.saturating_add(bytes) > SCRATCH_WINDOW_SIZE {
         return Err(MemoryObjectError::OutOfScratch);
     }
     Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
@@ -404,7 +410,14 @@ pub fn map_any(
     cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<VAddr, MemoryObjectError> {
-    let base = reserve_scratch(asid, 1)?;
+    let pages = {
+        let registry = MEMORY_OBJECTS.lock();
+        let cap_entry = registry.lookup(asid, cap)?;
+        let object =
+            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        object.frames.len()
+    };
+    let base = reserve_scratch(asid, pages)?;
     map(asid, cap, base, writable)?;
     Ok(base)
 }

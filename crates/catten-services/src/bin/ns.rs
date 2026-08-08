@@ -78,8 +78,6 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
 /// `catten_services::broker`).
 type Waitlist = catten_services::broker::KeyedWaitlist<(u64, u64)>;
 
-
-
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
     let len = bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
@@ -97,7 +95,8 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
         }
         return None;
     }
-        let (name_scratch_vaddr_0_map_status, name_scratch_vaddr_0) = memory_map_any(message.memory, false);
+    let (name_scratch_vaddr_0_map_status, name_scratch_vaddr_0) =
+        memory_map_any(message.memory, false);
     if unsafe { name_scratch_vaddr_0_map_status } != 0 {
         unsafe {
             memory_close(message.memory);
@@ -120,7 +119,8 @@ fn read_generation(message: &IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-        let (name_scratch_vaddr_1_map_status, name_scratch_vaddr_1) = memory_map_any(message.memory, false);
+    let (name_scratch_vaddr_1_map_status, name_scratch_vaddr_1) =
+        memory_map_any(message.memory, false);
     if unsafe { name_scratch_vaddr_1_map_status } != 0 {
         unsafe { memory_close(message.memory) };
         return None;
@@ -403,7 +403,7 @@ fn main(ctx: Context) -> ! {
                     }
                     continue;
                 }
-        let (status_scratch_map_status, status_scratch_vaddr) = memory_map_any(cap, true);
+                let (status_scratch_map_status, status_scratch_vaddr) = memory_map_any(cap, true);
                 if status_scratch_map_status != 0 {
                     memory_close(cap);
                     if message.reply != 0 {
@@ -418,7 +418,8 @@ fn main(ctx: Context) -> ! {
                         ns::STATUS_MAGIC,
                     );
                     core::ptr::write_volatile(
-                        (status_scratch_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4)
+                            as *mut u32,
                         registry.len() as u32,
                     );
                     core::ptr::write_volatile(

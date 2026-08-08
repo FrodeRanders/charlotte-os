@@ -189,7 +189,7 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     if cap == 0 {
         return false;
     }
-        let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
+    let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
     if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
@@ -326,7 +326,7 @@ fn process_frame(
         if !is_frag {
             // Single-frame message: deliver immediately.
             let cap = memory_alloc(1);
-        let (payload_scratch_3_map_status, payload_scratch_3_vaddr) = memory_map_any(cap, true);
+            let (payload_scratch_3_map_status, payload_scratch_3_vaddr) = memory_map_any(cap, true);
             if cap != 0 && payload_scratch_3_map_status == 0 {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
@@ -386,7 +386,8 @@ fn process_frame(
                 let total = message_bytes.len();
                 let pages = total.div_ceil(4096).max(1);
                 let cap = memory_alloc(pages);
-        let (payload_scratch_2_map_status, payload_scratch_2_vaddr) = memory_map_any(cap, true);
+                let (payload_scratch_2_map_status, payload_scratch_2_vaddr) =
+                    memory_map_any(cap, true);
                 if cap != 0 && payload_scratch_2_map_status == 0 {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
@@ -534,7 +535,8 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_BUSY);
                     continue;
                 }
-        let (payload_scratch_map_status, payload_scratch_vaddr) = memory_map_any(message.memory, false);
+                let (payload_scratch_map_status, payload_scratch_vaddr) =
+                    memory_map_any(message.memory, false);
                 if payload_scratch_map_status != 0 {
                     memory_close(message.memory);
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
@@ -628,10 +630,12 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
-        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
+                let (rx_scratch_map_status, rx_scratch_vaddr) =
+                    memory_map_any(message.memory, false);
                 if rx_scratch_map_status == 0 {
-                    let frame =
-                        unsafe { core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len) };
+                    let frame = unsafe {
+                        core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
+                    };
                     process_frame(
                         net_conn,
                         local_mac,

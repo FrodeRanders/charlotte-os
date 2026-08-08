@@ -303,7 +303,7 @@ fn reply_lookup(
     }
 
     let cap = memory_alloc(1);
-        let (list_scratch_9_map_status, list_scratch_9_vaddr) = memory_map_any(cap, true);
+    let (list_scratch_9_map_status, list_scratch_9_vaddr) = memory_map_any(cap, true);
     if cap != 0 && list_scratch_9_map_status == 0 {
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -388,7 +388,7 @@ fn query_disco_peers(disco_conn: u64) -> Vec<([u8; 6], Vec<u8>)> {
         return Vec::new();
     }
     let len = result as usize;
-        let (list_scratch_8_map_status, list_scratch_8_vaddr) = memory_map_any(memory, false);
+    let (list_scratch_8_map_status, list_scratch_8_vaddr) = memory_map_any(memory, false);
     if list_scratch_8_map_status != 0 {
         memory_close(memory);
         return Vec::new();
@@ -527,7 +527,7 @@ fn read_call_request(message: &catten_syscall::IpcMessage) -> (u32, i64) {
     if message.memory == 0 {
         return (0, 0);
     }
-        let (list_scratch_7_map_status, list_scratch_7_vaddr) = memory_map_any(message.memory, false);
+    let (list_scratch_7_map_status, list_scratch_7_vaddr) = memory_map_any(message.memory, false);
     if list_scratch_7_map_status != 0 {
         memory_close(message.memory);
         return (0, 0);
@@ -543,7 +543,7 @@ fn read_generation(message: &catten_syscall::IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-        let (list_scratch_6_map_status, list_scratch_6_vaddr) = memory_map_any(message.memory, false);
+    let (list_scratch_6_map_status, list_scratch_6_vaddr) = memory_map_any(message.memory, false);
     if list_scratch_6_map_status != 0 {
         memory_close(message.memory);
         return None;
@@ -564,7 +564,7 @@ fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64
         memory_close(message.memory);
         return None;
     }
-        let (list_scratch_5_map_status, list_scratch_5_vaddr) = memory_map_any(message.memory, false);
+    let (list_scratch_5_map_status, list_scratch_5_vaddr) = memory_map_any(message.memory, false);
     if list_scratch_5_map_status != 0 {
         memory_close(message.memory);
         return None;
@@ -573,7 +573,8 @@ fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64
     let node_key = unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 8) as *const u64) };
     let mut digest = [0u8; 32];
     for (index, byte) in digest.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 16 + index) as *const u8) };
+        *byte =
+            unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 16 + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -610,7 +611,7 @@ fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::
         memory_close(message.memory);
         return None;
     }
-        let (list_scratch_4_map_status, list_scratch_4_vaddr) = memory_map_any(message.memory, false);
+    let (list_scratch_4_map_status, list_scratch_4_vaddr) = memory_map_any(message.memory, false);
     if list_scratch_4_map_status != 0 {
         memory_close(message.memory);
         return None;
@@ -650,31 +651,29 @@ fn register_name(
         // leader acknowledges (see rregister replies below).
         match local_publication(ns_conn, message.connection, &name) {
             None => Some(dns::ERR_TOO_LARGE),
-            Some((connection, local_generation)) => {
-                match node.known_leader_id.clone() {
-                    Some(leader) if transport.has_peer(&leader) => {
-                        let request = catten_services::rregister::encode_request(node_name, &name);
-                        transport.send_message(
-                            &leader,
-                            catten_services::rregister::TAG_REQUEST,
-                            request,
-                        );
-                        pending_registers.push(PendingRegistration::RemoteRegister {
-                            reply: message.reply,
-                            name,
-                            connection,
-                            local_generation,
-                        });
-                        None
-                    }
-                    _ => {
-                        if connection != 0 {
-                            ipc_close(connection);
-                        }
-                        Some(dns::ERR_NOT_LEADER)
-                    }
+            Some((connection, local_generation)) => match node.known_leader_id.clone() {
+                Some(leader) if transport.has_peer(&leader) => {
+                    let request = catten_services::rregister::encode_request(node_name, &name);
+                    transport.send_message(
+                        &leader,
+                        catten_services::rregister::TAG_REQUEST,
+                        request,
+                    );
+                    pending_registers.push(PendingRegistration::RemoteRegister {
+                        reply: message.reply,
+                        name,
+                        connection,
+                        local_generation,
+                    });
+                    None
                 }
-            }
+                _ => {
+                    if connection != 0 {
+                        ipc_close(connection);
+                    }
+                    Some(dns::ERR_NOT_LEADER)
+                }
+            },
         }
     } else {
         // Leader: commit the registration with this node as the owner.
@@ -707,7 +706,7 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
         memory_close(message.memory);
         return None;
     }
-        let (list_scratch_3_map_status, list_scratch_3_vaddr) = memory_map_any(message.memory, false);
+    let (list_scratch_3_map_status, list_scratch_3_vaddr) = memory_map_any(message.memory, false);
     if list_scratch_3_map_status != 0 {
         memory_close(message.memory);
         return None;
@@ -730,10 +729,14 @@ fn reply_move_bytes(reply: u64, bytes: &[u8]) {
         return;
     }
     let cap = memory_alloc(1);
-        let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
+    let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
     if cap != 0 && list_scratch_2_map_status == 0 {
         unsafe {
-            core::ptr::copy_nonoverlapping(bytes.as_ptr(), list_scratch_2_vaddr as *mut u8, bytes.len());
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                list_scratch_2_vaddr as *mut u8,
+                bytes.len(),
+            );
         }
         memory_unmap(cap);
         ipc_reply_move(reply, cap, bytes.len() as i64);
@@ -759,7 +762,7 @@ fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
 
 fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64) -> u64 {
     let memory = memory_alloc(1);
-        let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(memory, true);
+    let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(memory, true);
     if memory == 0 || list_scratch_map_status != 0 {
         if memory != 0 {
             memory_close(memory);
@@ -1046,7 +1049,7 @@ fn main(ctx: Context) -> ! {
                 recv_pending = 0;
                 if memory != 0 {
                     let (source_mac, len) = unpack_address_and_len(result);
-        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(memory, false);
+                    let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(memory, false);
                     if rx_scratch_map_status == 0 {
                         let frame = unsafe {
                             core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, len as usize)
@@ -1652,8 +1655,7 @@ fn main(ctx: Context) -> ! {
                             match node.known_leader_id.clone() {
                                 Some(leader) if transport.has_peer(&leader) => {
                                     let request = catten_services::rregister::encode_request(
-                                        &node_name,
-                                        &name,
+                                        &node_name, &name,
                                     );
                                     transport.send_message(
                                         &leader,
@@ -1671,10 +1673,9 @@ fn main(ctx: Context) -> ! {
                                 _ => dns::ERR_NOT_LEADER,
                             }
                         } else {
-                            match node.submit_command(
-                                encode_register(&name, &node_name),
-                                node.millis(),
-                            ) {
+                            match node
+                                .submit_command(encode_register(&name, &node_name), node.millis())
+                            {
                                 Ok(index) => {
                                     pending_registers.push(PendingRegistration::Prepare {
                                         log_index: index,
@@ -1953,7 +1954,8 @@ fn main(ctx: Context) -> ! {
                         }
                         continue;
                     }
-        let (catalog_scratch_map_status, catalog_scratch_vaddr) = memory_map_any(cap, true);
+                    let (catalog_scratch_map_status, catalog_scratch_vaddr) =
+                        memory_map_any(cap, true);
                     if catalog_scratch_map_status != 0 {
                         memory_close(cap);
                         if message.reply != 0 {
@@ -1996,7 +1998,8 @@ fn main(ctx: Context) -> ! {
                             );
                             core::ptr::copy_nonoverlapping(
                                 entry.generation.to_le_bytes().as_ptr(),
-                                (catalog_scratch_vaddr + length + 2 + name_len + node_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 2 + name_len + node_len)
+                                    as *mut u8,
                                 8,
                             );
                         }

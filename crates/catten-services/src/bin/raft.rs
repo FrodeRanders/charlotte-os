@@ -15,12 +15,6 @@ use alloc::{
 
 use catten_graft::{
     charlotte::CharlotteTransport,
-    transport::{
-        AppendEntriesRpc,
-        InstallSnapshotRpc,
-        RaftTransport,
-        RpcCompletion,
-    },
     log_store::{
         InMemoryLogStore,
         InMemoryPersistentStateStore,
@@ -29,6 +23,12 @@ use catten_graft::{
     },
     membership::ClusterConfiguration,
     node::RaftNode,
+    transport::{
+        AppendEntriesRpc,
+        InstallSnapshotRpc,
+        RaftTransport,
+        RpcCompletion,
+    },
     types::{
         NodeState,
         Peer,
@@ -50,20 +50,20 @@ use catten_rt::{
     manifest_key,
 };
 use catten_services::{
+    disco,
     disk_raft::{
         DiskLogStore,
         DiskPersistentStateStore,
     },
-    disco,
     dns,
     frouter,
     net,
     ns,
     raft,
     relmsg_transport::{
+        RelmsgRaftTransport,
         TAG_JOIN_REPLY,
         TAG_JOIN_REQUEST,
-        RelmsgRaftTransport,
         decode_join_reply,
         decode_join_request,
         encode_join_reply,
@@ -71,14 +71,8 @@ use catten_services::{
     },
     sleep_ms,
 };
-use charlotte_protocol_disco::{
-    ROLE_LEADER,
-    parse_cluster_answer,
-};
-
 use catten_syscall::{
     IpcRights,
-    ipc_reply_poll_with_memory,
     cq_read,
     cq_wait_timeout,
     ipc_close,
@@ -88,6 +82,7 @@ use catten_syscall::{
     ipc_reply,
     ipc_reply_move,
     ipc_reply_poll,
+    ipc_reply_poll_with_memory,
     ipc_reply_wait,
     ipc_scalar_call,
     ipc_scalar_call_connection,
@@ -98,6 +93,10 @@ use catten_syscall::{
     memory_unmap,
     submit_detached_timer,
     thread_exit,
+};
+use charlotte_protocol_disco::{
+    ROLE_LEADER,
+    parse_cluster_answer,
 };
 
 const LOOP_TICK_MS: u64 = 25;
@@ -130,7 +129,7 @@ fn write_payload_to_mem(payload: &[u8]) -> Option<u64> {
     if cap == 0 {
         return None;
     }
-        let (scratch_vaddr_1_map_status, scratch_vaddr_1) = memory_map_any(cap, true);
+    let (scratch_vaddr_1_map_status, scratch_vaddr_1) = memory_map_any(cap, true);
     if scratch_vaddr_1_map_status != 0 {
         memory_close(cap);
         return None;
@@ -150,13 +149,14 @@ fn read_payload_from_mem(cap: u64, length: u64) -> Option<Vec<u8>> {
         }
         return None;
     }
-        let (scratch_vaddr_2_map_status, scratch_vaddr_2) = memory_map_any(cap, false);
+    let (scratch_vaddr_2_map_status, scratch_vaddr_2) = memory_map_any(cap, false);
     let map_status = scratch_vaddr_2_map_status;
     if map_status != 0 {
         memory_close(cap);
         return None;
     }
-    let value = unsafe { core::slice::from_raw_parts(scratch_vaddr_2 as *const u8, length).to_vec() };
+    let value =
+        unsafe { core::slice::from_raw_parts(scratch_vaddr_2 as *const u8, length).to_vec() };
     memory_unmap(cap);
     memory_close(cap);
     Some(value)
@@ -316,19 +316,31 @@ fn drive_inbound(
         catten_services::relmsg_transport::InboundRpc::VoteRequest(request) => {
             let response = node.handle_vote_request(request, millis);
             if let Ok(payload) = catten_graft::wire::encode_vote_response(&response) {
-                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_VOTE_RESPONSE, payload);
+                transport.send_response(
+                    source_mac,
+                    catten_services::relmsg_transport::TAG_VOTE_RESPONSE,
+                    payload,
+                );
             }
         }
         catten_services::relmsg_transport::InboundRpc::AppendEntries(request) => {
             let response = node.handle_append_entries(request, millis);
             if let Ok(payload) = catten_graft::wire::encode_append_response(&response) {
-                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_APPEND_RESPONSE, payload);
+                transport.send_response(
+                    source_mac,
+                    catten_services::relmsg_transport::TAG_APPEND_RESPONSE,
+                    payload,
+                );
             }
         }
         catten_services::relmsg_transport::InboundRpc::InstallSnapshot(request) => {
             let response = node.handle_install_snapshot(request, millis);
             if let Ok(payload) = catten_graft::wire::encode_snapshot_response(&response) {
-                transport.send_response(source_mac, catten_services::relmsg_transport::TAG_SNAPSHOT_RESPONSE, payload);
+                transport.send_response(
+                    source_mac,
+                    catten_services::relmsg_transport::TAG_SNAPSHOT_RESPONSE,
+                    payload,
+                );
             }
         }
     }
@@ -400,9 +412,7 @@ fn main(ctx: Context) -> ! {
             let mut identity_retries = 120u32;
             loop {
                 if let Some(identity) = catten_services::node_identity::NodeIdentity::load_or_create(
-                    ns_conn,
-                    cluster_id,
-                    None,
+                    ns_conn, cluster_id, None,
                 ) {
                     break identity.name_str().to_string();
                 }
@@ -628,9 +638,7 @@ fn main(ctx: Context) -> ! {
                         .find(|peer| &peer.id == peer_id)
                         .map(|peer| peer.service_name)
                 })
-                .unwrap_or_else(|| {
-                    catten_services::raft_name(peer_id.as_bytes())
-                });
+                .unwrap_or_else(|| catten_services::raft_name(peer_id.as_bytes()));
             peer_specs.push((peer_id.clone(), peer_name, 0));
         }
         for (peer_id, peer_name, pending) in &mut peer_specs {
@@ -720,7 +728,8 @@ fn main(ctx: Context) -> ! {
                 ipc_close(disco_query);
                 disco_query = 0;
                 if memory != 0 {
-        let (rx_scratch_2_map_status, rx_scratch_2_vaddr) = memory_map_any(memory, false);
+                    let (rx_scratch_2_map_status, rx_scratch_2_vaddr) =
+                        memory_map_any(memory, false);
                     if rx_scratch_2_map_status == 0 {
                         let bytes = unsafe {
                             core::slice::from_raw_parts(rx_scratch_2_vaddr as *const u8, 4096)
@@ -745,9 +754,8 @@ fn main(ctx: Context) -> ! {
                             // (the smaller id is the anchor and waits). The
                             // join request is a MAC-addressed frame — no local
                             // lookup of the peer exists or is needed.
-                            if let Some((_mac, _role, raft_id, _leader_id)) = peers
-                                .iter()
-                                .find(|(_, role, raft_id, _)| {
+                            if let Some((_mac, _role, raft_id, _leader_id)) =
+                                peers.iter().find(|(_, role, raft_id, _)| {
                                     *role == ROLE_LEADER
                                         && !raft_id.is_empty()
                                         && raft_id.as_slice() != node.me.id.as_bytes()
@@ -758,12 +766,10 @@ fn main(ctx: Context) -> ! {
                                 && node.state == NodeState::Leader
                                 && node.cluster_configuration.all_members().len() == 1
                             {
-                                let target =
-                                    core::str::from_utf8(raft_id).unwrap_or("");
-                                if let Some(payload) = encode_join_request(
-                                    node.me.id.as_bytes(),
-                                    name_u64,
-                                ) {
+                                let target = core::str::from_utf8(raft_id).unwrap_or("");
+                                if let Some(payload) =
+                                    encode_join_request(node.me.id.as_bytes(), name_u64)
+                                {
                                     mac_transport.send_message(target, TAG_JOIN_REQUEST, payload);
                                     join_request_pending = true;
                                     catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e);
@@ -844,12 +850,14 @@ fn main(ctx: Context) -> ! {
                 raft::OP_FRAME => {
                     let frame_len = message.arg0 as usize;
                     if message.memory != 0 {
-        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
-                        if rx_scratch_map_status == 0
-                            && (15..=4096).contains(&frame_len)
-                        {
+                        let (rx_scratch_map_status, rx_scratch_vaddr) =
+                            memory_map_any(message.memory, false);
+                        if rx_scratch_map_status == 0 && (15..=4096).contains(&frame_len) {
                             let frame = unsafe {
-                                core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
+                                core::slice::from_raw_parts(
+                                    rx_scratch_vaddr as *const u8,
+                                    frame_len,
+                                )
                             };
                             let mut source_mac = [0u8; 6];
                             source_mac.copy_from_slice(&frame[6..12]);
@@ -873,21 +881,21 @@ fn main(ctx: Context) -> ! {
                                     if let Some((joiner_id, service_name)) =
                                         decode_join_request(payload)
                                     {
-                                        let (accepted, detail) =
-                                            if node.state == NodeState::Leader {
-                                                let peer = Peer::voter(
-                                                    core::str::from_utf8(joiner_id)
-                                                        .unwrap_or("")
-                                                        .to_string(),
-                                                    service_name,
-                                                );
-                                                match node.submit_join(peer, node.millis()) {
-                                                    Ok(index) => (index, 0u64),
-                                                    Err(code) => (0, code.unsigned_abs()),
-                                                }
-                                            } else {
-                                                (0, 0xff)
-                                            };
+                                        let (accepted, detail) = if node.state == NodeState::Leader
+                                        {
+                                            let peer = Peer::voter(
+                                                core::str::from_utf8(joiner_id)
+                                                    .unwrap_or("")
+                                                    .to_string(),
+                                                service_name,
+                                            );
+                                            match node.submit_join(peer, node.millis()) {
+                                                Ok(index) => (index, 0u64),
+                                                Err(code) => (0, code.unsigned_abs()),
+                                            }
+                                        } else {
+                                            (0, 0xff)
+                                        };
                                         mac_transport.send_response(
                                             source_mac,
                                             TAG_JOIN_REPLY,
@@ -964,14 +972,12 @@ fn main(ctx: Context) -> ! {
 
                 raft::OP_ADD_SERVER => {
                     let spec: Option<(String, u64, bool)> =
-                        read_payload_from_mem(message.memory, message.arg0)
-                            .and_then(|payload| {
-                                let (id, service_name, learner) =
-                                    raft::decode_peer_spec(&payload)?;
-                                core::str::from_utf8(id)
-                                    .ok()
-                                    .map(|id| (id.to_string(), service_name, learner))
-                            });
+                        read_payload_from_mem(message.memory, message.arg0).and_then(|payload| {
+                            let (id, service_name, learner) = raft::decode_peer_spec(&payload)?;
+                            core::str::from_utf8(id)
+                                .ok()
+                                .map(|id| (id.to_string(), service_name, learner))
+                        });
                     match spec {
                         Some((id, service_name, learner)) => {
                             if id.is_empty() {
@@ -995,8 +1001,8 @@ fn main(ctx: Context) -> ! {
                 }
 
                 raft::OP_REMOVE_SERVER => {
-                    let id = read_payload_from_mem(message.memory, message.arg0)
-                        .and_then(|payload| {
+                    let id =
+                        read_payload_from_mem(message.memory, message.arg0).and_then(|payload| {
                             if payload.is_empty() {
                                 return None;
                             }
@@ -1021,9 +1027,7 @@ fn main(ctx: Context) -> ! {
                                 // Refuse to decommission the last member.
                                 ipc_reply(message.reply, raft::ERR_NOT_FOUND);
                             } else {
-                                match node
-                                    .submit_joint_configuration(members, node.millis())
-                                {
+                                match node.submit_joint_configuration(members, node.millis()) {
                                     Ok(index) => ipc_reply(message.reply, index as i64),
                                     Err(code) => ipc_reply(message.reply, code),
                                 };
@@ -1085,9 +1089,7 @@ fn main(ctx: Context) -> ! {
                 events.pending_fire = fire_event(events.dns_conn, &events.pending_name);
             } else {
                 for peer in node.cluster_configuration.all_members() {
-                    if peer.id != node.me.id
-                        && !events.fired_members.contains(&peer.id)
-                    {
+                    if peer.id != node.me.id && !events.fired_members.contains(&peer.id) {
                         events.pending_name =
                             alloc::format!("event:membership:{}", peer.id).into_bytes();
                         events.pending_fire = fire_event(events.dns_conn, &events.pending_name);
@@ -1106,9 +1108,9 @@ fn main(ctx: Context) -> ! {
                     if name == b"event:established" {
                         events.established_fired = true;
                     } else if let Some(id) = name.strip_prefix(b"event:membership:") {
-                        events.fired_members.push(
-                            core::str::from_utf8(id).unwrap_or("").to_string(),
-                        );
+                        events
+                            .fired_members
+                            .push(core::str::from_utf8(id).unwrap_or("").to_string());
                     }
                 }
                 // On failure (e.g. ERR_NOT_LEADER) the next iteration retries

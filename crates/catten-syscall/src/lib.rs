@@ -178,12 +178,14 @@ impl TryFrom<u16> for SyscallNumber {
             63 => Ok(Self::MemorySize),
             64 => Ok(Self::SpawnArtifact),
             65 => Ok(Self::RetireArtifact),
+            66 => Ok(Self::MemoryMapAny),
+            67 => Ok(Self::DeviceMmioMapAny),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::RetireArtifact as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::DeviceMmioMapAny as u16;
 
 // ---- observability wire format ---------------------------------------------
 
@@ -499,7 +501,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
 
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
+unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64, u64) {
     let ret: u64;
     let x1_out: u64;
     let x2_out: u64;
@@ -507,6 +509,8 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, _arg2: u64, _arg3: u64) -> (u64
         match imm as u16 {
             24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
             54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
+            66 => asm!("svc #66", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
+            67 => asm!("svc #67", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x2 emitter", imm),
         }
     }

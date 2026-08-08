@@ -136,7 +136,7 @@ fn add_route_if_missing(
 /// Peek the EtherType field (bytes 12..14, big-endian) of a frame held in a
 /// moved memory object, without consuming the object.
 fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
-        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(memory, false);
+    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(memory, false);
     if frame_len < ETHERNET_HEADER_MIN || scratch_2_map_status != 0 {
         return 0;
     }
@@ -229,7 +229,7 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                         continue;
                     }
-        let (scratch_map_status, scratch_vaddr) = memory_map_any(cap, true);
+                    let (scratch_map_status, scratch_vaddr) = memory_map_any(cap, true);
                     if scratch_map_status != 0 {
                         memory_close(cap);
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);

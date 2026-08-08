@@ -3,11 +3,11 @@
 //! A name service is both an immediate **catalog** and a waitable **event
 //! broker**:
 //!
-//! - **Catalog**: `name` resolves to a target with a committed generation,
-//!   or does not exist yet. Answers are immediate; a catalog never waits.
-//! - **Event broker**: waiters park on named conditions and are resolved
-//!   when the condition fires. The broker never polls and never assumes an
-//!   ordering: the *publishing* side owns the fulfillment.
+//! - **Catalog**: `name` resolves to a target with a committed generation, or does not exist yet.
+//!   Answers are immediate; a catalog never waits.
+//! - **Event broker**: waiters park on named conditions and are resolved when the condition fires.
+//!   The broker never polls and never assumes an ordering: the *publishing* side owns the
+//!   fulfillment.
 //!
 //! The local name service implements both roles against its registry
 //! (deferred lookups), and the replicated dns implements both against the
@@ -52,7 +52,10 @@ pub trait EventBroker {
     /// Resolve every parked waiter whose event has fired, returning the
     /// `(event, waiter)` pairs for the caller to answer. Runs in catalog
     /// order.
-    fn settle(&mut self, catalog: &dyn Catalog) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, Self::Waiter)>;
+    fn settle(
+        &mut self,
+        catalog: &dyn Catalog,
+    ) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, Self::Waiter)>;
 
     /// Take the waiters parked on `event`. Used by the firing side, which
     /// already knows which condition it just made true.
@@ -101,12 +104,8 @@ impl<W> EventBroker for KeyedWaitlist<W> {
 
     fn settle(&mut self, catalog: &dyn Catalog) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, W)> {
         let mut resolved = alloc::vec::Vec::new();
-        let fired: alloc::vec::Vec<alloc::vec::Vec<u8>> = self
-            .waiters
-            .keys()
-            .filter(|name| catalog.resolve(name).is_some())
-            .cloned()
-            .collect();
+        let fired: alloc::vec::Vec<alloc::vec::Vec<u8>> =
+            self.waiters.keys().filter(|name| catalog.resolve(name).is_some()).cloned().collect();
         for event in fired {
             if let Some(waiters) = self.waiters.remove(&event) {
                 for waiter in waiters {

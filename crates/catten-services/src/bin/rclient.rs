@@ -90,7 +90,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 13);
     let cap = memory_alloc(1);
-        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(cap, true);
+    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(cap, true);
     if cap == 0 || scratch_2_map_status != 0 {
         if cap != 0 {
             memory_close(cap);
@@ -128,7 +128,7 @@ fn main(ctx: Context) -> ! {
         }
         unsafe { thread_exit() };
     }
-        let (scratch_map_status, scratch_vaddr) = memory_map_any(received, false);
+    let (scratch_map_status, scratch_vaddr) = memory_map_any(received, false);
     if scratch_map_status != 0 {
         memory_close(received);
         unsafe { thread_exit() };

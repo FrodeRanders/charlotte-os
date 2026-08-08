@@ -18,7 +18,6 @@ use catten_services::{
 };
 use catten_syscall::*;
 
-
 fn main(ctx: Context) -> ! {
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -80,7 +79,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
 
-        let (write_vaddr_map_status, write_vaddr_vaddr) = memory_map_any(write_mem, true);
+    let (write_vaddr_map_status, write_vaddr_vaddr) = memory_map_any(write_mem, true);
     if write_vaddr_map_status != 0 {
         config::write::<u32>(0, 0xdea2);
         unsafe { thread_exit() };
@@ -120,7 +119,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
 
-        let (read_vaddr_map_status, read_vaddr_vaddr) = memory_map_any(read_mem, false);
+    let (read_vaddr_map_status, read_vaddr_vaddr) = memory_map_any(read_mem, false);
     if read_vaddr_map_status != 0 {
         config::write::<u32>(0, 0xdea6);
         unsafe { thread_exit() };

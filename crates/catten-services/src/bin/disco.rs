@@ -149,7 +149,10 @@ impl ClusterProbe {
             if status == 0 {
                 ipc_close(self.pending_lookup);
                 self.pending_lookup = 0;
-                catten_syscall::el0_log(0x4449_5343, 0x2222 | ((generation.min(0xff)) << 8) | ((conn != 0) as u64));
+                catten_syscall::el0_log(
+                    0x4449_5343,
+                    0x2222 | ((generation.min(0xff)) << 8) | ((conn != 0) as u64),
+                );
                 if generation >= 1 && conn != 0 {
                     self.status_conn = conn;
                     self.pending_status = ipc_scalar_call(conn, raft::OP_CLUSTER_STATUS, 0);
@@ -200,7 +203,8 @@ impl ClusterProbe {
         let mut changed = false;
         let (rstat_scratch_map_status, rstat_scratch_vaddr) = memory_map_any(memory, false);
         if rstat_scratch_map_status == 0 {
-            let bytes = unsafe { core::slice::from_raw_parts(rstat_scratch_vaddr as *const u8, 4096) };
+            let bytes =
+                unsafe { core::slice::from_raw_parts(rstat_scratch_vaddr as *const u8, 4096) };
             if let Some((state, _term, _commit, _members, leader_id, self_id)) =
                 raft::parse_cluster_status(bytes)
             {
@@ -288,7 +292,7 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
         return false;
     }
     config::write::<u32>(40, 2);
-        let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
+    let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
     if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
@@ -430,10 +434,8 @@ fn handle_frame(
         unsafe { DIAG_DECODED = DIAG_DECODED.wrapping_add(1) };
         if frame_cluster_id == *cluster_id && source_mac != local_mac {
             let payload = &frame[FRAME_HEADER_SIZE..];
-            if let Some((peer_id, service_name, cluster_block)) = parse_extended_payload(payload)
-            {
-                let (role, raft_id, leader_id) =
-                    cluster_block.unwrap_or((ROLE_UNKNOWN, &[], &[]));
+            if let Some((peer_id, service_name, cluster_block)) = parse_extended_payload(payload) {
+                let (role, raft_id, leader_id) = cluster_block.unwrap_or((ROLE_UNKNOWN, &[], &[]));
                 learn_peer(
                     peers,
                     source_mac,
@@ -558,14 +560,7 @@ fn main(ctx: Context) -> ! {
     // background probes are paced inside the loop so a blocked receive can
     // never starve them.
     for _ in 0..RAPID_PROBE_COUNT {
-        send_probe(
-            net_conn,
-            local_mac,
-            &cluster_id_raw,
-            &node_id,
-            own_service_name,
-            &cluster.info,
-        );
+        send_probe(net_conn, local_mac, &cluster_id_raw, &node_id, own_service_name, &cluster.info);
         sleep_ms(RAPID_PROBE_INTERVAL_MS);
     }
 
@@ -618,7 +613,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(message.reply, -1);
                         continue;
                     }
-        let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(message.memory, false);
+                    let (rx_scratch_map_status, rx_scratch_vaddr) =
+                        memory_map_any(message.memory, false);
                     if rx_scratch_map_status == 0 {
                         let frame = unsafe {
                             core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
@@ -664,7 +660,8 @@ fn main(ctx: Context) -> ! {
                         buf.extend_from_slice(&peer.node_id[..peer.node_id.len().min(255)]);
                     }
                     let cap = memory_alloc(1);
-        let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
+                    let (list_scratch_2_map_status, list_scratch_2_vaddr) =
+                        memory_map_any(cap, true);
                     if cap != 0 && list_scratch_2_map_status == 0 {
                         unsafe {
                             core::ptr::copy_nonoverlapping(
@@ -703,7 +700,8 @@ fn main(ctx: Context) -> ! {
                     );
                     if let Some(len) = len {
                         let cap = memory_alloc(1);
-        let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(cap, true);
+                        let (list_scratch_map_status, list_scratch_vaddr) =
+                            memory_map_any(cap, true);
                         if cap != 0 && list_scratch_map_status == 0 {
                             unsafe {
                                 core::ptr::copy_nonoverlapping(

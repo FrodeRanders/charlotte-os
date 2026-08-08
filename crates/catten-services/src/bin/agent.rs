@@ -91,7 +91,7 @@ fn read_cluster_key(dns_conn: u64) -> Option<[u8; 32]> {
         }
         return None;
     }
-        let (data_vaddr_3_map_status, data_vaddr_3_vaddr) = memory_map_any(memory, false);
+    let (data_vaddr_3_map_status, data_vaddr_3_vaddr) = memory_map_any(memory, false);
     if data_vaddr_3_map_status != 0 {
         memory_close(memory);
         return None;
@@ -179,14 +179,15 @@ fn fetch_and_verify(
         }
         return Err(());
     }
-        let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(returned_memory, false);
+    let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(returned_memory, false);
     if data_vaddr_2_map_status != 0 {
         memory_close(returned_memory);
         return Err(());
     }
     let mut artifact = alloc::vec::Vec::with_capacity(len);
     for index in 0..len {
-        artifact.push(unsafe { core::ptr::read_volatile((data_vaddr_2_vaddr + index) as *const u8) });
+        artifact
+            .push(unsafe { core::ptr::read_volatile((data_vaddr_2_vaddr + index) as *const u8) });
     }
     memory_unmap(returned_memory);
     // The artifact is the note-signed `greet` ELF: it must be exactly the
@@ -294,7 +295,7 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if memory == 0 {
         return None;
     }
-        let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(memory, false);
+    let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(memory, false);
     if data_vaddr_map_status != 0 {
         return None;
     }

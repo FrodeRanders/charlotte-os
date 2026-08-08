@@ -172,7 +172,7 @@ fn read_words(conn: u64, opcode: u32, arg0: u64, words: usize) -> Option<alloc::
         }
         return None;
     }
-        let (scratch_6_map_status, scratch_6_vaddr) = memory_map_any(memory, false);
+    let (scratch_6_map_status, scratch_6_vaddr) = memory_map_any(memory, false);
     if (len as usize) < words * 4 || scratch_6_map_status != 0 {
         memory_close(memory);
         return None;
@@ -216,8 +216,8 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
         return None;
     }
     let len = len as usize;
-        let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(memory, false);
-        if scratch_5_map_status != 0 {
+    let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(memory, false);
+    if scratch_5_map_status != 0 {
         memory_close(memory);
         return None;
     }
@@ -229,7 +229,11 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
     }
     let mut header = [0u64; 6];
     unsafe {
-        core::ptr::copy_nonoverlapping(scratch_5_vaddr as *const u64, header.as_mut_ptr(), header_words);
+        core::ptr::copy_nonoverlapping(
+            scratch_5_vaddr as *const u64,
+            header.as_mut_ptr(),
+            header_words,
+        );
     }
     let max_by_len = (len.saturating_sub(header_words * 8)) / (THREAD_STATISTICS_RECORD_U64S * 8);
     let count = (header[3] as usize).min(max_by_len);
@@ -297,7 +301,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             ipc_close(call);
             if status == 0 && memory != 0 {
                 let len = len as usize;
-        let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(memory, false);
+                let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(memory, false);
                 if scratch_4_map_status == 0 {
                     let _ = write!(s, "{{\"count\":{},\"entries\":{{", unsafe {
                         core::ptr::read_volatile(scratch_4_vaddr as *const u32)
@@ -306,9 +310,9 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                     let mut emitted = 0u32;
                     let count = unsafe { core::ptr::read_volatile(scratch_4_vaddr as *const u32) };
                     while emitted < count && offset + 2 < len.min(4096) {
-                        let name_len =
-                            unsafe { core::ptr::read_volatile((scratch_4_vaddr + offset) as *const u8) }
-                                as usize;
+                        let name_len = unsafe {
+                            core::ptr::read_volatile((scratch_4_vaddr + offset) as *const u8)
+                        } as usize;
                         let node_offset = offset + 1 + name_len;
                         if node_offset + 1 > len.min(4096) {
                             break;
@@ -326,7 +330,9 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                         s.push('"');
                         for i in 0..name_len {
                             let byte = unsafe {
-                                core::ptr::read_volatile((scratch_4_vaddr + offset + 1 + i) as *const u8)
+                                core::ptr::read_volatile(
+                                    (scratch_4_vaddr + offset + 1 + i) as *const u8,
+                                )
                             };
                             if byte == b'"' {
                                 s.push('\\');
@@ -431,7 +437,7 @@ fn render_ns(s: &mut String, ns_conn: u64) {
         return;
     }
     let len = len as usize;
-        let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
+    let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
     if scratch_3_map_status != 0 {
         memory_close(memory);
         s.push_str("\"ns\":null");

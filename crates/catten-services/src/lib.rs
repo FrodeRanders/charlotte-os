@@ -13,10 +13,10 @@ pub mod disk_raft;
 /// Persistent, cluster-scoped node identity (`{mnemonic}:{token}`).
 pub mod node_identity;
 
+pub mod broker;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
-pub mod broker;
 
 /// Raft peer transport over the reliable message layer (`relmsg`).
 pub mod relmsg_transport;
@@ -461,8 +461,7 @@ pub mod raft {
     ) -> Option<usize> {
         if leader_id.len() > 255
             || self_raft_id.len() > 255
-            || buf.len()
-                < CLUSTER_STATUS_HEADER_LEN + leader_id.len() + 1 + self_raft_id.len()
+            || buf.len() < CLUSTER_STATUS_HEADER_LEN + leader_id.len() + 1 + self_raft_id.len()
         {
             return None;
         }
@@ -501,7 +500,14 @@ pub mod raft {
         if payload.len() < pos + 1 + self_len {
             return None;
         }
-        Some((state, term, commit_index, member_count, leader_id, &payload[pos + 1..pos + 1 + self_len]))
+        Some((
+            state,
+            term,
+            commit_index,
+            member_count,
+            leader_id,
+            &payload[pos + 1..pos + 1 + self_len],
+        ))
     }
 
     /// Pack a peer spec for `OP_ADD_SERVER` into `buf`. Returns the written
@@ -533,8 +539,7 @@ pub mod raft {
             return None;
         }
         let id = &payload[1..1 + id_len];
-        let service_name =
-            u64::from_le_bytes(payload[1 + id_len..1 + id_len + 8].try_into().ok()?);
+        let service_name = u64::from_le_bytes(payload[1 + id_len..1 + id_len + 8].try_into().ok()?);
         let learner = payload[1 + id_len + 8] != 0;
         Some((id, service_name, learner))
     }

@@ -50,7 +50,10 @@ use catten_syscall::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const VADDR_BAR0: usize = 0x0000_0000_0040_0000;
+// The kernel-assigned base of the delegated virtio BAR, set once at map
+// time. The device-config/ISR/doorbell helpers must read it: the old fixed
+// 0x400000 vaddr was not the mapped base and dereferenced stale addresses.
+static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 // Keep transient mappings clear of the loader's per-shard CQ region at
 // 0x0080_0000 and the userspace stack arena at 0x0100_0000.
 const STAGE_OFFSET: usize = 0;
@@ -192,7 +195,7 @@ unsafe fn cfg_vq(bar0: usize, q: u16, ring_iova: u64, queue_size: u16) -> u16 {
 unsafe fn notify(queue: u16, notify_offset: u16) {
     unsafe {
         w32(
-            VADDR_BAR0
+            MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed)
                 + virtio::MODERN_NOTIFY
                 + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER,
             queue as u32,
@@ -250,13 +253,13 @@ unsafe fn drain_rx(
                         );
                     }
                     memory_unmap(cap);
-                queue.push_back(ReceivedFrame {
-                    cap,
-                    len: frame_len,
-                });
-            } else if cap != 0 {
-                memory_close(cap);
-            }
+                    queue.push_back(ReceivedFrame {
+                        cap,
+                        len: frame_len,
+                    });
+                } else if cap != 0 {
+                    memory_close(cap);
+                }
             }
         }
 
@@ -321,8 +324,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 2);
     let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
     if mmio_map_status != 0 {
+        catten_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
         unsafe { thread_exit() };
     }
+    MMIO_BASE.store(vaddr_bar0, core::sync::atomic::Ordering::Relaxed);
     config::write::<u32>(STAGE_OFFSET, 3);
     let bar0 = vaddr_bar0 + virtio::MODERN_COMMON;
 
@@ -362,7 +367,7 @@ fn main(ctx: Context) -> ! {
     }
 
     // Read MAC.
-    let dc = VADDR_BAR0 + virtio::MODERN_DEVICE;
+    let dc = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_DEVICE;
     for i in 0..6 {
         config::write::<u8>(4 + i, unsafe { r8(dc + virtio::NET_MAC + i) });
     }
@@ -376,12 +381,10 @@ fn main(ctx: Context) -> ! {
     if rx_qsz == 0 || tx_qsz == 0 || rx_qsz > MAX_QUEUE_SIZE || tx_qsz > MAX_QUEUE_SIZE {
         unsafe { thread_exit() };
     }
-    let (rx_cap, rx_ring_iova, _, rx_desc_vaddr) = unsafe {
-        alloc_dma(dma_domain, vring_pages(rx_qsz), DmaDirection::Bidirectional)
-    };
-    let (tx_cap, tx_ring_iova, _, tx_desc_vaddr) = unsafe {
-        alloc_dma(dma_domain, vring_pages(tx_qsz), DmaDirection::Bidirectional)
-    };
+    let (rx_cap, rx_ring_iova, _, rx_desc_vaddr) =
+        unsafe { alloc_dma(dma_domain, vring_pages(rx_qsz), DmaDirection::Bidirectional) };
+    let (tx_cap, tx_ring_iova, _, tx_desc_vaddr) =
+        unsafe { alloc_dma(dma_domain, vring_pages(tx_qsz), DmaDirection::Bidirectional) };
     let rx_buffer_pages = (rx_qsz as usize * BUFFER_SIZE).div_ceil(PAGE_SIZE);
     let tx_buffer_pages = (tx_qsz as usize * BUFFER_SIZE).div_ceil(PAGE_SIZE);
     let (rx_buf_cap, rx_buf_iova, _, rx_buf_vaddr) =
@@ -405,7 +408,10 @@ fn main(ctx: Context) -> ! {
                 ((rx_buf_iova + (i * BUFFER_SIZE) as u64) >> 32) as u32,
             );
             w32(rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_LENGTH, BUFFER_SIZE as u32);
-            w16(rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_FLAGS, virtio::VRING_DESC_F_WRITE);
+            w16(
+                rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_FLAGS,
+                virtio::VRING_DESC_F_WRITE,
+            );
             w16(rx_avail + virtio::AVAIL_RING + i * 2, i as u16);
         }
     }
@@ -482,7 +488,9 @@ fn main(ctx: Context) -> ! {
         // while descriptors are being published.
         let _ = cq_wait_timeout(1, 10, 0);
         let (_s, _c) = device_irq_ack(irq_cap);
-        let _ = unsafe { r8(VADDR_BAR0 + virtio::MODERN_ISR) };
+        let _ = unsafe {
+            r8(MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_ISR)
+        };
         unsafe {
             drain_tx(tx_qsz, tx_desc_vaddr, &mut tx_used_seen, &mut tx_in_use);
             drain_rx(
@@ -503,7 +511,8 @@ fn main(ctx: Context) -> ! {
         // has not yet recycled. When this reaches `rx_qsz` the available ring
         // is empty, so virtio-net has no RX buffer and queues incoming frames
         // (the trigger for the socket/stream read-poll disable).
-        let device_used_idx = unsafe { r16(rx_desc_vaddr + used_offset(rx_qsz) + virtio::USED_IDX) };
+        let device_used_idx =
+            unsafe { r16(rx_desc_vaddr + used_offset(rx_qsz) + virtio::USED_IDX) };
         let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
         config::write::<u16>(44, rx_unrecycled);
         config::write::<u16>(46, rx_qsz);
@@ -524,7 +533,8 @@ fn main(ctx: Context) -> ! {
             match m.opcode {
                 net::OP_STATUS => {
                     if m.reply != 0 {
-                        let d = VADDR_BAR0 + virtio::MODERN_DEVICE;
+                        let d = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed)
+                            + virtio::MODERN_DEVICE;
                         let mac = [
                             unsafe { r8(d + virtio::NET_MAC) } as u64,
                             unsafe { r8(d + virtio::NET_MAC + 1) } as u64,
