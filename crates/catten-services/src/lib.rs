@@ -764,6 +764,9 @@ pub mod disco {
     /// Cluster-location query: see `charlotte-protocol-disco`'s
     /// `OP_CLUSTER_STATUS` for the reply layout.
     pub const OP_CLUSTER_STATUS: u32 = 6;
+    /// `OP_CLUSTER_STATUS` arg0 flag: retain the call until the local Raft
+    /// identity and at least one remote Raft leader are known.
+    pub const CLUSTER_STATUS_WAIT_READY: u64 = 1;
     /// Internal ingress used by the frame demultiplexer (frouter): delivers
     /// one raw frame whose EtherType matched `DISCO_ETHERTYPE`. The call
     /// attaches a **moved** memory object holding the frame; the service

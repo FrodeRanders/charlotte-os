@@ -197,11 +197,39 @@ pub fn parse_extended_payload(payload: &[u8]) -> Option<(&[u8], u64, Option<Clus
     Some((node_id, service_name, None))
 }
 
+/// Return the exact packed `OP_CLUSTER_STATUS` size, or `None` when a count,
+/// identifier length, or total size is not representable by the wire format.
+pub fn cluster_answer_len(
+    self_raft_id: &[u8],
+    self_leader_id: &[u8],
+    peers: &[PeerClusterInfo<'_>],
+) -> Option<usize> {
+    if self_raft_id.len() > 255 || self_leader_id.len() > 255 || u32::try_from(peers.len()).is_err()
+    {
+        return None;
+    }
+    let mut len = 2usize
+        .checked_add(self_raft_id.len())?
+        .checked_add(1)?
+        .checked_add(self_leader_id.len())?
+        .checked_add(4)?;
+    for peer in peers {
+        if peer.raft_id.len() > 255 || peer.leader_id.len() > 255 {
+            return None;
+        }
+        len = len
+            .checked_add(9)?
+            .checked_add(peer.raft_id.len())?
+            .checked_add(peer.leader_id.len())?;
+    }
+    Some(len)
+}
+
 /// Build the packed `OP_CLUSTER_STATUS` reply into `buf`:
 /// `[0]` self role, `[1]` self raft-id length, raft id bytes, then
 /// self leader-id length + bytes, then u32 peer count, then per peer
 /// `{ mac[6], role:1, raft_id_len:1, raft_id }`. Returns the written
-/// length, or `None` if the buffer is too small.
+/// length, or `None` if the contents are invalid or the buffer is too small.
 pub fn build_cluster_answer(
     buf: &mut [u8],
     self_role: u8,
@@ -209,7 +237,8 @@ pub fn build_cluster_answer(
     self_leader_id: &[u8],
     peers: &[PeerClusterInfo],
 ) -> Option<usize> {
-    if self_raft_id.len() > 255 || self_leader_id.len() > 255 {
+    let encoded_len = cluster_answer_len(self_raft_id, self_leader_id, peers)?;
+    if buf.len() < encoded_len {
         return None;
     }
     let mut pos = 0usize;
@@ -223,18 +252,10 @@ pub fn build_cluster_answer(
     pos += 1;
     buf[pos..pos + self_leader_id.len()].copy_from_slice(self_leader_id);
     pos += self_leader_id.len();
-    if buf.len() < pos + 4 {
-        return None;
-    }
-    buf[pos..pos + 4].copy_from_slice(&(peers.len() as u32).to_le_bytes());
+    let peer_count = u32::try_from(peers.len()).ok()?;
+    buf[pos..pos + 4].copy_from_slice(&peer_count.to_le_bytes());
     pos += 4;
     for peer in peers {
-        if peer.raft_id.len() > 255
-            || peer.leader_id.len() > 255
-            || buf.len() < pos + 9 + peer.raft_id.len() + peer.leader_id.len()
-        {
-            return None;
-        }
         buf[pos..pos + 6].copy_from_slice(&peer.mac);
         pos += 6;
         buf[pos] = peer.role;
@@ -248,7 +269,8 @@ pub fn build_cluster_answer(
         buf[pos..pos + peer.leader_id.len()].copy_from_slice(peer.leader_id);
         pos += peer.leader_id.len();
     }
-    Some(pos)
+    debug_assert_eq!(pos, encoded_len);
+    Some(encoded_len)
 }
 
 /// A discovered peer's cluster posture, as carried in a cluster answer.
@@ -344,4 +366,40 @@ pub fn parse_peer_list(bytes: &[u8]) -> alloc::vec::Vec<([u8; 6], alloc::vec::Ve
         peers.push((mac, node_id));
     }
     peers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PeerClusterInfo,
+        ROLE_LEADER,
+        build_cluster_answer,
+        parse_cluster_answer,
+    };
+
+    #[test]
+    fn cluster_answer_rejects_short_buffers_without_panicking() {
+        for len in 0..10 {
+            let mut buf = alloc::vec![0u8; len];
+            assert_eq!(build_cluster_answer(&mut buf, ROLE_LEADER, b"n1", b"n1", &[]), None);
+        }
+    }
+
+    #[test]
+    fn cluster_answer_round_trips() {
+        let peers = [PeerClusterInfo {
+            mac: [1, 2, 3, 4, 5, 6],
+            role: ROLE_LEADER,
+            raft_id: b"n2",
+            leader_id: b"n2",
+        }];
+        let mut buf = [0u8; 64];
+        let len = build_cluster_answer(&mut buf, ROLE_LEADER, b"n1", b"n1", &peers).unwrap();
+        let parsed = parse_cluster_answer(&buf[..len]).unwrap();
+        assert_eq!(parsed.0, ROLE_LEADER);
+        assert_eq!(parsed.1, b"n1");
+        assert_eq!(parsed.2, b"n1");
+        assert_eq!(parsed.3[0].0, peers[0].mac);
+        assert_eq!(parsed.3[0].2, b"n2");
+    }
 }

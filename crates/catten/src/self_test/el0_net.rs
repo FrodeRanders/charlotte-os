@@ -116,11 +116,36 @@ extern "C" fn verify_el0_net() {
             ns,
             ConnectionRights::CALL,
         );
-        logln!("[frouter] frame demux spawned (asid={})", frouter.asid);
+        logln!("[frouter] frame demux spawned (asid={}, tid={})", frouter.asid, frouter.tid);
         let base: *mut u8 = frouter.status_frame.into();
-        unsafe { crate::self_test::FROUTER_STATUS_FRAME = base as usize };
+        crate::self_test::FROUTER_STATUS_FRAME
+            .store(base as usize, core::sync::atomic::Ordering::Release);
         frouter.status_frame
     };
+    #[cfg(any(
+        feature = "relmsg_net_test",
+        feature = "disco_net_test",
+        feature = "tcpip_net_test",
+        feature = "http_net_test"
+    ))]
+    {
+        let frouter_status: *const u32 = {
+            let base: *mut u8 = frouter_config.into();
+            base.cast_const().cast()
+        };
+        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+        let mut last_stage = u32::MAX;
+        while unsafe { core::ptr::read_volatile(frouter_status) } < 4 {
+            let stage = unsafe { core::ptr::read_volatile(frouter_status) };
+            if stage != last_stage {
+                logln!("[frouter] waiting for serving stage (current={stage})");
+                last_stage = stage;
+            }
+            deadline.assert_pending("EL0 frame router startup");
+            yield_lp();
+        }
+        logln!("[frouter] reached serving stage.");
+    }
     #[cfg(all(
         any(feature = "disco_net_test", feature = "tcpip_net_test", feature = "http_net_test"),
         not(feature = "relmsg_net_test")

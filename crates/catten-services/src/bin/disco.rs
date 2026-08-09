@@ -26,6 +26,10 @@ use alloc::{
     collections::BTreeMap,
     vec::Vec,
 };
+use core::sync::atomic::{
+    AtomicU32,
+    Ordering,
+};
 
 use catten_rt::{
     Context,
@@ -43,6 +47,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_read,
     cq_wait_timeout,
     ipc_close,
     ipc_endpoint_bind_cq,
@@ -60,6 +65,7 @@ use catten_syscall::{
     memory_close,
     memory_map_any,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 use charlotte_protocol_disco::{
@@ -77,17 +83,18 @@ use charlotte_protocol_disco::{
     build_cluster_answer,
     build_disco_frame,
     build_extended_payload,
+    cluster_answer_len,
     parse_disco_frame,
     parse_extended_payload,
 };
 use charlotte_protocol_net::decode_status;
 
-const REPLY_SPINS: u64 = 50_000_000;
-
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;
 const BACKGROUND_PROBE_INTERVAL_MS: u64 = 15_000;
 const RAFT_STATUS_REFRESH_MS: u64 = 2_000;
+const CLOCK_TICK_MS: u64 = 100;
+const CLOCK_TIMER_COOKIE: u64 = 0x4449_5343_5449_434b;
 
 /// This node's cluster posture as learned from the local raft service: the
 /// role maps directly to the discovery payload's `ROLE_*` values.
@@ -137,7 +144,6 @@ impl ClusterProbe {
         self.next_refresh_ms = tick_ms + RAFT_STATUS_REFRESH_MS;
         let raft_name = catten_services::raft_name(identity);
         self.pending_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, raft_name);
-        catten_syscall::el0_log(0x4449_5343, raft_name | 0x0000_0000_0100_0000);
     }
 
     /// Advance the refresh state machine. Returns true when the advertised
@@ -149,13 +155,14 @@ impl ClusterProbe {
             if status == 0 {
                 ipc_close(self.pending_lookup);
                 self.pending_lookup = 0;
-                catten_syscall::el0_log(
-                    0x4449_5343,
-                    0x2222 | ((generation.min(0xff)) << 8) | ((conn != 0) as u64),
-                );
                 if generation >= 1 && conn != 0 {
                     self.status_conn = conn;
                     self.pending_status = ipc_scalar_call(conn, raft::OP_CLUSTER_STATUS, 0);
+                    if self.pending_status == 0 {
+                        ipc_close(self.status_conn);
+                        self.status_conn = 0;
+                        changed |= self.set_not_in_cluster();
+                    }
                 } else {
                     if conn != 0 {
                         ipc_close(conn);
@@ -169,7 +176,7 @@ impl ClusterProbe {
             }
         }
         if self.pending_status != 0 {
-            let (status, _result, _conn, memory) = ipc_reply_poll_with_memory(self.pending_status);
+            let (status, _result, conn, memory) = ipc_reply_poll_with_memory(self.pending_status);
             if status == 0 {
                 ipc_close(self.pending_status);
                 self.pending_status = 0;
@@ -177,7 +184,9 @@ impl ClusterProbe {
                     ipc_close(self.status_conn);
                     self.status_conn = 0;
                 }
-                catten_syscall::el0_log(0x4449_5343, 0x3333 | ((memory != 0) as u64));
+                if conn != 0 {
+                    ipc_close(conn);
+                }
                 if memory != 0 {
                     changed |= self.consume_status(memory);
                 } else {
@@ -189,6 +198,9 @@ impl ClusterProbe {
                 if self.status_conn != 0 {
                     ipc_close(self.status_conn);
                     self.status_conn = 0;
+                }
+                if conn != 0 {
+                    ipc_close(conn);
                 }
                 if memory != 0 {
                     memory_close(memory);
@@ -224,12 +236,6 @@ impl ClusterProbe {
                         leader_id: leader_id.to_vec(),
                     };
                     changed = true;
-                    catten_syscall::el0_log(
-                        0x4449_5343,
-                        (role as u64)
-                            | ((self_id.len().min(0xff) as u64) << 8)
-                            | ((leader_id.len().min(0xff) as u64) << 16),
-                    );
                 }
             } else {
                 changed |= self.set_not_in_cluster();
@@ -262,24 +268,74 @@ struct DiscoveredPeer {
     leader_id: Vec<u8>,
 }
 
-static mut DIAG_RX_RAW: u32 = 0;
-static mut DIAG_SENT_OK: u32 = 0;
-static mut DIAG_SENT_FAIL: u32 = 0;
-static mut DIAG_DECODED: u32 = 0;
-static mut DIAG_CALLED: u32 = 0;
+static DIAG_RX_RAW: AtomicU32 = AtomicU32::new(0);
+static DIAG_SENT_OK: AtomicU32 = AtomicU32::new(0);
+static DIAG_SENT_FAIL: AtomicU32 = AtomicU32::new(0);
+static DIAG_DECODED: AtomicU32 = AtomicU32::new(0);
+static DIAG_CALLED: AtomicU32 = AtomicU32::new(0);
 
 fn publish_diag() {
-    unsafe {
-        config::write::<u32>(12, DIAG_RX_RAW);
-        config::write::<u32>(16, DIAG_SENT_OK);
-        config::write::<u32>(20, DIAG_SENT_FAIL);
-        config::write::<u32>(24, DIAG_DECODED);
-        config::write::<u32>(28, DIAG_CALLED);
-    }
+    config::write::<u32>(12, DIAG_RX_RAW.load(Ordering::Relaxed));
+    config::write::<u32>(16, DIAG_SENT_OK.load(Ordering::Relaxed));
+    config::write::<u32>(20, DIAG_SENT_FAIL.load(Ordering::Relaxed));
+    config::write::<u32>(24, DIAG_DECODED.load(Ordering::Relaxed));
+    config::write::<u32>(28, DIAG_CALLED.load(Ordering::Relaxed));
 }
 
 fn heartbeat(beat: u32) {
     config::write::<u32>(36, beat);
+}
+
+fn cluster_posture_ready(cluster: &ClusterInfo, peers: &BTreeMap<[u8; 6], DiscoveredPeer>) -> bool {
+    !cluster.raft_id.is_empty()
+        && peers.values().any(|peer| !peer.raft_id.is_empty() && peer.raft_id != cluster.raft_id)
+}
+
+fn reply_cluster_status(
+    reply: u64,
+    cluster: &ClusterInfo,
+    peers: &BTreeMap<[u8; 6], DiscoveredPeer>,
+) {
+    let peers_vec: Vec<PeerClusterInfo<'_>> = peers
+        .iter()
+        .map(|(mac, peer)| PeerClusterInfo {
+            mac: *mac,
+            role: peer.role,
+            raft_id: &peer.raft_id,
+            leader_id: &peer.leader_id,
+        })
+        .collect();
+    let Some(len) = cluster_answer_len(&cluster.raft_id, &cluster.leader_id, &peers_vec) else {
+        ipc_reply(reply, -1);
+        return;
+    };
+    let mut buf = alloc::vec![0u8; len];
+    let encoded = build_cluster_answer(
+        &mut buf,
+        cluster.role,
+        &cluster.raft_id,
+        &cluster.leader_id,
+        &peers_vec,
+    );
+    let pages = len.div_ceil(4096).max(1);
+    let cap = memory_alloc(pages);
+    if cap == 0 {
+        ipc_reply(reply, -1);
+        return;
+    }
+    let (map_status, vaddr) = memory_map_any(cap, true);
+    if encoded == Some(len) && map_status == 0 {
+        unsafe {
+            core::ptr::copy_nonoverlapping(buf.as_ptr(), vaddr as *mut u8, len);
+        }
+        memory_unmap(cap);
+        if ipc_reply_move(reply, cap, len as i64) != 0 {
+            memory_close(cap);
+        }
+    } else {
+        memory_close(cap);
+        ipc_reply(reply, -1);
+    }
 }
 
 fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
@@ -305,19 +361,22 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
     if call == 0 {
         memory_close(cap);
-        unsafe { DIAG_SENT_FAIL = DIAG_SENT_FAIL.wrapping_add(1) };
+        DIAG_SENT_FAIL.fetch_add(1, Ordering::Relaxed);
         config::write::<u32>(40, 0xff);
         return false;
     }
-    unsafe { DIAG_CALLED = DIAG_CALLED.wrapping_add(1) };
+    DIAG_CALLED.fetch_add(1, Ordering::Relaxed);
     config::write::<u32>(40, 4);
-    let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
+    let (result, returned_cap) = unsafe { wait_reply(call, 0) };
+    if returned_cap != 0 {
+        ipc_close(returned_cap);
+    }
     config::write::<u32>(40, 5);
     if result == 0 {
-        unsafe { DIAG_SENT_OK = DIAG_SENT_OK.wrapping_add(1) };
+        DIAG_SENT_OK.fetch_add(1, Ordering::Relaxed);
         true
     } else {
-        unsafe { DIAG_SENT_FAIL = DIAG_SENT_FAIL.wrapping_add(1) };
+        DIAG_SENT_FAIL.fetch_add(1, Ordering::Relaxed);
         false
     }
 }
@@ -431,7 +490,7 @@ fn handle_frame(
     frame: &[u8],
 ) {
     if let Some((_version, flags, source_mac, frame_cluster_id)) = parse_disco_frame(frame) {
-        unsafe { DIAG_DECODED = DIAG_DECODED.wrapping_add(1) };
+        DIAG_DECODED.fetch_add(1, Ordering::Relaxed);
         if frame_cluster_id == *cluster_id && source_mac != local_mac {
             let payload = &frame[FRAME_HEADER_SIZE..];
             if let Some((peer_id, service_name, cluster_block)) = parse_extended_payload(payload) {
@@ -475,8 +534,11 @@ fn main(ctx: Context) -> ! {
     if lookup == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    let (generation, net_conn) = unsafe { wait_reply(lookup, 0) };
     if generation < 1 || net_conn == 0 {
+        if net_conn != 0 {
+            ipc_close(net_conn);
+        }
         unsafe { thread_exit() };
     }
 
@@ -484,7 +546,10 @@ fn main(ctx: Context) -> ! {
     if status_call == 0 {
         unsafe { thread_exit() };
     }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    let (status, status_cap) = unsafe { wait_reply(status_call, 0) };
+    if status_cap != 0 {
+        ipc_close(status_cap);
+    }
     let (link, local_mac) = decode_status(status);
     if link == 0 {
         unsafe { thread_exit() };
@@ -536,7 +601,10 @@ fn main(ctx: Context) -> ! {
     if registration == 0 {
         unsafe { thread_exit() };
     }
-    let (reg_gen, _) = unsafe { wait_reply(registration, REPLY_SPINS) };
+    let (reg_gen, registration_cap) = unsafe { wait_reply(registration, 0) };
+    if registration_cap != 0 {
+        ipc_close(registration_cap);
+    }
     if reg_gen < 1 {
         unsafe { thread_exit() };
     }
@@ -546,6 +614,7 @@ fn main(ctx: Context) -> ! {
     let own_service_name = disco::NAME;
     let mut peers: BTreeMap<[u8; 6], DiscoveredPeer> = BTreeMap::new();
     let mut cluster = ClusterProbe::new();
+    let mut cluster_waiters: Vec<u64> = Vec::new();
 
     // Wait until this node has finished booting before broadcasting, so the
     // NIC and the two-node socket transport have settled. Probes sent during
@@ -567,6 +636,8 @@ fn main(ctx: Context) -> ! {
     let mut next_background_probe_ms: u64 =
         RAPID_PROBE_COUNT as u64 * RAPID_PROBE_INTERVAL_MS + BACKGROUND_PROBE_INTERVAL_MS;
     let mut tick_ms: u64 = RAPID_PROBE_COUNT as u64 * RAPID_PROBE_INTERVAL_MS;
+    let cq = ctx.completion_queue_layout();
+    let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
     let mut heart: u32 = 0;
 
     loop {
@@ -590,21 +661,12 @@ fn main(ctx: Context) -> ! {
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
-            if message.status == ipc_status::OK && message.reply != 0 {
-                let served = unsafe { DIAG_RX_RAW };
-                if served < 8 {
-                    catten_syscall::el0_log(
-                        0x4449_5343,
-                        0x4000 | (message.opcode as u64) | ((served as u64) << 24),
-                    );
-                }
-            }
             if !message.is_ok() || message.reply == 0 {
                 continue;
             }
             match message.opcode {
                 disco::OP_FRAME => {
-                    unsafe { DIAG_RX_RAW = DIAG_RX_RAW.wrapping_add(1) };
+                    DIAG_RX_RAW.fetch_add(1, Ordering::Relaxed);
                     let frame_len = message.arg0 as usize;
                     if message.memory == 0 || !(FRAME_HEADER_SIZE..=4096).contains(&frame_len) {
                         if message.memory != 0 {
@@ -659,10 +721,15 @@ fn main(ctx: Context) -> ! {
                         buf.push(peer.node_id.len().min(255) as u8);
                         buf.extend_from_slice(&peer.node_id[..peer.node_id.len().min(255)]);
                     }
-                    let cap = memory_alloc(1);
+                    let pages = buf.len().div_ceil(4096).max(1);
+                    let cap = memory_alloc(pages);
+                    if cap == 0 {
+                        ipc_reply(message.reply, -1);
+                        continue;
+                    }
                     let (list_scratch_2_map_status, list_scratch_2_vaddr) =
                         memory_map_any(cap, true);
-                    if cap != 0 && list_scratch_2_map_status == 0 {
+                    if list_scratch_2_map_status == 0 {
                         unsafe {
                             core::ptr::copy_nonoverlapping(
                                 buf.as_ptr(),
@@ -673,53 +740,21 @@ fn main(ctx: Context) -> ! {
                         memory_unmap(cap);
                         ipc_reply_move(message.reply, cap, buf.len() as i64);
                     } else {
-                        if cap != 0 {
-                            memory_close(cap);
-                        }
+                        memory_close(cap);
                         ipc_reply(message.reply, -1);
                     }
                 }
                 disco::OP_CLUSTER_STATUS => {
-                    catten_syscall::el0_log(0x4449_5343, 0x7777);
-                    let mut buf = [0u8; 512];
-                    let peers_vec: Vec<PeerClusterInfo<'_>> = peers
-                        .iter()
-                        .map(|(mac, peer)| PeerClusterInfo {
-                            mac: *mac,
-                            role: peer.role,
-                            raft_id: &peer.raft_id,
-                            leader_id: &peer.leader_id,
-                        })
-                        .collect();
-                    let len = build_cluster_answer(
-                        &mut buf,
-                        cluster.info.role,
-                        &cluster.info.raft_id,
-                        &cluster.info.leader_id,
-                        &peers_vec,
-                    );
-                    if let Some(len) = len {
-                        let cap = memory_alloc(1);
-                        let (list_scratch_map_status, list_scratch_vaddr) =
-                            memory_map_any(cap, true);
-                        if cap != 0 && list_scratch_map_status == 0 {
-                            unsafe {
-                                core::ptr::copy_nonoverlapping(
-                                    buf.as_ptr(),
-                                    list_scratch_vaddr as *mut u8,
-                                    len,
-                                );
-                            }
-                            memory_unmap(cap);
-                            ipc_reply_move(message.reply, cap, len as i64);
+                    if message.arg0 == disco::CLUSTER_STATUS_WAIT_READY
+                        && !cluster_posture_ready(&cluster.info, &peers)
+                    {
+                        if cluster_waiters.len() < 8 {
+                            cluster_waiters.push(message.reply);
                         } else {
-                            if cap != 0 {
-                                memory_close(cap);
-                            }
                             ipc_reply(message.reply, -1);
                         }
                     } else {
-                        ipc_reply(message.reply, -1);
+                        reply_cluster_status(message.reply, &cluster.info, &peers);
                     }
                 }
                 disco::OP_STATUS => {
@@ -734,6 +769,12 @@ fn main(ctx: Context) -> ! {
                 _ => {
                     ipc_reply(message.reply, -1);
                 }
+            }
+        }
+
+        if !cluster_waiters.is_empty() && cluster_posture_ready(&cluster.info, &peers) {
+            for reply in core::mem::take(&mut cluster_waiters) {
+                reply_cluster_status(reply, &cluster.info, &peers);
             }
         }
 
@@ -753,14 +794,27 @@ fn main(ctx: Context) -> ! {
         // Evict peers whose TTL expired.
         evict_expired(&mut peers, tick_ms);
 
-        // Wait for an endpoint message (a discovery frame from the frouter, a
-        // control call) or the next background-probe deadline.
-        let sleep_ms = next_background_probe_ms.saturating_sub(tick_ms).max(1);
-        let (_, timed_out) = cq_wait_timeout(1, sleep_ms, 0);
-        if timed_out != 0 {
-            tick_ms = next_background_probe_ms;
-        } else {
-            tick_ms = tick_ms.saturating_add(1);
+        // A real timer completion advances protocol time independently of
+        // endpoint traffic. Counting CQ wakes as milliseconds made TTL and
+        // refresh cadence depend on packet rate.
+        let (_, timed_out) = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
+        let mut clock_fired = false;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == CLOCK_TIMER_COOKIE {
+                clock_fired = true;
+                clock_armed = false;
+            }
+        }
+        // The bounded CQ wait is an independent watchdog: successfully
+        // submitting a detached timer does not guarantee that its completion
+        // will be delivered promptly. A delayed/lost cookie must not freeze
+        // peer TTLs and Raft-posture refreshes.
+        if clock_fired || timed_out != 0 {
+            tick_ms = tick_ms.saturating_add(CLOCK_TICK_MS);
+            if !clock_armed {
+                clock_armed =
+                    submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
+            }
         }
         publish_diag();
     }

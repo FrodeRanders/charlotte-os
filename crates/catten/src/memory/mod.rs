@@ -101,7 +101,7 @@ pub enum AddressSpaceRegistrationError {
 /// Serializes allocation and teardown across resource cleanup. This prevents
 /// an ASID slot from being reused while cleanup keyed by its numeric id is in
 /// progress.
-static ADDRESS_SPACE_LIFECYCLE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+pub(crate) static ADDRESS_SPACE_LIFECYCLE: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[cfg(target_arch = "aarch64")]
 fn prepare_user_address_space(

@@ -3,8 +3,9 @@
 //! Each LP has a [`RoundRobin`] instance holding a FIFO `run_queue` of
 //! [`ThreadHandle`]s, a `current_handle`, and a dedicated per-LP idle thread.
 //! The idle thread is never enqueued; `next()` returns it only when the
-//! run queue is empty.  When `is_idle` is true the quantum timer is not
-//! re-armed — an idle LP is woken by an admission IPI or deferred wake.
+//! run queue is empty. When `is_idle` is true, the short quantum timer is
+//! replaced by a longer fallback timer; an admission IPI or deferred wake is
+//! still the normal fast wake path.
 //!
 //! How often an idle LP wakes to check for admitted work (ms). The
 //! scheduler-IPI SGI is the fast wake path; this timer is the fallback so an

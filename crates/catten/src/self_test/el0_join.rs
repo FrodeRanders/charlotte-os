@@ -43,17 +43,12 @@ pub mod inner {
 
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
+    const NETWORK_KEY: u64 = charlotte_launch::manifest_key(b"network");
 
     const NS_OP_LOOKUP: u32 = 2;
     const DISCO_NAME: u64 = u64::from_le_bytes(*b"disco\0\0\0");
     const DISCO_OP_CLUSTER_STATUS: u32 = 6;
-    const DISCO_OP_PROBE: u32 = 1;
-    // The kernel-side scratch page for moved-memory reads comes from the
-    // shared scratch allocator, so no other deferred verifier can own the
-    // same vaddr (a fixed vaddr once collided with el0_clusterctl's).
-    const MEM_LEN: usize = 4096;
-
-    const ROLE_LEADER: u8 = 3;
+    const DISCO_CLUSTER_STATUS_WAIT_READY: u64 = 1;
 
     static mut JOIN_NS: Option<NameServiceHandle> = None;
 
@@ -104,60 +99,44 @@ pub mod inner {
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
         let call =
             ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name).ok()?;
-        ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
-        ipc::poll_reply(crate::memory::KERNEL_ASID, call)
-            .ok()
-            .flatten()
-            .map(|reply| reply.cap.unwrap_or(0))
+        let waited = ipc::wait_reply(crate::memory::KERNEL_ASID, call).is_ok();
+        let reply = waited
+            .then(|| ipc::poll_reply(crate::memory::KERNEL_ASID, call).ok().flatten())
+            .flatten();
+        let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
+        reply.and_then(|reply| {
+            if let Some(memory) = reply.memory {
+                let _ = crate::memory::object::close_cap(crate::memory::KERNEL_ASID, memory);
+            }
+            reply.cap.filter(|cap| *cap != 0)
+        })
     }
 
-    /// Scalar call with a moved memory object; returns the reply result and
-    /// any returned memory cap.
-    fn call_with_memory_reply(
+    /// Scalar call whose reply carries a moved memory object.
+    fn call_for_memory_reply(
         kernel_conn: u64,
         opcode: u32,
         arg0: u64,
-        bytes: &[u8],
     ) -> Option<(i64, Option<u64>)> {
-        let mem =
-            crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, bytes).ok()?;
-        let call = ipc::scalar_call_with_memory_move(
-            crate::memory::KERNEL_ASID,
-            kernel_conn,
-            opcode,
-            arg0,
-            mem,
-        )
-        .ok()?;
-        ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
+        let call = ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_conn, opcode, arg0).ok()?;
+        if ipc::wait_reply(crate::memory::KERNEL_ASID, call).is_err() {
+            let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
+            return None;
+        }
         let reply = ipc::poll_reply(crate::memory::KERNEL_ASID, call).ok().flatten();
-        let result = reply.map(|reply| (reply.result, reply.memory));
+        let result = reply.map(|reply| {
+            if let Some(cap) = reply.cap {
+                let _ = ipc::close_cap(crate::memory::KERNEL_ASID, cap);
+            }
+            (reply.result, reply.memory)
+        });
         let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
         result
     }
 
     fn read_moved_memory(cap: u64, len: usize) -> Vec<u8> {
-        // One scratch page per verifier, reused across the loop iterations:
-        // the reads are sequential, and the allocator region is finite.
-        static SCRATCH: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
-        let mem_base = match SCRATCH.load(core::sync::atomic::Ordering::Relaxed) {
-            0 => {
-                let fresh = crate::self_test::scratch::allocate_scratch_page()
-                    .expect("[join] kernel scratch");
-                SCRATCH.store(fresh, core::sync::atomic::Ordering::Relaxed);
-                fresh
-            }
-            existing => existing,
-        };
-        let mut bytes = Vec::new();
-        if crate::memory::object::map(crate::memory::KERNEL_ASID, cap, mem_base.into(), false)
-            .is_ok()
-        {
-            for index in 0..len {
-                bytes.push(unsafe { core::ptr::read_volatile((mem_base + index) as *const u8) });
-            }
-            let _ = crate::memory::object::unmap(crate::memory::KERNEL_ASID, cap);
-        }
+        let bytes = crate::memory::object::snapshot_bytes(crate::memory::KERNEL_ASID, cap, len)
+            .unwrap_or_default();
         let _ = crate::memory::object::close_cap(crate::memory::KERNEL_ASID, cap);
         bytes
     }
@@ -167,14 +146,18 @@ pub mod inner {
     type JoinDiscoveryAnswer = (Vec<u8>, Vec<([u8; 6], u8, Vec<u8>, Vec<u8>)>);
 
     /// Ask the discovery service where the cluster is.
-    fn disco_cluster_answer(kernel_ns: u64) -> Option<JoinDiscoveryAnswer> {
-        let disco_conn = lookup_service(kernel_ns, DISCO_NAME)?;
-        crate::logln!("[join] disco connection obtained");
-        let (_result, memory) =
-            call_with_memory_reply(disco_conn, DISCO_OP_CLUSTER_STATUS, 0, &[])?;
-        crate::logln!("[join] disco answer received");
+    fn disco_cluster_answer(disco_conn: u64) -> Option<JoinDiscoveryAnswer> {
+        let (result, memory) = call_for_memory_reply(
+            disco_conn,
+            DISCO_OP_CLUSTER_STATUS,
+            DISCO_CLUSTER_STATUS_WAIT_READY,
+        )?;
         let memory = memory?;
-        let bytes = read_moved_memory(memory, MEM_LEN);
+        let Some(len) = usize::try_from(result).ok().filter(|len| *len > 0) else {
+            let _ = crate::memory::object::close_cap(crate::memory::KERNEL_ASID, memory);
+            return None;
+        };
+        let bytes = read_moved_memory(memory, len);
         let (_self_role, self_raft_id, _self_leader_id, peers) =
             charlotte_protocol_disco::parse_cluster_answer(&bytes)?;
         Some((self_raft_id.to_vec(), peers))
@@ -189,33 +172,38 @@ pub mod inner {
     /// poll is only the *bounded* delivery check — fulfillment is defined by
     /// consensus, never by polling order or boot timing. Returns the
     /// committed generation.
-    fn wait_cluster_event(
-        kernel_ns: u64,
-        event: &[u8],
-        deadline: &crate::self_test::results::Deadline,
-    ) -> Option<i64> {
-        use crate::cpu::scheduler::yield_lp;
-
+    fn wait_cluster_event(kernel_ns: u64, event: &[u8]) -> Option<i64> {
         let dns_conn = lookup_service(kernel_ns, DNS_NAME)?;
         let mem =
             crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, event).ok()?;
-        let call = ipc::scalar_call_with_memory_move(
+        let call = match ipc::scalar_call_with_memory_move(
             crate::memory::KERNEL_ASID,
             dns_conn,
             DNS_OP_EVENT_WAIT,
             event.len() as u64,
             mem,
-        )
-        .ok()?;
-        loop {
-            if let Ok(Some(reply)) = ipc::poll_reply(crate::memory::KERNEL_ASID, call) {
-                let result = reply.result;
-                let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
-                return Some(result);
+        ) {
+            Ok(call) => call,
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(crate::memory::KERNEL_ASID, mem);
+                let _ = ipc::close_cap(crate::memory::KERNEL_ASID, dns_conn);
+                return None;
             }
-            deadline.assert_pending("EL0 cluster event wait");
-            yield_lp();
-        }
+        };
+        let ready = ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, call, 120_000)
+            .ok()
+            .unwrap_or(false);
+        let result = if ready {
+            ipc::poll_reply(crate::memory::KERNEL_ASID, call)
+                .ok()
+                .flatten()
+                .map(|reply| reply.result)
+        } else {
+            None
+        };
+        let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
+        let _ = ipc::close_cap(crate::memory::KERNEL_ASID, dns_conn);
+        result
     }
 
     pub fn test_el0_join() {
@@ -244,7 +232,17 @@ pub mod inner {
             ManifestEntry {
                 key: ELECTION_KEY,
                 flags: 0,
-                value: ManifestValue::Unsigned(150),
+                // This is a real cross-QEMU cluster, not the in-process Raft
+                // unit test. Match the DNS test's transport budget: 150 ms
+                // lets both voters repeatedly time out while vote RPCs are
+                // still queued behind boot traffic, producing split-vote
+                // livelock on a slow emulator.
+                value: ManifestValue::Unsigned(2_000),
+            },
+            ManifestEntry {
+                key: NETWORK_KEY,
+                flags: 0,
+                value: ManifestValue::Unsigned(1),
             },
         ];
         let raft_domain = spawn_raft_node(&manifest, ns);
@@ -259,6 +257,9 @@ pub mod inner {
         let serving_deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe { core::ptr::read_volatile(raft_status.add(2)) } == 0 {
             serving_deadline.assert_pending("EL0 join raft serving");
+            // This is a verifier observing a shared status page, not service
+            // synchronization. Yielding keeps the deadline live even on a
+            // boot path where a timer PPI is delayed on an otherwise-idle LP.
             yield_lp();
         }
         crate::logln!("[join] local raft serving.");
@@ -270,58 +271,86 @@ pub mod inner {
         // commits, promotes, and finalizes the JOIN. This node only learns
         // its own raft id from discovery and then waits on the membership
         // event — fulfillment is communicated through Raft consensus.
-        let mut self_raft_id: Vec<u8> = Vec::new();
-        let mut next_probe_ms = crate::cpu::scheduler::monotonic_millis();
-        let discovery_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let membership_event = loop {
-            if let Some((answer_self_id, peers)) = disco_cluster_answer(kernel_ns)
-                && !answer_self_id.is_empty()
-            {
-                // The node with the lexicographically larger id is the
-                // joiner: it waits for its own admission. The smaller id is
-                // the anchor: it waits for the joiner's membership event,
-                // which its own consensus fires when the JOIN finalizes.
-                let peer_cluster = peers.iter().find(|(_, role, raft_id, _)| {
-                    *role == ROLE_LEADER
-                        && !raft_id.is_empty()
-                        && raft_id.as_slice() != answer_self_id.as_slice()
-                });
-                if let Some((_mac, _role, raft_id, _leader_id)) = peer_cluster {
-                    let event = if answer_self_id > *raft_id {
-                        alloc::format!(
-                            "event:membership:{}",
-                            String::from_utf8_lossy(&self_raft_id)
-                        )
-                        .into_bytes()
-                    } else {
-                        alloc::format!("event:membership:{}", String::from_utf8_lossy(raft_id))
-                            .into_bytes()
-                    };
-                    self_raft_id = answer_self_id;
-                    break event;
-                }
-                self_raft_id = answer_self_id;
-            }
-            // Force a discovery probe on a slow cadence so this node's own
-            // posture is reported quickly.
-            let now = crate::cpu::scheduler::monotonic_millis();
-            if now >= next_probe_ms {
-                next_probe_ms = now + 2_000;
-                if let Some(disco_conn) = lookup_service(kernel_ns, DISCO_NAME) {
-                    let _ =
-                        ipc::scalar_call(crate::memory::KERNEL_ASID, disco_conn, DISCO_OP_PROBE, 0);
-                }
-            }
-            discovery_deadline.assert_pending("EL0 join discovery");
-            yield_lp();
+        let disco_conn = lookup_service(kernel_ns, DISCO_NAME)
+            .expect("EL0 join could not resolve discovery service");
+        // This one call is retained by disco until both local and remote Raft
+        // posture are known. Readiness is published by the service that owns
+        // the state, rather than inferred from test ordering or retry delays.
+        let (answer_self_id, peers) = disco_cluster_answer(disco_conn)
+            .filter(|(self_id, _)| !self_id.is_empty())
+            .expect("EL0 join discovery produced no local Raft identity");
+        // The node with the lexicographically larger id is the joiner: it
+        // waits for its own admission. The smaller id is the anchor and waits
+        // for the joiner's membership event.
+        let (_, _, peer_raft_id, _) = peers
+            .iter()
+            .find(|(_, _, raft_id, _)| {
+                !raft_id.is_empty() && raft_id.as_slice() != answer_self_id.as_slice()
+            })
+            .expect("EL0 join discovery produced no peer Raft identity");
+        let membership_event = if answer_self_id > *peer_raft_id {
+            alloc::format!("event:membership:{}", String::from_utf8_lossy(&answer_self_id))
+                .into_bytes()
+        } else {
+            alloc::format!("event:membership:{}", String::from_utf8_lossy(peer_raft_id))
+                .into_bytes()
         };
+        let self_raft_id = answer_self_id;
+        let _ = ipc::close_cap(crate::memory::KERNEL_ASID, disco_conn);
         crate::logln!("[join] local raft id: {:?}", self_raft_id);
 
         // Wait for the membership event — communicated through Raft
         // consensus, resolved the moment the committed entry lands on this
         // node. No polling, no assumed sequence.
-        let event_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let generation = wait_cluster_event(kernel_ns, &membership_event, &event_deadline);
+        let generation = wait_cluster_event(kernel_ns, &membership_event);
+        if generation.is_none() {
+            let word = |offset: usize| unsafe { core::ptr::read_volatile(raft_status.add(offset)) };
+            let frouter = crate::self_test::FROUTER_STATUS_FRAME
+                .load(core::sync::atomic::Ordering::Acquire)
+                as *const u32;
+            let (frouter_rx, frouter_forwarded, frouter_dropped, frouter_routes) =
+                if frouter.is_null() {
+                    (0, 0, 0, 0)
+                } else {
+                    unsafe {
+                        (
+                            core::ptr::read_volatile(frouter.add(1)),
+                            core::ptr::read_volatile(frouter.add(2)),
+                            core::ptr::read_volatile(frouter.add(3)),
+                            core::ptr::read_volatile(frouter.add(5)),
+                        )
+                    }
+                };
+            crate::logln!(
+                "[join] timeout diagnostics: state={} members={} flags={:#x} attempts={} \
+                 requests={} replies={} millis={} routes={} pending={} queued={} term={} \
+                 tags={}/{}/{}/{}/{}/{} log={}/{}/{} frouter={}/{}/{}/{}",
+                word(7),
+                word(8),
+                word(9),
+                word(10),
+                word(11),
+                word(12),
+                word(13),
+                word(14),
+                word(15),
+                word(16),
+                word(5),
+                word(17),
+                word(18),
+                word(19),
+                word(20),
+                word(21),
+                word(22),
+                word(23),
+                word(24),
+                word(25),
+                frouter_rx,
+                frouter_forwarded,
+                frouter_dropped,
+                frouter_routes
+            );
+        }
         assert!(
             generation.is_some_and(|generation| generation >= 1),
             "[join] membership event must fire through consensus, got {generation:?}"
@@ -332,6 +361,7 @@ pub mod inner {
         );
 
         crate::logln!("[join] SUCCESS: node admitted to the cluster via discovery-bridged join.");
+        let _ = ipc::close_cap(crate::memory::KERNEL_ASID, kernel_ns);
         crate::self_test::results::pass(crate::self_test::results::TestId::Join);
     }
 }

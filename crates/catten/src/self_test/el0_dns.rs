@@ -390,13 +390,14 @@ mod inner {
         // The leader re-deploys the artifact to its own node: the service
         // migrates. The new host registers a fresh generation; the old host
         // retires and its generation-fenced unregister cannot clobber it.
-        // Snapshot before publishing the migration. The follower cannot make
-        // its post-migration verification call until it observes that newer
-        // assignment, so any later ACK proves the final reply crossed the
-        // transport. Sampling after the call is racy: the ACK may already
-        // have arrived, leaving the leader waiting for an unrelated next one.
-        let acks_before_migration =
-            is_leader.then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS));
+        // Snapshot before publishing the migration. After receiving its
+        // post-migration reply, the follower issues a second idempotent call.
+        // Observing that causally later request is stronger than watching a
+        // transport ACK: relmsg may exhaust the bounded retry lease for an
+        // ACK that was lost after the application reply was already
+        // delivered.
+        let remote_calls_before_migration = is_leader
+            .then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED));
         if is_leader {
             let mut request = Vec::with_capacity(48);
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
@@ -450,23 +451,34 @@ mod inner {
             "[deploy] the deployed artifact must remain reachable across migration"
         );
 
-        // Barrier: keep this guest alive until the follower has *acknowledged*
-        // a post-migration reply. The runner kills this QEMU the moment
-        // SELFTEST COMPLETE prints; if the leader finished before the
-        // follower's verification reply was delivered, the follower would
-        // lose its peer mid-verification. Serving the call is not enough --
-        // the reply must have reached the follower's transport.
-        if is_leader {
-            let acked_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-            let acks_before = acks_before_migration.expect("leader ACK snapshot");
-            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS)
-                == acks_before
+        // Causal barrier: only the follower can issue this second call, and
+        // only after its first post-migration call returned. The leader waits
+        // until it has served both requests made after the snapshot. This
+        // proves application progress without depending on an internal
+        // transport ACK remaining observable after its retry lease ends.
+        if !is_leader {
+            let mut request = Vec::with_capacity(12);
+            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+            request.extend_from_slice(&0i64.to_le_bytes());
+            let barrier = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
+            assert_eq!(
+                barrier,
+                Some(GREET_VALUE),
+                "[deploy] causal barrier call must reach the migrated service"
+            );
+            logln!("[deploy] follower completed the causal post-migration barrier.");
+        } else {
+            let barrier_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+            let calls_before = remote_calls_before_migration.expect("leader remote-call snapshot");
+            let required_calls = calls_before.saturating_add(2);
+            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED)
+                < required_calls
             {
-                acked_deadline.assert_pending("EL0 deploy follower reply acknowledged");
+                barrier_deadline.assert_pending("EL0 deploy follower causal barrier");
                 crate::cpu::scheduler::sleep_millis(10);
                 yield_lp();
             }
-            logln!("[deploy] leader's post-migration reply was acknowledged by the follower.");
+            logln!("[deploy] leader observed the follower's causal post-migration barrier.");
         }
 
         logln!(

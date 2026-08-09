@@ -106,8 +106,17 @@ mod inner {
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
         let call = ipc::scalar_call(KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, name).ok()?;
-        ipc::wait_reply(KERNEL_ASID, call).ok()?;
-        ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.cap.unwrap_or(0))
+        if ipc::wait_reply(KERNEL_ASID, call).is_err() {
+            let _ = ipc::close_cap(KERNEL_ASID, call);
+            return None;
+        }
+        let connection = ipc::poll_reply(KERNEL_ASID, call)
+            .ok()
+            .flatten()
+            .and_then(|reply| reply.cap)
+            .filter(|cap| *cap != 0);
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+        connection
     }
 
     /// Scalar call with a moved memory object; returns the reply result and
@@ -120,8 +129,17 @@ mod inner {
     ) -> Option<(i64, Option<u64>)> {
         let mem = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
         let call =
-            ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem).ok()?;
-        ipc::wait_reply(KERNEL_ASID, call).ok()?;
+            match ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem) {
+                Ok(call) => call,
+                Err(_) => {
+                    let _ = crate::memory::object::close_cap(KERNEL_ASID, mem);
+                    return None;
+                }
+            };
+        if ipc::wait_reply(KERNEL_ASID, call).is_err() {
+            let _ = ipc::close_cap(KERNEL_ASID, call);
+            return None;
+        }
         let reply = ipc::poll_reply(KERNEL_ASID, call).ok().flatten();
         let result = reply.map(|reply| (reply.result, reply.memory));
         let _ = ipc::close_cap(KERNEL_ASID, call);
@@ -348,8 +366,6 @@ mod inner {
     /// The console thread entry: read serial lines and dispatch commands to
     /// the clusterctl service.
     extern "C" fn console_entry() {
-        use crate::cpu::scheduler::yield_lp;
-
         logln!("[clusterctl] admin console ready (help for commands).");
         crate::log::serial::SERIAL.lock().write_bytes(CONSOLE_PROMPT);
 
@@ -371,7 +387,13 @@ mod inner {
                 Some(byte) => {
                     line.push(byte);
                 }
-                None => yield_lp(),
+                // The early PL011 console has no delegated RX interrupt. Do
+                // not leave this optional administration thread permanently
+                // Ready: that would consume a CPU in an otherwise idle
+                // system and contend with the serial log sink. A short
+                // timer-backed sleep gives interactive input acceptable
+                // latency while allowing the LP to enter its idle path.
+                None => crate::cpu::scheduler::sleep_millis(10),
             }
         }
     }

@@ -1,6 +1,6 @@
 use core::sync::atomic::{
-    AtomicBool,
     AtomicI64,
+    AtomicUsize,
     Ordering,
 };
 
@@ -20,17 +20,17 @@ pub struct RwLockCore {
     /// - A positive value `n` means there are `n` readers holding the lock.
     /// - `-1` means the lock is held by a writer.
     state: AtomicI64,
-    /// Set while a writer is waiting for the lock. Gives writers preference:
+    /// Number of writers waiting for the lock. Gives writers preference:
     /// once a writer is queued, new readers must wait for it, so a continuous
     /// stream of readers cannot starve the writer indefinitely.
-    writer_waiting: AtomicBool,
+    waiting_writers: AtomicUsize,
 }
 
 impl RwLockCore {
     pub const fn new() -> Self {
         Self {
             state: AtomicI64::new(0),
-            writer_waiting: AtomicBool::new(false),
+            waiting_writers: AtomicUsize::new(0),
         }
     }
 }
@@ -52,7 +52,7 @@ unsafe impl RawRwLock for RwLockCore {
             // Writer preference: once a writer is waiting, new readers must
             // wait for it. Otherwise a dense reader stream (e.g. the IPC
             // registry probes around a reply) can starve the writer forever.
-            if self.writer_waiting.load(Ordering::Acquire) {
+            if self.waiting_writers.load(Ordering::Acquire) != 0 {
                 core::hint::spin_loop();
                 continue;
             }
@@ -76,7 +76,7 @@ unsafe impl RawRwLock for RwLockCore {
     fn try_lock_shared(&self) -> bool {
         INT_STATE.save_int();
         // Do not jump ahead of a queued writer.
-        if self.writer_waiting.load(Ordering::Acquire) {
+        if self.waiting_writers.load(Ordering::Acquire) != 0 {
             INT_STATE.restore_int();
             return false;
         }
@@ -125,12 +125,13 @@ unsafe impl RawRwLock for RwLockCore {
     fn lock_exclusive(&self) {
         INT_STATE.save_int();
         // Announce the waiting writer so new readers defer to it.
-        self.writer_waiting.store(true, Ordering::Release);
+        self.waiting_writers.fetch_add(1, Ordering::AcqRel);
         loop {
             let state = self.state.load(Ordering::Acquire);
             if state == 0 {
                 // Try to acquire the lock for writing by setting it to -1.
                 if self.state.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                    self.waiting_writers.fetch_sub(1, Ordering::AcqRel);
                     break; // Successfully acquired the lock for writing.
                 }
             } else {
@@ -141,10 +142,8 @@ unsafe impl RawRwLock for RwLockCore {
     }
 
     unsafe fn unlock_exclusive(&self) {
-        // Release the write state first so a waiting writer acquires it before
-        // the flag is cleared; only then admit new readers.
+        // Any still-waiting writers keep readers out through waiting_writers.
         self.state.store(0, Ordering::Release);
-        self.writer_waiting.store(false, Ordering::Release);
         INT_STATE.restore_int();
     }
 }

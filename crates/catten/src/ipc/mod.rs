@@ -1418,35 +1418,39 @@ pub fn poll_reply(
 
 pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), IpcError> {
     let call_id = pending_call_id(caller, call_cap)?;
-    if pending_call_is_ready(call_id)? {
-        return Ok(());
-    }
-
-    let tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-        .read()
-        .get_lp_scheduler()
-        .lock()
-        .get_tid()
-        .ok_or(IpcError::NoMessage)?;
     let observable = PendingCallObservable {
         call: call_id,
     };
-    let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-        .read()
-        .block_thread_with_constraint_generation(
-            tid,
-            &observable,
-            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-        )
-        .map_err(|_| IpcError::NoMessage)?;
+    loop {
+        if pending_call_is_ready(call_id)? {
+            return Ok(());
+        }
 
-    if pending_call_is_ready(call_id)? {
-        let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        let tid = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
-            .submit_woken_thread(tid, generation);
+            .get_lp_scheduler()
+            .lock()
+            .get_tid()
+            .ok_or(IpcError::NoMessage)?;
+        let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint_generation(
+                tid,
+                &observable,
+                crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+            )
+            .map_err(|_| IpcError::NoMessage)?;
+
+        // Close the check/register race. Notifications are hints rather than
+        // proof that this particular pending call completed, so after every
+        // wake the loop checks the call and parks again when necessary.
+        if pending_call_is_ready(call_id)? {
+            let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .submit_woken_thread(tid, generation);
+        }
+        crate::cpu::scheduler::yield_lp();
     }
-    crate::cpu::scheduler::yield_lp();
-    Ok(())
 }
 
 /// Block the calling thread until the pending call's reply arrives or

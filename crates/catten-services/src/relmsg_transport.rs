@@ -57,55 +57,67 @@ pub const TAG_SNAPSHOT_RESPONSE: u8 = 6;
 pub const TAG_JOIN_REQUEST: u8 = 7;
 pub const TAG_JOIN_REPLY: u8 = 8;
 
-/// Encode a join request: `[tag][id_len][id][service_name:8 LE]`.
+/// Encode the body of a join request: `[id_len][id][service_name:8 LE]`.
+///
+/// [`RelmsgRaftTransport::send_message`] owns the outer message tag, just as
+/// it does for the protobuf Raft RPC payloads. Keeping the tag out of this
+/// body avoids producing `[tag][tag][body]` on the wire.
 pub fn encode_join_request(joiner_id: &[u8], service_name: u64) -> Option<alloc::vec::Vec<u8>> {
     if joiner_id.is_empty() || joiner_id.len() > 255 {
         return None;
     }
-    let total = 1 + 1 + joiner_id.len() + 8;
+    let total = 1 + joiner_id.len() + 8;
     if total > MAX_RPC_PAYLOAD {
         return None;
     }
     let mut frame = alloc::vec::Vec::with_capacity(total);
-    frame.push(TAG_JOIN_REQUEST);
     frame.push(joiner_id.len() as u8);
     frame.extend_from_slice(joiner_id);
     frame.extend_from_slice(&service_name.to_le_bytes());
     Some(frame)
 }
 
-/// Decode a join request into `(joiner_id, joiner_raft_service_name)`.
+/// Decode a join-request body into `(joiner_id, joiner_raft_service_name)`.
 pub fn decode_join_request(frame: &[u8]) -> Option<(&[u8], u64)> {
-    if frame.first() != Some(&TAG_JOIN_REQUEST) || frame.len() < 3 {
+    if frame.len() < 2 {
         return None;
     }
-    let id_len = frame[1] as usize;
-    if id_len == 0 || frame.len() < 2 + id_len + 8 {
+    let id_len = frame[0] as usize;
+    if id_len == 0 || frame.len() != 1 + id_len + 8 {
         return None;
     }
-    let id = &frame[2..2 + id_len];
-    let service_name = u64::from_le_bytes(frame[2 + id_len..2 + id_len + 8].try_into().ok()?);
+    let id = &frame[1..1 + id_len];
+    let service_name = u64::from_le_bytes(frame[1 + id_len..1 + id_len + 8].try_into().ok()?);
     Some((id, service_name))
 }
 
-/// Encode a join reply carrying the committed JOIN log index (0 = refused).
+/// Encode the body of a join reply carrying the committed JOIN log index
+/// (0 = refused). The transport prepends [`TAG_JOIN_REPLY`].
 pub fn encode_join_reply(join_index: u64) -> alloc::vec::Vec<u8> {
-    let mut frame = alloc::vec::Vec::with_capacity(9);
-    frame.push(TAG_JOIN_REPLY);
+    let mut frame = alloc::vec::Vec::with_capacity(8);
     frame.extend_from_slice(&join_index.to_le_bytes());
     frame
 }
 
-/// Decode a join reply into the committed JOIN log index.
+/// Decode a join-reply body into the committed JOIN log index.
 pub fn decode_join_reply(frame: &[u8]) -> Option<u64> {
-    if frame.first() != Some(&TAG_JOIN_REPLY) || frame.len() < 9 {
+    if frame.len() != 8 {
         return None;
     }
-    Some(u64::from_le_bytes(frame[1..9].try_into().ok()?))
+    Some(u64::from_le_bytes(frame[..8].try_into().ok()?))
 }
 
-/// relmsg caps a message payload at `relmsg::MAX_MSG`; one byte is the tag.
-pub const MAX_RPC_PAYLOAD: usize = crate::relmsg::MAX_MSG - 1;
+/// The largest body that fits both the reliable-message path and one direct
+/// Ethernet memory object (Ethernet header + tagged-payload header + body).
+pub const MAX_RPC_PAYLOAD: usize = {
+    let relmsg = crate::relmsg::MAX_MSG - 1;
+    let direct = 4096 - 14 - catten_graft::wire::TAGGED_PAYLOAD_HEADER_SIZE;
+    if relmsg < direct {
+        relmsg
+    } else {
+        direct
+    }
+};
 
 /// Inbound Raft RPC request decoded from a relmsg message.
 pub enum InboundRpc {
@@ -193,6 +205,18 @@ impl RelmsgRaftTransport {
 
     pub fn has_peer(&self, peer_id: &str) -> bool {
         self.peer_macs.lock().contains_key(peer_id)
+    }
+
+    pub fn peer_count(&self) -> usize {
+        self.peer_macs.lock().len()
+    }
+
+    pub fn pending_send_count(&self) -> usize {
+        self.pending_sends.lock().values().filter(|send| send.call != 0).count()
+    }
+
+    pub fn outbound_count(&self) -> usize {
+        self.outbound.lock().values().map(Vec::len).sum()
     }
 
     /// The MAC the transport currently routes `peer_id` to.
@@ -351,6 +375,17 @@ impl RelmsgRaftTransport {
     /// `poll_completions` and `None` is returned.
     pub fn decode_inbound(&self, source_mac: &[u8; 6], frame: &[u8]) -> Option<InboundRpc> {
         let (&tag, payload) = frame.split_first()?;
+        self.decode_inbound_parts(source_mac, tag, payload)
+    }
+
+    /// Decode an inbound Raft message whose transport framing has already
+    /// separated the message tag from its exact, unpadded body.
+    pub fn decode_inbound_parts(
+        &self,
+        source_mac: &[u8; 6],
+        tag: u8,
+        payload: &[u8],
+    ) -> Option<InboundRpc> {
         match tag {
             TAG_VOTE_REQUEST => decode_vote_request(payload).ok().map(InboundRpc::VoteRequest),
             TAG_APPEND_REQUEST => {
@@ -501,7 +536,8 @@ fn send_payload_net(
     tag: u8,
     payload: &[u8],
 ) -> Option<u64> {
-    let len = 14 + 1 + payload.len();
+    let tagged_header = catten_graft::wire::build_tagged_payload_header(tag, payload.len()).ok()?;
+    let len = 14 + tagged_header.len() + payload.len();
     if len > 4096 {
         return None;
     }
@@ -518,8 +554,12 @@ fn send_payload_net(
         core::ptr::copy_nonoverlapping(dst_mac.as_ptr(), base, 6);
         core::ptr::copy_nonoverlapping(src_mac.as_ptr(), base.add(6), 6);
         base.add(12).copy_from(ethertype.to_be_bytes().as_ptr(), 2);
-        base.add(14).write(tag);
-        core::ptr::copy_nonoverlapping(payload.as_ptr(), base.add(15), payload.len());
+        core::ptr::copy_nonoverlapping(tagged_header.as_ptr(), base.add(14), tagged_header.len());
+        core::ptr::copy_nonoverlapping(
+            payload.as_ptr(),
+            base.add(14 + tagged_header.len()),
+            payload.len(),
+        );
     }
     memory_unmap(cap);
     let call = ipc_scalar_call_move(net_conn, crate::net::OP_SEND, len as u64, cap);

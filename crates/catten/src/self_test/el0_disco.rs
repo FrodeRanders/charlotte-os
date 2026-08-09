@@ -131,8 +131,9 @@ mod inner {
                     let called = unsafe { core::ptr::read_volatile(status_page.add(7)) };
                     let hb = unsafe { core::ptr::read_volatile(status_page.add(9)) };
                     let send_progress = unsafe { core::ptr::read_volatile(status_page.add(10)) };
-                    let frouter_base =
-                        unsafe { crate::self_test::FROUTER_STATUS_FRAME } as *const u32;
+                    let frouter_base = crate::self_test::FROUTER_STATUS_FRAME
+                        .load(core::sync::atomic::Ordering::Acquire)
+                        as *const u32;
                     let frouter_rx = if frouter_base.is_null() {
                         0
                     } else {

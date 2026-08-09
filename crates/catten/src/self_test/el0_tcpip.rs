@@ -125,7 +125,9 @@ mod inner {
                 let rx_total = unsafe { core::ptr::read_volatile(tcpip_cfg.add(1)) };
                 let tx_ok = unsafe { core::ptr::read_volatile(tcpip_cfg.add(2)) };
                 let sock_count = unsafe { core::ptr::read_volatile(tcpip_cfg.add(3)) };
-                let frouter_base = unsafe { crate::self_test::FROUTER_STATUS_FRAME } as *const u32;
+                let frouter_base = crate::self_test::FROUTER_STATUS_FRAME
+                    .load(core::sync::atomic::Ordering::Acquire)
+                    as *const u32;
                 let frouter_rx = if frouter_base.is_null() {
                     0
                 } else {

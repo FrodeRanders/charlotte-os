@@ -15,7 +15,7 @@ use alloc::vec::Vec;
 use crate::{
     cpu::scheduler::{
         monotonic_millis,
-        spawn_thread,
+        spawn_thread_on_lp,
         threads::{
             MASTER_THREAD_TABLE,
             ThreadGeneration,
@@ -130,7 +130,11 @@ const BOOT_SETTLE_MS: u64 = 3_000;
 pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
-    let tid = spawn_thread(loaded.asid, entry);
+    // Bootstrap on the caller's active LP. Admission to an idle remote LP
+    // depends on an SGI edge; if that edge is delayed or lost, the service
+    // cannot register and every blocking lookup behind it deadlocks. Normal
+    // scheduler policy may still migrate explicitly migration-safe work.
+    let tid = spawn_thread_on_lp(loaded.asid, entry, crate::cpu::isa::lp::ops::get_lp_id());
     let generation = MASTER_THREAD_TABLE
         .read()
         .get(tid)
@@ -213,7 +217,7 @@ pub fn start_node_name_service() -> NameServiceHandle {
 /// starting to communicate, so a freshly booted node never joins a cluster
 /// mid-boot.
 pub fn start_local_ready_publisher() {
-    spawn_thread(KERNEL_ASID, local_ready_publisher);
+    spawn_thread_on_lp(KERNEL_ASID, local_ready_publisher, crate::cpu::isa::lp::ops::get_lp_id());
 }
 
 extern "C" fn local_ready_publisher() {
@@ -234,22 +238,35 @@ extern "C" fn local_ready_publisher() {
     // this marker, so boot ordering is defined by local readiness rather
     // than by wall-clock luck. The disk stack comes up as part of the NVMe
     // deferred verifier, which passes only once the object store registers.
-    let disk_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Nvme) {
-        disk_deadline.assert_pending("EL0 boot-done disk stack");
-        yield_lp();
-    }
+    assert!(
+        crate::self_test::results::wait_until_resolved(
+            crate::self_test::results::TestId::Nvme,
+            120_000,
+        ) && crate::self_test::results::has_passed(crate::self_test::results::TestId::Nvme),
+        "local disk stack failed before node readiness"
+    );
 
     // The boot raft test is a *local-node* test: two raft domains on two
     // local LPs form a test-only cluster and must be torn down before the
     // node declares itself ready, so no stale membership or transport state
     // from that local "cluster" survives into the network cluster the node
     // joins after this marker.
-    let raft_test_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Raft) {
-        raft_test_deadline.assert_pending("EL0 boot-done local raft test teardown");
-        yield_lp();
-    }
+    assert!(
+        crate::self_test::results::wait_until_resolved(
+            crate::self_test::results::TestId::Raft,
+            120_000,
+        ) && crate::self_test::results::has_passed(crate::self_test::results::TestId::Raft),
+        "local Raft test failed before node readiness"
+    );
+
+    #[cfg(feature = "virtio_net_test")]
+    assert!(
+        crate::self_test::results::wait_until_resolved(
+            crate::self_test::results::TestId::Net,
+            120_000,
+        ) && crate::self_test::results::has_passed(crate::self_test::results::TestId::Net),
+        "local network stack failed before node readiness"
+    );
 
     publish_local_ready();
 }
@@ -507,6 +524,7 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
 /// `timeout_millis`, so a wedged service fails tests loudly instead of
 /// hanging the boot.
 pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
+    let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(timeout_millis);
     // The observer is generation-bound: thread IDs are recycled, so a
     // replacement service can already occupy this domain's tid slot by the
     // time the upgrade completes. Registering on the new occupant would wait
@@ -518,13 +536,13 @@ pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
         Some(domain.generation),
     )
     .expect("[supervisor] domain exit observer");
-    let exited = crate::completion::wait_timeout(domain.asid, exit, timeout_millis)
+    let remaining = deadline.saturating_sub(crate::cpu::scheduler::monotonic_millis());
+    let exited = crate::completion::wait_timeout(domain.asid, exit, remaining)
         .expect("[supervisor] domain exit wait error");
     assert!(exited, "[supervisor] domain did not exit before deadline (asid={})", domain.asid);
     // The initial thread's exit is the wake event; sub-threads may still be
     // draining. A short bounded settle keeps teardown safe without polling
     // for the common single-thread case above.
-    let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(timeout_millis);
     while !domain_exited(domain) {
         assert!(
             crate::cpu::scheduler::monotonic_millis() < deadline,

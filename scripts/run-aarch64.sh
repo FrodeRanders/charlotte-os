@@ -510,6 +510,17 @@ if [ -n "$TIMEOUT" ]; then
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
     SELFTEST_COMPLETE=0
+    SELFTEST_COMPLETE_TICK=-1
+    # A socket-linked peer may still be applying the final Raft entry or
+    # consuming the causally ordered deployment barrier when this guest
+    # finishes. Under TCG, a runnable verifier can take several host seconds
+    # to observe state already published by its service. Keep a successful
+    # guest serving long enough for that bounded tail before tearing down the
+    # virtual LAN endpoint.
+    CLUSTER_DRAIN_TICKS=0
+    if [ "$NET_BACKEND" != "user" ]; then
+        CLUSTER_DRAIN_TICKS=150
+    fi
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
     MAX_TICKS=$((TIMEOUT * 10))
@@ -548,8 +559,15 @@ if [ -n "$TIMEOUT" ]; then
         fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
             SELFTEST_COMPLETE=1
-            if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ]; then
+            if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
+                SELFTEST_COMPLETE_TICK=$tick
                 echo ">>> Authoritative self-test result observed after $(((tick + 1) / 10))s."
+                if [ "$CLUSTER_DRAIN_TICKS" -gt 0 ]; then
+                    echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
+                fi
+            fi
+            if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
+                && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
         fi
@@ -632,6 +650,10 @@ if [ -n "$TIMEOUT" ]; then
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        exit 1
+    fi
+    if grep -Fq "Kernel panic:" "$LOG"; then
+        echo "error: kernel panic observed during the test window" >&2
         exit 1
     fi
     if ! grep -Eq \

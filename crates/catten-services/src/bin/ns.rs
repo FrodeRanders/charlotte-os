@@ -133,6 +133,20 @@ fn read_generation(message: &IpcMessage) -> Option<u64> {
     Some(generation)
 }
 
+fn reply_connection_or_error(reply: u64, connection: u64, generation: i64) {
+    let status = unsafe {
+        ipc_reply_connection(reply, connection, IpcRights::SEND | IpcRights::CALL, generation)
+    };
+    if status != 0 {
+        // A registration without MINT_CONNECTION cannot be handed to a
+        // lookup caller. Do not strand the retained reply token: report a
+        // protocol error so the caller can discard/retry it.
+        unsafe {
+            ipc_reply(reply, ns::ERR_INVALID);
+        }
+    }
+}
+
 fn register(
     registry: &mut Registry,
     waitlist: &mut Waitlist,
@@ -167,14 +181,7 @@ fn register(
         if access_key != 0 && access_key != caller_key {
             unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
         } else {
-            unsafe {
-                ipc_reply_connection(
-                    reply,
-                    connection,
-                    IpcRights::SEND | IpcRights::CALL,
-                    generation,
-                );
-            }
+            reply_connection_or_error(reply, connection, generation);
         }
     }
     generation
@@ -193,14 +200,7 @@ fn lookup_or_defer(
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
             }
-            unsafe {
-                ipc_reply_connection(
-                    reply,
-                    registration.connection,
-                    IpcRights::SEND | IpcRights::CALL,
-                    registration.generation,
-                );
-            }
+            reply_connection_or_error(reply, registration.connection, registration.generation);
         }
         _ => {
             // Defer: the event broker retains the reply token until the
@@ -212,14 +212,9 @@ fn lookup_or_defer(
 
 fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
     match registry.get(key) {
-        Some(registration) if registration.connection != 0 && registration.access_key == 0 => unsafe {
-            ipc_reply_connection(
-                reply,
-                registration.connection,
-                IpcRights::SEND | IpcRights::CALL,
-                registration.generation,
-            );
-        },
+        Some(registration) if registration.connection != 0 && registration.access_key == 0 => {
+            reply_connection_or_error(reply, registration.connection, registration.generation);
+        }
         Some(registration) if registration.connection != 0 => unsafe {
             ipc_reply(reply, ns::ERR_ACCESS_DENIED);
         },

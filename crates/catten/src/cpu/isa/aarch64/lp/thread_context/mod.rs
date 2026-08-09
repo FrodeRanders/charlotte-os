@@ -78,11 +78,13 @@ fn deallocate_user_stack(stack: UserStack) -> bool {
 /// a freshly created thread is first scheduled.
 ///
 /// The field order matches the pop order in `switch_ctx` from the current stack
-/// pointer upwards: the callee-saved register pairs x19/x20 through x29/x30.
-/// `switch_ctx` reloads x30 last and executes `ret`, so placing a trampoline
-/// address in `x30` makes execution begin there. TTBR0 is *not* part of the
-/// frame: `switch_ctx` reloads it from the incoming address space's software
-/// record (see [`incoming_ttbr0`](crate::cpu::isa::aarch64::lp::ops::incoming_ttbr0)),
+/// pointer upwards: the callee-saved register pairs x19/x20 through x29/x30,
+/// followed by q8/q9 through q14/q15 and FPCR/FPSR. `switch_ctx` reloads x30
+/// and eventually executes `ret`, so placing a trampoline address in `x30`
+/// makes execution begin there after the SIMD/FP slots have also been
+/// consumed. TTBR0 is *not* part of the frame: `switch_ctx` reloads it from
+/// the incoming address space's software record (see
+/// [`incoming_ttbr0`](crate::cpu::isa::aarch64::lp::ops::incoming_ttbr0)),
 /// never from a `mrs ttbr0_el1` readback, because hypervisors such as HVF do
 /// not preserve the hardware ASID bits on read.
 #[repr(C)]
@@ -99,6 +101,20 @@ struct InitialFrame {
     x28: u64,
     x29: u64,
     x30: u64,
+    // AAPCS64 requires the low 64 bits of v8-v15 to survive a call. The
+    // context switch preserves the complete 128-bit registers for a simpler,
+    // stronger thread-context contract. These zeroes are consumed only on a
+    // thread's first dispatch; later frames contain the saved live values.
+    q8: [u64; 2],
+    q9: [u64; 2],
+    q10: [u64; 2],
+    q11: [u64; 2],
+    q12: [u64; 2],
+    q13: [u64; 2],
+    q14: [u64; 2],
+    q15: [u64; 2],
+    fpcr: u64,
+    fpsr: u64,
 }
 
 impl InitialFrame {
@@ -185,6 +201,16 @@ impl ThreadContext {
             x28: 0,
             x29: 0,
             x30: kernel_thread_trampoline as *const () as usize as u64,
+            q8: [0; 2],
+            q9: [0; 2],
+            q10: [0; 2],
+            q11: [0; 2],
+            q12: [0; 2],
+            q13: [0; 2],
+            q14: [0; 2],
+            q15: [0; 2],
+            fpcr: 0,
+            fpsr: 0,
         };
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
@@ -259,6 +285,16 @@ impl ThreadContext {
             x28: 0,
             x29: 0,
             x30: user_trampoline as *const () as usize as u64,
+            q8: [0; 2],
+            q9: [0; 2],
+            q10: [0; 2],
+            q11: [0; 2],
+            q12: [0; 2],
+            q13: [0; 2],
+            q14: [0; 2],
+            q15: [0; 2],
+            fpcr: 0,
+            fpsr: 0,
         };
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {

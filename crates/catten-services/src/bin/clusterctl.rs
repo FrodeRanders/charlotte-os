@@ -40,7 +40,6 @@ use charlotte_protocol_disco::{
     parse_cluster_answer,
 };
 
-const DATA_VADDR: usize = 0x0000_0000_2000_0000;
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_SERVING: u32 = 6;
 
@@ -84,6 +83,9 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     let size_cap = memory_alloc(1);
     let (size_vaddr_map_status, size_vaddr_vaddr) = memory_map_any(size_cap, true);
     if size_cap == 0 || size_vaddr_map_status != 0 {
+        if size_cap != 0 {
+            memory_close(size_cap);
+        }
         return false;
     }
     unsafe {
@@ -92,16 +94,20 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     memory_unmap(size_cap);
     let set_size =
         ipc_scalar_call_borrow_read(obj_conn, objstore::OP_SET_SIZE, object_id, size_cap);
-    if set_size == 0 || catten_services::spin_reply(set_size).0 != objstore::ERR_OK {
+    let resized = set_size != 0 && catten_services::spin_reply(set_size).0 == objstore::ERR_OK;
+    memory_close(size_cap);
+    if !resized {
         return false;
     }
-    memory_close(size_cap);
 
     // The artifact is an ELF (tens of KiB): the data cap must span every
     // page the bytes occupy, not a single page.
     let data = memory_alloc(bytes.len().div_ceil(4096).max(1));
     let (data_vaddr_9_map_status, data_vaddr_9_vaddr) = memory_map_any(data, true);
     if data == 0 || data_vaddr_9_map_status != 0 {
+        if data != 0 {
+            memory_close(data);
+        }
         return false;
     }
     unsafe {
@@ -109,7 +115,11 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     }
     memory_unmap(data);
     let write = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, data);
-    if write == 0 || catten_services::spin_reply(write).0 != objstore::ERR_OK {
+    if write == 0 {
+        memory_close(data);
+        return false;
+    }
+    if catten_services::spin_reply(write).0 != objstore::ERR_OK {
         return false;
     }
     let flush = ipc_scalar_call(obj_conn, objstore::OP_FLUSH, 0);
@@ -182,7 +192,9 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
     }
     let mut payload = alloc::vec::Vec::with_capacity(len);
     for index in 0..len {
-        payload.push(unsafe { core::ptr::read_volatile((DATA_VADDR + 8 + index) as *const u8) });
+        payload.push(unsafe {
+            core::ptr::read_volatile((data_vaddr_7_vaddr + 8 + index) as *const u8)
+        });
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -316,22 +328,11 @@ fn main(ctx: Context) -> ! {
                                         request,
                                     );
                                     if call == 0 {
-                                        catten_syscall::el0_log(0x4354_4c00, 0x1111);
                                         clusterctl::ERR_NOT_LEADER
                                     } else {
                                         let (raw_status, raw_result, _raw_cap) =
                                             catten_syscall::ipc_reply_wait(call);
-                                        catten_syscall::el0_log(
-                                            0x4354_4c00,
-                                            0x2222
-                                                | (raw_status << 8)
-                                                | (((raw_result as i64) << 32) as u64),
-                                        );
                                         ipc_close(call);
-                                        catten_syscall::el0_log(
-                                            0x4354_4c00,
-                                            0x1112 | ((raw_result as i64 as u64) << 8),
-                                        );
                                         if raw_status == 0 {
                                             raw_result as i64
                                         } else {
@@ -409,9 +410,7 @@ fn main(ctx: Context) -> ! {
                             if call == 0 {
                                 clusterctl::ERR_NOT_LEADER
                             } else {
-                                let (generation, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-                                ipc_close(call);
-                                generation
+                                unsafe { wait_reply(call, REPLY_SPINS) }.0
                             }
                         }
                         Some(_) => clusterctl::ERR_UNTRUSTED_KEY,

@@ -40,7 +40,6 @@ use crate::cpu::{
         lp::{
             InterruptVectorNum,
             LpId,
-            ops::get_lic_id,
         },
     },
     multiprocessor::spin::per_lp::PerLp,
@@ -186,16 +185,14 @@ unsafe fn mmio_write8(base: usize, offset: usize, value: u8) {
     unsafe { core::ptr::write_volatile(ptr, value) }
 }
 
-/// The RD_base MMIO address of the calling core's redistributor. Cores are
-/// laid out consecutively starting at the redistributor base; we index by the
-/// local interrupt controller id (affinity 0).
+/// The RD_base MMIO address of the calling core's redistributor.
+///
+/// QEMU `virt` lays redistributors out densely by Aff0. `get_lic_id()` is also
+/// Aff0 on AArch64, so spelling the affinity out here does not change behavior.
+/// Platforms with sparse or multi-level affinity require GICR_TYPER discovery
+/// before they can use this implementation.
 #[inline]
 fn gicr_rd_base() -> usize {
-    // The redistributor index is the core's *hardware affinity* (Aff0), not
-    // the scheduler-local LIC id: secondary processors can acquire logical
-    // ids in a different order from their hardware affinities, so indexing
-    // by LIC id would configure the wrong core's PPIs (and leave this core's
-    // timer/SGI interrupts never enabled).
     let aff0 = (crate::cpu::isa::lp::ops::mpidr() & 0xff) as usize;
     gicr_base() + aff0 * GICR_STRIDE
 }
@@ -280,20 +277,6 @@ impl GicV3 {
             mmio_write32(sgi, GICR_ISENABLER0, 1 << intid);
             while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
                 core::hint::spin_loop();
-            }
-            // Diagnostic: verify the enable took on this core's redistributor
-            // and that the redistributor base matches this LP's affinity.
-            if intid == crate::cpu::isa::constants::interrupt_vectors::LAPIC_TIMER_VECTOR {
-                let enabled = mmio_read32(sgi, GICR_ISENABLER0) & (1 << intid);
-                let mpidr = crate::cpu::isa::lp::ops::mpidr();
-                crate::early_logln!(
-                    "[gic] LP{} timer PPI enabled={} lic={} rd={:#x} mpidr={:#x}",
-                    crate::cpu::isa::lp::ops::get_lp_id(),
-                    enabled != 0,
-                    get_lic_id(),
-                    rd,
-                    mpidr
-                );
             }
         }
     }

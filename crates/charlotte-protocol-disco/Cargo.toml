@@ -6,5 +6,4 @@ description = "Cluster discovery protocol (Ethernet broadcast bootstrap)"
 
 [dependencies]
 [lib]
-test = false
 doctest = false

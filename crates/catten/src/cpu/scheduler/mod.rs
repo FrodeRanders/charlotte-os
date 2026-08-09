@@ -90,6 +90,25 @@ pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Threa
     spawn_thread_with_migration(asid, entry_point, false)
 }
 
+/// Create a thread, publish caller-owned metadata keyed by its TID, and only
+/// then admit it to the scheduler. This closes the spawn-vs-first-instruction
+/// race for facilities such as self-test panic attribution.
+pub(crate) fn spawn_thread_after_publish(
+    asid: AddressSpaceId,
+    entry_point: extern "C" fn(),
+    publish: impl FnOnce(ThreadId),
+) -> ThreadId {
+    let thread = Thread::new(asid, entry_point);
+    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    publish(tid);
+    let lp = crate::cpu::isa::lp::ops::get_lp_id();
+    SYSTEM_SCHEDULER
+        .read()
+        .submit_to_lp(tid, lp)
+        .expect("Error submitting published thread to caller LP");
+    tid
+}
+
 /// Spawn non-migratable work on a specific LP.
 ///
 /// This is used when the creator is about to block on the new thread's
@@ -297,22 +316,6 @@ pub fn block_until(
     timeout_ms: u64,
     condition: impl Fn() -> bool,
 ) -> bool {
-    if condition() {
-        return true;
-    }
-    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
-    let Some(tid) = tid else {
-        return condition();
-    };
-    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
-        tid,
-        observable,
-        threads::MigrationConstraint::GeneralWait,
-    ) {
-        Ok(generation) => generation,
-        Err(_) => return condition(),
-    };
-
     struct BlockTimeoutWake {
         tid: ThreadId,
         generation: threads::ThreadGeneration,
@@ -323,26 +326,49 @@ pub fn block_until(
         }
     }
 
-    // Watchdog: re-admit the thread when the deadline expires even if the
-    // observable never fires, so the caller's condition re-check (and any
-    // deadline assertion) always runs.
-    let timeout_obs = alloc::sync::Arc::new(BlockTimeoutWake {
-        tid,
-        generation,
-    });
-    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
-    timer_event.register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
-    crate::timers::enqueue_event(timer_event);
+    let deadline = monotonic_millis().saturating_add(timeout_ms);
+    loop {
+        if condition() {
+            return true;
+        }
+        let now = monotonic_millis();
+        if now >= deadline {
+            return false;
+        }
+        let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+        let Some(tid) = tid else {
+            return condition();
+        };
+        let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+            tid,
+            observable,
+            threads::MigrationConstraint::GeneralWait,
+        ) {
+            Ok(generation) => generation,
+            Err(_) => return condition(),
+        };
 
-    // Lost-wake guard: if the condition became true while the waker was
-    // being registered, re-admit the thread before it yields.
-    if condition() {
-        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+        // Watchdog: re-admit the thread when the absolute deadline expires
+        // even if the observable never fires. A notification is only a hint:
+        // shared observables may wake for an unrelated state transition, so
+        // the outer loop re-checks and parks again with the remaining budget.
+        let timeout_obs = alloc::sync::Arc::new(BlockTimeoutWake {
+            tid,
+            generation,
+        });
+        let remaining = deadline.saturating_sub(now).max(1);
+        let timer_event = TimerEvent::from(ExtDuration::from_millis(remaining as u128));
+        timer_event
+            .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
+        crate::timers::enqueue_event(timer_event);
+
+        // Lost-wake guard: if the condition became true while the waker was
+        // being registered, re-admit the thread before it yields.
+        if condition() {
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+        }
+        yield_lp();
     }
-
-    yield_lp();
-
-    condition()
 }
 
 /// Registers an observer to be notified when the specified thread exits.

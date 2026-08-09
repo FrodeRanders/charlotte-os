@@ -45,7 +45,7 @@ const INITIAL_HEAP_SIZE: usize = mebibytes(8);
 // talc lock is held — the lock-ordering deadlock that a concurrent
 // map-while-allocating could otherwise trigger (the reserve maps at boot,
 // before any concurrency exists).
-const HEAP_GROWTH_RESERVE: usize = mebibytes(192);
+const HEAP_GROWTH_RESERVE: usize = mebibytes(64);
 #[global_allocator]
 pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
@@ -66,22 +66,6 @@ pub fn init_primary_allocator() {
         pa_lock.source.reserve_end.store(
             base.into_mut::<u8>().wrapping_add(INITIAL_HEAP_SIZE + HEAP_GROWTH_RESERVE),
             Ordering::Release,
-        );
-        let he = returned_ptr.as_ptr();
-        let tag_now = he.wrapping_sub(1).read();
-        let size_now = (he.wrapping_sub(8) as *const usize).read();
-        // also probe a few physical aliases via HHDM and the heap mapping
-        let mid = base.into_mut::<u8>().wrapping_add(0x100000);
-        mid.write(0xab);
-        let mid_read = mid.read();
-        crate::early_logln!(
-            "[HEAPDBG] claim base={:p} heap_end={:p} tag@-1={:#x} size@-8={:#x} \
-             mid_write_read={:#x}",
-            (base.into_mut::<u8>()),
-            he,
-            tag_now,
-            size_now,
-            mid_read
         );
     }
 }

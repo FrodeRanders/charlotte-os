@@ -15,7 +15,7 @@ use crate::{
             SCHEDULER_IPI_VECTOR,
         },
         lp::ops::{
-            cond_yield_lp,
+            cond_yield_lp_from_irq,
             get_lp_id,
         },
     },
@@ -267,31 +267,20 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 }
 
 /// IRQ dispatcher. Acknowledges the pending Group 1 interrupt, dispatches it,
-/// Per-LP count of delivered generic-timer PPIs (INTID 27).
-static TIMER_PPI_COUNTS: [core::sync::atomic::AtomicU64; 8] =
-    [const { core::sync::atomic::AtomicU64::new(0) }; 8];
-
 /// signals end-of-interrupt, and then performs any pending context switch. This
 /// is the async heart of the scheduler: the Generic Timer PPI advances the timer
 /// queue (which may wake threads via their observers) and marks a context switch
-/// pending, which is honoured here via `cond_yield_lp`.
+/// pending, which is honoured here via the IRQ-tail-only scheduler entry.
 #[unsafe(no_mangle)]
 pub extern "C" fn irq_dispatcher() {
-    crate::cpu::multiprocessor::interrupt_tracking::increment_interrupt_depth();
     let intid = gic::acknowledge_int();
     // INTIDs 1020-1023 are special/spurious and require no handling or EOI.
     // LPIs (>= 8192) are valid device interrupts and must be dispatched.
     if (1020..=1023).contains(&intid) {
-        crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
         return;
     }
     match intid {
         LAPIC_TIMER_VECTOR => {
-            let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
-            let count = TIMER_PPI_COUNTS[lp].fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-            if count.is_multiple_of(10_000) {
-                crate::early_logln!("[timer] LP{} PPI deliveries: {}", lp, count);
-            }
             // Advance the timer queue, firing any events whose deadline passed
             // (waking their observer threads) and rearming the timer.
             match crate::timers::TIMER_QUEUES.try_get_mut() {
@@ -317,8 +306,7 @@ pub extern "C" fn irq_dispatcher() {
         _ => {
             if crate::device::smmu::handle_interrupt(intid) {
                 gic::end_of_int(intid);
-                cond_yield_lp();
-                crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
+                cond_yield_lp_from_irq();
                 return;
             }
             // Shared Peripheral Interrupts (INTID >= 32) from devices are
@@ -332,8 +320,7 @@ pub extern "C" fn irq_dispatcher() {
     }
     gic::end_of_int(intid);
     // Carry out a context switch if the timer or an IPI marked one pending.
-    cond_yield_lp();
-    crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
+    cond_yield_lp_from_irq();
 }
 
 /// FIQ dispatcher. Log and return — in emulated environments (QEMU) FIQs can

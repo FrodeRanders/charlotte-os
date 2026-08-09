@@ -1029,7 +1029,11 @@ fn main(ctx: Context) -> ! {
         // loop period so the relmsg receive queue cannot fill behind an
         // armed-but-delayed timer.
         let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
-        let mut tick_due = !timer_armed && timed_out != 0;
+        // The CQ timeout is an independent watchdog, not merely a fallback
+        // for failure to *submit* the detached timer. A submitted timer can
+        // have its completion delayed or dropped; ignoring the timeout while
+        // `timer_armed` stayed true would then freeze Raft time forever.
+        let mut tick_due = timed_out != 0;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
@@ -1600,14 +1604,6 @@ fn main(ctx: Context) -> ! {
             }
             served += 1;
             config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
-            if served <= 24 {
-                catten_syscall::el0_log(
-                    0x444e_5300,
-                    (message.status as u64)
-                        | ((message.opcode as u64) << 8)
-                        | ((served as u64) << 24),
-                );
-            }
             match message.opcode {
                 dns::OP_REGISTER => {
                     let name = packed_name(message.arg0);
@@ -1766,14 +1762,6 @@ fn main(ctx: Context) -> ! {
                 dns::OP_DEPLOY => {
                     let artifact = packed_name(message.arg0);
                     let request = read_deploy_request(&message);
-                    catten_syscall::el0_log(
-                        0x444e_5300,
-                        match node.state {
-                            NodeState::Follower => 1,
-                            NodeState::Candidate => 2,
-                            NodeState::Leader => 3,
-                        },
-                    );
                     let result = if artifact.is_empty() {
                         dns::ERR_TOO_LARGE
                     } else if node.state != NodeState::Leader {
@@ -2677,7 +2665,9 @@ fn main(ctx: Context) -> ! {
                 node.broadcast_heartbeat(node.millis());
                 last_heartbeat_broadcast = node.millis();
             }
-            timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+            if !timer_armed {
+                timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+            }
         }
 
         config::write_u32_release(dns::status::CURRENT_TERM, node.current_term as u32);

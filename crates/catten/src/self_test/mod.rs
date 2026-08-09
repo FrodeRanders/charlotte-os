@@ -167,7 +167,8 @@ use crate::logln;
 /// Status-frame address of the frame demultiplexer (frouter), published by
 /// the net test and read by the disco verifier for diagnostics. Zero until
 /// the frouter has been spawned.
-pub static mut FROUTER_STATUS_FRAME: usize = 0;
+pub static FROUTER_STATUS_FRAME: core::sync::atomic::AtomicUsize =
+    core::sync::atomic::AtomicUsize::new(0);
 
 /// Synchronous self-tests that construct address spaces directly sometimes
 /// retain only their numeric id. Confine that downgrade here; production

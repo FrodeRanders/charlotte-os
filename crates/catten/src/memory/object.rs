@@ -16,6 +16,7 @@ use crate::{
         address::Address,
     },
     memory::{
+        ADDRESS_SPACE_LIFECYCLE,
         ADDRESS_SPACE_TABLE,
         AddressSpaceId,
         PHYSICAL_FRAME_ALLOCATOR,
@@ -377,10 +378,15 @@ pub(crate) fn write_bytes(
 /// comfortable headroom; exhaustion is not a practical concern because the
 /// window is virtual and pages are only committed while mapped.
 const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
-const SCRATCH_WINDOW_PAGES: usize = 512 * 1024;
+const SCRATCH_WINDOW_PAGES: usize = (512 * 1024 * 1024) / PAGE_SIZE;
 const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
-static SCRATCH_WINDOW_NEXT: [core::sync::atomic::AtomicUsize; 64] =
-    [const { core::sync::atomic::AtomicUsize::new(0) }; 64];
+
+/// Scratch allocation belongs to an address-space *lifetime*, not merely its
+/// recyclable numeric ASID. A new generation starts again at the window base;
+/// stale entries are harmless and are replaced on first use by the new owner.
+static SCRATCH_WINDOW_NEXT: crate::memory::LazyLock<
+    crate::memory::Mutex<BTreeMap<AddressSpaceId, (usize, usize)>>,
+> = crate::memory::LazyLock::new(|| crate::memory::Mutex::new(BTreeMap::new()));
 
 /// Reserve `pages` consecutive pages in an address space's scratch window at
 /// a kernel-assigned virtual address. Shared with the device layer so MMIO
@@ -391,12 +397,20 @@ pub(crate) fn reserve_scratch(
     pages: usize,
 ) -> Result<VAddr, MemoryObjectError> {
     let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
-    let slot = SCRATCH_WINDOW_NEXT[asid].fetch_add(bytes, core::sync::atomic::Ordering::Relaxed);
-    // The counter is a byte offset into the window; bound it against the
-    // byte size of the window, not its page count.
-    if slot.saturating_add(bytes) > SCRATCH_WINDOW_SIZE {
+    let generation = crate::memory::current_address_space_handle(asid)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?
+        .generation();
+    let mut windows = SCRATCH_WINDOW_NEXT.lock();
+    let entry = windows.entry(asid).or_insert((generation, 0));
+    if entry.0 != generation {
+        *entry = (generation, 0);
+    }
+    let slot = entry.1;
+    let end = slot.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
+    if end > SCRATCH_WINDOW_SIZE {
         return Err(MemoryObjectError::OutOfScratch);
     }
+    entry.1 = end;
     Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
 }
 
@@ -410,6 +424,10 @@ pub fn map_any(
     cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<VAddr, MemoryObjectError> {
+    // The scratch reservation and page-table installation belong to the same
+    // address-space lifetime. Otherwise teardown/reuse could occur between
+    // them and apply the old generation's reservation to the new occupant.
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
     let pages = {
         let registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -418,7 +436,7 @@ pub fn map_any(
         object.frames.len()
     };
     let base = reserve_scratch(asid, pages)?;
-    map(asid, cap, base, writable)?;
+    map_locked(asid, cap, base, writable)?;
     Ok(base)
 }
 
@@ -432,6 +450,18 @@ pub fn map(
         return Err(MemoryObjectError::NotPageAligned);
     }
 
+    // Serialize against address-space teardown/reuse for the complete map.
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    map_locked(asid, cap, base, writable)
+}
+
+/// Install a mapping while the caller holds `ADDRESS_SPACE_LIFECYCLE`.
+fn map_locked(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    base: VAddr,
+    writable: bool,
+) -> Result<(), MemoryObjectError> {
     let (object_id, frames, page_type) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -457,41 +487,6 @@ pub fn map(
         } else {
             PageType::UserRoData
         };
-        // Do not hold the memory-object registry while taking the address-space
-        // table: teardown takes the table then the frame allocator, and
-        // allocation takes the allocator then the registry, so holding the
-        // registry across the table lock closes an AB-BC-CA deadlock cycle.
-        (cap_entry.object, object.frames.clone(), page_type)
-    };
-
-    let mut mapped_pages = 0usize;
-    {
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        let address_space =
-            table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
-        for (index, frame) in frames.iter().copied().enumerate() {
-            let vaddr = base + (index * PAGE_SIZE);
-            if address_space
-                .map_existing_page(MemoryMapping {
-                    vaddr,
-                    paddr: frame,
-                    page_type,
-                })
-                .is_err()
-            {
-                for cleanup_index in 0..mapped_pages {
-                    let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
-                    let _ = address_space.unmap_page(cleanup_vaddr);
-                }
-                return Err(MemoryObjectError::MapFailed);
-            }
-            mapped_pages += 1;
-        }
-    }
-    {
-        let mut registry = MEMORY_OBJECTS.lock();
-        let object =
-            registry.objects.get_mut(&object_id).ok_or(MemoryObjectError::UnknownCapability)?;
         object.mappings.insert(
             asid,
             MemoryMappingState {
@@ -499,11 +494,57 @@ pub fn map(
                 writable,
             },
         );
+        // Do not hold the memory-object registry while taking the address-space
+        // table: teardown takes the table then the frame allocator, and
+        // allocation takes the allocator then the registry, so holding the
+        // registry across the table lock closes an AB-BC-CA deadlock cycle.
+        (cap_entry.object, object.frames.clone(), page_type)
+    };
+
+    let map_result = {
+        let mut mapped_pages = 0usize;
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        match table.get_mut(asid) {
+            Ok(address_space) => {
+                let mut result = Ok(());
+                for (index, frame) in frames.iter().copied().enumerate() {
+                    let vaddr = base + (index * PAGE_SIZE);
+                    if address_space
+                        .map_existing_page(MemoryMapping {
+                            vaddr,
+                            paddr: frame,
+                            page_type,
+                        })
+                        .is_err()
+                    {
+                        for cleanup_index in 0..mapped_pages {
+                            let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
+                            let _ = address_space.unmap_page(cleanup_vaddr);
+                        }
+                        result = Err(MemoryObjectError::MapFailed);
+                        break;
+                    }
+                    mapped_pages += 1;
+                }
+                result
+            }
+            Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
+        }
+    };
+    if let Err(error) = map_result {
+        let mut registry = MEMORY_OBJECTS.lock();
+        if let Some(object) = registry.objects.get_mut(&object_id)
+            && object.mappings.get(&asid).is_some_and(|mapping| mapping.base == base)
+        {
+            object.mappings.remove(&asid);
+        }
+        return Err(error);
     }
     Ok(())
 }
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
     let mut registry = MEMORY_OBJECTS.lock();
     let cap_entry = registry.lookup(asid, cap)?;
     let object =

@@ -103,6 +103,7 @@ const LOOP_TICK_MS: u64 = 25;
 /// Scratch for inbound relmsg frames (distinct from the RPC memory scratch).
 /// Cadence for re-querying discovery for MAC routes and cluster posture.
 const DISCO_QUERY_MS: u64 = 2_000;
+const JOIN_RETRY_MS: u64 = 1_000;
 const RAFT_TIMER_COOKIE: u64 = 0x5241_4654_5449_434b;
 
 fn fatal(stage: u64) -> ! {
@@ -203,14 +204,13 @@ fn poll_peer_discovery(
     }
 }
 
-/// Best-effort cluster-event publishing state: the node's dns is the
-/// replicated event broker, so this node can publish conditions that
-/// dependent activities anywhere in the cluster wait on. Fires are
-/// fire-and-forget with retry; no ordering or leader status is assumed.
+/// Best-effort membership-event publishing state: the node's dns is the
+/// replicated event broker, so dependent activities anywhere in the cluster
+/// can wait on an admission committed by this Raft group. Fires are
+/// fire-and-forget with retry.
 struct EventFirer {
     dns_lookup: u64,
     dns_conn: u64,
-    established_fired: bool,
     fired_members: alloc::vec::Vec<alloc::string::String>,
     pending_fire: u64,
     pending_name: alloc::vec::Vec<u8>,
@@ -221,7 +221,6 @@ impl EventFirer {
         Self {
             dns_lookup: 0,
             dns_conn: 0,
-            established_fired: false,
             fired_members: alloc::vec::Vec::new(),
             pending_fire: 0,
             pending_name: alloc::vec::Vec::new(),
@@ -351,6 +350,7 @@ const PEER_ID_KEY: u64 = manifest_key(b"peer-id");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const STORAGE_KEY: u64 = manifest_key(b"storage");
+const NETWORK_KEY: u64 = manifest_key(b"network");
 
 const STORAGE_MEMORY: u64 = 0;
 const STORAGE_OPTIONAL: u64 = 1;
@@ -385,6 +385,14 @@ fn main(ctx: Context) -> ! {
         Some(ManifestValue::Unsigned(STORAGE_REQUIRED)) => STORAGE_REQUIRED,
         _ => STORAGE_MEMORY,
     };
+    // Network participation is launch policy, not an accidental side effect
+    // of starting any Raft instance. Several independent Raft groups may run
+    // on one node; only the node-cluster instance may own the well-known
+    // Ethernet ingress name used by the frame router.
+    let network_enabled = matches!(
+        ctx.manifest_value(NETWORK_KEY),
+        Some(ManifestValue::Unsigned(value)) if value != 0
+    );
 
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -435,8 +443,6 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 3);
 
     let name_u64 = catten_services::raft_name(node_id.as_bytes());
-    catten_syscall::el0_log(0x5241_4654, name_u64 | 0x0000_0000_0100_0000);
-
     let register = ipc_scalar_call_connection(
         ns_conn,
         ns::OP_REGISTER,
@@ -458,15 +464,25 @@ fn main(ctx: Context) -> ! {
     // Register the well-known frame name so the frame demultiplexer routes
     // this service's EtherType to its endpoint (the OP_FRAME ingress). The
     // frouter retries the lookup, so a later registration is fine.
-    let frame_register = ipc_scalar_call_connection(
-        ns_conn,
-        ns::OP_REGISTER,
-        raft::FRAME_NAME,
-        endpoint,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if frame_register != 0 {
-        let _ = unsafe { wait_reply_2(frame_register) };
+    if network_enabled {
+        let frame_register = ipc_scalar_call_connection(
+            ns_conn,
+            ns::OP_REGISTER,
+            raft::FRAME_NAME,
+            endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        );
+        if frame_register == 0 {
+            fatal(10);
+        }
+        let (frame_generation, returned_connection) =
+            unsafe { wait_reply_2(frame_register).unwrap_or((-1, 0)) };
+        if returned_connection != 0 {
+            ipc_close(returned_connection);
+        }
+        if frame_generation < 1 {
+            fatal(11);
+        }
     }
 
     // Storage is launch policy. The ordinary local Raft service test uses
@@ -544,6 +560,13 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 6);
 
     let mut served: u32 = 0;
+    // Heartbeats must be frequent enough to preserve leadership but must not
+    // run at reactor speed. This service shares the physical NIC/frouter
+    // with DNS Raft and application traffic; an unconditional broadcast on
+    // every loop can keep one stop-and-wait frame permanently in flight and
+    // starve those other protocols under TCG.
+    let heartbeat_interval_ms = (election_timeout_ms / 4).clamp(25, 250);
+    let mut last_heartbeat_broadcast = 0u64;
 
     let cq = ctx.completion_queue_layout();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
@@ -563,7 +586,12 @@ fn main(ctx: Context) -> ! {
     let mut disco_query: u64 = 0;
     let mut next_disco_query_ms: u64 = 0;
     let mut join_request_pending = false;
+    let mut join_retry_at_ms = 0;
     let mut join_accepted = false;
+    let mut join_attempts = 0u32;
+    let mut join_requests_received = 0u32;
+    let mut join_replies_received = 0u32;
+    let mut raft_tag_counts = [0u32; 6];
 
     loop {
         // Endpoint readiness and transport completions wake this reactor
@@ -578,7 +606,11 @@ fn main(ctx: Context) -> ! {
             },
             0,
         );
-        let mut tick_due = !timer_armed && timed_out != 0;
+        // A successfully submitted detached timer is not proof that its CQ
+        // completion will arrive. Keep the bounded CQ timeout as an
+        // independent clock watchdog so one delayed/lost cookie cannot stop
+        // elections and heartbeats forever.
+        let mut tick_due = timed_out != 0;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
@@ -650,7 +682,7 @@ fn main(ctx: Context) -> ! {
         // this service's own EtherType; the disco supplies the MAC routes and
         // cluster posture. All three are resolved through the local name service
         // (they live on this node).
-        if net_conn == 0 && net_lookup == 0 {
+        if network_enabled && net_conn == 0 && net_lookup == 0 {
             net_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
         }
         if net_lookup != 0 {
@@ -679,7 +711,7 @@ fn main(ctx: Context) -> ! {
                 net_lookup = 0;
             }
         }
-        if frouter_conn == 0 && frouter_lookup == 0 {
+        if network_enabled && frouter_conn == 0 && frouter_lookup == 0 {
             frouter_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, frouter::NAME);
         }
         if frouter_lookup != 0 {
@@ -695,7 +727,7 @@ fn main(ctx: Context) -> ! {
                 frouter_lookup = 0;
             }
         }
-        if disco_conn == 0 && disco_lookup == 0 {
+        if network_enabled && disco_conn == 0 && disco_lookup == 0 {
             disco_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, disco::NAME);
         }
         if disco_lookup != 0 {
@@ -717,6 +749,10 @@ fn main(ctx: Context) -> ! {
         // only addresses that exist pre-membership, and their reported roles
         // identify the leader to apply to (or a follower whose leader hint is
         // the redirect).
+        if join_request_pending && node.millis() >= join_retry_at_ms {
+            join_request_pending = false;
+            next_disco_query_ms = node.millis();
+        }
         if disco_conn != 0 && disco_query == 0 && node.millis() >= next_disco_query_ms {
             next_disco_query_ms = node.millis() + DISCO_QUERY_MS;
             disco_query = ipc_scalar_call(disco_conn, disco::OP_CLUSTER_STATUS, 0);
@@ -748,31 +784,50 @@ fn main(ctx: Context) -> ! {
                                     );
                                 }
                             }
-                            // Auto-join: a single-node leader whose id is
-                            // lexicographically larger than a discovered
-                            // leader's applies for membership of that cluster
-                            // (the smaller id is the anchor and waits). The
-                            // join request is a MAC-addressed frame — no local
-                            // lookup of the peer exists or is needed.
-                            if let Some((_mac, _role, raft_id, _leader_id)) =
-                                peers.iter().find(|(_, role, raft_id, _)| {
-                                    *role == ROLE_LEADER
-                                        && !raft_id.is_empty()
+                            // Auto-join: the lexicographically larger
+                            // single-node member applies to the smaller-id
+                            // anchor. Do not require discovery's cached role
+                            // to say "leader" before sending: posture can lag
+                            // identity discovery, while the receiver itself is
+                            // the authority that accepts only when it really
+                            // is leader. A follower's leader hint is preferred
+                            // when it names a route we have already learned.
+                            if let Some((_mac, role, raft_id, leader_id)) = peers
+                                .iter()
+                                .filter(|(_, _, raft_id, _)| {
+                                    !raft_id.is_empty()
                                         && raft_id.as_slice() != node.me.id.as_bytes()
                                         && node.me.id.as_bytes() > raft_id.as_slice()
                                 })
+                                .min_by(|left, right| left.2.cmp(&right.2))
                                 && !join_accepted
                                 && !join_request_pending
-                                && node.state == NodeState::Leader
                                 && node.cluster_configuration.all_members().len() == 1
                             {
-                                let target = core::str::from_utf8(raft_id).unwrap_or("");
-                                if let Some(payload) =
-                                    encode_join_request(node.me.id.as_bytes(), name_u64)
+                                let target_id = if *role != ROLE_LEADER
+                                    && !leader_id.is_empty()
+                                    && mac_transport
+                                        .has_peer(core::str::from_utf8(leader_id).unwrap_or(""))
                                 {
+                                    leader_id.as_slice()
+                                } else {
+                                    raft_id.as_slice()
+                                };
+                                let target = core::str::from_utf8(target_id).unwrap_or("");
+                                let may_apply = node.state == NodeState::Leader
+                                    || (node.joining
+                                        && node.joining_from.as_deref() == Some(target));
+                                if may_apply
+                                    && let Some(payload) =
+                                        encode_join_request(node.me.id.as_bytes(), name_u64)
+                                {
+                                    if !node.joining {
+                                        node.begin_joining(target.to_string(), node.millis());
+                                    }
                                     mac_transport.send_message(target, TAG_JOIN_REQUEST, payload);
                                     join_request_pending = true;
-                                    catten_syscall::el0_log(0x5241_4654, 0x4a4f_494e);
+                                    join_attempts = join_attempts.saturating_add(1);
+                                    join_retry_at_ms = node.millis().saturating_add(JOIN_RETRY_MS);
                                 }
                             }
                         }
@@ -861,12 +916,25 @@ fn main(ctx: Context) -> ! {
                             };
                             let mut source_mac = [0u8; 6];
                             source_mac.copy_from_slice(&frame[6..12]);
-                            let payload = &frame[14..];
-                            match payload.first().copied() {
-                                Some(tag) if (1..=6).contains(&tag) => {
-                                    if let Some(inbound) =
-                                        mac_transport.decode_inbound(&source_mac, payload)
-                                    {
+                            let Some((tag, payload)) =
+                                catten_graft::wire::parse_tagged_payload(&frame[14..]).ok()
+                            else {
+                                memory_unmap(message.memory);
+                                memory_close(message.memory);
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, -1);
+                                }
+                                continue;
+                            };
+                            match tag {
+                                tag if (1..=6).contains(&tag) => {
+                                    let counter = &mut raft_tag_counts[tag as usize - 1];
+                                    *counter = counter.saturating_add(1);
+                                    if let Some(inbound) = mac_transport.decode_inbound_parts(
+                                        &source_mac,
+                                        tag,
+                                        payload,
+                                    ) {
                                         let millis = node.millis();
                                         drive_inbound(
                                             &mut node,
@@ -877,42 +945,36 @@ fn main(ctx: Context) -> ! {
                                         );
                                     }
                                 }
-                                Some(TAG_JOIN_REQUEST) => {
+                                TAG_JOIN_REQUEST => {
+                                    join_requests_received =
+                                        join_requests_received.saturating_add(1);
                                     if let Some((joiner_id, service_name)) =
                                         decode_join_request(payload)
                                     {
-                                        let (accepted, detail) = if node.state == NodeState::Leader
-                                        {
+                                        let accepted = if node.state == NodeState::Leader {
                                             let peer = Peer::voter(
                                                 core::str::from_utf8(joiner_id)
                                                     .unwrap_or("")
                                                     .to_string(),
                                                 service_name,
                                             );
-                                            match node.submit_join(peer, node.millis()) {
-                                                Ok(index) => (index, 0u64),
-                                                Err(code) => (0, code.unsigned_abs()),
-                                            }
+                                            node.submit_join(peer, node.millis()).unwrap_or(0)
                                         } else {
-                                            (0, 0xff)
+                                            0
                                         };
                                         mac_transport.send_response(
                                             source_mac,
                                             TAG_JOIN_REPLY,
                                             encode_join_reply(accepted),
                                         );
-                                        catten_syscall::el0_log(
-                                            0x5241_4654,
-                                            0x4a52_4551 | (accepted << 16) | (detail << 32),
-                                        );
                                     }
                                 }
-                                Some(TAG_JOIN_REPLY) => {
+                                TAG_JOIN_REPLY => {
+                                    join_replies_received = join_replies_received.saturating_add(1);
                                     if let Some(index) = decode_join_reply(payload) {
                                         join_request_pending = false;
                                         if index > 0 {
                                             join_accepted = true;
-                                            catten_syscall::el0_log(0x5241_4654, 0x004a_4f49_4e41);
                                         }
                                     }
                                 }
@@ -942,7 +1004,6 @@ fn main(ctx: Context) -> ! {
                 }
 
                 raft::OP_CLUSTER_STATUS => {
-                    catten_syscall::el0_log(0x5241_4654, 0x5555);
                     let status: u32 = match node.state {
                         NodeState::Follower => 1,
                         NodeState::Candidate => 2,
@@ -962,10 +1023,8 @@ fn main(ctx: Context) -> ! {
                     if let Some(len) = len
                         && let Some(memory) = write_payload_to_mem(&buf[..len])
                     {
-                        catten_syscall::el0_log(0x5241_4654, 0x5556);
                         ipc_reply_move(message.reply, memory, len as i64);
                     } else if message.reply != 0 {
-                        catten_syscall::el0_log(0x5241_4654, 0x5557);
                         ipc_reply(message.reply, -1);
                     }
                 }
@@ -1055,16 +1114,20 @@ fn main(ctx: Context) -> ! {
             if node.check_timeout() {
                 node.start_election(node.millis());
             }
-            timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
-        }
-
-        if node.state == NodeState::Leader {
-            node.broadcast_heartbeat(node.millis());
+            if node.state == NodeState::Leader
+                && node.millis().saturating_sub(last_heartbeat_broadcast) >= heartbeat_interval_ms
+            {
+                node.broadcast_heartbeat(node.millis());
+                last_heartbeat_broadcast = node.millis();
+            }
+            if !timer_armed {
+                timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+            }
         }
 
         // --- Cluster-event publishing (best-effort) ---
         // The dns is the replicated event broker: conditions published here
-        // (cluster established, membership.{id} after a JOIN finalizes) are
+        // (membership.{id} after a JOIN finalizes) are
         // committed through consensus and waited on by dependent activities,
         // so no caller polls or assumes ordering.
         if events.dns_lookup == 0 && events.dns_conn == 0 {
@@ -1084,10 +1147,12 @@ fn main(ctx: Context) -> ! {
             }
         }
         if events.dns_conn != 0 && events.pending_fire == 0 {
-            if node.state == NodeState::Leader && !events.established_fired {
-                events.pending_name = b"event:established".to_vec();
-                events.pending_fire = fire_event(events.dns_conn, &events.pending_name);
-            } else {
+            // Only the Raft leader announces admissions. Publishing a
+            // synthetic single-node "established" event first used to leave
+            // this path serialized behind a stale forwarded DNS call, which
+            // prevented the real membership condition from ever being
+            // announced. Membership itself is the authoritative condition.
+            if node.state == NodeState::Leader {
                 for peer in node.cluster_configuration.all_members() {
                     if peer.id != node.me.id && !events.fired_members.contains(&peer.id) {
                         events.pending_name =
@@ -1104,14 +1169,10 @@ fn main(ctx: Context) -> ! {
                 ipc_close(events.pending_fire);
                 events.pending_fire = 0;
                 let name = core::mem::take(&mut events.pending_name);
-                if result > 0 {
-                    if name == b"event:established" {
-                        events.established_fired = true;
-                    } else if let Some(id) = name.strip_prefix(b"event:membership:") {
-                        events
-                            .fired_members
-                            .push(core::str::from_utf8(id).unwrap_or("").to_string());
-                    }
+                if result > 0
+                    && let Some(id) = name.strip_prefix(b"event:membership:")
+                {
+                    events.fired_members.push(core::str::from_utf8(id).unwrap_or("").to_string());
                 }
                 // On failure (e.g. ERR_NOT_LEADER) the next iteration retries
                 // the same pending event.
@@ -1122,6 +1183,37 @@ fn main(ctx: Context) -> ! {
         // this reactor iteration. Write the term first so a verifier that
         // observes Leader cannot still see the preceding election term.
         config::write::<u32>(20, node.current_term as u32);
+        config::write::<u32>(
+            28,
+            match node.state {
+                NodeState::Follower => 1,
+                NodeState::Candidate => 2,
+                NodeState::Leader => 3,
+            },
+        );
+        config::write::<u32>(32, node.cluster_configuration.all_members().len() as u32);
+        config::write::<u32>(
+            36,
+            (u32::from(net_conn != 0))
+                | (u32::from(frouter_conn != 0) << 1)
+                | (u32::from(disco_conn != 0) << 2)
+                | (u32::from(join_request_pending) << 3)
+                | (u32::from(join_accepted) << 4)
+                | (u32::from(node.joining) << 5),
+        );
+        config::write::<u32>(40, join_attempts);
+        config::write::<u32>(44, join_requests_received);
+        config::write::<u32>(48, join_replies_received);
+        config::write::<u32>(52, node.millis().min(u32::MAX as u64) as u32);
+        config::write::<u32>(56, mac_transport.peer_count().min(u32::MAX as usize) as u32);
+        config::write::<u32>(60, mac_transport.pending_send_count().min(u32::MAX as usize) as u32);
+        config::write::<u32>(64, mac_transport.outbound_count().min(u32::MAX as usize) as u32);
+        for (index, count) in raft_tag_counts.iter().copied().enumerate() {
+            config::write::<u32>(68 + index * 4, count);
+        }
+        config::write::<u32>(92, node.commit_index.min(u32::MAX as u64) as u32);
+        config::write::<u32>(96, node.log_store.last_index().min(u32::MAX as u64) as u32);
+        config::write::<u32>(100, node.log_store.last_term().min(u32::MAX as u64) as u32);
         config::write::<u32>(
             8,
             match node.state {

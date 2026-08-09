@@ -178,13 +178,23 @@ pub fn get_lp_local_base() -> crate::memory::VAddr {
 /// system.
 #[unsafe(no_mangle)]
 pub extern "C" fn cond_yield_lp() {
+    cond_yield_lp_impl(true);
+}
+
+/// IRQ-tail scheduler entry. Unlike a normal thread yield, this path must not
+/// unmask before the vector epilogue restores the interrupted PSTATE.
+pub fn cond_yield_lp_from_irq() {
+    cond_yield_lp_impl(false);
+}
+
+fn cond_yield_lp_impl(allow_force_unmask: bool) {
     let interrupts_were_enabled = get_int_state();
     // Set when the "only runnable thread is current" path needs to restore
     // interrupts even though the thread entered masked: re-arming the quantum
     // is pointless while IRQs stay masked, because the PPI can never be
     // delivered and no timer/device wake could ever make another thread
-    // runnable. Restricted to pure thread context (interrupt depth 0): the
-    // IRQ-tail caller must NOT unmask here, because it returns through
+    // runnable. The explicit IRQ-tail entry disables this behavior because it
+    // returns through
     // `pop_volatile_regs`/`eret` with the frame already on the stack — a
     // nested IRQ taken in that window pushes another frame whose restore
     // walks past the stack top (observed as a same-EL data abort in
@@ -229,24 +239,17 @@ pub extern "C" fn cond_yield_lp() {
                         // and stops firing, which would freeze `sleep` and any
                         // other timer-driven wakeups.
                         lsched.clear_ctx_switch_pending();
-                        // A thread that yielded from a masked context (for
-                        // example the boot continuation, which runs the
-                        // deferred self-test suite non-preemptibly) may find
-                        // nothing else runnable. Re-arming the quantum is
+                        // A normal thread that yielded from a masked context
+                        // may find nothing else runnable. Re-arming the quantum is
                         // useless while IRQs stay masked: the PPI can never be
                         // delivered, so neither a timer nor a pending device
                         // interrupt can ever make another thread runnable, and
                         // the LP busy-spins forever with the wake stuck at the
                         // GIC. Force the end-of-function unmask so the
                         // re-armed timer (or a pending device interrupt) is
-                        // actually taken. In the IRQ-tail caller this is
-                        // harmless: the tail's eret restores the interrupted
-                        // thread's saved PSTATE regardless of the current
-                        // DAIF.
-                        if !interrupts_were_enabled
-                            && crate::cpu::multiprocessor::interrupt_tracking::get_interrupt_depth()
-                                == 0
-                        {
+                        // actually taken. The IRQ-tail entry passes false and
+                        // leaves restoration exclusively to eret.
+                        if allow_force_unmask && !interrupts_were_enabled {
                             force_unmask = true;
                         }
                         None
@@ -333,13 +336,14 @@ pub extern "C" fn cond_yield_lp() {
 ///  3. restore the incoming thread.
 ///
 /// The saved frame layout (from higher to lower address, i.e. in push order)
-/// is the callee-saved general purpose registers x19-x30. TTBR0 is not part of
-/// the frame: it is reloaded on restore from the incoming address space's
-/// software record (`next_ttbr0`). The AArch64 PCS requires x19-x28 plus the
-/// frame pointer x29 and the link register x30 to be preserved across calls,
-/// so saving these is sufficient to resume the interrupted `cond_yield_lp` in
-/// the outgoing thread. Restoring x30 and executing `ret` returns into the
-/// incoming thread exactly where it last called `switch_ctx` (or into a
+/// is the callee-saved general purpose registers x19-x30 followed by the full
+/// 128-bit v8-v15 registers and FPCR/FPSR. TTBR0 is not part of the frame: it
+/// is reloaded on restore from the incoming address space's software record
+/// (`next_ttbr0`).
+/// AAPCS64 requires x19-x30 and the low halves of v8-v15 to survive calls; the
+/// switch preserves all 128 bits of v8-v15 so compiler-generated NEON state is
+/// never mixed between threads. Restoring x30 and executing `ret` returns into
+/// the incoming thread exactly where it last called `switch_ctx` (or into a
 /// trampoline for a freshly created thread).
 ///
 /// Switch the calling LP to the thread whose context fields are referenced by
@@ -371,7 +375,16 @@ pub unsafe extern "C" fn switch_ctx(
         // x0 = curr_sp_ptr, x1 = next_sp_ptr, x2 = curr_on_cpu, x3 = next_on_cpu,
         // x4 = next_ttbr0.
         "cbz x0, 2f",
-        // Save callee-saved registers of the outgoing thread.
+        // Save ABI-preserved FP/SIMD state, then the callee-saved GPRs. GPRs
+        // remain at the bottom of the frame so the initial-frame layout and
+        // restore order are straightforward.
+        "mrs x5, fpcr",
+        "mrs x6, fpsr",
+        "stp x5, x6, [sp, #-16]!",
+        "stp q14, q15, [sp, #-32]!",
+        "stp q12, q13, [sp, #-32]!",
+        "stp q10, q11, [sp, #-32]!",
+        "stp q8, q9, [sp, #-32]!",
         "stp x29, x30, [sp, #-16]!",
         "stp x27, x28, [sp, #-16]!",
         "stp x25, x26, [sp, #-16]!",
@@ -427,6 +440,13 @@ pub unsafe extern "C" fn switch_ctx(
         "ldp x25, x26, [sp], #16",
         "ldp x27, x28, [sp], #16",
         "ldp x29, x30, [sp], #16",
+        "ldp q8, q9, [sp], #32",
+        "ldp q10, q11, [sp], #32",
+        "ldp q12, q13, [sp], #32",
+        "ldp q14, q15, [sp], #32",
+        "ldp x5, x6, [sp], #16",
+        "msr fpcr, x5",
+        "msr fpsr, x6",
         // Return into the incoming thread.
         "ret",
     );

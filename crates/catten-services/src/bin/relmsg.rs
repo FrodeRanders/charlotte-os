@@ -24,11 +24,11 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_read,
     cq_wait_timeout,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
-    ipc_recv_block,
     ipc_reply,
     ipc_reply_move,
     ipc_scalar_call,
@@ -39,6 +39,7 @@ use catten_syscall::{
     memory_close,
     memory_map_any,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 use charlotte_protocol_msg::{
@@ -63,6 +64,7 @@ const STAGE_OFFSET: usize = 0;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const RETIRED_SESSION_WINDOW: usize = 8;
+const RETRANSMIT_TIMER_COOKIE: u64 = 0x5245_4c4d_5347_544d;
 
 struct ReceivedMessage {
     source: [u8; 6],
@@ -474,18 +476,39 @@ fn main(ctx: Context) -> ! {
     let mut peers: Vec<Peer> = Vec::new();
     let mut received = VecDeque::new();
     let mut pending_recv = 0;
+    let cq = ctx.completion_queue_layout();
+    let mut retransmit_timer_armed =
+        submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE) != u64::MAX;
     config::write::<u32>(STAGE_OFFSET, 4);
 
     loop {
+        // Retransmission cadence must be independent of endpoint traffic.
+        // A timed CQ wait alone is insufficient: a busy peer can wake that
+        // wait continuously, preventing its deadline from ever winning while
+        // one of our own frames remains unacknowledged. The detached timer's
+        // cookie is drained on every reactor iteration, including iterations
+        // that already have an endpoint message to process.
+        let mut retransmit_due = false;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == RETRANSMIT_TIMER_COOKIE {
+                retransmit_due = true;
+                retransmit_timer_armed = false;
+            }
+        }
+        if retransmit_due {
+            retransmit_pending(net_conn, &mut peers);
+        }
+        if !retransmit_timer_armed {
+            retransmit_timer_armed =
+                submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE)
+                    != u64::MAX;
+        }
+
         config::write::<u32>(STAGE_OFFSET, 5);
         deliver_received(&mut received, &mut pending_recv);
 
         config::write::<u32>(STAGE_OFFSET, 6);
-        let message = if peers.iter().any(|peer| peer.pending.is_some()) {
-            ipc_recv(ep)
-        } else {
-            ipc_recv_block(ep)
-        };
+        let message = ipc_recv(ep);
         config::write::<u32>(STAGE_OFFSET, 7);
         if message.status == ipc_status::NO_MESSAGE {
             let (_, timed_out) = cq_wait_timeout(1, relmsg::RETRANSMIT_MS, 0);

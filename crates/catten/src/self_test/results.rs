@@ -276,7 +276,10 @@ pub fn register_boot_suite() {
     #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
     register(TestId::Http);
     #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
-    register(TestId::Clusterctl);
+    {
+        register(TestId::Clusterctl);
+        register(TestId::Join);
+    }
 }
 
 pub fn pass(id: TestId) {
@@ -320,13 +323,10 @@ pub fn fail(id: TestId) {
 }
 
 /// Spawn a deferred verifier and associate its kernel TID with its result bit.
-///
-/// Boot-time verifiers are admitted before the scheduler starts, so the
-/// mapping is published before the new thread can run.
 pub fn spawn_verifier(id: TestId, entry: extern "C" fn()) -> ThreadId {
-    let tid = spawn_thread(KERNEL_ASID, entry);
-    VERIFIER_TIDS[id as usize].store(tid as u64, Ordering::Release);
-    tid
+    crate::cpu::scheduler::spawn_thread_after_publish(KERNEL_ASID, entry, |tid| {
+        VERIFIER_TIDS[id as usize].store(tid as u64, Ordering::Release);
+    })
 }
 
 /// Panic-handler hook: atomically fail the test owned by `tid`.

@@ -427,6 +427,9 @@ pub fn mmio_map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(DeviceError::NotPageAligned);
     }
+    // Serialize the capability check, page-table update, and mapping record
+    // against teardown and ASID reuse.
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let mut devices = DEVICES.lock();
     let object = lookup_mut(&mut devices, asid, cap)?;
     let DeviceObject::Mmio(region) = object else {
@@ -447,7 +450,9 @@ pub fn mmio_map_any(
     cap: DeviceCap,
     writable: bool,
 ) -> Result<VAddr, DeviceError> {
-    crate::logln!("[device] mmio_map_any entry asid={} cap={}", asid, cap);
+    // Take lifecycle before DEVICES: teardown uses the same ordering. The
+    // scratch reservation and MMIO mapping must target one AS generation.
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let mut devices = DEVICES.lock();
     let object = lookup_mut(&mut devices, asid, cap)?;
     let DeviceObject::Mmio(region) = object else {
@@ -456,9 +461,7 @@ pub fn mmio_map_any(
     let (phys_base, pages) = (region.phys_base, region.pages);
     let base =
         crate::memory::object::reserve_scratch(asid, pages).map_err(|_| DeviceError::MapFailed)?;
-    crate::logln!("[device] mmio_map_any reserve ok base={:#x}", usize::from(base));
     map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable)?;
-    crate::logln!("[device] mmio_map_any done base={:#x}", usize::from(base));
     Ok(base)
 }
 
@@ -491,6 +494,7 @@ fn map_mmio_at(
 
 /// Unmap a previously mapped MMIO region from the caller's address space.
 pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let mut devices = DEVICES.lock();
     let object = lookup_mut(&mut devices, asid, cap)?;
     let DeviceObject::Mmio(region) = object else {
