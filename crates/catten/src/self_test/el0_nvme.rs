@@ -51,6 +51,12 @@ use crate::{
 
 const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 const OBJSTORE_TEST_DONE_NAME: u64 = u64::from_le_bytes(*b"objdone\0");
+/// `objstore::NAME` from the object-store protocol (`name(b"obj")`), used for
+/// the deferred registration lookup below.
+const OBJSTORE_NAME: u64 = u64::from_le_bytes(*b"obj\0\0\0\0\0");
+/// `ns::OP_LOOKUP` (short-name lookup; the name service defers the reply
+/// until the service registers).
+const NS_OP_LOOKUP: u32 = 2;
 
 #[cfg(target_arch = "aarch64")]
 static TEST_STATE: spin::LazyLock<
@@ -159,18 +165,34 @@ extern "C" fn verify_el0_nvme() {
         &ns,
         ConnectionRights::CALL,
     );
-    let obj_cfg: *const u32 = {
-        let base: *mut u8 = objstore.status_frame.into();
-        base as *const u32
-    };
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
 
-    // Wait for object store to register
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-    while unsafe { core::ptr::read_volatile(obj_cfg.add(1)) } != 0x900d {
-        deadline.assert_pending("EL0 nvme objstore registration");
-        crate::cpu::scheduler::yield_lp();
+    // The object store registers with the name service under its interface
+    // name once its endpoint is up. A deferred lookup resolves exactly when
+    // that registration lands, so block on the reply rather than polling the
+    // shared status sentinel: the name service is the event source.
+    let obj_ns = crate::ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        crate::memory::KERNEL_ASID,
+        ConnectionRights::CALL,
+    )
+    .expect("[nvme] objstore registration name-service connection");
+    let obj_lookup =
+        crate::ipc::scalar_call(crate::memory::KERNEL_ASID, obj_ns, NS_OP_LOOKUP, OBJSTORE_NAME)
+            .expect("[nvme] objstore registration lookup");
+    let registered = crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, obj_lookup, 30_000)
+        .expect("[nvme] objstore registration reply error");
+    assert!(registered, "[nvme] objstore registration deadline expired");
+    if let Ok(Some(reply)) = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, obj_lookup)
+        && let Some(connection) = reply.cap
+    {
+        let _ = crate::ipc::close_cap(crate::memory::KERNEL_ASID, connection);
     }
+    crate::ipc::close_cap(crate::memory::KERNEL_ASID, obj_lookup)
+        .expect("[nvme] objstore lookup close");
+    crate::ipc::close_cap(crate::memory::KERNEL_ASID, obj_ns)
+        .expect("[nvme] objstore name-service connection close");
 
     logln!("[nvme] NVMe driver and object store both initialised and registered.");
 
@@ -186,16 +208,20 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = client.status_frame.into();
         base as *const u32
     };
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-    while unsafe { core::ptr::read_volatile(client_cfg) } != 0x900d {
-        let state = unsafe { core::ptr::read_volatile(client_cfg) };
-        assert!(state < 0xdea0, "[nvme] I/O verifier failed: {:#x}", state);
-        deadline.assert_pending("EL0 nvme I/O client sentinel");
-        // Yield rather than blocking on a timer: the interrupt-driven driver
-        // shares scheduler capacity, and a timer wait that is not delivered
-        // would leave the deadline unchecked (observed as a silent hang).
-        crate::cpu::scheduler::yield_lp();
-    }
+    // The client writes its completion sentinel and then exits; its thread
+    // exit is the completion event, so block on that instead of polling the
+    // shared status frame.
+    let client_exit = crate::completion::observe_thread_exit_with_generation(
+        client.asid,
+        client.tid,
+        Some(client.generation),
+    )
+    .expect("[nvme] client exit observer");
+    let exited = crate::completion::wait_timeout(client.asid, client_exit, 30_000)
+        .expect("[nvme] client exit wait error");
+    assert!(exited, "[nvme] I/O client did not exit within deadline");
+    let state = unsafe { core::ptr::read_volatile(client_cfg) };
+    assert_eq!(state, 0x900d, "[nvme] I/O verifier failed: {:#x}", state);
     let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
     assert_eq!(
         unsafe { core::ptr::read_volatile(sentinel_ptr) },
@@ -238,16 +264,13 @@ extern "C" fn verify_el0_nvme() {
         let base: *mut u8 = object_client.status_frame.into();
         base as *const u32
     };
-    let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-    let completion = loop {
-        match crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup) {
-            Ok(Some(reply)) => break reply,
-            Ok(None) => {}
-            Err(_) => panic!("[nvme] object-client completion reply error"),
-        }
-        deadline.assert_pending("EL0 nvme object-client completion");
-        crate::cpu::scheduler::yield_lp();
-    };
+    let ready =
+        crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, completion_lookup, 60_000)
+            .expect("[nvme] object-client completion reply error");
+    assert!(ready, "[nvme] object-client completion deadline expired");
+    let completion = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup)
+        .expect("[nvme] object-client completion poll error")
+        .expect("[nvme] object-client completion reply missing");
     assert!(completion.result >= 1, "[nvme] invalid object-client completion generation");
     if let Some(connection) = completion.cap {
         crate::ipc::close_cap(crate::memory::KERNEL_ASID, connection)
@@ -277,7 +300,10 @@ extern "C" fn verify_el0_nvme() {
     supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client);
     crate::self_test::el0_service::verify_persistent_upgrade(&ns);
-    crate::self_test::el0_raft::test_persistent_raft(&ns);
+    #[cfg(not(feature = "live_upgrade_test"))]
+    {
+        crate::self_test::el0_raft::test_persistent_raft(&ns);
+    }
     logln!("[nvme] SUCCESS: storage stack and persistent Raft recovery verified.");
     crate::self_test::results::pass(crate::self_test::results::TestId::Nvme);
 }

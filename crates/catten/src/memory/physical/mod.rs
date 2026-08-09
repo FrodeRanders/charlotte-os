@@ -204,7 +204,6 @@ impl PhysicalFrameAllocator {
         );
         if let Ok(ref frame) = r {
             let raw: usize = <PAddr as Into<usize>>::into(*frame);
-            crate::early_logln!("[HEAPDBG] allocate_large_frame -> {:#x}", raw);
             HEAP_PHYS_BASE.store(raw, core::sync::atomic::Ordering::Relaxed);
         }
         r

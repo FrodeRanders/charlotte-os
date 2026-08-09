@@ -24,11 +24,11 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_read,
     cq_wait_timeout,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
-    ipc_recv_block,
     ipc_reply,
     ipc_reply_move,
     ipc_scalar_call,
@@ -37,8 +37,9 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 use charlotte_protocol_msg::{
@@ -60,12 +61,10 @@ use charlotte_protocol_net::decode_status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_OFFSET: usize = 0;
-const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
-const TX_SCRATCH: usize = 0x0000_0000_0090_1000;
-const PAYLOAD_SCRATCH: usize = 0x0000_0000_0090_2000;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const RETIRED_SESSION_WINDOW: usize = 8;
+const RETRANSMIT_TIMER_COOKIE: u64 = 0x5245_4c4d_5347_544d;
 
 struct ReceivedMessage {
     source: [u8; 6],
@@ -192,12 +191,13 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     if cap == 0 {
         return false;
     }
-    if memory_map(cap, TX_SCRATCH, true) != 0 {
+    let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
+    if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
     }
     unsafe {
-        core::ptr::copy_nonoverlapping(frame.as_ptr(), TX_SCRATCH as *mut u8, frame.len());
+        core::ptr::copy_nonoverlapping(frame.as_ptr(), tx_scratch_vaddr as *mut u8, frame.len());
     }
     memory_unmap(cap);
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
@@ -328,11 +328,12 @@ fn process_frame(
         if !is_frag {
             // Single-frame message: deliver immediately.
             let cap = memory_alloc(1);
-            if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+            let (payload_scratch_3_map_status, payload_scratch_3_vaddr) = memory_map_any(cap, true);
+            if cap != 0 && payload_scratch_3_map_status == 0 {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         payload.as_ptr(),
-                        PAYLOAD_SCRATCH as *mut u8,
+                        payload_scratch_3_vaddr as *mut u8,
                         payload_len,
                     );
                 }
@@ -387,11 +388,13 @@ fn process_frame(
                 let total = message_bytes.len();
                 let pages = total.div_ceil(4096).max(1);
                 let cap = memory_alloc(pages);
-                if cap != 0 && memory_map(cap, PAYLOAD_SCRATCH, true) == 0 {
+                let (payload_scratch_2_map_status, payload_scratch_2_vaddr) =
+                    memory_map_any(cap, true);
+                if cap != 0 && payload_scratch_2_map_status == 0 {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             message_bytes.as_ptr(),
-                            PAYLOAD_SCRATCH as *mut u8,
+                            payload_scratch_2_vaddr as *mut u8,
                             total,
                         );
                     }
@@ -473,18 +476,39 @@ fn main(ctx: Context) -> ! {
     let mut peers: Vec<Peer> = Vec::new();
     let mut received = VecDeque::new();
     let mut pending_recv = 0;
+    let cq = ctx.completion_queue_layout();
+    let mut retransmit_timer_armed =
+        submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE) != u64::MAX;
     config::write::<u32>(STAGE_OFFSET, 4);
 
     loop {
+        // Retransmission cadence must be independent of endpoint traffic.
+        // A timed CQ wait alone is insufficient: a busy peer can wake that
+        // wait continuously, preventing its deadline from ever winning while
+        // one of our own frames remains unacknowledged. The detached timer's
+        // cookie is drained on every reactor iteration, including iterations
+        // that already have an endpoint message to process.
+        let mut retransmit_due = false;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == RETRANSMIT_TIMER_COOKIE {
+                retransmit_due = true;
+                retransmit_timer_armed = false;
+            }
+        }
+        if retransmit_due {
+            retransmit_pending(net_conn, &mut peers);
+        }
+        if !retransmit_timer_armed {
+            retransmit_timer_armed =
+                submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE)
+                    != u64::MAX;
+        }
+
         config::write::<u32>(STAGE_OFFSET, 5);
         deliver_received(&mut received, &mut pending_recv);
 
         config::write::<u32>(STAGE_OFFSET, 6);
-        let message = if peers.iter().any(|peer| peer.pending.is_some()) {
-            ipc_recv(ep)
-        } else {
-            ipc_recv_block(ep)
-        };
+        let message = ipc_recv(ep);
         config::write::<u32>(STAGE_OFFSET, 7);
         if message.status == ipc_status::NO_MESSAGE {
             let (_, timed_out) = cq_wait_timeout(1, relmsg::RETRANSMIT_MS, 0);
@@ -534,13 +558,15 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_BUSY);
                     continue;
                 }
-                if memory_map(message.memory, PAYLOAD_SCRATCH, false) != 0 {
+                let (payload_scratch_map_status, payload_scratch_vaddr) =
+                    memory_map_any(message.memory, false);
+                if payload_scratch_map_status != 0 {
                     memory_close(message.memory);
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
                 let payload = unsafe {
-                    core::slice::from_raw_parts(PAYLOAD_SCRATCH as *const u8, payload_len)
+                    core::slice::from_raw_parts(payload_scratch_vaddr as *const u8, payload_len)
                 };
                 let seq = peers[index].next_tx_seq;
 
@@ -627,9 +653,12 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, relmsg::ERR_UNKNOWN);
                     continue;
                 }
-                if memory_map(message.memory, RX_SCRATCH, false) == 0 {
-                    let frame =
-                        unsafe { core::slice::from_raw_parts(RX_SCRATCH as *const u8, frame_len) };
+                let (rx_scratch_map_status, rx_scratch_vaddr) =
+                    memory_map_any(message.memory, false);
+                if rx_scratch_map_status == 0 {
+                    let frame = unsafe {
+                        core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, frame_len)
+                    };
                     process_frame(
                         net_conn,
                         local_mac,

@@ -17,8 +17,6 @@ use catten_syscall::*;
 const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
 const BYTES: usize = 2 * 1024 * 1024 + 4096;
 const PAGES: usize = BYTES / 4096;
-const DATA_VADDR: usize = 0x0000_0000_2000_0000;
-const SIZE_VADDR: usize = 0x0000_0000_0070_0000;
 const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 
 fn fail(code: u32) -> ! {
@@ -54,11 +52,12 @@ fn main(ctx: Context) -> ! {
     }
 
     let size_cap = memory_alloc(1);
-    if size_cap == 0 || memory_map(size_cap, SIZE_VADDR, true) != 0 {
+    let (size_vaddr_2_map_status, size_vaddr_2_vaddr) = memory_map_any(size_cap, true);
+    if size_cap == 0 || size_vaddr_2_map_status != 0 {
         fail(0xdea5);
     }
     unsafe {
-        (SIZE_VADDR as *mut u64).write_unaligned(BYTES as u64);
+        (size_vaddr_2_vaddr as *mut u64).write_unaligned(BYTES as u64);
     }
     memory_unmap(size_cap);
     let set_size =
@@ -73,14 +72,15 @@ fn main(ctx: Context) -> ! {
     if data == 0 {
         fail(0xdea7);
     }
-    let map_status = memory_map(data, DATA_VADDR, true);
+    let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(data, true);
+    let map_status = data_vaddr_2_map_status;
     if map_status != 0 {
         config::write::<u32>(4, map_status as u32);
         fail(0xdea8);
     }
     for offset in 0..BYTES {
         unsafe {
-            ((DATA_VADDR + offset) as *mut u8)
+            ((data_vaddr_2_vaddr + offset) as *mut u8)
                 .write_volatile((offset as u8).wrapping_mul(29) ^ 0x6d);
         }
     }
@@ -114,12 +114,13 @@ fn main(ctx: Context) -> ! {
     if status != 0 || size != BYTES as u64 || returned_memory == 0 {
         fail(0xdeac);
     }
-    if memory_map(returned_memory, DATA_VADDR, false) != 0 {
+    let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(returned_memory, false);
+    if data_vaddr_map_status != 0 {
         fail(0xdead);
     }
     config::write::<u32>(0, 6);
     for offset in 0..BYTES {
-        let actual = unsafe { ((DATA_VADDR + offset) as *const u8).read_volatile() };
+        let actual = unsafe { ((data_vaddr_vaddr + offset) as *const u8).read_volatile() };
         let expected = (offset as u8).wrapping_mul(29) ^ 0x6d;
         if actual != expected {
             fail(0xdeae);
@@ -144,11 +145,12 @@ fn main(ctx: Context) -> ! {
             fail(0xdeb1);
         }
         let size_cap = memory_alloc(1);
-        if size_cap == 0 || memory_map(size_cap, SIZE_VADDR, true) != 0 {
+        let (size_vaddr_map_status, size_vaddr_vaddr) = memory_map_any(size_cap, true);
+        if size_cap == 0 || size_vaddr_map_status != 0 {
             fail(0xdeb2);
         }
         unsafe {
-            (SIZE_VADDR as *mut u64).write_unaligned(elf_size);
+            (size_vaddr_vaddr as *mut u64).write_unaligned(elf_size);
         }
         memory_unmap(size_cap);
         let set_size = ipc_scalar_call_borrow_read(

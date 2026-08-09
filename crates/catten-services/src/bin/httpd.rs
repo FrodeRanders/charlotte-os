@@ -42,7 +42,7 @@ use catten_services::{
     relmsg,
     sleep_ms,
     socket,
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -54,7 +54,7 @@ use catten_syscall::{
     ipc_scalar_call_move,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -95,7 +95,8 @@ fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
         }
         let chunk_len = (data.len() - offset).min(4096);
         let cap = memory_alloc(1);
-        if cap == 0 || memory_map(cap, SCRATCH, true) != 0 {
+        let (scratch_7_map_status, scratch_7_vaddr) = memory_map_any(cap, true);
+        if cap == 0 || scratch_7_map_status != 0 {
             if cap != 0 {
                 memory_close(cap);
             }
@@ -104,7 +105,7 @@ fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
         unsafe {
             core::ptr::copy_nonoverlapping(
                 data.as_ptr().add(offset),
-                SCRATCH as *mut u8,
+                scratch_7_vaddr as *mut u8,
                 chunk_len,
             );
         }
@@ -171,13 +172,14 @@ fn read_words(conn: u64, opcode: u32, arg0: u64, words: usize) -> Option<alloc::
         }
         return None;
     }
-    if (len as usize) < words * 4 || memory_map(memory, SCRATCH, false) != 0 {
+    let (scratch_6_map_status, scratch_6_vaddr) = memory_map_any(memory, false);
+    if (len as usize) < words * 4 || scratch_6_map_status != 0 {
         memory_close(memory);
         return None;
     }
     let mut out = alloc::vec![0u32; words];
     unsafe {
-        core::ptr::copy_nonoverlapping(SCRATCH as *const u32, out.as_mut_ptr(), words);
+        core::ptr::copy_nonoverlapping(scratch_6_vaddr as *const u32, out.as_mut_ptr(), words);
     }
     memory_unmap(memory);
     memory_close(memory);
@@ -214,7 +216,8 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
         return None;
     }
     let len = len as usize;
-    if memory_map(memory, SCRATCH, false) != 0 {
+    let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(memory, false);
+    if scratch_5_map_status != 0 {
         memory_close(memory);
         return None;
     }
@@ -226,7 +229,11 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
     }
     let mut header = [0u64; 6];
     unsafe {
-        core::ptr::copy_nonoverlapping(SCRATCH as *const u64, header.as_mut_ptr(), header_words);
+        core::ptr::copy_nonoverlapping(
+            scratch_5_vaddr as *const u64,
+            header.as_mut_ptr(),
+            header_words,
+        );
     }
     let max_by_len = (len.saturating_sub(header_words * 8)) / (THREAD_STATISTICS_RECORD_U64S * 8);
     let count = (header[3] as usize).min(max_by_len);
@@ -294,23 +301,24 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             ipc_close(call);
             if status == 0 && memory != 0 {
                 let len = len as usize;
-                if memory_map(memory, SCRATCH, false) == 0 {
+                let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(memory, false);
+                if scratch_4_map_status == 0 {
                     let _ = write!(s, "{{\"count\":{},\"entries\":{{", unsafe {
-                        core::ptr::read_volatile(SCRATCH as *const u32)
+                        core::ptr::read_volatile(scratch_4_vaddr as *const u32)
                     });
                     let mut offset = 4usize;
                     let mut emitted = 0u32;
-                    let count = unsafe { core::ptr::read_volatile(SCRATCH as *const u32) };
+                    let count = unsafe { core::ptr::read_volatile(scratch_4_vaddr as *const u32) };
                     while emitted < count && offset + 2 < len.min(4096) {
-                        let name_len =
-                            unsafe { core::ptr::read_volatile((SCRATCH + offset) as *const u8) }
-                                as usize;
+                        let name_len = unsafe {
+                            core::ptr::read_volatile((scratch_4_vaddr + offset) as *const u8)
+                        } as usize;
                         let node_offset = offset + 1 + name_len;
                         if node_offset + 1 > len.min(4096) {
                             break;
                         }
                         let node_len = unsafe {
-                            core::ptr::read_volatile((SCRATCH + node_offset) as *const u8)
+                            core::ptr::read_volatile((scratch_4_vaddr + node_offset) as *const u8)
                         } as usize;
                         let generation_offset = node_offset + 1 + node_len;
                         if generation_offset + 8 > len.min(4096) {
@@ -322,7 +330,9 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                         s.push('"');
                         for i in 0..name_len {
                             let byte = unsafe {
-                                core::ptr::read_volatile((SCRATCH + offset + 1 + i) as *const u8)
+                                core::ptr::read_volatile(
+                                    (scratch_4_vaddr + offset + 1 + i) as *const u8,
+                                )
                             };
                             if byte == b'"' {
                                 s.push('\\');
@@ -335,7 +345,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                         for i in 0..node_len {
                             let byte = unsafe {
                                 core::ptr::read_volatile(
-                                    (SCRATCH + node_offset + 1 + i) as *const u8,
+                                    (scratch_4_vaddr + node_offset + 1 + i) as *const u8,
                                 )
                             };
                             if byte == b'"' {
@@ -347,7 +357,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                         }
                         let generation = unsafe {
                             u64::from_le(core::ptr::read_unaligned(
-                                (SCRATCH + generation_offset) as *const u64,
+                                (scratch_4_vaddr + generation_offset) as *const u64,
                             ))
                         };
                         let _ = write!(s, "\",\"generation\":{generation}}}");
@@ -427,20 +437,21 @@ fn render_ns(s: &mut String, ns_conn: u64) {
         return;
     }
     let len = len as usize;
-    if memory_map(memory, SCRATCH, false) != 0 {
+    let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
+    if scratch_3_map_status != 0 {
         memory_close(memory);
         s.push_str("\"ns\":null");
         return;
     }
     unsafe {
         let magic = core::ptr::read_volatile(
-            (SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32,
+            (scratch_3_vaddr + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32,
         );
         let registered = core::ptr::read_volatile(
-            (SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *const u32,
+            (scratch_3_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *const u32,
         );
         let pending = core::ptr::read_volatile(
-            (SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32,
+            (scratch_3_vaddr + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32,
         );
         if magic != ns::STATUS_MAGIC {
             memory_unmap(memory);
@@ -640,7 +651,7 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(0, 5);
 
-    if !wait_for_boot_done(ns_conn) {
+    if !wait_for_local_ready(ns_conn) {
         fail(0xe004);
     }
     config::write::<u32>(0, 6);
@@ -659,13 +670,14 @@ fn main(ctx: Context) -> ! {
             fail(0xe006);
         }
         let port_cap = memory_alloc(1);
-        if port_cap == 0 || memory_map(port_cap, SCRATCH, true) != 0 {
+        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(port_cap, true);
+        if port_cap == 0 || scratch_2_map_status != 0 {
             if port_cap != 0 {
                 memory_close(port_cap);
             }
             fail(0xe007);
         }
-        unsafe { core::ptr::write_unaligned(SCRATCH as *mut u16, HTTP_PORT.to_le()) }
+        unsafe { core::ptr::write_unaligned(scratch_2_vaddr as *mut u16, HTTP_PORT.to_le()) }
         memory_unmap(port_cap);
         let listen = ipc_scalar_call_move(tcp_conn, socket::OP_LISTEN, sock_id as u64, port_cap);
         if listen == 0 {
@@ -711,7 +723,8 @@ fn main(ctx: Context) -> ! {
             }
             fail(0xe00e);
         }
-        if memory_map(memory, SCRATCH, false) != 0 {
+        let (scratch_map_status, _scratch_vaddr) = memory_map_any(memory, false);
+        if scratch_map_status != 0 {
             memory_close(memory);
             fail(0xe00f);
         }

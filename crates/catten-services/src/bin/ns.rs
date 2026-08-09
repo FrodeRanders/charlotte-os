@@ -24,7 +24,7 @@ use catten_rt::{
 };
 use catten_services::{
     MAX_NAME_LEN,
-    NAME_SCRATCH_VADDR,
+    broker::EventBroker,
     ns,
 };
 use catten_syscall::{
@@ -38,12 +38,11 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
 
-const STATUS_SCRATCH: usize = 0x0000_0000_0011_0000;
 const STATUS_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
@@ -53,10 +52,31 @@ struct Registration {
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
+
+/// The registry viewed as an immediate catalog (the broker's lookups).
+struct RegistryCatalog<'a>(&'a Registry);
+
+impl catten_services::broker::Catalog for RegistryCatalog<'_> {
+    fn resolve(&self, name: &[u8]) -> Option<catten_services::broker::CatalogTarget> {
+        // The unregister tombstone (connection == 0) is not a live
+        // registration: resolving it would make KeyedWaitlist::park return
+        // the waiter instead of parking it, and the lookup path would then
+        // discard the reply token (a lost reply and a forever-stalled
+        // caller).
+        self.0.get(name).and_then(|registration| {
+            (registration.connection != 0).then_some(catten_services::broker::CatalogTarget {
+                generation: registration.generation as u64,
+                connection: registration.connection,
+            })
+        })
+    }
+}
 /// Deferred lookups: name → reply token and the access key supplied by its
 /// caller. Retaining the key is necessary because registration may establish
-/// an access policy after the lookup has blocked.
-type Waitlist = BTreeMap<Vec<u8>, Vec<(u64, u64)>>;
+/// an access policy after the lookup has blocked. The waitlist is the
+/// service's *event-broker* face; the registry is its *catalog* face (see
+/// `catten_services::broker`).
+type Waitlist = catten_services::broker::KeyedWaitlist<(u64, u64)>;
 
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
@@ -75,7 +95,9 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
         }
         return None;
     }
-    if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
+    let (name_scratch_vaddr_0_map_status, name_scratch_vaddr_0) =
+        memory_map_any(message.memory, false);
+    if unsafe { name_scratch_vaddr_0_map_status } != 0 {
         unsafe {
             memory_close(message.memory);
         }
@@ -83,7 +105,7 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     }
     let mut key = Vec::with_capacity(len);
     unsafe {
-        let src = NAME_SCRATCH_VADDR as *const u8;
+        let src = name_scratch_vaddr_0 as *const u8;
         for i in 0..len {
             key.push(core::ptr::read_volatile(src.add(i)));
         }
@@ -97,16 +119,32 @@ fn read_generation(message: &IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-    if unsafe { memory_map(message.memory, NAME_SCRATCH_VADDR, false) } != 0 {
+    let (name_scratch_vaddr_1_map_status, name_scratch_vaddr_1) =
+        memory_map_any(message.memory, false);
+    if unsafe { name_scratch_vaddr_1_map_status } != 0 {
         unsafe { memory_close(message.memory) };
         return None;
     }
-    let generation = unsafe { core::ptr::read_volatile(NAME_SCRATCH_VADDR as *const u64) };
+    let generation = unsafe { core::ptr::read_volatile(name_scratch_vaddr_1 as *const u64) };
     unsafe {
         memory_unmap(message.memory);
         memory_close(message.memory);
     }
     Some(generation)
+}
+
+fn reply_connection_or_error(reply: u64, connection: u64, generation: i64) {
+    let status = unsafe {
+        ipc_reply_connection(reply, connection, IpcRights::SEND | IpcRights::CALL, generation)
+    };
+    if status != 0 {
+        // A registration without MINT_CONNECTION cannot be handed to a
+        // lookup caller. Do not strand the retained reply token: report a
+        // protocol error so the caller can discard/retry it.
+        unsafe {
+            ipc_reply(reply, ns::ERR_INVALID);
+        }
+    }
 }
 
 fn register(
@@ -139,20 +177,11 @@ fn register(
     }
 
     // Wake all callers only after the new generation is authoritative.
-    if let Some(waiters) = waitlist.remove(&key) {
-        for (reply, caller_key) in waiters {
-            if access_key != 0 && access_key != caller_key {
-                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
-            } else {
-                unsafe {
-                    ipc_reply_connection(
-                        reply,
-                        connection,
-                        IpcRights::SEND | IpcRights::CALL,
-                        generation,
-                    );
-                }
-            }
+    for (reply, caller_key) in waitlist.fire(&key) {
+        if access_key != 0 && access_key != caller_key {
+            unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        } else {
+            reply_connection_or_error(reply, connection, generation);
         }
     }
     generation
@@ -171,32 +200,21 @@ fn lookup_or_defer(
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
             }
-            unsafe {
-                ipc_reply_connection(
-                    reply,
-                    registration.connection,
-                    IpcRights::SEND | IpcRights::CALL,
-                    registration.generation,
-                );
-            }
+            reply_connection_or_error(reply, registration.connection, registration.generation);
         }
         _ => {
-            // Defer: retain the reply token until the service registers.
-            waitlist.entry(key.to_vec()).or_default().push((reply, caller_key));
+            // Defer: the event broker retains the reply token until the
+            // service registers (fulfillment by the publishing side).
+            let _ = waitlist.park(key, (reply, caller_key), &RegistryCatalog(registry));
         }
     }
 }
 
 fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
     match registry.get(key) {
-        Some(registration) if registration.connection != 0 && registration.access_key == 0 => unsafe {
-            ipc_reply_connection(
-                reply,
-                registration.connection,
-                IpcRights::SEND | IpcRights::CALL,
-                registration.generation,
-            );
-        },
+        Some(registration) if registration.connection != 0 && registration.access_key == 0 => {
+            reply_connection_or_error(reply, registration.connection, registration.generation);
+        }
         Some(registration) if registration.connection != 0 => unsafe {
             ipc_reply(reply, ns::ERR_ACCESS_DENIED);
         },
@@ -215,7 +233,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 2);
 
     let mut registry: Registry = BTreeMap::new();
-    let mut waitlist: Waitlist = BTreeMap::new();
+    let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
     let mut handled: u32 = 0;
 
     loop {
@@ -380,7 +398,8 @@ fn main(ctx: Context) -> ! {
                     }
                     continue;
                 }
-                if memory_map(cap, STATUS_SCRATCH, true) != 0 {
+                let (status_scratch_map_status, status_scratch_vaddr) = memory_map_any(cap, true);
+                if status_scratch_map_status != 0 {
                     memory_close(cap);
                     if message.reply != 0 {
                         unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
@@ -390,15 +409,16 @@ fn main(ctx: Context) -> ! {
                 let mut length = 0usize;
                 unsafe {
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
                         ns::STATUS_MAGIC,
                     );
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4)
+                            as *mut u32,
                         registry.len() as u32,
                     );
                     core::ptr::write_volatile(
-                        (STATUS_SCRATCH + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
+                        (status_scratch_vaddr + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
                         waitlist.len() as u32,
                     );
                 }
@@ -410,12 +430,12 @@ fn main(ctx: Context) -> ! {
                     }
                     unsafe {
                         core::ptr::write_volatile(
-                            (STATUS_SCRATCH + length) as *mut u8,
+                            (status_scratch_vaddr + length) as *mut u8,
                             name_len as u8,
                         );
                         core::ptr::copy_nonoverlapping(
                             key.as_ptr(),
-                            (STATUS_SCRATCH + length + 1) as *mut u8,
+                            (status_scratch_vaddr + length + 1) as *mut u8,
                             name_len,
                         );
                     }

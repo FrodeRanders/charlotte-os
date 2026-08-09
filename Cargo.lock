@@ -79,6 +79,7 @@ version = "0.8.1"
 dependencies = [
  "catten-syscall",
  "charlotte-launch",
+ "charlotte-protocol-disco",
  "concurrent-queue",
  "flanterm_bindings",
  "flat_device_tree",

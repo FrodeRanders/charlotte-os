@@ -20,7 +20,7 @@ use catten_syscall::{
     ipc_scalar_call_move,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -29,7 +29,6 @@ use charlotte_protocol_msg::{
     unpack_address_and_len,
 };
 
-const SCRATCH: usize = 0x0000_0000_00a0_0000;
 const SENTINEL: u32 = 0xc0de_cafe;
 /// Large enough to span multiple relmsg frames (~1468 each), exercising the
 /// fragmentation/reassembly path on both the send and receive sides.
@@ -79,7 +78,7 @@ fn main(ctx: Context) -> ! {
 
     // Do not initiate cluster communication until this node has finished
     // booting: messages sent during the boot storm are silently lost.
-    if !catten_services::wait_for_boot_done(ns_conn) {
+    if !catten_services::wait_for_local_ready(ns_conn) {
         unsafe { thread_exit() };
     }
     config::write::<u32>(0, 13);
@@ -91,7 +90,8 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 13);
     let cap = memory_alloc(1);
-    if cap == 0 || memory_map(cap, SCRATCH, true) != 0 {
+    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(cap, true);
+    if cap == 0 || scratch_2_map_status != 0 {
         if cap != 0 {
             memory_close(cap);
         }
@@ -99,7 +99,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 14);
     unsafe {
-        core::ptr::copy_nonoverlapping(payload.as_ptr(), SCRATCH as *mut u8, payload.len());
+        core::ptr::copy_nonoverlapping(payload.as_ptr(), scratch_2_vaddr as *mut u8, payload.len());
     }
     memory_unmap(cap);
     config::write::<u32>(0, 15);
@@ -128,11 +128,12 @@ fn main(ctx: Context) -> ! {
         }
         unsafe { thread_exit() };
     }
-    if memory_map(received, SCRATCH, false) != 0 {
+    let (scratch_map_status, scratch_vaddr) = memory_map_any(received, false);
+    if scratch_map_status != 0 {
         memory_close(received);
         unsafe { thread_exit() };
     }
-    let bytes = unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, len as usize) };
+    let bytes = unsafe { core::slice::from_raw_parts(scratch_vaddr as *const u8, len as usize) };
     let matches = bytes == payload.as_slice();
     memory_unmap(received);
     memory_close(received);

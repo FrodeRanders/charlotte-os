@@ -136,6 +136,8 @@ pub mod el0_dns;
 #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
 pub mod el0_http;
 pub mod el0_ipc;
+#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+pub mod el0_join;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
 #[cfg(target_arch = "aarch64")]
@@ -154,6 +156,8 @@ pub mod ipi;
 pub mod memory;
 pub mod results;
 pub mod scheduler_lifecycle;
+#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+pub mod scratch;
 pub mod shard;
 pub mod statistics;
 pub mod syscall;
@@ -163,7 +167,8 @@ use crate::logln;
 /// Status-frame address of the frame demultiplexer (frouter), published by
 /// the net test and read by the disco verifier for diagnostics. Zero until
 /// the frouter has been spawned.
-pub static mut FROUTER_STATUS_FRAME: usize = 0;
+pub static FROUTER_STATUS_FRAME: core::sync::atomic::AtomicUsize =
+    core::sync::atomic::AtomicUsize::new(0);
 
 /// Synchronous self-tests that construct address spaces directly sometimes
 /// retain only their numeric id. Confine that downgrade here; production
@@ -189,6 +194,7 @@ pub fn run_synchronous_self_tests() {
         panic!("live_upgrade_test requires AArch64 EL0 service images");
         #[cfg(target_arch = "aarch64")]
         {
+            results::register(results::TestId::Nvme);
             results::register(results::TestId::Service);
             return;
         }
@@ -233,6 +239,11 @@ pub fn run_deferred_self_tests() {
     if cfg!(feature = "live_upgrade_test") {
         #[cfg(target_arch = "aarch64")]
         {
+            // The service ELFs (echo, client, servicemgr) are store-sourced;
+            // bring up the disk stack first so the object store registers and
+            // service_elf can resolve them. The NVMe verifier also runs the
+            // persistent-upgrade path itself.
+            el0_nvme::test_el0_nvme();
             el0_service::test_el0_service();
             logln!("Live-upgrade verifier is pending.");
             return;
@@ -282,6 +293,8 @@ pub fn run_deferred_self_tests() {
     el0_tcpip::test_el0_tcpip();
     #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
     el0_clusterctl::test_el0_clusterctl();
+    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    el0_join::test_el0_join();
     #[cfg(all(not(feature = "tcpip_net_test"), target_arch = "aarch64"))]
     logln!("Skipping EL0 tcpip test (enable tcpip_net_test with matching PCI hardware).");
     #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]

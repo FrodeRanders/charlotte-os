@@ -32,7 +32,7 @@ use catten_syscall::{
     cq_wait_timeout,
     device_irq_ack,
     device_irq_bind_cq,
-    device_mmio_map,
+    device_mmio_map_any,
     device_mmio_unmap,
     dma_map,
     ipc_endpoint_bind_cq,
@@ -44,21 +44,18 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const VADDR_BAR0: usize = 0x0000_0000_0040_0000;
-const V_RX_DESC: usize = 0x0000_0000_0050_0000;
-const V_TX_DESC: usize = 0x0000_0000_0051_0000;
-const V_RX_BUF: usize = 0x0000_0000_0060_0000;
-const V_TX_BUF: usize = 0x0000_0000_0070_0000;
+// The kernel-assigned base of the delegated virtio BAR, set once at map
+// time. The device-config/ISR/doorbell helpers must read it: the old fixed
+// 0x400000 vaddr was not the mapped base and dereferenced stale addresses.
+static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 // Keep transient mappings clear of the loader's per-shard CQ region at
 // 0x0080_0000 and the userspace stack arena at 0x0100_0000.
-const V_INPUT: usize = 0x0000_0000_00c0_0000;
-const V_REPLY: usize = 0x0000_0000_00c0_1000;
 const STAGE_OFFSET: usize = 0;
 const PAGE_SIZE: usize = 4096;
 const BUFFER_SIZE: usize = 2048;
@@ -126,30 +123,30 @@ unsafe fn w64(a: usize, v: u64) {
     }
 }
 
-/// Allocate memory, map it at `vaddr`, and map it into the driver's DMA
-/// domain. Returns `(cap, iova, iova_pfn)`.
+/// Allocate memory, map it at a kernel-assigned scratch address, and map
+/// it into the driver's DMA domain. Returns `(cap, iova, iova_pfn, vaddr)`.
 unsafe fn alloc_dma(
     dma_domain: u64,
-    vaddr: usize,
     pages: usize,
     direction: DmaDirection,
-) -> (u64, u64, u32) {
+) -> (u64, u64, u32, usize) {
     let cap = memory_alloc(pages);
     if cap == 0 {
-        return (0, 0, 0);
+        return (0, 0, 0, 0);
     }
-    if memory_map(cap, vaddr, true) != 0 {
+    let (map_status, vaddr) = memory_map_any(cap, true);
+    if map_status != 0 {
         memory_close(cap);
-        return (0, 0, 0);
+        return (0, 0, 0, 0);
     }
     let iova = dma_map(dma_domain, cap, direction);
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
-        return (0, 0, 0);
+        return (0, 0, 0, 0);
     }
     let pfn = (iova >> 12) as u32;
-    (cap, iova, pfn)
+    (cap, iova, pfn, vaddr)
 }
 
 #[inline]
@@ -198,7 +195,7 @@ unsafe fn cfg_vq(bar0: usize, q: u16, ring_iova: u64, queue_size: u16) -> u16 {
 unsafe fn notify(queue: u16, notify_offset: u16) {
     unsafe {
         w32(
-            VADDR_BAR0
+            MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed)
                 + virtio::MODERN_NOTIFY
                 + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER,
             queue as u32,
@@ -228,10 +225,12 @@ unsafe fn drain_rx(
     notify_offset: u16,
     queue_size: u16,
     header_size: usize,
+    rx_desc_vaddr: usize,
+    rx_buf_vaddr: usize,
     used_seen: &mut u16,
     queue: &mut VecDeque<ReceivedFrame>,
 ) {
-    let used = V_RX_DESC + used_offset(queue_size);
+    let used = rx_desc_vaddr + used_offset(queue_size);
     let device_idx = unsafe { r16(used + virtio::USED_IDX) };
     dma_read_barrier();
     let mut recycled = false;
@@ -243,26 +242,29 @@ unsafe fn drain_rx(
         if desc_id < queue_size as usize && (header_size..=BUFFER_SIZE).contains(&used_len) {
             let frame_len = used_len - header_size;
             let cap = memory_alloc(1);
-            if cap != 0 && memory_map(cap, V_REPLY, true) == 0 {
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        (V_RX_BUF + desc_id * BUFFER_SIZE + header_size) as *const u8,
-                        V_REPLY as *mut u8,
-                        frame_len,
-                    );
+            if cap != 0 {
+                let (v_reply_map_status, v_reply_vaddr) = memory_map_any(cap, true);
+                if v_reply_map_status == 0 {
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            (rx_buf_vaddr + desc_id * BUFFER_SIZE + header_size) as *const u8,
+                            v_reply_vaddr as *mut u8,
+                            frame_len,
+                        );
+                    }
+                    memory_unmap(cap);
+                    queue.push_back(ReceivedFrame {
+                        cap,
+                        len: frame_len,
+                    });
+                } else if cap != 0 {
+                    memory_close(cap);
                 }
-                memory_unmap(cap);
-                queue.push_back(ReceivedFrame {
-                    cap,
-                    len: frame_len,
-                });
-            } else if cap != 0 {
-                memory_close(cap);
             }
         }
 
         if desc_id < queue_size as usize {
-            let avail = V_RX_DESC + avail_offset(queue_size);
+            let avail = rx_desc_vaddr + avail_offset(queue_size);
             let avail_idx = unsafe { r16(avail + virtio::AVAIL_IDX) };
             unsafe {
                 w16(
@@ -282,8 +284,13 @@ unsafe fn drain_rx(
     }
 }
 
-unsafe fn drain_tx(queue_size: u16, used_seen: &mut u16, in_use: &mut [bool]) {
-    let used = V_TX_DESC + used_offset(queue_size);
+unsafe fn drain_tx(
+    queue_size: u16,
+    tx_desc_vaddr: usize,
+    used_seen: &mut u16,
+    in_use: &mut [bool],
+) {
+    let used = tx_desc_vaddr + used_offset(queue_size);
     let device_idx = unsafe { r16(used + virtio::USED_IDX) };
     dma_read_barrier();
     while *used_seen != device_idx {
@@ -315,11 +322,14 @@ fn main(ctx: Context) -> ! {
         None => unsafe { thread_exit() },
     };
     config::write::<u32>(STAGE_OFFSET, 2);
-    if device_mmio_map(mmio_cap, VADDR_BAR0, true) != 0 {
+    let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
+    if mmio_map_status != 0 {
+        catten_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
         unsafe { thread_exit() };
     }
+    MMIO_BASE.store(vaddr_bar0, core::sync::atomic::Ordering::Relaxed);
     config::write::<u32>(STAGE_OFFSET, 3);
-    let bar0 = VADDR_BAR0 + virtio::MODERN_COMMON;
+    let bar0 = vaddr_bar0 + virtio::MODERN_COMMON;
 
     // --- virtio PCI modern initialization ---
     unsafe { w8(bar0 + virtio::M_DEVICE_STATUS, 0) };
@@ -357,7 +367,7 @@ fn main(ctx: Context) -> ! {
     }
 
     // Read MAC.
-    let dc = VADDR_BAR0 + virtio::MODERN_DEVICE;
+    let dc = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_DEVICE;
     for i in 0..6 {
         config::write::<u8>(4 + i, unsafe { r8(dc + virtio::NET_MAC + i) });
     }
@@ -371,36 +381,37 @@ fn main(ctx: Context) -> ! {
     if rx_qsz == 0 || tx_qsz == 0 || rx_qsz > MAX_QUEUE_SIZE || tx_qsz > MAX_QUEUE_SIZE {
         unsafe { thread_exit() };
     }
-    let (rx_cap, rx_ring_iova, _) = unsafe {
-        alloc_dma(dma_domain, V_RX_DESC, vring_pages(rx_qsz), DmaDirection::Bidirectional)
-    };
-    let (tx_cap, tx_ring_iova, _) = unsafe {
-        alloc_dma(dma_domain, V_TX_DESC, vring_pages(tx_qsz), DmaDirection::Bidirectional)
-    };
+    let (rx_cap, rx_ring_iova, _, rx_desc_vaddr) =
+        unsafe { alloc_dma(dma_domain, vring_pages(rx_qsz), DmaDirection::Bidirectional) };
+    let (tx_cap, tx_ring_iova, _, tx_desc_vaddr) =
+        unsafe { alloc_dma(dma_domain, vring_pages(tx_qsz), DmaDirection::Bidirectional) };
     let rx_buffer_pages = (rx_qsz as usize * BUFFER_SIZE).div_ceil(PAGE_SIZE);
     let tx_buffer_pages = (tx_qsz as usize * BUFFER_SIZE).div_ceil(PAGE_SIZE);
-    let (rx_buf_cap, rx_buf_iova, _) =
-        unsafe { alloc_dma(dma_domain, V_RX_BUF, rx_buffer_pages, DmaDirection::DeviceWrite) };
-    let (tx_buf_cap, tx_buf_iova, _) =
-        unsafe { alloc_dma(dma_domain, V_TX_BUF, tx_buffer_pages, DmaDirection::DeviceRead) };
+    let (rx_buf_cap, rx_buf_iova, _, rx_buf_vaddr) =
+        unsafe { alloc_dma(dma_domain, rx_buffer_pages, DmaDirection::DeviceWrite) };
+    let (tx_buf_cap, tx_buf_iova, _, tx_buf_vaddr) =
+        unsafe { alloc_dma(dma_domain, tx_buffer_pages, DmaDirection::DeviceRead) };
     if rx_cap == 0 || tx_cap == 0 || rx_buf_cap == 0 || tx_buf_cap == 0 {
         unsafe { thread_exit() };
     }
-    unsafe { zero_vq(V_RX_DESC, rx_qsz) };
-    unsafe { zero_vq(V_TX_DESC, tx_qsz) };
-    let rx_avail = V_RX_DESC + avail_offset(rx_qsz);
+    unsafe { zero_vq(rx_desc_vaddr, rx_qsz) };
+    unsafe { zero_vq(tx_desc_vaddr, tx_qsz) };
+    let rx_avail = rx_desc_vaddr + avail_offset(rx_qsz);
     for i in 0..rx_qsz as usize {
         unsafe {
             w32(
-                V_RX_DESC + i * virtio::DESC_SIZE + virtio::DESC_ADDR_LO,
+                rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_ADDR_LO,
                 (rx_buf_iova + (i * BUFFER_SIZE) as u64) as u32,
             );
             w32(
-                V_RX_DESC + i * virtio::DESC_SIZE + virtio::DESC_ADDR_HI,
+                rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_ADDR_HI,
                 ((rx_buf_iova + (i * BUFFER_SIZE) as u64) >> 32) as u32,
             );
-            w32(V_RX_DESC + i * virtio::DESC_SIZE + virtio::DESC_LENGTH, BUFFER_SIZE as u32);
-            w16(V_RX_DESC + i * virtio::DESC_SIZE + virtio::DESC_FLAGS, virtio::VRING_DESC_F_WRITE);
+            w32(rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_LENGTH, BUFFER_SIZE as u32);
+            w16(
+                rx_desc_vaddr + i * virtio::DESC_SIZE + virtio::DESC_FLAGS,
+                virtio::VRING_DESC_F_WRITE,
+            );
             w16(rx_avail + virtio::AVAIL_RING + i * 2, i as u16);
         }
     }
@@ -477,10 +488,20 @@ fn main(ctx: Context) -> ! {
         // while descriptors are being published.
         let _ = cq_wait_timeout(1, 10, 0);
         let (_s, _c) = device_irq_ack(irq_cap);
-        let _ = unsafe { r8(VADDR_BAR0 + virtio::MODERN_ISR) };
+        let _ = unsafe {
+            r8(MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_ISR)
+        };
         unsafe {
-            drain_tx(tx_qsz, &mut tx_used_seen, &mut tx_in_use);
-            drain_rx(rx_notify, rx_qsz, rx_header_size, &mut rx_used_seen, &mut received);
+            drain_tx(tx_qsz, tx_desc_vaddr, &mut tx_used_seen, &mut tx_in_use);
+            drain_rx(
+                rx_notify,
+                rx_qsz,
+                rx_header_size,
+                rx_desc_vaddr,
+                rx_buf_vaddr,
+                &mut rx_used_seen,
+                &mut received,
+            );
         }
         config::write::<u16>(16, rx_used_seen);
         config::write::<u16>(18, tx_used_seen);
@@ -490,7 +511,8 @@ fn main(ctx: Context) -> ! {
         // has not yet recycled. When this reaches `rx_qsz` the available ring
         // is empty, so virtio-net has no RX buffer and queues incoming frames
         // (the trigger for the socket/stream read-poll disable).
-        let device_used_idx = unsafe { r16(V_RX_DESC + used_offset(rx_qsz) + virtio::USED_IDX) };
+        let device_used_idx =
+            unsafe { r16(rx_desc_vaddr + used_offset(rx_qsz) + virtio::USED_IDX) };
         let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
         config::write::<u16>(44, rx_unrecycled);
         config::write::<u16>(46, rx_qsz);
@@ -511,7 +533,8 @@ fn main(ctx: Context) -> ! {
             match m.opcode {
                 net::OP_STATUS => {
                     if m.reply != 0 {
-                        let d = VADDR_BAR0 + virtio::MODERN_DEVICE;
+                        let d = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed)
+                            + virtio::MODERN_DEVICE;
                         let mac = [
                             unsafe { r8(d + virtio::NET_MAC) } as u64,
                             unsafe { r8(d + virtio::NET_MAC + 1) } as u64,
@@ -553,7 +576,8 @@ fn main(ctx: Context) -> ! {
                         }
                         continue;
                     }
-                    if memory_map(m.memory, V_INPUT, false) != 0 {
+                    let (v_input_map_status, v_input_vaddr) = memory_map_any(m.memory, false);
+                    if v_input_map_status != 0 {
                         config::write::<u32>(36, 3);
                         memory_close(m.memory);
                         if m.reply != 0 {
@@ -561,7 +585,7 @@ fn main(ctx: Context) -> ! {
                         }
                         continue;
                     }
-                    let tx_slot = V_TX_BUF + desc_id * BUFFER_SIZE;
+                    let tx_slot = tx_buf_vaddr + desc_id * BUFFER_SIZE;
                     let wire_len = frame_len.max(MIN_ETHERNET_FRAME_SIZE);
                     unsafe {
                         core::ptr::write_bytes(
@@ -570,7 +594,7 @@ fn main(ctx: Context) -> ! {
                             VIRTIO_NET_TX_HEADER_SIZE + wire_len,
                         );
                         core::ptr::copy_nonoverlapping(
-                            V_INPUT as *const u8,
+                            v_input_vaddr as *const u8,
                             (tx_slot + VIRTIO_NET_TX_HEADER_SIZE) as *mut u8,
                             frame_len,
                         );
@@ -581,15 +605,15 @@ fn main(ctx: Context) -> ! {
                     let desc_iova = tx_buf_iova + (desc_id * BUFFER_SIZE) as u64;
                     let off = desc_id * virtio::DESC_SIZE;
                     unsafe {
-                        w32(V_TX_DESC + off + virtio::DESC_ADDR_LO, desc_iova as u32);
-                        w32(V_TX_DESC + off + virtio::DESC_ADDR_HI, (desc_iova >> 32) as u32);
+                        w32(tx_desc_vaddr + off + virtio::DESC_ADDR_LO, desc_iova as u32);
+                        w32(tx_desc_vaddr + off + virtio::DESC_ADDR_HI, (desc_iova >> 32) as u32);
                         w32(
-                            V_TX_DESC + off + virtio::DESC_LENGTH,
+                            tx_desc_vaddr + off + virtio::DESC_LENGTH,
                             (VIRTIO_NET_TX_HEADER_SIZE + wire_len) as u32,
                         );
-                        w16(V_TX_DESC + off + virtio::DESC_FLAGS, 0);
+                        w16(tx_desc_vaddr + off + virtio::DESC_FLAGS, 0);
                     }
-                    let tx_avail = V_TX_DESC + avail_offset(tx_qsz);
+                    let tx_avail = tx_desc_vaddr + avail_offset(tx_qsz);
                     unsafe {
                         w16(
                             tx_avail

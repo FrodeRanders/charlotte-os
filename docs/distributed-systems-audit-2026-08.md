@@ -217,7 +217,7 @@ owner-and-generation-fenced tombstone when its endpoint closes. A follower
 sends an authenticated, idempotent request to its known leader and retries at
 one-second intervals across leader changes. The request shares relmsg's
 per-peer queue, where queued AppendEntries heartbeats are coalesced. A fresh
-two-guest acceptance run remains required for this final automatic path.
+two-guest acceptance run was still required for this final automatic path.
 
 Follow-up audit found and repaired four integration defects before that
 acceptance run could be authoritative. Syscall 60 existed in the shared enum
@@ -230,7 +230,9 @@ watch. The cross-node test now waits for the echo-mutating lifecycle/NVMe
 suites and for the newly spawned echo's serving stage, avoiding adoption of a
 stale generation. The final rerun was inconclusive because one TCG guest
 stopped advancing at 0.53 seconds and its peer hit the discovery deadline;
-automatic tombstone certification therefore remains honestly pending.
+automatic tombstone certification was therefore pending at that point. The
+2026-08-09 acceptance run documented below subsequently exercised the path
+successfully on both guests.
 
 ### F10 — Relmsg buffering is insufficiently bounded (medium)
 
@@ -295,6 +297,110 @@ Follow-up tests should cover all of those cases and add a three-voter scenario;
 two voters are useful for transport testing but cannot remain available after
 one failure.
 
+## 2026-08-09 branch follow-up
+
+A second review covered the `disco-raft-bridge` work from `49e5e01` through
+`3eba685`, together with the uncommitted repair pass that followed it. This
+slice combined changes to boot waiting, address-space lifetime fencing,
+direct-Ethernet Raft admission, discovery, the frame router, and the
+two-guest deployment acceptance test. The review found and repaired the
+following integration defects:
+
+- join requests and replies contained the message tag twice: once in the
+  hand-written join body and once in the Raft transport envelope;
+- direct-Ethernet Raft decoded the entire padded Ethernet payload as protobuf
+  input. The direct transport now carries an explicit body length and rejects
+  truncated or non-canonical join bodies;
+- join admission required discovery's cached peer posture to identify a
+  leader before sending the first request. Identity could already be stable
+  while that advisory role remained stale or unknown, leaving both verifiers
+  parked forever. The deterministic larger-id singleton now applies to the
+  smaller-id anchor (or a known leader hint), while the receiving Raft node
+  remains authoritative and rejects the request unless it is actually leader;
+- the cross-QEMU join test reused the 150-ms election timeout from the
+  in-process Raft test. After admission both voters could become candidates
+  again before vote traffic cleared the boot-time queues, repeatedly splitting
+  the two available votes. The networked join group now uses the same 2-second
+  transport budget as the distributed DNS test;
+- the standalone Raft service broadcast heartbeats on every reactor
+  iteration. Queue coalescing could bound queued heartbeats, but could not
+  limit a producer that filled each newly available stop-and-wait slot. Raft
+  now broadcasts on an election-derived heartbeat cadence;
+- DNS, Raft, and discovery treated successful detached-timer submission as
+  proof that the CQ completion would arrive. Their bounded CQ wait is now an
+  independent clock watchdog, and a new timer is submitted only after the old
+  timer is observed or known not to be armed;
+- the frame router synchronously waited for optional route consumers and for
+  each forwarded frame. It now owns one deferred name-service lookup per
+  absent route and a bounded set of asynchronous forwards per consumer, so a
+  late or wedged protocol cannot block all EtherTypes;
+- `clusterctl` read moved memory through an obsolete fixed virtual address
+  instead of the address returned by `memory_map_any`, and several fallible
+  capability paths leaked or double-closed handles;
+- scratch-window allocation was keyed only by recyclable numeric ASID, while
+  mapping and teardown could cross an ASID-reuse boundary. Scratch cursors now
+  carry the address-space generation, and mapping/unmapping is serialized with
+  address-space lifecycle teardown;
+- an IPC waiter treated every observable notification as proof that its own
+  call had completed. Waiters now re-check the call after every wake and park
+  again on unrelated notifications;
+- a verifier could run before its TID-to-test attribution was published. The
+  thread is now inserted, attributed, and only then admitted to the scheduler;
+- the serial administration console yielded while remaining Ready when no
+  input existed, consuming a host CPU in steady state. Its no-input path now
+  uses a short timer-backed sleep;
+- a socket-linked test runner killed a guest immediately after its local
+  authoritative result. In a two-node Raft group, the peer may already have
+  replicated the final entry but still need the following heartbeat to learn
+  the advanced commit index. Socket-linked runs now retain a successful guest
+  for a 15-second drain window and fail if a kernel panic appears during that
+  window. The larger bounded tail also covers a runnable verifier that has not
+  yet consumed service state already published under slow TCG scheduling;
+- relmsg retransmission used a relative CQ timeout that restarted whenever
+  endpoint work arrived. Sustained inbound traffic could therefore prevent
+  the timeout from ever winning while an outbound frame remained
+  unacknowledged. Relmsg now drains a detached periodic-timer cookie on every
+  reactor iteration, so retransmission cadence is independent of traffic;
+- both AArch64 target specifications enabled NEON and the kernel enabled
+  FP/SIMD execution, but exception entry saved no vector registers and thread
+  switching omitted the ABI-preserved v8-v15 registers. An interrupt during
+  Ed25519 verification produced an impossible table index after its live
+  vector state was corrupted. Exception entry now preserves q0-q31 plus
+  FPCR/FPSR in an out-of-line common handler, while context switches and
+  initial frames preserve q8-q15 plus FPCR/FPSR;
+- the deployment test treated a relmsg acknowledgement counter as proof that
+  the follower had received its post-migration result. A bounded relmsg retry
+  lease can end after the application result was delivered but its transport
+  ACK was lost, leaving the leader verifier waiting for an event that can no
+  longer occur. The follower now issues a second idempotent call only after
+  receiving the first result; the leader observes that causally later request
+  as the application-level barrier.
+
+The GICv3 SGI encoding was also rechecked against `ICC_SGI1R_EL1`: the SGI
+INTID belongs in bits `[27:24]`; bits `[55:48]` carry `Aff3`. The current code
+uses the system-register layout and translates scheduler LP IDs through their
+recorded MPIDRs. The two-LP mailbox, EL0 cross-LP completion, and ping-pong
+tests passed in both guests. A dedicated regression that admits work onto a
+fully idle remote LP remains worthwhile because the present bootstrap policy
+admits service and verifier threads on the caller LP before normal scheduling
+and migration take over.
+
+The final authoritative acceptance rerun used two socket-linked QEMU guests with
+two vCPUs each, listener first, fresh object-store images, and one identical
+kernel hash. Both guests reported:
+
+```
+SELFTEST COMPLETE: passed=23 failed=0 pending=0 \
+passed_bitmap=0x19fffff failed_bitmap=0x0 pending_bitmap=0x0
+```
+
+That run covered discovery, dynamic Raft admission, replicated DNS,
+generation-fenced endpoint death, cluster-key ceremony, signed artifact
+deployment, remote invocation, and migration. It does not replace the open
+fault-injection work: unilateral service restart, loss/reordering around join,
+partitioned linearizable reads, three-voter availability, and a fully idle
+remote-LP wake regression remain appropriate follow-ups.
+
 ## Validation performed during the audit
 
 - AArch64 service bundle built successfully.
@@ -317,8 +423,10 @@ one failure.
   routes for those identities but did not determine Raft membership.
 - After relmsg wire protocol v2 and bounded receive state were added, a third
   fresh two-guest run completed all 21 tests on both guests. The leader now
-  waits for transport acknowledgement of its remote-call reply, avoiding the
-  runner race in which QEMU stopped before the follower received that reply.
+  waited for transport acknowledgement of its remote-call reply, avoiding the
+  original runner race in which QEMU stopped before the follower received that
+  reply. The 2026-08-09 follow-up subsequently replaced this transport-coupled
+  test barrier with the causal application request described above.
 - The first DNS v2 remote-call validation rerun exposed an unrelated boot
   liveness failure: one connector guest stopped advancing at 0.255 seconds,
   before networking or the changed call path ran. A fresh rerun completed all
@@ -341,6 +449,17 @@ one failure.
   observed the catalog contraction, and a stale unregister replay was rejected.
   The run also exposed and removed a synchronous local-cleanup wait from the
   DNS Raft reactor.
+- The 2026-08-09 follow-up completed the full deployment suite with 23/23 on
+  both two-vCPU guests. `catten-graft` passed 23 host tests,
+  `charlotte-protocol-disco` passed 2, `charlotte-protocol-msg` passed 4, and
+  `charlotte-smoltcp` passed 2. The cluster-sign metadata self-test passed,
+  and both the root AArch64 workspace and standalone AArch64 services were
+  Clippy-clean with warnings denied. Root and standalone-service formatting
+  checks also passed.
+- The final clean two-guest rerun after the causal deployment barrier used
+  two vCPUs per guest, fresh object-store images, listener-first socket setup,
+  and the same kernel hash on both nodes. Both guests again produced the
+  authoritative 23/23 result; neither serial log contained a kernel panic.
 
 These TLC results establish safety only for the modeled projections. The
 models deliberately omit the relmsg session, discovery bootstrap, transport
@@ -386,8 +505,8 @@ it does not claim transactional or globally exactly-once execution.
   distributed generation, while its asynchronous local cleanup is separately
   fenced by the observed local generation. Endpoint death produces a waitable
   kernel completion and an authenticated, retried owner-to-leader tombstone
-  request. Partition fault injection and a fresh two-guest acceptance run for
-  this automatic path remain validation work.
+  request. The fresh two-guest acceptance run for this automatic path now
+  passes; partition fault injection remains validation work.
 - [ ] Correct status documentation and expand CI/fault testing.
 
 Direct AArch64 service Clippy warnings identified by the audit have been

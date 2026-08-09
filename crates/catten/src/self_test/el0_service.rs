@@ -75,6 +75,9 @@ struct TestState {
     name_service: NameServiceHandle,
     echo: Option<ServiceDomain>,
     client_config: PAddr,
+    client_asid: usize,
+    client_tid: usize,
+    client_generation: u64,
 }
 
 pub fn test_el0_service() {
@@ -103,6 +106,7 @@ pub fn test_el0_service() {
         );
         let client_asid = client.asid;
         let client_tid = client.tid;
+        let client_generation = client.generation;
         logln!("[service] client spawned (asid={}, tid={})", client_asid, client_tid);
 
         unsafe {
@@ -110,6 +114,9 @@ pub fn test_el0_service() {
                 name_service,
                 echo: Some(echo),
                 client_config: client.status_frame,
+                client_asid,
+                client_tid,
+                client_generation,
             });
         }
 
@@ -127,11 +134,11 @@ pub fn test_el0_service() {
 
 #[cfg(target_arch = "aarch64")]
 pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-    while !crate::self_test::results::has_passed(crate::self_test::results::TestId::Service) {
-        deadline.assert_pending("EL0 persistent upgrade waiting for service-lifecycle test");
-        crate::cpu::scheduler::yield_lp();
-    }
+    let passed = crate::self_test::results::wait_until_resolved(
+        crate::self_test::results::TestId::Service,
+        30_000,
+    );
+    assert!(passed, "EL0 persistent upgrade waiting for service-lifecycle test");
     let client_asid = crate::service::loader::create_user_address_space();
     let ns = ipc::connection_delegate(
         name_service.domain.asid,
@@ -153,7 +160,22 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     let manager = manager_reply.cap.expect("persistent manager connection");
     let upgrade =
         ipc::scalar_call(client_asid, manager, 1, NAME_ECHO).expect("persistent manager upgrade");
-    let upgraded = wait_reply_k2(client_asid, upgrade, "persistent upgrade completion");
+    let ns_status: *const u32 = {
+        let base: *mut u8 = name_service.domain.status_frame.into();
+        base as *const u32
+    };
+    let ready = ipc::wait_reply_timeout(client_asid, upgrade, 30_000)
+        .expect("[service] persistent upgrade reply failed");
+    assert!(ready, "persistent upgrade completion deadline expired");
+    logln!(
+        "[service] persistent upgrade completed: ns_waiters={}, ns_handled={}",
+        unsafe { core::ptr::read_volatile(ns_status.add(12)) },
+        unsafe { core::ptr::read_volatile(ns_status.add(4)) }
+    );
+    let upgraded = ipc::poll_reply(client_asid, upgrade)
+        .expect("[service] persistent upgrade poll failed")
+        .expect("[service] persistent upgrade reply missing");
+    ipc::close_cap(client_asid, upgrade).expect("persistent upgrade pending-call close");
     assert!(upgraded.result > 0, "persistent ELF upgrade failed");
 
     let lookup =
@@ -169,55 +191,67 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     logln!("[service] persistent NVMe ELF reload verified.");
 }
 
-#[cfg(target_arch = "aarch64")]
-fn spin_until<F: FnMut() -> bool>(mut condition: F, what: &str) {
-    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-    while !condition() {
-        deadline.assert_pending(what);
-        // Yield rather than blocking on a timer: a timer wake that is not
-        // delivered would leave the deadline unchecked (silent hang).
-        crate::cpu::scheduler::yield_lp();
-    }
-}
-
-/// Poll a pending call created through the direct kernel API until the EL0
-/// server replies.
+/// Block on a pending call created through the direct kernel API until the
+/// EL0 server replies (event-driven, with a deadline watchdog).
 #[cfg(target_arch = "aarch64")]
 fn wait_reply_k2(kclient_asid: usize, call: u64, what: &str) -> ipc::ReplyValue {
-    let mut val = None;
-    spin_until(
-        || match ipc::poll_reply(kclient_asid, call) {
-            Ok(Some(reply)) => {
-                val = Some(reply);
-                true
-            }
-            Ok(None) => false,
-            Err(e) => panic!("[srv] K2 fail {}: {:?}", what, e),
-        },
-        what,
-    );
+    let ready = ipc::wait_reply_timeout(kclient_asid, call, 30_000)
+        .unwrap_or_else(|e| panic!("[srv] K2 fail {}: {:?}", what, e));
+    assert!(ready, "[srv] K2 deadline expired waiting for {}", what);
+    let val = ipc::poll_reply(kclient_asid, call)
+        .expect("[srv] K2 poll failed")
+        .expect("[srv] K2 reply missing");
     ipc::close_cap(kclient_asid, call).expect("K2 close");
-    val.expect("K2 reply")
+    val
+}
+
+/// Repeatedly look up `name` through the name service until the registry
+/// reports `expected_generation`. A lookup racing a re-registration can
+/// resolve the previous generation's stale entry, so the lookup is retried
+/// with a parked sleep between attempts. Returns the pending-call cap of the
+/// successful lookup (reply not yet drained). Panics on timeout.
+#[cfg(target_arch = "aarch64")]
+fn lookup_until_generation(
+    caller_asid: usize,
+    ns_conn: u64,
+    name: u64,
+    expected_generation: i64,
+    what: &str,
+) -> u64 {
+    let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+    loop {
+        let lookup = ipc::scalar_call(caller_asid, ns_conn, OP_LOOKUP, name)
+            .unwrap_or_else(|e| panic!("[service] lookup failed for {}: {:?}", what, e));
+        let ready = ipc::wait_reply_timeout(caller_asid, lookup, 30_000)
+            .unwrap_or_else(|e| panic!("[service] lookup reply failed for {}: {:?}", what, e));
+        assert!(ready, "[service] deadline expired waiting for {}", what);
+        let reply = ipc::poll_reply(caller_asid, lookup)
+            .expect("[service] lookup poll failed")
+            .expect("[service] lookup reply missing");
+        if reply.result == expected_generation {
+            return lookup;
+        }
+        // Stale generation still registered; the replacement has not landed
+        // yet. Park briefly (blocking sleep) and retry.
+        if let Some(connection) = reply.cap {
+            let _ = ipc::close_cap(caller_asid, connection);
+        }
+        ipc::close_cap(caller_asid, lookup).expect("[service] stale lookup close");
+        crate::cpu::scheduler::sleep_millis(10);
+        deadline.assert_pending(what);
+    }
 }
 
 #[cfg(target_arch = "aarch64")]
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
-    #[allow(unused_assignments)]
-    #[allow(unused_assignments)]
-    let mut value = None;
-    spin_until(
-        || match ipc::poll_reply(KCLIENT_ASID, call) {
-            Ok(Some(reply)) => {
-                value = Some(reply);
-                true
-            }
-            Ok(None) => false,
-            Err(error) => panic!("[service] poll_reply failed for {}: {:?}", what, error),
-        },
-        what,
-    );
+    let ready = ipc::wait_reply_timeout(KCLIENT_ASID, call, 30_000)
+        .unwrap_or_else(|error| panic!("[service] wait_reply failed for {}: {:?}", what, error));
+    assert!(ready, "[service] deadline expired waiting for {}", what);
+    let value = ipc::poll_reply(KCLIENT_ASID, call)
+        .expect("[service] poll_reply failed")
+        .expect("[service] reply value missing");
     ipc::close_cap(KCLIENT_ASID, call).expect("[service] pending-call close failed");
-    value.expect("[service] reply value missing")
+    value
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -229,40 +263,25 @@ extern "C" fn verify_el0_service() {
         let base: *mut u8 = state.client_config.into();
         base as *const u32
     };
-    let ns_config: *const u32 = {
-        let base: *mut u8 = state.name_service.domain.status_frame.into();
-        base as *const u32
-    };
-    let echo_config: *const u32 = {
-        let base: *mut u8 =
-            state.echo.as_ref().expect("[service] echo domain missing").status_frame.into();
-        base as *const u32
-    };
     {
-        let mut spins: u64 = 0;
-        let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        while unsafe { core::ptr::read_volatile(config) } != CLIENT_SENTINEL {
-            spins += 1;
-            if spins.is_multiple_of(1_000_000) {
-                let ns_stage = unsafe { core::ptr::read_volatile(ns_config) };
-                let ns_handled = unsafe { core::ptr::read_volatile(ns_config.add(1)) };
-                let ns_opcode = unsafe { core::ptr::read_volatile(ns_config.add(2)) };
-                let echo_stage = unsafe { core::ptr::read_volatile(echo_config) };
-                let client_stage = unsafe { core::ptr::read_volatile(config.add(3)) };
-                logln!(
-                    "[service] waiting: ns stage {} handled {} opcode {}, echo stage {}, client \
-                     stage {}",
-                    ns_stage,
-                    ns_handled,
-                    ns_opcode,
-                    echo_stage,
-                    client_stage
-                );
-            }
-            deadline.assert_pending("EL0 service client");
-            crate::cpu::scheduler::yield_lp();
-        }
+        // The client writes its completion sentinel and then exits; its
+        // thread exit is the completion event, so block on that instead of
+        // polling the shared status frame.
+        let client_exit = crate::completion::observe_thread_exit_with_generation(
+            state.client_asid,
+            state.client_tid,
+            Some(state.client_generation),
+        )
+        .expect("[service] client exit observer");
+        let exited = crate::completion::wait_timeout(state.client_asid, client_exit, 10_000)
+            .expect("[service] client exit wait error");
+        assert!(exited, "[service] EL0 service client did not exit within deadline");
     }
+    assert_eq!(
+        unsafe { core::ptr::read_volatile(config) },
+        CLIENT_SENTINEL,
+        "[service] client did not reach completion sentinel"
+    );
     let echoed = unsafe { core::ptr::read_volatile(config.add(1)) };
     let generation = unsafe { core::ptr::read_volatile(config.add(2)) };
     assert_eq!(echoed, ECHO_VALUE as u32, "[service] client echoed value mismatch: {:#x}", echoed);
@@ -311,23 +330,17 @@ extern "C" fn verify_el0_service() {
     let echo2_asid = echo2.asid;
     logln!("[service] echo service restarted (asid={})", echo2_asid);
 
-    // Wait on the replacement's launch state instead of flooding the name
-    // service with synchronous lookups while registration is still pending.
-    let echo2_config: *const u32 = {
-        let base: *mut u8 = echo2.status_frame.into();
-        base as *const u32
-    };
-    spin_until(
-        || unsafe {
-            core::ptr::read_volatile(echo2_config) == 6
-                && core::ptr::read_volatile(echo2_config.add(1)) == 2
-        },
-        "generation-2 registration",
-    );
-    let lookup = ipc::scalar_call(KCLIENT_ASID, kclient_conn, OP_LOOKUP, NAME_ECHO)
-        .expect("[service] verifier re-lookup call failed");
-    let reply = wait_reply(lookup, "post-restart lookup reply");
-    assert_eq!(reply.result, 2, "[service] re-lookup should report generation 2");
+    // The name service replaces the old generation's registry entry when the
+    // replacement registers, but a lookup that races the replacement can
+    // still resolve the stale entry. Retry with a parked sleep between
+    // attempts until the registry reports generation 2 — each attempt blocks
+    // on the lookup reply (event-driven) rather than busy-polling.
+    let lookup =
+        lookup_until_generation(KCLIENT_ASID, kclient_conn, NAME_ECHO, 2, "post-restart lookup");
+    let reply = ipc::poll_reply(KCLIENT_ASID, lookup)
+        .expect("[service] post-restart poll failed")
+        .expect("[service] post-restart reply missing");
+    ipc::close_cap(KCLIENT_ASID, lookup).expect("[service] post-restart lookup close");
     let fresh_conn = reply.cap.expect("[service] re-lookup should return connection");
 
     let call = ipc::scalar_call(KCLIENT_ASID, fresh_conn, OP_ECHO, 0xfeed)
@@ -347,14 +360,8 @@ extern "C" fn verify_el0_service() {
         service_manager.asid,
         service_manager.tid
     );
-    let manager_status: *const u32 = {
-        let base: *mut u8 = service_manager.status_frame.into();
-        base as *const u32
-    };
-    spin_until(
-        || unsafe { core::ptr::read_volatile(manager_status) == 3 },
-        "service-manager registration",
-    );
+    // The manager registers with the name service during its bootstrap; the
+    // deferred lookup below is the registration event.
     let kclient2_asid = crate::service::loader::create_user_address_space();
     let ns2 = ipc::connection_delegate(
         state.name_service.domain.asid,
@@ -373,31 +380,22 @@ extern "C" fn verify_el0_service() {
     // authorized SpawnUpgrade syscall itself.
     let upgrade = ipc::scalar_call(kclient2_asid, mgr_conn, 1, NAME_ECHO)
         .expect("[service] manager upgrade call failed");
-    let mut upgrade_value = None;
-    let mut upgrade_polls = 0u64;
-    spin_until(
-        || {
-            upgrade_polls += 1;
-            if upgrade_polls.is_multiple_of(1_000) {
-                logln!(
-                    "[service] waiting for manager: stage={}, error={}",
-                    unsafe { core::ptr::read_volatile(manager_status) },
-                    unsafe { core::ptr::read_volatile(manager_status.add(2)) }
-                );
-            }
-            match ipc::poll_reply(kclient2_asid, upgrade) {
-                Ok(Some(reply)) => {
-                    upgrade_value = Some(reply);
-                    true
-                }
-                Ok(None) => false,
-                Err(error) => panic!("[service] manager reply failed: {:?}", error),
-            }
-        },
-        "manager upgrade reply",
+    let mgr_status: *const u32 = {
+        let base: *mut u8 = service_manager.status_frame.into();
+        base as *const u32
+    };
+    let upgrade_ready = ipc::wait_reply_timeout(kclient2_asid, upgrade, 30_000)
+        .expect("[service] manager upgrade reply failed");
+    assert!(upgrade_ready, "[service] manager upgrade reply deadline expired");
+    logln!(
+        "[service] manager upgrade replied: stage={}, error={}",
+        unsafe { core::ptr::read_volatile(mgr_status) },
+        unsafe { core::ptr::read_volatile(mgr_status.add(2)) }
     );
+    let upgrade_reply = ipc::poll_reply(kclient2_asid, upgrade)
+        .expect("[service] manager upgrade poll failed")
+        .expect("[service] manager upgrade reply missing");
     ipc::close_cap(kclient2_asid, upgrade).expect("manager upgrade pending-call close");
-    let upgrade_reply = upgrade_value.expect("manager upgrade reply missing");
     assert!(upgrade_reply.result > 0, "EL0 manager failed to spawn replacement");
     let replacement_asid = upgrade_reply.result as usize;
 
@@ -406,9 +404,11 @@ extern "C" fn verify_el0_service() {
     supervisor::teardown_domain(e2);
     logln!("[service] EL0 manager spawned generation-3 echo (asid={})", replacement_asid);
 
-    let l3 = ipc::scalar_call(kclient2_asid, ns2, OP_LOOKUP, NAME_ECHO).expect("gen-3 lookup");
-    let lookup3 = wait_reply_k2(kclient2_asid, l3, "gen-3 lookup reply");
-    assert_eq!(lookup3.result, 3, "gen-3 lookup generation");
+    let l3 = lookup_until_generation(kclient2_asid, ns2, NAME_ECHO, 3, "gen-3 lookup");
+    let lookup3 = ipc::poll_reply(kclient2_asid, l3)
+        .expect("[service] gen-3 lookup poll failed")
+        .expect("[service] gen-3 lookup reply missing");
+    ipc::close_cap(kclient2_asid, l3).expect("[service] gen-3 lookup close");
     let f3 = lookup3.cap.expect("gen-3 connection");
     let c3 = ipc::scalar_call(kclient2_asid, f3, OP_ECHO, 0x99).expect("gen-3 call");
     let r3 = wait_reply_k2(kclient2_asid, c3, "gen-3 echo");

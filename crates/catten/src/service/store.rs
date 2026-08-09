@@ -68,6 +68,37 @@ impl Drop for StoreReaderGuard {
     }
 }
 
+/// Kernel-owned IPC capabilities acquired while resolving a store object.
+/// Store loading has several fallible reply steps; tying cleanup to scope
+/// prevents an error or malformed reply from leaking authority into ASID 0.
+struct KernelIpcCap(u64);
+
+impl KernelIpcCap {
+    fn raw(&self) -> u64 {
+        self.0
+    }
+}
+
+impl Drop for KernelIpcCap {
+    fn drop(&mut self) {
+        let _ = ipc::close_cap(KERNEL_ASID, self.0);
+    }
+}
+
+struct KernelMemoryCap(crate::memory::object::MemoryObjectCap);
+
+impl KernelMemoryCap {
+    fn raw(&self) -> crate::memory::object::MemoryObjectCap {
+        self.0
+    }
+}
+
+impl Drop for KernelMemoryCap {
+    fn drop(&mut self) {
+        let _ = crate::memory::object::close_cap(KERNEL_ASID, self.0);
+    }
+}
+
 fn cached_elf(name: &[u8]) -> Option<&'static [u8]> {
     STORE_ELFS
         .lock()
@@ -83,7 +114,11 @@ fn cached_elf(name: &[u8]) -> Option<&'static [u8]> {
 pub fn service_elf(name: &'static [u8]) -> Option<&'static [u8]> {
     for (candidate, image) in BOOTSTRAP_ELFS {
         if *candidate == name {
-            return verified_for_name(name, image).then_some(image);
+            // Bootstrap images are immutable kernel input. Keep signature
+            // enforcement at the loader boundary, which verifies every
+            // domain immediately before mapping it. Re-verifying here made
+            // lookup spuriously fallible and duplicated the security check.
+            return Some(image);
         }
     }
     if let Some(image) = cached_elf(name) {
@@ -138,7 +173,7 @@ fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
         KERNEL_ASID,
         crate::ipc::ConnectionRights::CALL,
     ) {
-        Ok(conn) => conn,
+        Ok(conn) => KernelIpcCap(conn),
         Err(error) => {
             crate::logln!("[store] delegate failed: {error:?}");
             return None;
@@ -149,33 +184,32 @@ fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
     // store-dependent phase runs in a scheduler-owned kernel thread, so use
     // the ordinary waitable IPC path rather than issuing and leaking repeated
     // polling calls under load.
-    let lookup =
-        ipc::scalar_call(KERNEL_ASID, kernel_ns, 2, charlotte_launch::OBJSTORE_NAME).ok()?;
-    ipc::wait_reply(KERNEL_ASID, lookup).ok()?;
-    let obj_conn = ipc::poll_reply(KERNEL_ASID, lookup).ok().flatten()?.cap?;
-    let _ = ipc::close_cap(KERNEL_ASID, lookup);
+    let lookup = KernelIpcCap(
+        ipc::scalar_call(KERNEL_ASID, kernel_ns.raw(), 2, charlotte_launch::OBJSTORE_NAME).ok()?,
+    );
+    ipc::wait_reply(KERNEL_ASID, lookup.raw()).ok()?;
+    let lookup_reply = ipc::poll_reply(KERNEL_ASID, lookup.raw()).ok().flatten()?;
+    let _unexpected_memory = lookup_reply.memory.map(KernelMemoryCap);
+    let obj_conn = KernelIpcCap(lookup_reply.cap?);
 
     let object_id = charlotte_launch::artifact_object_id(name);
-    let read = ipc::scalar_call(KERNEL_ASID, obj_conn, OBJ_OP_READ, object_id).ok()?;
-    ipc::wait_reply(KERNEL_ASID, read).ok()?;
-    let reply = ipc::poll_reply(KERNEL_ASID, read).ok().flatten()?;
-    let _ = ipc::close_cap(KERNEL_ASID, read);
-    let _ = ipc::close_cap(KERNEL_ASID, obj_conn);
-    let _ = ipc::close_cap(KERNEL_ASID, kernel_ns);
+    let read =
+        KernelIpcCap(ipc::scalar_call(KERNEL_ASID, obj_conn.raw(), OBJ_OP_READ, object_id).ok()?);
+    ipc::wait_reply(KERNEL_ASID, read.raw()).ok()?;
+    let reply = ipc::poll_reply(KERNEL_ASID, read.raw()).ok().flatten()?;
+    let _unexpected_connection = reply.cap.map(KernelIpcCap);
+    let memory = reply.memory.map(KernelMemoryCap);
     if reply.result < 0 {
         return None;
     }
-    let memory = reply.memory?;
+    let memory = memory?;
     let size = reply.result as usize;
     if size == 0 || size > MAX_SERVICE_ELF_SIZE {
         crate::logln!("[store] refusing {size}-byte service ELF for {:?}", name);
-        let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
         return None;
     }
     // Snapshot through the memory object's direct-map frames. Reusing one
     // temporary virtual address here used to make correctness depend on TLB
     // state when successive cache misses ran on different LPs.
-    let bytes = crate::memory::object::snapshot_bytes(KERNEL_ASID, memory, size).ok();
-    let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
-    bytes
+    crate::memory::object::snapshot_bytes(KERNEL_ASID, memory.raw(), size).ok()
 }

@@ -40,7 +40,6 @@ use crate::cpu::{
         lp::{
             InterruptVectorNum,
             LpId,
-            ops::get_lic_id,
         },
     },
     multiprocessor::spin::per_lp::PerLp,
@@ -186,12 +185,16 @@ unsafe fn mmio_write8(base: usize, offset: usize, value: u8) {
     unsafe { core::ptr::write_volatile(ptr, value) }
 }
 
-/// The RD_base MMIO address of the calling core's redistributor. Cores are
-/// laid out consecutively starting at the redistributor base; we index by the
-/// local interrupt controller id (affinity 0).
+/// The RD_base MMIO address of the calling core's redistributor.
+///
+/// QEMU `virt` lays redistributors out densely by Aff0. `get_lic_id()` is also
+/// Aff0 on AArch64, so spelling the affinity out here does not change behavior.
+/// Platforms with sparse or multi-level affinity require GICR_TYPER discovery
+/// before they can use this implementation.
 #[inline]
 fn gicr_rd_base() -> usize {
-    gicr_base() + (get_lic_id() as usize) * GICR_STRIDE
+    let aff0 = (crate::cpu::isa::lp::ops::mpidr() & 0xff) as usize;
+    gicr_base() + aff0 * GICR_STRIDE
 }
 
 /// The SGI_base MMIO address of the calling core's redistributor.

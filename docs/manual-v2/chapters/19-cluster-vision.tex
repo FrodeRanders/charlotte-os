@@ -5,9 +5,11 @@ implemented and boot-tested, and it describes the larger server-class system
 those mechanisms are intended to become. The implemented boundary is a
 two-node QEMU cluster with replicated naming and deployment state, signed
 ELF artifacts, per-node NVMe object stores, deployment agents, remote
-invocation, and a stateless assignment handoff. Dynamic membership, shared
-artifact storage, stateful cross-node migration, and automatic placement are
-still vision.
+invocation, and a stateless assignment handoff. Discovery-bridged membership
+admission is now demonstrated for a generic Raft group, but the production
+DNS voter set is still statically launched. Integrating that admission with
+the durable shared-name-service identity remains future work, as do shared
+artifact storage, stateful cross-node migration, and automatic placement.
 
 \section{The vision: interchangeable compute}
 
@@ -108,15 +110,20 @@ manager, and no manually curated software repository. The current
 \texttt{--deploy-test} serial command loop is a kernel-side test and
 administration shim, not that production management plane.
 
-The current two-node test starts a statically described pair of voters. A
-future node that joins an existing cluster must instead complete three steps:
+The current two-node DNS test starts a statically described pair of voters. A
+separate boot test now drives a discovery-bridged admission into a generic
+Raft group through replicated \texttt{JOIN}, joint consensus, and
+\texttt{FINALIZE}. A production node joining the DNS/shared-state group must
+connect that demonstrated mechanism to durable node identity and complete
+three steps:
 
 \begin{enumerate}
     \item \textbf{Auto-discovery.} The node contacts the cluster through
         broadcast discovery or a configured seed, following the discovery
         mechanisms discussed for Raft peers (Chapter~14). Discovery exists as
-        a service and is exercised on the test network, but dynamic Raft
-        membership admission is not yet implemented.
+        a service, supplies MAC routes and cluster posture, and the generic
+        Raft admission test uses it to locate the anchor. Discovery does not
+        itself grant voting authority.
 
     \item \textbf{Receiving cluster identity.} The replicated catalog can
         distribute the set-once public signing key. Today that key must equal
@@ -255,9 +262,12 @@ coordination pieces, all of which sit on top of mechanisms that already
 exist:
 
 \begin{itemize}
-    \item \textbf{Dynamic membership.} Discovery traffic exists, but the
-        admission protocol that changes the Raft voter set and hands a new
-        node its durable cluster identity remains to be built.
+    \item \textbf{Dynamic membership integration.} The generic Raft service
+        now performs discovery-bridged admission through replicated
+        \texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. Wiring that
+        protocol into the durable DNS voter set, provisioning the joining
+        node's durable cluster identity, and validating partition/restart and
+        three-voter behavior remain to be built.
 
     \item \textbf{Key injection into cluster state.} The current ceremony
         commits only the build-time anchor and is set-once and idempotent.
@@ -390,8 +400,9 @@ the kernel image at build time (the bootstrap trust anchor, handed to
 services through the launch manifest), and it is committed to the replicated
 state by the key ceremony (\texttt{OP\_KEYCEREMONY} $\rightarrow$
 \texttt{OP\_SET\_KEY}). This demonstrates the replicated distribution path
-that a future dynamically joining node can use; current test membership is
-static and the replicated key must equal the build-time anchor.
+that a dynamically joining node can use. The generic Raft admission test is
+dynamic, while the DNS test voter set remains static and the replicated key
+must equal the build-time anchor.
 
 The kernel's EL0 loader verifies the note before mapping any domain, and
 signing is \emph{mandatory}: an image that is unsigned or invalidly signed
@@ -450,8 +461,9 @@ working together: an explicit node assignment is replicated cluster state;
 services are hosted cross-node and stay reachable through the distributed
 name service; generation fencing makes a stateless assignment handoff safe;
 and deployment and administration exist as protocols. It does not yet prove
-automatic placement, stateful migration, dynamic membership, or production
-authorization.
+automatic placement, stateful migration, dynamic reconfiguration of the
+durable DNS/shared-state group, or production authorization. It does prove
+the narrower generic-Raft admission path.
 
 \section{Related work}
 

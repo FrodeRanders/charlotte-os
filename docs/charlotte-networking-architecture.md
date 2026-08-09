@@ -791,7 +791,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 |---|---|
 | Raft core (leader election, log replication, commit/apply) | Two-node local election boot-validated; shared Graft quorum, learner, joint-consensus, read-barrier, and snapshot semantics implemented; broader fault injection remains incomplete |
 | Charlotte IPC transport (`CharlotteTransport`) | Local peer-connection table and endpoint transport boot-validated |
-| Election/heartbeat clock | Bounded completion-queue wait; no detached timer or polling loop |
+| Election/heartbeat clock | Detached timer completion plus an independent bounded completion-queue wait watchdog; no spin-polling loop |
 | Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
 | RPC batching | relmsg now fragments messages to 64 KiB, so a single Raft RPC can carry well beyond one frame; the dns still chunks snapshots at 1200 bytes |
 | Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
@@ -820,13 +820,13 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Raft concern | CharlotteOS primitive | Status |
 |---|---|---|
 | Peer discovery (single-instance) | Name service (`OP_LOOKUP`) | Works: nodes register as `raft-{id}`, look up local peers |
-| Peer discovery (cross-machine) | Distributed name service (on top of Raft) | Requires cross-machine Raft first |
+| Peer discovery (cross-machine) | Ethernet discovery service | Implemented for route/posture discovery; authoritative voter sets still come from durable launch policy or replicated join, never discovery alone |
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
-| Election/heartbeat clock | Bounded `CQ_WAIT` timeout | Implemented without a detached timer or polling loop |
+| Election/heartbeat clock | Detached timer + bounded `CQ_WAIT` timeout | Implemented as two wake paths: the CQ timeout remains an independent watchdog if the detached completion is delayed or lost |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
 | Client command submission | Capability-based endpoint call | The `dns` service submits registrations through the leader; lookup and call-routing queries are forwarded to the leader; the generic `raft` service's `OP_CLIENT_COMMAND` endpoint remains unwired |
 | Linearizable reads | Reply tokens + read barrier | Implemented for DNS lookup and call routing: followers forward correlated queries and the leader requires recent quorum contact; two-guest follower access is boot-validated |
-| Membership changes | Replicated internal commands | `JOIN`, `JOINT`, and `FINALIZE` core semantics implemented; administrative service API not yet exposed |
+| Membership changes | Replicated internal commands + discovery-bridged admission | `JOIN`, `JOINT`, and `FINALIZE` semantics and the clusterctl/discovery admission path are implemented and two-guest boot-validated; loss, partition, restart, and three-voter fault testing remain incomplete |
 
 The precise correspondence with the general Graft implementation and the
 intentional platform substitutions are recorded in

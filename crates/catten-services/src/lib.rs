@@ -13,6 +13,7 @@ pub mod disk_raft;
 /// Persistent, cluster-scoped node identity (`{mnemonic}:{token}`).
 pub mod node_identity;
 
+pub mod broker;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
@@ -25,6 +26,18 @@ pub mod relmsg_transport;
 /// This interim scalar encoding is limited to 8 bytes; longer names travel
 /// in a copied memory object (see [`ns::OP_REGISTER_NAMED`] and
 /// [`ns::OP_LOOKUP_NAMED`]).
+/// The registry name of a node's raft service: FNV-1a over `raft-{id}`.
+/// Unlike [`name`] this is not truncated, so identity-derived node ids
+/// (e.g. `cluster:abcd1234`) cannot collide in the name service.
+pub fn raft_name(id: &[u8]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in b"raft-".iter().copied().chain(id.iter().copied()) {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 pub const fn name(bytes: &[u8]) -> u64 {
     let mut packed = [0u8; 8];
     let mut i = 0;
@@ -395,6 +408,15 @@ pub mod raft {
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;
 
+    /// The raft service's own network EtherType: the reliable-message layer
+    /// is single-consumer (owned by the dns), so the raft service receives
+    /// its MAC-addressed frames through the frame demultiplexer instead.
+    pub const ETHERTYPE: u16 = 0x88b7;
+    /// Well-known name the frame demultiplexer routes `ETHERTYPE` frames to.
+    pub const FRAME_NAME: u64 = super::name(b"raft-f");
+    /// Ingress opcode the frame demultiplexer delivers frames with.
+    pub const OP_FRAME: u32 = 0x10;
+
     pub const OP_VOTE_REQUEST: u32 = 1;
     pub const OP_APPEND_ENTRIES: u32 = 2;
     pub const OP_INSTALL_SNAPSHOT: u32 = 3;
@@ -403,11 +425,124 @@ pub mod raft {
     pub const OP_ADD_SERVER: u32 = 6;
     pub const OP_REMOVE_SERVER: u32 = 7;
     pub const OP_STATUS: u32 = 8;
+    /// Cluster-wide status snapshot, memory-moved in the reply: a packed
+    /// blob built by [`build_cluster_status`]. Unlike `OP_STATUS` this also
+    /// reports the known leader's raft id (the redirect hint) and the number
+    /// of configured members, so discovery can answer "who leads the cluster
+    /// I am in (if any)".
+    pub const OP_CLUSTER_STATUS: u32 = 9;
 
     pub const ERR_NOT_LEADER: i64 = -1;
     pub const ERR_LOG_INCONSISTENCY: i64 = -2;
     pub const ERR_STALE_TERM: i64 = -3;
     pub const ERR_NOT_FOUND: i64 = -4;
+
+    /// Packed cluster-status reply: `[0..4)` u32 state (1 follower, 2
+    /// candidate, 3 leader), `[4..12)` u64 term, `[12..20)` u64 commit
+    /// index, `[20..24)` u32 member count, `[24]` u8 leader-id length,
+    /// `[25..)` leader-id bytes, then `[len]` u8 + the node's own raft id.
+    pub const CLUSTER_STATUS_HEADER_LEN: usize = 25;
+    /// Minimum length of a packed peer spec: `[0]` u8 id length, `[1..)`
+    /// id bytes, then u8-le-encoded u64 service name, then u8 role
+    /// (0 = voter, nonzero = learner).
+    pub const PEER_SPEC_MIN_LEN: usize = 10;
+
+    /// Build a packed cluster-status blob into `buf`. Returns the written
+    /// length, or `None` if the buffer is too small or the leader id too
+    /// long.
+    pub fn build_cluster_status(
+        buf: &mut [u8],
+        state: u32,
+        term: u64,
+        commit_index: u64,
+        member_count: u32,
+        leader_id: &[u8],
+        self_raft_id: &[u8],
+    ) -> Option<usize> {
+        if leader_id.len() > 255
+            || self_raft_id.len() > 255
+            || buf.len() < CLUSTER_STATUS_HEADER_LEN + leader_id.len() + 1 + self_raft_id.len()
+        {
+            return None;
+        }
+        buf[0..4].copy_from_slice(&state.to_le_bytes());
+        buf[4..12].copy_from_slice(&term.to_le_bytes());
+        buf[12..20].copy_from_slice(&commit_index.to_le_bytes());
+        buf[20..24].copy_from_slice(&member_count.to_le_bytes());
+        buf[24] = leader_id.len() as u8;
+        buf[25..25 + leader_id.len()].copy_from_slice(leader_id);
+        let pos = 25 + leader_id.len();
+        buf[pos] = self_raft_id.len() as u8;
+        buf[pos + 1..pos + 1 + self_raft_id.len()].copy_from_slice(self_raft_id);
+        Some(pos + 1 + self_raft_id.len())
+    }
+
+    /// A parsed cluster-status blob: `(state, term, commit_index,
+    /// member_count, leader_id, self_raft_id)`.
+    pub type ClusterStatus<'a> = (u32, u64, u64, u32, &'a [u8], &'a [u8]);
+
+    /// Parse a packed cluster-status blob into a [`ClusterStatus`].
+    pub fn parse_cluster_status(payload: &[u8]) -> Option<ClusterStatus<'_>> {
+        if payload.len() < CLUSTER_STATUS_HEADER_LEN {
+            return None;
+        }
+        let state = u32::from_le_bytes(payload[0..4].try_into().ok()?);
+        let term = u64::from_le_bytes(payload[4..12].try_into().ok()?);
+        let commit_index = u64::from_le_bytes(payload[12..20].try_into().ok()?);
+        let member_count = u32::from_le_bytes(payload[20..24].try_into().ok()?);
+        let leader_len = payload[24] as usize;
+        if payload.len() < CLUSTER_STATUS_HEADER_LEN + leader_len + 1 {
+            return None;
+        }
+        let leader_id = &payload[25..25 + leader_len];
+        let pos = 25 + leader_len;
+        let self_len = payload[pos] as usize;
+        if payload.len() < pos + 1 + self_len {
+            return None;
+        }
+        Some((
+            state,
+            term,
+            commit_index,
+            member_count,
+            leader_id,
+            &payload[pos + 1..pos + 1 + self_len],
+        ))
+    }
+
+    /// Pack a peer spec for `OP_ADD_SERVER` into `buf`. Returns the written
+    /// length, or `None` if the id is empty/too long or the buffer is too
+    /// small.
+    pub fn encode_peer_spec(
+        buf: &mut [u8],
+        id: &[u8],
+        service_name: u64,
+        learner: bool,
+    ) -> Option<usize> {
+        if id.is_empty() || id.len() > 255 || buf.len() < 1 + id.len() + 9 {
+            return None;
+        }
+        buf[0] = id.len() as u8;
+        buf[1..1 + id.len()].copy_from_slice(id);
+        buf[1 + id.len()..1 + id.len() + 8].copy_from_slice(&service_name.to_le_bytes());
+        buf[1 + id.len() + 8] = learner as u8;
+        Some(1 + id.len() + 9)
+    }
+
+    /// Parse a packed peer spec into `(id, service_name, learner)`.
+    pub fn decode_peer_spec(payload: &[u8]) -> Option<(&[u8], u64, bool)> {
+        if payload.len() < PEER_SPEC_MIN_LEN {
+            return None;
+        }
+        let id_len = payload[0] as usize;
+        if id_len == 0 || id_len > 255 || payload.len() < 1 + id_len + 9 {
+            return None;
+        }
+        let id = &payload[1..1 + id_len];
+        let service_name = u64::from_le_bytes(payload[1 + id_len..1 + id_len + 8].try_into().ok()?);
+        let learner = payload[1 + id_len + 8] != 0;
+        Some((id, service_name, learner))
+    }
 }
 
 /// Block device protocol (`charlotte-protocol-block` v1).
@@ -626,6 +761,12 @@ pub mod disco {
     pub const OP_LIST_PEERS: u32 = 2;
     pub const OP_STATUS: u32 = 3;
     pub const OP_SHUTDOWN: u32 = 4;
+    /// Cluster-location query: see `charlotte-protocol-disco`'s
+    /// `OP_CLUSTER_STATUS` for the reply layout.
+    pub const OP_CLUSTER_STATUS: u32 = 6;
+    /// `OP_CLUSTER_STATUS` arg0 flag: retain the call until the local Raft
+    /// identity and at least one remote Raft leader are known.
+    pub const CLUSTER_STATUS_WAIT_READY: u64 = 1;
     /// Internal ingress used by the frame demultiplexer (frouter): delivers
     /// one raw frame whose EtherType matched `DISCO_ETHERTYPE`. The call
     /// attaches a **moved** memory object holding the frame; the service
@@ -687,15 +828,53 @@ pub mod dns {
     /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
     /// Answered from locally applied cluster state (the caller polls).
     pub const OP_DEPLOY_QUERY: u32 = 9;
+    /// Wait for a cluster event. `arg0` is the packed event name (the
+    /// `event:` convention below). If the event has already fired — the name
+    /// is present in this node's *applied* catalog — the reply is its
+    /// committed generation, immediately. Otherwise the reply token is
+    /// parked in a per-node waitlist and resolved when the replicated
+    /// catalog gains the entry (the event is communicated through Raft
+    /// consensus, like the name service's deferred lookups are through the
+    /// local registry). The caller may bound the wait with a reply timeout.
+    pub const OP_EVENT_WAIT: u32 = 10;
+    /// Like `OP_REGISTER`, but the name travels in the moved memory object
+    /// (`arg0` = byte length): the packed scalar encoding is limited to 8
+    /// bytes, while event names (and long service names) exceed it. Used by
+    /// the event-firing side (e.g. the raft service publishing
+    /// `event:membership.{id}` after a JOIN finalizes).
+    pub const OP_REGISTER_NAMED: u32 = 11;
+    /// Fire a cluster event: commit `event:{name}` to the replicated
+    /// catalog (catalog-only — no local name-service publication). `arg0` is
+    /// the event-name byte length carried in the moved memory object. Only
+    /// the dns leader may commit; the firing side retries on
+    /// `ERR_NOT_LEADER`. The reply is the committed generation (deferred
+    /// until replicated).
+    pub const OP_EVENT_FIRE: u32 = 12;
+
+    /// Event-name prefix: events are ordinary replicated catalog names so the
+    /// existing register/commit/replicate machinery fires them; the prefix
+    /// keeps them distinct from service registrations.
+    pub const EVENT_PREFIX: &[u8] = b"event:";
+
+    /// Build a packed event name for `OP_EVENT_WAIT` into `buf`. Returns the
+    /// written length, or `None` if the event name is empty/too long.
+    pub fn pack_event_name(buf: &mut [u8], event: &[u8]) -> Option<usize> {
+        if event.is_empty() || event.len() > 64 || buf.len() < EVENT_PREFIX.len() + event.len() {
+            return None;
+        }
+        buf[..EVENT_PREFIX.len()].copy_from_slice(EVENT_PREFIX);
+        buf[EVENT_PREFIX.len()..EVENT_PREFIX.len() + event.len()].copy_from_slice(event);
+        Some(EVENT_PREFIX.len() + event.len())
+    }
     /// Commit the cluster's Ed25519 public key to the replicated state (the
     /// key ceremony). `arg0` is unused; the attached memory object holds the
     /// 32 key bytes. The reply is the committed key generation (deferred
     /// until it has replicated).
-    pub const OP_SET_KEY: u32 = 10;
+    pub const OP_SET_KEY: u32 = 13;
     /// Read the cluster public key from locally applied state. The reply
     /// moves a page holding the 32 key bytes, or is `ERR_NOT_FOUND` when no
     /// ceremony has committed a key yet.
-    pub const OP_KEY: u32 = 11;
+    pub const OP_KEY: u32 = 14;
 
     /// Stable object-store id of the deploy demo payload.
     pub const DEPLOY_OBJECT_ID: u64 = 0x0000_0000_0000_0042;
@@ -797,11 +976,22 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
+    /// Join the cluster on the local network segment. The service asks the
+    /// local discovery service for the cluster's leader (or a follower that
+    /// redirects towards it), then asks that leader's raft service to admit
+    /// this node. The reply is the committed JOIN log index, or a negative
+    /// error (`ERR_NO_CLUSTER` when no peer on the segment reports a
+    /// cluster).
+    pub const OP_JOIN: u32 = 7;
 
     pub const ERR_NOT_FOUND: i64 = -1;
     pub const ERR_NOT_LEADER: i64 = -2;
     pub const ERR_TOO_LARGE: i64 = -3;
     pub const ERR_UPLOAD_FAILED: i64 = -10;
+    /// No node on the local segment reported membership in a cluster (or the
+    /// local discovery/raft services are unavailable): the honest "nothing
+    /// to join" answer.
+    pub const ERR_NO_CLUSTER: i64 = -8;
     /// The ELF is unsigned, signed by another key, or blessed for a
     /// different logical artifact name.
     pub const ERR_UNTRUSTED_ARTIFACT: i64 = -11;
@@ -1026,17 +1216,19 @@ pub fn sleep_ms(milliseconds: u64) {
     catten_syscall::close(timer);
 }
 
-/// Block until the kernel has registered [`charlotte_launch::BOOT_DONE_NAME`]
-/// in the name service, signalling that this node has finished its boot storm.
+/// Block until the kernel has registered [`charlotte_launch::LOCAL_READY_NAME`]
+/// in the name service, signalling that the *local* node is ready — its disk
+/// stack is serving and the boot storm has settled — before it starts any
+/// cluster-facing communication.
 ///
 /// `ns::OP_LOOKUP` defers until the name is registered, so this returns as
 /// soon as the kernel publishes the marker. Returns `false` only if the call
 /// itself could not be made. Network-initiating services (cluster discovery,
 /// reliable-message/Raft membership clients) must call this before starting
 /// to communicate with other nodes.
-pub fn wait_for_boot_done(ns_conn: u64) -> bool {
+pub fn wait_for_local_ready(ns_conn: u64) -> bool {
     let call =
-        catten_syscall::ipc_scalar_call(ns_conn, ns::OP_LOOKUP, charlotte_launch::BOOT_DONE_NAME);
+        catten_syscall::ipc_scalar_call(ns_conn, ns::OP_LOOKUP, charlotte_launch::LOCAL_READY_NAME);
     if call == 0 {
         return false;
     }

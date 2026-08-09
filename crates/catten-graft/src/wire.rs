@@ -18,11 +18,33 @@ use crate::{
 pub const RAFT_RPC_MEMORY_PAGES: usize = 1;
 pub const RAFT_RPC_MEMORY_SIZE: usize = 4096;
 pub const SCRATCH_VADDR: usize = 0x0000_0000_0082_0000;
+/// Direct-Ethernet Raft payload prefix: one message tag followed by the
+/// unpadded body length in network byte order.
+pub const TAGGED_PAYLOAD_HEADER_SIZE: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireError {
     Invalid,
     Oversized,
+}
+
+/// Build the prefix used when a Raft message is carried directly in an
+/// Ethernet payload. Ethernet may pad short frames; the explicit length lets
+/// the receiver exclude those bytes before protobuf decoding.
+pub fn build_tagged_payload_header(tag: u8, payload_len: usize) -> Result<[u8; 3], WireError> {
+    let payload_len = u16::try_from(payload_len).map_err(|_| WireError::Oversized)?;
+    let [high, low] = payload_len.to_be_bytes();
+    Ok([tag, high, low])
+}
+
+/// Parse a directly-carried Raft payload and return its tag and exact body,
+/// ignoring any Ethernet padding after the declared body length.
+pub fn parse_tagged_payload(frame: &[u8]) -> Result<(u8, &[u8]), WireError> {
+    let header = frame.get(..TAGGED_PAYLOAD_HEADER_SIZE).ok_or(WireError::Invalid)?;
+    let payload_len = u16::from_be_bytes([header[1], header[2]]) as usize;
+    let end = TAGGED_PAYLOAD_HEADER_SIZE.checked_add(payload_len).ok_or(WireError::Oversized)?;
+    let payload = frame.get(TAGGED_PAYLOAD_HEADER_SIZE..end).ok_or(WireError::Invalid)?;
+    Ok((header[0], payload))
 }
 
 fn encode<M: Message>(message: &M) -> Result<Vec<u8>, WireError> {
@@ -213,5 +235,24 @@ mod tests {
         assert_eq!(decoded.last_included_index, response.last_included_index);
         assert_eq!(decoded.next_offset, response.next_offset);
         assert_eq!(decoded.done, response.done);
+    }
+
+    #[test]
+    fn tagged_payload_excludes_ethernet_padding() {
+        let payload = b"short response";
+        let mut frame =
+            build_tagged_payload_header(5, payload.len()).expect("tagged header").to_vec();
+        frame.extend_from_slice(payload);
+        frame.resize(46, 0);
+
+        let (tag, decoded) = parse_tagged_payload(&frame).expect("tagged payload");
+        assert_eq!(tag, 5);
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn tagged_payload_rejects_truncation() {
+        assert_eq!(parse_tagged_payload(&[5, 0]), Err(WireError::Invalid));
+        assert_eq!(parse_tagged_payload(&[5, 0, 2, 1]), Err(WireError::Invalid));
     }
 }

@@ -17,7 +17,7 @@ use catten_syscall::{
     ipc_scalar_call,
     ipc_scalar_call_move,
     memory_alloc,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -61,8 +61,8 @@ fn main(ctx: Context) -> ! {
     if frame_cap == 0 {
         unsafe { thread_exit() };
     }
-    let frame_vaddr: usize = 0x0000_0000_0060_0000;
-    if memory_map(frame_cap, frame_vaddr, true) != 0 {
+    let (frame_map_status, frame_vaddr) = memory_map_any(frame_cap, true);
+    if frame_map_status != 0 {
         unsafe { thread_exit() };
     }
     unsafe {

@@ -15,7 +15,7 @@ use crate::{
             SCHEDULER_IPI_VECTOR,
         },
         lp::ops::{
-            cond_yield_lp,
+            cond_yield_lp_from_irq,
             get_lp_id,
         },
     },
@@ -270,7 +270,7 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 /// signals end-of-interrupt, and then performs any pending context switch. This
 /// is the async heart of the scheduler: the Generic Timer PPI advances the timer
 /// queue (which may wake threads via their observers) and marks a context switch
-/// pending, which is honoured here via `cond_yield_lp`.
+/// pending, which is honoured here via the IRQ-tail-only scheduler entry.
 #[unsafe(no_mangle)]
 pub extern "C" fn irq_dispatcher() {
     let intid = gic::acknowledge_int();
@@ -306,7 +306,7 @@ pub extern "C" fn irq_dispatcher() {
         _ => {
             if crate::device::smmu::handle_interrupt(intid) {
                 gic::end_of_int(intid);
-                cond_yield_lp();
+                cond_yield_lp_from_irq();
                 return;
             }
             // Shared Peripheral Interrupts (INTID >= 32) from devices are
@@ -320,7 +320,7 @@ pub extern "C" fn irq_dispatcher() {
     }
     gic::end_of_int(intid);
     // Carry out a context switch if the timer or an IPI marked one pending.
-    cond_yield_lp();
+    cond_yield_lp_from_irq();
 }
 
 /// FIQ dispatcher. Log and return — in emulated environments (QEMU) FIQs can

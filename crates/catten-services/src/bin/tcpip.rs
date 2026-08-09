@@ -41,7 +41,7 @@ use catten_services::{
     net,
     ns,
     socket,
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -57,7 +57,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -89,7 +89,6 @@ const STAGE_OFFSET: usize = 0;
 const RX_TOTAL_OFFSET: usize = 4;
 const TX_OK_OFFSET: usize = 8;
 const SOCKETS_OFFSET: usize = 12;
-const SCRATCH_VADDR: usize = 0x0000_0000_00d0_0000;
 const POLL_MS: u64 = 50;
 const FRAME_MAX: usize = 4096;
 
@@ -132,10 +131,11 @@ impl TcpipState {
 
 /// Read a little-endian u16 payload (e.g. a port) from a moved memory object.
 fn read_port(memory: u64) -> u16 {
-    if memory_map(memory, SCRATCH_VADDR, false) != 0 {
+    let (scratch_vaddr_6_map_status, scratch_vaddr_6_vaddr) = memory_map_any(memory, false);
+    if scratch_vaddr_6_map_status != 0 {
         return 0;
     }
-    let port = unsafe { core::ptr::read_unaligned(SCRATCH_VADDR as *const u16) };
+    let port = unsafe { core::ptr::read_unaligned(scratch_vaddr_6_vaddr as *const u16) };
     memory_unmap(memory);
     port
 }
@@ -204,7 +204,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 4);
 
     // Let the NIC and the link settle before ARP/IP traffic starts flowing.
-    if !wait_for_boot_done(ns_connection) {
+    if !wait_for_local_ready(ns_connection) {
         unsafe { thread_exit() };
     }
     config::write::<u32>(STAGE_OFFSET, 5);
@@ -264,12 +264,15 @@ fn main(ctx: Context) -> ! {
                     if cap == 0 {
                         continue;
                     }
-                    if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+                    let (scratch_vaddr_5_map_status, scratch_vaddr_5_vaddr) =
+                        memory_map_any(cap, true);
+                    if scratch_vaddr_5_map_status != 0 {
                         memory_close(cap);
                         continue;
                     }
-                    let buf =
-                        unsafe { core::slice::from_raw_parts_mut(SCRATCH_VADDR as *mut u8, 4096) };
+                    let buf = unsafe {
+                        core::slice::from_raw_parts_mut(scratch_vaddr_5_vaddr as *mut u8, 4096)
+                    };
                     match sock.recv_slice(buf) {
                         Ok(0) => {
                             memory_unmap(cap);
@@ -348,13 +351,21 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-                    memory_map(msg.memory, SCRATCH_VADDR, false);
-                    let a = unsafe { core::ptr::read_volatile(SCRATCH_VADDR as *const u8) };
-                    let b = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 1) as *const u8) };
-                    let c = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 2) as *const u8) };
-                    let d = unsafe { core::ptr::read_volatile((SCRATCH_VADDR + 3) as *const u8) };
-                    let port =
-                        unsafe { core::ptr::read_unaligned((SCRATCH_VADDR + 4) as *const u16) };
+                    let (_scratch_vaddr_4_map_status, scratch_vaddr_4_vaddr) =
+                        memory_map_any(msg.memory, false);
+                    let a = unsafe { core::ptr::read_volatile(scratch_vaddr_4_vaddr as *const u8) };
+                    let b = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 1) as *const u8)
+                    };
+                    let c = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 2) as *const u8)
+                    };
+                    let d = unsafe {
+                        core::ptr::read_volatile((scratch_vaddr_4_vaddr + 3) as *const u8)
+                    };
+                    let port = unsafe {
+                        core::ptr::read_unaligned((scratch_vaddr_4_vaddr + 4) as *const u16)
+                    };
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
                     let remote =
@@ -470,9 +481,10 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-                    memory_map(msg.memory, SCRATCH_VADDR, false);
+                    let (_scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) =
+                        memory_map_any(msg.memory, false);
                     let data = unsafe {
-                        core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, payload_len)
+                        core::slice::from_raw_parts(scratch_vaddr_3_vaddr as *const u8, payload_len)
                     };
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     let result = match sock.send_slice(data) {
@@ -530,9 +542,14 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, -1);
                         continue;
                     }
-                    if memory_map(msg.memory, SCRATCH_VADDR, false) == 0 {
+                    let (scratch_vaddr_2_map_status, scratch_vaddr_2_vaddr) =
+                        memory_map_any(msg.memory, false);
+                    if scratch_vaddr_2_map_status == 0 {
                         let frame = unsafe {
-                            core::slice::from_raw_parts(SCRATCH_VADDR as *const u8, frame_len)
+                            core::slice::from_raw_parts(
+                                scratch_vaddr_2_vaddr as *const u8,
+                                frame_len,
+                            )
                         };
                         device.push_rx(frame.to_vec());
                         memory_unmap(msg.memory);
@@ -551,7 +568,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
                         continue;
                     }
-                    if memory_map(cap, SCRATCH_VADDR, true) != 0 {
+                    let (scratch_vaddr_map_status, scratch_vaddr_vaddr) = memory_map_any(cap, true);
+                    if scratch_vaddr_map_status != 0 {
                         memory_close(cap);
                         ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
                         continue;
@@ -567,7 +585,7 @@ fn main(ctx: Context) -> ! {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             words.as_ptr(),
-                            SCRATCH_VADDR as *mut u32,
+                            scratch_vaddr_vaddr as *mut u32,
                             words.len(),
                         );
                     }

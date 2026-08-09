@@ -8,9 +8,10 @@
 //! opcode that takes the moved frame buffer.
 //!
 //! The route table is EtherType → (service name, ingress opcode). Consumers
-//! are optional: a route is only installed once the named service is
-//! registered (retried each loop), so the frouter works whether a node runs
-//! relmsg, disco, tcpip, both, or neither.
+//! are optional: a route is installed once the named service is registered,
+//! so the frouter works whether a node runs relmsg, disco, tcpip, both, or
+//! neither. Each absent route owns one deferred name-service lookup; route
+//! discovery therefore never blocks the NIC receive loop.
 //!
 //! Status page layout:
 //! - word 0: stage
@@ -35,6 +36,7 @@ use catten_services::{
     frouter,
     net,
     ns,
+    raft,
     relmsg,
     sleep_ms,
     socket,
@@ -48,6 +50,7 @@ use catten_syscall::{
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
+    ipc_reply_poll,
     ipc_reply_poll_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
@@ -55,7 +58,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -75,17 +78,28 @@ const ROUTES_OFFSET: usize = 20;
 const FRAME_MAX: usize = 4096;
 const ETHERTYPE_OFFSET: usize = 12;
 const ETHERNET_HEADER_MIN: usize = 14;
-const SCRATCH: usize = 0x0000_0000_0090_0000;
-/// Poll interval for the NIC receive call. The driver's `OP_RECV` reply only
-/// completes when a frame arrives, so while no frames are flowing we poll it
-/// (instead of blocking) and re-run the optional-consumer route lookups each
-/// cycle — otherwise a service that registers after us would never be routed.
+/// Poll interval for the NIC receive call and deferred route lookups. The
+/// driver's `OP_RECV` reply only completes when a frame arrives, so while no
+/// frames are flowing we poll it rather than blocking the router reactor.
 const ROUTE_RETRY_MS: u64 = 50;
+const MAX_PENDING_PER_ROUTE: usize = 8;
 
 struct Route {
     ethertype: u16,
     conn: u64,
     opcode: u32,
+}
+
+struct RouteLookup {
+    ethertype: u16,
+    name: u64,
+    opcode: u32,
+    call: u64,
+}
+
+struct PendingForward {
+    call: u64,
+    route_conn: u64,
 }
 
 fn lookup(ns_conn: u64, name: u64) -> u64 {
@@ -94,53 +108,62 @@ fn lookup(ns_conn: u64, name: u64) -> u64 {
         return 0;
     }
     let (generation, connection) = unsafe { wait_reply(call, 0) };
-    if generation < 1 {
+    if generation < 1 || connection == 0 {
+        if connection != 0 {
+            ipc_close(connection);
+        }
         0
     } else {
         connection
     }
 }
 
-fn try_lookup(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
-    let call = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, name);
-    if call == 0 {
-        return None;
-    }
-    let (generation, connection) = unsafe { wait_reply(call, 0) };
-    if generation < 1 || connection == 0 {
-        None
-    } else {
-        Some((generation, connection))
-    }
-}
+fn refresh_routes(routes: &mut Vec<Route>, lookups: &mut [RouteLookup], ns_conn: u64) {
+    for lookup in lookups {
+        if routes.iter().any(|route| route.ethertype == lookup.ethertype) {
+            continue;
+        }
 
-fn add_route_if_missing(
-    routes: &mut Vec<Route>,
-    ns_conn: u64,
-    ethertype: u16,
-    name: u64,
-    opcode: u32,
-) {
-    if routes.iter().any(|route| route.ethertype == ethertype) {
-        return;
-    }
-    if let Some((_generation, conn)) = try_lookup(ns_conn, name) {
-        routes.push(Route {
-            ethertype,
-            conn,
-            opcode,
-        });
+        if lookup.call == 0 {
+            // OP_LOOKUP intentionally remains pending while the service is
+            // absent. This is the name service's synchronization mechanism;
+            // keeping the call in this small fixed table makes it asynchronous
+            // from the router's point of view and bounds retained authority.
+            lookup.call = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, lookup.name);
+            continue;
+        }
+
+        let (status, generation, connection) = ipc_reply_poll(lookup.call);
+        if status == 1 {
+            continue;
+        }
+
+        ipc_close(lookup.call);
+        lookup.call = 0;
+        if status == 0 && generation >= 1 && connection != 0 {
+            routes.push(Route {
+                ethertype: lookup.ethertype,
+                conn: connection,
+                opcode: lookup.opcode,
+            });
+        } else if connection != 0 {
+            ipc_close(connection);
+        }
     }
 }
 
 /// Peek the EtherType field (bytes 12..14, big-endian) of a frame held in a
 /// moved memory object, without consuming the object.
 fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
-    if frame_len < ETHERNET_HEADER_MIN || memory_map(memory, SCRATCH, false) != 0 {
+    if frame_len < ETHERNET_HEADER_MIN {
+        return 0;
+    }
+    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(memory, false);
+    if scratch_2_map_status != 0 {
         return 0;
     }
     let ethertype = unsafe {
-        let base = SCRATCH as *const u8;
+        let base = scratch_2_vaddr as *const u8;
         u16::from_be_bytes([
             core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET)),
             core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET + 1)),
@@ -158,7 +181,7 @@ fn main(ctx: Context) -> ! {
     };
     // The NIC driver is mandatory; discovery of the optional consumers may
     // lag behind their registration.
-    let net_conn = lookup(ns_conn, net::NAME);
+    let mut net_conn = lookup(ns_conn, net::NAME);
     if net_conn == 0 {
         unsafe { thread_exit() };
     }
@@ -180,7 +203,10 @@ fn main(ctx: Context) -> ! {
     if registration == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { wait_reply(registration, 0) };
+    let (generation, returned_connection) = unsafe { wait_reply(registration, 0) };
+    if returned_connection != 0 {
+        ipc_close(returned_connection);
+    }
     if generation < 1 {
         unsafe { thread_exit() };
     }
@@ -190,10 +216,40 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut routes: Vec<Route> = Vec::new();
-    add_route_if_missing(&mut routes, ns_conn, MSG_ETHERTYPE, relmsg::NAME, relmsg::OP_FRAME);
-    add_route_if_missing(&mut routes, ns_conn, DISCO_ETHERTYPE, disco::NAME, disco::OP_FRAME);
-    add_route_if_missing(&mut routes, ns_conn, IPV4_ETHERTYPE, socket::NAME, socket::OP_FRAME);
-    add_route_if_missing(&mut routes, ns_conn, ARP_ETHERTYPE, socket::NAME, socket::OP_FRAME);
+    let mut route_lookups = [
+        RouteLookup {
+            ethertype: MSG_ETHERTYPE,
+            name: relmsg::NAME,
+            opcode: relmsg::OP_FRAME,
+            call: 0,
+        },
+        RouteLookup {
+            ethertype: DISCO_ETHERTYPE,
+            name: disco::NAME,
+            opcode: disco::OP_FRAME,
+            call: 0,
+        },
+        RouteLookup {
+            ethertype: raft::ETHERTYPE,
+            name: raft::FRAME_NAME,
+            opcode: raft::OP_FRAME,
+            call: 0,
+        },
+        RouteLookup {
+            ethertype: IPV4_ETHERTYPE,
+            name: socket::NAME,
+            opcode: socket::OP_FRAME,
+            call: 0,
+        },
+        RouteLookup {
+            ethertype: ARP_ETHERTYPE,
+            name: socket::NAME,
+            opcode: socket::OP_FRAME,
+            call: 0,
+        },
+    ];
+    let mut pending_forwards: Vec<PendingForward> = Vec::new();
+    refresh_routes(&mut routes, &mut route_lookups, ns_conn);
     config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);
 
     let mut rx_total: u32 = 0;
@@ -201,6 +257,7 @@ fn main(ctx: Context) -> ! {
     let mut dropped: u32 = 0;
     let mut unknown: u32 = 0;
     let stage: u32 = 4;
+    config::write::<u32>(STAGE_OFFSET, stage);
 
     loop {
         let receive = ipc_scalar_call(net_conn, net::OP_RECV, 0);
@@ -227,7 +284,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                         continue;
                     }
-                    if memory_map(cap, SCRATCH, true) != 0 {
+                    let (scratch_map_status, scratch_vaddr) = memory_map_any(cap, true);
+                    if scratch_map_status != 0 {
                         memory_close(cap);
                         ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                         continue;
@@ -244,61 +302,81 @@ fn main(ctx: Context) -> ! {
                     unsafe {
                         core::ptr::copy_nonoverlapping(
                             words.as_ptr(),
-                            SCRATCH as *mut u32,
+                            scratch_vaddr as *mut u32,
                             words.len(),
                         );
                     }
                     memory_unmap(cap);
-                    ipc_reply_move(m.reply, cap, (words.len() * 4) as i64);
+                    if ipc_reply_move(m.reply, cap, (words.len() * 4) as i64) != 0 {
+                        memory_close(cap);
+                    }
                 } else {
                     ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
                 }
             }
 
-            // Consumers may register after us; refresh the optional routes on
-            // every poll so a late-registering service is picked up even when
-            // no frames are arriving.
-            add_route_if_missing(
-                &mut routes,
-                ns_conn,
-                MSG_ETHERTYPE,
-                relmsg::NAME,
-                relmsg::OP_FRAME,
-            );
-            add_route_if_missing(
-                &mut routes,
-                ns_conn,
-                DISCO_ETHERTYPE,
-                disco::NAME,
-                disco::OP_FRAME,
-            );
-            add_route_if_missing(
-                &mut routes,
-                ns_conn,
-                IPV4_ETHERTYPE,
-                socket::NAME,
-                socket::OP_FRAME,
-            );
-            add_route_if_missing(
-                &mut routes,
-                ns_conn,
-                ARP_ETHERTYPE,
-                socket::NAME,
-                socket::OP_FRAME,
-            );
+            // Poll each bounded deferred name-service lookup. A newly
+            // registered consumer becomes routable without ever parking this
+            // single-owner NIC reactor.
+            refresh_routes(&mut routes, &mut route_lookups, ns_conn);
             config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
             config::write::<u32>(FORWARDED_OFFSET, forwarded);
             config::write::<u32>(DROPPED_OFFSET, dropped);
             config::write::<u32>(UNKNOWN_OFFSET, unknown);
             config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);
 
-            let (status, frame_len, _connection, memory) = ipc_reply_poll_with_memory(receive);
-            if status != 0 {
+            // Forward calls are asynchronous: one slow protocol consumer must
+            // not stop the NIC owner from serving every other EtherType.
+            let mut index = 0;
+            while index < pending_forwards.len() {
+                let pending = &pending_forwards[index];
+                let (status, result, returned_cap) = ipc_reply_poll(pending.call);
+                if status == 1 {
+                    index += 1;
+                    continue;
+                }
+                let pending = pending_forwards.swap_remove(index);
+                ipc_close(pending.call);
+                if returned_cap != 0 {
+                    ipc_close(returned_cap);
+                }
+                if status == 0 && result as i64 != catten_syscall::IPC_REPLY_ENDPOINT_CLOSED {
+                    forwarded = forwarded.wrapping_add(1);
+                } else {
+                    dropped = dropped.wrapping_add(1);
+                    if let Some(stale_index) =
+                        routes.iter().position(|route| route.conn == pending.route_conn)
+                    {
+                        let stale = routes.remove(stale_index);
+                        ipc_close(stale.conn);
+                    }
+                }
+            }
+
+            let (status, frame_len, connection, memory) = ipc_reply_poll_with_memory(receive);
+            if status == 1 {
                 // No frame yet; yield briefly, then poll again.
                 sleep_ms(ROUTE_RETRY_MS);
                 continue;
             }
             ipc_close(receive);
+            if connection != 0 {
+                ipc_close(connection);
+            }
+            if status != 0 {
+                if memory != 0 {
+                    memory_close(memory);
+                }
+                // A restarted NIC invalidates this connection. Synchronize on
+                // the next registered generation before issuing another
+                // receive instead of polling a terminal call forever.
+                ipc_close(net_conn);
+                net_conn = lookup(ns_conn, net::NAME);
+                if net_conn == 0 {
+                    unsafe { thread_exit() };
+                }
+                break;
+            }
             if memory == 0 || frame_len > FRAME_MAX as u64 {
                 if memory != 0 {
                     memory_close(memory);
@@ -317,6 +395,28 @@ fn main(ctx: Context) -> ! {
 
             let route_conn = routes[route_index].conn;
             let route_opcode = routes[route_index].opcode;
+            if pending_forwards.iter().filter(|pending| pending.route_conn == route_conn).count()
+                >= MAX_PENDING_PER_ROUTE
+            {
+                // Bound authority and memory retained by a wedged consumer.
+                // Closing pending calls cancels their moved frame objects; the
+                // name-service retry can install a fresh service generation.
+                let mut pending_index = 0;
+                while pending_index < pending_forwards.len() {
+                    if pending_forwards[pending_index].route_conn == route_conn {
+                        let pending = pending_forwards.swap_remove(pending_index);
+                        ipc_close(pending.call);
+                        dropped = dropped.wrapping_add(1);
+                    } else {
+                        pending_index += 1;
+                    }
+                }
+                memory_close(memory);
+                dropped = dropped.wrapping_add(1);
+                let stale = routes.remove(route_index);
+                ipc_close(stale.conn);
+                break;
+            }
             let forward = ipc_scalar_call_move(route_conn, route_opcode, frame_len, memory);
             if forward == 0 {
                 memory_close(memory);
@@ -324,14 +424,10 @@ fn main(ctx: Context) -> ! {
                 let stale = routes.remove(route_index);
                 ipc_close(stale.conn);
             } else {
-                let (result, _) = unsafe { wait_reply(forward, 0) };
-                if result == catten_syscall::IPC_REPLY_ENDPOINT_CLOSED {
-                    dropped = dropped.wrapping_add(1);
-                    let stale = routes.remove(route_index);
-                    ipc_close(stale.conn);
-                } else {
-                    forwarded = forwarded.wrapping_add(1);
-                }
+                pending_forwards.push(PendingForward {
+                    call: forward,
+                    route_conn,
+                });
             }
             break;
         }

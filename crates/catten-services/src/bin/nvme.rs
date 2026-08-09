@@ -32,19 +32,13 @@ extern crate alloc;
 use core::sync::atomic::{
     AtomicU32,
     AtomicU64,
-    AtomicUsize,
     Ordering,
 };
 
 catten_rt::entry!(main);
 
 // Simple bump allocator for queue virtual addresses
-static NEXT_VADDR: AtomicUsize = AtomicUsize::new(0x0000_0000_0050_0000);
 static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
-
-fn alloc_vaddr(pages: usize) -> usize {
-    NEXT_VADDR.fetch_add(pages * PAGE_SIZE, Ordering::Relaxed)
-}
 
 use catten_rt::{
     Context,
@@ -59,7 +53,6 @@ use catten_syscall::{
     *,
 };
 
-const NVME_VADDR: usize = 0x0000_0000_0041_0000;
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
 const PAGE_SIZE: usize = 4096;
@@ -149,16 +142,21 @@ fn cq1_hdbl() -> usize {
 // ---------------------------------------------------------------------------
 // MMIO helpers
 // ---------------------------------------------------------------------------
+static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
 unsafe fn read32(offset: usize) -> u32 {
-    unsafe { core::ptr::read_volatile((NVME_VADDR + offset) as *const u32) }
+    let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    unsafe { core::ptr::read_volatile((base + offset) as *const u32) }
 }
 
 unsafe fn write32(offset: usize, val: u32) {
-    unsafe { core::ptr::write_volatile((NVME_VADDR + offset) as *mut u32, val) }
+    let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    unsafe { core::ptr::write_volatile((base + offset) as *mut u32, val) }
 }
 
 unsafe fn write64(offset: usize, val: u64) {
-    unsafe { core::ptr::write_volatile((NVME_VADDR + offset) as *mut u64, val) }
+    let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
+    unsafe { core::ptr::write_volatile((base + offset) as *mut u64, val) }
 }
 
 /// Write a doorbell value (low 16 bits written to 32-bit doorbell register).
@@ -186,8 +184,8 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
     if cap == 0 {
         return None;
     }
-    let vaddr = alloc_vaddr(pages);
-    if memory_map(cap, vaddr, true) != 0 {
+    let (map_status, vaddr) = memory_map_any(cap, true);
+    if map_status != 0 {
         memory_close(cap);
         return None;
     }
@@ -724,9 +722,11 @@ fn main(ctx: Context) -> ! {
     };
     DMA_DOMAIN.store(dma_domain, Ordering::Release);
 
-    if device_mmio_map(mmio_cap, NVME_VADDR, true) != 0 {
+    let (mmio_map_status, nvme_vaddr) = device_mmio_map_any(mmio_cap, true);
+    if mmio_map_status != 0 {
         unsafe { thread_exit() };
     }
+    MMIO_BASE.store(nvme_vaddr, core::sync::atomic::Ordering::Relaxed);
     config::write::<u32>(0, 1);
 
     let (io_sq_vaddr, io_cq_vaddr, nsze, lbs, _) = match unsafe { nvme_init() } {

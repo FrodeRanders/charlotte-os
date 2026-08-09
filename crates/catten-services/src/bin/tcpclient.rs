@@ -17,7 +17,7 @@ use catten_services::{
     ns,
     sleep_ms,
     socket,
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -26,13 +26,12 @@ use catten_syscall::{
     ipc_scalar_call_move,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
 use charlotte_protocol_net::decode_status;
 
-const SCRATCH: usize = 0x0000_0000_00b0_0000;
 const SENTINEL: u32 = 0x5345_4e54;
 const PAYLOAD: &[u8] = b"CharlotteOS tcpip cross-node";
 const PORT: u16 = 8080;
@@ -55,14 +54,15 @@ fn ip_from_mac(mac: &[u8; 6]) -> (u8, u8) {
 fn send_payload(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
     for _ in 0..300 {
         let cap = memory_alloc(1);
-        if cap == 0 || memory_map(cap, SCRATCH, true) != 0 {
+        let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(cap, true);
+        if cap == 0 || scratch_5_map_status != 0 {
             if cap != 0 {
                 memory_close(cap);
             }
             return false;
         }
         unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), SCRATCH as *mut u8, data.len());
+            core::ptr::copy_nonoverlapping(data.as_ptr(), scratch_5_vaddr as *mut u8, data.len());
         }
         memory_unmap(cap);
         let send = ipc_scalar_call_move(
@@ -123,7 +123,7 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(0, 4);
 
-    if !wait_for_boot_done(ns_conn) {
+    if !wait_for_local_ready(ns_conn) {
         fail(0xe004);
     }
     config::write::<u32>(0, 5);
@@ -141,13 +141,14 @@ fn main(ctx: Context) -> ! {
     if is_server {
         // ---- Server: listen, accept, receive, echo. ----
         let port_cap = memory_alloc(1);
-        if port_cap == 0 || memory_map(port_cap, SCRATCH, true) != 0 {
+        let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(port_cap, true);
+        if port_cap == 0 || scratch_4_map_status != 0 {
             if port_cap != 0 {
                 memory_close(port_cap);
             }
             fail(0xe007);
         }
-        unsafe { core::ptr::write_unaligned(SCRATCH as *mut u16, PORT.to_le()) }
+        unsafe { core::ptr::write_unaligned(scratch_4_vaddr as *mut u16, PORT.to_le()) }
         memory_unmap(port_cap);
         let listen = ipc_scalar_call_move(tcp_conn, socket::OP_LISTEN, sock_id as u64, port_cap);
         if listen == 0 {
@@ -192,11 +193,13 @@ fn main(ctx: Context) -> ! {
             }
             fail(0xe00e);
         }
-        if memory_map(memory, SCRATCH, false) != 0 {
+        let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
+        if scratch_3_map_status != 0 {
             memory_close(memory);
             fail(0xe00f);
         }
-        let received = unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, PAYLOAD.len()) };
+        let received =
+            unsafe { core::slice::from_raw_parts(scratch_3_vaddr as *const u8, PAYLOAD.len()) };
         let matches = received == PAYLOAD;
         memory_unmap(memory);
         memory_close(memory);
@@ -212,7 +215,8 @@ fn main(ctx: Context) -> ! {
     } else {
         // ---- Client: connect, send, receive echo. ----
         let addr_cap = memory_alloc(1);
-        if addr_cap == 0 || memory_map(addr_cap, SCRATCH, true) != 0 {
+        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(addr_cap, true);
+        if addr_cap == 0 || scratch_2_map_status != 0 {
             if addr_cap != 0 {
                 memory_close(addr_cap);
             }
@@ -220,8 +224,8 @@ fn main(ctx: Context) -> ! {
         }
         let peer_ip = [10, 0, 0, peer_octet];
         unsafe {
-            core::ptr::copy_nonoverlapping(peer_ip.as_ptr(), SCRATCH as *mut u8, 4);
-            core::ptr::write_unaligned((SCRATCH + 4) as *mut u16, PORT.to_le());
+            core::ptr::copy_nonoverlapping(peer_ip.as_ptr(), scratch_2_vaddr as *mut u8, 4);
+            core::ptr::write_unaligned((scratch_2_vaddr + 4) as *mut u16, PORT.to_le());
         }
         memory_unmap(addr_cap);
         let connect = ipc_scalar_call_move(tcp_conn, socket::OP_CONNECT, sock_id as u64, addr_cap);
@@ -251,11 +255,13 @@ fn main(ctx: Context) -> ! {
             }
             fail(0xe01b);
         }
-        if memory_map(memory, SCRATCH, false) != 0 {
+        let (scratch_map_status, scratch_vaddr) = memory_map_any(memory, false);
+        if scratch_map_status != 0 {
             memory_close(memory);
             fail(0xe01c);
         }
-        let echoed = unsafe { core::slice::from_raw_parts(SCRATCH as *const u8, PAYLOAD.len()) };
+        let echoed =
+            unsafe { core::slice::from_raw_parts(scratch_vaddr as *const u8, PAYLOAD.len()) };
         let matches = echoed == PAYLOAD;
         memory_unmap(memory);
         memory_close(memory);

@@ -655,3 +655,15 @@ pub fn encode_set_cluster_key(key: &[u8; 32]) -> Vec<u8> {
     buf.extend_from_slice(key);
     buf
 }
+
+/// The replicated catalog viewed as an immediate [`Catalog`]: answers come
+/// from the *applied* state, so a resolved name is guaranteed to have
+/// committed. Used by the event broker's lookups.
+impl crate::broker::Catalog for NameCatalog {
+    fn resolve(&self, name: &[u8]) -> Option<crate::broker::CatalogTarget> {
+        self.lookup(name).map(|entry| crate::broker::CatalogTarget {
+            generation: entry.generation,
+            connection: 0,
+        })
+    }
+}

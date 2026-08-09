@@ -35,7 +35,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_unmap,
     thread_exit,
 };
@@ -110,11 +110,11 @@ fn main(ctx: Context) -> ! {
     let mut served: u32 = 0;
     let handoff_state = ctx.handoff_state_cap();
     if handoff_state != 0 {
-        const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
-        if memory_map(handoff_state, STATE_VADDR, false) != 0 {
+        let (state_map_status, state_vaddr) = memory_map_any(handoff_state, false);
+        if state_map_status != 0 {
             unsafe { thread_exit() };
         }
-        served = unsafe { core::ptr::read_volatile(STATE_VADDR as *const u32) };
+        served = unsafe { core::ptr::read_volatile(state_vaddr as *const u32) };
         memory_unmap(handoff_state);
         memory_close(handoff_state);
         config::write::<u32>(8, served);
@@ -162,10 +162,10 @@ fn main(ctx: Context) -> ! {
                     if state_cap != 0 {
                         // Use HEAP_VADDR + high offset as scratch (above the
                         // long-name scratch at 0x100000).
-                        const STATE_VADDR: usize = 0x0000_0000_00a0_0000;
-                        if memory_map(state_cap, STATE_VADDR, true) == 0 {
+                        let (state_map_status, state_vaddr) = memory_map_any(state_cap, true);
+                        if state_map_status == 0 {
                             unsafe {
-                                core::ptr::write_volatile(STATE_VADDR as *mut u32, served);
+                                core::ptr::write_volatile(state_vaddr as *mut u32, served);
                             }
                             memory_unmap(state_cap);
                         }

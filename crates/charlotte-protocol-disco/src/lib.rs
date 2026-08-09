@@ -26,7 +26,19 @@
 //!  0..1   Node ID length (u8, up to 63)
 //!  1..N   Node ID (UTF-8 bytes)
 //!  N..N+8 Service name (u64 LE)
+//!  N+8    Cluster role (u8: 0 = not in a cluster, 1 = follower,
+//!         2 = candidate, 3 = leader, 0xff = unknown/legacy)
+//!  +1     Own raft id length (u8)
+//!  ..     Own raft id (UTF-8 bytes)
+//!  +1     Known leader's raft id length (u8)
+//!  ..     Known leader's raft id (UTF-8 bytes)
 //! ```
+//!
+//! The trailing cluster block is optional: a legacy v1 responder omits it and
+//! the peer reports role `UNKNOWN`. The cluster block lets discovery answer
+//! "which node leads the cluster (if any)" so a joining node can contact the
+//! leader directly, or a follower/observer that redirects, or receive the
+//! honest "not in a cluster" answer.
 #![no_std]
 
 extern crate alloc;
@@ -53,10 +65,23 @@ pub const OP_PROBE: u32 = 1;
 pub const OP_LIST_PEERS: u32 = 2;
 pub const OP_STATUS: u32 = 3;
 pub const OP_SHUTDOWN: u32 = 4;
+/// Cluster-location query: reply moves a packed blob (see
+/// [`build_cluster_answer`]) describing this node's cluster role, its raft
+/// id, the known leader's raft id, and every discovered peer's role/raft id.
+/// This is the "where do I join" answer a joining node asks for.
+pub const OP_CLUSTER_STATUS: u32 = 6;
 
 pub const PROBE_COUNT: usize = 3;
 pub const PROBE_INTERVAL_MS: u64 = 200;
 pub const PEER_TTL_MS: u64 = 30_000;
+
+/// Cluster-role values carried in the discovery payload.
+pub const ROLE_NO_CLUSTER: u8 = 0;
+pub const ROLE_FOLLOWER: u8 = 1;
+pub const ROLE_CANDIDATE: u8 = 2;
+pub const ROLE_LEADER: u8 = 3;
+/// A legacy peer whose response predates the cluster block.
+pub const ROLE_UNKNOWN: u8 = 0xff;
 
 /// Build a full discovery frame header (42 bytes: 14 Ethernet + 28 disco).
 pub fn build_disco_frame(
@@ -108,6 +133,195 @@ pub fn parse_response_payload(payload: &[u8]) -> Option<(&[u8], u64)> {
     Some((node_id, service_name))
 }
 
+/// Build an extended response payload: the v1 `{node_id, service_name}`
+/// block plus the optional cluster block `{role, raft_id, leader_id}`.
+/// Returns the written length (the v1 length if the cluster block does not
+/// fit the 256-byte budget, so the frame stays parseable by legacy peers).
+pub fn build_extended_payload(
+    buf: &mut [u8; 256],
+    node_id: &[u8],
+    service_name: u64,
+    role: u8,
+    raft_id: &[u8],
+    leader_id: &[u8],
+) -> usize {
+    let base = build_response_payload(buf, node_id, service_name);
+    if base == 0 || raft_id.len() > 255 || leader_id.len() > 255 {
+        return base;
+    }
+    if buf.len() < base + 1 + 1 + raft_id.len() + 1 + leader_id.len() {
+        return base;
+    }
+    let mut pos = base;
+    buf[pos] = role;
+    pos += 1;
+    buf[pos] = raft_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + raft_id.len()].copy_from_slice(raft_id);
+    pos += raft_id.len();
+    buf[pos] = leader_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + leader_id.len()].copy_from_slice(leader_id);
+    pos + leader_id.len()
+}
+
+/// The cluster block of an extended response payload:
+/// `(role, raft_id, leader_id)`.
+pub type ClusterBlock<'a> = (u8, &'a [u8], &'a [u8]);
+
+/// Parse an extended response payload into
+/// `(node_id, service_name, Option<ClusterBlock>)` where the cluster block
+/// is `None` for legacy v1 payloads.
+pub fn parse_extended_payload(payload: &[u8]) -> Option<(&[u8], u64, Option<ClusterBlock<'_>>)> {
+    let (node_id, service_name) = parse_response_payload(payload)?;
+    let base = 1 + node_id.len() + 8;
+    let rest = &payload[base..];
+    if rest.len() >= 2 {
+        let role = rest[0];
+        let raft_len = rest[1] as usize;
+        if rest.len() > 2 + raft_len {
+            let leader_len = rest[2 + raft_len] as usize;
+            if rest.len() >= 2 + raft_len + 1 + leader_len {
+                return Some((
+                    node_id,
+                    service_name,
+                    Some((
+                        role,
+                        &rest[2..2 + raft_len],
+                        &rest[3 + raft_len..3 + raft_len + leader_len],
+                    )),
+                ));
+            }
+        }
+    }
+    Some((node_id, service_name, None))
+}
+
+/// Return the exact packed `OP_CLUSTER_STATUS` size, or `None` when a count,
+/// identifier length, or total size is not representable by the wire format.
+pub fn cluster_answer_len(
+    self_raft_id: &[u8],
+    self_leader_id: &[u8],
+    peers: &[PeerClusterInfo<'_>],
+) -> Option<usize> {
+    if self_raft_id.len() > 255 || self_leader_id.len() > 255 || u32::try_from(peers.len()).is_err()
+    {
+        return None;
+    }
+    let mut len = 2usize
+        .checked_add(self_raft_id.len())?
+        .checked_add(1)?
+        .checked_add(self_leader_id.len())?
+        .checked_add(4)?;
+    for peer in peers {
+        if peer.raft_id.len() > 255 || peer.leader_id.len() > 255 {
+            return None;
+        }
+        len = len
+            .checked_add(9)?
+            .checked_add(peer.raft_id.len())?
+            .checked_add(peer.leader_id.len())?;
+    }
+    Some(len)
+}
+
+/// Build the packed `OP_CLUSTER_STATUS` reply into `buf`:
+/// `[0]` self role, `[1]` self raft-id length, raft id bytes, then
+/// self leader-id length + bytes, then u32 peer count, then per peer
+/// `{ mac[6], role:1, raft_id_len:1, raft_id }`. Returns the written
+/// length, or `None` if the contents are invalid or the buffer is too small.
+pub fn build_cluster_answer(
+    buf: &mut [u8],
+    self_role: u8,
+    self_raft_id: &[u8],
+    self_leader_id: &[u8],
+    peers: &[PeerClusterInfo],
+) -> Option<usize> {
+    let encoded_len = cluster_answer_len(self_raft_id, self_leader_id, peers)?;
+    if buf.len() < encoded_len {
+        return None;
+    }
+    let mut pos = 0usize;
+    buf[pos] = self_role;
+    pos += 1;
+    buf[pos] = self_raft_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + self_raft_id.len()].copy_from_slice(self_raft_id);
+    pos += self_raft_id.len();
+    buf[pos] = self_leader_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + self_leader_id.len()].copy_from_slice(self_leader_id);
+    pos += self_leader_id.len();
+    let peer_count = u32::try_from(peers.len()).ok()?;
+    buf[pos..pos + 4].copy_from_slice(&peer_count.to_le_bytes());
+    pos += 4;
+    for peer in peers {
+        buf[pos..pos + 6].copy_from_slice(&peer.mac);
+        pos += 6;
+        buf[pos] = peer.role;
+        pos += 1;
+        buf[pos] = peer.raft_id.len() as u8;
+        pos += 1;
+        buf[pos..pos + peer.raft_id.len()].copy_from_slice(peer.raft_id);
+        pos += peer.raft_id.len();
+        buf[pos] = peer.leader_id.len() as u8;
+        pos += 1;
+        buf[pos..pos + peer.leader_id.len()].copy_from_slice(peer.leader_id);
+        pos += peer.leader_id.len();
+    }
+    debug_assert_eq!(pos, encoded_len);
+    Some(encoded_len)
+}
+
+/// A discovered peer's cluster posture, as carried in a cluster answer.
+pub struct PeerClusterInfo<'a> {
+    pub mac: [u8; 6],
+    pub role: u8,
+    pub raft_id: &'a [u8],
+    /// The cluster leader this peer redirects towards, if any.
+    pub leader_id: &'a [u8],
+}
+
+/// A peer entry in a cluster answer: `(mac, role, raft_id, leader_id)`.
+pub type PeerEntry = ([u8; 6], u8, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>);
+
+/// A full cluster answer: `(self_role, self_raft_id, self_leader_id, peers)`.
+pub type ClusterAnswer<'a> = (u8, &'a [u8], &'a [u8], alloc::vec::Vec<PeerEntry>);
+
+/// Parse a packed `OP_CLUSTER_STATUS` reply into a [`ClusterAnswer`].
+pub fn parse_cluster_answer(bytes: &[u8]) -> Option<ClusterAnswer<'_>> {
+    let mut pos = 0usize;
+    let self_role = *bytes.get(pos)?;
+    pos += 1;
+    let raft_len = *bytes.get(pos)? as usize;
+    pos += 1;
+    let self_raft_id = bytes.get(pos..pos + raft_len)?;
+    pos += raft_len;
+    let leader_len = *bytes.get(pos)? as usize;
+    pos += 1;
+    let self_leader_id = bytes.get(pos..pos + leader_len)?;
+    pos += leader_len;
+    let count = u32::from_le_bytes(bytes.get(pos..pos + 4)?.try_into().ok()?) as usize;
+    pos += 4;
+    let mut peers = alloc::vec::Vec::new();
+    for _ in 0..count {
+        let mac: [u8; 6] = bytes.get(pos..pos + 6)?.try_into().ok()?;
+        pos += 6;
+        let role = *bytes.get(pos)?;
+        pos += 1;
+        let raft_len = *bytes.get(pos)? as usize;
+        pos += 1;
+        let raft_id = bytes.get(pos..pos + raft_len)?.to_vec();
+        pos += raft_len;
+        let leader_len = *bytes.get(pos)? as usize;
+        pos += 1;
+        let leader_id = bytes.get(pos..pos + leader_len)?.to_vec();
+        pos += leader_len;
+        peers.push((mac, role, raft_id, leader_id));
+    }
+    Some((self_role, self_raft_id, self_leader_id, peers))
+}
+
 /// Parse a discovery frame header from a raw Ethernet frame. Returns
 /// `Some((version, flags, source_mac, cluster_id))` on success, or `None` if
 /// the frame is too short or has an unexpected EtherType.
@@ -152,4 +366,40 @@ pub fn parse_peer_list(bytes: &[u8]) -> alloc::vec::Vec<([u8; 6], alloc::vec::Ve
         peers.push((mac, node_id));
     }
     peers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PeerClusterInfo,
+        ROLE_LEADER,
+        build_cluster_answer,
+        parse_cluster_answer,
+    };
+
+    #[test]
+    fn cluster_answer_rejects_short_buffers_without_panicking() {
+        for len in 0..10 {
+            let mut buf = alloc::vec![0u8; len];
+            assert_eq!(build_cluster_answer(&mut buf, ROLE_LEADER, b"n1", b"n1", &[]), None);
+        }
+    }
+
+    #[test]
+    fn cluster_answer_round_trips() {
+        let peers = [PeerClusterInfo {
+            mac: [1, 2, 3, 4, 5, 6],
+            role: ROLE_LEADER,
+            raft_id: b"n2",
+            leader_id: b"n2",
+        }];
+        let mut buf = [0u8; 64];
+        let len = build_cluster_answer(&mut buf, ROLE_LEADER, b"n1", b"n1", &peers).unwrap();
+        let parsed = parse_cluster_answer(&buf[..len]).unwrap();
+        assert_eq!(parsed.0, ROLE_LEADER);
+        assert_eq!(parsed.1, b"n1");
+        assert_eq!(parsed.2, b"n1");
+        assert_eq!(parsed.3[0].0, peers[0].mac);
+        assert_eq!(parsed.3[0].2, b"n2");
+    }
 }

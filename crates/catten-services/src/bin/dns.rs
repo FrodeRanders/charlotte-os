@@ -49,6 +49,7 @@ use catten_rt::{
     manifest_key,
 };
 use catten_services::{
+    broker::EventBroker,
     disco,
     disk_raft::{
         DiskLogStore,
@@ -77,7 +78,7 @@ use catten_services::{
         TAG_SNAPSHOT_RESPONSE,
         TAG_VOTE_RESPONSE,
     },
-    wait_for_boot_done,
+    wait_for_local_ready,
     wait_reply,
 };
 use catten_syscall::{
@@ -101,7 +102,7 @@ use catten_syscall::{
     ipc_status,
     memory_alloc,
     memory_close,
-    memory_map,
+    memory_map_any,
     memory_size,
     memory_unmap,
     poll as completion_poll,
@@ -113,9 +114,6 @@ use charlotte_protocol_msg::unpack_address_and_len;
 const LOOP_TICK_MS: u64 = 25;
 const RAFT_TIMER_COOKIE: u64 = 0x444e_535f_5449_434b;
 const REPLY_SPINS: u64 = u64::MAX;
-const RX_SCRATCH: usize = 0x0000_0000_0090_0000;
-const LIST_SCRATCH: usize = 0x0000_0000_0090_1000;
-const CATALOG_SCRATCH: usize = 0x0000_0000_0090_2000;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const EXPECTED_PEERS_KEY: u64 = manifest_key(b"peers");
@@ -305,11 +303,12 @@ fn reply_lookup(
     }
 
     let cap = memory_alloc(1);
-    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+    let (list_scratch_9_map_status, list_scratch_9_vaddr) = memory_map_any(cap, true);
+    if cap != 0 && list_scratch_9_map_status == 0 {
         unsafe {
             core::ptr::copy_nonoverlapping(
                 entry.node.as_ptr(),
-                LIST_SCRATCH as *mut u8,
+                list_scratch_9_vaddr as *mut u8,
                 entry.node.len(),
             );
         }
@@ -389,13 +388,14 @@ fn query_disco_peers(disco_conn: u64) -> Vec<([u8; 6], Vec<u8>)> {
         return Vec::new();
     }
     let len = result as usize;
-    if memory_map(memory, LIST_SCRATCH, false) != 0 {
+    let (list_scratch_8_map_status, list_scratch_8_vaddr) = memory_map_any(memory, false);
+    if list_scratch_8_map_status != 0 {
         memory_close(memory);
         return Vec::new();
     }
     let mut buf = Vec::with_capacity(len);
     unsafe {
-        let src = LIST_SCRATCH as *const u8;
+        let src = list_scratch_8_vaddr as *const u8;
         for i in 0..len {
             buf.push(core::ptr::read_volatile(src.add(i)));
         }
@@ -527,12 +527,13 @@ fn read_call_request(message: &catten_syscall::IpcMessage) -> (u32, i64) {
     if message.memory == 0 {
         return (0, 0);
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+    let (list_scratch_7_map_status, list_scratch_7_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_7_map_status != 0 {
         memory_close(message.memory);
         return (0, 0);
     }
-    let opcode = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u32) };
-    let arg = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 4) as *const i64) };
+    let opcode = unsafe { core::ptr::read_volatile(list_scratch_7_vaddr as *const u32) };
+    let arg = unsafe { core::ptr::read_volatile((list_scratch_7_vaddr + 4) as *const i64) };
     memory_unmap(message.memory);
     memory_close(message.memory);
     (opcode, arg)
@@ -542,11 +543,12 @@ fn read_generation(message: &catten_syscall::IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+    let (list_scratch_6_map_status, list_scratch_6_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_6_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let generation = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
+    let generation = unsafe { core::ptr::read_volatile(list_scratch_6_vaddr as *const u64) };
     memory_unmap(message.memory);
     memory_close(message.memory);
     Some(generation)
@@ -562,15 +564,17 @@ fn read_deploy_request(message: &catten_syscall::IpcMessage) -> Option<(u64, u64
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+    let (list_scratch_5_map_status, list_scratch_5_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_5_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
-    let object_id = unsafe { core::ptr::read_volatile(LIST_SCRATCH as *const u64) };
-    let node_key = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 8) as *const u64) };
+    let object_id = unsafe { core::ptr::read_volatile(list_scratch_5_vaddr as *const u64) };
+    let node_key = unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 8) as *const u64) };
     let mut digest = [0u8; 32];
     for (index, byte) in digest.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + 16 + index) as *const u8) };
+        *byte =
+            unsafe { core::ptr::read_volatile((list_scratch_5_vaddr + 16 + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -596,6 +600,103 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
     }
 }
 
+/// Read a full-length name from the moved memory object attached to an
+/// `OP_REGISTER_NAMED`/`OP_EVENT_WAIT` call. `arg0` is the byte length.
+fn read_named_bytes(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
+    if message.memory == 0 {
+        return None;
+    }
+    let len = message.arg0 as usize;
+    if len == 0 || len > 128 {
+        memory_close(message.memory);
+        return None;
+    }
+    let (list_scratch_4_map_status, list_scratch_4_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_4_map_status != 0 {
+        memory_close(message.memory);
+        return None;
+    }
+    let mut name = alloc::vec::Vec::with_capacity(len);
+    unsafe {
+        let src = list_scratch_4_vaddr as *const u8;
+        for index in 0..len {
+            name.push(core::ptr::read_volatile(src.add(index)));
+        }
+        memory_unmap(message.memory);
+        memory_close(message.memory);
+    }
+    Some(name)
+}
+
+/// The register/relay/submit path shared by `OP_REGISTER` and
+/// `OP_REGISTER_NAMED`. Returns `Some(code)` when the caller must reply with
+/// `code`, or `None` when the reply was deferred (the entry is committing).
+#[allow(clippy::too_many_arguments)]
+fn register_name(
+    node: &mut RaftNode,
+    ns_conn: u64,
+    transport: &RelmsgRaftTransport,
+    pending_registers: &mut alloc::vec::Vec<PendingRegistration>,
+    node_name: &[u8],
+    message: &catten_syscall::IpcMessage,
+    name: alloc::vec::Vec<u8>,
+) -> Option<i64> {
+    if name.is_empty() {
+        Some(dns::ERR_TOO_LARGE)
+    } else if node.state != NodeState::Leader {
+        // Remote host: the service lives on this node, but only the leader
+        // may commit catalog entries. Resolve the local registration and
+        // relay a register request to the leader, which commits the entry
+        // naming this node as the owner. The reply is deferred until the
+        // leader acknowledges (see rregister replies below).
+        match local_publication(ns_conn, message.connection, &name) {
+            None => Some(dns::ERR_TOO_LARGE),
+            Some((connection, local_generation)) => match node.known_leader_id.clone() {
+                Some(leader) if transport.has_peer(&leader) => {
+                    let request = catten_services::rregister::encode_request(node_name, &name);
+                    transport.send_message(
+                        &leader,
+                        catten_services::rregister::TAG_REQUEST,
+                        request,
+                    );
+                    pending_registers.push(PendingRegistration::RemoteRegister {
+                        reply: message.reply,
+                        name,
+                        connection,
+                        local_generation,
+                    });
+                    None
+                }
+                _ => {
+                    if connection != 0 {
+                        ipc_close(connection);
+                    }
+                    Some(dns::ERR_NOT_LEADER)
+                }
+            },
+        }
+    } else {
+        // Leader: commit the registration with this node as the owner.
+        // Submit once; the reactor completes the reply once the entry has
+        // replicated (see pending_registers below).
+        match node.submit_command(encode_register(&name, node_name), node.millis()) {
+            Ok(index) => {
+                let (connection, existing_local_generation) =
+                    local_publication(ns_conn, message.connection, &name).unwrap_or((0, 0));
+                pending_registers.push(PendingRegistration::Prepare {
+                    log_index: index,
+                    reply: message.reply,
+                    name,
+                    connection,
+                    existing_local_generation,
+                });
+                None
+            }
+            Err(code) => Some(code),
+        }
+    }
+}
+
 /// Read the 32 key bytes attached to an `OP_SET_KEY` request.
 fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
     if message.memory == 0 {
@@ -605,13 +706,14 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
         memory_close(message.memory);
         return None;
     }
-    if memory_map(message.memory, LIST_SCRATCH, false) != 0 {
+    let (list_scratch_3_map_status, list_scratch_3_vaddr) = memory_map_any(message.memory, false);
+    if list_scratch_3_map_status != 0 {
         memory_close(message.memory);
         return None;
     }
     let mut key = [0u8; 32];
     for (index, byte) in key.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((LIST_SCRATCH + index) as *const u8) };
+        *byte = unsafe { core::ptr::read_volatile((list_scratch_3_vaddr + index) as *const u8) };
     }
     memory_unmap(message.memory);
     memory_close(message.memory);
@@ -627,9 +729,14 @@ fn reply_move_bytes(reply: u64, bytes: &[u8]) {
         return;
     }
     let cap = memory_alloc(1);
-    if cap != 0 && memory_map(cap, LIST_SCRATCH, true) == 0 {
+    let (list_scratch_2_map_status, list_scratch_2_vaddr) = memory_map_any(cap, true);
+    if cap != 0 && list_scratch_2_map_status == 0 {
         unsafe {
-            core::ptr::copy_nonoverlapping(bytes.as_ptr(), LIST_SCRATCH as *mut u8, bytes.len());
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                list_scratch_2_vaddr as *mut u8,
+                bytes.len(),
+            );
         }
         memory_unmap(cap);
         ipc_reply_move(reply, cap, bytes.len() as i64);
@@ -655,14 +762,15 @@ fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
 
 fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64) -> u64 {
     let memory = memory_alloc(1);
-    if memory == 0 || memory_map(memory, LIST_SCRATCH, true) != 0 {
+    let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(memory, true);
+    if memory == 0 || list_scratch_map_status != 0 {
         if memory != 0 {
             memory_close(memory);
         }
         return 0;
     }
     unsafe {
-        core::ptr::write_volatile(LIST_SCRATCH as *mut u64, generation);
+        core::ptr::write_volatile(list_scratch_vaddr as *mut u64, generation);
     }
     memory_unmap(memory);
     let call = ipc_scalar_call_move(
@@ -764,7 +872,7 @@ fn main(ctx: Context) -> ! {
     config::write_u32_release(dns::status::STAGE, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
-    if !wait_for_boot_done(ns_conn) {
+    if !wait_for_local_ready(ns_conn) {
         fatal(7);
     }
     config::write_u32_release(dns::status::STAGE, 4);
@@ -903,6 +1011,15 @@ fn main(ctx: Context) -> ! {
     let mut pending_local_unregistrations: Vec<u64> = Vec::new();
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
+
+    // Cluster-event waiters: reply tokens parked by OP_EVENT_WAIT for events
+    // that have not fired yet. Settled from the *applied* catalog each
+    // reactor iteration — the event fires when the replicated entry lands on
+    // this node, never by polling order or boot timing. This is the
+    // replicated service's event-broker face; the catalog is its catalog
+    // face (see `catten_services::broker`).
+    let mut event_waiters: catten_services::broker::KeyedWaitlist<u64> =
+        catten_services::broker::KeyedWaitlist::new();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
     let mut last_heartbeat_broadcast = 0u64;
 
@@ -912,7 +1029,11 @@ fn main(ctx: Context) -> ! {
         // loop period so the relmsg receive queue cannot fill behind an
         // armed-but-delayed timer.
         let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
-        let mut tick_due = !timer_armed && timed_out != 0;
+        // The CQ timeout is an independent watchdog, not merely a fallback
+        // for failure to *submit* the detached timer. A submitted timer can
+        // have its completion delayed or dropped; ignoring the timeout while
+        // `timer_armed` stayed true would then freeze Raft time forever.
+        let mut tick_due = timed_out != 0;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
@@ -932,9 +1053,10 @@ fn main(ctx: Context) -> ! {
                 recv_pending = 0;
                 if memory != 0 {
                     let (source_mac, len) = unpack_address_and_len(result);
-                    if memory_map(memory, RX_SCRATCH, false) == 0 {
+                    let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(memory, false);
+                    if rx_scratch_map_status == 0 {
                         let frame = unsafe {
-                            core::slice::from_raw_parts(RX_SCRATCH as *const u8, len as usize)
+                            core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, len as usize)
                         };
                         match frame.first().copied() {
                             Some(catten_services::rcall::TAG_REQUEST) => {
@@ -1450,6 +1572,24 @@ fn main(ctx: Context) -> ! {
         if completed > 0 {
             config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
         }
+
+        // --- Cluster events ---
+        // Settle event-broker waiters from the *applied* catalog: any entry
+        // that landed in this iteration (via replication or a local commit)
+        // fires its waiters. Fulfillment is defined by consensus, never by
+        // polling order.
+        let settled = event_waiters.settle(&*catalog);
+        if !settled.is_empty() {
+            for (name, reply) in settled {
+                if reply != 0 {
+                    match catalog.lookup(&name) {
+                        Some(entry) => ipc_reply(reply, entry.generation as i64),
+                        None => ipc_reply(reply, dns::ERR_NOT_FOUND),
+                    };
+                }
+            }
+        }
+
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
@@ -1467,72 +1607,113 @@ fn main(ctx: Context) -> ! {
             match message.opcode {
                 dns::OP_REGISTER => {
                     let name = packed_name(message.arg0);
-                    let result = if name.is_empty() {
-                        dns::ERR_TOO_LARGE
-                    } else if node.state != NodeState::Leader {
-                        // Remote host: the service lives on this node, but only
-                        // the leader may commit catalog entries. Resolve the
-                        // local registration and relay a register request to
-                        // the leader, which commits the entry naming this node
-                        // as the owner. The reply is deferred until the leader
-                        // acknowledges (see rregister replies below).
-                        match local_publication(ns_conn, message.connection, &name) {
-                            None => dns::ERR_TOO_LARGE,
-                            Some((connection, local_generation)) => {
-                                match node.known_leader_id.clone() {
-                                    Some(leader) if transport.has_peer(&leader) => {
-                                        let request = catten_services::rregister::encode_request(
-                                            &node_name, &name,
-                                        );
-                                        transport.send_message(
-                                            &leader,
-                                            catten_services::rregister::TAG_REQUEST,
-                                            request,
-                                        );
-                                        pending_registers.push(
-                                            PendingRegistration::RemoteRegister {
-                                                reply: message.reply,
-                                                name,
-                                                connection,
-                                                local_generation,
-                                            },
-                                        );
-                                        continue;
-                                    }
-                                    _ => {
-                                        if connection != 0 {
-                                            ipc_close(connection);
-                                        }
-                                        dns::ERR_NOT_LEADER
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        // Leader: commit the registration with this node as
-                        // the owner. Submit once; the reactor completes the
-                        // reply once the entry has replicated (see
-                        // pending_registers below).
-                        match node.submit_command(encode_register(&name, &node_name), node.millis())
-                        {
-                            Ok(index) => {
-                                let (connection, existing_local_generation) =
-                                    local_publication(ns_conn, message.connection, &name)
-                                        .unwrap_or((0, 0));
-                                pending_registers.push(PendingRegistration::Prepare {
-                                    log_index: index,
-                                    reply: message.reply,
-                                    name,
-                                    connection,
-                                    existing_local_generation,
-                                });
-                                continue;
-                            }
-                            Err(code) => code,
-                        }
-                    };
-                    if message.reply != 0 {
+                    if let Some(result) = register_name(
+                        &mut node,
+                        ns_conn,
+                        &transport,
+                        &mut pending_registers,
+                        &node_name,
+                        &message,
+                        name,
+                    ) && message.reply != 0
+                    {
                         ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_REGISTER_NAMED => {
+                    if let Some(name) = read_named_bytes(&message)
+                        && let Some(result) = register_name(
+                            &mut node,
+                            ns_conn,
+                            &transport,
+                            &mut pending_registers,
+                            &node_name,
+                            &message,
+                            name,
+                        )
+                        && message.reply != 0
+                    {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_EVENT_FIRE => {
+                    // Commit a cluster event to the replicated catalog.
+                    // Catalog-only: the event has no local service to
+                    // publish, so the entry carries no connection and the
+                    // local name service is untouched. On a follower the
+                    // event relays to the leader through the same machinery
+                    // as registrations; the reply is deferred until the
+                    // entry replicates (pending_registers).
+                    if let Some(name) = read_named_bytes(&message) {
+                        let result = if node.state != NodeState::Leader {
+                            match node.known_leader_id.clone() {
+                                Some(leader) if transport.has_peer(&leader) => {
+                                    let request = catten_services::rregister::encode_request(
+                                        &node_name, &name,
+                                    );
+                                    transport.send_message(
+                                        &leader,
+                                        catten_services::rregister::TAG_REQUEST,
+                                        request,
+                                    );
+                                    pending_registers.push(PendingRegistration::RemoteRegister {
+                                        reply: message.reply,
+                                        name,
+                                        connection: 0,
+                                        local_generation: 0,
+                                    });
+                                    continue;
+                                }
+                                _ => dns::ERR_NOT_LEADER,
+                            }
+                        } else {
+                            match node
+                                .submit_command(encode_register(&name, &node_name), node.millis())
+                            {
+                                Ok(index) => {
+                                    pending_registers.push(PendingRegistration::Prepare {
+                                        log_index: index,
+                                        reply: message.reply,
+                                        name,
+                                        connection: 0,
+                                        existing_local_generation: 0,
+                                    });
+                                    continue;
+                                }
+                                Err(code) => code,
+                            }
+                        };
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, result);
+                        }
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                    }
+                }
+
+                dns::OP_EVENT_WAIT => {
+                    // Cluster-event wait: the event name travels in the
+                    // moved memory object (it exceeds the packed-8-byte
+                    // scalar limit). If the event has fired — the name is in
+                    // the *applied* catalog — reply with its generation now;
+                    // otherwise the event broker parks the reply token and
+                    // the reactor settles it when the replicated entry lands.
+                    if let Some(name) = read_named_bytes(&message) {
+                        if let Some(reply) = event_waiters.park(&name, message.reply, &*catalog) {
+                            if let Some(entry) = catalog.lookup(&name) {
+                                if reply != 0 {
+                                    ipc_reply(reply, entry.generation as i64);
+                                }
+                            } else if reply != 0 {
+                                ipc_reply(reply, dns::ERR_NOT_FOUND);
+                            }
+                        }
+                        continue;
+                    }
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
                     }
                 }
 
@@ -1761,7 +1942,9 @@ fn main(ctx: Context) -> ! {
                         }
                         continue;
                     }
-                    if memory_map(cap, CATALOG_SCRATCH, true) != 0 {
+                    let (catalog_scratch_map_status, catalog_scratch_vaddr) =
+                        memory_map_any(cap, true);
+                    if catalog_scratch_map_status != 0 {
                         memory_close(cap);
                         if message.reply != 0 {
                             ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
@@ -1772,7 +1955,7 @@ fn main(ctx: Context) -> ! {
                     let mut length = 4usize;
                     unsafe {
                         core::ptr::write_volatile(
-                            CATALOG_SCRATCH as *mut u32,
+                            catalog_scratch_vaddr as *mut u32,
                             entries.len() as u32,
                         );
                     }
@@ -1784,26 +1967,27 @@ fn main(ctx: Context) -> ! {
                         }
                         unsafe {
                             core::ptr::write_volatile(
-                                (CATALOG_SCRATCH + length) as *mut u8,
+                                (catalog_scratch_vaddr + length) as *mut u8,
                                 name_len as u8,
                             );
                             core::ptr::copy_nonoverlapping(
                                 name.as_ptr(),
-                                (CATALOG_SCRATCH + length + 1) as *mut u8,
+                                (catalog_scratch_vaddr + length + 1) as *mut u8,
                                 name_len,
                             );
                             core::ptr::write_volatile(
-                                (CATALOG_SCRATCH + length + 1 + name_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 1 + name_len) as *mut u8,
                                 node_len as u8,
                             );
                             core::ptr::copy_nonoverlapping(
                                 entry.node.as_ptr(),
-                                (CATALOG_SCRATCH + length + 2 + name_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 2 + name_len) as *mut u8,
                                 node_len,
                             );
                             core::ptr::copy_nonoverlapping(
                                 entry.generation.to_le_bytes().as_ptr(),
-                                (CATALOG_SCRATCH + length + 2 + name_len + node_len) as *mut u8,
+                                (catalog_scratch_vaddr + length + 2 + name_len + node_len)
+                                    as *mut u8,
                                 8,
                             );
                         }
@@ -2481,7 +2665,9 @@ fn main(ctx: Context) -> ! {
                 node.broadcast_heartbeat(node.millis());
                 last_heartbeat_broadcast = node.millis();
             }
-            timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+            if !timer_armed {
+                timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+            }
         }
 
         config::write_u32_release(dns::status::CURRENT_TERM, node.current_term as u32);
