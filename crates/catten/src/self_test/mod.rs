@@ -193,6 +193,7 @@ pub fn run_synchronous_self_tests() {
         panic!("live_upgrade_test requires AArch64 EL0 service images");
         #[cfg(target_arch = "aarch64")]
         {
+            results::register(results::TestId::Nvme);
             results::register(results::TestId::Service);
             return;
         }
@@ -237,6 +238,11 @@ pub fn run_deferred_self_tests() {
     if cfg!(feature = "live_upgrade_test") {
         #[cfg(target_arch = "aarch64")]
         {
+            // The service ELFs (echo, client, servicemgr) are store-sourced;
+            // bring up the disk stack first so the object store registers and
+            // service_elf can resolve them. The NVMe verifier also runs the
+            // persistent-upgrade path itself.
+            el0_nvme::test_el0_nvme();
             el0_service::test_el0_service();
             logln!("Live-upgrade verifier is pending.");
             return;

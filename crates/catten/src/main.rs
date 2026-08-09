@@ -252,10 +252,14 @@ pub extern "C" fn bsp_main() -> ! {
 /// be suspended and later resumed just like every other kernel thread.
 extern "C" fn finish_boot() {
     // The synchronous half of the self-test suite predates kernel preemption
-    // and deliberately runs as one transaction. Keep this continuation
-    // locally non-preemptible; explicit yields still switch to EL0/services,
-    // whose own saved PSTATE enables interrupt delivery while they run.
-    mask_interrupts!();
+    // and deliberately ran as one transaction. That mask must NOT be held
+    // across the suite: DAIF is per-LP CPU state and switch_ctx does not save
+    // it, so a masked continuation is restored to masked after every yield and
+    // propagates the mask to every kernel thread it switches to on this LP.
+    // That wedges the LP's timer PPI (pending at the GIC but never taken) and
+    // starves every timeout queued on this LP, including the NVMe driver's CQ
+    // watchdog. Run the suite like any kernel thread, unmasked; explicit
+    // yields still switch to EL0/services as before.
     self_test::run_deferred_self_tests();
     logln!("System Information:");
     logln!("CPU Vendor: {}", (CpuInfo::get_vendor()));

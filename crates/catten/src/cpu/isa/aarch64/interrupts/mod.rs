@@ -277,10 +277,12 @@ static TIMER_PPI_COUNTS: [core::sync::atomic::AtomicU64; 8] =
 /// pending, which is honoured here via `cond_yield_lp`.
 #[unsafe(no_mangle)]
 pub extern "C" fn irq_dispatcher() {
+    crate::cpu::multiprocessor::interrupt_tracking::increment_interrupt_depth();
     let intid = gic::acknowledge_int();
     // INTIDs 1020-1023 are special/spurious and require no handling or EOI.
     // LPIs (>= 8192) are valid device interrupts and must be dispatched.
     if (1020..=1023).contains(&intid) {
+        crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
         return;
     }
     match intid {
@@ -316,6 +318,7 @@ pub extern "C" fn irq_dispatcher() {
             if crate::device::smmu::handle_interrupt(intid) {
                 gic::end_of_int(intid);
                 cond_yield_lp();
+                crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
                 return;
             }
             // Shared Peripheral Interrupts (INTID >= 32) from devices are
@@ -330,6 +333,7 @@ pub extern "C" fn irq_dispatcher() {
     gic::end_of_int(intid);
     // Carry out a context switch if the timer or an IPI marked one pending.
     cond_yield_lp();
+    crate::cpu::multiprocessor::interrupt_tracking::decrement_interrupt_depth();
 }
 
 /// FIQ dispatcher. Log and return — in emulated environments (QEMU) FIQs can

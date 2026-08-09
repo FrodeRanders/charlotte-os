@@ -134,7 +134,12 @@ pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
     let generation = MASTER_THREAD_TABLE
         .read()
         .get(tid)
-        .expect("[supervisor] spawned thread missing from table")
+        .unwrap_or_else(|error| {
+            panic!(
+                "[supervisor] spawned thread missing from table: {error:?} (tid={tid}, asid={})",
+                loaded.asid
+            )
+        })
         .generation;
     ServiceDomain {
         asid: loaded.asid,
@@ -494,19 +499,39 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
         .any(|thread| thread.asid == domain.asid)
 }
 
-/// Yield until the domain's initial thread exits.
+/// Wait until the domain's threads have all exited.
 ///
-/// Panics after `timeout_millis`, so a wedged service fails tests loudly
-/// instead of hanging the boot.
+/// The initial thread's exit is observed as a completion event; the domain is
+/// considered exited only when the whole address space has drained (sub-
+/// threads included), which is re-checked on each wake. Panics after
+/// `timeout_millis`, so a wedged service fails tests loudly instead of
+/// hanging the boot.
 pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
+    // The observer is generation-bound: thread IDs are recycled, so a
+    // replacement service can already occupy this domain's tid slot by the
+    // time the upgrade completes. Registering on the new occupant would wait
+    // for an exit that never comes; the generation check completes the
+    // capability immediately instead when the observed thread is gone.
+    let exit = crate::completion::observe_thread_exit_with_generation(
+        domain.asid,
+        domain.tid,
+        Some(domain.generation),
+    )
+    .expect("[supervisor] domain exit observer");
+    let exited = crate::completion::wait_timeout(domain.asid, exit, timeout_millis)
+        .expect("[supervisor] domain exit wait error");
+    assert!(exited, "[supervisor] domain did not exit before deadline (asid={})", domain.asid);
+    // The initial thread's exit is the wake event; sub-threads may still be
+    // draining. A short bounded settle keeps teardown safe without polling
+    // for the common single-thread case above.
     let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(timeout_millis);
     while !domain_exited(domain) {
         assert!(
             crate::cpu::scheduler::monotonic_millis() < deadline,
-            "[supervisor] domain did not exit before deadline (asid={})",
+            "[supervisor] domain did not fully exit before deadline (asid={})",
             domain.asid
         );
-        yield_lp();
+        crate::cpu::scheduler::sleep_millis(10);
     }
 }
 

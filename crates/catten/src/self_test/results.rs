@@ -25,18 +25,28 @@
 //! by the panic handler) so a crashing verifier atomically fails its own bit
 //! instead of hanging the boot.
 
+use alloc::{
+    sync::Weak,
+    vec::Vec,
+};
 use core::sync::atomic::{
     AtomicBool,
     AtomicU64,
     Ordering,
 };
 
+use concurrent_queue::ConcurrentQueue;
+use spin::LazyLock;
+
 use crate::{
     cpu::scheduler::{
         monotonic_millis,
         spawn_thread,
         threads::ThreadId,
-        yield_lp,
+    },
+    klib::observer::{
+        Observable,
+        Observer,
     },
     logln,
     memory::KERNEL_ASID,
@@ -166,6 +176,59 @@ const NO_VERIFIER: u64 = u64::MAX;
 static VERIFIER_TIDS: [AtomicU64; TestId::ALL.len()] =
     [const { AtomicU64::new(NO_VERIFIER) }; TestId::ALL.len()];
 
+/// Waiters (verifier threads) parked on the results bitmap. `pass`/`fail`
+/// notify them so a verifier waiting for a specific test resolves as soon as
+/// the outcome is published — the event-driven counterpart to busy-polling
+/// [`has_passed`] with `yield_lp`.
+static RESULTS_OBSERVERS: LazyLock<ConcurrentQueue<Weak<dyn Observer>>> =
+    LazyLock::new(ConcurrentQueue::unbounded);
+
+struct ResultsObservable;
+
+impl Observable for ResultsObservable {
+    fn register_observer(&self, observer: Weak<dyn Observer>) {
+        let _ = RESULTS_OBSERVERS.push(observer);
+    }
+}
+
+/// Wake every parked verifier. Runs after a bitmap transition so waiters see
+/// the new state when they resume.
+fn notify_results_observers() {
+    while let Ok(observer) = RESULTS_OBSERVERS.pop() {
+        if let Some(observer) = observer.upgrade() {
+            observer.notify();
+        }
+    }
+}
+
+/// Drop dead registrations left behind by timed-out waits, keeping the
+/// long-lived wait queue bounded.
+fn prune_results_observers() {
+    let mut live = Vec::new();
+    while let Ok(observer) = RESULTS_OBSERVERS.pop() {
+        if observer.strong_count() != 0 {
+            live.push(observer);
+        }
+    }
+    for observer in live {
+        let _ = RESULTS_OBSERVERS.push(observer);
+    }
+}
+
+/// Block the calling thread until `id` has resolved (passed or failed), or
+/// `timeout_ms` elapses. Returns `true` on success, `false` on timeout.
+///
+/// Parks the thread on [`RESULTS_OBSERVERS`] with a timer watchdog, so the
+/// LP idles (and the timer/device wake paths stay live) instead of the
+/// verifier busy-spinning with `yield_lp`.
+pub fn wait_until_resolved(id: TestId, timeout_ms: u64) -> bool {
+    let resolved = crate::cpu::scheduler::block_until(&ResultsObservable, timeout_ms, || {
+        has_passed(id) || has_failed(id)
+    });
+    prune_results_observers();
+    resolved
+}
+
 const fn bit(id: TestId) -> u64 {
     1 << id as u8
 }
@@ -229,10 +292,15 @@ pub fn pass(id: TestId) {
     );
     PASSED.fetch_or(test_bit, Ordering::AcqRel);
     VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
+    notify_results_observers();
 }
 
 pub fn has_passed(id: TestId) -> bool {
     PASSED.load(Ordering::Acquire) & bit(id) != 0
+}
+
+pub fn has_failed(id: TestId) -> bool {
+    FAILED.load(Ordering::Acquire) & bit(id) != 0
 }
 
 pub fn fail(id: TestId) {
@@ -248,6 +316,7 @@ pub fn fail(id: TestId) {
     );
     FAILED.fetch_or(test_bit, Ordering::AcqRel);
     VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
+    notify_results_observers();
 }
 
 /// Spawn a deferred verifier and associate its kernel TID with its result bit.
@@ -332,10 +401,15 @@ extern "C" fn coordinator() {
             }
             next_report = now.saturating_add(1_000);
         }
-        // This reporter exists only during boot and exits as soon as all
-        // registered tests resolve. A timer sleep made the authoritative
-        // result itself vulnerable to the timer-wake path under test; yielding
-        // keeps it schedulable without depending on that same mechanism.
-        yield_lp();
+        // Park on the results observable with a 1s watchdog for the periodic
+        // report: the LP idles (and the timer/device wake paths stay live)
+        // instead of this reporter busy-spinning. A test resolution wakes us
+        // immediately; the watchdog re-admits us for the next WAITING line.
+        crate::cpu::scheduler::block_until(&ResultsObservable, 1_000, || {
+            let passed = PASSED.load(Ordering::Acquire);
+            let failed = FAILED.load(Ordering::Acquire);
+            failed != 0 || passed == EXPECTED.load(Ordering::Acquire)
+        });
+        prune_results_observers();
     }
 }

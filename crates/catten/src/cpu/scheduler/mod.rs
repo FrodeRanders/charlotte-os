@@ -24,12 +24,13 @@ use crate::{
         threads::{
             MASTER_THREAD_TABLE,
             Thread,
+            ThreadGeneration,
             ThreadId,
         },
     },
     klib::{
         observer::{
-            Observable as _,
+            Observable,
             Observer,
         },
         time::duration::ExtDuration,
@@ -275,6 +276,75 @@ pub fn sleep_millis(milliseconds: u64) {
     sleep(ExtDuration::from_millis(milliseconds as u128));
 }
 
+/// Block the current thread until `condition` holds, waking on `observable`
+/// notifications, with a `timeout_ms` watchdog that re-admits the thread when
+/// it expires. Returns whether `condition` held after the wait.
+///
+/// This is the event-driven counterpart to the busy `yield_lp` poll loops:
+/// the thread parks in `Blocked` state with its waker registered on
+/// `observable` (exactly like `sleep`, `wait_reply`, and `cq_wait`), so the
+/// LP is free to idle, drain deferred device wakes, and deliver timer PPIs
+/// while the wait is in flight. The deadline watchdog is a timer event whose
+/// observer re-submits the thread, so a missed observable notification
+/// cannot hang the system silently — the caller re-checks `condition` and
+/// fails loudly.
+///
+/// Returns `false` if the timeout expired before `condition` held. The
+/// caller is responsible for pruning stale observers on long-lived
+/// observables after repeated timeouts.
+pub fn block_until(
+    observable: &dyn Observable,
+    timeout_ms: u64,
+    condition: impl Fn() -> bool,
+) -> bool {
+    if condition() {
+        return true;
+    }
+    let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
+    let Some(tid) = tid else {
+        return condition();
+    };
+    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+        tid,
+        observable,
+        threads::MigrationConstraint::GeneralWait,
+    ) {
+        Ok(generation) => generation,
+        Err(_) => return condition(),
+    };
+
+    struct BlockTimeoutWake {
+        tid: ThreadId,
+        generation: threads::ThreadGeneration,
+    }
+    impl Observer for BlockTimeoutWake {
+        fn notify(self: alloc::sync::Arc<Self>) {
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
+        }
+    }
+
+    // Watchdog: re-admit the thread when the deadline expires even if the
+    // observable never fires, so the caller's condition re-check (and any
+    // deadline assertion) always runs.
+    let timeout_obs = alloc::sync::Arc::new(BlockTimeoutWake {
+        tid,
+        generation,
+    });
+    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    timer_event.register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
+    crate::timers::enqueue_event(timer_event);
+
+    // Lost-wake guard: if the condition became true while the waker was
+    // being registered, re-admit the thread before it yields.
+    if condition() {
+        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+    }
+
+    yield_lp();
+
+    condition()
+}
+
 /// Registers an observer to be notified when the specified thread exits.
 ///
 /// The master-thread table is taken in **write** mode for the whole
@@ -290,11 +360,46 @@ pub fn observe_thread_exit(
     thread_id: ThreadId,
     observer: Weak<dyn Observer>,
 ) -> Result<(), system_scheduler::Error> {
+    observe_thread_exit_matching(thread_id, None, observer)
+}
+
+/// Generation-bound variant of [`observe_thread_exit`].
+///
+/// Thread IDs are recycled (`IdTable` LIFO reuse), so by the time a caller
+/// registers an exit observer the slot may already hold a *different* thread
+/// that shares the caller's tid. Registering on that thread would leave the
+/// joiner waiting for an exit that never comes (or, worse, complete on the
+/// wrong thread's drop). Callers that captured a thread at spawn time — e.g.
+/// a `ServiceDomain` handle — must pass its `generation` so a recycled slot
+/// is detected and reported as `Err`, letting the caller complete immediately
+/// instead of joining a stranger.
+pub fn observe_thread_exit_with_generation(
+    thread_id: ThreadId,
+    expected_generation: ThreadGeneration,
+    observer: Weak<dyn Observer>,
+) -> Result<(), system_scheduler::Error> {
+    observe_thread_exit_matching(thread_id, Some(expected_generation), observer)
+}
+
+fn observe_thread_exit_matching(
+    thread_id: ThreadId,
+    expected_generation: Option<ThreadGeneration>,
+    observer: Weak<dyn Observer>,
+) -> Result<(), system_scheduler::Error> {
     let table = MASTER_THREAD_TABLE.write();
     if let Ok(thread) = table.get(thread_id) {
-        thread.register_observer(observer);
-        drop(table);
-        Ok(())
+        let generation_matches = match expected_generation {
+            Some(expected) => thread.generation == expected,
+            None => true,
+        };
+        if generation_matches {
+            thread.register_observer(observer);
+            drop(table);
+            Ok(())
+        } else {
+            drop(table);
+            Err(system_scheduler::Error::InvalidThread)
+        }
     } else {
         drop(table);
         Err(system_scheduler::Error::InvalidThread)

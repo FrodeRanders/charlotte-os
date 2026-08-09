@@ -432,35 +432,44 @@ pub fn map(
         return Err(MemoryObjectError::NotPageAligned);
     }
 
-    let mut registry = MEMORY_OBJECTS.lock();
-    let cap_entry = registry.lookup(asid, cap)?;
-    let required = if writable {
-        MemoryObjectRights::MAP_WRITE
-    } else {
-        MemoryObjectRights::MAP_READ
-    };
-    if !cap_entry.rights.contains(required) {
-        return Err(MemoryObjectError::MissingRight);
-    }
+    let (object_id, frames, page_type) = {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let cap_entry = registry.lookup(asid, cap)?;
+        let required = if writable {
+            MemoryObjectRights::MAP_WRITE
+        } else {
+            MemoryObjectRights::MAP_READ
+        };
+        if !cap_entry.rights.contains(required) {
+            return Err(MemoryObjectError::MissingRight);
+        }
 
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    check_map_lend_state(object, asid, writable)?;
-    if object.mappings.contains_key(&asid) {
-        return Err(MemoryObjectError::AlreadyMapped);
-    }
-
-    let page_type = if writable {
-        PageType::UserData
-    } else {
-        PageType::UserRoData
+        let object = registry
+            .objects
+            .get_mut(&cap_entry.object)
+            .ok_or(MemoryObjectError::UnknownCapability)?;
+        check_map_lend_state(object, asid, writable)?;
+        if object.mappings.contains_key(&asid) {
+            return Err(MemoryObjectError::AlreadyMapped);
+        }
+        let page_type = if writable {
+            PageType::UserData
+        } else {
+            PageType::UserRoData
+        };
+        // Do not hold the memory-object registry while taking the address-space
+        // table: teardown takes the table then the frame allocator, and
+        // allocation takes the allocator then the registry, so holding the
+        // registry across the table lock closes an AB-BC-CA deadlock cycle.
+        (cap_entry.object, object.frames.clone(), page_type)
     };
+
     let mut mapped_pages = 0usize;
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
         let address_space =
             table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
-        for (index, frame) in object.frames.iter().copied().enumerate() {
+        for (index, frame) in frames.iter().copied().enumerate() {
             let vaddr = base + (index * PAGE_SIZE);
             if address_space
                 .map_existing_page(MemoryMapping {
@@ -479,13 +488,18 @@ pub fn map(
             mapped_pages += 1;
         }
     }
-    object.mappings.insert(
-        asid,
-        MemoryMappingState {
-            base,
-            writable,
-        },
-    );
+    {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let object =
+            registry.objects.get_mut(&object_id).ok_or(MemoryObjectError::UnknownCapability)?;
+        object.mappings.insert(
+            asid,
+            MemoryMappingState {
+                base,
+                writable,
+            },
+        );
+    }
     Ok(())
 }
 

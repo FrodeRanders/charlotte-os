@@ -697,16 +697,39 @@ pub(crate) fn observe_thread_exit(
     asid: AddressSpaceId,
     tid: crate::cpu::scheduler::threads::ThreadId,
 ) -> Result<CompletionCap, SubmitError> {
+    observe_thread_exit_with_generation(asid, tid, None)
+}
+
+/// Generation-bound variant of [`observe_thread_exit`].
+///
+/// Thread IDs are recycled, so a caller that captured a `ServiceDomain`
+/// (which records the spawn-time generation) must pass that generation: if
+/// the tid slot already holds a different thread, the observed thread is
+/// guaranteed gone and the capability completes immediately instead of
+/// joining a stranger that may never exit.
+pub(crate) fn observe_thread_exit_with_generation(
+    asid: AddressSpaceId,
+    tid: crate::cpu::scheduler::threads::ThreadId,
+    expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
+) -> Result<CompletionCap, SubmitError> {
     let cap = submit(asid, OpCode::Nop, None)?;
     let observer = Arc::new(CompletionExitObserver {
         asid,
         cap,
         result: OpResult::Ok(0),
     });
-    match crate::cpu::scheduler::observe_thread_exit(
-        tid,
-        Arc::downgrade(&observer) as Weak<dyn Observer>,
-    ) {
+    let registration = match expected_generation {
+        Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
+            tid,
+            generation,
+            Arc::downgrade(&observer) as Weak<dyn Observer>,
+        ),
+        None => crate::cpu::scheduler::observe_thread_exit(
+            tid,
+            Arc::downgrade(&observer) as Weak<dyn Observer>,
+        ),
+    };
+    match registration {
         Ok(()) => {
             if let Ok(completion) = completion_of(asid, cap) {
                 completion.set_exit_observer(observer);
@@ -1013,6 +1036,26 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
 
     yield_lp();
     Ok(())
+}
+
+/// Blocks the calling thread until `cap` reaches a terminal completion or
+/// `timeout_ms` elapses. Returns `true` if terminal, `false` on timeout.
+/// Event-driven like [`wait`], with a timer watchdog so a caller waiting on
+/// an event that never fires fails loudly instead of hanging silently.
+pub fn wait_timeout(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    timeout_ms: u64,
+) -> Result<bool, CapError> {
+    let completion = completion_of(asid, cap)?;
+    if completion.is_terminal() {
+        return Ok(true);
+    }
+    Ok(crate::cpu::scheduler::block_until(
+        completion.as_ref() as &dyn Observable,
+        timeout_ms,
+        || completion.is_terminal(),
+    ))
 }
 
 /// Requests cancellation of an in-flight operation. See [`CancelState`]. Any

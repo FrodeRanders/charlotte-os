@@ -1449,6 +1449,29 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
     Ok(())
 }
 
+/// Block the calling thread until the pending call's reply arrives or
+/// `timeout_ms` elapses. Returns `true` if the reply is ready, `false` on
+/// timeout. Like [`wait_reply`], this parks the thread on the pending-call
+/// observable (event-driven) with a timer watchdog, so a caller that must
+/// fail loudly on a hang can assert on the result instead of busy-polling
+/// with `yield_lp`.
+pub fn wait_reply_timeout(
+    caller: AddressSpaceId,
+    call_cap: CapabilityId,
+    timeout_ms: u64,
+) -> Result<bool, IpcError> {
+    let call_id = pending_call_id(caller, call_cap)?;
+    if pending_call_is_ready(call_id)? {
+        return Ok(true);
+    }
+    let observable = PendingCallObservable {
+        call: call_id,
+    };
+    Ok(crate::cpu::scheduler::block_until(&observable, timeout_ms, || {
+        pending_call_is_ready(call_id).unwrap_or(false)
+    }))
+}
+
 fn pending_call_id(
     caller: AddressSpaceId,
     call_cap: CapabilityId,
