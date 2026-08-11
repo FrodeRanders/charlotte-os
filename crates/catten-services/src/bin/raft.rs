@@ -792,7 +792,11 @@ fn main(ctx: Context) -> ! {
                             // the authority that accepts only when it really
                             // is leader. A follower's leader hint is preferred
                             // when it names a route we have already learned.
-                            if let Some((_mac, role, raft_id, leader_id)) = peers
+                            // Admission is disabled for volatile stores: no
+                            // process-local flag can safely suppress a
+                            // singleton election after a service restart.
+                            if durable
+                                && let Some((_mac, role, raft_id, leader_id)) = peers
                                 .iter()
                                 .filter(|(_, _, raft_id, _)| {
                                     !raft_id.is_empty()

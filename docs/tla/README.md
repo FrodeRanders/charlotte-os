@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for fifteen
+This directory contains finite, executable specifications for seventeen
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -18,14 +18,20 @@ CharlotteOS subsystems:
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
+| Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
+| Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
 These are abstract safety models checked with TLC. They are useful for finding
 protocol and state-machine errors, but they are not a proof of the Rust
 implementation. In particular, an action is atomic in TLA+ by definition.
 Establishing that a Rust operation implements the same atomic transition will
 require identified linearization points and a refinement argument.
+
+The latest implementation-to-model audit is
+[`WEEKLY_SYNC_2026-08-11.md`](WEEKLY_SYNC_2026-08-11.md); the action-level map
+is [`CONFORMANCE.md`](CONFORMANCE.md).
 
 ## Running the models
 
@@ -37,9 +43,10 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all fifteen complete fast configurations plus expected-failure
-  endpoint-observer, scheduler, address-space, hardware-ASID, and
-  interrupt-route regression configurations;
+- runs all seventeen complete fast configurations plus expected-failure
+  endpoint-observer, scheduler, address-space, hardware-ASID,
+  interrupt-route, service-lifecycle, Raft-join, and reliable-message
+  regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -97,11 +104,19 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteRaftJoin -config CharlotteRaftJoin_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaftSnapshot -config CharlotteRaftSnapshot_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRemoteCall -config CharlotteRemoteCall_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteReliableMessage -config CharlotteReliableMessage_small.cfg \
   -workers auto -coverage 1
 ```
 
@@ -323,15 +338,21 @@ generated, depth 22) without an invariant violation.
 
 ## Service lifecycle model
 
-`CharlotteServiceLifecycle.tla` models loading, starting, name-service
-publication, replacement publication, shutdown, exit, scheduler reaping, and
-address-space teardown. Publication is a single linearization point: the new
-generation becomes visible while the old generation ceases to be published.
-Teardown requires explicit evidence that the scheduler reaped the domain's
-initial thread, matching `wait_domain_exit` followed by `teardown_domain`.
+`CharlotteServiceLifecycle.tla` now models the current signed-artifact and
+two-phase catalog protocol. An untrusted image is rejected before `Load`;
+replicated `Prepare` allocates a fresh generation but makes the name
+unresolvable; `PublishLocal` installs the node-local connection; and only an
+exact generation-fenced `Activate` makes the catalog entry visible. Replacing
+an active generation therefore has a bounded unavailable interval, matching
+`NameCatalog::CMD_REGISTER` rather than the former atomic-swap abstraction.
 
-The model checks unique and internally consistent publication, monotonic
-bounded generations, and the prohibition against teardown before reaping.
+The model also covers lookup, generation-fenced unregister, stale activation
+and unregister rejection, asynchronous local cleanup, shutdown, scheduler
+reaping, and address-space teardown. Its unsafe configuration removes the
+owner/generation fence and must violate
+`ReplacementSurvivesStaleUnregister`. Generation allocation is guarded at the
+finite bound; the Rust catalog and local name service now likewise fail closed
+on generation exhaustion instead of saturating or wrapping.
 
 ## Unified capability model
 
@@ -408,6 +429,19 @@ member reaches the joint-entry fence, and decommissioning to follow the active
 member union rather than voter status. Durable vote mechanics remain in the
 election layer and entry conflict repair remains in the log layer.
 
+`CharlotteRaftJoin.tla` models the MAC-level admission layer that precedes
+joint consensus. A non-member selects one anchor, cannot campaign while
+joining, accepts replication only from that anchor, and cannot be promoted
+until the old configuration committed its `JOIN` entry and the joiner caught
+up to that fence. The negative configuration admits replication from an
+arbitrary peer and must violate `JoiningAcceptsOnlySelectedAnchor`. The model
+also crashes a joiner, erases its volatile posture, and requires restart to
+restore the selected anchor and election suppression from durable admission
+state. A second negative configuration forgets that state on restart and must
+violate `RestartPreservesAdmission`. The implementation snapshots the joint
+membership before clearing the durable fence; volatile-storage deployments do
+not attempt dynamic admission.
+
 `CharlotteRaftSnapshot.tla` adds chunked snapshot reception, stale-snapshot
 discard, atomic durable installation of the state-machine image and current/
 next membership, matching-suffix retention, activation, crash, and restart.
@@ -443,6 +477,23 @@ masquerade as success, and executed identities to remain cached until safe.
 The model corresponds to the scalar DNS v3 prototype; transactional effects,
 durable deduplication across DNS reboot, and general remote capability transfer
 remain outside it.
+
+## Reliable-message session model
+
+`CharlotteReliableMessage.tla` models session allocation across bounded send
+retries and unilateral service restart, together with receive-side session
+replacement. A session is the ordered pair `(service generation, retry
+epoch)`. The invariants require that distinct logical epochs never share one
+wire identity and that accepting delayed traffic cannot move the receiver's
+session backwards.
+
+Two retained negative configurations capture the August 2026 review findings.
+The former flat `generation + retry` allocation aliases generation N's first
+retry with generation N+1's initial session. The former bounded retired-session
+window eventually allows an older delayed SYN to replace a newer session. The
+Rust wire helper now packs generation and retry epoch into disjoint 32-bit
+fields, accepts only strictly newer sessions, and fails closed if either field
+is exhausted.
 
 ## Relationship to formal verification
 

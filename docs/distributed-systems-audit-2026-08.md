@@ -113,11 +113,14 @@ Follow-up:
 - define behavior for delayed frames from an old session;
 - test unilateral restart after traffic has advanced the sequence.
 
-Repair status: wire protocol v2 now binds frames to a 64-bit service-instance
-session, asserts it with `FLAG_SYN`, resets both sequence directions when a
-new non-retired session appears, and rejects a bounded window of retired
-sessions. Receive delivery and fragment accumulation are bounded. The normal
-two-guest DNS/Raft path passes after this change; an automated unilateral
+Repair status: wire protocol v2 binds frames to a 64-bit session and asserts
+it with `FLAG_SYN`. The 2026-08-11 TLA+ sync found that incrementing a raw
+service generation for retry epochs collided with the next service
+generation, and that a bounded retired-session window could eventually accept
+an older delayed SYN. Sessions now pack the service generation and retry epoch
+into disjoint fields; receivers reset ordering only for a strictly newer
+well-formed identity. Receive delivery and fragment accumulation remain
+bounded. The normal two-guest DNS/Raft path passes; an automated unilateral
 restart fault test remains to be added.
 
 ### F6 — Remote calls lack a complete identity and failure contract (high)

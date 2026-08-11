@@ -9,7 +9,7 @@
 //! Each Raft node derives a private four-object range from its cluster and
 //! node identity. Within that range:
 //!
-//! - slot 0: persistent state (current_term + voted_for)
+//! - slot 0: persistent state (current_term + voted_for + join admission)
 //! - slot 1: snapshot metadata (last_included_index + last_included_term)
 //! - slot 2: snapshot data blob
 //! - slot 3: log entries (all entries serialised as a single blob)
@@ -26,6 +26,7 @@ use alloc::{
 
 use catten_graft::{
     log_store::{
+        JoinAdmission,
         LogStore,
         PersistentStateStore,
     },
@@ -285,6 +286,7 @@ pub struct DiskPersistentStateStore {
     object_id: u64,
     current_term: Mutex<u64>,
     voted_for: Mutex<Option<String>>,
+    join_admission: Mutex<Option<JoinAdmission>>,
 }
 
 impl DiskPersistentStateStore {
@@ -294,27 +296,17 @@ impl DiskPersistentStateStore {
         if !obj_create_at(obj_conn, object_id) {
             return None;
         }
-        let (current_term, voted_for) = if let Some(buf) = obj_read(obj_conn, object_id) {
-            if buf.len() < 8 {
-                (0, None)
-            } else {
-                let term = u64::from_le_bytes(buf[0..8].try_into().unwrap_or([0; 8]));
-                let vf_len = u32::from_le_bytes(buf[8..12].try_into().unwrap_or([0; 4])) as usize;
-                let vf = if vf_len > 0 && vf_len <= 256 && 12 + vf_len <= buf.len() {
-                    core::str::from_utf8(&buf[12..12 + vf_len]).ok().map(String::from)
-                } else {
-                    None
-                };
-                (term, vf)
-            }
+        let (current_term, voted_for, join_admission) = if let Some(buf) = obj_read(obj_conn, object_id) {
+            deserialize_persistent_state(&buf)?
         } else {
-            (0, None)
+            (0, None, None)
         };
         Some(Self {
             obj_conn,
             object_id,
             current_term: Mutex::new(current_term),
             voted_for: Mutex::new(voted_for),
+            join_admission: Mutex::new(join_admission),
         })
     }
 
@@ -322,16 +314,31 @@ impl DiskPersistentStateStore {
         let term = *self.current_term.lock();
         let vf = self.voted_for.lock();
         let vf_bytes = vf.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]);
-        let vf_len = (vf_bytes.len() as u32).min(256);
-        let mut data = alloc::vec![0u8; 12 + vf_len as usize];
+        assert!(vf_bytes.len() <= 256, "Raft voter id exceeds persistent-state limit");
+        let vf_len = vf_bytes.len() as u32;
+        let admission = self.join_admission.lock();
+        let anchor_bytes = admission.as_ref().map(|state| state.anchor_id.as_bytes()).unwrap_or(&[]);
+        assert!(anchor_bytes.len() <= 256, "Raft join anchor exceeds persistent-state limit");
+        let anchor_len = anchor_bytes.len() as u32;
+        let mut data = alloc::vec![0u8; 24 + vf_len as usize + anchor_len as usize];
         data[0..8].copy_from_slice(&term.to_le_bytes());
         data[8..12].copy_from_slice(&vf_len.to_le_bytes());
         if vf_len > 0 {
-            data[12..].copy_from_slice(&vf_bytes[..vf_len as usize]);
+            data[12..12 + vf_len as usize].copy_from_slice(&vf_bytes[..vf_len as usize]);
+        }
+        let admission_offset = 12 + vf_len as usize;
+        data[admission_offset..admission_offset + 8].copy_from_slice(
+            &admission.as_ref().map(|state| state.snapshot_index).unwrap_or(0).to_le_bytes(),
+        );
+        data[admission_offset + 8..admission_offset + 12]
+            .copy_from_slice(&anchor_len.to_le_bytes());
+        if anchor_len > 0 {
+            data[admission_offset + 12..]
+                .copy_from_slice(&anchor_bytes[..anchor_len as usize]);
         }
         assert!(
             obj_write(self.obj_conn, self.object_id, &data) && obj_flush(self.obj_conn),
-            "failed to persist Raft term/vote state"
+            "failed to persist Raft term/vote/admission state"
         );
     }
 }
@@ -354,6 +361,66 @@ impl PersistentStateStore for DiskPersistentStateStore {
         *self.voted_for.lock() = peer_id;
         self.persist();
     }
+
+    fn join_admission(&self) -> Option<JoinAdmission> {
+        self.join_admission.lock().clone()
+    }
+
+    fn set_join_admission(&self, admission: Option<JoinAdmission>) {
+        *self.join_admission.lock() = admission;
+        self.persist();
+    }
+}
+
+fn deserialize_persistent_state(
+    buf: &[u8],
+) -> Option<(u64, Option<String>, Option<JoinAdmission>)> {
+    if buf.is_empty() {
+        return Some((0, None, None));
+    }
+    if buf.len() < 12 {
+        return None;
+    }
+    let term = u64::from_le_bytes(buf[0..8].try_into().ok()?);
+    let voted_len = usize::try_from(u32::from_le_bytes(buf[8..12].try_into().ok()?)).ok()?;
+    if voted_len > 256 {
+        return None;
+    }
+    let voted_end = 12usize.checked_add(voted_len)?;
+    if voted_end > buf.len() {
+        return None;
+    }
+    let voted_for = if voted_len == 0 {
+        None
+    } else {
+        Some(String::from(core::str::from_utf8(&buf[12..voted_end]).ok()?))
+    };
+    // Backward-compatible decode of the former term/vote-only record.
+    if voted_end == buf.len() {
+        return Some((term, voted_for, None));
+    }
+    if buf.len() < voted_end + 12 {
+        return None;
+    }
+    let snapshot_index = u64::from_le_bytes(buf[voted_end..voted_end + 8].try_into().ok()?);
+    let anchor_len = usize::try_from(u32::from_le_bytes(
+        buf[voted_end + 8..voted_end + 12].try_into().ok()?,
+    ))
+    .ok()?;
+    if anchor_len > 256 || voted_end + 12 + anchor_len != buf.len() {
+        return None;
+    }
+    let join_admission = if anchor_len == 0 {
+        None
+    } else {
+        Some(JoinAdmission {
+            anchor_id: String::from(
+                core::str::from_utf8(&buf[voted_end + 12..]).ok()?,
+            ),
+            snapshot_index,
+        })
+    };
+    Some((term, voted_for, join_admission))
 }
 
 // ---------------------------------------------------------------------------

@@ -75,6 +75,7 @@ corresponding to the repaired model and its retained negative counterexample.
 | `CqWake` | `completion::wake` | Direct for generation increment and observer notification. |
 | `SubmitTimer` | `completion::submit_timer` and timer observer registration | Abstract: deadline values and scheduler timer queues are omitted. |
 | `TimerFire` | `CompletionTimerObserver::notify`, `completion::complete` | Direct for first-winner completion and cancellation-result forcing. Fairness of timer delivery is not checked. |
+| `Complete` for an exit observation | `observe_thread_exit_with_generation`, `CompletionExitObserver::notify` | The generic completion transition also projects the new EL0 thread-join and supervisor domain-exit observers. A missing/recycled TID completes immediately only after the expected generation is checked. |
 | `Reclaim` | `completion::close` | Direct for terminal-only capability removal; a queued CQ entry may outlive the capability. |
 
 ### Completion concrete-to-abstract state
@@ -128,14 +129,34 @@ transition and is required to produce a `ReapOnlyOffCpu` counterexample. This
 negative model corresponds to the stale-AS SVC panic fixed by owner-LP
 retirement; it is not part of the repaired `Spec`.
 
+## Reusable address spaces and interrupt routes
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The same handle identity now keys service scratch-window cursors. |
+| Address-space `CloseExact` | `close_user_address_space_handle`, generation checks in map/unmap/teardown | Direct for rejecting a stale handle after ASID reuse. Scratch allocation and mapping teardown are serialized across this boundary. |
+| Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
+| Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Direct for generation-fenced delivery. GIC register programming and MPIDR routing are below the model boundary. |
+
+The August `memory_map_any` repair did not change memory ownership in
+`CharlotteIPC`; it changed address-space placement. Its safety-relevant part
+is the generation-keyed scratch cursor and lifecycle serialization represented
+by `CharlotteAddressSpace`, not a new IPC transfer mode.
+
 ## Service lifecycle
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Load` | `loader::load_domain` | Abstract: ELF parsing, mappings and bootstrap frames are omitted. |
+| `StageTrusted` / `StageUntrusted` / `RejectUntrustedLoad` | signed service bundle/object-store staging; `verify_image_signature`, `try_load_domain` | Direct for the trust gate: unsigned, tampered, or artifact-mismatched bytes cannot reach address-space allocation/mapping. Cryptography and ELF parsing are abstracted to the trust bit. |
+| `Load` | `loader::try_load_domain` | Abstract: ELF segments, mappings, bootstrap frames and finite hardware-ASID allocation are omitted. |
 | `Start` | `start_domain`, `spawn_thread` | Direct for the initial `(tid, generation)` domain handle. |
-| `Publish` | local name-service `register`; distributed DNS `prepare` / `activate` | The local replacement linearization point inserts `(connection, generation, access key)` before retiring the superseded connection or releasing deferred lookups. Distributed publication becomes visible only after its generation-fenced activation commits. IPC and Raft details are covered by their respective models. |
-| `RequestStop` / `Exit` | generation-fenced DNS/local unregister; `ipc_connection_watch_closed`; service shutdown or `abort_thread` | The model's domain identity abstracts the concrete owner-and-generation fence: stopping an old domain cannot unpublish its replacement. Local cleanup is asynchronous and separately local-generation-fenced. Endpoint closure completes a retained kernel watch; the owner proposes the tombstone directly or sends a source-authenticated, retried request to the known leader. |
+| `Prepare` | `NameCatalog::apply_command(CMD_REGISTER)` | Direct: increments the retained generation, records the owner, and stores an inactive entry. A replacement is intentionally unresolvable until activation. Exhaustion returns generation zero without changing the entry. |
+| `PublishLocal` | node-local `ns::register` from DNS registration flow | Direct for installing the re-delegable local connection before distributed visibility. The local name service independently allocates and returns its checked generation. |
+| `Activate` / `RejectStaleActivate` | `CMD_ACTIVATE` | Direct: only the exact prepared generation with a nonempty owner becomes active. |
+| `Lookup` | `NameCatalog::lookup`, quorum-contact query path | Direct for filtering inactive entries/tombstones. Linearizable read-barrier mechanics remain in the Raft layer. |
+| `FencedUnregister` / `RejectStaleUnregister` | `CMD_UNREGISTER_GENERATION`; local `OP_UNREGISTER_GENERATION` | Direct owner-and-generation fence. A delayed cleanup request cannot unpublish a replacement. The unsafe model removes this check and retains the corresponding counterexample. |
+| `CleanupLocal` | `pending_local_unregistrations`, `LocalPublication::local_cleanup_submitted` | Abstract asynchronous cleanup, separately fenced by the node-local generation. |
+| `RequestStop` / `Exit` | `ipc_connection_watch_closed`; service shutdown or `abort_thread` | Endpoint closure completes a retained kernel watch; the owner proposes the tombstone directly or sends a source-authenticated, retried request to the known leader. The catalog may remain briefly active while this asynchronous transition is in flight. |
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
 | `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
 
@@ -214,8 +235,27 @@ framing, and temporal liveness are outside this abstraction.
 | `Crash` / `Restart` | service-domain exit and `RaftNode::new` | Abstract volatile availability. Durable configuration recovery is checked in the snapshot layer. |
 
 The model represents peer identity and role as voter/learner sets. Peer
-addresses, protobuf encoding, join-request admission, transport retries, and
-temporal availability are outside this abstraction.
+addresses, protobuf encoding, transport retries, and temporal availability are
+outside this abstraction. Pre-membership join admission is checked separately.
+
+## Raft pre-membership join admission
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Elect` | ordinary single-node election before admission | Abstract; durable election safety remains in `CharlotteRaft`. |
+| `BeginJoining` | `RaftNode::begin_joining` | Direct: persists the selected anchor and pre-admission snapshot index before stepping down, disabling the election deadline, and clearing candidate votes. |
+| `SubmitJoin` / `CommitJoin` | `submit_join`; application of `ConfigurationCommand::Join` | The JOIN is idempotently appended and commits under the existing configuration. Only then does `pending_joiners` expose its fence. |
+| `ReplicateToJoiner` | `accepts_joining_leader`; `handle_append_entries` / `handle_install_snapshot` | Direct source fence: a non-member accepts log/snapshot authority only from `joining_from`. |
+| `SubmitJoint` | `maybe_promote_pending_joiners` | Direct fence: every promoted joiner has `match_index >= JOIN index`; caught-up joiners may share one joint transition. |
+| `CommitJoint` | `apply_configuration_command(Joint)` | The admitted node atomically snapshots current/next membership, then clears the durable and volatile admission fences. |
+| `Crash` / `Restart` | service-domain exit and `RaftNode::new` | Volatile join posture disappears; `PersistentStateStore::join_admission` restores the selected anchor and suppresses elections until a newer durable membership snapshot contains this node. |
+| `UnsafeReplicateToJoiner` | pre-fix arbitrary non-voter leader acceptance | Negative model only; violates `JoiningAcceptsOnlySelectedAnchor`. |
+| `UnsafeRestartForgetsAdmission` | pre-fix reconstruction with `joining = false` | Negative model only; violates `RestartPreservesAdmission` and captures the singleton-election regression. |
+
+Dynamic admission is enabled only when the standalone Raft service opened its
+disk-backed log and persistent-state stores. Memory mode remains useful for
+local tests, but it refuses auto-join because a process restart cannot preserve
+the admission fence.
 
 ## Raft snapshot installation and recovery
 
@@ -248,6 +288,20 @@ The model does not assert global exactly-once behavior. It checks at-most-once
 execution while an identity remains tracked and makes the condition for safe
 eviction explicit. Durable deduplication across DNS process restart and general
 remote object-capability transfer are outside the implementation and model.
+
+## Reliable-message sessions
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `AbandonSession` | retry-lease exhaustion; `Peer::abandon_transmit_session` | Direct: the next send resets its sequence under a fresh retry epoch. Exhaustion disables sends instead of reusing an identity. |
+| `RestartService` | new relmsg name-service generation; `initial_wire_session` | Direct for a new service-generation namespace. The packed high/low fields make restart identities disjoint from every retry of an earlier generation. |
+| `AcceptCurrentSession` | `Peer::accept_session`, `wire_session_is_newer` | Direct: a SYN may reset receive sequencing only when its well-formed packed identity is strictly newer. |
+| `AcceptDelayedSession` | former bounded retired-session acceptance | Negative model only. Once an old identity fell out of the window, a delayed SYN could regress receive state. |
+
+Payload fragmentation, buffer ceilings, retransmission timing, ACK/data frame
+encoding and Ethernet loss are outside this session-identity projection. ACK
+completion is nevertheless source-session-fenced in Rust by comparing the
+echoed session and pending sequence before consuming the pending call.
 
 ## Unified capability namespace
 

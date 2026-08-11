@@ -1,4 +1,8 @@
-use alloc::vec::Vec;
+use alloc::{
+    string::String,
+    sync::Arc,
+    vec::Vec,
+};
 
 use crate::types::LogEntry;
 
@@ -27,22 +31,37 @@ pub trait PersistentStateStore {
     fn set_current_term(&self, term: u64);
     fn voted_for(&self) -> Option<alloc::string::String>;
     fn set_voted_for(&self, peer_id: Option<alloc::string::String>);
+    fn join_admission(&self) -> Option<JoinAdmission>;
+    fn set_join_admission(&self, admission: Option<JoinAdmission>);
 }
 
+/// Durable, fail-closed state for a node that has left its standalone
+/// election domain and is being admitted by one selected cluster anchor.
+///
+/// `snapshot_index` records the newest membership snapshot that existed
+/// before admission began. A later snapshot containing this node is durable
+/// evidence that admission completed; an older standalone snapshot is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JoinAdmission {
+    pub anchor_id: String,
+    pub snapshot_index: u64,
+}
+
+#[derive(Clone)]
 pub struct InMemoryLogStore {
-    entries: spin::Mutex<Vec<LogEntry>>,
-    snapshot_idx: spin::Mutex<u64>,
-    snapshot_term_val: spin::Mutex<u64>,
-    snapshot_bytes: spin::Mutex<Vec<u8>>,
+    entries: Arc<spin::Mutex<Vec<LogEntry>>>,
+    snapshot_idx: Arc<spin::Mutex<u64>>,
+    snapshot_term_val: Arc<spin::Mutex<u64>>,
+    snapshot_bytes: Arc<spin::Mutex<Vec<u8>>>,
 }
 
 impl InMemoryLogStore {
     pub fn new() -> Self {
         Self {
-            entries: spin::Mutex::new(Vec::new()),
-            snapshot_idx: spin::Mutex::new(0),
-            snapshot_term_val: spin::Mutex::new(0),
-            snapshot_bytes: spin::Mutex::new(Vec::new()),
+            entries: Arc::new(spin::Mutex::new(Vec::new())),
+            snapshot_idx: Arc::new(spin::Mutex::new(0)),
+            snapshot_term_val: Arc::new(spin::Mutex::new(0)),
+            snapshot_bytes: Arc::new(spin::Mutex::new(Vec::new())),
         }
     }
 }
@@ -190,16 +209,19 @@ impl LogStore for InMemoryLogStore {
     }
 }
 
+#[derive(Clone)]
 pub struct InMemoryPersistentStateStore {
-    current_term: spin::Mutex<u64>,
-    voted_for: spin::Mutex<Option<alloc::string::String>>,
+    current_term: Arc<spin::Mutex<u64>>,
+    voted_for: Arc<spin::Mutex<Option<String>>>,
+    join_admission: Arc<spin::Mutex<Option<JoinAdmission>>>,
 }
 
 impl InMemoryPersistentStateStore {
     pub fn new() -> Self {
         Self {
-            current_term: spin::Mutex::new(0),
-            voted_for: spin::Mutex::new(None),
+            current_term: Arc::new(spin::Mutex::new(0)),
+            voted_for: Arc::new(spin::Mutex::new(None)),
+            join_admission: Arc::new(spin::Mutex::new(None)),
         }
     }
 }
@@ -225,5 +247,13 @@ impl PersistentStateStore for InMemoryPersistentStateStore {
 
     fn set_voted_for(&self, peer_id: Option<alloc::string::String>) {
         *self.voted_for.lock() = peer_id;
+    }
+
+    fn join_admission(&self) -> Option<JoinAdmission> {
+        self.join_admission.lock().clone()
+    }
+
+    fn set_join_admission(&self, admission: Option<JoinAdmission>) {
+        *self.join_admission.lock() = admission;
     }
 }

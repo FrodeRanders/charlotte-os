@@ -58,14 +58,15 @@ run_expected_violation() {
     local config="$2"
     local invariant="$3"
     local action="$4"
-    local log="${model_dir}/${module}-negative.log"
+    local run_id="${module}-${config%.cfg}"
+    local log="${model_dir}/${run_id}-negative.log"
 
     echo ">>> TLC ${module} (${config}, expected counterexample)"
     if java -XX:+UseParallelGC -cp "${tools_jar}" tlc2.TLC \
             "${module}" \
             -config "${config}" \
             -workers auto \
-            -metadir "${model_dir}/${module}-negative-states" \
+            -metadir "${model_dir}/${run_id}-negative-states" \
             -coverage 1 >"${log}" 2>&1; then
         echo "error: negative model unexpectedly satisfied ${invariant}" >&2
         cat "${log}" >&2
@@ -115,7 +116,11 @@ run_model CharlotteInterruptRoute CharlotteInterruptRoute_small.cfg \
 run_expected_violation CharlotteInterruptRoute CharlotteInterruptRoute_unsafe.cfg \
     NoStaleWakeDelivery DrainUnsafe
 run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
-    Load Start Publish RequestStop Exit Reap Teardown
+    StageTrusted StageUntrusted RejectUntrustedLoad Load Start Prepare \
+    PublishLocal Activate RejectStaleActivate Lookup ClearLookup \
+    FencedUnregister RejectStaleUnregister CleanupLocal RequestStop Exit Reap Teardown
+run_expected_violation CharlotteServiceLifecycle CharlotteServiceLifecycle_unsafe.cfg \
+    ReplacementSurvivesStaleUnregister UnsafeStaleUnregister
 run_model CharlotteCapability CharlotteCapability_small.cfg \
     Allocate Remove DelegateCopy BeginMove CommitMove RollbackMove CloseAddressSpace
 run_model CharlotteDMA CharlotteDMA_small.cfg \
@@ -128,9 +133,23 @@ run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \
     Elect AppendLeader ReplicateOne CommitLeader PropagateCommit Crash Restart
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
     Elect SubmitJoint Replicate CommitJoint SubmitFinalize CommitFinalize Crash Restart
+run_model CharlotteRaftJoin CharlotteRaftJoin_small.cfg \
+    Elect BeginJoining Crash Restart SubmitJoin CommitJoin ReplicateToJoiner SubmitJoint CommitJoint
+run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_unsafe.cfg \
+    JoiningAcceptsOnlySelectedAnchor UnsafeReplicateToJoiner
+run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_restart_unsafe.cfg \
+    RestartPreservesAdmission UnsafeRestartForgetsAdmission
 run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
 run_model CharlotteRemoteCall CharlotteRemoteCall_small.cfg \
     Start ReplaceTarget Execute RejectStale QueueReply DuplicateRequest \
     DeliverReply Timeout SettleTransport RetireUncertainSession Evict
+run_model CharlotteReliableMessage CharlotteReliableMessage_small.cfg \
+    AbandonSession RestartService AcceptCurrentSession
+run_expected_violation CharlotteReliableMessage \
+    CharlotteReliableMessage_identity_unsafe.cfg \
+    SessionIdentityUnique RestartService
+run_expected_violation CharlotteReliableMessage \
+    CharlotteReliableMessage_regression_unsafe.cfg \
+    ReceiveSessionMonotonic AcceptDelayedSession

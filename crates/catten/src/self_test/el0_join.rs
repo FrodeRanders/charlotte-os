@@ -44,6 +44,8 @@ pub mod inner {
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
     const NETWORK_KEY: u64 = charlotte_launch::manifest_key(b"network");
+    const STORAGE_KEY: u64 = charlotte_launch::manifest_key(b"storage");
+    const STORAGE_REQUIRED: u64 = 2;
 
     const NS_OP_LOOKUP: u32 = 2;
     const DISCO_NAME: u64 = u64::from_le_bytes(*b"disco\0\0\0");
@@ -243,6 +245,14 @@ pub mod inner {
                 key: NETWORK_KEY,
                 flags: 0,
                 value: ManifestValue::Unsigned(1),
+            },
+            // Dynamic admission is restart-safe only with a durable join
+            // fence. The deferred boot suite has already brought up the
+            // object store before this verifier runs.
+            ManifestEntry {
+                key: STORAGE_KEY,
+                flags: 0,
+                value: ManifestValue::Unsigned(STORAGE_REQUIRED),
             },
         ];
         let raft_domain = spawn_raft_node(&manifest, ns);

@@ -250,8 +250,8 @@ object-store-backed implementations for durable deployments.
 ### 4.2 Disk-backed implementation
 
 `DiskPersistentStateStore` and `DiskLogStore` connect to the `"obj"` service.
-The cluster and node identities are hashed into a stable namespace. Term/vote
-state has its own object. Snapshot metadata, snapshot data, and the
+The cluster and node identities are hashed into a stable namespace. Term,
+vote, and in-progress join admission state share one object. Snapshot metadata, snapshot data, and the
 post-snapshot log suffix are serialized into one log-state object so snapshot
 installation and compaction have a single copy-on-write publication point.
 Stable creation (`OP_CREATE_AT`) means a replacement process opens the same
@@ -266,6 +266,12 @@ The Raft launch manifest selects the backend:
 - `storage = 1`: try persistent storage, with an explicit in-memory fallback;
 - `storage = 2`: require persistent storage and wait for the object-store
   service through the name service.
+
+Cross-machine auto-join requires a disk-backed store. The node persists its
+selected admission anchor before accepting that anchor's log, and clears the
+fence only after the admitted membership has been snapshotted. Volatile mode
+does not auto-join because it cannot safely suppress a singleton election
+after process restart.
 
 Node ID, peer list, election timing, and storage policy remain supervisor-owned
 launch configuration. They are not copied into the Raft log. The durable store

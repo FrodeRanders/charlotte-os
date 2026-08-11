@@ -145,8 +145,20 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 let mut entries = self.entries.lock();
-                let generation =
-                    entries.get(name).map_or(1, |entry| entry.generation.saturating_add(1));
+                let generation = match entries.get(name) {
+                    Some(entry) => entry
+                        .generation
+                        .checked_add(1)
+                        .filter(|generation| *generation <= i64::MAX as u64),
+                    None => Some(1),
+                };
+                let Some(generation) = generation else {
+                    // Generation zero is the protocol's failed-prepare
+                    // result. Never saturate and reuse the current generation:
+                    // that would let a delayed activation or unregister
+                    // mutate a logically newer service instance.
+                    return 0u64.to_le_bytes().to_vec();
+                };
                 entries.insert(
                     name.to_vec(),
                     CatalogEntry {
@@ -229,8 +241,13 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 let mut deployments = self.deployments.lock();
-                let generation =
-                    deployments.get(artifact).map_or(1, |entry| entry.generation.saturating_add(1));
+                let generation = match deployments.get(artifact) {
+                    Some(entry) => entry.generation.checked_add(1),
+                    None => Some(1),
+                };
+                let Some(generation) = generation else {
+                    return 0u64.to_le_bytes().to_vec();
+                };
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {

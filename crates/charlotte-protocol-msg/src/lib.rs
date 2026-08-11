@@ -6,8 +6,8 @@
 //! control — the "Reliable Message Layer" of the architecture.
 //!
 //! Messages carry:
-//! - A 64-bit session identifier (the sender session on data frames; the acknowledged sender
-//!   session on ACK-only frames)
+//! - A 64-bit ordered session identifier, packed as a 32-bit service generation plus a 32-bit retry
+//!   epoch (the sender session on data frames; the acknowledged sender session on ACK-only frames)
 //! - A 32-bit sequence number (monotonic, per-session; one per *message*, shared by all fragments)
 //! - A 32-bit acknowledgement number (cumulative)
 //! - A 16-bit payload length
@@ -23,8 +23,9 @@
 //! receiver reassembles contiguous fragments of the expected message before
 //! delivering one application message.
 //!
-//! `FLAG_SYN` asserts the session field. On data frames, receivers use a new
-//! sender session to reset receive ordering after a sender restart. ACK-only
+//! `FLAG_SYN` asserts the session field. On data frames, receivers use a
+//! strictly newer sender session to reset receive ordering after a sender
+//! restart or uncertain retry epoch. ACK-only
 //! frames echo the data frame's session, allowing a sender to reject delayed
 //! ACKs from an abandoned session. ACK and payload are deliberately not
 //! combined because the one session field cannot identify both directions.
@@ -69,6 +70,41 @@ pub const FLAG_FRAG: u16 = 1 << 3;
 /// More fragments of this message follow (this is not the last one).
 pub const FLAG_MORE: u16 = 1 << 4;
 pub const VALID_FLAGS: u16 = FLAG_SYN | FLAG_ACK | FLAG_FIN | FLAG_FRAG | FLAG_MORE;
+
+/// Number of low session-id bits reserved for retry epochs within one
+/// name-service generation. The high half identifies the service instance;
+/// the low half starts at one and advances whenever an uncertain send is
+/// abandoned. This keeps restart and retry session namespaces disjoint.
+pub const SESSION_ATTEMPT_BITS: u32 = 32;
+const SESSION_ATTEMPT_MASK: u64 = (1u64 << SESSION_ATTEMPT_BITS) - 1;
+
+/// Construct the first wire session for a monotonically allocated service
+/// generation. Returns `None` rather than wrapping if either namespace is
+/// exhausted.
+pub fn initial_wire_session(generation: u64) -> Option<u64> {
+    let generation = u32::try_from(generation).ok()?;
+    (generation != 0).then_some((u64::from(generation) << SESSION_ATTEMPT_BITS) | 1)
+}
+
+/// Advance to a fresh retry epoch within the same service generation.
+pub fn next_wire_session(session: u64) -> Option<u64> {
+    let generation = session >> SESSION_ATTEMPT_BITS;
+    let attempt = session & SESSION_ATTEMPT_MASK;
+    if generation == 0 || attempt == 0 || attempt == SESSION_ATTEMPT_MASK {
+        return None;
+    }
+    Some(session + 1)
+}
+
+/// Whether `candidate` is a well-formed session strictly newer than the
+/// receiver's current session. Session ordering follows the packed
+/// `(service generation, retry epoch)` identity, so arbitrarily delayed
+/// frames can never roll receive state backwards.
+pub fn wire_session_is_newer(candidate: u64, current: u64) -> bool {
+    let generation = candidate >> SESSION_ATTEMPT_BITS;
+    let attempt = candidate & SESSION_ATTEMPT_MASK;
+    generation != 0 && attempt != 0 && candidate > current
+}
 
 /// Parsed frame header: (destination MAC, source MAC, session, seq, ack,
 /// payload_len, flags, fragment_offset).
@@ -303,5 +339,26 @@ mod tests {
         );
         let packed = pack_address_and_len(destination, 3);
         assert_eq!(unpack_address_and_len(packed), (destination, 3));
+    }
+
+    #[test]
+    fn retry_and_restart_sessions_are_disjoint_and_ordered() {
+        let generation_one = initial_wire_session(1).expect("generation one");
+        let retry = next_wire_session(generation_one).expect("retry epoch");
+        let generation_two = initial_wire_session(2).expect("generation two");
+
+        assert_ne!(retry, generation_two);
+        assert!(wire_session_is_newer(retry, generation_one));
+        assert!(wire_session_is_newer(generation_two, retry));
+        assert!(!wire_session_is_newer(generation_one, generation_two));
+    }
+
+    #[test]
+    fn session_namespace_exhaustion_fails_closed() {
+        assert_eq!(initial_wire_session(0), None);
+        assert_eq!(initial_wire_session(u64::from(u32::MAX) + 1), None);
+        let exhausted = (1u64 << SESSION_ATTEMPT_BITS) | SESSION_ATTEMPT_MASK;
+        assert_eq!(next_wire_session(exhausted), None);
+        assert!(!wire_session_is_newer(0, exhausted));
     }
 }

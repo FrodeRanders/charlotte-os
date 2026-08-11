@@ -52,10 +52,13 @@ use charlotte_protocol_msg::{
     FrameHeader,
     MAX_PAYLOAD_SIZE,
     build_frame_header,
+    initial_wire_session,
+    next_wire_session,
     pack_address_and_len,
     parse_frame_header_checked,
     set_fragment_offset,
     unpack_address_and_len,
+    wire_session_is_newer,
 };
 use charlotte_protocol_net::decode_status;
 
@@ -63,7 +66,6 @@ const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_OFFSET: usize = 0;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
-const RETIRED_SESSION_WINDOW: usize = 8;
 const RETRANSMIT_TIMER_COOKIE: u64 = 0x5245_4c4d_5347_544d;
 
 struct ReceivedMessage {
@@ -119,7 +121,6 @@ struct Peer {
     pending: Option<Outbound>,
     reassembling: Option<Reassembly>,
     remote_session: Option<u64>,
-    retired_sessions: VecDeque<u64>,
 }
 
 impl Peer {
@@ -132,29 +133,19 @@ impl Peer {
             pending: None,
             reassembling: None,
             remote_session: None,
-            retired_sessions: VecDeque::new(),
         }
     }
 
     fn accept_session(&mut self, session: u64, flags: u16) -> Option<bool> {
-        if session == 0 || self.retired_sessions.contains(&session) {
-            return None;
-        }
         if self.remote_session == Some(session) {
             return Some(false);
         }
-        if flags & FLAG_SYN == 0 {
+        if flags & FLAG_SYN == 0
+            || !wire_session_is_newer(session, self.remote_session.unwrap_or(0))
+        {
             return None;
         }
-        let restarted = if let Some(previous) = self.remote_session.replace(session) {
-            self.retired_sessions.push_back(previous);
-            if self.retired_sessions.len() > RETIRED_SESSION_WINDOW {
-                self.retired_sessions.pop_front();
-            }
-            true
-        } else {
-            false
-        };
+        let restarted = self.remote_session.replace(session).is_some();
         self.next_rx_seq = 1;
         self.reassembling = None;
         Some(restarted)
@@ -164,10 +155,13 @@ impl Peer {
     ///
     /// Reusing the abandoned sequence in the same session would be unsafe:
     /// the peer may have delivered the old message and only its ACK was lost.
-    /// Advancing the session lets the peer reset its receive sequence while
-    /// rejecting delayed frames from the retired session.
+    /// Advancing the packed retry epoch lets the peer reset its receive
+    /// sequence, while monotonic acceptance rejects every delayed older
+    /// session without a finite retirement window.
     fn abandon_transmit_session(&mut self) {
-        self.tx_session = self.tx_session.wrapping_add(1).max(1);
+        // Zero is an explicit exhausted/disabled state. The send path rejects
+        // it, so namespace exhaustion cannot silently reuse an old identity.
+        self.tx_session = next_wire_session(self.tx_session).unwrap_or(0);
         self.next_tx_seq = 1;
     }
 }
@@ -467,10 +461,12 @@ fn main(ctx: Context) -> ! {
     if generation < 1 {
         unsafe { thread_exit() };
     }
-    // Name-service generations are monotonic for this registered service
-    // name, so a unilateral relmsg restart gets a distinct wire session. Peer
-    // state is already keyed by MAC, so retain the complete generation.
-    let local_session = generation as u64;
+    // Pack the service generation and retry epoch into disjoint namespaces.
+    // Using the raw generation and incrementing it after an uncertain send
+    // made generation N+1 collide with generation N's first retry session.
+    let Some(local_session) = initial_wire_session(generation as u64) else {
+        unsafe { thread_exit() };
+    };
     config::write::<u32>(STAGE_OFFSET, 3);
 
     let mut peers: Vec<Peer> = Vec::new();
@@ -556,6 +552,11 @@ fn main(ctx: Context) -> ! {
                 if peers[index].pending.is_some() {
                     memory_close(message.memory);
                     ipc_reply(message.reply, relmsg::ERR_BUSY);
+                    continue;
+                }
+                if peers[index].tx_session == 0 {
+                    memory_close(message.memory);
+                    ipc_reply(message.reply, relmsg::ERR_PEER_UNREACHABLE);
                     continue;
                 }
                 let (payload_scratch_map_status, payload_scratch_vaddr) =

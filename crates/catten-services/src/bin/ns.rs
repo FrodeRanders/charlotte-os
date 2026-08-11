@@ -155,8 +155,18 @@ fn register(
     access_key: u64,
 ) -> i64 {
     let generation = match registry.get(&key) {
-        Some(previous) => previous.generation + 1,
-        None => 1,
+        Some(previous) => previous.generation.checked_add(1),
+        None => Some(1),
+    };
+    let Some(generation) = generation else {
+        // Fail closed instead of wrapping a live generation and making stale
+        // generation-fenced cleanup authoritative again.
+        if connection != 0 {
+            unsafe {
+                ipc_close(connection);
+            }
+        }
+        return ns::ERR_INVALID;
     };
     // Publishing the new entry is the replacement linearization point. Retire
     // the old connection only after no subsequent lookup can observe it.

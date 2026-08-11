@@ -18,6 +18,7 @@ use crate::{
         ConfigurationCommand,
     },
     log_store::{
+        JoinAdmission,
         LogStore,
         PersistentStateStore,
     },
@@ -131,8 +132,10 @@ impl RaftNode {
         } = config;
         let current_term = persistent_state.current_term();
         let voted_for = persistent_state.voted_for();
+        let join_admission = persistent_state.join_admission();
         let snapshot_index = log_store.snapshot_index();
         let mut snapshot_configuration = cluster_configuration.clone();
+        let mut restored_membership_snapshot = false;
         if snapshot_index > 0 {
             let snapshot_data = log_store.snapshot_data();
             let application_data = if let Some(envelope) =
@@ -145,6 +148,7 @@ impl RaftNode {
                             snapshot_configuration.transition_to(envelope.next_members);
                     }
                     cluster_configuration = snapshot_configuration.clone();
+                    restored_membership_snapshot = true;
                 }
                 envelope.state_machine_snapshot
             } else {
@@ -159,6 +163,18 @@ impl RaftNode {
             me.id.as_bytes().iter().fold(0u64, |a, b| a.wrapping_mul(31).wrapping_add(*b as u64));
         let rand_state = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let deadline = current_millis + timeout_millis + ((rand_state >> 33) % 150);
+        let joining_from = join_admission.and_then(|admission| {
+            let admission_completed = restored_membership_snapshot
+                && snapshot_index > admission.snapshot_index
+                && cluster_configuration.contains(&me.id);
+            if admission_completed {
+                persistent_state.set_join_admission(None);
+                None
+            } else {
+                Some(admission.anchor_id)
+            }
+        });
+        let joining = joining_from.is_some();
         let decommissioned = !cluster_configuration.contains(&me.id);
         let pending_auto_finalize_members = if cluster_configuration.is_joint_consensus() {
             cluster_configuration.next_members().into_iter().map(|peer| peer.id.clone()).collect()
@@ -178,7 +194,11 @@ impl RaftNode {
             voted_for,
             timeout_millis,
             last_heartbeat_millis: current_millis,
-            timeout_at_millis: deadline,
+            timeout_at_millis: if joining {
+                u64::MAX
+            } else {
+                deadline
+            },
             election_sequence_counter: 0,
             commit_index: snapshot_index,
             last_applied: snapshot_index,
@@ -191,15 +211,15 @@ impl RaftNode {
             cluster_configuration,
             committed_configurations: BTreeMap::new(),
             decommissioned,
-            joining: false,
-            joining_from: None,
+            joining,
+            joining_from: joining_from.clone(),
             pending_joiners: BTreeMap::new(),
             pending_auto_finalize_members,
             pending_auto_finalize_fence_index,
             finalize_configuration_pending: false,
             snapshot_min_entries,
             snapshot_chunk_bytes,
-            known_leader_id: None,
+            known_leader_id: joining_from,
             pending_snapshot: None,
             log_store,
             persistent_state,
@@ -224,6 +244,13 @@ impl RaftNode {
     /// The node stops campaigning and accepts replication only from that
     /// anchor until a committed configuration contains this node.
     pub fn begin_joining(&mut self, anchor_id: String, current_millis: u64) {
+        // Persist the admission fence before disabling elections or accepting
+        // the anchor's log. A crash at any later instruction therefore
+        // restores the fail-closed joining posture.
+        self.persistent_state.set_join_admission(Some(JoinAdmission {
+            anchor_id: anchor_id.clone(),
+            snapshot_index: self.log_store.snapshot_index(),
+        }));
         self.current_millis = current_millis;
         self.state = NodeState::Follower;
         self.joining = true;
@@ -660,6 +687,7 @@ impl RaftNode {
                                 .insert(snap.last_included_index, configuration);
                             self.decommissioned = !self.cluster_configuration.contains(&self.me.id);
                             if !self.decommissioned {
+                                self.persistent_state.set_join_admission(None);
                                 self.joining = false;
                                 self.joining_from = None;
                             }
@@ -972,6 +1000,31 @@ impl RaftNode {
             .unwrap_or_else(|| self.snapshot_configuration.clone())
     }
 
+    /// Make the membership that completed this node's admission durable
+    /// before clearing its durable join fence. Without this ordering, a crash
+    /// after applying the joint entry but before ordinary compaction could
+    /// resurrect the launch-time singleton configuration.
+    fn snapshot_admitted_membership(&mut self, index: u64) {
+        let current_members =
+            self.cluster_configuration.current_members().into_iter().cloned().collect::<Vec<_>>();
+        let next_members = if self.cluster_configuration.is_joint_consensus() {
+            self.cluster_configuration.next_members().into_iter().cloned().collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let application_snapshot =
+            self.state_machine.as_ref().map(|machine| machine.snapshot()).unwrap_or_default();
+        let snapshot = crate::snapshot_codec::wrap_snapshot_payload(
+            &current_members,
+            &next_members,
+            &application_snapshot,
+        );
+        let term = self.log_store.term_at(index);
+        self.log_store.install_snapshot(index, term, snapshot);
+        self.snapshot_configuration = self.cluster_configuration.clone();
+        self.committed_configurations.retain(|config_index, _| *config_index > index);
+    }
+
     fn apply_configuration_command(&mut self, index: u64, data: &[u8]) -> bool {
         let Some(command) = configuration::decode(data) else {
             return false;
@@ -1006,6 +1059,10 @@ impl RaftNode {
         self.committed_configurations.insert(index, self.cluster_configuration.clone());
         self.decommissioned = !self.cluster_configuration.contains(&self.me.id);
         if self.cluster_configuration.contains(&self.me.id) {
+            if self.joining {
+                self.snapshot_admitted_membership(index);
+                self.persistent_state.set_join_admission(None);
+            }
             self.joining = false;
             self.joining_from = None;
         }
@@ -1189,6 +1246,7 @@ mod tests {
             InMemoryLogStore,
             InMemoryPersistentStateStore,
             LogStore,
+            PersistentStateStore,
         },
         membership::ClusterConfiguration,
         state_machine::StateMachine,
@@ -1347,6 +1405,97 @@ mod tests {
             203,
         );
         assert!(!rejected.success);
+    }
+
+    #[test]
+    fn restart_keeps_joiner_fenced_until_new_membership_is_durable() {
+        let log_store = InMemoryLogStore::new();
+        let persistent_state = InMemoryPersistentStateStore::new();
+        let me = Peer::voter("n2".to_string(), 2);
+
+        // A pre-admission singleton snapshot is not proof that the later
+        // admission completed, even though it already contains this node.
+        let old_snapshot =
+            crate::snapshot_codec::wrap_snapshot_payload(core::slice::from_ref(&me), &[], &[]);
+        log_store.install_snapshot(2, 1, old_snapshot);
+        let make_node = || {
+            RaftNode::new(RaftNodeConfig {
+                me: me.clone(),
+                timeout_millis: 150,
+                log_store: Box::new(log_store.clone()),
+                persistent_state: Box::new(persistent_state.clone()),
+                state_machine: None,
+                cluster_configuration: ClusterConfiguration::stable(vec![me.clone()]),
+                transport: Arc::new(NoopTransport),
+                current_millis: 0,
+                snapshot_min_entries: 64,
+                snapshot_chunk_bytes: 3000,
+            })
+        };
+
+        let mut node = make_node();
+        node.begin_joining("n1".to_string(), 200);
+        assert!(persistent_state.join_admission().is_some());
+        drop(node);
+
+        let mut restarted = make_node();
+        assert!(restarted.joining);
+        assert_eq!(restarted.joining_from.as_deref(), Some("n1"));
+        restarted.start_election(1_000);
+        assert_eq!(restarted.state, NodeState::Follower);
+        assert_eq!(restarted.current_term, 0);
+
+        let rejected = restarted.handle_append_entries(
+            AppendEntriesRequest {
+                term: 2,
+                leader_id: "attacker".to_string(),
+                prev_log_index: 2,
+                prev_log_term: 1,
+                entries: Vec::new(),
+                leader_commit: 2,
+            },
+            1_001,
+        );
+        assert!(!rejected.success);
+
+        // Applying the anchor's joint configuration first snapshots that
+        // membership, then clears the durable admission fence.
+        let joint =
+            crate::configuration::encode(&crate::configuration::ConfigurationCommand::Joint(vec![
+                Peer::voter("n1".to_string(), 1),
+                me.clone(),
+            ]))
+            .expect("encode joint configuration");
+        let accepted = restarted.handle_append_entries(
+            AppendEntriesRequest {
+                term: 2,
+                leader_id: "n1".to_string(),
+                prev_log_index: 2,
+                prev_log_term: 1,
+                entries: vec![LogEntry::new(2, "n1".to_string(), joint)],
+                leader_commit: 3,
+            },
+            1_002,
+        );
+        assert!(accepted.success);
+        assert!(!restarted.joining);
+        assert_eq!(log_store.snapshot_index(), 3);
+        assert_eq!(persistent_state.join_admission(), None);
+        drop(restarted);
+
+        // This is the other crash edge: the membership snapshot reached
+        // stable storage, but clearing the admission record did not. Recovery
+        // recognizes only the strictly newer snapshot as completion proof.
+        persistent_state.set_join_admission(Some(crate::log_store::JoinAdmission {
+            anchor_id: "n1".to_string(),
+            snapshot_index: 2,
+        }));
+        let recovered_member = make_node();
+        assert!(!recovered_member.joining);
+        assert_eq!(persistent_state.join_admission(), None);
+        assert!(recovered_member.cluster_configuration.is_joint_consensus());
+        assert!(recovered_member.cluster_configuration.contains("n1"));
+        assert!(recovered_member.cluster_configuration.contains("n2"));
     }
 
     #[test]
