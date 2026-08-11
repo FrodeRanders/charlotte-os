@@ -797,13 +797,13 @@ fn main(ctx: Context) -> ! {
                             // singleton election after a service restart.
                             if durable
                                 && let Some((_mac, role, raft_id, leader_id)) = peers
-                                .iter()
-                                .filter(|(_, _, raft_id, _)| {
-                                    !raft_id.is_empty()
-                                        && raft_id.as_slice() != node.me.id.as_bytes()
-                                        && node.me.id.as_bytes() > raft_id.as_slice()
-                                })
-                                .min_by(|left, right| left.2.cmp(&right.2))
+                                    .iter()
+                                    .filter(|(_, _, raft_id, _)| {
+                                        !raft_id.is_empty()
+                                            && raft_id.as_slice() != node.me.id.as_bytes()
+                                            && node.me.id.as_bytes() > raft_id.as_slice()
+                                    })
+                                    .min_by(|left, right| left.2.cmp(&right.2))
                                 && !join_accepted
                                 && !join_request_pending
                                 && node.cluster_configuration.all_members().len() == 1

@@ -296,11 +296,12 @@ impl DiskPersistentStateStore {
         if !obj_create_at(obj_conn, object_id) {
             return None;
         }
-        let (current_term, voted_for, join_admission) = if let Some(buf) = obj_read(obj_conn, object_id) {
-            deserialize_persistent_state(&buf)?
-        } else {
-            (0, None, None)
-        };
+        let (current_term, voted_for, join_admission) =
+            if let Some(buf) = obj_read(obj_conn, object_id) {
+                deserialize_persistent_state(&buf)?
+            } else {
+                (0, None, None)
+            };
         Some(Self {
             obj_conn,
             object_id,
@@ -317,7 +318,8 @@ impl DiskPersistentStateStore {
         assert!(vf_bytes.len() <= 256, "Raft voter id exceeds persistent-state limit");
         let vf_len = vf_bytes.len() as u32;
         let admission = self.join_admission.lock();
-        let anchor_bytes = admission.as_ref().map(|state| state.anchor_id.as_bytes()).unwrap_or(&[]);
+        let anchor_bytes =
+            admission.as_ref().map(|state| state.anchor_id.as_bytes()).unwrap_or(&[]);
         assert!(anchor_bytes.len() <= 256, "Raft join anchor exceeds persistent-state limit");
         let anchor_len = anchor_bytes.len() as u32;
         let mut data = alloc::vec![0u8; 24 + vf_len as usize + anchor_len as usize];
@@ -333,8 +335,7 @@ impl DiskPersistentStateStore {
         data[admission_offset + 8..admission_offset + 12]
             .copy_from_slice(&anchor_len.to_le_bytes());
         if anchor_len > 0 {
-            data[admission_offset + 12..]
-                .copy_from_slice(&anchor_bytes[..anchor_len as usize]);
+            data[admission_offset + 12..].copy_from_slice(&anchor_bytes[..anchor_len as usize]);
         }
         assert!(
             obj_write(self.obj_conn, self.object_id, &data) && obj_flush(self.obj_conn),
@@ -403,10 +404,9 @@ fn deserialize_persistent_state(
         return None;
     }
     let snapshot_index = u64::from_le_bytes(buf[voted_end..voted_end + 8].try_into().ok()?);
-    let anchor_len = usize::try_from(u32::from_le_bytes(
-        buf[voted_end + 8..voted_end + 12].try_into().ok()?,
-    ))
-    .ok()?;
+    let anchor_len =
+        usize::try_from(u32::from_le_bytes(buf[voted_end + 8..voted_end + 12].try_into().ok()?))
+            .ok()?;
     if anchor_len > 256 || voted_end + 12 + anchor_len != buf.len() {
         return None;
     }
@@ -414,9 +414,7 @@ fn deserialize_persistent_state(
         None
     } else {
         Some(JoinAdmission {
-            anchor_id: String::from(
-                core::str::from_utf8(&buf[voted_end + 12..]).ok()?,
-            ),
+            anchor_id: String::from(core::str::from_utf8(&buf[voted_end + 12..]).ok()?),
             snapshot_index,
         })
     };
