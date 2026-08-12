@@ -123,6 +123,24 @@ run_expected_violation CharlotteServiceLifecycle CharlotteServiceLifecycle_unsaf
     ReplacementSurvivesStaleUnregister UnsafeStaleUnregister
 run_model CharlotteCapability CharlotteCapability_small.cfg \
     Allocate Remove DelegateCopy BeginMove CommitMove RollbackMove CloseAddressSpace
+run_model CharlotteAuthorization CharlotteAuthorization_small.cfg \
+    PublishService ReplaceService UnpublishService SetPolicy IssueTicket \
+    CancelTicket Redeem CloseCapability
+run_expected_violation CharlotteAuthorization \
+    CharlotteAuthorization_policy_unsafe.cfg \
+    PolicyMutationAuthorized UnsafeSetPolicy
+run_expected_violation CharlotteAuthorization \
+    CharlotteAuthorization_principal_unsafe.cfg \
+    MintBoundToPrincipal UnsafeRedeemOtherPrincipal
+run_expected_violation CharlotteAuthorization \
+    CharlotteAuthorization_policy_version_unsafe.cfg \
+    MintUsesCurrentPolicy UnsafeRedeemStalePolicy
+run_expected_violation CharlotteAuthorization \
+    CharlotteAuthorization_generation_unsafe.cfg \
+    MintTargetsCurrentBinding UnsafeRedeemStaleBinding
+run_expected_violation CharlotteAuthorization \
+    CharlotteAuthorization_rights_unsafe.cfg \
+    NoRightsAmplification UnsafeAmplifyRights
 run_model CharlotteDMA CharlotteDMA_small.cfg \
     CreateMemory CreateDomain BeginMap CommitMap QuarantineMap FailMap RevokeMap ReleasePin \
     BeginDestroy AcknowledgeDestroy QuarantineDestroy FinalizeDomain \

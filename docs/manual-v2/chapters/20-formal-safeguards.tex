@@ -120,7 +120,7 @@ provide.
 
 \section{What is modeled}
 
-The current suite contains seventeen safe specifications. They are divided by
+The current suite contains eighteen safe specifications. They are divided by
 state ownership and failure boundary so that each model remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
@@ -170,6 +170,12 @@ different proof obligations.
     and move rollback & Handles are fresh and authoritative; move revokes the
     source; rollback restores only the exact transaction; a closed namespace
     is empty. \\
+\hline
+\tlbreak{Charlotte}{Authorization} & Versioned subject/service policy,
+    generation-fenced service bindings, decisions and capability issuance &
+    Only authorized roles mutate policy or publication; decisions are bound to
+    a subject, policy version, service generation and rights; redemption is
+    single-use and cannot amplify authority. \\
 \hline
 \tlbreak{Charlotte}{DMA} & SMMU stream ownership, mapping, invalidation,
     quarantine, driver exit, pin reclamation & Unique stream/domain ownership;
@@ -230,6 +236,32 @@ The most valuable result is often a mismatch discovered while constructing the
 model. The correct response depends on which side was wrong: sometimes the
 manual or model overstated functionality; sometimes the code lacked a safety
 fence.
+
+\subsection{Authorization is controlled capability issuance}
+
+The current name service has an optional reusable 64-bit access-key gate. It
+does not identify a stable principal, express different rights per caller,
+separate policy administration from service publication, or version a policy
+decision. It is therefore not the production policy service suggested by the
+architecture.
+
+The authorization model makes the intended boundary explicit. The catalog
+publishes a service generation and the maximum rights that may be delegated.
+A separate logical policy role maps a stable principal and service identity to
+an allowed-rights set and policy version. A decision is bound to the
+kernel-authenticated subject, requested rights, current service generation and
+policy version, and can be redeemed once for an attenuated connection. A
+co-located name/policy process can perform decision and redemption as one
+serialized transition; a later split service needs an unforgeable single-use
+grant and must revalidate every binding at redemption.
+
+The model also prevents an attractive but false claim. A policy update blocks
+new issuance and invalidates unredeemed decisions, but cannot selectively
+retract a direct connection already delegated by the kernel. Hard revocation
+requires endpoint closure, a revocable proxy, or a future kernel lease object.
+This prospective revocation contract is safer than documenting authority that
+the implementation cannot enforce. The practical design is recorded in
+\filepath{docs/authorization-policy.md}.
 
 \subsection{Two-phase service publication}
 
@@ -340,10 +372,25 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \texttt{AcceptDelayedSession} & An older delayed SYN regresses receive state. &
     \tlbreak{ReceiveSession}{Monotonic} \\
 \hline
+\texttt{UnsafeSetPolicy} & A non-administrator changes a policy rule. &
+    \texttt{PolicyMutationAuthorized} \\
+\hline
+\tlbreak{UnsafeRedeemOther}{Principal} & A decision for one subject is redeemed
+    for another. & \texttt{MintBoundToPrincipal} \\
+\hline
+\tlbreak{UnsafeRedeemStale}{Policy} & A decision survives a policy-version
+    change. & \texttt{MintUsesCurrentPolicy} \\
+\hline
+\tlbreak{UnsafeRedeemStale}{Binding} & A decision for an old service generation
+    reaches its replacement. & \texttt{MintTargetsCurrentBinding} \\
+\hline
+\tlbreak{UnsafeAmplify}{Rights} & Redemption mints rights absent from the
+    decision. & \texttt{NoRightsAmplification} \\
+\hline
 \end{longtable}
 \normalsize
 
-The check suite expects all ten negative configurations to fail for the named
+The check suite expects all fifteen negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -389,12 +436,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all seventeen safe configurations;
+    \item runs all eighteen safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs ten negative configurations and requires each one to fail on
+    \item runs fifteen negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -418,6 +465,8 @@ fast configurations produced the following complete state graphs:
 \texttt{CharlotteScheduler} & 1,710,157 & 373,860 & 22 \\
 \hline
 \tlbreak{Charlotte}{ServiceLifecycle} & 665,641 & 74,232 & 41 \\
+\hline
+\tlbreak{Charlotte}{Authorization} & 144,598 & 54,705 & 12 \\
 \hline
 \texttt{CharlotteRaftJoin} & 2,029 & 520 & 13 \\
 \hline

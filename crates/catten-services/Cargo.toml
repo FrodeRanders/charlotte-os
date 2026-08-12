@@ -89,6 +89,7 @@ test = false
 bench = false
 
 [dependencies]
+charlotte-authorization = { path = "../charlotte-authorization" }
 catten-rt = { path = "../catten-rt" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }

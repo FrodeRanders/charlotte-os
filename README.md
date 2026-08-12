@@ -78,6 +78,10 @@ is an experimental research and development system. A successful self-test is
 evidence for the tested configuration, not a general reliability, security, or
 hardware-compatibility claim.
 
+Run target-independent suites with `scripts/run-host-tests.sh`. The split
+between host tests and target/QEMU tests is documented in
+[`docs/testing.md`](docs/testing.md).
+
 For the upstream project, its history, and its community, please visit
 <https://github.com/charlotte-os/charlotte-os>. Changes from upstream are kept
 as ordinary Git history so that upstream updates can continue to be merged into

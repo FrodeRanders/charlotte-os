@@ -313,3 +313,28 @@ echoed session and pending sequence before consuming the pending call.
 | `BeginMove` / `CommitMove` | subsystem move transaction and target capability allocation | Abstract split around payload transfer so intermediate revocation is checkable. |
 | `RollbackMove` | `memory::object::rollback_move_to`, `capability::restore` | Direct for reverse-order transaction rollback and crate-private restoration of the exact pre-transaction handle. The live-upgrade supervisor uses the target handles returned by `move_to`, rolls partial multi-object handoff back in reverse order, and aborts replacement launch on endpoint-delegation failure. |
 | `CloseAddressSpace` | `capability::close_address_space` | Direct for dropping the complete authority namespace after payload teardown. |
+
+## Authorization policy and capability issuance
+
+The target-independent state machine is implemented and host-tested in
+`charlotte-authorization`, but production authorization is not yet wired into
+`ns`. The current service still maps names to re-delegable connections and
+optionally compares a service-selected bearer key. Its IPC envelope lacks the
+authenticated address-space generation required to use the engine's stable
+identity boundary safely, and it has no authorization audit records. The
+design contract and staged implementation plan are in
+[`../authorization-policy.md`](../authorization-policy.md).
+
+| TLA+ action | Intended CharlotteOS implementation | Correspondence |
+|---|---|---|
+| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, then generation-fenced `ns`/DNS publication | Direct in the engine for authenticated role, rights ceiling, checked generation, and stale-unpublish rejection. Runtime role provisioning and catalog integration remain unwired. |
+| `SetPolicy` | `PolicyStore::set_policy` | Direct for administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. The administration IPC endpoint and durable/audited storage remain target work. |
+| `IssueTicket` | `PolicyStore::issue_ticket` | Direct for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. Kernel-authenticated `DomainIdentity` delivery is still missing from the runtime adapter. |
+| `CancelTicket` | `PolicyStore::cancel_ticket` | Direct for subject-bound removal. Expiry is not implemented. A co-located adapter can keep decisions internal by using `authorize_now`. |
+| `Redeem` | `PolicyStore::redeem_ticket`, followed by attenuated `ipc_reply_connection` | Direct in the engine for single use and subject, policy-version, service-generation, and rights revalidation. Connection delegation exists in `ns`, but the safe adapter joining the two is intentionally not wired. |
+| `CloseCapability` | ordinary `ipc_close` or endpoint teardown | Direct for capability lifetime. Policy changes intentionally do not retract an already issued direct connection. |
+
+The five negative actions define concrete regression obligations for a future
+implementation: ordinary callers cannot mutate rules; a decision cannot be
+redeemed for another principal; policy and service replacement fence stale
+decisions; and minting cannot amplify rights.

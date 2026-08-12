@@ -1,0 +1,11 @@
+[package]
+name = "charlotte-authorization"
+version = "0.1.0"
+edition = "2024"
+description = "Authorization policy state machine for CharlotteOS capability issuance"
+
+[lib]
+name = "charlotte_authorization"
+path = "src/lib.rs"
+
+[dependencies]

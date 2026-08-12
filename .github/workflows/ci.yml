@@ -77,19 +77,7 @@ jobs:
           toolchain: nightly-2026-07-27
 
       - name: Run host-testable library suites
-        run: |
-          set -euo pipefail
-          cd /tmp
-          for manifest in \
-            crates/charlotte-protocol-msg/Cargo.toml \
-            crates/catten-graft/Cargo.toml \
-            crates/charlotte-smoltcp/Cargo.toml
-          do
-            cargo test --manifest-path "$GITHUB_WORKSPACE/$manifest"
-          done
-          cargo run --quiet \
-            --manifest-path "$GITHUB_WORKSPACE/tools/cluster-sign/Cargo.toml" \
-            -- selftest
+        run: scripts/run-host-tests.sh
 
   el0-build:
     name: Build warning-clean EL0 services

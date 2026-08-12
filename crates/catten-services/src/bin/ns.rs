@@ -8,6 +8,12 @@
 //! the name service retains the reply token. When the service later calls
 //! OP_REGISTER, all waiting callers receive their connections. No polling,
 //! no retry loops — the caller's future resolves when the service appears.
+//!
+//! `OP_REGISTER_KEYED`/`OP_LOOKUP_KEYED` provide only an interim reusable
+//! bearer-key gate. They are not identity-based authorization policy: the
+//! target-independent engine lives in `charlotte-authorization`, and the
+//! remaining authenticated-identity/runtime integration is documented in
+//! `docs/authorization-policy.md`.
 #![no_std]
 #![no_main]
 
@@ -71,9 +77,9 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
         })
     }
 }
-/// Deferred lookups: name → reply token and the access key supplied by its
-/// caller. Retaining the key is necessary because registration may establish
-/// an access policy after the lookup has blocked. The waitlist is the
+/// Deferred lookups: name → reply token and the interim bearer key supplied by
+/// its caller. Retaining the key is necessary because registration may
+/// establish the gate after the lookup has blocked. The waitlist is the
 /// service's *event-broker* face; the registry is its *catalog* face (see
 /// `catten_services::broker`).
 type Waitlist = catten_services::broker::KeyedWaitlist<(u64, u64)>;

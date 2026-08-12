@@ -7,6 +7,10 @@
 
 extern crate alloc;
 
+/// Authorization policy state machine shared by a co-located name/policy
+/// service and a possible future standalone policy service.
+pub use charlotte_authorization as authorization;
+
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;
 
@@ -92,16 +96,16 @@ pub mod ns {
     pub const ERR_INVALID: i64 = -2;
     /// Unknown opcode.
     pub const ERR_BAD_OPCODE: i64 = -3;
-    /// Access denied: the caller's access key did not match the service's
-    /// registered key (policy gating).
+    /// Access denied: the caller's interim bearer key did not match the
+    /// service's registered key. This gate is not principal-based policy.
     pub const ERR_ACCESS_DENIED: i64 = -4;
 
-    /// Register under a short name with an access key.  `arg0` = packed
+    /// Register under a short name with an interim bearer key.  `arg0` = packed
     /// name; the call must attach a re-delegable connection.  If a
     /// memory object is attached, its first 8 bytes are the access key
     /// (0 = public, no gating).  Reply = new generation.
     pub const OP_REGISTER_KEYED: u32 = 5;
-    /// Look up a short-named service with an access key.  `arg0` = packed
+    /// Look up a short-named service with an interim bearer key.  `arg0` = packed
     /// name.  If a memory object is attached, its first 8 bytes are the
     /// access key; the stored registration's key must match (or be 0 for
     /// a public service).  Reply = generation + attenuated connection.

@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for seventeen
+This directory contains finite, executable specifications for eighteen
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -14,6 +14,7 @@ CharlotteOS subsystems:
 | Deferred interrupt-route reuse | `CharlotteInterruptRoute.tla` | `CharlotteInterruptRoute_small.cfg` |
 | Service publication and teardown | `CharlotteServiceLifecycle.tla` | `CharlotteServiceLifecycle_small.cfg` |
 | Unified tagged capability namespace | `CharlotteCapability.tla` | `CharlotteCapability_small.cfg` |
+| Authorization policy and capability issuance | `CharlotteAuthorization.tla` | `CharlotteAuthorization_small.cfg` |
 | DMA pinning and SMMUv3 teardown | `CharlotteDMA.tla` | `CharlotteDMA_small.cfg` |
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
@@ -43,10 +44,10 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all seventeen complete fast configurations plus expected-failure
+- runs all eighteen complete fast configurations plus expected-failure
   endpoint-observer, scheduler, address-space, hardware-ASID,
-  interrupt-route, service-lifecycle, Raft-join, and reliable-message
-  regression configurations;
+  interrupt-route, service-lifecycle, authorization, Raft-join, and
+  reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -85,6 +86,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteCapability -config CharlotteCapability_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteAuthorization -config CharlotteAuthorization_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
@@ -366,6 +371,36 @@ target handle, while rollback alone may restore the exact original handle.
 The invariants reject future/unallocated handles, require tags to remain below
 the namespace's next serial, and require an active move transaction's source
 authority to remain revoked.
+
+## Authorization policy model
+
+`CharlotteAuthorization.tla` is a target contract for policy-controlled
+capability issuance. It keeps catalog publication and policy evaluation as
+separate logical roles even if the first implementation co-locates them in the
+name-service process. Policy administrators set versioned subject/service
+rules; service managers publish generation-numbered bindings and a maximum
+delegable rights set. A decision is bound to the authenticated subject, exact
+rights, policy version, and service generation, then may be redeemed once for
+an attenuated capability.
+
+The model deliberately gives policy updates prospective semantics. Updating a
+rule fences outstanding unredeemed decisions, but does not close capabilities
+already issued. The current kernel has no general derivation tree or
+policy-on-use mechanism, so claiming selective retroactive revocation would be
+false. Endpoint close, a revocable proxy, or a future kernel lease object is
+required for hard revocation.
+
+The safe configuration checks authenticated policy/publication roles,
+subject-bound redemption, policy-version and service-generation fencing,
+rights attenuation, ticket backing, and replay resistance. Five unsafe
+configurations each remove one of those controls and must violate the matching
+invariant. The complete fast configuration explores 144,598 generated states,
+54,705 distinct states, and depth 12 with TLC 2.19.
+
+The design and implementation sequence are described in
+[`../authorization-policy.md`](../authorization-policy.md). This model is
+forward-looking: the existing keyed name lookup is only a reusable bearer-key
+gate and does not conform to the target principal-based policy contract.
 
 ## DMA and SMMUv3 model
 
