@@ -45,12 +45,12 @@ tail; the kernel accesses the same frame through its privileged mapping. The ABI
 assigns each side its own fields:
 
 \begin{itemize}
-    \item \textbf{Userspace drains entries without syscalls.} Advancing the
+    \item Userspace drains entries without syscalls --- advancing the
         consumer tail is a store to a shared page; reading entries is a load.
         No kernel crossing needed for the common fast path.
-    \item \textbf{The kernel publishes entries with a release fence.} The consumer
+    \item The kernel publishes entries with a release fence --- the consumer
         sees coherent data without additional synchronization.
-    \item \textbf{Overflow is detected, not hidden.} An overflow counter in the
+    \item Overflow is detected, not hidden --- an overflow counter in the
         header lets userspace detect when entries were produced faster than
         consumed.
 \end{itemize}
@@ -66,13 +66,13 @@ This is an architectural invariant, so when the ring is full, the
 kernel has several options:
 
 \begin{itemize}
-    \item \textbf{Retain overflow in a per-domain kernel backlog.} Entries that
+    \item Retain overflow in a per-domain kernel backlog --- entries that
         cannot fit in the ring wait in a kernel-side buffer. When userspace
         drains the ring, the backlog drains into it.
-    \item \textbf{Stop accepting new submissions.} The kernel may return
+    \item Stop accepting new submissions --- the kernel may return
         \texttt{WouldBlock} on \texttt{submit}, applying backpressure at the
         submission point rather than at the completion point.
-    \item \textbf{Propagate \texttt{WouldBlock}.} The CQ's wait operation can
+    \item Propagate \texttt{WouldBlock} --- the CQ's wait operation can
         indicate that the ring is full and must be drained.
 \end{itemize}
 
@@ -149,11 +149,11 @@ happens:
 The wait is race-free. The sequence is:
 
 \begin{enumerate}
-    \item Inspect the CQ ring: if completions are pending, return immediately.
+    \item Inspect the CQ ring --- if completions are pending, return immediately.
     \item Register a waiter against the CQ's generation counter.
-    \item Re-inspect the CQ ring: if completions arrived during registration,
+    \item Re-inspect the CQ ring --- if completions arrived during registration,
         unregister and return.
-    \item Block the thread. It will be woken when the generation counter changes
+    \item Block the thread --- it will be woken when the generation counter changes
         (a new entry is posted or a \texttt{CQ\_WAKE} bumps it).
 \end{enumerate}
 
@@ -177,12 +177,12 @@ the scheduler returns it to the same LP rather than scanning for the least-loade
 one. This has three benefits:
 
 \begin{enumerate}
-    \item \textbf{Timer events stay on the same LP's queue,} eliminating
+    \item Timer events stay on the same LP's queue, eliminating
         cross-LP migration races (observer-not-found when a completion is posted
         on a different LP than the one where the waiter was registered).
-    \item \textbf{Cache warmth is preserved.} The waking thread finds its data
+    \item Cache warmth is preserved --- the waking thread finds its data
         in the LP's local caches.
-    \item \textbf{Shard-to-LP affinity is maintained.} The sitas shard that blocked
+    \item Shard-to-LP affinity is maintained --- the Sitas shard that blocked
         on CQ 0 on LP 2 wakes up on LP 2, where its shard-local state lives.
 \end{enumerate}
 
@@ -227,26 +227,26 @@ it on terminal completion.
 \section{Why completion queues matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Non-lossy completions are a correctness requirement.} A disk-write
+    \item Non-lossy completions are a correctness requirement --- a disk-write
         confirmation, a timer expiry, or a sensor reading is a fact and losing it
         is a bug. The backlog retains terminal results when the ring is full.
 
-    \item \textbf{The single aggregated wait eliminates a class of race conditions.}
-        A shard that must wait on ``timer or IPC message or device interrupt'' in
+    \item The single aggregated wait eliminates a class of race conditions ---
+        a shard that must wait on ``timer or IPC message or device interrupt'' in
         a conventional OS must manage three separate wait objects, with potential
         lost-wake races between checking one and arming another. One CQ means one
         atomic check-and-arm sequence.
 
-    \item \textbf{Per-shard CQ rings enable predictable latency.} No shard wakes
+    \item Per-shard CQ rings enable predictable latency --- no shard wakes
         another shard's executor to deliver a completion. Wakes are targeted,
         bounded, and proportional to the actual work.
 
-    \item \textbf{The CQ ring is zero-syscall in the common case.} The fast path
+    \item The CQ ring is zero-syscall in the common case --- the fast path
         --- drain entries, process results, loop --- requires no kernel
         transitions. Only when the ring is empty and the shard must block does a
         syscall occur.
 
-    \item \textbf{Cancellation is defined, not best-effort.} Every cancellation
+    \item Cancellation is defined, not best-effort --- every cancellation
         path ends in a terminal completion. There is no ``the buffer might or
         might not be freed'' ambiguity. The ownership contract is explicit and
         testable.

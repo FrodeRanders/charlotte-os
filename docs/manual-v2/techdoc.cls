@@ -216,16 +216,14 @@
 
 \titlespacing{\chapter}{0mm}{*0}{*1}
 
-\titlecontents{chapter}[0pt] {\addvspace{4mm} \rmfamily
-\bfseries
+\titlecontents{chapter}[0pt] {\addvspace{2mm} \rmfamily
 \Large}{\thecontentslabel\quad}{}{\titlerule*[5pt]{.}\contentspage}
 
-\titlecontents{section}[4mm] {\addvspace{2pt} \rmfamily
-\bfseries
+\titlecontents{section}[4mm] {\rmfamily
 \large}{\thecontentslabel\quad}{}{\titlerule*[5pt]{.}\contentspage}
 
-\titlecontents{subsection}[9mm] {\addvspace{2pt}
-\rmfamily}{\thecontentslabel\quad}{}{\titlerule*[5pt]{.}\contentspage}
+\titlecontents{subsection}[9mm] {\rmfamily}
+{\thecontentslabel\quad}{}{\titlerule*[5pt]{.}\contentspage}
 
 \titlecontents{figure}[0pt] {\addvspace{4mm} \rmfamily}{Figure
 \thecontentslabel :\enspace}{}{\titlerule*[5pt]{.}\contentspage}

@@ -26,17 +26,17 @@ across a cluster of nodes. In CharlotteOS, each Raft node is an EL0 service
 process that:
 
 \begin{itemize}
-    \item \textbf{Registers with the name service} as \texttt{"raft-<id>"}.
-    \item \textbf{Obtains connection capabilities to its peers} through the name
+    \item Registers with the name service as \texttt{"raft-<id>"}.
+    \item Obtains connection capabilities to its peers through the name
         service (or through seed configuration at bootstrap).
-    \item \textbf{Communicates with peers through endpoint IPC.} Shared
+    \item Communicates with peers through endpoint IPC --- shared
         \texttt{raft.proto} VoteRequest, AppendEntries, and InstallSnapshot
         payloads travel in moved memory capabilities. The scalar argument
         carries the exact protobuf length.
-    \item \textbf{Uses completion-queue waits for time.} A bounded
+    \item Uses completion-queue waits for time --- a bounded
         \texttt{CQ\_WAIT} drives election and heartbeat checks without a
         detached timer completion or a busy polling loop.
-    \item \textbf{Reserves a client-command endpoint operation.}
+    \item Reserves a client-command endpoint operation ---
         \texttt{OP\_CLIENT\_COMMAND} is defined and the core can submit,
         commit, and apply opaque commands. The \texttt{dns} service realizes
         that path with a concrete state machine; the generic EL0 service
@@ -203,7 +203,7 @@ trait StateMachine {
 Different services are different state machines on the same Raft substrate:
 
 \begin{itemize}
-    \item \textbf{Distributed name service:} commands are
+    \item Distributed name service --- commands are
         ``register(name, owner, route, generation)'' and
         ``unregister(name, owner, generation)''. Unregistration is rejected
         unless both owner and generation still match the active entry.
@@ -220,9 +220,9 @@ Different services are different state machines on the same Raft substrate:
         identities, generations, and policy metadata. Replicated, it makes
         service discovery available cluster-wide; this is the implemented
         \texttt{dns} service.
-    \item \textbf{Distributed lock service:} commands are ``acquire(lock\_id)''
+    \item Distributed lock service --- commands are ``acquire(lock\_id)''
         and ``release(lock\_id)''. The state is a set of held locks.
-    \item \textbf{Cluster configuration store:} commands are arbitrary
+    \item Cluster configuration store --- commands are arbitrary
         key-value writes. The state is a key-value map.
 \end{itemize}
 
@@ -299,27 +299,27 @@ task. No polling loop, no thread dedicated to sleeping.
 \section{Why consensus as a service matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Consistency primitives can be exposed as services.} A replicated
+    \item Consistency primitives can be exposed as services --- a replicated
         service implements \texttt{StateMachine} and uses the shared Raft,
         transport, timer, and storage interfaces.
 
-    \item \textbf{Capabilities, not IP addresses, identify peers.} The cluster
+    \item Capabilities, not IP addresses, identify peers --- the cluster
         configuration is a set of capabilities, not a list of \texttt{host:port}
         pairs. A network reconfiguration (new NIC, new subnet, move to RDMA)
         need not change the replicated peer identities.
 
-    \item \textbf{Timers are first-class and reliable.} An election timeout
+    \item Timers are first-class and reliable --- an election timeout
         that is lost because the polling loop missed its window is a correctness
         bug (it can cause spurious leader changes or extended unavailability).
         Kernel-managed timers use the non-lossy CQ delivery path exercised by
         the local-election test.
 
-    \item \textbf{Failure isolation can extend to the consensus layer.} A Raft
+    \item Failure isolation can extend to the consensus layer --- a Raft
         node is a userspace process. It can crash, restart, and recover without
         affecting the kernel or other Raft nodes. The supervisor handles the
         lifecycle; the Raft protocol handles the consensus.
 
-    \item \textbf{A distributed name service is implemented.} The
+    \item A distributed name service is implemented --- the
         \texttt{dns} service runs the \texttt{CatalogMachine} state machine
         on the Raft substrate; all other services that need cluster-wide
         consistency can use the same \texttt{StateMachine} pattern and shared

@@ -36,24 +36,24 @@ with a synchronous SMMU invalidation before unpinning.
 The driver follows the standard NVMe initialisation sequence:
 
 \begin{enumerate}
-    \item \textbf{Controller reset:} disable CC.EN, wait for CSTS.RDY = 0.
-    \item \textbf{Admin queue setup:} allocate physically contiguous memory for the
+    \item Controller reset --- disable CC.EN, wait for CSTS.RDY = 0.
+    \item Admin queue setup --- allocate physically contiguous memory for the
         Admin Submission Queue (ASQ, 32 entries) and Admin Completion Queue
         (ACQ, 32 entries). Write AQA, ASQ, and ACQ registers. Enable the
         controller and wait for CSTS.RDY = 1.
-    \item \textbf{Identify controller:} submit an Identify command (CNS=1) through
+    \item Identify controller --- submit an Identify command (CNS=1) through
         the admin SQ. Read capabilities, version, and supported features.
-    \item \textbf{Set Features (Number of Queues):} declare how many I/O queue
+    \item Set Features (Number of Queues) --- declare how many I/O queue
         pairs the driver intends to use. QEMU's NVMe controller requires this
         before accepting I/O queue creation commands.
-    \item \textbf{Identify namespace:} submit an Identify command (CNS=0, NSID=1)
+    \item Identify namespace --- submit an Identify command (CNS=0, NSID=1)
         to read the namespace size (NSZE) and the active LBA format (FLBAS),
         which determines the block size.
-    \item \textbf{Create I/O Completion Queue:} allocate memory, submit a Create
+    \item Create I/O Completion Queue --- allocate memory, submit a Create
         I/O CQ admin command. The CDW11 register must set bit 0 (PC =
         Physically Contiguous) to 1 --- this is required by the NVMe
         specification and enforced by QEMU's device model.
-    \item \textbf{Create I/O Submission Queue:} allocate memory, submit a Create
+    \item Create I/O Submission Queue --- allocate memory, submit a Create
         I/O SQ admin command, associating it with the I/O CQ created in the
         previous step.
 \end{enumerate}
@@ -82,23 +82,23 @@ written data reaches durable media before replying.
 The NVMe driver surfaced several non-obvious requirements:
 
 \begin{itemize}
-    \item \textbf{CDW11 bit 0 (PC) must be 1.} QEMU's NVMe device model
+    \item CDW11 bit 0 (PC) must be 1 --- QEMU's NVMe device model
         requires physically contiguous queues. Without this bit, the Create
         I/O CQ command returns status 0x4002 regardless of all other
         parameters.
-    \item \textbf{SQE layout is exacting.} The Command Identifier occupies
+    \item SQE layout is exacting --- the Command Identifier occupies
         bits 31:16 of DW0, the opcode occupies bits 7:0. The NSID shares
         DW0's high bits with DW0 in the first u64. PRP1 is at byte offset
         24, CDW10-11 at byte offset 40. Getting any of these wrong produces
         silent failures.
-    \item \textbf{Doorbell stride must be derived from CAP.DSTRD.} On QEMU
+    \item Doorbell stride must be derived from CAP.DSTRD --- on QEMU
         this is 0 (stride = 4 bytes), but the architecture supports strides
         up to $4 \ll 15$ bytes.
-    \item \textbf{MMIO mapping must cover the doorbell region.} The NVMe
+    \item MMIO mapping must cover the doorbell region --- the NVMe
         controller registers occupy offsets 0x0000--0x003F within BAR0, but
         doorbell registers start at offset 0x1000. A single-page MMIO grant
         is insufficient --- at least two pages are needed.
-    \item \textbf{On TCG, \texttt{cq\_wait} is required for VM exits.} A
+    \item On TCG, \texttt{cq\_wait} is required for VM exits --- a
         pure spin-loop prevents QEMU from processing I/O because the guest
         never yields. The driver must block on \texttt{cq\_wait} to let the
         host process NVMe commands.
@@ -290,27 +290,27 @@ creates a blank v3 store and destructively replaces the image contents.
 \section{Why this matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Storage policy lives in userspace.} A bug in the NVMe
+    \item Storage policy lives in userspace --- a bug in the NVMe
         driver, the object store, or the filesystem corrupts that service's
         address space, not the kernel. The kernel grants MMIO and interrupts;
         everything else is userspace.
 
-    \item \textbf{Device-independent protocol.} The block protocol is intended
+    \item Device-independent protocol --- the block protocol is intended
         to let the object store and filesystem work over other block drivers.
         Those alternative drivers have not yet been implemented.
 
-    \item \textbf{Crash-safety mechanism under development.} Process-restart
+    \item Crash-safety mechanism under development --- process-restart
         persistence is boot-validated. Copy-on-write object replacement and
         mirrored directory records recover from one torn directory-record
         write. Broader power-loss guarantees still require validation of
         device atomicity and truthful flush/FUA ordering.
 
-    \item \textbf{Capability-based access.} A client that holds a connection to
+    \item Capability-based access --- a client that holds a connection to
         \texttt{"blk0"} can read and write blocks. A client that does not hold
         that connection cannot. There is no ambient filesystem namespace to
         escape.
 
-    \item \textbf{Host-inspectable.} The included Python inspector reads the raw
+    \item Host-inspectable --- the included Python inspector reads the raw
         disk image and reports its documented object and filesystem structures.
 \end{enumerate}
 

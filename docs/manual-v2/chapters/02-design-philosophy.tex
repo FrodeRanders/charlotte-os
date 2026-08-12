@@ -72,21 +72,21 @@ Xous, a microkernel OS for Precursor and Betrusted hardware, contributes the
 protection-domain service model:
 
 \begin{itemize}
-    \item Services are userspace servers: Drivers, filesystems, and
+    \item Services are userspace servers --- drivers, filesystems, and
         protocol stacks run in their own protection domains, not in the kernel.
-    \item Clients connect to servers and receive connection identifiers:
-        A connection \emph{is} authority; possessing one means you may communicate
+    \item Clients connect to servers and receive connection identifiers ---
+        a connection \emph{is} authority; possessing one means you may communicate
         with that server.
-    \item IPC is a kernel primitive: Communication is not a convention
+    \item IPC is a kernel primitive --- communication is not a convention
         layered on shared memory; it is mediated and validated by the kernel.
-    \item Scalar messages are distinct from memory-bearing messages:
-        Small control-plane operations (opcodes, handles, status codes) travel
+    \item Scalar messages are distinct from memory-bearing messages ---
+        small control-plane operations (opcodes, handles, status codes) travel
         in fixed-size messages; bulk data travels as memory-object attachments.
-    \item Memory IPC distinguishes ownership transfer from borrowing:
-        Move transfers ownership permanently. Borrow grants temporary access,
+    \item Memory IPC distinguishes ownership transfer from borrowing ---
+        move transfers ownership permanently. Borrow grants temporary access,
         revoked on reply or cancellation.
     \item A userspace name service maps human-readable names to opaque
-        server identities. The kernel knows nothing about strings.
+        server identities --- the kernel knows nothing about strings.
 \end{itemize}
 
 CharlotteOS adopts Xous's userspace-server model and combines it with the sitas
@@ -267,20 +267,20 @@ Every design decision in CharlotteOS traces back to one or more of the six
 principles from Chapter~1:
 
 \begin{itemize}
-    \item Capabilities replace ambient authority: A compromised service
+    \item Capabilities replace ambient authority --- a compromised service
         cannot access resources it was never granted. The set of things a process
         can do is enumerable and auditable by construction.
-    \item Endpoints make communication authenticated: A client that holds
+    \item Endpoints make communication authenticated --- a client that holds
         a connection capability has proven (at grant time) that it is authorized
         to communicate. The kernel enforces this on every message.
-    \item Memory objects constrain stale cross-domain access: Ownership moves
+    \item Memory objects constrain stale cross-domain access --- ownership moves
         through the kernel and is enforced by page tables. Correctness still
         depends on MMU, TLB, and DMA handling.
-    \item Composition limits the privileged surface: Most system functionality
+    \item Composition limits the privileged surface --- most system functionality
         lives in userspace, where faults can be contained to a service domain.
-    \item The async model reduces adaptation: The kernel and runtime share
+    \item The async model reduces adaptation --- the kernel and runtime share
         submission, completion, and wake semantics.
-    \item Bounded ingress makes pressure visible: Endpoint and hardware queues
+    \item Bounded ingress makes pressure visible --- endpoint and hardware queues
         apply explicit backpressure. Chapter~10 records the remaining unbounded
         internal backlog.
 \end{itemize}

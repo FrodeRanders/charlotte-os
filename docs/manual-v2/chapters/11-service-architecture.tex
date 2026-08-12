@@ -9,14 +9,14 @@ A protection domain (Chapter~3) is the unit of both authority and failure. When
 a service crashes:
 
 \begin{itemize}
-    \item Its capability table is destroyed, invalidating its handles. Client
+    \item Its capability table is destroyed, invalidating its handles --- client
         connections to the closed endpoint fail through the IPC lifecycle.
-    \item Its memory mappings are removed. Outstanding borrows are revoked; the
+    \item Its memory mappings are removed --- outstanding borrows are revoked; the
         kernel unmaps the pages from the (dead) borrower and restores the lender's
         access.
-    \item Its threads are aborted. Any thread blocked on a CQ or endpoint is
+    \item Its threads are aborted --- any thread blocked on a CQ or endpoint is
         woken with a terminal error.
-    \item Its device grants are recovered. The supervisor regains ownership of
+    \item Its device grants are recovered --- the supervisor regains ownership of
         any MMIO region and interrupt objects the domain held.
 \end{itemize}
 
@@ -31,11 +31,11 @@ ELF images, memory mappings, and capability grants.
 
 Its operations are:
 
-\begin{enumerate}
-    \item \textbf{Load:} parse an ELF image, validate its segments, create a
+\begin{description}
+    \item[Load] Parse an ELF image, validate its segments, create a
         new address space, map \texttt{PT\_LOAD} segments at their linked
         virtual addresses, set up a stack with a guard page.
-    \item \textbf{Grant:} populate the domain's config-page with the bootstrap
+    \item[Grant] Populate the domain's config-page with the bootstrap
         capabilities it needs:
         \begin{itemize}
             \item A connection to the name service (for service lookup).
@@ -45,13 +45,13 @@ Its operations are:
                 to listen.
             \item A default CQ handle.
         \end{itemize}
-    \item \textbf{Spawn:} create the initial thread with the domain's entry
+    \item[Spawn] Create the initial thread with the domain's entry
         point and its affinity LP.
-    \item \textbf{Monitor:} register to be notified when the domain exits.
-    \item \textbf{Teardown:} on exit, reclaim all capabilities, revoke
+    \item[Monitor] Register to be notified when the domain exits.
+    \item[Teardown] on exit, reclaim all capabilities, revoke
         mappings, reconcile outstanding operations, and make the address-space
         ID available for reuse.
-\end{enumerate}
+\end{description}
 
 Grants are minted kernel-side by the supervisor and never through a syscall. A
 driver does not ask the kernel for MMIO; the supervisor grants it at creation
@@ -97,20 +97,20 @@ inspect another process's capability table.
 When a service crashes and the supervisor restarts it:
 
 \begin{enumerate}
-    \item \textbf{Device reset.} If the service was a driver, the supervisor
+    \item Device reset --- if the service was a driver, the supervisor
         resets the device before re-granting it to a new driver instance. The
         new driver sees a clean hardware state.
-    \item \textbf{Generation increment.} The name service bumps the service's
+    \item Generation increment --- the name service bumps the service's
         generation. All old connections are invalidated.
-    \item \textbf{Stale connections.} Clients connected to the old instance
+    \item Stale connections --- clients connected to the old instance
         receive \texttt{ServiceRestarted} on their next call
         attempt. They re-lookup the service and receive a connection to the
         new instance.
-    \item \textbf{Outstanding operation reconciliation.} The supervisor
+    \item Outstanding operation reconciliation --- the supervisor
         reconciles any operations the old domain had submitted but not
         completed: cancellations are posted, borrowed memory is returned,
         DMA buffers are recovered.
-    \item \textbf{Fresh bootstrap.} The new domain receives a fresh config-page
+    \item Fresh bootstrap --- the new domain receives a fresh config-page
         with freshly minted capabilities. It does not inherit the previous
         instance's capability table, reply tokens, or DMA ownership.
 \end{enumerate}
@@ -123,17 +123,17 @@ operation reconciliation; the status appendix records the verified scope.
 At steady state, a CharlotteOS system consists of:
 
 \begin{itemize}
-    \item \textbf{The kernel} --- capabilities, endpoints, memory objects,
+    \item The kernel --- capabilities, endpoints, memory objects,
         CQs, scheduling, interrupt routing.
-    \item \textbf{The supervisor} (kernel-side) --- domain lifecycle, ELF
+    \item The supervisor (kernel-side) --- domain lifecycle, ELF
         loading, device enumeration.
-    \item \textbf{The node name service} (one userspace instance) --- the
+    \item  The node name service (one userspace instance) --- the
         shared registry for service registration, lookup, access-key gating,
         and generation tracking.
-    \item \textbf{Service processes} --- one or more per logical function:
+    \item Service processes --- one or more per logical function:
         NIC driver, TCP/IP stack, filesystem, Raft consensus, application
         servers.
-    \item \textbf{Client processes} --- application code that looks up
+    \item Client processes --- application code that looks up
         services and invokes them through capabilities.
 \end{itemize}
 
@@ -144,24 +144,24 @@ network stack --- these are configuration choices, not kernel modifications.
 \section{Why service architecture matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Failure containment is architectural.} A service fault closes
+    \item Failure containment is architectural --- a service fault closes
         its endpoints and affects clients through defined errors rather than
         direct memory corruption. Availability still depends on the failed
         service and its dependants.
 
-    \item \textbf{Recovery follows a defined sequence.} The restart sequence
+    \item Recovery follows a defined sequence --- the restart sequence
         (device reset, generation bump, connection invalidation, operation
         reconciliation) is the same for every driver. A new driver
         implemented to the same endpoint protocol replaces the old one
         without any special-case recovery code.
 
-    \item \textbf{Policy lives in userspace.} The kernel enforces mechanism
+    \item Policy lives in userspace --- the kernel enforces mechanism
         (capabilities, endpoints, memory objects). Userspace enforces policy
         (who can register what name, who can look up what service, how
         many restarts are allowed, what log level to use). The kernel
         stays small; policy is auditable and replaceable.
 
-    \item \textbf{The bootstrap contract is explicit and minimal.} Every
+    \item The bootstrap contract is explicit and minimal --- every
         domain starts with exactly the capabilities it needs and no more.
         The config-page contract defines what a domain receives; there is no
         ambient authority to discover or exploit.

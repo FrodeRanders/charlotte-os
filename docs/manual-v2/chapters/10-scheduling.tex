@@ -175,16 +175,16 @@ enum SendPolicy {
 Rules:
 
 \begin{itemize}
-    \item \textbf{Terminal completions are never dropped.} The CQ backlog
+    \item Terminal completions are never dropped --- the CQ backlog
         guarantees this (Chapter~7).
-    \item \textbf{Coalescible notifications may be merged.} Two ``data available''
+    \item Coalescible notifications may be merged --- two ``data available''
         signals before the consumer wakes become one.
-    \item \textbf{Control messages normally fail or wait explicitly.} A service
+    \item Control messages normally fail or wait explicitly --- a service
         registration request that cannot be queued fails with \texttt{QueueFull}.
-    \item \textbf{Data-plane producers should stop before unbounded allocation.}
-        A NIC driver should stop accepting TX packets when its descriptor ring
+    \item Data-plane producers should stop before unbounded allocation ---
+        a NIC driver should stop accepting TX packets when its descriptor ring
         is full.
-    \item \textbf{Emergency paths require reserved capacity.} The bounded IPI
+    \item Emergency paths require reserved capacity --- the bounded IPI
         queue reserves slots for mandatory kernel messages (TLB shootdowns,
         scheduler commands), ensuring they cannot be starved by user work.
 \end{itemize}
@@ -192,28 +192,28 @@ Rules:
 \section{Why scheduling and backpressure matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{The block-yield-wake cycle is exercised across subsystems.} The same
+    \item The block-yield-wake cycle is exercised across subsystems --- the same
         mechanism handles sleep, IPC wait, CQ wait, and timer wait. A bug fixed
         in one path fixes all paths. The cycle is exercised by the async demo and
         by self-tests that call \texttt{wait()}; this is test evidence, not a
         formal proof.
 
-    \item \textbf{Idempotent wakes eliminate lost-wake races.} Re-waking an
+    \item Idempotent wakes eliminate lost-wake races --- re-waking an
         already-ready thread is a no-op. This means the kernel can be aggressive
         about delivering wakes without worrying about double-delivery.
 
-    \item \textbf{Bounded ingress limits some exhaustion paths.} Endpoint and
+    \item Bounded ingress limits some exhaustion paths --- endpoint and
         descriptor-ring capacities reject excess work with backpressure.
         Resource quotas and a hard bound for all completion backlog memory are
         not yet implemented, so this is not a general denial-of-service
         guarantee.
 
-    \item \textbf{Stable LP affinity prevents migration races.} Completion
+    \item Stable LP affinity prevents migration races --- completion
         delivery is LP-local. A waker registered on LP 2 is signaled on LP 2.
         There is no window where a completion is posted on LP 1 while the thread
         is migrating to LP 2 and the observer is not found.
 
-    \item \textbf{The scheduling interface is pluggable.} \texttt{RoundRobin} is
+    \item The scheduling interface is pluggable --- \texttt{RoundRobin} is
         the implemented policy. Other policies would require their own
         implementation and validation behind the same interface.
 \end{enumerate}

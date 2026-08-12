@@ -134,17 +134,17 @@ The shard's executor polls other tasks while the read completes.
 A reply token is:
 
 \begin{itemize}
-    \item \textbf{Created by the kernel} when a call message is enqueued.
-    \item \textbf{Bound to the pending call} --- it completes exactly that
+    \item Created by the kernel when a call message is enqueued.
+    \item Bound to the pending call --- it completes exactly that
         caller's future.
-    \item \textbf{Consumable exactly once} --- a second reply attempt returns
+    \item Consumable exactly once --- a second reply attempt returns
         an error.
-    \item \textbf{Invalidated by cancellation} --- if the caller times out or
+    \item Invalidated by cancellation --- if the caller times out or
         aborts, the reply token becomes inert.
-    \item \textbf{Invalidated by endpoint teardown} --- if the server dies,
+    \item Invalidated by endpoint teardown --- if the server dies,
         all outstanding reply tokens are invalidated, and all waiting
         callers receive \texttt{ServiceRestarted}.
-    \item \textbf{Optionally delegable} --- a server may forward a reply token
+    \item Optionally delegable --- a server may forward a reply token
         to another service, allowing a chain of services to contribute to
         a single reply.
 \end{itemize}
@@ -175,16 +175,16 @@ The kernel uses opaque endpoint identities. A userspace \textbf{name service}
 maps human-readable names to re-delegable connection capabilities:
 
 \begin{itemize}
-    \item \textbf{Registration:} a service registers as \texttt{"driver.nic.v1"}
+    \item Registration --- a service registers as \texttt{"driver.nic.v1"}
         with a specific endpoint. The name service stores the endpoint's
         connection.
-    \item \textbf{Generation tracking:} each registration bumps a generation
+    \item Generation tracking --- each registration bumps a generation
         counter. Stale client connections bound to the previous generation fail
         with \texttt{ServiceRestarted}.
-    \item \textbf{Access-key gating:} a registration may specify a non-zero access
+    \item Access-key gating --- a registration may specify a non-zero access
         key. Lookups without the matching key are denied --- policy enforced by
         a userspace service, not the kernel.
-    \item \textbf{Lookup:} a client asks for \texttt{"driver.nic.v1"} and receives
+    \item Lookup --- a client asks for \texttt{"driver.nic.v1"} and receives
         a connection capability (or an error). It never receives an address, a
         port number, or a raw handle.
 \end{itemize}
@@ -219,27 +219,27 @@ they are different kernel abstractions with different semantics.
 \section{Why endpoints matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Communication carries authority.} A client that
+    \item Communication carries authority --- a client that
         holds a connection capability was authorized (at grant time, by the name
         service or policy service) to communicate with the target. Every message
         is authorized by possession of a kernel-mediated capability rather than
         by an address or UID alone.
 
-    \item \textbf{Scalar and memory messages are distinct.} The kernel does not
+    \item Scalar and memory messages are distinct --- the kernel does not
         copy arbitrary data between address spaces by default. Small control
         messages stay small. Bulk data moves as memory objects (Chapter~6) with
         explicit ownership semantics.
 
-    \item \textbf{Deferred replies enable efficient concurrency.} A server is never
+    \item Deferred replies enable efficient concurrency --- a server is never
         forced to block waiting for one slow client. It retains reply tokens for
         in-flight work and continues serving other requests. The shard's executor
         multiplexes naturally.
 
-    \item \textbf{Restart errors are defined.} Stale connections return typed
+    \item Restart errors are defined --- stale connections return typed
         errors such as \texttt{EndpointClosed} and \texttt{ServiceRestarted}.
         A replacement cannot inherit the old instance's reply tokens.
 
-    \item \textbf{Name service is policy, not mechanism.} The kernel provides
+    \item Name service is policy, not mechanism --- the kernel provides
         endpoints and connections. Userspace decides who can register what name,
         who can look up what service, and what access keys are required. The
         kernel remains small; policy is replaceable without a kernel rebuild.

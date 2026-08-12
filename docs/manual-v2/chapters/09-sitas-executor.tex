@@ -8,14 +8,14 @@ queue when no task is ready.
 Each sitas shard has:
 
 \begin{itemize}
-    \item \textbf{One executor} --- a cooperative scheduler that polls ready
+    \item One executor --- a cooperative scheduler that polls ready
         futures within a budget.
-    \item \textbf{One ready queue} --- tasks whose futures returned
+    \item One ready queue --- tasks whose futures returned
         \texttt{Poll::Pending} and whose wakers have since been invoked.
-    \item \textbf{One timer wheel} --- futures awaiting deadlines.
-    \item \textbf{One CQ partition} --- the completion queue on which this shard
+    \item One timer wheel --- futures awaiting deadlines.
+    \item One CQ partition --- the completion queue on which this shard
         waits (\texttt{CQ\_WAIT}).
-    \item \textbf{Shard-owned service state} --- mutable data that only this
+    \item Shard-owned service state --- mutable data that only this
         executor touches.
 \end{itemize}
 
@@ -117,7 +117,7 @@ fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u64> {
 }
 \end{verbatim}
 
-The waker is a \texttt{ShardWaker}: when invoked, it sets the task's ready flag
+The waker is a \texttt{ShardWaker} --- when invoked, it sets the task's ready flag
 and signals the reactor (if the reactor is currently blocked) to re-enter the
 polling loop. The reactor then polls the task, which finds its completion ready.
 
@@ -180,28 +180,28 @@ does not need a thread pool to translate blocking calls into futures because
 \section{Why the sitas executor matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Cooperative scheduling means no data races on shard-local state.}
-        Within a shard, only one task runs at a time. The executor polls tasks
+    \item Cooperative scheduling means no data races on shard-local state ---
+        within a shard, only one task runs at a time. The executor polls tasks
         sequentially. There is no preemption within the shard. This means
         shard-local mutable state never needs locks.
 
-    \item \textbf{The single wait point eliminates a class of race conditions.}
-        The executor does not wait on ``timer or CQ or endpoint'' through three
+    \item The single wait point eliminates a class of race conditions ---
+        the executor does not wait on ``timer or CQ or endpoint'' through three
         separate blocking calls with three separate check-and-arm sequences. One
         CQ, one wait, one drain loop. The kernel guarantees the wake is not lost
         between checking and arming.
 
-    \item \textbf{No thread-pool overhead.} The executor uses exactly one kernel
+    \item No thread-pool overhead --- the executor uses exactly one kernel
         thread per shard. When that thread blocks, it blocks on the CQ --- the
         same object that will deliver its wake. There is no need for a pool of
         threads to convert blocking syscalls into futures.
 
-    \item \textbf{Budgeting prevents starvation.} The polling budget ensures that
+    \item Budgeting prevents starvation --- the polling budget ensures that
         a shard with many ready tasks makes progress on all of them, not just the
         one that finishes fastest. This prevents priority-inversion-like behavior
         within a shard.
 
-    \item \textbf{Internal messaging avoids unnecessary kernel crossings.} Shards
+    \item Internal messaging avoids unnecessary kernel crossings --- shards
         within the same process communicate through typed channels in userspace.
         Only cross-process IPC crosses the kernel boundary. This keeps the fast
         path fast and the trusted computing base small.
@@ -228,16 +228,16 @@ thread can re-derive any key without storing the data set. An index entry is
 a \texttt{(key, offset)} pair.
 
 \begin{itemize}
-    \item \textbf{Scanners} --- two producer threads, one per shard. Each
+    \item Scanners --- two producer threads, one per shard. Each
         generates its contiguous partition of records, routes every key to
         an assembler with a key hash, batches the entries, and sends the
         batches as owned messages.
-    \item \textbf{Assemblers} --- three logical work units. Two are placed
+    \item Assemblers --- three logical work units. Two are placed
         on shards 0 and 1; the third is deliberately placed on shard 0 so
         that logical naming and physical placement are visibly separate.
         Each assembler receives its entries, sorts them into a run, and
         hands the completed run to the coordinator as an owned value.
-    \item \textbf{Coordinator} --- the main thread. It spawns the shard
+    \item Coordinator --- the main thread. It spawns the shard
         threads, waits for all three runs, k-way merges them, verifies the
         final index, and writes the verified record count to the status
         page.

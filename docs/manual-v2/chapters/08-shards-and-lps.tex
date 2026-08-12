@@ -23,23 +23,23 @@ stay there. Migration is opt-in and restricted.
 \section{The shard --- the userspace unit of ownership}
 
 A shard is a userspace ownership and execution domain. The rules of the shard are
-the sitas discipline:
+the Sitas discipline:
 
 \begin{enumerate}
-    \item \textbf{Only the owning shard mutates shard-local state.} There is no
+    \item Only the owning shard mutates shard-local state --- there is no
         lock on shard-local data because there is no concurrent access. The
         executor runs one task at a time on the shard.
 
-    \item \textbf{Cross-shard interaction goes through bounded typed messages.}
-        A value that moves from shard A to shard B is sent through a typed
+    \item Cross-shard interaction goes through bounded typed messages ---
+        a value that moves from shard A to shard B is sent through a typed
         channel (\rusttype{ShardSender<M>}). The sender loses the value; the
         receiver gains it.
 
-    \item \textbf{Placement is explicit.} Code that needs to be shard-local is
+    \item Placement is explicit --- code that needs to be shard-local is
         accessed through \rusttype{ShardLocal<T>}, which verifies at runtime that
         the calling thread belongs to the owning LP.
 
-    \item \textbf{Observability returns owned snapshots.} Diagnostics and
+    \item Observability returns owned snapshots --- diagnostics and
         introspection capture state by value. No borrowed reference into shard
         internals escapes the shard.
 \end{enumerate}
@@ -61,11 +61,11 @@ The architecture retains the distinction (shard $\neq$ LP) so that more complex
 configurations remain possible:
 
 \begin{itemize}
-    \item \textbf{Multiple sharded processes:} one LP might host shards from
+    \item Multiple sharded processes --- one LP might host shards from
         multiple protection domains, time-sliced by the kernel scheduler.
-    \item \textbf{CPU hotplug:} an LP can be taken offline; its shards can be
+    \item CPU hotplug --- an LP can be taken offline; its shards can be
         migrated (when migration-safe) or torn down.
-    \item \textbf{Oversubscription:} a test can run $N$ shards on $M < N$ LPs
+    \item Oversubscription --- a test can run $N$ shards on $M < N$ LPs
         to exercise migration and scheduling paths.
 \end{itemize}
 
@@ -127,22 +127,22 @@ The closure must not:
 \section{Why the distinction matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Single-owner mutation.} The intended shard path does not access
+    \item Single-owner mutation --- the intended shard path does not access
         shard-local state concurrently. Runtime owner and borrow checks complement
         Rust's type rules.
 
-    \item \textbf{Placement is deliberate.} Sending work to a
+    \item Placement is deliberate --- sending work to a
         specific LP is an explicit operation (\texttt{try\_run\_on\_lp},
         \texttt{ShardSender::try\_send}) and it is not at the mercy of a global
         work-stealing scheduler. This makes it possible to reason about locality,
         cache behavior, and latency.
 
-    \item \textbf{The two container types force a design choice.} When you reach
+    \item The two container types force a design choice --- when you reach
         for shared data, you must decide: is this accessed from interrupt context?
         Use \rusttype{PerLp<T>} with locking. Is it thread-only? Use
         \rusttype{ShardLocal<T>} without locking. The choice is explicit.
 
-    \item \textbf{Cross-shard communication is typed and bounded.} A
+    \item Cross-shard communication is typed and bounded --- A
         \rusttype{ShardSender<M>} carries a specific Rust type (not
         \texttt{Box<dyn Any>}, not a byte buffer). The receiver knows what it will
         get. The channel has fixed capacity; senders handle backpressure. There

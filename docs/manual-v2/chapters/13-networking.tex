@@ -17,20 +17,20 @@ The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
 foundation for a capability-based microkernel:
 
 \begin{itemize}
-    \item \textbf{Sockets identify hosts, not services.}
+    \item Sockets identify hosts, not services ---
         \texttt{10.2.3.17:443} tells you where to connect, not what you are
         talking to. The mapping from address to service is out-of-band (DNS).
 
-    \item \textbf{Sockets are byte streams, not messages.} Message boundaries
+    \item Sockets are byte streams, not messages --- message boundaries
         are lost. Every protocol invents its own framing on top of TCP's
         undifferentiated stream.
 
-    \item \textbf{Sockets carry ambient authority.} Any process can open a
+    \item Sockets carry ambient authority --- any process can open a
         socket to any address. There is no capability check; authority comes
         from being able to reach the network, not from being granted a
         connection.
 
-    \item \textbf{Sockets couple applications to transports.} Code written
+    \item Sockets couple applications to transports --- code written
         against TCP cannot transparently use shared memory for local
         communication or RDMA for high-performance communication.
 \end{itemize}
@@ -121,13 +121,13 @@ acknowledgement, applying retransmission-based backpressure.
 The RPC layer provides request/reply semantics over the reliable message layer:
 
 \begin{itemize}
-    \item \textbf{Synchronous-looking futures:} \texttt{service.call(opcode, args).await?}
-    \item \textbf{Asynchronous invocation:} the \texttt{Future} is backed by a
+    \item Synchronous-looking futures --- \texttt{service.call(opcode, args).await?}
+    \item Asynchronous invocation --- the \texttt{Future} is backed by a
         pending RPC call; the shard continues other work while waiting.
-    \item \textbf{Object references:} the target architecture can represent
+    \item Object references --- the target architecture can represent
         delegated remote authority; general remote capability delegation is not
         implemented.
-    \item \textbf{Serialization:} typed protocol crates handle encoding/decoding
+    \item Serialisation --- typed protocol crates handle encoding/decoding
         between Rust types and the wire format.
 \end{itemize}
 
@@ -209,13 +209,13 @@ The reliable-message interface is designed to be transport-agnostic. Candidate
 transports include:
 
 \begin{itemize}
-    \item \textbf{Ethernet} --- for inter-machine communication.
-    \item \textbf{Shared memory} --- for co-located processes on the same machine,
+    \item Ethernet --- for inter-machine communication.
+    \item Shared memory --- for co-located processes on the same machine,
         where the kernel can set up shared memory regions instead of going through
         the NIC.
-    \item \textbf{Loopback} --- for same-machine same-stack communication.
-    \item \textbf{RDMA} --- for high-performance cluster interconnects.
-    \item \textbf{PCIe NTB} --- for backplane communication in multi-socket
+    \item Loopback --- for same-machine same-stack communication.
+    \item RDMA --- for high-performance cluster interconnects.
+    \item PCIe NTB --- for backplane communication in multi-socket
         systems.
 \end{itemize}
 
@@ -229,15 +229,15 @@ when it moves from same-process to same-machine to different-machine.
 The intended network stack avoids copying whenever practical:
 
 \begin{itemize}
-    \item \textbf{Receive path:} the NIC driver receives a buffer from hardware.
+    \item Receive path --- the NIC driver receives a buffer from hardware.
         That buffer (a memory object) is passed up the stack by transferring
         ownership --- first to the message layer (for reassembly), then to the
         RPC layer (for deserialization), then to the application. No intermediate
         copies.
-    \item \textbf{Transmit path:} the application creates a buffer. It is passed
+    \item Transmit path --- the application creates a buffer. It is passed
         down by moving ownership. The NIC driver DMA's it directly from the
         application's pages.
-    \item \textbf{Buffer recycling:} after the application consumes a received
+    \item Buffer recycling --- after the application consumes a received
         buffer, it returns the (now empty) memory object to the driver's RX pool.
         The driver reuses it for DMA and the cycle repeats. IOMMU-backed pinning
         is implemented on the reference AArch64 SMMUv3 path.
@@ -248,7 +248,7 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
 \section{Why the networking architecture matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Remote invocation follows the local call shape.} The target API
+    \item Remote invocation follows the local call shape --- the target API
         keeps transport choices out of application protocols. This permits:
         \begin{itemize}
             \item Services can be relocated without application changes.
@@ -258,21 +258,21 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
                 absent from local IPC.
         \end{itemize}
 
-    \item \textbf{Authority is not an address.} An application invokes a service
+    \item Authority is not an address --- an application invokes a service
         capability rather than relying on \texttt{host:port} reachability. Network
         access alone does not mint that capability.
 
-    \item \textbf{Copy avoidance is a design goal.} Page ownership transfer can
+    \item Copy avoidance is a design goal --- page ownership transfer can
         avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
         isolation is implemented for the reference AArch64 SMMUv3 path. No
         performance comparison with sockets has yet been established.
 
-    \item \textbf{Message boundaries are preserved.} The native abstraction is a
+    \item Message boundaries are preserved --- the native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no
         need for an additional stream-framing layer. This can simplify protocol
         implementations, but does not eliminate parsing or framing defects.
 
-    \item \textbf{TCP/IP is available but not mandatory.} Legacy software
+    \item TCP/IP is available but not mandatory --- legacy software
         connects to the TCP/IP service. Native software uses the capability-based
         stack. The transition is incremental: a service can expose both a native
         endpoint and a TCP/IP socket through the compatibility service.

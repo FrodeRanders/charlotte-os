@@ -10,23 +10,23 @@ The prototype builds on four primitives implemented in the kernel and name
 service:
 
 \begin{enumerate}
-    \item \textbf{Memory-object ownership transfer.} The kernel's
+    \item Memory-object ownership transfer --- the kernel's
         \texttt{memory::object::move\_to} moves a page-backed memory object
         from one address space to another. The sender loses access; the
         receiver gains it. This is the vehicle for service state.
 
-    \item \textbf{Generation tracking.} The userspace name service records an
+    \item Generation tracking --- the userspace name service records an
         instance generation that increments on restart. A stale connection
         returns \texttt{EndpointClosed}; a new lookup returns the replacement
         generation and connection.
 
-    \item \textbf{EndpointClose and Cancelled.} When a service domain exits,
+    \item EndpointClose and Cancelled --- when a service domain exits,
         the kernel closes its endpoint. Queued requests that were never
         delivered complete as \texttt{EndpointClosed}. Delivered calls whose
         server exited before replying complete as \texttt{Cancelled}. Clients
         see a deterministic failure, not a hung request.
 
-    \item \textbf{Bootstrap capability delivery.} The supervisor writes
+    \item Bootstrap capability delivery --- the supervisor writes
         initial capabilities to the config page before a domain starts. For a
         live upgrade, the bootstrap contract is extended: in addition to the
         name service connection, the new domain receives the old service's
@@ -39,7 +39,7 @@ service:
 \begin{verbatim}
      Old Service         Supervisor         New Service
           |                    |                   |
-     OP_HANDOFF               |                   |
+     OP_HANDOFF                |                   |
           |-------------------->                   |
           |   drain in-flight, |                   |
           |   serialize state  |                   |
@@ -83,9 +83,10 @@ the manager selects the embedded recovery image.
 
 The kernel snapshots the capability-backed bytes into kernel-owned memory
 before parsing them, then checks the ELF class, architecture, program-header
-bounds, segment bounds, page congruence, W\^{}X, integer overflow, and that the
-entry point lies in an executable load segment. This prevents a mutable
-userspace image from changing between validation and mapping.
+bounds, segment bounds, page congruence, W\^{}X (“write xor execute”)\footnote{a memory page may be writable or executable, but never both simultaneously}, 
+integer overflow, and that the entry point lies in an executable load segment. 
+This prevents a mutable userspace image from changing between validation and 
+mapping.
 
 Executable artifacts carry an Ed25519 CLS2 note that binds the complete ELF to
 its logical service name, artifact class, release metadata, rollback counter,
@@ -180,10 +181,10 @@ explicitly handle transient failures through name-service re-lookup.
 True zero-downtime would require one of:
 
 \begin{itemize}
-    \item \textbf{Queue migration:} the old service's endpoint queue would
+    \item Queue migration --- the old service's endpoint queue would
         need to be transferred to the new service atomically, so no request
         is ever rejected. This is a future kernel feature.
-    \item \textbf{Sidecar model:} the new service starts alongside the old
+    \item Sidecar model --- the new service starts alongside the old
         one, both sharing the same endpoint, and the old service stops
         accepting new work. The kernel does not currently support multiple
         owners for one endpoint.
@@ -201,23 +202,23 @@ instance exits, rather than starting the new instance from scratch.
 \section{Why this matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{The reference path transfers service state.} The self-test
+    \item The reference path transfers service state --- the self-test
         demonstrates handoff for the reference service. Filesystems, network
         stacks, and consensus nodes would each need protocol-specific
         serialization, compatibility, and recovery work.
 
-    \item \textbf{The upgrade sequence is explicit.} The old service drains
+    \item The upgrade sequence is explicit --- the old service drains
         in-flight work, serialises state, and exits. The new service starts
         and registers. Clients retry. A hard time bound is not currently
         enforced or benchmarked.
 
-    \item \textbf{Failure recovery has an ownership model.} If the new service
+    \item Failure recovery has an ownership model --- if the new service
         fails to start, a future supervisor could restart the old service or a
         fallback.
         The state memory objects are owned by the supervisor during the
         transition, so they are not lost.
 
-    \item \textbf{The building blocks are covered by self-tests.} Memory-object
+    \item The building blocks are covered by self-tests --- memory-object
         transfer, generation tracking, deterministic teardown, and bootstrap
         delivery are exercised by the existing self-test suite. This evidence
         does not establish crash consistency, arbitrary-service compatibility,

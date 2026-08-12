@@ -42,48 +42,48 @@ state; and the cluster as a whole is the shared-nothing machine.
 The following implemented and verified mechanisms form the foundation:
 
 \begin{itemize}
-    \item \textbf{Cross-machine consensus.} The Graft core replicates the
+    \item Cross-machine consensus --- the Graft core replicates the
         \texttt{dns} catalog state machine across two QEMU guests on a
         stream Ethernet segment, serving remote invocation through
         \texttt{dns::OP\_CALL} (Chapter~14). The same replicated catalog now
         carries the set-once cluster signing key and deployment assignments.
         Placement rules are not yet part of that state machine.
 
-    \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
+    \item Reliable cluster messaging --- messages up to 64~KiB are
         fragmented across Ethernet frames and reassembled at the receiver
         (Chapter~13). Remote name-service calls, deployment coordination, and
         the demonstrated assignment handoff run over this transport.
 
-    \item \textbf{Persistent per-node object stores.} The NVMe-backed
+    \item Persistent per-node object stores --- the NVMe-backed
         object store with generation-selected directory records and
         copy-on-write replacement (Chapter~15) stores service artifacts and
         persistent Raft state. The current image producer places the same
         signed bundle on each node; a networked, interchangeable artifact
         store is not yet implemented.
 
-    \item \textbf{Local stateful replacement.} Live service upgrade transfers a
+    \item Local stateful replacement --- live service upgrade transfers a
         service's state as a memory object, tracks generations, invalidates
         stale connections, and re-registers the new instance through the
         name service (Chapter~16). The two-node cluster test reassigns and
         restarts a stateless service while preserving its name; transferring
         mutable service state over the network remains future work.
 
-    \item \textbf{Service isolation and routing.} Services live in separate
+    \item Service isolation and routing --- services live in separate
         address spaces with delegated capabilities (Chapter~11), and the
         name service --- replicated across nodes --- is the routing table
         for ``somewhere in the cluster''.
 
-    \item \textbf{Certified work migration.} The scheduler migrates threads
+    \item Certified work migration --- the scheduler migrates threads
         between LPs with generation-validated handoff and sustained-window
         load rebalancing (Chapter~10). The per-node precedent for the
         cluster rebalancer.
 
-    \item \textbf{Observation substrate.} The sitas executor exposes task
+    \item Observation substrate --- the sitas executor exposes task
         counts, poll counts, queue depth, and shard snapshots (Chapter~9).
         Shard-to-shard message flow can be measured; aggregating those
         measurements across nodes is the runtime input to placement.
 
-    \item \textbf{Signed binaries at the boundary.} The EL0 loader validates
+    \item Signed binaries at the boundary --- the EL0 loader validates
         ELF structure, rejects writable-executable segments, maps images with
         page-level permissions, and now requires a valid Ed25519 CLS2 note
         bound to the requested service name (Chapters~15 and~16). Store
@@ -113,19 +113,19 @@ connect that demonstrated mechanism to durable node identity and complete
 three steps:
 
 \begin{enumerate}
-    \item \textbf{Auto-discovery.} The node contacts the cluster through
+    \item Auto-discovery --- the node contacts the cluster through
         broadcast discovery or a configured seed, following the discovery
         mechanisms discussed for Raft peers (Chapter~14). Discovery exists as
         a service, supplies MAC routes and cluster posture, and the generic
         Raft admission test uses it to locate the anchor. Discovery does not
         itself grant voting authority.
 
-    \item \textbf{Receiving cluster identity.} The replicated catalog can
+    \item Receiving cluster identity --- the replicated catalog can
         distribute the set-once public signing key. Today that key must equal
         the build-time bootstrap anchor; blank-start establishment and key
         rotation are not implemented.
 
-    \item \textbf{Joining the shared state.} The node becomes a member of
+    \item Joining the shared state --- the node becomes a member of
         the replicated state machine and begins to receive deployment
         assignments. The test agents already consume assignments, but no
         automatic placement controller currently produces them.
@@ -145,7 +145,7 @@ assigning artifacts to cluster nodes. The demonstrated pipeline implements
 three stages, with the storage and trust-bootstrap limitations stated below:
 
 \begin{enumerate}
-    \item \textbf{Blessing and signing.} A version-controlled policy admits
+    \item Blessing and signing --- a version-controlled policy admits
         the artifact and it is signed centrally with the cluster key. Signed
         metadata binds its logical name, class, release and rollback counter,
         parallel-instance permission, and an optional SHA-256 link to retained
@@ -153,14 +153,14 @@ three stages, with the storage and trust-bootstrap limitations stated below:
         \texttt{cluster-sign} tooling implement this step; nodes never receive
         the private key.
 
-    \item \textbf{Validation.} Each node validates every loaded ELF against
+    \item Validation --- each node validates every loaded ELF against
         the public bootstrap anchor and, in the deployment path, the matching
         replicated key. The loader, object-store resolver, administration
         ingress, and agent enforce signature, logical-name, and digest checks.
         The current set-once ceremony distributes the build-time anchor; it
         is not yet a general key-enrolment protocol.
 
-    \item \textbf{Assignment.} A Raft-committed record instructs a named node
+    \item Assignment --- a Raft-committed record instructs a named node
         to load a specific object id and immutable ELF digest. Its agent
         fetches, validates, and runs the artifact. At present the object is
         fetched from that node's locally staged NVMe store, not through a
@@ -253,39 +253,39 @@ coordination pieces, all of which sit on top of mechanisms that already
 exist:
 
 \begin{itemize}
-    \item \textbf{Dynamic membership integration.} The generic Raft service
+    \item Dynamic membership integration --- the generic Raft service
         now performs discovery-bridged admission through replicated
         \texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. Wiring that
         protocol into the durable DNS voter set, provisioning the joining
         node's durable cluster identity, and validating partition/restart and
         three-voter behavior remain to be built.
 
-    \item \textbf{Key injection into cluster state.} The current ceremony
+    \item Key injection into cluster state --- the current ceremony
         commits only the build-time anchor and is set-once and idempotent.
         A genuinely blank start and authenticated key rotation remain.
 
-    \item \textbf{Shared artifact availability.} The manifest is replicated,
+    \item Shared artifact availability --- the manifest is replicated,
         but artifact bytes are currently pre-staged independently on each
         node. Network fetch, repair, and replication policy remain.
 
-    \item \textbf{Cluster-wide metrics aggregation.} Collecting the
+    \item Cluster-wide metrics aggregation --- collecting the
         shard-level observation data from every node into the cluster
         state, so placement decisions are made from cluster-wide evidence.
 
-    \item \textbf{The placement controller.} The component that turns
+    \item The placement controller --- the component that turns
         declared affinity, observed interoperation, and node capacity into
         assignments, and that initiates cross-node migration when the
         observed behaviour justifies it.
 
-    \item \textbf{Replica-set realization and routing.} Multiple placements,
+    \item Replica-set realisation and routing --- multiple placements,
         failure-domain enforcement, and selection among several active owners
         must be added before the parallel-instance policy has runtime effect.
 
-    \item \textbf{Stateful cross-node migration.} The current handoff proves
+    \item Stateful cross-node migration --- the current handoff proves
         reassignment, retirement, and name continuity for a stateless service;
         transferring mutable state with explicit ownership remains.
 
-    \item \textbf{Production administration authority.} The userspace
+    \item Production administration authority --- the userspace
         \texttt{clusterctl} protocol exists, but its raw mutation endpoint and
         kernel serial shim do not yet enforce the intended separately
         delegated cluster-administrator capability.
@@ -416,28 +416,28 @@ The slice still simulates the hard parts of the vision, and the
 simulations are the next work items:
 
 \begin{itemize}
-    \item \textbf{Per-node object store.} Storage is still per-node: the
+    \item Per-node object store --- storage is still per-node: the
         host image producer stages the blessed bundle on each initial NVMe volume
         rather than fetched from a cluster-wide store. A networked
         artifact-fetch path is not implemented.
 
-    \item \textbf{Bootstrap-key rotation is absent.} Establishment now
+    \item Bootstrap-key rotation is absent --- establishment now
         accepts only the build-time anchor and replicated state is set-once.
         Blank-start trust establishment and authenticated overlapping key
         rotation are not implemented.
 
-    \item \textbf{The development key is version-controlled.} Every
+    \item The development key is version-controlled --- every
         staged ELF is signed with the dev keypair in the repository; the
         real production key lives at the IT department and would be
         substituted at build time. The NVMe-ELF upgrade path remains
         identity- and signature-constrained (Chapter~16).
 
-    \item \textbf{The admin is kernel-side.} The console is a kernel
+    \item The admin is kernel-side --- the console is a kernel
         thread, not a real out-of-band management plane. Its raw mutation path
         also lacks the intended separately delegated cluster-administrator
         capability.
 
-    \item \textbf{Replica placement is a contract, not a controller.} The
+    \item Replica placement is a contract, not a controller --- the
         policy representation and signed parallel-safety gate exist, but the
         current manifest has one node assignment per artifact and name routing
         has one active owner. Multiple placements and load-balanced routing
@@ -452,7 +452,7 @@ services are hosted cross-node and stay reachable through the distributed
 name service; generation fencing makes a stateless assignment handoff safe;
 and deployment and administration exist as protocols. It does not yet prove
 automatic placement, stateful migration, dynamic reconfiguration of the
-durable DNS/shared-state group, or production authorization. It does prove
+durable DNS/shared-state group, or production authorisation. It does prove
 the narrower generic-Raft admission path.
 
 \section{Related work}
@@ -464,7 +464,7 @@ are not claims of equivalent guarantees or implementation maturity.
 \subsection{Historical distributed operating systems}
 
 \begin{itemize}
-    \item \textbf{Amoeba} (Vrije Universiteit Amsterdam) is the closest
+    \item Amoeba (Vrije Universiteit Amsterdam) is the closest
         ancestor for the ``pool of processors'' model: terminals submit
         work that runs on any processor in the pool, dedicated machines act
         as file and directory servers, and threads communicate by
@@ -472,23 +472,23 @@ are not claims of equivalent guarantees or implementation maturity.
         did not migrate processes; cross-node migration is this vision's
         extension of that model.
 
-    \item \textbf{Plan 9} (Bell Labs) splits the machine into terminals, CPU
+    \item Plan 9 (Bell Labs) splits the machine into terminals, CPU
         servers, and file servers, and centralizes authentication and key
         management in a dedicated daemon (\texttt{factotum}) --- an early
         instance of ``the cluster holds the keys, not the node.''
 
-    \item \textbf{Inferno} (Bell Labs) continues Plan 9's model with a
+    \item Inferno (Bell Labs) continues Plan 9's model with a
         portable virtual machine and code distributed as data over the
         network.
 
-    \item \textbf{Jini / JavaSpaces} (Sun, later Apache River) contribute
+    \item Jini / JavaSpaces (Sun, later Apache River) contribute
         the discovery pattern: services find a lookup service by multicast,
         register, and hand clients a proxy; \texttt{JavaSpaces} is a tuple
         space in which objects are written, taken, and picked up --- close
         to ``software uploaded to the object store and picked up by
         whichever node it is assigned to.''
 
-    \item \textbf{MOSIX} is the single-system-image cluster: automatic
+    \item MOSIX is the single-system-image cluster: automatic
         resource discovery, transparent process migration, and no need to
         know where a program runs. Its research program includes
         communication-aware placement (Keren and Barak, ``Opportunity Cost
@@ -500,21 +500,21 @@ are not claims of equivalent guarantees or implementation maturity.
 \subsection{Cluster managers and placement products}
 
 \begin{itemize}
-    \item \textbf{Borg / Omega / Kubernetes} (Burns, Grant, Oppenheimer,
+    \item Borg / Omega / Kubernetes (Burns, Grant, Oppenheimer,
         Brewer, and Wilkes, ``Borg, Omega, and Kubernetes: Lessons from
         Three Decades of Platform-as-a-Service,'' ACM Queue 2016) established
         the modern shape: software is deployed to a cluster of machines,
         placement is a cluster decision made from constraints and packing,
         and machines are interchangeable.
 
-    \item \textbf{HashiCorp Nomad and Consul} pair cluster scheduling with
+    \item HashiCorp Nomad and Consul pair cluster scheduling with
         affinity and anti-affinity constraints and gossip-based membership.
 
-    \item \textbf{VMware DRS and vMotion} implement the full placement arc:
+    \item VMware DRS and vMotion implement the full placement arc:
         declared affinity rules, load-observed rebalancing, and live
         migration with a network-level switchover.
 
-    \item \textbf{Erlang/OTP distribution} provides node discovery, hot
+    \item Erlang/OTP distribution provides node discovery, hot
         code loading, and the ``load, register, redirect, retire'' upgrade
         pattern.
 \end{itemize}
@@ -522,20 +522,20 @@ are not claims of equivalent guarantees or implementation maturity.
 \subsection{Trust, signing, and bootstrap}
 
 \begin{itemize}
-    \item \textbf{TUF} (The Update Framework) defines signed metadata that
+    \item TUF (The Update Framework) defines signed metadata that
         describes which keys are trusted, with versioning and expiration;
         its root-key ceremony is the model for injecting key material into a
         blank-start cluster.
 
-    \item \textbf{Uptane} (automotive software update security) shows the
+    \item Uptane (automotive software update security) shows the
         offline and build-time key provisioning patterns --- the ``bake a
         secret into the binary at build time, but allow a blank start''
         option.
 
-    \item \textbf{Sigstore / Cosign / Notary} provide related artifact-signing
+    \item Sigstore / Cosign / Notary provide related artifact-signing
         approaches for deployment systems.
 
-    \item \textbf{Remote attestation and measured boot} (TPM, ARM CCA,
+    \item Remote attestation and measured boot (TPM, ARM CCA,
         SEV-SNP) complement cluster-level validation with a hardware root
         of trust for the node itself.
 \end{itemize}
@@ -543,11 +543,11 @@ are not claims of equivalent guarantees or implementation maturity.
 \subsection{Membership and artifact stores}
 
 \begin{itemize}
-    \item \textbf{SWIM} (Gupta, Birman, and van Renesse, DSN 2002) and its
+    \item SWIM (Gupta, Birman, and van Renesse, DSN 2002) and its
         production form \textbf{memberlist} provide gossip membership and
         failure detection for the auto-discovery step.
 
-    \item \textbf{Nix} is the content-addressed, hash-verified software
+    \item Nix is the content-addressed, hash-verified software
         store: the artifact-identity half of ``software lives in the object
         store.''
 

@@ -26,14 +26,14 @@ A memory object is a dedicated kernel object representing page-backed storage wi
 explicit ownership and capability semantics. The kernel manages:
 
 \begin{itemize}
-    \item \textbf{Physical frames} --- the backing storage.
-    \item \textbf{Mappings} --- which domains have virtual addresses pointing to
+    \item Physical frames --- the backing storage.
+    \item Mappings --- which domains have virtual addresses pointing to
         the pages, and with what permissions.
-    \item \textbf{Ownership} --- which domain currently holds the master
+    \item Ownership --- which domain currently holds the master
         capability.
-    \item \textbf{Transfer state} --- whether the object is idle, in transit,
+    \item Transfer state --- whether the object is idle, in transit,
         borrowed, or undergoing DMA.
-    \item \textbf{Lifetime} --- when the object is freed, all mappings are
+    \item Lifetime --- when the object is freed, all mappings are
         revoked and all capabilities to it are invalidated.
 \end{itemize}
 
@@ -137,9 +137,9 @@ Memory objects belong to the \textbf{data plane}: they carry the actual bytes
 For networking specifically:
 
 \begin{itemize}
-    \item \textbf{Control plane:} endpoint IPC configures NIC queues, sets MTU,
+    \item Control plane --- endpoint IPC configures NIC queues, sets MTU,
         registers buffer pools.
-    \item \textbf{Data plane:} descriptor rings coordinate producer/consumer
+    \item Data plane --- descriptor rings coordinate producer/consumer
         state; packet payloads move as memory objects.
 \end{itemize}
 
@@ -151,10 +151,10 @@ preserving strict ownership.
 When a device performs DMA, a memory object enters a third ownership state:
 
 \begin{itemize}
-    \item \textbf{CPU ownership:} the CPU reads and writes the pages normally.
-    \item \textbf{DMA ownership:} the device is reading or writing the pages; the
+    \item CPU ownership --- the CPU reads and writes the pages normally.
+    \item DMA ownership --- the device is reading or writing the pages; the
         CPU must not access them.
-    \item \textbf{Rust/API ownership:} which domain holds the capability.
+    \item Rust/API ownership --- which domain holds the capability.
 \end{itemize}
 
 The AArch64 SMMUv3 path tracks an explicit DMA pin per mapped memory object.
@@ -167,27 +167,27 @@ DMA, so callers must still obey the borrow protocol.
 \section{Why memory objects matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Page transfer without payload copying.} For aligned,
+    \item Page transfer without payload copying --- for aligned,
         page-backed objects, ownership can move by changing mappings rather than
         copying bytes. Whether this is faster depends on payload size and
         mapping/TLB costs.
 
-    \item \textbf{Cross-domain stale access is constrained by mappings.}
-        When a memory object is moved, the sender's mappings are removed. Any
+    \item Cross-domain stale access is constrained by mappings ---
+        when a memory object is moved, the sender's mappings are removed. Any
         later access through those mappings faults. When a borrow is revoked,
         the borrower's mappings are removed. This does not rule out bugs in
         unsafe code, page-table maintenance, or DMA.
 
-    \item \textbf{Borrows have defined lifetimes.} A borrow is always tied to an
+    \item Borrows have defined lifetimes --- a borrow is always tied to an
         IPC call. When the call completes (reply, cancellation, timeout, or
         server death), the borrow ends. There is no ``I forgot to return it.''
 
-    \item \textbf{DMA ownership is tracked on the reference platform.} The AArch64
+    \item DMA ownership is tracked on the reference platform --- the AArch64
         SMMUv3 path pins mapped memory and restricts each requester to its DMA
         domain. CPU mappings remain accessible, so callers must still follow the
         borrow protocol. Other IOMMU platforms remain unsupported.
 
-    \item \textbf{Hardware enforcement, not language enforcement.} The page tables
+    \item Hardware enforcement, not language enforcement --- the page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
         bug should access CPU pages that are not mapped, assuming correct MMU
         setup and TLB maintenance. The reference SMMUv3 path provides the

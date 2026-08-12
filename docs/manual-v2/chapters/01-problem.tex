@@ -95,28 +95,28 @@ We need an operating system whose foundational abstractions align with the deman
 of critical, performant software:
 
 \begin{enumerate}
-    \item Asynchronous by construction: Operations that may wait for
+    \item Asynchronous by construction --- operations that may wait for
         external progress should have submission/completion semantics, not
         blocking-call semantics. No subsystem should force a thread to dedicate
         itself to one operation.
 
-    \item Capability-based, not ambient, authority: A process should be
+    \item Capability-based, not ambient, authority --- a process should be
         able to perform an operation only if it holds a capability authorizing it.
         Capabilities are unforgeable and must be explicitly granted.
 
-    \item Isolation by default: Every protection domain should run in its
+    \item Isolation by default --- every protection domain should run in its
         own address space. Communication crosses a kernel-mediated boundary.
         A fault in one domain should not propagate to another.
 
-    \item Ownership that crosses boundaries: Data movement between
+    \item Ownership that crosses boundaries --- data movement between
         domains should transfer ownership, not copy bytes. The kernel should move
         page mappings, so the sender loses access and the receiver gains it.
 
-    \item Bounded resource consumption: Every queue, table, and buffer
+    \item Bounded resource consumption --- every queue, table, and buffer
         should be bounded. Backpressure should propagate explicitly. No unbounded
         allocation should be a correctness requirement.
 
-    \item The OS and the language runtime should agree: The kernel's model
+    \item The OS and the language runtime should agree --- the kernel's model
         of concurrency (asynchronous, completion-driven) should match the
         language's model of concurrency (futures, wakers). No translation layer
         should be needed.

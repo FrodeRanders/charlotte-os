@@ -91,13 +91,13 @@ thread context performs the remaining work.
 The PL011 UART driver demonstrates the full lifecycle:
 
 \begin{itemize}
-    \item \textbf{Direct MMIO writes to the transmit FIFO.} No syscalls.
-    \item \textbf{Interrupt-driven deferred reads.} The driver retains a reply
+    \item Direct MMIO writes to the transmit FIFO --- no syscalls.
+    \item Interrupt-driven deferred reads --- the driver retains a reply
         token for a pending read. When the RX interrupt fires, the driver reads
         the receive register and completes the deferred reply.
-    \item \textbf{Cooperative shutdown.} On graceful exit, the driver unmaps its
+    \item Cooperative shutdown --- on graceful exit, the driver unmaps its
         MMIO region and closes its interrupt.
-    \item \textbf{Crash recovery.} If the driver terminates without releasing
+    \item Crash recovery --- if the driver terminates without releasing
         its device caps (panic, infinite loop, killed by supervisor), the
         teardown path:
         \begin{enumerate}
@@ -122,11 +122,11 @@ memory or another domain's pages.
 The implementation has two platform levels:
 
 \begin{itemize}
-    \item \textbf{Without IOMMU:} the driver is trusted with DMA. It still
+    \item Without IOMMU --- the driver is trusted with DMA. It still
         receives only the MMIO and interrupt it needs, and it still runs in
         a separate address space, so a CPU-side bug cannot read kernel memory.
         But a DMA programming bug can violate memory isolation.
-    \item \textbf{With IOMMU/SMMU:} the DMA domain capability binds the
+    \item With IOMMU/SMMU --- the DMA domain capability binds the
         device to a specific IOMMU translation table. The driver can only
         DMA into pages explicitly pinned into its DMA domain. The kernel
         validates every pin/unpin through the capability. The IOMMU hardware
@@ -166,23 +166,23 @@ instance.
 \section{Why userspace drivers matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{CPU-side driver faults are contained.} A buffer overflow in a
+    \item CPU-side driver faults are contained --- a buffer overflow in a
         NIC driver is confined by its address space, assuming correct kernel,
         MMU, and DMA isolation.
 
-    \item \textbf{The privilege model is grant-by-grant.} A driver receives
+    \item The privilege model is grant-by-grant --- a driver receives
         exactly the resources it needs. There is no ``driver has access to
         everything because it's in the kernel'' default.
 
-    \item \textbf{Direct MMIO keeps the fast path fast.} Reading a device
+    \item Direct MMIO keeps the fast path fast --- reading a device
         register uses a direct load rather than a syscall or context switch.
 
-    \item \textbf{Restart follows a defined path.} The supervisor handles
+    \item Restart follows a defined path --- the supervisor handles
         driver restart (device reset, grant re-issuance, generation bump).
         Driver authors do not write recovery code.
 
-    \item \textbf{Hardware-isolated DMA is implemented on the reference
-        AArch64 SMMUv3 platform.} Other IOMMU implementations and advanced
+    \item Hardware-isolated DMA is implemented on the reference
+        AArch64 SMMUv3 platform --- other IOMMU implementations and advanced
         SMMU facilities remain future work.
 \end{enumerate}
 
