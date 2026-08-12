@@ -1,33 +1,21 @@
 \chapter{Consensus and Replication}
 
-Distributed consensus is often implemented as an application-level library
-talking to sockets. CharlotteOS treats it as a \textbf{generic capability
-service}: a replicated state machine exported through the same endpoint IPC
-that local services use. This chapter explains the architecture and why it is
-a natural fit.
+CharlotteOS exposes distributed consensus as a capability service: a replicated
+state machine reached through the same endpoint IPC used by local services.
 
-The implemented scope is narrower than the architecture described below:
-a two-node leader election runs over local endpoint IPC under AArch64 QEMU.
-Both peers use the one shared node-local name service also used by the service
-manager, drivers, and clients. Separately, a single-voter test uses the
-NVMe-backed object store, tears down the Raft process, restarts the same node
-identity, and verifies that its recovered term advances. Cross-machine
-transport and replication between the name-service instance on each machine
-are implemented: the distributed name service (\texttt{dns}) runs the
-\texttt{CatalogMachine} state machine on the Graft core over the reliable
-message layer, and two guests on a stream Ethernet segment replicate a
-\texttt{name $\rightarrow$ node} catalog and serve remote invocation
-(\texttt{dns::OP\_CALL}). Membership changes, power-loss behavior, and
-general client-command exposure through the generic \texttt{raft} service
-remain not validated end to end.
+The test suite covers local two-node election, single-voter term recovery from
+NVMe, and cross-machine catalog replication and invocation through \texttt{dns}.
+A separate persistent-storage boot test exercises discovery-led admission through
+\texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The production DNS voter
+set remains statically launched, and power-loss behavior and generic
+\texttt{raft}-service client commands are not validated end to end.
 
-The core implementation is nevertheless no longer an independent,
-feature-reduced interpretation of Raft. It follows the common Graft model for
+The core follows the shared Graft model for
 normalized peer identity, voters and learners, joint-consensus quorums,
 replicated \texttt{JOIN}/\texttt{JOINT}/\texttt{FINALIZE} commands, leader
 no-op entries, current-term commit rules, linearizable-read contact quorums,
-and membership-bearing snapshots. These paths compile and have focused
-regression tests. The \texttt{dns} service exposes client commands end to end
+and membership-bearing snapshots. These paths have focused regression tests. The
+\texttt{dns} service exposes client commands end to end
 through a concrete state machine; membership administration through the
 generic \texttt{raft} service is not yet exposed.
 
@@ -157,9 +145,8 @@ name-service catalog across two computers.
 
 \section{Cluster bootstrap --- the seed problem}
 
-Like any consensus system, a new node must contact at least one existing cluster
-member. The difference is that the seed is expressed in terms the OS already
-understands --- service names and capabilities --- rather than IP addresses.
+A new node must contact at least one existing cluster member. CharlotteOS
+expresses the seed as a service name or capability rather than an IP address.
 
 \subsection{Static seeds (current, simplest)}
 
@@ -263,17 +250,18 @@ suppressed both while pending and in the acknowledged-result window.
 
 \section{Relationship to the name service}
 
-Each existing node-local name service becomes a replica of one logical cluster
-service when the registry runs as a \texttt{StateMachine} on top of Raft:
+The node-local \texttt{ns} registry and replicated \texttt{dns} catalog are
+separate services. DNS applies committed catalog state and resolves remote routes;
+NS holds machine-local endpoint capabilities:
 
 \begin{itemize}
-    \item \texttt{OP\_REGISTER} and \texttt{OP\_LOOKUP} are submitted as commands
-        through the Raft leader, replicated to the log, and applied at each node.
+    \item Cluster registrations are submitted through the Raft leader and applied
+        to each DNS replica; local endpoint publication remains an NS operation.
     \item Service generations are replicated consistently. A restart on node 3
         cannot create a split-brain where node 1 sees generation 5 and node 2
         sees generation 3.
-    \item Access keys are enforced consistently. Revocation propagates through
-        the replicated log.
+    \item Replicated policy metadata and tombstones propagate through the log;
+        local delegation still depends on machine-local authority.
 \end{itemize}
 
 Kernel capability identifiers and endpoint objects are machine-local and are
@@ -311,15 +299,14 @@ task. No polling loop, no thread dedicated to sleeping.
 \section{Why consensus as a service matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Consistency primitives can be exposed as OS services.}
-        A service that needs replication does not integrate a Raft library and
-        manage its own sockets, timers, and persistent storage. It implements
-        \texttt{StateMachine} and the OS handles the rest.
+    \item \textbf{Consistency primitives can be exposed as services.} A replicated
+        service implements \texttt{StateMachine} and uses the shared Raft,
+        transport, timer, and storage interfaces.
 
     \item \textbf{Capabilities, not IP addresses, identify peers.} The cluster
         configuration is a set of capabilities, not a list of \texttt{host:port}
         pairs. A network reconfiguration (new NIC, new subnet, move to RDMA)
-        does not require a cluster reconfiguration.
+        need not change the replicated peer identities.
 
     \item \textbf{Timers are first-class and reliable.} An election timeout
         that is lost because the polling loop missed its window is a correctness
@@ -335,9 +322,8 @@ task. No polling loop, no thread dedicated to sleeping.
     \item \textbf{A distributed name service is implemented.} The
         \texttt{dns} service runs the \texttt{CatalogMachine} state machine
         on the Raft substrate; all other services that need cluster-wide
-        consistency (lock service, configuration) are the same
-        \texttt{StateMachine} pattern. There is one consensus
-        implementation to harden and audit.
+        consistency can use the same \texttt{StateMachine} pattern and shared
+        consensus implementation.
 \end{enumerate}
 
 \endinput

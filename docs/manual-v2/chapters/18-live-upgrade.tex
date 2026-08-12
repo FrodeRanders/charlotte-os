@@ -1,11 +1,8 @@
 \chapter{Live Service Upgrade}
 
-CharlotteOS has a tested prototype for replacing a running reference service
-while transferring its state. This is
-\textbf{restart-with-state}, not true zero-downtime: in-flight requests to the
-old instance fail during the handoff window and clients must retry. But the
-new instance resumes with the old instance's state intact, and clients
-reconnect transparently through the name service's generation tracking.
+CharlotteOS has a tested prototype for replacing a reference service while
+transferring its state. It is \textbf{restart-with-state}, not zero-downtime:
+in-flight requests may fail during handoff and clients must re-lookup and retry.
 
 \section{The four primitives}
 
@@ -19,10 +16,9 @@ service:
         receiver gains it. This is the vehicle for service state.
 
     \item \textbf{Generation tracking.} The userspace name service records an
-        instance generation that increments on restart. A client calling
-        through a stale connection from the previous generation receives
-        \texttt{EndpointClosed}. Re-looking up the name returns the new
-        generation and a fresh connection to the new instance.
+        instance generation that increments on restart. A stale connection
+        returns \texttt{EndpointClosed}; a new lookup returns the replacement
+        generation and connection.
 
     \item \textbf{EndpointClose and Cancelled.} When a service domain exits,
         the kernel closes its endpoint. Queued requests that were never
@@ -91,14 +87,12 @@ bounds, segment bounds, page congruence, W\^{}X, integer overflow, and that the
 entry point lies in an executable load segment. This prevents a mutable
 userspace image from changing between validation and mapping.
 
-The prototype does not yet have signed packages. Until it does, a persistent
-image is accepted only when it is byte-for-byte identical to an embedded image
-authenticated by the kernel build. Thus the FNV-1a object checksum is used only
-for corruption detection and object-store write authority is not executable
-update authority. The test suite installs that known \texttt{echo.elf} image
-as an NVMe object and verifies that a later generation is loaded from it.
-Publisher identity, rollback versions, and measured-boot policy remain future
-package-format work.
+Executable artifacts carry an Ed25519 CLS2 note that binds the complete ELF to
+its logical service name, artifact class, release metadata, rollback counter,
+policy flags, and signing-key identifier. The loader snapshots the bytes and
+verifies the note before mapping. The FNV-1a object checksum remains corruption
+detection, not executable authority. Rollback policy, key rotation, and measured
+boot remain future policy work.
 
 \section{What the supervisor prototype provides}
 
@@ -121,12 +115,12 @@ connection to the target, loads the new service ELF, moves the state memory
 object to the new domain, writes the bootstrap config page, and starts the new
 domain. The replacement registers a fresh endpoint and the name service
 atomically publishes the new connection and generation before retiring the
-old connection or releasing deferred lookups. The reference path supports both a persistent
-capability-backed echo image and its embedded fallback, plus one state object.
+old connection or releasing deferred lookups. The reference path supports both a
+persistent signed echo image and its embedded fallback, plus one state object.
 The kernel handoff helper can transfer multiple state objects and rolls a
 partial transfer back if a later move or endpoint delegation fails. The current
-reference manager still exercises one object. Signed package manifests,
-version rollback policy, and manager-owned teardown remain future work.
+reference manager still exercises one object. Rollback policy and manager-owned
+teardown remain future work.
 
 \section{What the service must implement}
 
@@ -171,10 +165,9 @@ let conn = ns.lookup("payroll")?;       // generation 4
 payroll.call(OP_CALCULATE, employee_id); // reaches new instance
 \end{verbatim}
 
-The new instance has the old instance's state, so it can resume processing
-where the old instance left off. From the client's perspective, a single
-request failed and was retried --- the rest of the session continues
-uninterrupted.
+The new instance receives the old instance's state. The client observes a failed
+request, performs a new lookup, and retries. Protocols must decide when a retry is
+safe.
 
 \section{Restart-with-state vs.\ zero-downtime}
 
@@ -218,9 +211,9 @@ instance exits, rather than starting the new instance from scratch.
         and registers. Clients retry. A hard time bound is not currently
         enforced or benchmarked.
 
-    \item \textbf{Failure recovery has a plausible ownership model.} If the new
-        service fails to start, a future supervisor can restart the old service
-        (or a fallback).
+    \item \textbf{Failure recovery has an ownership model.} If the new service
+        fails to start, a future supervisor could restart the old service or a
+        fallback.
         The state memory objects are owned by the supervisor during the
         transition, so they are not lost.
 

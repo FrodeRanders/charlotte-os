@@ -1,8 +1,7 @@
 \chapter{The Sitas Executor}
 
-The sitas executor is the userspace runtime that drives futures on one shard. This
-chapter explains how it works, how it interacts with the completion queue, and
-why the unified wait is the central insight of the co-design.
+The sitas executor drives futures on one shard and parks on the shard's completion
+queue when no task is ready.
 
 \section{One executor per shard}
 
@@ -170,15 +169,13 @@ fn park(&self) { syscall::cq_wait(self.cq_id); }
 fn unpark(&self) { syscall::cq_wake(self.cq_id, self.target_lp); }
 \end{verbatim}
 
-The parker maps directly to \texttt{CQ\_WAIT} / \texttt{CQ\_WAKE}. There is no
-intermediate thread pool, no \texttt{pthread\_cond\_wait}, and no busy-loop.
+The parker maps directly to \texttt{CQ\_WAIT} and \texttt{CQ\_WAKE}. There is no
+intermediate thread pool, condition variable, or busy-loop.
 The thread parks on native completion and message state.
 
-This is the heart of the ``no retrofit tax'' claim: the sitas runtime does not
-emulate async on top of a blocking kernel because the kernel's blocking primitive
-(\texttt{CQ\_WAIT}) \emph{already} understands the semantics of ``wait for any
-of several async sources.'' The executor doesn't need to build a reactor on top of
-\texttt{epoll} or a thread pool; the kernel \emph{is} the reactor.
+This direct mapping is the basis of the ``no retrofit tax'' claim. The runtime
+does not need a thread pool to translate blocking calls into futures because
+\texttt{CQ\_WAIT} covers the shard's asynchronous sources.
 
 \section{Why the sitas executor matters for critical software}
 
@@ -212,19 +209,14 @@ of several async sources.'' The executor doesn't need to build a reactor on top 
 
 \section{A worked example: the mailbox index build}
 
-The mailbox index build is the end-to-end sitas demo that runs at EL0 on
-CharlotteOS. It is the \texttt{no\_std} counterpart of the host-side
-\texttt{sharded\_index\_mailbox} example in the sitas repository: scanner
-shards generate records, route each key to a logical assembler work unit
-through a typed mailbox, and the assemblers sort and return the completed
-runs, after which the coordinator merges and verifies the final index. It
-is the same shared-nothing, message-passing pattern as the sharded KV
-service, but with routing between logical work units, real parallelism, and
-a verifiable product.
+The mailbox index build is an end-to-end sitas demo at EL0. It is the
+\texttt{no\_std} counterpart of the host-side \texttt{sharded\_index\_mailbox}
+example: scanners route generated records to logical assembler work units through
+typed mailboxes; assemblers sort the records; and a coordinator merges and verifies
+the runs.
 
-The demo lives in \texttt{sitas\_core::mailbox\_index}
-(\texttt{crates/sitas-core/src/mailbox\_index.rs} in the sitas checkout)
-and runs inside \texttt{catten-user}, the EL0 sitas image that the
+The demo is implemented by \texttt{sitas\_core::mailbox\_index} and runs inside
+\texttt{catten-user}, the EL0 sitas image that the
 kernel's \texttt{el0\_sitas} self-test loads and verifies.
 
 \subsection{The workload}
@@ -253,7 +245,7 @@ a \texttt{(key, offset)} pair.
 
 \subsection{Kernel and userspace responsibilities}
 
-The demo is a deliberately clean slice through the responsibility divide.
+The demo separates kernel and userspace responsibilities.
 
 \textbf{The kernel supplies:}
 
@@ -280,11 +272,10 @@ The demo is a deliberately clean slice through the responsibility divide.
         merge, and the verification.
 \end{itemize}
 
-The kernel never sees a message, a key, or a run. It only ever sees threads
-being spawned and threads blocking on the completion queue. That is the
-division of responsibility this OS is built around: the kernel is authority
-isolation, thread placement, and wakeups; everything else --- state, work,
-and the ownership discipline --- is ordinary Rust in userspace.
+The kernel never sees a message, key, or run. It sees threads being spawned and
+blocking on the completion queue. The division is explicit: the kernel provides
+authority isolation, thread placement, and wakeups; userspace owns the workload
+state and message discipline.
 
 \subsection{The mailbox path}
 
@@ -350,7 +341,9 @@ offset 1 and the join probe writes 81 to offset 2, next to the
 all three words and reports:
 
 \begin{verbatim}
-[sitas] SUCCESS: basic_kv total_len=3, mailbox index verified 1024 records, join probe sum 81
+[sitas] SUCCESS: basic_kv total_len=3,
+mailbox index verified 1024 records,
+join probe sum 81
 \end{verbatim}
 
 A failed demo writes the failure sentinel \texttt{0xBADC0DE} instead, which

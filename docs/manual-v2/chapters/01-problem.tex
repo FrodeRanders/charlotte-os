@@ -2,27 +2,24 @@
 
 \section{The operating system is the bottleneck}
 
-Critical software has two requirements that pull in opposite directions: it must be
-\textbf{correct} (failures are expensive or dangerous), and it must be
-\textbf{performant} (latency and throughput matter). Modern systems try to satisfy
-both by piling layers onto an operating system whose fundamental abstractions were
-designed for timesharing, not for the workloads we run today.
+Critical software must be both \textbf{correct} and \textbf{fast}. Modern systems
+often pursue both goals by adding layers to operating systems whose basic
+abstractions were designed for timesharing.
 
-The result is what we call the \textbf{retrofit tax}: the cost, in complexity and
-performance, of making an OS designed for synchronous, trust-everyone, monolithic
-execution behave as if it were asynchronous, least-privilege, and decomposed.
+This manual calls the resulting complexity and performance cost the
+\textbf{retrofit tax}: a synchronous, ambient-authority, monolithic system must be
+made to behave as though it were asynchronous, least-privilege, and decomposed.
 
 \section{The retrofit tax, itemized}
 
 \subsection{Async over blocking}
 
-Most operating systems expose synchronous system calls: \texttt{read()} blocks the
-calling thread until data arrives. When applications need concurrency without
-dedicating one thread per operation, they reach for \texttt{epoll}, \texttt{kqueue},
-or \texttt{io\_uring}. These are effective, but they are \emph{retrofits}: the kernel
-internally still blocks on disk I/O, network I/O, and locks, while the completion
-mechanism translates those blocking events into readiness notifications for
-userspace.
+Many operating systems expose synchronous calls: \texttt{read()} may block the
+calling thread until data arrives. Applications use \texttt{epoll}, \texttt{kqueue},
+or \texttt{io\_uring} for concurrency without dedicating one thread per operation.
+These interfaces are effective, but applications may still need adapters when a
+kernel or library operation blocks. Runtimes then translate blocking work into
+readiness or completion notifications.
 
 This translation layer brings with it:
 \begin{itemize}
@@ -31,10 +28,10 @@ This translation layer brings with it:
         signal-handler discipline or a dedicated thread pool.
     \item Thread-pool overhead --- many async runtimes spawn a pool of OS
         threads to convert blocking syscalls into futures, undoing the
-        resource-efficiency argument for async in the first place.
+        resource benefits of asynchronous execution.
     \item Two concurrency models --- the application uses async/await; the
         kernel uses threads and blocking. The mismatch forces every boundary
-        crossing to bridge two foreign paradigms.
+        crossing to bridge the two models.
 \end{itemize}
 
 \subsection{Ambient authority}
@@ -54,10 +51,8 @@ schedule. A timer fires after a programmed interval. Yet the operating system
 interface presents these as synchronous calls: \texttt{read()} returns when the
 data is ready, blocking the calling thread in the meantime.
 
-This is a leaky abstraction. The thread that blocks on I/O is an OS resource that
-cannot be used for anything else while it waits. High-concurrency servers
-compensate with thread pools; real-time systems compensate with carefully tuned
-polling loops. Neither is the natural solution.
+A thread blocked on I/O cannot do other work. High-concurrency servers compensate
+with thread pools; real-time systems may use carefully tuned polling loops.
 
 \subsection{Fault propagation across trust boundaries}
 
@@ -67,15 +62,14 @@ Conventional microkernels solve this with address-space isolation, but at the co
 of IPC overhead that often drives designers back toward monolithic architectures
 for performance.
 
-The industry has settled on a compromise: run untrusted code in virtual machines;
-run trusted code in the kernel; hope the trusted code has no bugs. For critical
-systems, hope is a poor strategy.
+A common compromise is to isolate untrusted code in virtual machines while
+keeping trusted code in the kernel. Kernel defects can still cross that boundary.
 
 \section{Why Rust ownership is not enough}
 
 Safe Rust prevents many data races, use-after-free errors, and null-pointer
 dereferences. Unsafe code, hardware interfaces, and logic errors remain. This
-is still a transformative improvement for systems programming, but Rust
+is a substantial improvement for systems programming, but Rust
 programs run on operating systems that do not share Rust's ownership discipline.
 
 \begin{itemize}
@@ -91,10 +85,9 @@ programs run on operating systems that do not share Rust's ownership discipline.
         kernel's wait queue speak different languages.
 \end{itemize}
 
-The insight is: Rust eliminates \emph{some} classes of bugs within a single
-address space. But the OS defines the rules for \emph{between} address spaces ---
-and if those rules are "any process can do anything until restricted," Rust's
-guarantees are local optimizations on a global problem.
+Rust prevents some bug classes within an address space. The OS still defines the
+rules between address spaces. If authority is ambient until restricted, the
+language's guarantees remain local.
 
 \section{What needs to change}
 
@@ -129,9 +122,8 @@ of critical, performant software:
         should be needed.
 \end{enumerate}
 
-CharlotteOS is an operating system built from these six principles. This manual
-explains the architecture, the programming model, and --- most importantly --- why
-the combination eliminates the retrofit tax and provides a strong foundation for
-software that must be both correct and fast.
+CharlotteOS is built around these six principles. The rest of this manual
+describes the architecture, programming model, implementation status, and evidence
+for its safety claims.
 
 \endinput

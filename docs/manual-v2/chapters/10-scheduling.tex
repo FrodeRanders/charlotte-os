@@ -1,8 +1,7 @@
 \chapter{Scheduling and Backpressure}
 
-This chapter explains how the kernel schedules threads across LPs, how the
-block-yield-wake cycle works, and how backpressure propagates through every
-bounded layer of the system.
+The kernel schedules threads through a block--yield--wake cycle. Bounded ingress
+propagates pressure, although not every internal queue has a hard memory bound.
 
 \section{The kernel scheduler}
 
@@ -24,7 +23,7 @@ interface.
 
 \section{The block-yield-wake cycle}
 
-This is the fundamental mechanism by which asynchronous operations work. Every
+This cycle underlies asynchronous operations. Every
 async primitive in CharlotteOS --- \texttt{sleep()}, \texttt{wait()},
 \texttt{CQ\_WAIT} --- is implemented through this cycle.
 
@@ -121,8 +120,7 @@ exits:
         stacks and other resources.
 \end{enumerate}
 
-This deferred reclamation is the minimal safe discipline for a kernel where
-threads own their stacks.
+Deferred reclamation is required because threads own their stacks.
 
 \section{Load rebalancing}
 
@@ -139,8 +137,8 @@ By default, threads are pinned to their affinity LP. Migration is opt-in:
 
 This conservative approach preserves cache warmth and eliminates migration races
 (observer-not-found when a completion is posted on a different LP than the one
-where the waiter was registered). Stable affinity is the correctness default where
-migration is the performance optimization.
+where the waiter was registered). Stable affinity is the correctness default;
+migration is an opt-in optimization.
 
 \section{Backpressure and queue bounds}
 
@@ -166,11 +164,11 @@ Each layer has an explicit backpressure policy:
 
 \begin{verbatim}
 enum SendPolicy {
-    Try,                   // Fail immediately if full.
-    Wait,                  // Block the sender until capacity is available.
-    Deadline(Instant),     // Block with a timeout.
-    DropIfCoalescible,     // Merge with a pending notification (for coalescible
-                           //   events like "data available").
+    Try,               // Fail immediately if full.
+    Wait,              // Wait for capacity.
+    Deadline(Instant), // Wait until a deadline.
+    // Merge a pending "data available" notification.
+    DropIfCoalescible,
 }
 \end{verbatim}
 
@@ -215,11 +213,9 @@ Rules:
         There is no window where a completion is posted on LP 1 while the thread
         is migrating to LP 2 and the observer is not found.
 
-    \item \textbf{The scheduling policy is pluggable.} The \texttt{RoundRobin}
-        scheduler is the default, but a real-time or deadline scheduler can
-        replace it without changing the rest of the kernel. This enables mixed
-        criticality: real-time shards get EDF scheduling; throughput-oriented
-        shards get round-robin.
+    \item \textbf{The scheduling interface is pluggable.} \texttt{RoundRobin} is
+        the implemented policy. Other policies would require their own
+        implementation and validation behind the same interface.
 \end{enumerate}
 
 \section{Scheduler observability}

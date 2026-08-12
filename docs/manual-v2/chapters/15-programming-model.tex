@@ -1,12 +1,11 @@
 \chapter{Programming Model}
 
-This chapter describes the rules, patterns, and primitives for writing code
-that respects the async-first, shard-per-core model. It covers both kernel-side
-and userspace-side development.
+This chapter summarizes the kernel and userspace rules for the asynchronous,
+shard-per-core model.
 
 \section{Invariants}
 
-These are the rules that hold across all CharlotteOS code, kernel and userspace.
+The design relies on these rules:
 
 \subsection{Only the owning LP mutates its state}
 
@@ -77,13 +76,14 @@ Panics on wrong-LP access or re-entrant access.
 
 \subsection{\texttt{ShardMailbox<M>}}
 
-Typed bounded per-LP queue. Cloneable \texttt{ShardSender<M>} (any LP can send),
-single-consumer \texttt{ShardReceiver<M>} (one per LP, accessed through
-\texttt{ShardLocal}):
+A typed, bounded per-LP queue has cloneable \texttt{ShardSender<M>} producers and
+one \texttt{ShardReceiver<M>} consumer per LP, accessed through
+\texttt{ShardLocal}:
 
 \begin{verbatim}
 let sender: ShardSender<Command> = mailbox.sender();
-sender.try_send(Command::Process { data })?; // Returns Err(data) if full.
+// Returns Err(data) if full.
+sender.try_send(Command::Process { data })?;
 \end{verbatim}
 
 \subsection{IPI closures}
@@ -95,8 +95,8 @@ appropriate (e.g., TLB shootdown, scheduler commands).
 
 \subsection{Completion API}
 
-\texttt{submit}, \texttt{submit\_worker}, \texttt{complete}, \texttt{poll},
-\texttt{wait}, \texttt{cancel}, \texttt{close}. The exit-observer path
+The API provides \texttt{submit}, \texttt{submit\_worker}, \texttt{complete},
+\texttt{poll}, \texttt{wait}, \texttt{cancel}, and \texttt{close}. The exit-observer path
 (\texttt{submit\_worker}) is the intended default for fire-and-forget async
 kernel work:
 
@@ -172,8 +172,8 @@ at startup. There is no ambient authority, no global filesystem, no
 
 \subsection{Caller identity is kernel authority}
 
-Syscalls derive the caller's address space from the trap frame. As a security boundary,
-userspace cannot name another domain's address space or capability table. 
+Syscalls derive the caller's address space from trusted thread and trap context.
+Userspace cannot select another domain's address space or capability table.
 
 \subsection{Backpressure is normal}
 
@@ -209,7 +209,7 @@ When writing code that uses sitas on CharlotteOS:
         for typed cross-shard communication within userspace. Endpoint IPC
         for cross-domain communication.
     \item \textbf{Use \texttt{submit\_worker} for fire-and-forget async work.}
-        The worker just returns; the exit-observer completes the capability.
+        When the worker returns, the exit-observer completes the capability.
     \item \textbf{Register a CQ ring at address-space creation} so completions
         are visible to userspace without per-entry syscalls.
     \item \textbf{Accept backpressure.} \texttt{WouldBlock} or \texttt{Err(m)}
@@ -258,16 +258,16 @@ For IPC:
     \item[\texttt{receive(endpoint) -> Message}]
 \end{description}
 
-The full ABI is described in \texttt{docs/async-syscall-abi.md} and implemented
-in \texttt{crates/catten/src/syscall/mod.rs}.
+The full ABI is described in \path{docs/async-syscall-abi.md} and implemented in
+\path{crates/catten/src/syscall/mod.rs}.
 
 \section{Why the programming model matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Invariants are explicit and enforced.} That ``Only the owning LP
-        mutates its state'' is enforced by \texttt{ShardLocal<T>} (wrong-LP access 
-        panics) and \texttt{ShardSender<M>} (ownership transfer at compile time). 
-        You cannot accidentally violate the shard discipline.
+    \item \textbf{Invariants have enforcement points.} \texttt{ShardLocal<T>}
+        rejects wrong-LP and re-entrant access; \texttt{ShardSender<M>} moves
+        values across the typed boundary. Unsafe code and incorrect primitive use
+        remain review obligations.
 
     \item \textbf{The launch contract is minimal.} A userspace program receives
         exactly what it needs and nothing more. There is no global state, no
@@ -275,15 +275,14 @@ in \texttt{crates/catten/src/syscall/mod.rs}.
         capabilities are the program's entire universe of authority.
 
     \item \textbf{Messages, not shared memory, are the default.} The safe,
-        performant path is to send an owned value through a bounded channel.
+        preferred path is to send an owned value through a bounded channel.
         Shared memory with locks is the exception and not the rule. This reduces
         the number of places where concurrency bugs can hide.
 
-    \item \textbf{The ABI is auditable.} The current typed
-        \texttt{SyscallNumber} enum contains 56 variants across completion,
-        IPC, memory, device, upgrade, and CQ operations. Userspace wrappers and
-        the kernel dispatcher share this enum, and the dispatch match is
-        exhaustive.
+    \item \textbf{The ABI is auditable.} Userspace wrappers and the kernel
+        dispatcher share the typed \texttt{SyscallNumber} enum, and dispatch is
+        exhaustive. The source enum, rather than a duplicated count here, defines
+        the current surface.
 
     \item \textbf{The programming model is testable.} Self-tests exercise
         owner checks, re-entrancy guards, selected backpressure paths, and

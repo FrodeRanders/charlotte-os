@@ -1,9 +1,8 @@
 \chapter{Capabilities --- Authority Without Ambiguity}
 
 A capability is the answer to one question: \textbf{``May I perform this
-operation?''} It is authority, not work. It is unforgeable, delegable, and
-attenuable. This chapter explains the capability model used for kernel-mediated
-resources in CharlotteOS.
+operation?''} It is authority, not work. CharlotteOS capabilities are unforgeable,
+delegable, and attenuable.
 
 \section{What a capability is}
 
@@ -12,7 +11,7 @@ a rights mask. The kernel maintains a \textbf{capability table} for each protect
 domain. An entry in this table is the only way a userspace process can reference a
 kernel object.
 
-Key properties:
+Capabilities have four key properties:
 
 \begin{itemize}
     \item \textbf{Unforgeable.} A process cannot create a capability through
@@ -34,7 +33,7 @@ Key properties:
 CharlotteOS defines a fixed set of kernel object types, each with its own rights
 model. A capability carries both a type tag and a rights mask.
 
-\begin{longtable}{|l|l|p{7cm}|}
+\begin{longtable}{|p{2.8cm}|p{3.5cm}|p{5.9cm}|}
 \hline
 \textbf{Type} & \textbf{Example rights} & \textbf{What it authorizes} \\
 \hline
@@ -119,9 +118,7 @@ services delegate whatever the protocol authorizes.
         application to drain completions before submitting more work.
 \end{enumerate}
 
-The capability model is the foundation on which CharlotteOS builds its security
-properties. Without capabilities, endpoints and memory objects would be anonymous
-resources accessible by index or address --- just a more elaborate version of the
-ambient-authority model this architecture rejects.
+Capabilities give endpoints and memory objects explicit authority instead of
+making them ambient resources addressed only by an index or address.
 
 \endinput

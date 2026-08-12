@@ -1,8 +1,7 @@
 \chapter{Server-Class Cluster Vision}
 
-This chapter has two roles. It records the cluster mechanisms that are now
-implemented and boot-tested, and it describes the larger server-class system
-those mechanisms are intended to become. The implemented boundary is a
+This chapter separates the implemented cluster mechanisms from the larger
+server-class target. The implemented boundary is a
 two-node QEMU cluster with replicated naming and deployment state, signed
 ELF artifacts, per-node NVMe object stores, deployment agents, remote
 invocation, and a stateless assignment handoff. Discovery-bridged membership
@@ -13,12 +12,9 @@ artifact storage, stateful cross-node migration, and automatic placement.
 
 \section{The vision: interchangeable compute}
 
-Server-class ARM processors with many cores are becoming commodity hardware. 
-Any individual server is not interesting as such: no software worth deploying to by name, 
-and no state worth treating as special. Servers are compute units over an interchangeable
-object store. As servers boot, they assemble themselves into clusters, and
-the cluster --- not individual servers --- becomes the unit that software is
-deployed to and routed through.
+The target treats servers as replaceable compute units over shared storage. As
+nodes boot, they join a cluster; deployment and routing address the cluster rather
+than a particular machine.
 
 This inverts the familiar software deployment model. Instead of deploying software
 to one or more named servers, software is deployed to a named cluster, and the
@@ -34,7 +30,7 @@ availability. The placement decision is made in and by the cluster
 itself, from rules it holds in its shared state, not by an operator
 manually mapping software to machines.
 
-The same idea already exists one level down: the shard-per-core model
+The same idea appears one level down: the shard-per-core model
 (Chapter~9) treats the cores of one machine as interchangeable executors
 over owned state, and the scheduler (Chapter~10) moves work between them.
 This chapter scales that notion to a cluster of machines. A cluster node
@@ -43,8 +39,7 @@ state; and the cluster as a whole is the shared-nothing machine.
 
 \section{Implemented foundation}
 
-The following mechanisms are implemented and verified, and each maps 
-onto a role in the cluster:
+The following implemented and verified mechanisms form the foundation:
 
 \begin{itemize}
     \item \textbf{Cross-machine consensus.} The Graft core replicates the
@@ -136,16 +131,12 @@ three steps:
         automatic placement controller currently produces them.
 \end{enumerate}
 
-A production cluster should be able to start with no key material at all. In this
-un-initialised state the cluster can still form --- discovery, elections,
-and the replicated log work without keys --- but no software can be
-validated yet. An explicit, active operation provides the key information
-through the cluster leader; from then on it prevails in the shared cluster
-state and is replicated to every member. If a secret is required to verify
-the very first key injection, it is sufficient to store it in the server
-binary at build time --- but starting blank must be possible. The cluster
-does not trust a node's word; it trusts the key it holds in its replicated
-state.
+The production target may begin without cluster key material. Discovery,
+elections, and replication can proceed, but executable artifacts cannot yet be
+validated. An explicit administrative operation would establish the key through
+the leader and replicate it as cluster state. The current prototype instead uses
+a build-time bootstrap anchor; blank-start enrollment and rotation are not
+implemented.
 
 \section{Implemented deployment pipeline and production target}
 
@@ -309,14 +300,13 @@ configuration.
 
 \section{Demonstrated two-node deployment slice}
 
-A first end-to-end slice of the vision is implemented and boot-tested on the
-two-guest cluster (the \texttt{--deploy-test} QEMU flow): a signed artifact
+A first end-to-end slice is boot-tested on a two-guest cluster through the
+deployment-test QEMU flow: a signed artifact
 is deployed to a named node through the replicated manifest, the remote
 agent picks it up, verifies it, serves it across the network, and the
-artifact assignment is handed to the other node without losing its name. Both guests pass
-the full boot suite (\texttt{passed=22 failed=0 pending=0} on each). This
-section records exactly what is real and what is simulated, so the boundary
-between the two is explicit.
+artifact assignment is handed to the other node without losing its name. Both
+guests finish with zero failed or pending self-tests. This section distinguishes
+implemented behavior from the simulated administration path.
 
 \subsection{The replicated deployment manifest}
 
@@ -389,7 +379,7 @@ Artifact validation uses real Ed25519 signatures embedded in the ELF
 itself. The cluster's \emph{private} key never enters the cluster: it is
 held off-cluster (the \texttt{tools/cluster-sign} host tool), and the
 deployed binary is signed with it before upload. The signature lives in a
-standard ELF \texttt{SHT\_NOTE} section (\texttt{.note.charlotte-sig},
+standard ELF \texttt{SHT\_NOTE} section (\path{.note.charlotte-sig},
 note type \texttt{"CLS2"}). Its descriptor contains the logical name,
 artifact class and flags, release, rollback counter, signing-key id, optional
 provenance digest, and the 64-byte Ed25519 signature. The signature covers the
@@ -456,8 +446,8 @@ simulations are the next work items:
 
 \subsection{What the slice proves}
 
-Even with these limitations, the slice demonstrates the load-bearing pieces
-working together: an explicit node assignment is replicated cluster state;
+Within these limits, the slice shows the main pieces working together: an
+explicit node assignment is replicated cluster state;
 services are hosted cross-node and stay reachable through the distributed
 name service; generation fencing makes a stateless assignment handoff safe;
 and deployment and administration exist as protocols. It does not yet prove
@@ -467,10 +457,9 @@ the narrower generic-Raft admission path.
 
 \section{Related work}
 
-The vision has strong historical precedents and equally strong modern
-parallels. None of them combine cluster-level placement with the ownership
-discipline and kernel/userspace boundary this OS is built on, but each is a
-useful point of comparison.
+The vision draws on historical distributed operating systems, cluster managers,
+and artifact-trust systems. The comparisons below identify relevant ideas; they
+are not claims of equivalent guarantees or implementation maturity.
 
 \subsection{Historical distributed operating systems}
 
@@ -505,7 +494,7 @@ useful point of comparison.
         communication-aware placement (Keren and Barak, ``Opportunity Cost
         Algorithms for Reduction of I/O and Interprocess Communication
         Overhead in a Computing Cluster,'' IEEE TPDS 2003), the earliest
-        direct treatment of interop-driven placement.
+        an example of communication-aware placement.
 \end{itemize}
 
 \subsection{Cluster managers and placement products}
@@ -543,8 +532,8 @@ useful point of comparison.
         secret into the binary at build time, but allow a blank start''
         option.
 
-    \item \textbf{Sigstore / Cosign / Notary} are the current artifact
-        signing ecosystem at deployment time.
+    \item \textbf{Sigstore / Cosign / Notary} provide related artifact-signing
+        approaches for deployment systems.
 
     \item \textbf{Remote attestation and measured boot} (TPM, ARM CCA,
         SEV-SNP) complement cluster-level validation with a hardware root
@@ -566,11 +555,7 @@ useful point of comparison.
         deployment-time equivalent.
 \end{itemize}
 
-The least-explored territory in this space is inter-dependency-observed
-placement at OS-service granularity: Keren and Barak (2003) is the closest
-work, and it predates the modern cluster managers by a decade. The
-observation substrate this OS already has --- shard-level message flow and
-executor snapshots (Chapter~9) --- is a plausible basis for going further
-than the existing literature.
+CharlotteOS could use shard-level message flow and executor snapshots
+(Chapter~9) to inform placement. That controller remains future work.
 
 \endinput

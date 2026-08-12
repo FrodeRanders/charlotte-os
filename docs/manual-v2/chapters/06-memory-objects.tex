@@ -1,8 +1,8 @@
 \chapter{Memory Objects --- Ownership That Crosses Boundaries}
 
-A memory object answers: \textbf{``Where is the data, and who currently owns
-it?''} It is the mechanism by which data crosses protection-domain boundaries
-without copying bytes. This chapter explains CharlotteOS's memory-object model.
+A memory object answers: \textbf{``Where is the data, and who owns it?''} It lets
+page-backed data cross protection-domain boundaries with explicit ownership and,
+for move and borrow modes, without copying the payload.
 
 \section{The problem with copying}
 
@@ -11,9 +11,9 @@ the kernel reads from the sender's address space and writes to the receiver's.
 For large payloads (packet buffers, file blocks, IPC messages), this copy
 dominates the cost of the operation.
 
-The alternative --- shared memory --- eliminates the copy but eliminates the
-safety. Two processes with writable mappings to the same physical pages can
-corrupt each other's data. Synchronization is advisory; enforcement is absent.
+Unrestricted shared memory avoids the copy but permits two processes to modify the
+same pages. Correctness then depends on synchronization rather than page-table
+exclusivity.
 
 CharlotteOS adopts a third approach: \textbf{ownership transfer through page-table
 manipulation.} When a memory object moves from one domain to another, the kernel
@@ -88,7 +88,7 @@ the server dies).
         with read-only permissions. Track the borrow so it can be revoked.
     \item \textbf{Semantics:} writable aliases in the receiver are forbidden by
         the page-table permissions. The receiver cannot write even through unsafe
-        code. Revocation at reply time unmap the pages.
+        code. Revocation at reply time unmaps the pages.
 \end{itemize}
 
 \subsection{BorrowWrite}
@@ -105,7 +105,7 @@ is restored.
         temporarily revoke (unmap or read-protect) sender access, track the
         borrow for reply-time revocation.
     \item \textbf{Semantics:} the hardware enforces mutual exclusion. The sender
-        cannot access the pages while they are lended out. No amount of unsafe
+        cannot access the pages while they are lent out. Unsafe
         Rust can violate this --- the MMU will fault.
 \end{itemize}
 
@@ -182,15 +182,16 @@ DMA, so callers must still obey the borrow protocol.
         IPC call. When the call completes (reply, cancellation, timeout, or
         server death), the borrow ends. There is no ``I forgot to return it.''
 
-    \item \textbf{DMA ownership is an architectural requirement.} Full
-        kernel-tracked pinning and IOMMU enforcement remain future work; current
-        drivers are trusted to retain buffers until hardware completion.
+    \item \textbf{DMA ownership is tracked on the reference platform.} The AArch64
+        SMMUv3 path pins mapped memory and restricts each requester to its DMA
+        domain. CPU mappings remain accessible, so callers must still follow the
+        borrow protocol. Other IOMMU platforms remain unsupported.
 
     \item \textbf{Hardware enforcement, not language enforcement.} The page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
         bug should access CPU pages that are not mapped, assuming correct MMU
-        setup and TLB maintenance. DMA requires the not-yet-implemented IOMMU
-        path for an equivalent boundary.
+        setup and TLB maintenance. The reference SMMUv3 path provides the
+        corresponding DMA boundary for explicitly mapped objects.
 \end{enumerate}
 
 \endinput

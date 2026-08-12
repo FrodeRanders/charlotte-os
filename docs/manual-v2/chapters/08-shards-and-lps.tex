@@ -1,8 +1,7 @@
 \chapter{Shards and Logical Processors}
 
-CharlotteOS separates two concepts that are often conflated: the hardware
-execution context (logical processor, or LP) and the userspace ownership domain
-(shard). This chapter explains both and the relationship between them.
+CharlotteOS separates the hardware execution context (logical processor, or LP)
+from the userspace ownership domain (shard).
 
 \section{The logical processor (LP) --- the hardware unit of scheduling}
 
@@ -18,7 +17,7 @@ The kernel shards its own state per-LP, meaning each LP has:
     \item Per-LP data structures accessible through \rusttype{PerLp<T>}.
 \end{itemize}
 
-An LP is a \textbf{place}: threads are pinned to LP at creation and (by default)
+An LP is a \textbf{place}: threads are pinned to an LP at creation and, by default,
 stay there. Migration is opt-in and restricted.
 
 \section{The shard --- the userspace unit of ownership}
@@ -45,7 +44,7 @@ the sitas discipline:
         internals escapes the shard.
 \end{enumerate}
 
-\section{The mapping: one shard $\leftrightarrow$ one LP}
+\section[The usual mapping: one shard per LP]{The usual mapping: one shard $\leftrightarrow$ one LP}
 
 In the typical configuration:
 
@@ -55,9 +54,8 @@ one sitas shard
     <-> normally one logical CPU
 \end{verbatim}
 
-The userspace thread is pinned to its LP. Its executor runs only on that LP. Its
-shard-local state (\rusttype{ShardLocal<T>}) is valid only when the owning LP's
-thread is executing.
+The userspace thread and its executor are pinned to one LP.
+\rusttype{ShardLocal<T>} state is valid only while that LP's owning thread runs.
 
 The architecture retains the distinction (shard $\neq$ LP) so that more complex
 configurations remain possible:
@@ -129,11 +127,9 @@ The closure must not:
 \section{Why the distinction matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Data-race freedom by construction.} Shard-local state is never
-        accessed concurrently. There is no lock, no atomic, no memory-ordering
-        subtlety. If you hold \texttt{\&mut T}, no one else can access \texttt{T}.
-        This is Rust's borrow-checker guarantee extended to the kernel's
-        scheduling model.
+    \item \textbf{Single-owner mutation.} The intended shard path does not access
+        shard-local state concurrently. Runtime owner and borrow checks complement
+        Rust's type rules.
 
     \item \textbf{Placement is deliberate.} Sending work to a
         specific LP is an explicit operation (\texttt{try\_run\_on\_lp},
@@ -144,8 +140,7 @@ The closure must not:
     \item \textbf{The two container types force a design choice.} When you reach
         for shared data, you must decide: is this accessed from interrupt context?
         Use \rusttype{PerLp<T>} with locking. Is it thread-only? Use
-        \rusttype{ShardLocal<T>} with zero overhead. There is no
-        ``just wrap it in Mutex and move on'' ambiguity.
+        \rusttype{ShardLocal<T>} without locking. The choice is explicit.
 
     \item \textbf{Cross-shard communication is typed and bounded.} A
         \rusttype{ShardSender<M>} carries a specific Rust type (not

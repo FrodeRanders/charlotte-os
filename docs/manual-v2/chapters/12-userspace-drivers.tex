@@ -1,16 +1,14 @@
 \chapter{Userspace Drivers}
 
-In CharlotteOS, device drivers are userspace processes. They receive only the
-resources they need, they communicate through endpoints, and their failures are
-contained. This chapter explains the userspace driver model.
+CharlotteOS runs device drivers as userspace processes with delegated device
+resources and endpoint interfaces.
 
 \section{The problem with kernel drivers}
 
 In a monolithic kernel, a driver has access to everything: all physical memory,
-all interrupt vectors, all kernel data structures. A bug in a driver --- a buffer
-overflow, a use-after-free, a race condition --- can corrupt the kernel and crash
-the system. This is not merely a theoretical concern: driver bugs are the dominant cause
-of operating system crashes in most operating systems.
+all interrupt vectors, and all kernel data structures. A driver bug --- such as a
+buffer overflow, use-after-free, or race --- can corrupt the kernel and crash the
+system.
 
 The microkernel solution is to move drivers to userspace. But simply moving
 them is not enough: a userspace driver that can still map arbitrary physical
@@ -28,8 +26,10 @@ struct DriverGrant {
     device: DeviceCap,        // identity and lifecycle of the device
     mmio: Vec<MmioRegionCap>, // register windows, page-granular
     interrupts: Vec<InterruptCap>, // IRQ sources for this device
-    dma_domain: Option<DmaDomainCap>, // DMA translation, if IOMMU present
-    bootstrap_endpoint: EndpointCap,  // endpoint on which to serve clients
+    // DMA translation, if an IOMMU is present.
+    dma_domain: Option<DmaDomainCap>,
+    // Endpoint on which to serve clients.
+    bootstrap_endpoint: EndpointCap,
 }
 \end{verbatim}
 
@@ -50,15 +50,13 @@ window. The driver maps it into its address space as Device-nGnRnE memory
 x86-64).
 
 The mapping is a kernel-mediated operation: the driver calls
-\texttt{mmio\_map(region\_cap, virtual\_address)}. The kernel validates the
+\texttt{mmio\_map(region\_cap, addr)}. The kernel validates the
 capability, creates the page-table entries with the correct memory attributes,
 and returns. The driver then performs \textbf{direct EL0 MMIO} --- load and
 store instructions to the mapped virtual addresses, with no kernel involvement
 on the fast path.
 
-This is the key performance property: the common case (reading a device register,
-writing to a FIFO) is one CPU instruction. There is no syscall overhead per
-MMIO access.
+The common MMIO access therefore avoids a syscall or context switch.
 
 \section{Interrupt delivery}
 
@@ -85,8 +83,8 @@ When the interrupt fires:
     \item The driver processes the interrupt and unmasks the source.
 \end{enumerate}
 
-This is a lock-free fast path: the interrupt context does very little work (atomic
-counter bump, deferred-wake enqueue), deferring the rest to thread context.
+The interrupt path performs an atomic counter update and deferred-wake enqueue;
+thread context performs the remaining work.
 
 \section{The reference UART driver}
 
@@ -97,7 +95,7 @@ The PL011 UART driver demonstrates the full lifecycle:
     \item \textbf{Interrupt-driven deferred reads.} The driver retains a reply
         token for a pending read. When the RX interrupt fires, the driver reads
         the receive register and completes the deferred reply.
-    \item \textbf{Cooperative shutdown.} On graceful exit, the driver unmap its
+    \item \textbf{Cooperative shutdown.} On graceful exit, the driver unmaps its
         MMIO region and closes its interrupt.
     \item \textbf{Crash recovery.} If the driver terminates without releasing
         its device caps (panic, infinite loop, killed by supervisor), the
@@ -168,20 +166,18 @@ instance.
 \section{Why userspace drivers matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Driver bugs are contained.} A buffer overflow in a NIC driver
-        corrupts that driver's address space, not the kernel's. The driver
-        crashes (and restarts); the system stays up.
+    \item \textbf{CPU-side driver faults are contained.} A buffer overflow in a
+        NIC driver is confined by its address space, assuming correct kernel,
+        MMU, and DMA isolation.
 
     \item \textbf{The privilege model is grant-by-grant.} A driver receives
         exactly the resources it needs. There is no ``driver has access to
         everything because it's in the kernel'' default.
 
     \item \textbf{Direct MMIO keeps the fast path fast.} Reading a device
-        register is one load instruction. No syscall, no kernel transition,
-        no context switch. The driver is in userspace, but the performance
-        cost is near zero.
+        register uses a direct load rather than a syscall or context switch.
 
-    \item \textbf{Restart is automated and defined.} The supervisor handles
+    \item \textbf{Restart follows a defined path.} The supervisor handles
         driver restart (device reset, grant re-issuance, generation bump).
         Driver authors do not write recovery code.
 

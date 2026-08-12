@@ -1,8 +1,7 @@
 \chapter{Service Architecture}
 
-This chapter explains how protection domains are created, how services are named
-and discovered, and how the system recovers from failures --- all without
-privileged code knowing what any particular service \emph{does}.
+Protection domains contain service faults and authority. Naming and protocol
+policy remain in userspace; privileged code manages lifecycle and resources.
 
 \section{Protection domains as failure boundaries}
 
@@ -10,8 +9,8 @@ A protection domain (Chapter~3) is the unit of both authority and failure. When
 a service crashes:
 
 \begin{itemize}
-    \item Its capability table is destroyed. Every connection to every client is
-        invalidated atomically.
+    \item Its capability table is destroyed, invalidating its handles. Client
+        connections to the closed endpoint fail through the IPC lifecycle.
     \item Its memory mappings are removed. Outstanding borrows are revoked; the
         kernel unmaps the pages from the (dead) borrower and restores the lender's
         access.
@@ -21,13 +20,13 @@ a service crashes:
         any MMIO region and interrupt objects the domain held.
 \end{itemize}
 
-A crash in one domain does not propagate to the kernel or to other domains.
-The failure is contained by the MMU and the capability system.
+The MMU and capability checks are intended to contain the fault to that domain;
+kernel, hardware, and DMA defects remain outside this guarantee.
 
 \section{The supervisor --- domain lifecycle manager}
 
 The \textbf{supervisor} is a kernel-side component that creates and destroys
-protection domains. It does not understand service protocols but it do understand
+protection domains. It does not understand service protocols, but it does understand
 ELF images, memory mappings, and capability grants.
 
 Its operations are:
@@ -103,8 +102,8 @@ When a service crashes and the supervisor restarts it:
         new driver sees a clean hardware state.
     \item \textbf{Generation increment.} The name service bumps the service's
         generation. All old connections are invalidated.
-    \item \textbf{Stale connection failures.} Clients holding connections to
-        the old instance receive \texttt{ServiceRestarted} on their next call
+    \item \textbf{Stale connections.} Clients connected to the old instance
+        receive \texttt{ServiceRestarted} on their next call
         attempt. They re-lookup the service and receive a connection to the
         new instance.
     \item \textbf{Outstanding operation reconciliation.} The supervisor
@@ -116,9 +115,8 @@ When a service crashes and the supervisor restarts it:
         instance's capability table, reply tokens, or DMA ownership.
 \end{enumerate}
 
-A restarted service must not silently inherit outstanding authority or
-in-flight operations from the previous instance. The kernel and the supervisor
-guarantee this.
+A restarted service receives fresh authority. Tests cover stale connections and
+operation reconciliation; the status appendix records the verified scope.
 
 \section{The overall system topology}
 
@@ -146,14 +144,12 @@ network stack --- these are configuration choices, not kernel modifications.
 \section{Why service architecture matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Failure containment is architectural.} If the NIC driver
-        crashes, the TCP/IP service loses connectivity but does not crash.
-        If the filesystem crashes, applications holding file handles get
-        errors. If the name service crashes, lookup fails but existing
-        connections remain valid. No single service crash takes down the
-        system.
+    \item \textbf{Failure containment is architectural.} A service fault closes
+        its endpoints and affects clients through defined errors rather than
+        direct memory corruption. Availability still depends on the failed
+        service and its dependants.
 
-    \item \textbf{Recovery is defined, not ad-hoc.} The restart sequence
+    \item \textbf{Recovery follows a defined sequence.} The restart sequence
         (device reset, generation bump, connection invalidation, operation
         reconciliation) is the same for every driver. A new driver
         implemented to the same endpoint protocol replaces the old one

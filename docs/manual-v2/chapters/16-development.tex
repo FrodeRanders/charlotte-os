@@ -1,15 +1,14 @@
 \chapter{Development Workflow}
 
-This chapter explains how to build, boot, and test CharlotteOS. It is a
-practical guide for developers who want to work on the kernel, write userspace
-services, or run the self-tests.
+This chapter gives the current build, boot, test, and code-reading workflow.
 
 \section{Prerequisites}
 
 \begin{itemize}
-    \item \textbf{Rust nightly} (2026-07-18 or later), installed via
-        \texttt{rustup}. The \texttt{rust-toolchain.toml} pins the exact
-        version.
+    \item \textbf{Rust nightly}, installed via \texttt{rustup}. The exact
+        toolchain is pinned in the repository's
+        \texttt{rust-}\allowbreak\texttt{toolchain.toml}; do not copy a version
+        from this manual.
     \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
         (\texttt{qemu-system-x86\_64}). On macOS, TCG is the default and HVF
         is opt-in. The virtio-net smoke test runs under TCG; HVF is unsuitable
@@ -28,15 +27,15 @@ services, or run the self-tests.
 CharlotteOS supports three architectures via custom target JSON specs in
 \texttt{target\_specs/}:
 
-\begin{longtable}{|l|l|}
+\begin{longtable}{|p{5.8cm}|p{6.4cm}|}
 \hline
 \textbf{Target spec} & \textbf{Status} \\
 \hline
-\texttt{aarch64-unknown-none-catten.json} & Primary development target; all
+AArch64 custom target & Primary development target; all
     features and self-tests pass \\
-\texttt{x86\_64-unknown-none-catten.json} & Boots, core self-tests pass;
+x86-64 custom target & Boots, core self-tests pass;
     ring-3 userspace implemented but not yet exercised \\
-\texttt{riscv64gc-unknown-none-catten.json} & Planned, not actively
+RISC-V custom target & Planned, not actively
     maintained \\
 \hline
 \end{longtable}
@@ -78,17 +77,20 @@ cargo +nightly build --package catten-user \
 
 \section{Booting in QEMU}
 
-\subsection{AArch64 (macOS, HVF)}
+\subsection{AArch64}
 
 \begin{verbatim}
-# Single-core boot:
+# Single-LP self-test boot:
 ./scripts/boot-smp1.sh
 
-# Dual-core boot:
+# Two-LP self-test boot:
 ./scripts/boot-smp2.sh
 
-# Or specify timeout and core count directly:
-./scripts/qemu-boot-macos.sh 60 2
+# Or choose the profile, LP count, and timeout directly:
+./scripts/run-aarch64.sh debug --smp 4 --timeout 180
+
+# Apple Silicon: request HVF explicitly if suitable:
+./scripts/run-aarch64.sh debug --hvf --smp 4 --timeout 180
 \end{verbatim}
 
 \subsection{x86-64}
@@ -105,20 +107,21 @@ CharlotteOS booting...
 [init] BSP initialization complete.
 [init] Secondary CPUs brought online.
 [init] Starting scheduler...
-[async-demo] coordinator: submitted worker, now awaiting completion...
-[async-demo] worker: performing async work (sleep 50ms)
-[async-demo] worker: work finished, exiting (completion fires on exit)
-[async-demo] coordinator: COMPLETION RECEIVED, result Ok(42)
-[async-demo] SUCCESS: async syscall round-trip complete
+[async] coordinator: submitted worker, awaiting completion...
+[async] worker on LP1: sleeping 50ms
+[async] worker on LP1: exiting
+[async] COMPLETION RECEIVED, result Ok(42)
+[async] SUCCESS: async syscall round-trip complete
 Testing Complete. All Tests Passed!
 \end{verbatim}
 
 \section{Self-tests}
 
-There is no host-side \texttt{cargo test}. All tests are \textbf{boot-time
-kernel self-tests} --- whitebox integration tests run from
-\texttt{self\_test::run\_self\_tests()} called after \texttt{INIT\_BARRIER.wait()}.
-Each test uses \texttt{assert!()} / \texttt{assert\_eq!()}; panic equals failure.
+The repository combines host-side library tests with boot-time kernel and EL0
+self-tests. Host suites cover components such as \texttt{catten-graft},
+\texttt{charlotte-protocol-msg}, and \texttt{charlotte-smoltcp}. Boot tests run
+from \texttt{self\_test::run\_self\_tests()} after initialization; assertion or
+verifier failure fails the boot suite.
 
 Deferred tests register an expected result bit and spawn their verifier through
 \texttt{results::spawn\_verifier}. The result subsystem associates that
@@ -129,8 +132,7 @@ authoritative reporter names the failed test instead of leaving it pending
 until the runner timeout. The panic path neither allocates nor waits for a
 scheduler lock.
 
-Current test suites (both architectures pass on AArch64; core tests pass on
-x86-64):
+Representative boot suites include:
 
 \begin{itemize}
     \item \texttt{completion.rs} --- buffer ownership, cancel/deferred-reclaim,
@@ -167,7 +169,7 @@ x86-64):
 
 \section{The async-syscall demo}
 
-\texttt{crates/catten/src/demo.rs} is the canonical end-to-end test of the
+\texttt{crates/catten/src/demo.rs} is an end-to-end test of the
 async model. It:
 
 \begin{enumerate}
@@ -181,25 +183,26 @@ async model. It:
         the result.
 \end{enumerate}
 
-This exercises: thread creation, scheduling, timer events, the block-yield-wake
-cycle, the exit-observer completion path, and the wait/poll ABI. If this demo
-passes, the core async machinery is working.
+This exercises thread creation, scheduling, timer events, the block--yield--wake
+cycle, exit observation, and the wait/poll ABI. It is evidence for that path, not
+a substitute for the wider self-test suite.
 
 \section{CI pipeline}
 
 GitHub Actions (\texttt{.github/workflows/ci.yml}):
 
 \begin{enumerate}
-    \item Builds both architectures with \texttt{-D warnings} (warnings are
-        errors).
-    \item Runs formatting checks (\texttt{cargo fmt --check}).
-    \item Boots the AArch64 QEMU target and greps for ``Testing Complete. All
-        Tests Passed!''.
-    \item Builds the kernel for x86-64.
+    \item Checks formatting for the workspace and standalone EL0/tool crates.
+    \item Runs warning-denied Clippy for the workspace, AArch64 services, and
+        signing tool.
+    \item Runs host-testable library suites and the signing self-test.
+    \item Builds AArch64 and x86-64 kernels and the AArch64 service bundle.
+    \item On pushes to \texttt{main}, boots the four-LP AArch64 QEMU suite and
+        verifies its required success markers.
 \end{enumerate}
 
-The CI gate ensures the \texttt{dev} branch always compiles cleanly and passes
-boot tests.
+The workflow runs on pushes and pull requests for its configured branches; the
+QEMU boot job is restricted to pushes to \texttt{main}.
 
 \section{Codebase reading guide}
 
@@ -236,7 +239,7 @@ For new contributors, the recommended reading order:
         Early faults before heap initialization rely on
         \texttt{early\_logln!} (direct serial writes). Ensure the serial port
         is configured correctly.
-    \item[Thread hangs after blocking] The block-yield-wake cycle requires
+    \item[Blocked thread] The block--yield--wake cycle requires
         that \texttt{block\_thread} not clear \texttt{current\_handle} before
         \texttt{yield\_lp} saves the thread's context. Verify that the
         blocked thread is still the current thread at the point of the yield.

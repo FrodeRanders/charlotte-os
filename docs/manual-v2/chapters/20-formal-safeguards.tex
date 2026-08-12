@@ -1,0 +1,521 @@
+\chapter{Formal Safeguards with TLA+}
+\label{chap:formal-safeguards}
+\newcommand{\tlbreak}[2]{\texttt{#1}\allowbreak\texttt{#2}}
+
+CharlotteOS uses executable TLA+ models to review stateful functionality. The
+models state each safety contract, explore action orderings in a finite instance,
+retain known-bad designs as counterexamples, and map abstract transitions back to
+Rust.
+
+This is stronger than relying on selected test schedules, but narrower than a
+proof of the complete operating system. TLC proves invariants of the modeled
+state machine for the configured finite bounds. The repository supplements
+that result with an action-level conformance map, Rust regression tests,
+target builds, Clippy, and boot tests. Each layer answers a different question:
+
+\begin{description}
+    \item[TLA+ model] Is the protocol design safe under every modeled action
+        ordering, crash point, retry, and stale event within the configured
+        bounds?
+    \item[Conformance map] Which concrete Rust state and linearization point
+        implement each abstract action?
+    \item[Rust and boot tests] Does the implementation exercise the intended
+        transition on the host and on CharlotteOS targets?
+    \item[Build and lint gates] Does the integrated implementation remain
+        type-correct and warning-free for the actual target?
+\end{description}
+
+The models and their configurations live in \filepath{docs/tla}. The concise
+model inventory is in \filepath{docs/tla/README.md}; the concrete-to-abstract
+mapping is in \filepath{docs/tla/CONFORMANCE.md}. Those files are maintained
+with the implementation and are authoritative over the overview in this
+chapter.
+
+\section{Why model functionality as a state machine?}
+
+Most failures addressed by these models are not computation errors. They are
+ordering errors: a stale cleanup arrives after a replacement, a thread is
+removed while it can still execute, a session identifier is reused after a
+restart, or a joiner forgets which cluster has authority over it. A unit test
+can exercise one such interleaving. A state-machine model asks TLC to enumerate
+all reachable interleavings in a deliberately small world.
+
+A TLA+ safety specification has four essential parts:
+
+\begin{enumerate}
+    \item \textbf{Variables} record only the state relevant to the property,
+        such as an owner, generation, durable term, queue, or admission anchor.
+    \item \textbf{Init} defines every allowed initial state.
+    \item \textbf{Next} is a disjunction of named actions. Each action defines
+        its enabling condition and complete next-state update.
+    \item \textbf{Invariants} state what must be true in every reachable state.
+\end{enumerate}
+
+The common shape is:
+
+\begin{verbatim}
+VARIABLES phase, generation, owner
+vars == <<phase, generation, owner>>
+
+Init == ...
+Next == Start \/ Replace \/ Stop \/ Crash \/ Restart
+Spec == Init /\ [][Next]_vars
+
+TypeOK == ...
+Safety == ...
+Invariants == TypeOK /\ Safety
+\end{verbatim}
+
+The square temporal operator means that every step must be a \texttt{Next}
+step or a stuttering step and that the invariant must hold throughout the
+behavior. TLC constructs the reachable state graph rather than sampling it.
+Constants in a \texttt{.cfg} file bound identities, queue capacities,
+generations, terms, and log indices so that this graph is finite.
+
+Small bounds are intentional. Many protocol violations need only two owners,
+two generations, or three Raft nodes. Exhaustive exploration of that small
+instance is often more revealing than a large randomized run because TLC
+systematically covers the orderings rather than hoping to encounter them.
+
+\section{The safeguarding loop}
+
+CharlotteOS applies the models as a feedback loop between design,
+implementation, and validation:
+
+\begin{enumerate}
+    \item \textbf{Choose a safety boundary.} Identify the authority or resource
+        whose invalid transition would be harmful: reply authority, memory
+        ownership, an executing address space, a committed log entry, or a
+        service generation.
+    \item \textbf{Project concrete state.} Remove bytes, addresses, and policy
+        details that cannot affect the selected invariant. Preserve identity,
+        ownership, durability, ordering, and lifecycle phases.
+    \item \textbf{Name the transitions.} Actions use implementation language.
+        Names such as \texttt{Receive}, \texttt{Reap}, and \texttt{Restart}
+        make review against Rust possible.
+    \item \textbf{State the invariant positively.} Examples are ``a reaped
+        thread is off-CPU,'' ``a committed entry agrees at every replica,'' and
+        ``a stale generation cannot remove its replacement.''
+    \item \textbf{Model crashes and stale work.} Durable and volatile state are
+        separated where restart matters. Delayed messages, old handles, and
+        retries are actions rather than assumptions that the environment is
+        well behaved.
+    \item \textbf{Retain a negative specification.} When a faulty transition is
+        understood, an \texttt{Unsafe...} action and configuration are kept.
+        The check suite requires TLC to find the named invariant violation.
+        This proves that the invariant and test harness are capable of seeing
+        the regression rather than passing vacuously.
+    \item \textbf{Map back to code.} \filepath{docs/tla/CONFORMANCE.md} records
+        the concrete function, persisted field, and linearization point for
+        every modeled action. Disagreement is resolved by changing the model,
+        changing CharlotteOS, or documenting behavior outside the abstraction.
+    \item \textbf{Validate both levels.} Run TLC, focused Rust tests, target
+        builds and Clippy, and relevant boot or multi-node tests.
+\end{enumerate}
+
+The model is an executable safety contract, not a diagram added after
+implementation. A change is incomplete if
+the model claims an atomic or durable transition that the code does not
+provide.
+
+\section{What is modeled}
+
+The current suite contains seventeen safe specifications. They are divided by
+state ownership and failure boundary so that each model remains reviewable.
+The Raft models are deliberately layered: election, log replication,
+membership, pre-membership admission, and snapshots have different state and
+different proof obligations.
+
+\small
+\begin{longtable}{|p{0.26\textwidth}|p{0.26\textwidth}|p{0.38\textwidth}|}
+\hline
+\textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Model} & \textbf{Functional boundary} & \textbf{Principal safety properties} \\
+\hline
+\endhead
+\tlbreak{Charlotte}{IPC} & Endpoint calls, reply tokens, memory move/copy/borrow,
+    cancellation, endpoint close, domain teardown & Bounded queues; unique
+    receiver-visible reply authority; exclusive write borrow; every remaining
+    borrow backed by a live token; no dangling moved-memory capability. \\
+\hline
+\tlbreak{Charlotte}{EndpointObservers} & Readiness observers and connection-close
+    watches & Ordinary message arrival cannot falsely signal endpoint closure;
+    closure wakes the appropriate observers. \\
+\hline
+\tlbreak{Charlotte}{CQ} & Completion operations, CQ ring/backlog, wait/wake,
+    cancellation, timers & Non-lossy completion tracking; bounded visible ring;
+    no lost wakeup; timer completion remains tied to its operation. \\
+\hline
+\tlbreak{Charlotte}{Scheduler} & Spawn, admission, execution, blocking, migration,
+    cross-LP abort, reaping, address-space destruction & At most one execution
+    per LP; only the owner LP retires an executing thread; reaping occurs
+    off-CPU; destroyed address spaces have no live threads. \\
+\hline
+\tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
+    handles & A stale handle cannot close a replacement that reused the same
+    numeric ASID. \\
+\hline
+\tlbreak{Charlotte}{HardwareAsid} & Hardware-ASID allocation, retirement, cached
+    translations, invalidation & A hardware tag is not reused while stale
+    translations for its former owner remain. \\
+\hline
+\tlbreak{Charlotte}{InterruptRoute} & Interrupt binding, queued wake, unbinding,
+    deferred drain & A queued wake cannot be delivered through a later route
+    generation to the wrong owner. \\
+\hline
+\tlbreak{Charlotte}{Capability} & Unified per-address-space capability namespace
+    and move rollback & Handles are fresh and authoritative; move revokes the
+    source; rollback restores only the exact transaction; a closed namespace
+    is empty. \\
+\hline
+\tlbreak{Charlotte}{DMA} & SMMU stream ownership, mapping, invalidation,
+    quarantine, driver exit, pin reclamation & Unique stream/domain ownership;
+    no cross-domain mapping; mapped memory stays pinned; failed hardware
+    acknowledgement retains rather than prematurely frees authority. \\
+\hline
+\tlbreak{Charlotte}{ServiceLifecycle} & Signed artifact staging, loading, start,
+    two-phase publication, lookup, fenced unregister, exit and teardown &
+    Untrusted images never load; only activated generations resolve; stale
+    activation/unregister cannot affect a replacement; teardown follows
+    domain-wide reaping. \\
+\hline
+\tlbreak{Charlotte}{Raft} & Terms, durable votes, election, higher-term step-down,
+    crash/restart & A voter records at most one durable vote per term and at
+    most one leader can hold a term. \\
+\hline
+\tlbreak{Charlotte}{RaftLog} & Append, conflict repair, replication, commit,
+    crash/restart & Log matching, committed-entry agreement, commit within the
+    log, and leader completeness. \\
+\hline
+\tlbreak{Charlotte}{RaftMembership} & Voters/learners, joint consensus,
+    finalization, decommissioning & Both voter majorities are required while
+    joint; all proposed peers reach the joint fence before finalization;
+    leadership and decommissioning follow active membership. \\
+\hline
+\tlbreak{Charlotte}{RaftJoin} & Selected-anchor admission before membership,
+    JOIN fence, catch-up, crash/restart & A joiner accepts only the chosen
+    anchor, cannot campaign, is promoted only after catch-up, and restores its
+    durable admission fence after restart. \\
+\hline
+\tlbreak{Charlotte}{RaftSnapshot} & Chunk reception, durable installation,
+    matching suffix, membership recovery & Stale snapshots cannot regress
+    progress; the installed state and retained suffix agree; restart restores
+    membership and application state before use. \\
+\hline
+\tlbreak{Charlotte}{RemoteCall} & Call identity, target generation, duplicate
+    suppression, timeout uncertainty, result eviction & At most one execution
+    while tracked; stale targets never execute; uncertain outcomes are not
+    reported as success; deduplication evidence remains until transport
+    settlement. \\
+\hline
+\tlbreak{Charlotte}{ReliableMessage} & Wire sessions across retry abandonment and
+    unilateral service restart & Logical epochs have unique ordered wire
+    identities and delayed sessions cannot move receive state backwards. \\
+\hline
+\end{longtable}
+\normalsize
+
+This decomposition also states what is \emph{not} silently being claimed. For
+example, Ethernet fragmentation and retry timing are not part of the Raft
+election proof; protobuf bytes and peer addresses are not part of joint
+consensus; cryptographic correctness is not part of the service-lifecycle
+trust-bit abstraction. Such omissions are recorded in the conformance map.
+
+\section[Model-driven findings]{How model reasoning changes CharlotteOS}
+
+The most valuable result is often a mismatch discovered while constructing the
+model. The correct response depends on which side was wrong: sometimes the
+manual or model overstated functionality; sometimes the code lacked a safety
+fence.
+
+\subsection{Two-phase service publication}
+
+An earlier lifecycle abstraction treated replacement publication as one
+atomic swap. The implemented distributed catalog instead performs three
+observable steps: commit an inactive prepared generation, publish the local
+connection, and commit activation. Lookup intentionally excludes the inactive
+generation, so replacement has a temporary unavailable interval.
+
+The model was changed to describe that real contract rather than claim
+continuous availability. It also exposed the code-level obligation that
+generation allocation must fail closed. Distributed generation saturation and
+local unchecked increment were replaced with checked allocation that returns
+an error without mutating the catalog. A delayed unregister is accepted only
+when both owner and generation still match, which preserves a replacement.
+
+Formal safeguarding does not promise every desired availability property. Here it
+prevents the documentation from claiming atomic replacement and protects the
+generation safety that the implementation does provide.
+
+\subsection{Reliable-message session identity}
+
+The reliable-message service formerly initialized a wire session from the
+service generation and incremented that number when abandoning a retry epoch.
+Generation $N$ after one abandonment could therefore use the same identity as
+generation $N+1$ before abandonment. A bounded retired-session window also
+allowed a sufficiently old delayed SYN to replace newer receive state after it
+fell out of the window.
+
+The session model represents a session as the ordered pair
+$(\mathit{serviceGeneration},\mathit{retryEpoch})$. The repaired wire encoding
+packs those values into disjoint 32-bit fields, accepts a replacement session
+only when the packed identity is well formed and strictly newer, and disables
+sends rather than wrapping at exhaustion. Two unsafe configurations retain the
+old flat-identity collision and receive-regression behaviors as required
+counterexamples.
+
+\subsection{Restart-safe Raft admission}
+
+Dynamic admission originally kept \texttt{joining} and
+\texttt{joining\_from} only in process memory. A node could select an existing
+cluster as its authority, crash before membership became durable, restart from
+its launch-time singleton configuration, and campaign. The gap represented
+real CharlotteOS functionality, not merely a missing model action.
+
+The repaired implementation persists a \texttt{JoinAdmission} record
+containing the selected anchor and the snapshot index that existed before
+admission. Construction restores the joining posture and disables elections.
+When the joint membership commits, the node first writes a newer
+membership-bearing snapshot and only then clears the durable admission record.
+This ordering covers both crash edges:
+
+\begin{itemize}
+    \item before the membership snapshot is durable, restart retains the
+        anchor fence and the node cannot campaign;
+    \item after the snapshot is durable but before the fence-clear write,
+        restart recognizes the strictly newer membership snapshot as completion
+        evidence and safely clears the stale admission record.
+\end{itemize}
+
+Auto-join is disabled when the generic Raft service falls back to volatile
+storage. That is an explicit safety-over-availability decision: without stable
+state, a process restart cannot prove which cluster has authority. The safe
+TLA+ specification includes crash and restart; an unsafe restart that forgets
+admission must violate \texttt{RestartPreservesAdmission}.
+
+\subsection{Retained regression patterns}
+
+Other negative specifications preserve compact versions of repaired faults:
+
+\small
+\begin{longtable}{|p{0.27\textwidth}|p{0.31\textwidth}|p{0.32\textwidth}|}
+\hline
+\textbf{Unsafe action} & \textbf{Failure represented} & \textbf{Required violation} \\
+\hline
+\endfirsthead
+\hline
+\textbf{Unsafe action} & \textbf{Failure represented} & \textbf{Required violation} \\
+\hline
+\endhead
+\tlbreak{Unsafe}{MessageWake} & Message readiness and endpoint-close observation
+    share one observer queue. & \tlbreak{CloseSignalImplies}{Closed} \\
+\hline
+\tlbreak{Unsafe}{RemoteAbort} & A remote LP removes and reaps a context that may
+    still execute. & \texttt{ReapOnlyOffCpu} \\
+\hline
+\texttt{UnsafeStaleClose} & A recycled numeric ASID is closed through an old
+    generation handle. & \tlbreak{ReplacementSurvives}{StaleHandle} \\
+\hline
+\tlbreak{Unsafe}{Allocate} & A hardware ASID is reassigned before stale
+    translations are invalidated. & \texttt{NoDirtyTagReuse} \\
+\hline
+\tlbreak{Drain}{Unsafe} & A deferred interrupt wake ignores its route generation.
+    & \texttt{NoStaleWakeDelivery} \\
+\hline
+\tlbreak{UnsafeStale}{Unregister} & Cleanup from an old service generation removes
+    its replacement. & \tlbreak{ReplacementSurvives}{StaleUnregister} \\
+\hline
+\tlbreak{UnsafeReplicate}{ToJoiner} & A non-selected peer supplies authority to a
+    joining node. & \tlbreak{JoiningAcceptsOnly}{SelectedAnchor} \\
+\hline
+\tlbreak{UnsafeRestartForgets}{Admission} & Restart makes an incomplete joiner
+    election-eligible. & \tlbreak{RestartPreserves}{Admission} \\
+\hline
+Flat session allocation & Retry and restart epochs alias one wire session. &
+    \tlbreak{SessionIdentity}{Unique} \\
+\hline
+\texttt{AcceptDelayedSession} & An older delayed SYN regresses receive state. &
+    \tlbreak{ReceiveSession}{Monotonic} \\
+\hline
+\end{longtable}
+\normalsize
+
+The check suite expects all ten negative configurations to fail for the named
+reason. If one unexpectedly satisfies its invariant, the regression harness
+has lost sensitivity and the suite fails.
+
+\section{Concrete conformance and atomicity}
+
+TLA+ actions are atomic. Rust code usually crosses several structures, locks,
+or persistent writes. The conformance review must therefore identify a
+linearization point or represent the concrete intermediate states explicitly.
+
+The mapping uses two correspondence classes:
+
+\begin{description}
+    \item[Direct] The abstract action follows one concrete transition while
+        omitting data irrelevant to the invariant. For example, a successful
+        fenced unregister directly checks owner and generation.
+    \item[Abstract] Several concrete operations are collapsed. This is valid
+        only when intermediate states are unobservable or separately guarded.
+        For example, scheduler retirement spans multiple tables, so the
+        concrete \texttt{RETIREMENTS\_IN\_FLIGHT} state prevents address-space
+        teardown during that interval.
+\end{description}
+
+Persistent ordering deserves the same care. In Raft admission, ``snapshot
+membership and clear join fence'' is one model transition, but two durable
+writes in Rust. Safety depends on snapshot flush preceding fence removal. A
+crash between those writes must map to a modeled state that remains safe.
+
+The conformance document is not yet a machine-checked refinement proof. It is
+a reviewable refinement \emph{obligation}: it names the functions and state
+that must be re-examined when either side changes. Code review should reject a
+model update that merely hides a new concrete intermediate state.
+
+\section{Validation}
+
+\subsection{Running TLC}
+
+The repository wrapper runs the complete bounded suite:
+
+\begin{verbatim}
+docs/tla/check.sh /path/to/tla2tools.jar
+\end{verbatim}
+
+Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
+
+\begin{itemize}
+    \item runs all seventeen safe configurations;
+    \item enables action coverage and requires selected actions to have a
+        positive successor count;
+    \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
+        expressions, or incomplete successor states;
+    \item runs ten negative configurations and requires each one to fail on
+        the named invariant after exercising the named unsafe action; and
+    \item writes checkpoints and traces into a temporary directory so generated
+        state does not become part of the source tree.
+\end{itemize}
+
+Action coverage is important. An invariant can pass because a transition is
+accidentally disabled. Requiring coverage does not prove that an action is
+correct, but it detects this common vacuity.
+
+At the 11 August 2026 implementation synchronization point, representative
+fast configurations produced the following complete state graphs:
+
+\begin{longtable}{|p{0.32\textwidth}|r|r|r|}
+\hline
+\textbf{Model} & \textbf{Generated} & \textbf{Distinct} & \textbf{Depth} \\
+\hline
+\texttt{CharlotteIPC} & 6,118,645 & 1,254,153 & 13 \\
+\hline
+\texttt{CharlotteCQ} & 1,688,159 & 321,967 & 12 \\
+\hline
+\texttt{CharlotteScheduler} & 1,710,157 & 373,860 & 22 \\
+\hline
+\tlbreak{Charlotte}{ServiceLifecycle} & 665,641 & 74,232 & 41 \\
+\hline
+\texttt{CharlotteRaftJoin} & 2,029 & 520 & 13 \\
+\hline
+\tlbreak{Charlotte}{ReliableMessage} & 30 & 21 & 5 \\
+\hline
+\end{longtable}
+
+State counts are evidence about one configuration, not a quality score. A
+small model may encode the decisive identity argument, while a large model may
+contain substantial independent bookkeeping. The invariant, abstraction, and
+coverage matter more than graph size.
+
+\subsection{Implementation validation}
+
+TLC is followed by validation proportional to the affected code. For the
+August synchronization and admission repair this included:
+
+\begin{itemize}
+    \item host tests for \texttt{catten-graft}, including restart before durable
+        membership and restart between membership persistence and fence clear;
+    \item host tests for \texttt{charlotte-protocol-msg}, including disjoint
+        retry/restart sessions and fail-closed exhaustion;
+    \item AArch64 release builds and warning-denied Clippy for the changed
+        \texttt{raft}, \texttt{relmsg}, and \texttt{ns} services;
+    \item an AArch64 kernel check containing the updated persistent-storage join
+        self-test manifest; and
+    \item formatting, shell syntax, and diff-whitespace checks.
+\end{itemize}
+
+Boot and multi-guest tests remain necessary when a change affects the concrete
+scheduler, device, storage, or network integration. A TLC result cannot show
+that QEMU delivers an interrupt, that an object-store flush reaches the
+emulated disk, or that a manifest starts the intended services.
+
+\section{What a successful check means}
+
+A successful safe configuration means that TLC found no reachable violation
+of the declared invariants within that specification and its finite constants.
+It does \emph{not} by itself establish:
+
+\begin{itemize}
+    \item a proof that arbitrary larger bounds preserve the result;
+    \item a mechanically checked refinement from Rust to TLA+;
+    \item liveness, fairness, bounded latency, or eventual leader election
+        unless explicitly expressed as temporal properties;
+    \item correctness of omitted bytes, parsers, cryptography, memory mappings,
+        hardware programming, or transport framing;
+    \item correctness under storage failure modes below the modeled durable
+        write interface; or
+    \item freedom from ordinary implementation bugs such as arithmetic,
+        aliasing, or unsafe-memory errors outside the modeled projection.
+\end{itemize}
+
+Conversely, a gap between code and model is actionable information. It can
+mean one of three things:
+
+\begin{enumerate}
+    \item \textbf{Functionality is unsafe.} The Raft admission restart gap was
+        of this kind and required a CharlotteOS change.
+    \item \textbf{The model overclaims.} Atomic service replacement was of this
+        kind; the model was corrected to admit temporary unavailability.
+    \item \textbf{The behavior is outside scope.} It must be documented rather
+        than silently attributed to the checked invariants.
+\end{enumerate}
+
+Therefore a green TLC run is not a blanket ``formally verified'' label for
+CharlotteOS.
+
+\section{Workflow for changes}
+
+Any change to ownership, generations, persistence, retry identity, lifecycle,
+or distributed membership should be checked against this chapter's method.
+A practical review checklist is:
+
+\begin{enumerate}
+    \item Search \filepath{docs/tla/CONFORMANCE.md} for the changed Rust
+        function or state field.
+    \item Decide whether the change adds an action, changes an enabling
+        condition, moves a linearization point, or changes durable/volatile
+        classification.
+    \item Update the safe model and bounds. If repairing a discovered fault,
+        retain the old behavior as an unsafe action and named negative
+        configuration.
+    \item Add the new action to the required-coverage list in
+        \filepath{docs/tla/check.sh}.
+    \item Run the entire TLC suite, not only the edited module, because shared
+        documentation claims and layered Raft assumptions can drift together.
+    \item Update the conformance map with exact Rust functions and ordering.
+    \item Add implementation tests at the crash, retry, or stale-generation
+        edges identified by the model.
+    \item Run target validation and the relevant boot or multi-node suite.
+    \item Record deliberate omissions and avoid converting a safety result into
+        an unsupported liveness or availability claim.
+\end{enumerate}
+
+Used this way, TLA+ is part of the engineering control system for CharlotteOS.
+It preserves the reasoning behind a safety fence, makes regressions executable,
+and forces the model, manual, code, and tests to describe the same
+functionality.
+
+\endinput

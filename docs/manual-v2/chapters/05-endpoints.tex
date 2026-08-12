@@ -1,8 +1,7 @@
 \chapter{Endpoints --- Communication as a First-Class Primitive}
 
-An endpoint answers one question: \textbf{``Who am I communicating with?''} It is
-the mechanism by which protection domains invoke each other. This chapter explains
-the endpoint IPC model --- CharlotteOS's primary communication primitive.
+An endpoint answers: \textbf{``Who am I communicating with?''} It is
+CharlotteOS's primary primitive for calls between protection domains.
 
 \section{Server and connection model}
 
@@ -22,8 +21,7 @@ service normally delegates them after an access check.
 
 \section{Message classes}
 
-CharlotteOS supports two fundamentally different kinds of messages, and the ABI
-keeps them distinct:
+The ABI distinguishes two message classes:
 
 \subsection{Scalar messages}
 
@@ -37,9 +35,8 @@ reply token. It fits in registers. It is suitable for:
     \item Compact control-plane operations where the payload is a single word.
 \end{itemize}
 
-Scalar messages are \textbf{fast}: they require no memory-object allocation, no
-page-table manipulation, and no TLB invalidation. The entire send/receive cycle
-is a handful of register copies.
+Scalar messages require no memory-object allocation, page-table change, or TLB
+invalidation.
 
 \subsection{Memory-bearing messages}
 
@@ -115,12 +112,10 @@ Underneath, the runtime:
         \texttt{Poll::Ready(response)}.
 \end{enumerate}
 
-No client OS thread is dedicated to the request. The shard moves on to other work.
-
 \subsection{Deferred replies}
 
 A server may retain a reply token and complete it later --- while continuing to
-serve other requests on the same shard. This is essential for device-driven
+serve other requests on the same shard. This supports device-driven
 operations:
 
 \begin{verbatim}
@@ -132,8 +127,7 @@ async fn handle_read(pending: PendingRequest) {
 }
 \end{verbatim}
 
-The server is never blocked waiting for one slow operation. The shard's executor
-polls other tasks while the read completes.
+The shard's executor polls other tasks while the read completes.
 
 \subsection{Reply token semantics}
 
@@ -200,7 +194,7 @@ connection primitives; userspace provides the naming policy.
 
 \section{Two kernel data paths, not one}
 
-A critical architectural distinction: endpoint IPC is for \textbf{cross-domain
+A central distinction is that endpoint IPC is for \textbf{cross-domain
 service calls}. Completion queues are for \textbf{kernel and device operations}.
 They are not the same mechanism.
 
@@ -225,27 +219,25 @@ they are different kernel abstractions with different semantics.
 \section{Why endpoints matter for critical software}
 
 \begin{enumerate}
-    \item \textbf{Communication is authenticated by construction.} A client that
+    \item \textbf{Communication carries authority.} A client that
         holds a connection capability was authorized (at grant time, by the name
         service or policy service) to communicate with the target. Every message
-        is implicitly authenticated --- not by an IP address, not by a UID, but
-        by possession of a kernel-mediated capability.
+        is authorized by possession of a kernel-mediated capability rather than
+        by an address or UID alone.
 
     \item \textbf{Scalar and memory messages are distinct.} The kernel does not
         copy arbitrary data between address spaces by default. Small control
-        messages stay small and fast. Bulk data moves as memory objects (Chapter~6)
-        with explicit ownership semantics --- no accidental copies, no buffer
-        over-reads.
+        messages stay small. Bulk data moves as memory objects (Chapter~6) with
+        explicit ownership semantics.
 
     \item \textbf{Deferred replies enable efficient concurrency.} A server is never
         forced to block waiting for one slow client. It retains reply tokens for
         in-flight work and continues serving other requests. The shard's executor
         multiplexes naturally.
 
-    \item \textbf{Service restart is reliable.} Stale connections fail
-        deterministically with typed errors (\texttt{EndpointClosed},
-        \texttt{ServiceRestarted}). A restarted service cannot accidentally
-        inherit outstanding reply tokens from a previous instance.
+    \item \textbf{Restart errors are defined.} Stale connections return typed
+        errors such as \texttt{EndpointClosed} and \texttt{ServiceRestarted}.
+        A replacement cannot inherit the old instance's reply tokens.
 
     \item \textbf{Name service is policy, not mechanism.} The kernel provides
         endpoints and connections. Userspace decides who can register what name,

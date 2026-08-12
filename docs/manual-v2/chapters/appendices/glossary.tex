@@ -17,9 +17,9 @@
         to kernel objects. Used for the thread table, address-space table,
         and per-domain capability table.
 
-    \item[Completion] A kernel object representing an in-flight or completed
-        async operation. \texttt{Observable}: threads \texttt{wait} on it,
-        \texttt{complete} signals it.
+    \item[Completion] The terminal result of an asynchronous operation. The
+        kernel tracks operation state and delivers results through polling,
+        waitable completion objects, or CQ entries.
 
     \item[Connection capability] A client-side authority to send or call an
         endpoint. Minted from an endpoint, typically by the name service.
@@ -53,8 +53,8 @@
         The kernel's IPI queues are bounded per-LP queues carrying typed
         commands.
 
-    \item[LP (Logical Processor)] One hardware core (or hyperthread). The unit
-        of sharding in both the kernel and sitas.
+    \item[LP (Logical Processor)] A schedulable hardware execution context,
+        usually one core or hardware thread. It is distinct from a sitas shard.
 
     \item[Memory object] A page-backed kernel object with explicit ownership
         and capability semantics. Can be mapped, moved, lent, or copied between
@@ -108,9 +108,9 @@
         protection domains, loads ELF images, delivers bootstrap capabilities,
         and handles domain teardown.
 
-    \item[TrapFrame] An architecture-specific snapshot of the user register
-        state at the moment an exception was taken. Provides the caller's
-        ASID for syscall dispatch.
+    \item[TrapFrame] An architecture-specific snapshot of user register state at
+        an exception. Syscall dispatch combines it with trusted per-thread or
+        per-LP state to identify the caller.
 
     \item[Waker] An \texttt{Observer} wrapping a \texttt{ThreadId}. When
         notified, calls \texttt{submit\_ready\_thread(tid)}. In userspace,

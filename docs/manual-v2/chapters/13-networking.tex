@@ -1,9 +1,8 @@
 \chapter{Networking}
 
-CharlotteOS deliberately departs from the traditional UNIX networking model.
-Rather than treating TCP/IP as the foundation of all communication, CharlotteOS
-treats networking as \textbf{an extension of the operating system's message passing
-and capability model.}
+CharlotteOS treats networking as an extension of its message-passing and
+capability model rather than making TCP/IP the native interface for all
+communication.
 
 The guiding principle is:
 
@@ -36,8 +35,7 @@ foundation for a capability-based microkernel:
         communication or RDMA for high-performance communication.
 \end{itemize}
 
-CharlotteOS replaces all of this with a layered model where each layer has a
-single responsibility.
+CharlotteOS instead uses layers with separate responsibilities.
 
 The stack below is the target architecture. The current repository contains a
 userspace virtio-net driver, a frame demultiplexer (``frouter''), a
@@ -46,7 +44,7 @@ replicates a \texttt{name $\rightarrow$ \{node, generation\}} catalog across two
 smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
 NIC/TCP path is runtime-validated on macOS QEMU TCG (\texttt{--relmsg-test},
 \texttt{--disco-test}, \texttt{--dns-test}, \texttt{--tcpip-test}), and remote
-scalar remote-call prototype is implemented (\texttt{dns::OP\_CALL}); general
+scalar remote-call prototype is implemented (\texttt{dns::OP\_CALL}); the general
 remote capability delegation is not.
 
 \section{The native protocol stack}
@@ -126,8 +124,9 @@ The RPC layer provides request/reply semantics over the reliable message layer:
     \item \textbf{Synchronous-looking futures:} \texttt{service.call(opcode, args).await?}
     \item \textbf{Asynchronous invocation:} the \texttt{Future} is backed by a
         pending RPC call; the shard continues other work while waiting.
-    \item \textbf{Object references:} capabilities can be serialized and sent
-        over RPC (delegation across machines).
+    \item \textbf{Object references:} the target architecture can represent
+        delegated remote authority; general remote capability delegation is not
+        implemented.
     \item \textbf{Serialization:} typed protocol crates handle encoding/decoding
         between Rust types and the wire format.
 \end{itemize}
@@ -173,11 +172,9 @@ let payroll: Capability<PayrollService> = lookup("Payroll")?;
 payroll.call("calculate_salary", employee).await?;
 \end{verbatim}
 
-Whether the Payroll service runs on the same machine (local endpoint IPC) or on
-a different machine (remote RPC over reliable messages over Ethernet) is
-\textbf{transparent to the application}. The capability lookup returns a
-connection; the transport layer behind that connection is an implementation
-detail.
+The intended API hides whether a service uses local endpoint IPC or remote RPC.
+The implemented remote path is limited to the scalar DNS v3 call contract
+described above.
 
 \section{TCP/IP as a compatibility service}
 
@@ -243,7 +240,7 @@ The intended network stack avoids copying whenever practical:
     \item \textbf{Buffer recycling:} after the application consumes a received
         buffer, it returns the (now empty) memory object to the driver's RX pool.
         The driver reuses it for DMA and the cycle repeats. IOMMU-backed pinning
-        is not yet implemented.
+        is implemented on the reference AArch64 SMMUv3 path.
 \end{itemize}
 
 This is the memory-object transfer model (Chapter~6) applied to networking.
@@ -251,9 +248,8 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
 \section{Why the networking architecture matters for critical software}
 
 \begin{enumerate}
-    \item \textbf{Remote IPC = local IPC.} An application that invokes a
-        capability does not know or care whether the service is local or
-        remote. This means:
+    \item \textbf{Remote invocation follows the local call shape.} The target API
+        keeps transport choices out of application protocols. This permits:
         \begin{itemize}
             \item Services can be relocated without application changes.
             \item Testing can substitute a local mock for a remote service.
@@ -262,16 +258,14 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
                 absent from local IPC.
         \end{itemize}
 
-    \item \textbf{Capability-based, not address-based.} An application invokes
-        \texttt{PayrollService}, not \texttt{10.2.3.17:443}. Authority is a
-        capability, not reachability. A compromised application that can
-        reach the network cannot fabricate a connection to a service it was
-        not granted.
+    \item \textbf{Authority is not an address.} An application invokes a service
+        capability rather than relying on \texttt{host:port} reachability. Network
+        access alone does not mint that capability.
 
     \item \textbf{Copy avoidance is a design goal.} Page ownership transfer can
         avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
-        isolation awaits IOMMU/SMMU support. No performance comparison with
-        sockets has yet been established.
+        isolation is implemented for the reference AArch64 SMMUv3 path. No
+        performance comparison with sockets has yet been established.
 
     \item \textbf{Message boundaries are preserved.} The native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no

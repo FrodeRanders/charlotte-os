@@ -1,14 +1,12 @@
 \chapter{Architectural Redirections}
 
-This appendix records the explicit design decisions that changed the project's
-direction from its earlier experiments. It is drawn from the architecture
-document \texttt{docs/charlotte-sitas-xous-architecture.md} and reflects the
-transition from an earlier ``universal completion-capability'' model to the
-three-primitive architecture described in this manual.
+This appendix records decisions that redirected early experiments from a
+``universal completion-capability'' model to the three-primitive architecture in
+this manual. Later chapters describe the resulting implementation.
 
-\section{What to retain from the current implementation}
+\section{Retained mechanisms}
 
-The following work aligns with the architecture and should continue:
+The following early mechanisms remain part of the architecture:
 
 \begin{itemize}
     \item AArch64 EL0/SVC path.
@@ -49,22 +47,22 @@ shifted:
         only. The stable ABI is endpoint IPC.
 \end{itemize}
 
-\section{What to replace}
+\section{Replacements adopted}
 
 \subsection{Stop expanding raw mailbox syscalls}
 
 A mailbox tied directly to LP identity is not a complete userspace service
 abstraction: it exposes placement where authority should be exposed, lacks
 protocol identity, conflates shard transport with domain IPC, and lacks
-move/lend semantics. \textbf{Direction:} implement endpoint and connection
-capabilities independent of LP identity. Clients address the service
+    move/lend semantics. Endpoint and connection capabilities are therefore
+    independent of LP identity. Clients address the service
 connection, not a target LP.
 
 \subsection{Do not allocate one completion capability per service request}
 
 For userspace service calls, the natural object is a reply token. For
 high-rate kernel operations, per-operation capabilities create unnecessary
-table pressure. \textbf{Direction:} use reply tokens for endpoint calls;
+table pressure. The design uses reply tokens for endpoint calls;
 operation IDs plus CQ entries for ordinary kernel operations; first-class
 operation capabilities only where independent authority is required.
 
@@ -79,28 +77,26 @@ semantics.
 
 Boxed \texttt{FnOnce()} work transported through the IPI layer is hard to
 account, difficult to inspect, and brittle under backpressure.
-\textbf{Direction:} use closed kernel enums for mandatory kernel RPCs and
+The preferred direction is closed kernel enums for mandatory kernel RPCs and
 typed mailbox instances for subsystem-specific work.
 
 \subsection{Do not equate shard wake with IPI delivery}
 
 Remote wake mapping directly to \texttt{send\_ipi(target\_lp)} can generate
-excessive interrupts. \textbf{Direction:} queue first, mark pending, send
+excessive interrupts. The implemented rule is to queue first, mark pending, and send
 a coalesced reschedule IPI only when the target cannot otherwise observe the
 transition.
 
 \subsection{Introduce memory objects before rich IPC payloads}
 
-Xous's most important contribution --- move/lend semantics --- cannot be
-implemented safely with transient pointers. \textbf{Direction:} prioritize
-memory-object capability, mapping/unmapping, move between domains, temporary
-lending, revocation on reply/cancel/death, and optional DMA integration.
-Only then promote rich IPC payloads.
+Move/lend semantics require durable object identity rather than transient
+pointers. CharlotteOS introduced memory-object capabilities, mapping, ownership
+transfer, temporary lending, lifecycle revocation, and DMA integration before
+promoting rich IPC payloads.
 
 \subsection{Treat service discovery as userspace policy}
 
-Do not add string-based global service lookup to the kernel. Build a userspace
-name/policy service that receives bootstrap authority and delegates connection
-capabilities.
+String-based lookup remains outside the kernel. The userspace name service
+receives bootstrap authority and delegates connection capabilities.
 
 \endinput

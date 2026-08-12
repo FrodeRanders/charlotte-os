@@ -1,7 +1,6 @@
 \chapter{Design Philosophy}
 
-CharlotteOS is the result of three independent projects converging on a shared
-thesis. This chapter explains what each contributes and how they fit together.
+CharlotteOS combines ideas from three projects around one thesis.
 
 \section{The combined thesis}
 
@@ -43,7 +42,7 @@ Only the owning shard mutates shard-local state. Cross-shard interaction occurs
 through bounded typed messages carrying owned values.
 \end{quote}
 
-Specifically, sitas provides:
+Sitas provides:
 
 \begin{itemize}
     \item One executor per shard --- cooperative task scheduling within
@@ -69,9 +68,8 @@ domain. CharlotteOS extends it across domains through the kernel.
 
 \subsection{Xous --- the isolated userspace service model}
 
-Xous (a microkernel OS for Precursor and Betrusted hardware) contributes the
-missing protection-domain service model. Its most valuable ideas for CharlotteOS
-are:
+Xous, a microkernel OS for Precursor and Betrusted hardware, contributes the
+protection-domain service model:
 
 \begin{itemize}
     \item Services are userspace servers: Drivers, filesystems, and
@@ -91,10 +89,8 @@ are:
         server identities. The kernel knows nothing about strings.
 \end{itemize}
 
-Xous demonstrates that a productive, secure operating system can be built entirely
-from userspace servers communicating through a small, well-defined kernel IPC
-primitive. CharlotteOS adopts this model and extends it with the sitas execution
-discipline and an async-native kernel.
+CharlotteOS adopts Xous's userspace-server model and combines it with the sitas
+execution discipline and an async-native kernel.
 
 \section{How they fit together}
 
@@ -114,7 +110,7 @@ Service discovery and policy & Userspace (name service, supervisor) \\
 \end{tabular}
 \end{center}
 
-A useful mental picture:
+The layers are:
 
 \begin{verbatim}
 CharlotteOS kernel
@@ -142,9 +138,7 @@ Client process
 
 \section{The three kernel primitives}
 
-Before discussing IPC, drivers, scheduling, or asynchronous execution, the
-architecture must be understood in terms of three orthogonal kernel abstractions.
-These are the conceptual foundation of CharlotteOS:
+Three orthogonal kernel abstractions form the foundation:
 
 \begin{verbatim}
                  Kernel Objects
@@ -188,13 +182,11 @@ capabilities, endpoints, and memory objects. New kernel primitives should be
 introduced only when they cannot be naturally composed from the existing ones.}
 \end{quote}
 
-This rule keeps the kernel small, the ABI auditable, and the trust model
-comprehensible. A developer reasoning about security needs to understand three
-concepts, not thirty.
+This rule limits the kernel surface and keeps the ABI and trust model reviewable.
 
 \section{What ``asynchronous throughout'' means}
 
-``Asynchronous throughout'' is a design goal, which means:
+``Asynchronous throughout'' means:
 
 \begin{enumerate}
     \item Operations that may wait for external progress have submission/completion
@@ -221,7 +213,7 @@ This is not the same as saying:
     \item Userspace code is interrupted by arbitrary asynchronous callbacks.
 \end{itemize}
 
-\subsection{Blocking is required, and desirable}
+\subsection{Blocking is still useful}
 
 When no sitas task is runnable, the shard's execution context should block in one
 kernel wait operation:
@@ -238,8 +230,6 @@ event arrives
     -> drain events
     -> wake relevant futures
 \end{verbatim}
-
-CharlotteOS's advantage is:
 
 \begin{quote}
 \textbf{The shard parks directly on native completion and message state; no
@@ -268,9 +258,8 @@ hardware interrupt
     -> executor wakes relevant Rust tasks
 \end{verbatim}
 
-Kernel preemption is allowed and arbitrary userspace task upcalls are not required.
-This keeps the userspace programming model cooperative, predictable, and
-auditable.
+The kernel may preempt threads, but it does not inject arbitrary task callbacks
+into userspace. Task scheduling therefore remains cooperative and reviewable.
 
 \section{Why this matters for critical software}
 
@@ -284,23 +273,16 @@ principles from Chapter~1:
     \item Endpoints make communication authenticated: A client that holds
         a connection capability has proven (at grant time) that it is authorized
         to communicate. The kernel enforces this on every message.
-    \item Memory objects eliminate an entire category of bugs: Buffer
-        over-reads, use-after-free, and double-free across protection boundaries
-        are structurally impossible when ownership moves through the kernel and is
-        enforced by page tables.
-    \item Composition keeps the kernel small: A small kernel has a small
-        attack surface. Most system functionality lives in userspace, where a bug
-        is a service restart, not a kernel panic.
-    \item The async model removes the retrofit tax: There is no
-        translation layer between the kernel's concurrency model and the
-        language's. This means fewer bugs in the translation, lower latency, and
-        a simpler mental model.
-    \item Bounded queues make resource consumption predictable: You
-        cannot run a CharlotteOS system out of memory by sending too many messages.
-        Backpressure propagates explicitly; the system degrades gracefully rather
-        than failing catastrophically.
+    \item Memory objects constrain stale cross-domain access: Ownership moves
+        through the kernel and is enforced by page tables. Correctness still
+        depends on MMU, TLB, and DMA handling.
+    \item Composition limits the privileged surface: Most system functionality
+        lives in userspace, where faults can be contained to a service domain.
+    \item The async model reduces adaptation: The kernel and runtime share
+        submission, completion, and wake semantics.
+    \item Bounded ingress makes pressure visible: Endpoint and hardware queues
+        apply explicit backpressure. Chapter~10 records the remaining unbounded
+        internal backlog.
 \end{itemize}
-
-The following chapters build out this architecture in detail.
 
 \endinput

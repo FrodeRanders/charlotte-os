@@ -64,19 +64,15 @@ and I/O completions.
 
 \subsection{I/O path}
 
-\textbf{OP\_READ} receives a BorrowWrite memory attachment from the caller.
-The driver reads the physical address of the attached pages via
-\texttt{memory\_get\_phys}, constructs an NVM Read command with the starting
-LBA, block count, and PRP1 pointing to the caller's pages, and submits it to
-the I/O SQ. The NVMe controller DMAs the data directly into the caller's
-pages. When the completion arrives (polled via the I/O CQ), the driver replies
-and the kernel revokes the borrow, returning the now-filled buffer to the
-caller.
+\textbf{OP\_READ} receives a BorrowWrite memory attachment from the caller. The
+driver maps it into the controller's DMA domain, builds a PRP chain from the
+returned IOVA range, and submits an NVM Read. On completion it unmaps the DMA
+translation, replies, and lets the kernel revoke the borrow and return the filled
+buffer to the caller.
 
-\textbf{OP\_WRITE} receives a Move memory attachment. The driver reads the
-physical address, constructs an NVM Write command, and submits it. The
-controller DMAs from the caller's pages. On completion the driver replies; the
-buffer was moved and is consumed.
+\textbf{OP\_WRITE} receives a Move memory attachment, maps it for DMA, builds the
+PRP chain, and submits an NVM Write. On completion the driver removes the mapping
+and replies; the moved buffer is consumed.
 
 \textbf{OP\_FLUSH} submits an NVM Flush command to ensure all previously
 written data reaches durable media before replying.
@@ -235,9 +231,10 @@ fail, so the test distinguishes recovery from a fresh in-memory start.
 
 Launch configuration---node identity, peers, election timeout, cluster name,
 and storage policy---remains in the supervisor-provided manifest. The
-persistent objects hold Raft protocol state, log entries, and snapshots. This
-does not yet implement a name service shared among several computers; that
-requires cross-machine Raft transport and a replicated registry state machine.
+persistent objects hold Raft protocol state, log entries, and snapshots.
+Cross-machine catalog replication is provided separately by the \texttt{dns}
+state machine described in Chapters~14 and~17; this generic Raft persistence test
+remains a single-voter restart test.
 
 \section{Native filesystem}
 
@@ -250,7 +247,8 @@ directory is a fixed object ID (100).
 Each directory object stores entries as a packed sequence:
 
 \begin{verbatim}
-[name_len: u32 LE][name: UTF-8][file_id: u64 LE][flags: u32 LE][size: u64 LE]
+[name_len: u32 LE][name: UTF-8]
+[file_id: u64 LE][flags: u32 LE][size: u64 LE]
 \end{verbatim}
 
 A \texttt{name\_len = 0} marker terminates the list. Flags distinguish
@@ -312,9 +310,8 @@ creates a blank v3 store and destructively replaces the image contents.
         that connection cannot. There is no ambient filesystem namespace to
         escape.
 
-    \item \textbf{Host-inspectable.} The disk image is a raw file that can be
-        examined with standard tools and the included Python inspector. No
-        proprietary on-disk format, no opaque blobs.
+    \item \textbf{Host-inspectable.} The included Python inspector reads the raw
+        disk image and reports its documented object and filesystem structures.
 \end{enumerate}
 
 \endinput

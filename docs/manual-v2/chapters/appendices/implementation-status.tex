@@ -1,12 +1,11 @@
 \chapter{Implementation Status}
 
-This appendix catalogs what has been built and verified, organized by
-architectural phase. It is a snapshot; the repository history is the
-authoritative record.
+This appendix is a snapshot of built and verified behavior. Source, tests, and
+repository history remain authoritative.
 
 \section{Implementation phases}
 
-\begin{longtable}{|c|p{8cm}|c|}
+\begin{longtable}{|p{1.1cm}|p{7.4cm}|p{3cm}|}
 \hline
 \textbf{Phase} & \textbf{Description} & \textbf{Status} \\
 \hline
@@ -31,7 +30,7 @@ authoritative record.
     negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
     Smoltcp 0.13 adapter + TCP/IP service binary compile, and the frame
     demultiplexer routes IPv4/ARP to the tcpip service. &
-    Data path TCG-validated (relmsg/disco/dns/tcpip two-guest tests) \\
+    Two-guest TCG suite \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
     wakes, sustained-window load rebalancing & Done \\
 11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
@@ -57,7 +56,7 @@ authoritative record.
     \item Capability misuse and cancellation race adversarial tests --- \textbf{Partial; six IPC error-path tests.}
 \end{enumerate}
 
-\section{Verified (boots on QEMU, zero panics)}
+\section{Verified scope}
 
 \begin{itemize}
     \item \textbf{AArch64:} boots and the synchronous self-tests pass. The EL0
@@ -89,9 +88,9 @@ authoritative record.
         delegated MMIO + IRQ, interrupt-driven deferred reads, crash-test
         restart with device reset and operation reconciliation.
 
-    \item \textbf{Syscall dispatch:} AArch64 SVC dispatch uses the shared,
-        56-variant \texttt{SyscallNumber} enum. Caller ASID is derived from the
-        trap frame, never a userspace parameter.
+    \item \textbf{Syscall dispatch:} AArch64 SVC dispatch uses the shared typed
+        \texttt{SyscallNumber} enum. Caller identity comes from trusted thread and
+        trap context, never a userspace parameter.
 
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
         idempotent wakes, deferred reaper, per-LP thread pinning.
@@ -105,10 +104,10 @@ authoritative record.
 
     \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service runtime-validated over the frame demultiplexer; reliable-message fragmentation to 64 KiB.
 
-    \item \textbf{Raft:} two-node election over local endpoint IPC on 4-LP
-        QEMU/HVF. Timer-driven elections via completion events. Verifier domains
-        terminate rather than polling. The distributed name service replicates a
-        \texttt{name $\rightarrow$ node} catalog across two guests.
+    \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
+        single-voter restart, discovery-led join through joint consensus, and a
+        two-guest replicated DNS catalog. Restart-safe admission has focused host
+        tests and a persistent-storage boot-test manifest.
 
     \item \textbf{CI:} GitHub Actions builds both architectures with
         \texttt{-D warnings}, QEMU boot gate on AArch64.
@@ -138,7 +137,7 @@ authoritative record.
         setup.
     \item \textbf{Resource accounting:} per-domain quotas are not yet
         implemented; capability-table capacity is fixed.
-    \item \textbf{Cross-machine Raft:} two TCG guests share a QEMU stream LAN;
+    \item \textbf{Cross-machine Raft boundary:} two TCG guests share a QEMU stream LAN;
         the reliable-message frame transport and remote Raft peer routing are
         connected and validated (\texttt{--dns-test}).
     \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
@@ -149,15 +148,14 @@ authoritative record.
         IOVA map/unmap, synchronous invalidation, fault reporting, teardown,
         and NVMe integration are implemented and QEMU-tested. Non-coherent
         systems, ATS/PRI, multiple SMMUs, and other IOMMU architectures remain.
-    \item \textbf{Live upgrade:} the EL0 service manager performs handoff and
-        invokes the capability-checked replacement-domain spawn path. It can
+    \item \textbf{Upgrade:} the EL0 service manager performs handoff and invokes
+        the capability-checked replacement spawn path. It can
         fetch a replacement ELF from a well-known NVMe object, pass it as a
         memory capability, and fall back to the embedded recovery image.
-        Structural ELF validation and immutable kernel snapshotting are
-        implemented. In the absence of signed packages, persistent images must
-        exactly match the embedded build-authenticated image; signed package
-        policy, rollback policy, multiple state objects, and manager-owned
-        teardown remain future work.
+        Structural ELF validation, immutable kernel snapshotting, and Ed25519
+        CLS2 signature and logical-name checks are implemented. Rollback and key
+        rotation policy, multiple state objects in the reference manager, and
+        manager-owned teardown remain future work.
     \item \textbf{Resource bounds:} endpoint queues and rings are bounded, but
         the non-lossy CQ overflow backlog has no hard memory bound.
 \end{itemize}
