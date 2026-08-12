@@ -17,7 +17,7 @@ never through a shared lock acquired from a foreign LP.
 
 Everything that crosses a shard boundary is an owned value --- a typed
 \texttt{M} in a \texttt{ShardSender<M>}, an IPI closure, or a memory object.
-No shared references, no \texttt{Arc<Mutex<...>>} as the normal programming
+No shared references, no \texttt{Arc<Mutex<...>{>}} as the normal programming
 model. \texttt{Send + 'static} boundaries enforce this at compile time.
 
 \subsection{References to shard-local state must not escape}

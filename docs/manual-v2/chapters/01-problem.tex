@@ -76,7 +76,7 @@ programs run on operating systems that do not share Rust's ownership discipline.
     \item A Rust program cannot protect itself from a C driver that
         corrupts kernel memory. Isolation must be enforced by the hardware
         (MMU, IOMMU), not by the language.
-    \item A Rust \texttt{Mutex<Vec<T>>} crossing a syscall boundary is
+    \item A Rust \texttt{Mutex<Vec<T>{>}} crossing a syscall boundary is
         still a shared-memory lock with all the contention, priority inversion,
         and deadlock risks that implies. The kernel does not know the lock exists.
     \item Rust's \texttt{async}/\texttt{await} compiles to a state machine
