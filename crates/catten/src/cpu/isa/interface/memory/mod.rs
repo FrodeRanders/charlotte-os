@@ -89,4 +89,12 @@ pub trait AddressSpaceInterface {
         &mut self,
         vaddr: VAddr,
     ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
+    /// Translate an address only when the effective leaf mapping is writable
+    /// and accessible from userspace. Kernel code must use this operation,
+    /// rather than an unrestricted page-table translation, before writing to
+    /// a raw pointer supplied by EL0.
+    fn translate_user_writable_address(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error>;
 }

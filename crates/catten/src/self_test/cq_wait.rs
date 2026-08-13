@@ -119,7 +119,8 @@ extern "C" fn cq_driver() {
     spin_until(&ROUND1_RELEASED, "completion release");
 
     // Drain the ring so round 2 can prove a wake releases without entries.
-    let ring_ptr = completion::cq_ring_of(CQW_ASID, 0).expect("[cq wait] CQ ring missing");
+    let ring_ptr =
+        unsafe { completion::cq_ring_of(CQW_ASID, 0) }.expect("[cq wait] CQ ring missing");
     while unsafe { &mut *ring_ptr }.read().is_some() {}
     assert_eq!(completion::cq_pending(CQW_ASID, 0), 0);
 

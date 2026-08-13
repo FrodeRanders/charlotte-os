@@ -95,6 +95,17 @@ impl Descriptor {
         self.0 & (VALID | TABLE_OR_PAGE) == VALID
     }
 
+    /// Whether a leaf descriptor permits writes at its applicable exception
+    /// levels.
+    pub fn is_writable(&self) -> bool {
+        self.0 & AP_RO == 0
+    }
+
+    /// Whether a leaf descriptor permits EL0 access.
+    pub fn is_user_accessible(&self) -> bool {
+        self.0 & AP_EL0 != 0
+    }
+
     /// Build a table descriptor pointing at the given next-level table frame.
     pub fn new_table(next_table: PAddr) -> Self {
         Descriptor(

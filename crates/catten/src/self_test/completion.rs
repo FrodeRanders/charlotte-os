@@ -114,7 +114,7 @@ pub fn test_completion_caps() {
     completion::complete(cq_asid, cap_a, OpResult::Ok(10)).unwrap();
     completion::complete(cq_asid, cap_b, OpResult::Ok(20)).unwrap();
 
-    let ring_ptr = completion::cq_ring_of(cq_asid, 0).expect("CQ ring must exist");
+    let ring_ptr = unsafe { completion::cq_ring_of(cq_asid, 0) }.expect("CQ ring must exist");
     assert_eq!(unsafe { &*ring_ptr }.pending(), 1, "small CQ should hold the first entry");
     assert_eq!(unsafe { &*ring_ptr }.overflow, 1, "second entry should hit a full ring");
 
@@ -181,7 +181,7 @@ pub fn test_detached_operations() {
 
     let asid = 0xde7a_c401;
     completion::open_address_space_with_cq(asid, 3, 8);
-    let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
+    let ring_ptr = unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must exist");
 
     // Happy path: user_data comes back as the CQ cookie, no capability slot
     // is consumed.
@@ -243,7 +243,7 @@ pub fn test_detached_operations() {
     while unsafe { &mut *ring_ptr }.read().is_some() {}
 
     completion::open_cq(asid, 1, 8);
-    let ring1 = completion::cq_ring_of(asid, 1).expect("CQ 1 ring must exist");
+    let ring1 = unsafe { completion::cq_ring_of(asid, 1) }.expect("CQ 1 ring must exist");
     let routed = completion::submit_detached(asid, 1, OpCode::Nop, 0xbbbb_0001).unwrap();
     completion::complete_detached(asid, routed, OpResult::Ok(41)).unwrap();
     assert_eq!(

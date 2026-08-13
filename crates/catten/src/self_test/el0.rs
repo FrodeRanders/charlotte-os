@@ -249,7 +249,8 @@ pub fn test_el0_syscall_round_trip() {
         assert_eq!(completion::cq_pending(asid, 0), 1);
 
         // Read head via HHDM — the kernel should see head == 1 (one entry written).
-        let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must be attached");
+        let ring_ptr =
+            unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must be attached");
         let ring = unsafe { &mut *ring_ptr };
         let head = unsafe { core::ptr::read_volatile(&ring.head) };
         assert_eq!(head, 1, "kernel must see head == 1 after one completion");

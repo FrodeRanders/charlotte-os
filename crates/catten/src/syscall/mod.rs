@@ -426,6 +426,37 @@ fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
     frame.asid
 }
 
+/// Atomically validate and write the four-byte completion smoke-test value to
+/// an EL0 buffer. Every byte is translated independently before any write is
+/// performed, so unaligned and cross-page destinations are safe even when the
+/// adjacent virtual page maps a non-contiguous physical frame.
+fn write_user_u32(
+    asid: crate::memory::AddressSpaceId,
+    address: usize,
+    value: u32,
+) -> Result<(), ()> {
+    let bytes = value.to_ne_bytes();
+    let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+    let address_space = table.get_mut(asid).map_err(|_| ())?;
+    let first = address_space
+        .translate_user_writable_address(crate::memory::linear::VAddr::from(address))
+        .map_err(|_| ())?;
+    let mut destinations = [first; core::mem::size_of::<u32>()];
+    for (offset, destination) in destinations.iter_mut().enumerate().skip(1) {
+        let user_address = address.checked_add(offset).ok_or(())?;
+        *destination = address_space
+            .translate_user_writable_address(crate::memory::linear::VAddr::from(user_address))
+            .map_err(|_| ())?;
+    }
+    for (destination, byte) in destinations.into_iter().zip(bytes) {
+        let pointer: *mut u8 = destination.into();
+        unsafe {
+            core::ptr::write_volatile(pointer, byte);
+        }
+    }
+    Ok(())
+}
+
 fn sys_log(frame: &mut TrapFrame) {
     let a = frame.regs[1];
     let b = frame.regs[2];
@@ -445,28 +476,25 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
         1 => crate::completion::OpCode::Read,
         2 => crate::completion::OpCode::Write,
         3 => crate::completion::OpCode::Timer,
-        _ => panic!("Unknown op_code in syscall submit: {}", op_code),
+        // Unknown op codes are a caller-controlled input and must be rejected
+        // non-fatally rather than crashing the kernel.
+        _ => {
+            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            return;
+        }
     };
 
-    // For Read/Write operations the user may pass a buffer (VA, len) in x2/x3.
-    // Translate the user VA to an HHDM pointer so the kernel can access the
-    // buffer, allocate a cap, do the "work" synchronously (write a sentinel
-    // into the buffer via HHDM), and complete — proving the full buffer-
-    // ownership round-trip through the ABI with one syscall.
-    let did_read = if op == crate::completion::OpCode::Read && buf_ptr != 0 && buf_len >= 4 {
-        let vaddr = crate::memory::linear::VAddr::from(buf_ptr);
-        let paddr = {
-            let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
-            table
-                .get_mut(asid)
-                .expect("SUBMIT: address space not found")
-                .translate_address(vaddr)
-                .expect("SUBMIT: failed to translate user buffer VA")
-        };
-        let hhdm: *mut u8 = paddr.into();
-        Some((hhdm, buf_len))
-    } else {
-        None
+    // For Read operations the user may pass a buffer (VA, len) in x2/x3. The
+    // checked write below verifies every affected mapping is EL0-writable and
+    // handles unaligned/cross-page destinations without assuming physical
+    // contiguity.
+    let did_read = match op {
+        crate::completion::OpCode::Read if buf_ptr != 0 && buf_len >= 4 => Some((buf_ptr, buf_len)),
+        crate::completion::OpCode::Read => {
+            frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+            return;
+        }
+        _ => None,
     };
 
     if op == crate::completion::OpCode::Timer {
@@ -481,19 +509,20 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
                 );
                 frame.regs[0] = cap;
             }
-            // Capability zero is valid. Use the same unambiguous sentinel as
-            // completion polling instead of conflating failure with slot 0.
-            Err(_) => frame.regs[0] = u64::MAX,
+            // Use the ABI's reserved failure sentinel rather than a capability
+            // value.
+            Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
         }
         return;
     }
 
     match crate::completion::submit(asid, op, None) {
         Ok(cap) => {
-            if let Some((hhdm, len)) = did_read {
-                // Do the "work": write a sentinel into the user's buffer.
-                unsafe {
-                    core::ptr::write_volatile(hhdm as *mut u32, 0xfeed_f00d);
+            if let Some((user_address, len)) = did_read {
+                if write_user_u32(asid, user_address, 0xfeed_f00d).is_err() {
+                    let _ = crate::completion::abort_submission(asid, cap);
+                    frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED;
+                    return;
                 }
                 let _ = crate::completion::complete(
                     asid,
@@ -503,7 +532,9 @@ fn sys_completion_submit(frame: &mut TrapFrame) {
             }
             frame.regs[0] = cap;
         }
-        Err(_) => panic!("syscall completion submit failed"),
+        // Backpressure (full table) or a missing address space is a non-fatal
+        // caller-visible error, mirroring the submit_timer path.
+        Err(_) => frame.regs[0] = catten_syscall::COMPLETION_SUBMIT_FAILED,
     }
 }
 
@@ -513,7 +544,7 @@ fn sys_completion_submit_detached_timer(frame: &mut TrapFrame) {
     let cq = frame.regs[2] as u32;
     let user_data = frame.regs[3];
     frame.regs[0] = crate::completion::submit_detached_timer(asid, cq, timeout_ms, user_data)
-        .unwrap_or(u64::MAX);
+        .unwrap_or(catten_syscall::COMPLETION_SUBMIT_FAILED);
 }
 
 fn sys_completion_complete(frame: &mut TrapFrame) {
@@ -533,16 +564,22 @@ fn sys_completion_poll(frame: &mut TrapFrame) {
     let cap = frame.regs[1];
     match crate::completion::poll(asid, cap) {
         Ok(Some(completed)) => {
-            frame.regs[0] = 0;
+            frame.regs[0] = catten_syscall::completion_status::READY;
             frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
             frame.regs[2] = completed.buffer.as_ref().map_or(0, |buf| buf.len()) as u64;
         }
         Ok(None) => {
-            frame.regs[0] = 1;
+            frame.regs[0] = catten_syscall::completion_status::PENDING_OR_TIMEOUT;
             frame.regs[1] = 0;
             frame.regs[2] = 0;
         }
-        Err(_) => panic!("syscall completion poll failed: unknown cap {}", cap),
+        // An unknown capability is a terminal caller error; distinguish it
+        // from a valid operation that is still pending.
+        Err(_) => {
+            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = 0;
+            frame.regs[2] = 0;
+        }
     }
 }
 
@@ -1309,11 +1346,20 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         }
     }
 
-    // Fast path: completion already posted.
-    if let Ok(Some(completed)) = crate::completion::poll(asid, cap) {
-        frame.regs[0] = 0;
-        frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
-        return;
+    // Fast path: completion already posted, or the capability is already
+    // known to be invalid. Do not enter scheduler code for a caller error.
+    match crate::completion::poll(asid, cap) {
+        Ok(Some(completed)) => {
+            frame.regs[0] = catten_syscall::completion_status::READY;
+            frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
+            return;
+        }
+        Ok(None) => {}
+        Err(_) => {
+            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = 0;
+            return;
+        }
     }
 
     let tid = SYSTEM_SCHEDULER
@@ -1326,8 +1372,15 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     // Keep the object used for both registration and the lost-wake check.
     // Looking it up twice would be harmless while this capability remains
     // open, but one Arc makes the synchronization relationship explicit.
-    let completion =
-        crate::completion::completion_of(asid, cap).expect("COMPLETION_WAIT_TIMEOUT: unknown cap");
+    // An unknown capability is a caller error, not a kernel fault.
+    let completion = match crate::completion::completion_of(asid, cap) {
+        Ok(completion) => completion,
+        Err(_) => {
+            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = 0;
+            return;
+        }
+    };
 
     // Block on the completion.
     let generation = SYSTEM_SCHEDULER
@@ -1368,11 +1421,16 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         Ok(Some(completed)) => {
             // Write the result back: x0 = 0 (success), x1 = result code.
             let code = crate::completion::cq::op_result_to_i64(completed.result);
-            frame.regs[0] = 0;
+            frame.regs[0] = catten_syscall::completion_status::READY;
             frame.regs[1] = code as u64;
         }
-        _ => {
-            frame.regs[0] = 1; // timeout
+        Ok(None) => {
+            frame.regs[0] = catten_syscall::completion_status::PENDING_OR_TIMEOUT;
+            frame.regs[1] = 0;
+        }
+        Err(_) => {
+            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            frame.regs[1] = 0;
         }
     }
 }

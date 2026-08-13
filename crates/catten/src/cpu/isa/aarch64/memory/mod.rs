@@ -25,6 +25,7 @@ impl MemoryInterface for MemoryInterfaceImpl {
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     Unmapped,
+    PermissionDenied,
     AlreadyMapped,
     NullVAddrNotAllowed,
     VAddrNotPageAligned,

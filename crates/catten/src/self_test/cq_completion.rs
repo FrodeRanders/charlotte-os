@@ -33,7 +33,7 @@ pub fn test_cq_ring_in_completion() {
     assert_eq!(completion::cq_pending(asid, 0), 1);
 
     // Drain the ring entry and verify it.
-    let ring_ptr = completion::cq_ring_of(asid, 0).expect("CQ ring must exist");
+    let ring_ptr = unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must exist");
     let entry = unsafe { &mut *ring_ptr }.read().expect("first entry must be present");
     assert_eq!(entry.cookie, cap as u64);
     assert_eq!(entry.result, crate::completion::cq::op_result_to_i64(OpResult::Ok(4)));

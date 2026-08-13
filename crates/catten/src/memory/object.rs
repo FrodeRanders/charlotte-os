@@ -31,6 +31,13 @@ use crate::{
 
 const PAGE_SIZE: usize = 4096;
 
+/// Upper bound on a single memory-object allocation, in pages (64 MiB). A
+/// single `memory_alloc` cannot request an unbounded number of frames: this
+/// caps the allocation loop and the amount of physical memory zeroed in one
+/// syscall. Per-domain *total* quotas remain future work (see the manual's
+/// known limitations); this bound only limits a single allocation.
+pub const MAX_MEMORY_OBJECT_PAGES: usize = 16_384;
+
 pub type MemoryObjectCap = u64;
 type MemoryObjectId = u64;
 
@@ -204,7 +211,7 @@ static MEMORY_OBJECTS: crate::memory::LazyLock<crate::memory::Mutex<MemoryObject
     crate::memory::LazyLock::new(|| crate::memory::Mutex::new(MemoryObjectRegistry::new()));
 
 pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, MemoryObjectError> {
-    if pages == 0 {
+    if pages == 0 || pages > MAX_MEMORY_OBJECT_PAGES {
         return Err(MemoryObjectError::InvalidLength);
     }
     validate_address_space(owner)?;
@@ -337,7 +344,6 @@ pub(crate) fn snapshot_bytes(
 }
 
 /// Copy kernel-owned bytes into a writable memory object.
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn write_bytes(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -1100,9 +1106,11 @@ fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), Me
 
 /// Return the physical base address of the first frame named by `cap`.
 ///
-/// A valid borrowed capability is sufficient authority: userspace drivers
-/// need the DMA address of an IPC-borrowed buffer without taking ownership.
-/// Returns 0 on any error.
+/// Physical addresses are kernel-private layout information, so this query is
+/// restricted to the object's **owner**. A borrowed (read-only or writable)
+/// capability is not sufficient authority: DMA drivers that need to address an
+/// IPC-borrowed buffer must use the IOVA/DMA-domain path (`pin_for_dma` +
+/// SMMU), never raw physical addresses. Returns 0 on any error.
 pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
     get_phys_page(asid, cap, 0)
 }
@@ -1110,20 +1118,21 @@ pub fn get_phys(asid: AddressSpaceId, cap: MemoryObjectCap) -> u64 {
 /// Return the physical address of one frame named by `cap`.
 ///
 /// Memory-object frames are deliberately not assumed to be physically
-/// contiguous. DMA drivers use this indexed query to construct scatter/gather
-/// descriptors such as NVMe PRP lists while the borrowed capability keeps all
-/// queried frames alive.
+/// contiguous. This owner-only compatibility query is not a DMA interface;
+/// drivers must map owned or borrowed buffers through their DMA domain and use
+/// the returned IOVA. Ownership-restricted like [`get_phys`].
 pub fn get_phys_page(asid: AddressSpaceId, cap: MemoryObjectCap, page_index: usize) -> u64 {
     let registry = MEMORY_OBJECTS.lock();
     let Ok(cap_entry) = registry.lookup(asid, cap) else {
         return 0;
     };
-    registry
-        .objects
-        .get(&cap_entry.object)
-        .and_then(|object| object.frames.get(page_index).copied())
-        .map(<PAddr as Into<u64>>::into)
-        .unwrap_or(0)
+    let Some(object) = registry.objects.get(&cap_entry.object) else {
+        return 0;
+    };
+    if object.owner != asid {
+        return 0;
+    }
+    object.frames.get(page_index).copied().map(<PAddr as Into<u64>>::into).unwrap_or(0)
 }
 
 #[cfg(target_arch = "aarch64")]

@@ -477,4 +477,34 @@ impl<'vas> Walker<'vas> {
             Err(e) => Err(e),
         }
     }
+
+    /// Translate only an EL0-writable leaf. Charlotte does not set table-level
+    /// access restrictions, so the page/block descriptor selected here holds
+    /// the effective permission.
+    pub fn translate_user_writable(&mut self) -> WalkerResult<PAddr> {
+        let (descriptor, offset) = match self.walk() {
+            Ok(()) => (unsafe { (*self.l3_ptr)[self.vaddr.pt_index()] }, self.vaddr.page_offset()),
+            Err(WalkerError::Unmapped) => match self.walk_large_page() {
+                Ok(()) => (
+                    unsafe { (*self.l2_ptr)[self.vaddr.pd_index()] },
+                    self.vaddr.page_offset() + self.vaddr.pt_index() * PAGE_SIZE,
+                ),
+                Err(WalkerError::Unmapped) => {
+                    self.walk_huge_page()?;
+                    (
+                        unsafe { (*self.l1_ptr)[self.vaddr.pdpt_index()] },
+                        self.vaddr.page_offset()
+                            + self.vaddr.pt_index() * PAGE_SIZE
+                            + self.vaddr.pd_index() * super::LARGE_PAGE_SIZE,
+                    )
+                }
+                Err(error) => return Err(error),
+            },
+            Err(error) => return Err(error),
+        };
+        if !descriptor.is_user_accessible() || !descriptor.is_writable() {
+            return Err(WalkerError::PermissionDenied);
+        }
+        Ok(descriptor.frame() + offset)
+    }
 }

@@ -459,10 +459,19 @@ struct AsCompletions {
     cqs: BTreeMap<CqId, CqState>,
 }
 
-// AsCompletions stores raw pointers to CQ rings allocated from the kernel heap;
-// all access goes through COMPLETIONS' RwLock, so concurrent access is
-// serialised. Vec<u8> is not Sync, but we store it behind a Box which is
-// accessed only from within the RwLock.
+// SAFETY: `CqState::ring` has two backing modes. Heap-backed queues retain their
+// allocation in `_buf: Some(Vec<u8>)`. Physical queues use `_buf: None`; their
+// frame is owned by the user address-space mapping, and address-space teardown
+// calls `completion::close_address_space` before removing that mapping/table.
+// Consequently either backing allocation outlives its registry entry.
+//
+// All safe kernel dereferences of `ring` and mutations of CQ producer state are
+// serialized by the `COMPLETIONS` write lock. The mapped EL0 consumer may update
+// the ring tail concurrently; the ring implementation uses volatile accesses
+// and acquire/release fences for that producer/consumer protocol. The only raw
+// pointer escape, `cq_ring_of`, is unsafe and places its quiescence/lifetime
+// obligation on its test/inspection caller. These invariants make moving or
+// sharing the registry between kernel threads sound.
 unsafe impl Send for AsCompletions {}
 unsafe impl Sync for AsCompletions {}
 
@@ -575,7 +584,13 @@ pub fn open_cq_phys(
 }
 
 /// Returns a raw pointer to a CQ ring of `asid`, or `None`.
-pub fn cq_ring_of(
+///
+/// # Safety
+///
+/// The caller must ensure the address space cannot be closed or have this CQ
+/// replaced for the complete duration of every pointer use. A mutable access
+/// additionally requires that no other consumer drains the ring concurrently.
+pub unsafe fn cq_ring_of(
     asid: AddressSpaceId,
     cq: CqId,
 ) -> Option<*mut crate::completion::cq::CompletionQueueRing> {
@@ -625,6 +640,22 @@ pub fn submit(
     as_completions.table.insert(cap, Completion::new(buffer));
     as_completions.live += 1;
     Ok(cap)
+}
+
+/// Roll back a capability-backed submission before it becomes externally
+/// visible. This is used by syscall validation that must reserve a bounded
+/// completion slot before performing an atomic checked user-memory write.
+pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
+    let mut registry = COMPLETIONS.write();
+    let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+    as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
+    as_completions.live =
+        as_completions.live.checked_sub(1).expect("aborted completion must count as live");
+    assert!(
+        crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion),
+        "aborted completion capability was absent from unified table"
+    );
+    Ok(())
 }
 
 /// Submits a timer operation: creates a capability that auto-completes after

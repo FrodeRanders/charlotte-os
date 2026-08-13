@@ -14,6 +14,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     Unmapped,
+    PermissionDenied,
     AlreadyMapped,
     NullVAddrNotAllowed,
     VAddrNotPageAligned,

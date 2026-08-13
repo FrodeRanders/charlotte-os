@@ -402,4 +402,68 @@ impl AddressSpaceInterface for AddressSpace {
             Err(e) => Err(e),
         }
     }
+
+    fn translate_user_writable_address(
+        &mut self,
+        vaddr: super::address::vaddr::VAddr,
+    ) -> Result<super::address::paddr::PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, vaddr);
+        let (frame, offset, permitted) = match walker.walk() {
+            Ok(()) => unsafe {
+                let entries = [
+                    &(*walker.pml4_ptr)[vaddr.pml4_index()],
+                    &(*walker.pdpt_ptr)[vaddr.pdpt_index()],
+                    &(*walker.pd_ptr)[vaddr.pd_index()],
+                    &(*walker.pt_ptr)[vaddr.pt_index()],
+                ];
+                (
+                    entries[3].try_get_frame()?,
+                    vaddr.page_offset(),
+                    entries.iter().all(|entry| entry.is_user_accessible() && entry.is_writable()),
+                )
+            },
+            Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                match walker.walk_large_page() {
+                    Ok(()) => unsafe {
+                        let entries = [
+                            &(*walker.pml4_ptr)[vaddr.pml4_index()],
+                            &(*walker.pdpt_ptr)[vaddr.pdpt_index()],
+                            &(*walker.pd_ptr)[vaddr.pd_index()],
+                        ];
+                        (
+                            entries[2].try_get_frame()?,
+                            vaddr.page_offset() + vaddr.pt_index() * PAGE_SIZE,
+                            entries
+                                .iter()
+                                .all(|entry| entry.is_user_accessible() && entry.is_writable()),
+                        )
+                    },
+                    Err(<MemoryInterfaceImpl as MemoryInterface>::Error::Unmapped) => {
+                        walker.walk_huge_page()?;
+                        unsafe {
+                            let entries = [
+                                &(*walker.pml4_ptr)[vaddr.pml4_index()],
+                                &(*walker.pdpt_ptr)[vaddr.pdpt_index()],
+                            ];
+                            (
+                                entries[1].try_get_frame()?,
+                                vaddr.page_offset()
+                                    + vaddr.pt_index() * PAGE_SIZE
+                                    + vaddr.pd_index() * Self::LARGE_PAGE_SIZE,
+                                entries
+                                    .iter()
+                                    .all(|entry| entry.is_user_accessible() && entry.is_writable()),
+                            )
+                        }
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        };
+        if !permitted {
+            return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::PermissionDenied);
+        }
+        Ok(frame + offset)
+    }
 }

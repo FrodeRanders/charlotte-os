@@ -257,6 +257,16 @@ fn map_elf_load_segment(asid: usize, image: &[u8], segment: ElfLoadSegment) {
 
 #[cfg(target_arch = "aarch64")]
 fn load_user_elf(asid: usize, image: &[u8]) -> usize {
+    // The general service loader refuses unsigned images; the sitas smoke
+    // path must enforce the same gate so a tampered `sitas-user` ELF is never
+    // mapped, keeping every EL0 image behind the cluster signature boundary.
+    if !matches!(
+        charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY),
+        charlotte_launch::signature_note::VerifyOutcome::Valid,
+    ) {
+        panic!("[sitas] refusing to load an ELF that is not validly signed by the cluster");
+    }
+
     let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
     let mut load_segments = 0usize;
 

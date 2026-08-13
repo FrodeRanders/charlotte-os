@@ -508,6 +508,14 @@ impl AddressSpaceInterface for AddressSpace {
         let mut walker = walker::Walker::new(self, vaddr);
         walker.translate()
     }
+
+    fn translate_user_writable_address(
+        &mut self,
+        vaddr: VAddr,
+    ) -> Result<PAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = walker::Walker::new(self, vaddr);
+        walker.translate_user_writable()
+    }
 }
 
 impl Drop for AddressSpace {

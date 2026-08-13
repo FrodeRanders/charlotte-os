@@ -207,6 +207,21 @@ pub enum OpCode {
     Timer = 3,
 }
 
+/// Sentinel returned by completion submission when validation or bounded
+/// admission fails. Capability IDs never use this value.
+pub const COMPLETION_SUBMIT_FAILED: u64 = u64::MAX;
+
+pub type CompletionStatusCode = u64;
+
+/// Status values returned in `x0` by completion poll/wait-with-timeout.
+pub mod completion_status {
+    use super::CompletionStatusCode;
+
+    pub const READY: CompletionStatusCode = 0;
+    pub const PENDING_OR_TIMEOUT: CompletionStatusCode = 1;
+    pub const INVALID_CAPABILITY: CompletionStatusCode = 2;
+}
+
 // ---- endpoint IPC constants -----------------------------------------------
 
 pub type IpcStatusCode = u64;
@@ -648,7 +663,9 @@ pub fn el0_log(a: u64, b: u64) {
     }
 }
 
-/// Submit an async operation.  Returns a completion capability.
+/// Submit an async operation that needs no buffer. Returns a completion
+/// capability, or [`COMPLETION_SUBMIT_FAILED`] when bounded admission fails.
+/// Use [`submit_read`] for [`OpCode::Read`].
 #[inline(always)]
 pub fn submit(op: OpCode) -> u64 {
     unsafe { svc3(SyscallNumber::CompletionSubmit, op as u64, 0, 0) }
@@ -656,7 +673,7 @@ pub fn submit(op: OpCode) -> u64 {
 
 /// Submit a timer operation that completes after `timeout_ms` milliseconds.
 /// Returns a completion capability that auto-completes when the timer fires,
-/// or `u64::MAX` when submission fails. Capability zero is valid.
+/// or [`COMPLETION_SUBMIT_FAILED`] when submission fails.
 #[inline(always)]
 pub fn submit_timer(timeout_ms: u64) -> u64 {
     unsafe { svc3(SyscallNumber::CompletionSubmit, OpCode::Timer as u64, 0, timeout_ms) }
@@ -727,7 +744,9 @@ pub unsafe fn cq_read(base: usize, entries: u32) -> Option<CqEntry> {
 
 /// Submit a Read with a user buffer.  `buf_ptr`/`buf_len` point to a
 /// writable buffer in the caller's address space that the kernel fills.
-/// Returns the capability.
+/// Returns the capability, or [`COMPLETION_SUBMIT_FAILED`] if the complete
+/// four-byte destination is not EL0-writable or submission is backpressured.
+/// Unaligned and cross-page destinations are supported.
 ///
 /// # Safety
 /// `buf_ptr` must point to a writable buffer of at least `buf_len` bytes
@@ -748,7 +767,9 @@ pub fn complete(cap: u64, result_code: i64) {
 }
 
 /// Non-blocking check: drain the completion if it is terminal.
-/// Returns `(0, result_code)` when ready and `(1, 0)` while pending.
+/// Returns `(`[`completion_status::READY`]`, result_code)` when ready,
+/// `(`[`completion_status::PENDING_OR_TIMEOUT`]`, 0)` while pending, and
+/// `(`[`completion_status::INVALID_CAPABILITY`]`, 0)` for an invalid cap.
 #[inline(always)]
 pub fn poll(cap: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CompletionPoll, cap, 0, 0) }
@@ -837,7 +858,9 @@ pub fn mailbox_recv_raw() -> (u64, u64) {
 }
 
 /// Block on a capability with a timeout in milliseconds.
-/// Returns `(0, result_code)` on completion, `(1, _)` on timeout.
+/// Returns `(`[`completion_status::READY`]`, result_code)` on completion,
+/// `(`[`completion_status::PENDING_OR_TIMEOUT`]`, 0)` on timeout, and
+/// `(`[`completion_status::INVALID_CAPABILITY`]`, 0)` for an invalid cap.
 #[inline(always)]
 pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CompletionWaitTimeout, cap, timeout_ms, 0) }
@@ -1119,15 +1142,16 @@ pub fn memory_close(cap: u64) -> MemoryStatusCode {
 }
 
 /// Return the physical base address of the first frame of memory object
-/// `cap`, or 0 on error. Owned and IPC-borrowed caps are accepted.
+/// `cap`, or 0 on error. Only the object's current owner may query it;
+/// IPC-borrowed caps must be mapped through [`dma_map`] for device access.
 #[inline(always)]
 pub fn memory_get_phys(cap: u64) -> u64 {
     memory_get_phys_page(cap, 0)
 }
 
 /// Return the physical address of page `page_index` in memory object `cap`,
-/// or 0 if the capability is invalid or the index is out of bounds. Owned and
-/// IPC-borrowed capabilities are accepted.
+/// or 0 if the capability is invalid, is borrowed, or the index is out of
+/// bounds. Device drivers should use [`dma_map`] rather than raw addresses.
 #[inline(always)]
 pub fn memory_get_phys_page(cap: u64, page_index: usize) -> u64 {
     unsafe { svc3(SyscallNumber::MemoryGetPhysPage, cap, page_index as u64, 0) }
@@ -1307,15 +1331,19 @@ pub fn ipc_vector_call(connection: u64, opcode: u32, arg0: u64, cap_vector: u64)
 }
 
 /// Receive a message and fill a result page with delivered cap IDs.
-/// `x1` = endpoint cap, `x3` = result page cap (mapped writable).
+/// `x1` = endpoint cap, `x3` = result-page memory capability. The page need
+/// not be mapped, and either an owned or BorrowWrite capability is accepted.
 /// Returns the same 9-register shape as [`ipc_recv`], and the result
-/// page contents are updated with the cap IDs.
+/// page contents are updated with a little-endian `u16` count followed
+/// immediately by that many little-endian `u64` capability IDs. An invalid,
+/// read-only, or undersized result page leaves the message queued and returns
+/// [`ipc_status::MEMORY_TRANSFER_FAILED`].
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
 /// # Safety
 ///
-/// `result_page` must name a writable memory-object capability containing
-/// enough space for the kernel's packed capability-vector result.
+/// `result_page` must name an owned or BorrowWrite memory-object capability
+/// containing enough space for the kernel's packed capability-vector result.
 pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
@@ -1331,14 +1359,16 @@ pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
             "svc #53",
             lateout("x0") status,
             inlateout("x1") endpoint => opcode,
-            inlateout("x2") result_page => arg0,
-            lateout("x3") reply,
+            lateout("x2") arg0,
+            inlateout("x3") result_page => reply,
             lateout("x4") sender,
             lateout("x5") interface,
             lateout("x6") version,
             lateout("x7") memory,
             lateout("x8") connection,
-            options(nostack, nomem, preserves_flags),
+            // The kernel writes through `result_page`; omitting `nomem` makes
+            // this syscall a compiler memory barrier for surrounding accesses.
+            options(nostack, preserves_flags),
         );
     }
     IpcMessage {

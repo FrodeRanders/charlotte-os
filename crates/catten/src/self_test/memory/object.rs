@@ -37,6 +37,12 @@ pub fn test_memory_objects() {
     let reader = create_memory_object_test_address_space("reader");
     let writer = create_memory_object_test_address_space("writer");
 
+    assert_eq!(
+        object::allocate(owner, object::MAX_MEMORY_OBJECT_PAGES + 1),
+        Err(MemoryObjectError::InvalidLength),
+        "one allocation must not exceed the per-request resource bound"
+    );
+
     let cap = object::allocate(owner, 2).expect("memory object: allocation failed");
     let initial = object::info(owner, cap).expect("memory object: missing owner cap");
     assert_eq!(initial.owner, owner);

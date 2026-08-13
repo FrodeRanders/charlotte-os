@@ -25,6 +25,7 @@ use crate::{
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
         VAddr,
+        object,
     },
     self_test::close_test_address_space,
     syscall::{
@@ -87,6 +88,39 @@ pub fn test_syscall_dispatch() {
     logln!("Testing syscall dispatch subsystem...");
     let asid = 0xcafe;
     completion::open_address_space(asid, 256);
+
+    // Caller-controlled completion inputs are rejected without entering the
+    // scheduler or panicking the kernel.
+    {
+        let mut invalid_submit = synthetic_trap_frame_in(asid, 0, 99, 0, 0);
+        syscall::syscall_dispatch(&mut invalid_submit, call_no::COMPLETION_SUBMIT);
+        assert_eq!(
+            invalid_submit.regs[0],
+            catten_syscall::COMPLETION_SUBMIT_FAILED,
+            "unknown completion opcodes must fail non-fatally"
+        );
+        let mut missing_buffer = synthetic_trap_frame_in(asid, 0, OpCode::Read as u64, 0, 0);
+        syscall::syscall_dispatch(&mut missing_buffer, call_no::COMPLETION_SUBMIT);
+        assert_eq!(
+            missing_buffer.regs[0],
+            catten_syscall::COMPLETION_SUBMIT_FAILED,
+            "completion Read must reject a missing destination buffer"
+        );
+        let mut invalid_poll = synthetic_trap_frame_in(asid, 0, u64::MAX, 0, 0);
+        syscall::syscall_dispatch(&mut invalid_poll, call_no::COMPLETION_POLL);
+        assert_eq!(
+            invalid_poll.regs[0],
+            catten_syscall::completion_status::INVALID_CAPABILITY,
+            "poll must distinguish an invalid capability from pending"
+        );
+        let mut invalid_wait = synthetic_trap_frame_in(asid, 0, u64::MAX, 1, 0);
+        syscall::syscall_dispatch(&mut invalid_wait, call_no::COMPLETION_WAIT_TIMEOUT);
+        assert_eq!(
+            invalid_wait.regs[0],
+            catten_syscall::completion_status::INVALID_CAPABILITY,
+            "wait_timeout must distinguish an invalid capability from timeout"
+        );
+    }
 
     // LOG
     {
@@ -313,6 +347,62 @@ pub fn test_syscall_dispatch() {
 
     let memory_owner = create_syscall_test_address_space("owner");
     let memory_server = create_syscall_test_address_space("server");
+    completion::open_address_space(memory_owner, 32);
+
+    // A completion Read validates EL0 write permission for every destination
+    // byte and supports an unaligned write that crosses into a separately
+    // translated page.
+    let user_copy_cap =
+        object::allocate(memory_owner, 2).expect("checked user-copy object allocation failed");
+    let user_copy_base = VAddr::from(0x20_0000usize);
+    object::map(memory_owner, user_copy_cap, user_copy_base, true)
+        .expect("checked user-copy mapping failed");
+    let cross_page = 0x20_0fffusize;
+    let user_copy_completion = {
+        let mut f =
+            synthetic_trap_frame_in(memory_owner, 0, OpCode::Read as u64, cross_page as u64, 4);
+        syscall::syscall_dispatch(&mut f, call_no::COMPLETION_SUBMIT);
+        assert_ne!(f.regs[0], catten_syscall::COMPLETION_SUBMIT_FAILED);
+        f.regs[0]
+    };
+    let completed = completion::poll(memory_owner, user_copy_completion)
+        .expect("checked user-copy poll failed")
+        .expect("checked user-copy completion should be terminal");
+    assert_eq!(completed.result, OpResult::Ok(4));
+    completion::close(memory_owner, user_copy_completion)
+        .expect("checked user-copy completion close failed");
+    let expected = 0xfeed_f00du32.to_ne_bytes();
+    for (offset, expected_byte) in expected.into_iter().enumerate() {
+        let frame = ADDRESS_SPACE_TABLE
+            .lock()
+            .get_mut(memory_owner)
+            .expect("checked user-copy AS missing")
+            .translate_address(VAddr::from(cross_page + offset))
+            .expect("checked user-copy byte should be mapped");
+        unsafe {
+            assert_eq!(frame.into_hhdm_mut::<u8>().read_volatile(), expected_byte);
+        }
+    }
+    object::unmap(memory_owner, user_copy_cap).expect("checked user-copy writable unmap failed");
+    let read_only_base = VAddr::from(0x21_0000usize);
+    object::map(memory_owner, user_copy_cap, read_only_base, false)
+        .expect("checked user-copy read-only map failed");
+    let mut read_only = synthetic_trap_frame_in(
+        memory_owner,
+        0,
+        OpCode::Read as u64,
+        usize::from(read_only_base) as u64,
+        4,
+    );
+    syscall::syscall_dispatch(&mut read_only, call_no::COMPLETION_SUBMIT);
+    assert_eq!(
+        read_only.regs[0],
+        catten_syscall::COMPLETION_SUBMIT_FAILED,
+        "completion Read must not bypass a read-only user mapping"
+    );
+    object::unmap(memory_owner, user_copy_cap).expect("checked user-copy read-only unmap failed");
+    object::close_cap(memory_owner, user_copy_cap).expect("checked user-copy object close failed");
+
     let memory_cap = {
         let mut f = synthetic_trap_frame_in(memory_owner, 0, 1, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::MEMORY_ALLOC);

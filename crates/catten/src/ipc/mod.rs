@@ -1739,6 +1739,18 @@ pub fn receive_vec(
         if endpoint.closed {
             return Err(IpcError::EndpointClosed);
         }
+        let queued = endpoint.queue.front().cloned().ok_or(IpcError::NoMessage)?;
+        let count = queued.memory.len().min(CAP_VECTOR_MAX);
+        let mut result = Vec::with_capacity(2 + count * core::mem::size_of::<u64>());
+        result.extend_from_slice(&(count as u16).to_le_bytes());
+        for cap in queued.memory.iter().take(count) {
+            result.extend_from_slice(&cap.to_le_bytes());
+        }
+        // Validate rights and capacity, and finish the copy, before consuming
+        // the message. BorrowWrite is sufficient; a read-only, undersized, or
+        // stale result capability leaves the queue untouched.
+        crate::memory::object::write_bytes(receiver, result_page, &result)
+            .map_err(|_| IpcError::MemoryTransferFailed)?;
         (
             endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?,
             endpoint.interface,
@@ -1756,21 +1768,6 @@ pub fn receive_vec(
         memory: message.memory.first().copied(),
         connection: message.connection,
     };
-
-    let phys = crate::memory::object::get_phys(receiver, result_page);
-    if phys != 0
-        && let Ok(paddr) = crate::memory::PAddr::try_from(phys as usize)
-    {
-        let ptr: *mut u8 = paddr.into();
-        let n = message.memory.len().min(CAP_VECTOR_MAX);
-        unsafe {
-            core::ptr::write_volatile(ptr as *mut u16, n as u16);
-            let caps_ptr = ptr.add(2) as *mut u64;
-            for i in 0..n {
-                core::ptr::write_unaligned(caps_ptr.add(i), message.memory[i]);
-            }
-        }
-    }
 
     Ok(response)
 }

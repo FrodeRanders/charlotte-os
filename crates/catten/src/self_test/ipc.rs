@@ -997,6 +997,7 @@ pub fn test_vector_ipc_transaction_rollback() {
     logln!("Testing vector IPC transaction rollback...");
     let server = create_ipc_memory_test_address_space("vector-server");
     let client = create_ipc_memory_test_address_space("vector-client");
+    let result_owner = create_ipc_memory_test_address_space("vector-result-owner");
     let endpoint =
         ipc::endpoint_create(server, 0x5645_4354, 1, 4).expect("vector endpoint create failed");
     let connection = ipc::connection_delegate(server, endpoint, client, ConnectionRights::SEND)
@@ -1046,9 +1047,69 @@ pub fn test_vector_ipc_transaction_rollback() {
         Err(IpcError::NoMessage),
         "a partially transferred vector must not enqueue a message"
     );
-    object::close_cap(client, moved).expect("vector moved object cleanup failed");
-    object::close_cap(client, vector).expect("vector page cleanup failed");
+
+    // A BorrowWrite result page is sufficient for vector receive. Reuse the
+    // restored moved capability in a valid one-entry vector.
+    object::map(client, vector, VAddr::from(0x140000usize), true)
+        .expect("valid vector page remap failed");
+    let frame = ADDRESS_SPACE_TABLE
+        .lock()
+        .get_mut(client)
+        .expect("vector client AS missing")
+        .translate_address(VAddr::from(0x140000usize))
+        .expect("valid vector page translation failed");
+    let base: *mut u8 = frame.into();
+    unsafe {
+        core::ptr::write_volatile(base as *mut u16, 1);
+        core::ptr::write_unaligned(
+            base.add(2) as *mut ipc::CapVectorEntry,
+            ipc::CapVectorEntry {
+                cap: moved,
+                mode: 1,
+                _pad: 0,
+            },
+        );
+    }
+    object::unmap(client, vector).expect("valid vector page unmap failed");
+    ipc::vector_send(client, connection, 2, 0x55, vector).expect("valid vector send failed");
+
+    let result_page =
+        object::allocate(result_owner, 1).expect("vector result page allocation failed");
+    let read_only_result = object::lend_read(result_owner, result_page, server)
+        .expect("vector result BorrowRead failed");
+    assert_eq!(
+        ipc::receive_vec(server, endpoint, read_only_result),
+        Err(IpcError::MemoryTransferFailed),
+        "a read-only result page must be rejected without consuming the message"
+    );
+    object::revoke_lend(result_owner, result_page, server, read_only_result)
+        .expect("vector result BorrowRead revoke failed");
+    let borrowed_result = object::lend_write(result_owner, result_page, server)
+        .expect("vector result BorrowWrite failed");
+    let message = ipc::receive_vec(server, endpoint, borrowed_result)
+        .expect("vector receive into BorrowWrite page failed");
+    let delivered = message.memory.expect("vector receive should return its first memory cap");
+    let result_phys = object::get_phys(result_owner, result_page);
+    assert_ne!(result_phys, 0, "result owner should retain physical-query authority");
+    let result_ptr: *const u8 = crate::memory::PAddr::try_from(result_phys as usize)
+        .expect("vector result physical address should be valid")
+        .into();
+    unsafe {
+        assert_eq!(core::ptr::read_unaligned(result_ptr as *const u16), 1);
+        assert_eq!(core::ptr::read_unaligned(result_ptr.add(2) as *const u64), delivered);
+    }
+    object::close_cap(server, delivered).expect("delivered vector object cleanup failed");
+    object::revoke_lend(result_owner, result_page, server, borrowed_result)
+        .expect("vector result BorrowWrite revoke failed");
+    object::close_cap(result_owner, result_page).expect("vector result page cleanup failed");
+
+    assert_eq!(
+        object::info(client, vector),
+        Err(object::MemoryObjectError::UnknownCapability),
+        "successful vector send must consume its descriptor page"
+    );
     close_test_address_space(client).expect("vector client AS close failed");
     close_test_address_space(server).expect("vector server AS close failed");
+    close_test_address_space(result_owner).expect("vector result owner AS close failed");
     logln!("Vector IPC transaction rollback test passed.");
 }
