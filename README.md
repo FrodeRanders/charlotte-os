@@ -69,9 +69,11 @@ The main additions and extensions currently maintained here are:
   messages in userspace, and the coordinator merges and verifies the result,
   while the kernel only supplies the address space, LP-pinned thread spawn,
   and the completion-queue wait/wake.
-- **Architecture and implementation documentation:** Markdown design notes and
-  the LaTeX manual in [`docs/manual-v2`](docs/manual-v2) distinguish implemented
-  behavior from intended architecture and record known limitations.
+- **Architecture and implementation documentation:** the
+  [documentation index](docs/README.md) separates living architecture,
+  implementation reference, contributor guides, platform status, historical
+  reports, and research context. The LaTeX manual in
+  [`docs/manual-v2`](docs/manual-v2) provides the integrated narrative.
 
 The automated AArch64 boot path exercises these mechanisms under QEMU, but this
 is an experimental research and development system. A successful self-test is
@@ -80,7 +82,7 @@ hardware-compatibility claim.
 
 Run target-independent suites with `scripts/run-host-tests.sh`. The split
 between host tests and target/QEMU tests is documented in
-[`docs/testing.md`](docs/testing.md).
+[`docs/guides/testing.md`](docs/guides/testing.md).
 
 For the upstream project, its history, and its community, please visit
 <https://github.com/charlotte-os/charlotte-os>. Changes from upstream are kept
@@ -220,12 +222,12 @@ AArch64 support is under active development. The kernel currently boots on the
 QEMU `virt` machine (GICv3): it initializes memory, brings up all secondary
 processors, runs the scheduler with preemptive context switching driven by the
 ARM Generic Timer, and enumerates PCIe via ECAM. See
-[`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) for a detailed
+[`docs/platforms/aarch64.md`](docs/platforms/aarch64.md) for a detailed
 status report, including current limitations (notably device-tree discovery).
 EL0 execution, isolated userspace services, IPC, driver restart, virtio-net
 frame exchange, reliable messages, the distributed name service, and a
 two-node Raft election are boot-tested under QEMU TCG. See
-[`docs/aarch64-network-development.md`](docs/aarch64-network-development.md)
+[`docs/guides/aarch64-network-development.md`](docs/guides/aarch64-network-development.md)
 for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
 `--disco-test`, `--dns-test`, `--tcpip-test`, `--http-test`).
 
@@ -234,7 +236,7 @@ for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
 > caller attribution do not work under `--hvf`. HVF builds rely on the
 > `hvf_compat` fallback (whole-TLB flush on every context switch, per-LP
 > tracked caller ASID). See the "HVF and hardware ASIDs" section of
-> [`docs/aarch64-port-status.md`](docs/aarch64-port-status.md) before debugging
+> [`docs/platforms/aarch64.md`](docs/platforms/aarch64.md) before debugging
 > under HVF.
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*

@@ -323,7 +323,7 @@ optionally compares a service-selected bearer key. Its IPC envelope lacks the
 authenticated address-space generation required to use the engine's stable
 identity boundary safely, and it has no authorization audit records. The
 design contract and staged implementation plan are in
-[`../authorization-policy.md`](../authorization-policy.md).
+[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md).
 
 | TLA+ action | Intended CharlotteOS implementation | Correspondence |
 |---|---|---|

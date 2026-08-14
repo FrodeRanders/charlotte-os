@@ -150,8 +150,6 @@ draft:
 
 ------------------------------------------------------------------------
 
-# 
-
 # 2. Fundamental Kernel Objects
 
 Before discussing IPC, drivers, scheduling, or asynchronous execution,
@@ -2042,7 +2040,7 @@ typed bounded capability vector. Manifest records carry named unsigned,
 signed, or byte-string values and permit repeated keys for lists.
 The former `Args`/`Input<N>` entry contract was removed; startup reads are
 explicit blocking operations. Commit `4b2e2bb` contains the implementation and
-boot validation. See `docs/charlotte-userspace-development.md`.
+boot validation. See `docs/guides/userspace-development.md`.
 
 ------------------------------------------------------------------------
 

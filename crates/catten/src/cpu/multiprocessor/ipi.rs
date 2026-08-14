@@ -5,7 +5,7 @@
 //! full, the sender gets the RPC back (backpressure) instead of the queue
 //! growing without limit. This matches sitas's bounded `ShardSender<M>`
 //! semantics and is the kernel side of the cross-shard backpressure contract
-//! specified in `docs/async-syscall-abi.md` §6.
+//! specified in `docs/architecture/async-syscall-abi.md` §6.
 //!
 //! The [`IpiRpc`] enum carries the kernel's own TLB shootdown and wakeup
 //! commands plus a [`Closure`](IpiRpc::Closure) variant that packages arbitrary

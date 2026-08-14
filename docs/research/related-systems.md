@@ -4,9 +4,10 @@
 
 This note identifies operating-systems and distributed-systems research related to the designs described in:
 
-- [`charlotte-networking-architecture.md`](charlotte-networking-architecture.md)
-- [`charlotte-sitas-xous-architecture.md`](charlotte-sitas-xous-architecture.md)
-- [`manual-v2/charlotte.pdf`](manual-v2/charlotte.pdf), especially Chapters 11 and 16, and Chapter 17 (the server-class cluster vision)
+- [Networking architecture](../architecture/networking.md)
+- [Sitas and Xous co-design](../architecture/sitas-xous.md)
+- [The CharlotteOS manual](../manual-v2/charlotte.pdf), especially Chapters 11
+  and 16, and the server-class cluster vision
 
 The generated manual also contains a compact version of this note's historical
 assessment in the **Research Lineages and Their Afterlives** appendix.
@@ -22,13 +23,13 @@ These do not descend from one research tradition and shamelessly combine good id
 
 The closest overall characterization is:
 
-> CharlotteOS combines Xous-style isolated IPC and memory lending, 
-  Seastar-style shard-local execution, seL4/EROS-style authority, 
-  Barrelfish-style explicit message passing, and Amoeba-style 
+> CharlotteOS combines Xous-style isolated IPC and memory lending,
+  Seastar-style shard-local execution, seL4/EROS-style authority,
+  Barrelfish-style explicit message passing, and Amoeba-style
   distributed capability invocation.
 
-Its most important unresolved research problem is preserving capability 
-and ownership semantics across unreliable networks, retries, partial 
+Its most important unresolved research problem is preserving capability
+and ownership semantics across unreliable networks, retries, partial
 failure, and service restart.
 
 This note distinguishes four kinds of answer:
@@ -72,7 +73,7 @@ The documents establish the following core ideas:
 - service names are discovery metadata, not authority;
 - remote services are intended to be invoked through distributed object capabilities.
 
-These ideas have strong historical precedents, but their particular 
+These ideas have strong historical precedents, but their particular
 combination is unusual.
 
 ---
@@ -133,8 +134,8 @@ Most of these questions now have a local answer but not yet a distributed one:
 | Duplicate and replay detection | Local pending calls and reply tokens have unique identities and one-shot terminal transitions. Raft RPC handling has term/index and peer-identity checks. There is no general remote invocation ID, deduplication window, or replay cache yet. |
 | Delivery/execution guarantee | Local IPC distinguishes a queued call cancelled before delivery from a delivered call whose reply authority is later invalidated. It does not claim transactional execution. A general remote at-most-once/at-least-once and uncertain-outcome contract remains open. |
 
-Amoeba’s Fast Local Internet Protocol, or FLIP, is also directly relevant. It was designed 
-to support location-independent RPC, group communication, and internetwork routing without 
+Amoeba’s Fast Local Internet Protocol, or FLIP, is also directly relevant. It was designed
+to support location-independent RPC, group communication, and internetwork routing without
 making TCP streams the native abstraction.
 
 ---
@@ -160,10 +161,10 @@ EROS demonstrates that:
 
 #### Relevance to this OS
 
-The rule that a capability means authority -- not work, readiness, notification, or 
+The rule that a capability means authority -- not work, readiness, notification, or
 completion -- is consistent with this tradition.
 
-CharlotteOS’s monotonic, non-reused handles prevent a stale handle from accidentally 
+CharlotteOS’s monotonic, non-reused handles prevent a stale handle from accidentally
 naming a later local object. That is useful, but it is not a complete solution to:
 
 - capability derivation;
@@ -218,10 +219,10 @@ Several now have concrete, qualified answers:
 | Cancellation, teardown, and lending state machines | **Yes, at the abstract safety level.** `CharlotteIPC`, `CharlotteCQ`, `CharlotteServiceLifecycle`, and `CharlotteDMA` cover these paths; the conformance document maps their actions to Rust. |
 | Access-control or information-flow proof | **Open.** Kind/owner/rights checks and an explicitly delegated system-observer capability provide useful enforcement mechanisms, but there is no noninterference or whole-system access-control proof. |
 
-The executable specifications live in [`tla/`](tla/README.md). They do not
+The executable specifications live in [`tla/`](../tla/README.md). They do not
 constitute a refinement proof of the Rust kernel; the remaining verification
 boundary and the identified linearization points are documented in
-[`tla/CONFORMANCE.md`](tla/CONFORMANCE.md).
+[`tla/CONFORMANCE.md`](../tla/CONFORMANCE.md).
 
 The most relevant seL4 concepts include:
 
@@ -237,7 +238,7 @@ The most relevant seL4 concepts include:
 
 ### 2.4 Barrelfish: the multikernel and per-core state
 
-This OS, with the help of Sitas’s shard-per-core execution model, is 
+This OS, with the help of Sitas’s shard-per-core execution model, is
 closely related to Barrelfish’s multikernel thesis.
 
 Barrelfish treats a multicore computer as a distributed system:
@@ -279,9 +280,9 @@ This OS correctly avoids making shard identity synonymous with processor identit
 
 Singularity is one of the closest precedents for this OS' memory messages.
 
-Processes communicated through typed asynchronous channels. Messages were 
-allocated in an exchange heap, and ownership moved from sender to receiver 
-without copying. Static verification prevented both processes from accessing 
+Processes communicated through typed asynchronous channels. Messages were
+allocated in an exchange heap, and ownership moved from sender to receiver
+without copying. Static verification prevented both processes from accessing
 the same transferred object simultaneously.
 
 #### Recommended reading
@@ -301,7 +302,7 @@ the same transferred object simultaneously.
 | Bounded message path       | Typed channel |
 | MMU-enforced exclusivity   | Language-enforced ownership |
 
-This OS uses capabilities and page mappings rather than a managed-language 
+This OS uses capabilities and page mappings rather than a managed-language
 verifier. It must therefore address several cases explicitly:
 
 - aliases and overlapping mappings;
@@ -317,7 +318,7 @@ verifier. It must therefore address several cases explicitly:
 
 ### 2.6 Xous
 
-Xous is already an explicit source for the architecture and remains 
+Xous is already an explicit source for the architecture and remains
 the closest implementation-level comparison for:
 
 - userspace servers;
@@ -336,7 +337,7 @@ This OS extends this model with:
 - distributed invocation;
 - a stronger distinction between notification, readiness, completion, and authority.
 
-The Xous comparison is therefore most valuable for validating the local 
+The Xous comparison is therefore most valuable for validating the local
 IPC ABI and memory-message lifecycle.
 
 ---
@@ -362,16 +363,16 @@ Local and remote calls differ fundamentally in:
 - observability;
 - partial failure.
 
-A local call either returns or its process fails. With a remote call, a 
-client can lose contact after the server has executed the request but before 
+A local call either returns or its process fails. With a remote call, a
+client can lose contact after the server has executed the request but before
 the reply arrives. No abstraction layer can always determine which occurred.
 
 ### Recommended refinement
 
 A safer architectural principle is:
 
-> Local and remote services use a common capability-oriented protocol model, 
-  while remote invocation explicitly exposes latency, cancellation, retry, 
+> Local and remote services use a common capability-oriented protocol model,
+  while remote invocation explicitly exposes latency, cancellation, retry,
   and partial-failure semantics.
 
 The programming model should make the following concepts available:
@@ -387,8 +388,8 @@ The programming model should make the following concepts available:
 - reconnect and re-resolution;
 - protocol-specific recovery.
 
-Remote invocation should not silently inherit assumptions from MMU-enforced 
-local memory lending. In particular, a network partition cannot synchronously 
+Remote invocation should not silently inherit assumptions from MMU-enforced
+local memory lending. In particular, a network partition cannot synchronously
 revoke memory or prove that a remote operation stopped executing.
 
 ---
@@ -420,7 +421,7 @@ human-readable service name
     → individual invocation identifier
 ```
 
-Collapsing these identities makes restart, replication, retry, and audit 
+Collapsing these identities makes restart, replication, retry, and audit
 behavior difficult to specify.
 
 ### Other relevant IPC research
@@ -472,7 +473,7 @@ Rust Waker
     “poll this userspace future again”
 ```
 
-This OS should retain these distinctions even when they share an aggregated 
+This OS should retain these distinctions even when they share an aggregated
 waiting mechanism.
 
 ### Research questions
@@ -619,19 +620,19 @@ recovery cannot.
 
 - Francis M. David et al., [CuriOS: Improving Reliability through Operating System Structure](https://www.usenix.org/legacy/event/osdi08/tech/full_papers/david/david_html/)
 
-CuriOS studies fault containment and recovery for operating-system services. 
+CuriOS studies fault containment and recovery for operating-system services.
 It is directly relevant to CharlotteOS’s supervisor and service-generation model.
 
 ### 6.5 Pebble
 
 - Eran Gabber et al., [The Pebble Component-Based Operating System](https://www.usenix.org/legacy/publications/library/proceedings/usenix99/full_papers/gabber/gabber_html/index.html)
 
-Pebble runs minimally privileged, replaceable system components -- including 
+Pebble runs minimally privileged, replaceable system components -- including
 drivers -- in separate protection domains and optimizes transfers between them.
 
 ### 6.6 Contrasting approaches
 
-Nooks and SafeDrive isolate or recover kernel extensions without fully moving 
+Nooks and SafeDrive isolate or recover kernel extensions without fully moving
 them to independent user processes. They are useful comparisons for:
 
 - performance overhead;
@@ -679,18 +680,18 @@ IX combines:
 - zero-copy interfaces;
 - minimal shared state.
 
-This is highly relevant to Sitas executors, NIC buffer pools, interrupt 
+This is highly relevant to Sitas executors, NIC buffer pools, interrupt
 moderation, and batching.
 
 ### 7.2 Arrakis
 
 - Simon Peter et al., [Arrakis: The Operating System Is the Control Plane](https://www.usenix.org/node/186141%E2%80%AC)
 
-Arrakis gives applications direct access to virtualized I/O while 
+Arrakis gives applications direct access to virtualized I/O while
 retaining kernel-enforced control-plane policy.
 
-CharlotteOS takes a different approach: it delegates devices to isolated 
-driver services rather than directly to ordinary applications. Arrakis is 
+CharlotteOS takes a different approach: it delegates devices to isolated
+driver services rather than directly to ordinary applications. Arrakis is
 nevertheless valuable for:
 
 - IOMMU design;
@@ -728,8 +729,8 @@ An early analysis of these tradeoffs is:
 
 - B. Murphy, S. Zeadally, and C. J. Adams, [An Analysis of Process and Memory Models to Support High-Speed Networking in a UNIX Environment](https://www.usenix.org/conference/usenix-1996-annual-technical-conference/analysis-process-and-memory-models-support-high)
 
-CharlotteOS’s explicit transfer modes provide a promising way to manage 
-that complexity, provided their state transitions remain precise across 
+CharlotteOS’s explicit transfer modes provide a promising way to manage
+that complexity, provided their state transitions remain precise across
 failure paths.
 
 ---
@@ -767,7 +768,7 @@ NIC descriptors
     → application mailbox
 ```
 
-If one layer converts a bounded resource into an unbounded queue, the 
+If one layer converts a bounded resource into an unbounded queue, the
 architecture loses its overload guarantees.
 
 Useful questions include:
@@ -802,17 +803,17 @@ the composed system.
 
 Capsicum shows how capability-oriented confinement can coexist with UNIX compatibility.
 
-It is particularly relevant to CharlotteOS’s decision to provide POSIX and 
+It is particularly relevant to CharlotteOS’s decision to provide POSIX and
 TCP/IP as compatibility services rather than native authority models.
 
-The major risk is reintroducing ambient authority behind capability-looking 
-APIs. A POSIX personality should avoid giving a process unrestricted access 
-to global filesystems, process tables, network namespaces, or device 
+The major risk is reintroducing ambient authority behind capability-looking
+APIs. A POSIX personality should avoid giving a process unrestricted access
+to global filesystems, process tables, network namespaces, or device
 namespaces merely because legacy APIs expect them.
 
 ### 9.2 CHERI
 
-CHERI provides hardware-enforced memory capabilities. It is complementary 
+CHERI provides hardware-enforced memory capabilities. It is complementary
 to CharlotteOS rather than a replacement for its object capabilities:
 
 - CharlotteOS object capabilities authorize kernel-mediated operations;
@@ -873,16 +874,16 @@ The main design dimensions are:
 - caching and invalidation;
 - bootstrap trust.
 
-CharlotteOS’s node-local name service and attenuated discovery connections 
-are consistent with capability discipline. A future distributed registry 
-must preserve that discipline rather than turning a globally visible name 
+CharlotteOS’s node-local name service and attenuated discovery connections
+are consistent with capability discipline. A future distributed registry
+must preserve that discipline rather than turning a globally visible name
 into ambient authority.
 
 ---
 
 ## 11. Distributed consistency and replicated services
 
-The networking document proposes Raft as a capability service. Raft is an 
+The networking document proposes Raft as a capability service. Raft is an
 appropriate starting point for replicated metadata and directory services:
 
 - Diego Ongaro and John Ousterhout, [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
@@ -899,7 +900,7 @@ Additional relevant work includes:
 - fencing tokens;
 - failure detectors.
 
-Capabilities do not remove distributed consistency problems. A replicated 
+Capabilities do not remove distributed consistency problems. A replicated
 capability service must still define:
 
 - which operations are linearizable;
@@ -909,7 +910,7 @@ capability service must still define:
 - whether service generations are consensus-backed;
 - how stale replicas are prevented from authorizing operations.
 
-Distributed locks and mutable leases should use fencing tokens so that a 
+Distributed locks and mutable leases should use fencing tokens so that a
 former holder cannot continue operating after its lease has expired.
 
 ### Present CharlotteOS answers
@@ -989,7 +990,7 @@ Consider distinct representations for:
 - a connection session;
 - an individual request.
 
-This would allow routing and server placement to change without 
+This would allow routing and server placement to change without
 silently changing authority.
 
 ### 12.4 Model distributed capability lifecycle
@@ -1048,47 +1049,47 @@ Important cases include:
 
 For architecture refinement, the most useful reading order is:
 
-1. **Waldo et al., _A Note on Distributed Computing_**  
+1. **Waldo et al., _A Note on Distributed Computing_**
    Tests the central local/remote-transparency claim.
 
-2. **Amoeba’s capability and RPC papers**  
+2. **Amoeba’s capability and RPC papers**
    The closest precedent for distributed capability invocation.
 
-3. **seL4’s kernel and capability research**  
+3. **seL4’s kernel and capability research**
    The best comparison for capabilities, endpoints, memory objects, and authority invariants.
 
-4. **Singularity’s message-passing work**  
+4. **Singularity’s message-passing work**
    The closest precedent for ownership-moving, copyless IPC.
 
-5. **Barrelfish’s multikernel paper**  
+5. **Barrelfish’s multikernel paper**
    Grounds per-core ownership and explicit cross-core coordination.
 
-6. **Birrell and Nelson on RPC**  
+6. **Birrell and Nelson on RPC**
    Essential for binding, retries, duplicate suppression, and invocation semantics.
 
-7. **IX and Arrakis**  
+7. **IX and Arrakis**
    Inform the userspace NIC path, batching, buffer ownership, and I/O isolation.
 
-8. **MINIX 3, CuriOS, and Pebble**  
+8. **MINIX 3, CuriOS, and Pebble**
    Inform user-space services, supervision, restart, and driver recovery.
 
-9. **EROS, KeyKOS, and object-capability literature**  
+9. **EROS, KeyKOS, and object-capability literature**
    Deepen the authority, delegation, confinement, and revocation model.
 
-10. **Capsicum and CHERI**  
+10. **Capsicum and CHERI**
     Inform compatibility-layer confinement and memory safety.
 
-11. **Borg, Omega, and Kubernetes**  
+11. **Borg, Omega, and Kubernetes**
     Grounds the cluster-placement half of the server-class cluster vision (Chapter 17).
 
-12. **TUF and SWIM**  
+12. **TUF and SWIM**
     Ground the signing/bootstrap and auto-discovery halves of the cluster vision.
 
 ---
 
 ## 14. Overall assessment
 
-The CharlotteOS architecture is well aligned with several durable 
+The CharlotteOS architecture is well aligned with several durable
 research conclusions:
 
 - authority should be explicit;
@@ -1100,9 +1101,9 @@ research conclusions:
 - asynchronous completion should be distinct from IPC;
 - zero-copy requires explicit lifetime and ownership management.
 
-Its most ambitious claim -- making local and remote service invocation 
-indistinguishable -- should be narrowed. A shared typed capability 
-interface is useful, but latency, retry, cancellation, independent failure, 
+Its most ambitious claim -- making local and remote service invocation
+indistinguishable -- should be narrowed. A shared typed capability
+interface is useful, but latency, retry, cancellation, independent failure,
 and uncertain outcomes must remain visible.
 
 The architecture’s strongest potential contribution is the integration of:
@@ -1114,18 +1115,18 @@ The architecture’s strongest potential contribution is the integration of:
 - bounded completion queues;
 - native distributed service invocation.
 
-That synthesis is coherent, but its success depends on treating lifecycle 
-and failure semantics as foundational parts of the interface rather than 
+That synthesis is coherent, but its success depends on treating lifecycle
+and failure semantics as foundational parts of the interface rather than
 transport-level implementation details.
 
 The manual indicates that CharlotteOS already provides this as a local
 service-lifecycle foundation: stale-generation detection, domain teardown,
 borrow revocation, deterministic pending-call failure, driver reset,
 operation reconciliation, fresh bootstrap, and a prototype stateful handoff
-are defined and tested. 
+are defined and tested.
 
-The remaining gap is concentrated at the protocol and distributed-systems 
-layers: durable state, versioned state transfer, externally visible effects, 
+The remaining gap is concentrated at the protocol and distributed-systems
+layers: durable state, versioned state transfer, externally visible effects,
 idempotent retry, uncertain outcomes, and bounded recovery.
 
 ---

@@ -216,7 +216,8 @@ default.
   memory IPC, service restart, Raft election, and virtio-net smoke path are
   TCG-tested. The virtio-net EL0 MMIO path remains incompatible with HVF;
   use `--net-test` without `--hvf`. Two TCG guests can share a QEMU socket LAN
-  as described in `aarch64-network-development.md`.
+  as described in the
+  [AArch64 network development guide](../guides/aarch64-network-development.md).
 - **SPI / external interrupt routing.** Only PPIs (timer) and SGIs (IPIs) are
   wired; device SPIs will need the `ExternalInterruptControllerIfce` path
   (GICD `IROUTER`/config) once drivers attach.

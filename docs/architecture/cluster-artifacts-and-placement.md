@@ -9,7 +9,7 @@ vision in manual Chapter 19.
 Cluster nodes do not build software or resolve package dependencies. A host
 build produces self-contained AArch64 ELFs. Every staged name must occur
 exactly once in
-[`artifact-policy.tsv`](../crates/catten-services/artifact-policy.tsv), then
+[`artifact-policy.tsv`](../../crates/catten-services/artifact-policy.tsv), then
 `tools/cluster-sign` writes a CLS2 `SHT_NOTE` record and signs the resulting
 ELF with the off-cluster Ed25519 private key.
 

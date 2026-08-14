@@ -377,7 +377,7 @@ a collision-resolving or fully content-addressed namespace.
 
 Artifact validation uses real Ed25519 signatures embedded in the ELF
 itself. The cluster's \emph{private} key never enters the cluster: it is
-held off-cluster (the \texttt{tools/cluster-sign} host tool), and the
+held off-cluster (the \repodir|tools/cluster-sign| host tool), and the
 deployed binary is signed with it before upload. The signature lives in a
 standard ELF \texttt{SHT\_NOTE} section (\path{.note.charlotte-sig},
 note type \texttt{"CLS2"}). Its descriptor contains the logical name,
@@ -400,7 +400,7 @@ is refused outright (the live-upgrade syscall fails gracefully; every other
 load path panics). The build pipeline signs every staged service ELF with
 the cluster's private key --- by default the version-controlled
 \emph{development} keypair in
-\texttt{tools/cluster-sign/dev-key.hex}, whose public half is the embedded
+\repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
 \texttt{CLUSTER\_PUBLIC\_KEY}; a live key can be substituted at build time
 via \texttt{CLUSTER\_SIGN\_PRIVATE\_KEY} (rebuilding the kernel with its
 public half embedded). Store resolution and deployment additionally verify

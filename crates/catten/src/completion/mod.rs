@@ -1,7 +1,7 @@
 //! # Completion-Capability Subsystem (Option C prototype)
 //!
 //! This module is the first in-kernel prototype of the async syscall /
-//! completion-capability ABI specified in `docs/async-syscall-abi.md`. It builds
+//! completion-capability ABI specified in `docs/architecture/async-syscall-abi.md`. It builds
 //! the kernel side of the boundary directly on facilities that already exist:
 //!
 //! - [`IdTable`](crate::klib::collections::id_table::IdTable) backs a per-address-space

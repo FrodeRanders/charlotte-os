@@ -32,7 +32,7 @@
 //! (on sbsa-ref) — works together, and that the object store is actually
 //! durable. It is also the test that forced the GIC security (`DS=1`), LPI
 //! delivery, SPI priority and EL0-heap fixes documented in
-//! `docs/sbsa-ref-bringup.md`.
+//! `docs/platforms/sbsa-ref.md`.
 //!
 //! Expected outcome: the verifier logs
 //! `SUCCESS: storage stack and persistent Raft recovery verified` and the

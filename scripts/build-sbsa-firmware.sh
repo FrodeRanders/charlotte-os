@@ -10,7 +10,7 @@
 # (TF-A -> UEFI -> Limine -> kernel) is made to run at EL1 instead.
 #
 # This script is the reproducible record of every workaround discovered while
-# bringing sbsa-ref up. See docs/sbsa-ref-bringup.md for the full write-up.
+# bringing sbsa-ref up. See docs/platforms/sbsa-ref.md for the full write-up.
 #
 # Requires (Homebrew on macOS):
 #   aarch64-elf-gcc, aarch64-elf-binutils, autoconf, automake, acpica (iasl),
@@ -88,7 +88,7 @@ apply_patch "$WORKDIR/tf-a" \
 # (3) Disable GIC security (GICD_CTLR.DS=1) in BL31. The whole boot chain runs
 #     at Non-secure EL1, and with DS=0 QEMU drops NS writes to GICD_IGROUPR and
 #     reports LPIs as Group 0, which silently breaks SPI + MSI delivery to the
-#     kernel. See docs/sbsa-ref-bringup.md "GIC security".
+#     kernel. See docs/platforms/sbsa-ref.md "GIC security".
 apply_patch "$WORKDIR/tf-a" \
     "$PATCHES/tf-a/0001-sbsa-gic-disable-security-ds.patch" \
     "CTLR_DS_BIT" "plat/qemu/qemu_sbsa/sbsa_gic.c" \

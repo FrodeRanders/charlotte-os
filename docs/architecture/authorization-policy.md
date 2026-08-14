@@ -158,7 +158,7 @@ model before being treated as a safety mechanism.
 
 ## TLA+ model
 
-[`CharlotteAuthorization.tla`](tla/CharlotteAuthorization.tla) models the
+[`CharlotteAuthorization.tla`](../tla/CharlotteAuthorization.tla) models the
 target issuance protocol. It includes authenticated policy and publication
 roles, versioned subject/service rules, generation-fenced service bindings,
 rights attenuation, single-use decisions, capability close, and the fact that
@@ -208,4 +208,4 @@ work rather than implicit claims.
 
 The engine's host tests run through `scripts/run-host-tests.sh`; the repository
 test split and the rule for extracting target-independent service logic are
-documented in [`testing.md`](testing.md).
+documented in [the testing guide](../guides/testing.md).

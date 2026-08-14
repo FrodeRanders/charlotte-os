@@ -188,8 +188,8 @@ accidental corruption, but is not cryptographic authentication.
 
 The kernel no longer embeds every EL0 program. The host build produces an
 architecture-qualified service bundle, blesses every ELF according to
-\texttt{crates/catten-services/artifact-policy.tsv}, and
-\texttt{scripts/make-nvme-image.py} writes one object per logical service into
+\repofile|crates/catten-services/artifact-policy.tsv|, and
+\repofile|scripts/make-nvme-image.py| writes one object per logical service into
 an initial version-3 object-store image. The kernel embeds only the bootstrap
 set needed to reach storage (name service, NVMe, object store, UART, and the
 system observer). Other services are resolved by logical name, read through
@@ -264,7 +264,7 @@ plus FLUSH.
 
 \subsection{Host inspection}
 
-A Python tool (\texttt{scripts/fs-inspect.py}) reads the raw disk image and
+A Python tool (\repofile|scripts/fs-inspect.py|) reads the raw disk image and
 walks the object store and filesystem on-disk structures. It understands both
 v3 directory banks and multi-extent headers, selects the newest valid directory
 record, checks CRCs and allocation overlap, compares reachable blocks with the

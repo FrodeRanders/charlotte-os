@@ -1,9 +1,13 @@
 # Async-syscall demonstration and scheduler findings
 
+> **Historical milestone:** this records one implementation stage and the bugs
+> it exposed; it is not the current ABI reference. See the
+> [documentation index](../../README.md) for current sources of truth.
+
 > This note records the end-to-end async-syscall demonstration
 > (`crates/catten/src/demo.rs`) and the scheduler bugs it surfaced and fixed.
-> It complements `docs/async-syscall-abi.md` (the ABI) and
-> `docs/sitas-runtime-model.md` (the collaboration context).
+> It complements the [async-syscall ABI](../../architecture/async-syscall-abi.md)
+> and [Sitas/Xous architecture](../../architecture/sitas-xous.md).
 
 ## What the demo shows
 

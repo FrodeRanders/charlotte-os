@@ -25,8 +25,8 @@ The executable TLA+ suite checks this behavior in complementary bounded
 layers: durable election safety, log replication, joint voter/learner
 membership and automatic finalization, and atomic snapshot recovery of both
 application state and membership. See
-[`tla/README.md`](tla/README.md#raft-election-model) and
-[`tla/CONFORMANCE.md`](tla/CONFORMANCE.md#raft-membership-and-joint-consensus).
+[`../tla/README.md`](../tla/README.md#raft-election-model) and
+[`../tla/CONFORMANCE.md`](../tla/CONFORMANCE.md#raft-membership-and-joint-consensus).
 
 ## Intentional platform differences
 

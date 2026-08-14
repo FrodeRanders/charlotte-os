@@ -25,9 +25,9 @@ target builds, Clippy, and boot tests. Each layer answers a different question:
         type-correct and warning-free for the actual target?
 \end{description}
 
-The models and their configurations live in \filepath{docs/tla}. The concise
-model inventory is in \filepath{docs/tla/README.md}; the concrete-to-abstract
-mapping is in \filepath{docs/tla/CONFORMANCE.md}. Those files are maintained
+The models and their configurations live in \repodir|docs/tla|. The concise
+model inventory is in \repofile|docs/tla/README.md|; the concrete-to-abstract
+mapping is in \repofile|docs/tla/CONFORMANCE.md|. Those files are maintained
 with the implementation and are authoritative over the overview in this
 chapter.
 
@@ -105,7 +105,7 @@ implementation, and validation:
         The check suite requires TLC to find the named invariant violation.
         This proves that the invariant and test harness are capable of seeing
         the regression rather than passing vacuously.
-    \item \textbf{Map back to code.} \filepath{docs/tla/CONFORMANCE.md} records
+    \item \textbf{Map back to code.} \repofile|docs/tla/CONFORMANCE.md| records
         the concrete function, persisted field, and linearization point for
         every modeled action. Disagreement is resolved by changing the model,
         changing CharlotteOS, or documenting behavior outside the abstraction.
@@ -261,7 +261,7 @@ retract a direct connection already delegated by the kernel. Hard revocation
 requires endpoint closure, a revocable proxy, or a future kernel lease object.
 This prospective revocation contract is safer than documenting authority that
 the implementation cannot enforce. The practical design is recorded in
-\filepath{docs/authorization-policy.md}.
+\repofile|docs/architecture/authorization-policy.md|.
 
 \subsection{Two-phase service publication}
 
@@ -542,7 +542,7 @@ or distributed membership should be checked against this chapter's method.
 A practical review checklist is:
 
 \begin{enumerate}
-    \item Search \filepath{docs/tla/CONFORMANCE.md} for the changed Rust
+    \item Search \repofile|docs/tla/CONFORMANCE.md| for the changed Rust
         function or state field.
     \item Decide whether the change adds an action, changes an enabling
         condition, moves a linearization point, or changes durable/volatile
@@ -551,7 +551,7 @@ A practical review checklist is:
         retain the old behavior as an unsafe action and named negative
         configuration.
     \item Add the new action to the required-coverage list in
-        \filepath{docs/tla/check.sh}.
+        \repofile|docs/tla/check.sh|.
     \item Run the entire TLC suite, not only the edited module, because shared
         documentation claims and layered Raft assumptions can drift together.
     \item Update the conformance map with exact Rust functions and ordering.

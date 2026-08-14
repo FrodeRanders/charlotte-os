@@ -1,5 +1,9 @@
 # Distributed Systems and Remote IPC Audit — 2026-08
 
+> **Historical report:** this is point-in-time evidence and may describe
+> defects or document paths that were later corrected. See the
+> [documentation index](../../README.md) for current sources of truth.
+
 ## Scope
 
 This audit covers the 34 commits made from 2026-07-29 through 2026-07-31,
@@ -11,9 +15,9 @@ fragmentation, and timing hardening. The range changed 168 files with roughly
 
 The review compared the Rust implementation with:
 
-- `docs/related-research.md`;
+- `docs/research/related-systems.md`;
 - `docs/tla/README.md` and `docs/tla/CONFORMANCE.md`;
-- `docs/charlotte-networking-architecture.md`;
+- `docs/architecture/networking.md`;
 - the local IPC, capability, scheduler, DMA, and Graft implementations; and
 - the two-guest boot tests.
 
@@ -254,7 +258,7 @@ Follow-up:
 
 ### F11 — Documentation overstates distributed-name-service status (medium)
 
-`docs/related-research.md` accurately describes remote authority, replay,
+`docs/research/related-systems.md` accurately describes remote authority, replay,
 deduplication, service generations, stale-replica fencing, and invocation
 guarantees as open. The networking architecture currently says that clustered
 generations, access keys, revocation, proxy capabilities, and policy metadata

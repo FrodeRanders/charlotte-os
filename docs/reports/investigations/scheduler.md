@@ -1,5 +1,8 @@
 # CharlotteOS Scheduler Investigation — Full Report
 
+> **Historical investigation:** preserved as debugging evidence and design
+> rationale. See the [documentation index](../../README.md) for current status.
+
 ## Timeline
 
 1. **CQ ring undrained-entry problem** — `cq_wait` returns immediately after first completion because `complete()` posts ring entries that are never drained by callers using `poll(cap)`.  Fixed by replacing `wake_pending`/`cq_pending()` in `wait_on_cq` with a per-CQ monotonic work-generation counter (`work_generation`/`last_seen_generation`).  Every `complete()`, `complete_detached()`, and `wake()` bumps the counter; `wait_on_cq` blocks until the counter advances.
@@ -171,7 +174,7 @@ retained on `dev` are:
 | `self_test/el0.rs` | Idempotent verifier teardown of the completed payload |
 | `self_test/el0_demo.rs` | Idempotent verifier teardown of the completed coordinator |
 | `debug_trace.rs` | Lock-free in-memory trace buffer (development tool, no-op stub on dev) |
-| `docs/scheduler-state-machines.md` | Formal state machine reference |
+| `docs/reference/scheduler-state-machines.md` | Formal state machine reference |
 | `scripts/run-aarch64.sh` | Always rebuild EL0 services before kernel build |
 | `scripts/build-catten-services.sh` | `--clean` flag |
 

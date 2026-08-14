@@ -1,13 +1,20 @@
 # CharlotteOS Async Syscall / Completion-Capability ABI
 
+> **Document role: architecture evolution record.** Sections 1--8 preserve
+> the original ABI proposal and its decision gates. Sections 9 onward record
+> the subsequent executable model and kernel implementation. For current
+> behavior, source/tests and the manual's implementation-status appendix take
+> precedence over the early proposal text.
+>
 > Phase 2, Option C of the sitas ↔ CharlotteOS collaboration (see
-> [`sitas-runtime-model.md`](./sitas-runtime-model.md) §3, §5.4, §9a). This note
+> the earlier out-of-tree `sitas-runtime-model.md` note, §3, §5.4, §9a). This note
 > specifies the userspace↔kernel boundary for asynchronous system calls by
 > treating **sitas as the executable specification** of the ABI: if sitas's
 > shard model, completion futures, and cross-shard submit map cleanly onto the
 > interface described here, the interface is right.
 >
-> Status: exploratory design ("Option C on paper"). No syscall path exists in
+> Historical status when Sections 1--8 were written: exploratory design
+> ("Option C on paper"). At that point no syscall path existed in
 > the kernel yet (`sync_dispatcher` panics on SVC; there is no x86_64 syscall
 > handler; there is no capability table). This document defines the ABI that the
 > future implementation should target and records the decision-gate answers for
@@ -700,7 +707,8 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
 
 ## 11. References
 
-- This collaboration's design note: [`sitas-runtime-model.md`](./sitas-runtime-model.md)
+- Earlier collaboration design note: `sitas-runtime-model.md` (not retained in
+  this repository)
   (§3 Option C, §5.4 async syscalls, §7 friction, §9a phased plan, §11 findings).
 - sitas Option A seam (`os-backend-seam` branch): `src/reactor_backend.rs`
   (`ReactorBackend`/`ReactorWaker`/`ReactorEvent`), `src/executor/driver.rs`

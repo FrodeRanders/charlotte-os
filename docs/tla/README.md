@@ -398,7 +398,7 @@ invariant. The complete fast configuration explores 144,598 generated states,
 54,705 distinct states, and depth 12 with TLC 2.19.
 
 The design and implementation sequence are described in
-[`../authorization-policy.md`](../authorization-policy.md). This model is
+[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md). This model is
 forward-looking: the existing keyed name lookup is only a reusable bearer-key
 gate and does not conform to the target principal-based policy contract.
 

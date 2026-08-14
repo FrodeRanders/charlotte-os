@@ -1,5 +1,8 @@
 # Investigation: Live-Upgrade Stall — Interrupt Masking, Timer Queues, and Thread-ID Recycling (AArch64)
 
+> **Historical investigation:** preserved as debugging evidence and design
+> rationale. See the [documentation index](../../README.md) for current status.
+
 Status: **FIXED AND COMMITTED** (`83c68b1`). This document records the architectural
 insights collected while debugging the intermittent live-upgrade self-test stall
 (`--live-upgrade-test --reuse-storage`), the GIC/timer evidence, the fixes, and the

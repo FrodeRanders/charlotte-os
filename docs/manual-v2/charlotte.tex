@@ -24,6 +24,28 @@
 \newcommand{\rusttype}[1]{\texttt{#1}}
 \newcommand{\rusttrait}[1]{\texttt{#1}}
 
+% Public repository links. Verbatim path arguments keep underscores and other
+% filename characters safe without requiring TeX escaping at each call site.
+\newcommand{\charlotterepourl}{https://github.com/FrodeRanders/charlotte-os}
+\NewDocumentCommand{\repofile}{v}{%
+    \href{\charlotterepourl/blob/main/#1}{\nolinkurl{#1}}%
+}
+\NewDocumentCommand{\repodir}{v}{%
+    \href{\charlotterepourl/tree/main/#1}{\nolinkurl{#1}}%
+}
+\NewDocumentCommand{\repofiletext}{v m}{%
+    \href{\charlotterepourl/blob/main/#1}{#2}%
+}
+\NewDocumentCommand{\repodirtext}{v m}{%
+    \href{\charlotterepourl/tree/main/#1}{#2}%
+}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=blue!45!black
+}
+
 \date{\today}
 \title{The Charlotte Operating System}
 \subtitle{An async-first, capability-based microkernel\\for critical, high-performance software}
@@ -64,7 +86,10 @@
     support, or failure recovery are design goals rather than production
     guarantees. The implementation-status appendix records the repository's
     currently verified scope; source code and tests remain authoritative when
-    the manual and implementation differ.
+    the manual and implementation differ. Repository paths in this manual are
+    clickable links to the corresponding file or directory on the public
+    \texttt{main} branch; begin with the \repofile|docs/README.md|
+    documentation index.
 
     \newpage
     \renewcommand\contentsname{Contents}

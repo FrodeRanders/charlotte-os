@@ -3,7 +3,7 @@
 > A possible security design for CharlotteOS: root the OS's capability
 > authority in the EL2 layer, so that even a compromised EL1 kernel cannot
 > forge, mint, or escalate capabilities. Companion to
-> `docs/real-hardware-roadmap.md` (Phase 1 / "Why EL2").
+> [Real-hardware roadmap](real-hardware-roadmap.md) (Phase 1 / "Why EL2").
 
 ## Goal
 

@@ -7,7 +7,8 @@ This chapter gives the current build, boot, test, and code-reading workflow.
 \begin{itemize}
     \item \textbf{Rust nightly}, installed via \texttt{rustup}. The exact
         toolchain is pinned in the repository's
-        \texttt{rust-}\allowbreak\texttt{toolchain.toml}; do not copy a version
+        \repofiletext|rust-toolchain.toml|{\texttt{rust-}\allowbreak\texttt{toolchain.toml}};
+        do not copy a version
         from this manual.
     \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
         (\texttt{qemu-system-x86\_64}). On macOS, TCG is the default and HVF
@@ -15,17 +16,19 @@ This chapter gives the current build, boot, test, and code-reading workflow.
         for its direct EL0 device-MMIO path. KVM is an optional Linux
         accelerator, not a networking requirement.
         \textbf{HVF also does not honor hardware ASIDs} --- see the
-        \emph{AArch64 Port Status} write-up --- so HVF builds rely on the
+        \repofiletext|docs/platforms/aarch64.md|{\emph{AArch64 Port Status}}
+        write-up --- so HVF builds rely on the
         \texttt{hvf\_compat} whole-TLB-flush-on-switch fallback. Do not assume
         ASID-based TLB isolation works when debugging under \texttt{--hvf}.
     \item \textbf{Build dependencies:} \texttt{cargo}, \texttt{just} (optional,
-        for convenience targets in the Justfile).
+        for convenience targets in the
+        \repofiletext|Justfile|{\texttt{Justfile}}).
 \end{itemize}
 
 \section{Build targets}
 
 CharlotteOS supports three architectures via custom target JSON specs in
-\texttt{target\_specs/}:
+\repodir|target_specs|:
 
 \begin{longtable}{|p{5.8cm}|p{6.4cm}|}
 \hline
@@ -41,6 +44,11 @@ RISC-V custom target & Planned, not actively
 \end{longtable}
 
 \subsection{Kernel build}
+
+The commands below use
+\repofiletext|target_specs/aarch64-unknown-none-catten.json|{the AArch64 target specification}
+and
+\repofiletext|target_specs/x86_64-unknown-none-catten.json|{the x86-64 target specification}.
 
 \begin{verbatim}
 # AArch64 (headless, serial console only):
@@ -79,6 +87,9 @@ cargo +nightly build --package catten-user \
 
 \subsection{AArch64}
 
+The boot entry points are \repofile|scripts/boot-smp1.sh|,
+\repofile|scripts/boot-smp2.sh|, and \repofile|scripts/run-aarch64.sh|.
+
 \begin{verbatim}
 # Single-LP self-test boot:
 ./scripts/boot-smp1.sh
@@ -94,6 +105,8 @@ cargo +nightly build --package catten-user \
 \end{verbatim}
 
 \subsection{x86-64}
+
+The x86-64 entry point is \repofile|scripts/boot-x86.sh|.
 
 \begin{verbatim}
 # Requires -cpu max for RDTSCP/FSGSBASE support:
@@ -135,41 +148,41 @@ scheduler lock.
 Representative boot suites include:
 
 \begin{itemize}
-    \item \texttt{completion.rs} --- buffer ownership, cancel/deferred-reclaim,
+    \item \repofiletext|crates/catten/src/self_test/completion.rs|{\texttt{completion.rs}} --- buffer ownership, cancel/deferred-reclaim,
         backpressure.
-    \item \texttt{cq.rs} --- CQ ring write/drain/overflow.
-    \item \texttt{cq\_completion.rs} --- CQ ring integrated with completion
+    \item \repofiletext|crates/catten/src/self_test/cq.rs|{\texttt{cq.rs}} --- CQ ring write/drain/overflow.
+    \item \repofiletext|crates/catten/src/self_test/cq_completion.rs|{\texttt{cq\_completion.rs}} --- CQ ring integrated with completion
         subsystem.
-    \item \texttt{syscall.rs} --- dispatch table routing via synthetic
+    \item \repofiletext|crates/catten/src/self_test/syscall.rs|{\texttt{syscall.rs}} --- dispatch table routing via synthetic
         TrapFrame.
-    \item \texttt{ipi.rs} --- bounded queue, backpressure, closure dispatch.
-    \item \texttt{shard.rs} --- \texttt{ShardLocal<T>} owner-check /
+    \item \repofiletext|crates/catten/src/self_test/ipi.rs|{\texttt{ipi.rs}} --- bounded queue, backpressure, closure dispatch.
+    \item \repofiletext|crates/catten/src/self_test/shard.rs|{\texttt{shard.rs}} --- \texttt{ShardLocal<T>} owner-check /
         re-entrancy guard, \texttt{ShardMailbox<M>} send/recv.
-    \item \texttt{el0.rs} --- real-EL0 user thread (AArch64 only).
-    \item \texttt{el0\_demo.rs} --- EL0 userspace smoke test.
-    \item \texttt{el0\_ipc.rs} --- EL0 endpoint IPC between domains.
-    \item \texttt{el0\_net.rs} --- EL0 networking test.
-    \item \texttt{el0\_pingpong.rs} --- bidirectional EL0 IPC.
-    \item \texttt{el0\_raft.rs} --- two-node Raft election over local IPC.
-    \item \texttt{el0\_service.rs} --- EL0 service lifecycle (spawn, IPC,
+    \item \repofiletext|crates/catten/src/self_test/el0.rs|{\texttt{el0.rs}} --- real-EL0 user thread (AArch64 only).
+    \item \repofiletext|crates/catten/src/self_test/el0_demo.rs|{\texttt{el0\_demo.rs}} --- EL0 userspace smoke test.
+    \item \repofiletext|crates/catten/src/self_test/el0_ipc.rs|{\texttt{el0\_ipc.rs}} --- EL0 endpoint IPC between domains.
+    \item \repofiletext|crates/catten/src/self_test/el0_net.rs|{\texttt{el0\_net.rs}} --- EL0 networking test.
+    \item \repofiletext|crates/catten/src/self_test/el0_pingpong.rs|{\texttt{el0\_pingpong.rs}} --- bidirectional EL0 IPC.
+    \item \repofiletext|crates/catten/src/self_test/el0_raft.rs|{\texttt{el0\_raft.rs}} --- two-node Raft election over local IPC.
+    \item \repofiletext|crates/catten/src/self_test/el0_service.rs|{\texttt{el0\_service.rs}} --- EL0 service lifecycle (spawn, IPC,
         teardown).
-    \item \texttt{el0\_uart.rs} --- userspace UART driver (delegated MMIO +
+    \item \repofiletext|crates/catten/src/self_test/el0_uart.rs|{\texttt{el0\_uart.rs}} --- userspace UART driver (delegated MMIO +
         IRQ, crash recovery).
-    \item \texttt{el0\_sitas.rs} --- sitas executor integration: sharded KV,
+    \item \repofiletext|crates/catten/src/self_test/el0_sitas.rs|{\texttt{el0\_sitas.rs}} --- sitas executor integration: sharded KV,
         the mailbox index demo, and the thread-join probe (Section~9.8).
-    \item \texttt{scheduler\_lifecycle.rs} --- spawn, block, wake, abort,
+    \item \repofiletext|crates/catten/src/self_test/scheduler_lifecycle.rs|{\texttt{scheduler\_lifecycle.rs}} --- spawn, block, wake, abort,
         migration-safe migration, timer-wait affinity.
-    \item \texttt{ipc.rs} --- IPC path tests (scalar, memory, delegation,
+    \item \repofiletext|crates/catten/src/self_test/ipc.rs|{\texttt{ipc.rs}} --- IPC path tests (scalar, memory, delegation,
         reply tokens).
-    \item \texttt{memory/allocator.rs} --- heap allocator, stack allocator.
-    \item \texttt{memory/object.rs} --- memory object lifecycle tests.
-    \item \texttt{adversarial.rs} --- cancellation races, misuse paths,
+    \item \repofiletext|crates/catten/src/self_test/memory/allocator.rs|{\texttt{memory/allocator.rs}} --- heap allocator, stack allocator.
+    \item \repofiletext|crates/catten/src/self_test/memory/object.rs|{\texttt{memory/object.rs}} --- memory object lifecycle tests.
+    \item \repofiletext|crates/catten/src/self_test/adversarial.rs|{\texttt{adversarial.rs}} --- cancellation races, misuse paths,
         error-path testing.
 \end{itemize}
 
 \section{The async-syscall demo}
 
-\texttt{crates/catten/src/demo.rs} is an end-to-end test of the
+\repofile|crates/catten/src/demo.rs| is an end-to-end test of the
 async model. It:
 
 \begin{enumerate}
@@ -189,7 +202,7 @@ a substitute for the wider self-test suite.
 
 \section{CI pipeline}
 
-GitHub Actions (\texttt{.github/workflows/ci.yml}):
+GitHub Actions (\repofile|.github/workflows/ci.yml|):
 
 \begin{enumerate}
     \item Checks formatting for the workspace and standalone EL0/tool crates.
@@ -209,27 +222,29 @@ QEMU boot job is restricted to pushes to \texttt{main}.
 For new contributors, the recommended reading order:
 
 \begin{enumerate}
-    \item \texttt{crates/catten/src/main.rs} --- kernel entry point, init
+    \item \repofile|crates/catten/src/main.rs| --- kernel entry point, init
         sequence.
-    \item \texttt{crates/catten/src/completion/mod.rs} --- the completion
+    \item \repofile|crates/catten/src/completion/mod.rs| --- the completion
         subsystem: capability table, submit/complete/poll/wait/cancel/close,
         \texttt{submit\_worker}, exit-observer.
-    \item \texttt{crates/catten/src/completion/cq.rs} --- the CQ ring buffer.
-    \item \texttt{crates/catten/src/syscall/mod.rs} --- syscall dispatch table.
-    \item \texttt{crates/catten/src/demo.rs} --- the end-to-end async demo.
-    \item \texttt{crates/catten/src/cpu/scheduler/} --- threads, wakers,
+    \item \repofile|crates/catten/src/completion/cq.rs| --- the CQ ring buffer.
+    \item \repofile|crates/catten/src/syscall/mod.rs| --- syscall dispatch table.
+    \item \repofile|crates/catten/src/demo.rs| --- the end-to-end async demo.
+    \item \repodir|crates/catten/src/cpu/scheduler| --- threads, wakers,
         \texttt{RoundRobin}, \texttt{block\_thread}.
-    \item \texttt{crates/catten/src/cpu/multiprocessor/} --- SMP: IPI,
+    \item \repodir|crates/catten/src/cpu/multiprocessor| --- SMP: IPI,
         \texttt{PerLp<T>}, \texttt{ShardLocal<T>}, shard mailboxes.
-    \item \texttt{crates/catten/src/cpu/isa/} --- ISA abstraction layer.
-        Start with \texttt{interface/} (traits), then \texttt{aarch64/}
+    \item \repodir|crates/catten/src/cpu/isa| --- ISA abstraction layer.
+        Start with \repodirtext|crates/catten/src/cpu/isa/interface|{\texttt{interface/}}
+        (traits), then
+        \repodirtext|crates/catten/src/cpu/isa/aarch64|{\texttt{aarch64/}}
         (reference implementation).
-    \item \texttt{crates/catten/src/service/} --- supervisor, ELF loader,
+    \item \repodir|crates/catten/src/service| --- supervisor, ELF loader,
         bootstrap.
-    \item \texttt{crates/catten/src/device\_management/} --- device driver
+    \item \repodir|crates/catten/src/device_management| --- device driver
         framework.
-    \item \texttt{crates/catten-services/src/bin/} --- reference EL0 services.
-    \item \texttt{crates/catten-rt/src/lib.rs} --- userspace runtime.
+    \item \repodir|crates/catten-services/src/bin| --- reference EL0 services.
+    \item \repofile|crates/catten-rt/src/lib.rs| --- userspace runtime.
 \end{enumerate}
 
 \section{Troubleshooting}

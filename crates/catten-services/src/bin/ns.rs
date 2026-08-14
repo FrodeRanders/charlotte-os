@@ -13,7 +13,7 @@
 //! bearer-key gate. They are not identity-based authorization policy: the
 //! target-independent engine lives in `charlotte-authorization`, and the
 //! remaining authenticated-identity/runtime integration is documented in
-//! `docs/authorization-policy.md`.
+//! `docs/architecture/authorization-policy.md`.
 #![no_std]
 #![no_main]
 

@@ -1,9 +1,9 @@
 # CharlotteOS Networking Architecture
 ## Native Capability-Based Distributed Services
 
-**Status:** Architectural Proposal  
-**Audience:** CharlotteOS/Sitas developers and Codex  
-**Author:** ChatGPT (based on CharlotteOS design discussions)  
+**Status:** Architectural Proposal
+**Audience:** CharlotteOS/Sitas developers and Codex
+**Author:** ChatGPT (based on CharlotteOS design discussions)
 **Purpose:** Define the long-term networking philosophy for CharlotteOS and provide implementation guidance for future development.
 
 ---
@@ -830,7 +830,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 The precise correspondence with the general Graft implementation and the
 intentional platform substitutions are recorded in
-[Graft Conformance in CharlotteOS](raft-conformance.md).
+[Graft Conformance in CharlotteOS](../reference/raft-conformance.md).
 
 ## 18.2 Why this is better than socket-based Raft
 

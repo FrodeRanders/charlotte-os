@@ -1,5 +1,8 @@
 # Investigation: intermittent multi‑LP data‑abort panic (AArch64)
 
+> **Historical investigation:** preserved as debugging evidence and design
+> rationale. See the [documentation index](../../README.md) for current status.
+
 Status: **CANDIDATE FIX FOUND**. Several real concurrency hazards were fixed along the way,
 and the final investigation round identified a decisive AArch64 IVT bug: asynchronous
 exception vectors used `bl` but did **not** save/restore `x30` (the link register). An IRQ can

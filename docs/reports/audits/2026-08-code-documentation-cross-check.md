@@ -1,9 +1,14 @@
 # CharlotteOS Code/Documentation Cross-Check Audit — August 2026
 
+> **Historical report:** this is point-in-time evidence and may describe
+> defects or document paths that were later corrected. See the
+> [documentation index](../../README.md) for current sources of truth.
+
 This document records a cross-cutting audit of the codebase against the
 architectural documentation in `docs/` (Markdown design notes and the
 `manual-v2` LaTeX manual) plus the two prior audit reports
-(`functionality-and-logic-audit-2026-07.md`, `distributed-systems-audit-2026-08.md`).
+([2026-07 functionality and logic audit](2026-07-functionality-and-logic.md),
+[2026-08 distributed-systems audit](2026-08-distributed-systems.md)).
 It supersedes neither the source nor the manual; those remain authoritative
 where they agree with the implementation.
 
@@ -150,7 +155,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
 - **M — GIC active-priority registers cleared incompletely** (`crates/catten/src/cpu/isa/aarch64/interrupts/gic/mod.rs:241-242`).
   Only `ICC_AP0R0_EL1`/`ICC_AP1R0_EL1` are zeroed; the stale NVMe LPI at
   effective priority ~0x90 lives in `ICC_AP1R2_EL1` and is not cleared, so the
-  fix documented in `sbsa-ref-bringup.md` does not do what it claims.
+  fix documented in `docs/platforms/sbsa-ref.md` does not do what it claims.
 - **M — SMMU command/event-queue indexing is non-architectural** (`crates/catten/src/device/smmu.rs:343-364,627-670`).
   PROD/CONS are written as raw indices rather than `index << 5`; works against
   QEMU but not real SMMUv3. The CD ASID is also placed in the TCR word rather
@@ -201,7 +206,8 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
 - **H — unauthenticated DNS mutation endpoints** (`crates/catten-services/src/bin/dns.rs`).
   `OP_DEPLOY`/`OP_REGISTER`/`OP_UNREGISTER` accept any caller holding a
   connection, allowing a client to overwrite the replicated deployment manifest
-  or hijack a name. This is *acknowledged* (`cluster-artifact-and-placement-model.md`,
+  or hijack a name. This is *acknowledged*
+  (`docs/architecture/cluster-artifacts-and-placement.md`,
   `19-cluster-vision.tex`) and deferred pending a separately delegated
   administrator capability — open security debt, **not fixed** this session.
 - **M — deployment/key/catalog reads bypass the Graft read barrier**
@@ -216,7 +222,7 @@ Severity legend: **H** = high (security / cross-domain DoS), **M** = medium
   endpoint-takeover + multi-state rollback helper (`supervisor::spawn_upgrade`)
   is never called; the real path (`sys_spawn_upgrade`) is single-state, no
   endpoint delegation. The manual (`18-live-upgrade.tex`) is correct; the design
-  doc (`charlotte-live-upgrade-design.md`) is not.
+  doc (`docs/architecture/live-upgrade.md`) is not.
 
 ### 3.8 Sitas shard runtime (M)
 
@@ -293,16 +299,16 @@ should be corrected in a follow-up pass (no code change implied):
 | Doc | Issue |
 |---|---|
 | `implementation-status.tex` | "Coalesced remote shard wakes — Verified" (only enqueue-idempotency exists); "Phase 10 sustained-window rebalancing — Done" (AArch64/LP0-only); "TX reclamation … incomplete" (reclamation exists, only batching + completion-notify missing). |
-| `scheduler-state-machines.md` | Invariant L2 "idle LP gets no ticks" false (50 ms idle-wake timer); `DEFERRED_WAKES` payload/bound stale (288 vs 256). |
-| `scheduler-investigation-report.md` | "Rebalancing runs only at boot quiescence" stale (runtime sampler wired); `armed`-flag references removed from code. |
+| `docs/reference/scheduler-state-machines.md` | Invariant L2 "idle LP gets no ticks" false (50 ms idle-wake timer); `DEFERRED_WAKES` payload/bound stale (288 vs 256). |
+| `docs/reports/investigations/scheduler.md` | "Rebalancing runs only at boot quiescence" stale (runtime sampler wired); `armed`-flag references removed from code. |
 | `07-completion-queues.tex` | `CQ_WAIT` ring-pending semantics (pre-fix); 8-state lifecycle vs 4-state `OpState`. |
-| `aarch64-port-status.md` | Physical timer (`CNTP_*`, INTID 30) vs virtual timer (`CNTV_*`, INTID 27); §3 `switch_ctx` "saves TTBR0_EL1" (it does not); "SPIs will need `ExternalInterruptControllerIfce`" (done via `gic::enable_spi`). |
-| `charlotte-live-upgrade-design.md` | Endpoint-takeover + multi-state rollback path is dead code; the manual is correct. |
+| `docs/platforms/aarch64.md` | Physical timer (`CNTP_*`, INTID 30) vs virtual timer (`CNTV_*`, INTID 27); §3 `switch_ctx` "saves TTBR0_EL1" (it does not); "SPIs will need `ExternalInterruptControllerIfce`" (done via `gic::enable_spi`). |
+| `docs/architecture/live-upgrade.md` | Endpoint-takeover + multi-state rollback path is dead code; the manual is correct. |
 | `17-storage.tex` | Block `OP_WRITE` "Move" vs implemented "BorrowRead"; filesystem operation count (eight, not six). |
-| `persistent-storage-design.md` | §3.2 init sequence missing Set-Features; §3.3 `memory_get_phys` wording (superseded by IOVA/`dma_map`); §4.2 "two objects" vs four object slots in code. |
+| `docs/architecture/persistent-storage.md` | §3.2 init sequence missing Set-Features; §3.3 `memory_get_phys` wording (superseded by IOVA/`dma_map`); §4.2 "two objects" vs four object slots in code. |
 | `charlotte-protocol-objstore` (crate doc) | "v2", "512-entry directory", "one extent" (now v3, device-scaled, ≤16 extents). |
-| `raft-conformance.md` | "host tests obstructed by duplicate core" (host tests pass). |
-| `charlotte-sitas-xous-architecture.md` | "per-shard CQ boot-validated" (not exercised by sitas test); "TX completion reclamation not claimed" (now implemented). |
+| `docs/reference/raft-conformance.md` | "host tests obstructed by duplicate core" (host tests pass). |
+| `docs/architecture/sitas-xous.md` | "per-shard CQ boot-validated" (not exercised by sitas test); "TX completion reclamation not claimed" (now implemented). |
 | `catten-rt` / `el0_sitas` comments | Heap VADDR "0x13000" (actual `0x30000`); stale "adder program" verifier branch. |
 
 ---

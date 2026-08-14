@@ -9,7 +9,7 @@
 ## TL;DR
 
 - The emulated, server-shaped path is fully green: **18/18** self-tests on both
-  QEMU `virt` and QEMU `sbsa-ref` (`docs/sbsa-ref-bringup.md`).
+  QEMU `virt` and QEMU `sbsa-ref` (`docs/platforms/sbsa-ref.md`).
 - The architecture that transfers directly to real hardware is validated: UEFI
   + ACPI boot, GICv3/ITS **LPI/MSI delivery**, **SMMU protected DMA**, PCIe
   enumeration, an **EL0 NVMe driver**, an object store, and durable Raft.
@@ -52,7 +52,7 @@ core:
   to EL1h), so it tolerates a bootloader that enters at EL2 — it just does not
   *use* EL2.
 - Firmware is reproducible from `scripts/build-sbsa-firmware.sh` with the
-  tracked patches under `patches/` (`docs/sbsa-ref-bringup.md` "Reproducing the
+  tracked patches under `patches/` (`docs/platforms/sbsa-ref.md` "Reproducing the
   firmware").
 
 ## What is still emulation-shaped (the gaps)
@@ -85,7 +85,7 @@ EL2-resident features.
 - The UART is PL011 (sbsa-ref) or the virt PL011; other platforms use different
   consoles.
 - The virtio-net path is validated against QEMU's device, not a real NIC.
-- Port-wide caveats from `docs/aarch64-port-status.md`: framebuffer/display is
+- Port-wide caveats from `docs/platforms/aarch64.md`: framebuffer/display is
   unreliable under emulation; KASLR and similar are untested.
 
 ## Roadmap
@@ -122,7 +122,7 @@ Concrete uses, strongest first:
    This gives a *compromise-resistant microkernel*: the isolation already
    granted to EL0 drivers is extended to the kernel itself. CharlotteOS's
    capability abstraction already provides the right primitive; EL2 is where
-   its root belongs. Design sketch: `docs/el2-capability-root.md`.
+   its root belongs. Design sketch: `docs/architecture/el2-capability-root.md`.
 2. **Stage-2 defense-in-depth for EL0 driver domains.** A second, unforgeable
    "you may only touch what you were granted" layer even if a domain's stage-1
    page table is corrupted. This is the CPU-side twin of the SMMU (which
@@ -199,7 +199,7 @@ have **no target** on a Pi. What a Pi does provide, cheaply:
 - **Real EL2/VHE silicon** — exactly the validation QEMU TCG cannot give.
   Pi 5 (A76, ARMv8.2) has VHE; Pi 4 (A72, ARMv8.0) has EL2 but no VHE. This
   directly de-risks Phase 1 (EL2 readiness) and the EL2 capability-root
-  design (`docs/el2-capability-root.md`).
+  design (`docs/architecture/el2-capability-root.md`).
 - **Real timers/GIC/MMIO/timing** — to re-validate the QEMU-shape
   assumptions (Phase 2) on real silicon.
 - **A second interrupt-controller family** — GICv2 exercises the
@@ -249,11 +249,11 @@ validated on a real SystemReady SR platform or under KVM.
 
 ## References
 
-- `docs/el2-capability-root.md` — the EL2 capability-root design sketch (the
+- `docs/architecture/el2-capability-root.md` — the EL2 capability-root design sketch (the
   headline security use for the EL2 layer).
-- `docs/sbsa-ref-bringup.md` — the emulated bring-up, the GIC/LPI/heap fixes,
+- `docs/platforms/sbsa-ref.md` — the emulated bring-up, the GIC/LPI/heap fixes,
   and the reproducible firmware.
-- `docs/aarch64-port-status.md` — the earlier `virt` port status and port-wide
+- `docs/platforms/aarch64.md` — the earlier `virt` port status and port-wide
   caveats.
 - `patches/` — the tracked third-party firmware deltas
   (`tf-a/0001` GIC DS, `tf-a/0002` EL1 handoff, `tf-a/0003` SMC 202,

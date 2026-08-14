@@ -1,7 +1,7 @@
 //! Self-tests for the completion-capability subsystem (Option C prototype).
 //!
 //! These are whitebox integration tests of the kernel side of the async syscall
-//! ABI (`docs/async-syscall-abi.md`). They validate the submission-side
+//! ABI (`docs/architecture/async-syscall-abi.md`). They validate the submission-side
 //! semantics that exist today — the capability table, the buffer-ownership /
 //! deferred-reclaim contract, the observer-signal path that [`wait`] relies on,
 //! and submission backpressure — without needing the (not-yet-existing) EL0

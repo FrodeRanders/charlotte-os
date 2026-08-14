@@ -1,11 +1,15 @@
 # CharlotteOS functionality and logic audit (2026-07-19)
 
+> **Historical report:** this is point-in-time evidence and may describe
+> defects or document paths that were later corrected. See the
+> [documentation index](../../README.md) for current sources of truth.
+
 ## Executive summary
 
 This audit reviewed commit `57db5ac` (`relmsg: implement Reliable Message Layer
 service`) against the current implementation and the architecture described in
-`charlotte-sitas-xous-architecture.md` and
-`charlotte-networking-architecture.md`.
+`docs/architecture/sitas-xous.md` and
+`docs/architecture/networking.md`.
 
 The kernel's AArch64 foundation is substantially functional under QEMU TCG on
 Apple silicon. A fresh four-LP build booted through Limine, initialized all four
@@ -126,7 +130,7 @@ Snapshot replacement remains a single atomic object-store record update,
 preserving CharlotteOS's stronger crash behavior.
 
 The parity contract and intentional differences are maintained in
-[`raft-conformance.md`](raft-conformance.md).
+[Raft conformance](../../reference/raft-conformance.md).
 
 ## Findings
 
@@ -412,7 +416,7 @@ the virtio-net path is consistently described as pending Linux KVM validation.
 
 The main architecture document says the system is substantially implemented and
 boot-validated, including EL0 phases. `README.md:35-41` and
-`aarch64-port-status.md:173-175` still say EL0/userspace is unimplemented or
+`docs/platforms/aarch64.md:173-175` still say EL0/userspace is unimplemented or
 untested, which the fresh boot disproved. Conversely, the architecture table
 says the network stack "validates on KVM," while its status and the audit context
 indicate that KVM runtime validation is still the outstanding task.
