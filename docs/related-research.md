@@ -8,6 +8,9 @@ This note identifies operating-systems and distributed-systems research related 
 - [`charlotte-sitas-xous-architecture.md`](charlotte-sitas-xous-architecture.md)
 - [`manual-v2/charlotte.pdf`](manual-v2/charlotte.pdf), especially Chapters 11 and 16, and Chapter 17 (the server-class cluster vision)
 
+The generated manual also contains a compact version of this note's historical
+assessment in the **Research Lineages and Their Afterlives** appendix.
+
 These do not descend from one research tradition and shamelessly combine good ideas from:
 
 1. capability-based microkernels;
@@ -1216,3 +1219,241 @@ this OS is built on. Interop-observed placement at OS-service granularity
 is largely unexplored since Keren and Barak (2003); the shard-level
 message-flow observability this OS already has (manual Chapter 9) is a
 plausible basis for going beyond the existing literature.
+
+---
+
+## 16. What became of the ideas?
+
+Research operating systems rarely "win" by replacing Unix or Windows. Their
+more common afterlife is selective: one mechanism survives, often at a
+different layer, while the original system and its stronger unifying thesis
+disappear. A project ending is therefore not evidence that its central idea
+failed; equally, adoption of one mechanism is not evidence that the original
+architecture was vindicated as a whole.
+
+The systems cited above had four broad outcomes:
+
+1. **Continuing systems:** seL4, Xous, CHERI/CheriBSD, Seastar, DPDK, Raft
+   implementations, Nix, TUF, and Uptane remain active projects or ecosystems;
+   CapROS remains available as the small continuation of EROS.
+2. **Absorbed systems:** Mach lives inside Apple's XNU rather than as the pure
+   distributed microkernel originally proposed; L4 techniques shipped in
+   commercial mobile systems; Capsicum became a FreeBSD facility; and Borg
+   and Omega's cluster-management lessons became Kubernetes.
+3. **Completed research programmes:** Singularity, Barrelfish, Arrakis, IX,
+   CuriOS, Pebble, Nooks, and SafeDrive produced papers and descendants but no
+   maintained general-purpose operating system.
+4. **Discontinued platforms with surviving concepts:** Amoeba, Jini/Apache
+   River, and openMosix ceased development, while location-independent
+   services, discovery, workload scheduling, and migration reappeared in
+   cloud and cluster software with less transparency and more explicit
+   failure handling.
+
+The boundaries are deliberately fuzzy. "Active" does not imply widespread
+deployment, and "absorbed" often means that only a narrow mechanism survived.
+
+### 16.1 Capability systems: from complete worldview to deployable pieces
+
+**KeyKOS, EROS, and CapROS.** KeyKOS was a commercial capability system;
+EROS recast that lineage as research, and CapROS continues EROS as a small
+open-source project. They did not displace conventional operating systems.
+Their durable contribution was the object-capability account of authority:
+possession, delegation, attenuation, confinement, and persistence should be
+properties of references rather than checks against global names. The
+[CapROS project](https://www.capros.org/) explicitly describes itself as the
+continuation of EROS.
+
+**L4 and seL4.** This is the clearest success among the kernel projects.
+Earlier L4 variants demonstrated fast IPC and were deployed commercially in
+mobile devices. seL4 added machine-checked functional correctness and security
+properties, became open source in 2014, and gained a foundation and a
+commercial high-assurance ecosystem in 2020. Its own
+[history](https://sel4.systems/About/history.html) records both the proofs and
+real deployments. The lesson was not merely that microkernels can be small,
+but that a deliberately constrained kernel interface can be fast enough to
+verify and use.
+
+**Capsicum and CHERI.** Capability ideas also entered conventional systems in
+partial form. Capsicum has shipped in FreeBSD since 9.0 and turns file
+descriptors into attenuable capabilities inside a Unix compatibility model
+([FreeBSD `capsicum(4)`](https://man.freebsd.org/cgi/man.cgi?query=capsicum&sektion=4)).
+CHERI moved capability enforcement into pointers and processors; Arm's
+Morello board and CheriBSD are research platforms, while CHERI-RISC-V work is
+moving toward standardisation
+([Cambridge CHERI project](https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/)).
+Neither replaces object capabilities: Capsicum primarily confines Unix
+resources, and CHERI primarily constrains memory references.
+
+**What CharlotteOS took.** CharlotteOS adopts the strong version locally:
+opaque object capabilities are authority, have explicit rights and object
+types, can be attenuated on delegation, and are separate from names,
+notifications, and completions. Reply tokens are linear authority. Device,
+DMA, memory, observer, and bootstrap access are explicitly delegated. Unlike
+EROS or seL4, however, CharlotteOS does not yet retain a general capability
+derivation tree or prove confinement and information flow. Unlike CHERI, its
+capabilities do not make arbitrary Rust or unsafe pointer accesses memory-safe.
+
+### 16.2 IPC and ownership: the systems ended, the discipline survived
+
+**Mach.** Pure Mach did not become the dominant Unix architecture, but it was
+assimilated. Apple's XNU still uses Mach tasks, virtual memory, ports, and IPC,
+while co-locating BSD and I/O components in one kernel for performance
+([Apple's XNU description](https://developer.apple.com/library/archive/documentation/Porting/Conceptual/PortingUnix/additionalfeatures/additionalfeatures.html)).
+This is a useful warning: an elegant message boundary may be collapsed when
+compatibility and crossing cost dominate.
+
+**Singularity.** Microsoft ended the standalone research OS and evolved its
+code and design into the internal Midori project, which never shipped as a
+product. Microsoft reports that Midori nevertheless ran part of its natural
+language search service
+([Singularity project history](https://www.microsoft.com/en-us/research/project/singularity/)).
+The lasting ideas were typed channel contracts, software-isolated processes,
+manifest-checked components, and ownership transfer through an exchange heap.
+Managed-language enforcement did not become a mainstream OS boundary, but
+ownership types and message-oriented runtimes became much more familiar.
+
+**Xous.** Xous is not merely an historical analogy. It remains a working Rust
+microkernel for embedded devices, with userspace servers and explicit scalar,
+`Send`, `Lend`, and mutable-lend messages
+([Xous kernel documentation](https://xous.dev/kernel/)). It is CharlotteOS's
+most direct IPC ancestor.
+
+**What CharlotteOS took.** CharlotteOS adopts Xous-style isolated servers and
+the distinction between scalar and memory-bearing IPC. It adopts
+Singularity's ownership-moving discipline, but enforces it with capabilities,
+page mappings, teardown state machines, and DMA rules rather than a managed
+language verifier. Its `Copy`, `Move`, `BorrowRead`, and `BorrowWrite` modes,
+one-shot reply tokens, cancellation, and rollback make the failure cases
+explicit. Typed protocol crates supply channel contracts, but the kernel ABI
+still validates untyped machine words at the trust boundary.
+
+### 16.3 Multicore and fast I/O: research kernels became runtimes and queues
+
+**Barrelfish and Arrakis.** Barrelfish made the multikernel case that a
+multicore machine should be treated as a distributed system. The project is
+now explicitly [inactive](https://barrelfish.org/download.html). Arrakis,
+which gave applications virtualised I/O queues while leaving policy in the
+kernel, was merged back into Barrelfish in 2015 and ended with that research
+line. Their influence is more visible in per-core runtimes, explicit topology,
+hardware queue virtualisation, and control/data-plane separation than in
+today's general-purpose kernels.
+
+**IX, netmap, DPDK, and Seastar.** IX was a research dataplane OS, but its
+run-to-completion, per-core, batched model continued in later datacenter
+runtimes. DPDK became a Linux Foundation project with production-quality
+userspace packet queues and broad device support
+([DPDK history](https://www.dpdk.org/about/)). Seastar remains active and uses
+a shared-nothing, shard-per-core, futures-based runtime in ScyllaDB
+([Seastar overview](https://seastar.io/)). Here the ideas succeeded by becoming
+libraries and frameworks on Linux rather than a new operating system.
+
+**Completion interfaces.** Completion ports, `epoll`/`kqueue`, and Linux
+`io_uring` show a similar assimilation: asynchronous submission and retained
+completion became operating-system interfaces, without turning IPC,
+readiness, notification, and authority into one abstraction.
+
+**What CharlotteOS took.** Sitas is the direct execution discipline and is
+Seastar-like: one owner per shard, cooperative futures, bounded cross-shard
+messages, and deliberate placement. Barrelfish supplies the architectural
+analogy for explicit cross-core coordination. IX, DPDK, and Arrakis inform
+batched queues, userspace drivers, IOMMU protection, and buffer ownership.
+CharlotteOS rejects Arrakis's ordinary-application fast path: a device is
+delegated to an isolated driver service, not directly to every application.
+Its completion queues retain terminal operation records and remain distinct
+from endpoint IPC and Rust `Waker`s.
+
+### 16.4 Recoverable services: supervision survived better than transparency
+
+MINIX 3, CuriOS, and Pebble explored small kernels, isolated userspace
+services, minimally privileged drivers, supervision, and restart. Nooks and
+SafeDrive tried to contain or recover faulty extensions while preserving
+legacy kernel-driver compatibility. MINIX remains a research and teaching
+system; the other projects are completed prototypes. The broadly adopted idea
+is process or VM isolation plus supervision. The stronger claim that a driver
+can be restarted transparently is much less general: hardware, DMA, persistent
+state, and already-visible external effects all require component-specific
+reconciliation.
+
+**What CharlotteOS took.** Drivers and services run in separate protection
+domains. A supervisor can revoke their capabilities and borrows, reset a
+device, reconcile operations and DMA, create a fresh generation, and make
+clients re-resolve it. CharlotteOS deliberately promises deterministic failure
+and recovery boundaries rather than transparent continuation. Stateful live
+upgrade is an explicit handoff protocol, not inherited process memory.
+
+### 16.5 Distributed systems: transparency lost, orchestration won
+
+**Amoeba.** Amoeba's last official release was 5.3 in 1996
+([Amoeba 5.3 reference material](https://www.cs.vu.nl/pub/amoeba/manuals/usr.pdf)).
+Its particular combination of processor pools, capability-protected objects,
+location-independent RPC, and FLIP did not become a product platform. The
+component ideas did: object references, RPC, replicated services, and pooled
+compute are now normal. What did *not* survive intact was the promise that a
+distributed computer should look like one failure-free machine.
+
+**Plan 9 and Inferno.** Bell Labs development ended, but Plan 9 has community
+descendants and its 9P protocol is still in Linux, including a Virtio
+transport ([Linux v9fs documentation](https://www.kernel.org/doc/html/latest/filesystems/9p.html)).
+Per-process namespaces and "everything is a file served by a protocol" remain
+influential, while Plan 9 and Inferno themselves stayed niche.
+
+**Jini and MOSIX.** Sun's Jini became Apache River; Apache retired River in
+2022 ([Apache Attic](https://attic.apache.org/projects/river.html)).
+`openMosix` officially ended in 2008
+([project announcement](https://sourceforge.net/p/openmosix/news/2008/02/openmosix-project-ends/)).
+Discovery, leases, mobile proxies, tuple spaces, and automatic placement did
+not disappear. They were rebuilt in service registries, message brokers,
+serverless systems, and cluster schedulers. Modern systems generally reschedule
+containers or actors and reconstruct service state instead of migrating an
+arbitrary process image transparently.
+
+**Borg, Omega, and Kubernetes.** This is the clearest case of assimilation at
+scale. Borg remained Google's internal production system; Omega explored a
+more concurrent control plane; Kubernetes directly inherited their lessons
+about declarative desired state, scheduling, services, labels, and
+self-healing
+([Kubernetes's Borg history](https://kubernetes.io/blog/2015/04/borg-predecessor-to-kubernetes/)).
+The cluster became the deployment target, but above commodity host kernels and
+containers rather than inside a distributed OS kernel.
+
+**Raft, SWIM, Nix, and software signing.** These mechanisms succeeded as
+focused components. Raft has many implementations and made replicated state
+machines easier to explain and deploy
+([Raft project](https://raft.github.io/)). SWIM-style gossip lives in systems
+such as memberlist and Consul. Nix made hash-identified immutable software
+stores practical. TUF and Uptane became maintained update-security frameworks;
+Uptane is now a versioned standard under Linux Foundation governance
+([Uptane history](https://uptane.org/learn-more/about)). Sigstore and
+Notary/Cosign made artifact identity and provenance part of cloud deployment.
+
+**What CharlotteOS took.** Locally, names resolve to delegated connection
+capabilities; a string is never authority. Across two guests, the `dns`
+catalog is a Raft state machine and remote calls have request identity,
+generation fencing, duplicate handling, retries, deadlines, and an explicit
+uncertain outcome. The cluster slice stores signed service artifacts, verifies
+Ed25519 ELF notes, commits placement records, and can reassign a stateless
+service. This is materially Amoeba-like in interface and Kubernetes-like in
+deployment intent, but the current implementation is a bounded prototype:
+automatic placement, a shared content-addressed artifact store, production key
+rotation, general stateful migration, and distributed capability revocation
+remain open.
+
+### 16.6 CharlotteOS's synthesis, stated precisely
+
+The inheritance is easiest to understand by strength:
+
+| Relationship | Source ideas | CharlotteOS status |
+|---|---|---|
+| **Direct design source** | Xous server/connection and memory-message model; Sitas shard ownership and async execution | Implemented locally, with CharlotteOS-specific capabilities, memory objects, completion queues, and teardown semantics |
+| **Mechanism adopted and changed** | EROS/seL4 authority; Singularity ownership transfer; Barrelfish explicit messages; MINIX service recovery; completion-ring I/O | Implemented in bounded local forms; not a compatibility claim or refinement of those systems |
+| **Focused protocol adopted** | Raft replication; Ed25519/SHA-256 artifact verification | Implemented and tested, including cross-guest catalog replication and signed deployment |
+| **Architecture informed by** | Amoeba distributed invocation; IX/DPDK/Arrakis fast paths; Borg/Kubernetes placement; Nix/TUF/Uptane trust and artifacts | Partial cluster slice or future work |
+| **Explicitly rejected or narrowed** | Failure-transparent remote calls; arbitrary transparent process migration; language-only isolation; direct device access by ordinary applications | Remote uncertainty is visible; migration is protocol-specific; MMU/IOMMU and capabilities enforce isolation; drivers retain device authority |
+
+The distinctive CharlotteOS idea is therefore not any single borrowed
+mechanism. It is the attempt to make **authority, data ownership, execution
+ownership, completion, service lifecycle, and distributed failure remain
+separate but composable**. Earlier projects often made one of those dimensions
+beautifully uniform. CharlotteOS takes their strongest local ideas while
+trying not to inherit the transparency claims that history showed to be
+fragile.
