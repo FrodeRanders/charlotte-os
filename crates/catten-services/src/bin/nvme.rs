@@ -191,9 +191,8 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
     }
     // SAFETY: admin/I/O queue fields use volatile device-ring access and the
     // allocation remains pinned until the queue is dismantled.
-    let phys = unsafe {
-        dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional)
-    };
+    let phys =
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
     if phys == 0 {
         memory_unmap(cap);
         memory_close(cap);
