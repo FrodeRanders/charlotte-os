@@ -636,6 +636,7 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     // and then `submit_to_lp`: that would enqueue the same thread on two run
     // queues.
     let thread = Thread::new(asid, entry_fn);
+    let generation = thread.generation;
     let tid = match publish_thread(thread) {
         Ok(tid) => tid,
         Err(_) => crate::cpu::scheduler::abort_address_space(asid),
@@ -652,8 +653,11 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
             .map(|_| ())
             .expect("SPAWN_THREAD: submit_new_thread fallback failed")
     });
-    // Return the thread id in x0.
+    // Return the recyclable thread id in x0 and the publication generation in
+    // x1. Legacy callers use x0 only; ownership-aware runtimes retain both so
+    // a delayed join cannot attach to a replacement occupying the same slot.
     frame.regs[0] = tid as u64;
+    frame.regs[1] = generation;
 }
 
 // ---- new syscalls -----------------------------------------------------------
@@ -674,7 +678,8 @@ fn sys_domain_abort(frame: &mut TrapFrame) {
 fn sys_observe_thread_exit(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let tid = frame.regs[1] as crate::cpu::scheduler::threads::ThreadId;
-    match crate::completion::observe_thread_exit(asid, tid) {
+    let expected_generation = (frame.regs[2] != 0).then_some(frame.regs[2]);
+    match crate::completion::observe_thread_exit_with_generation(asid, tid, expected_generation) {
         Ok(cap) => frame.regs[0] = cap,
         Err(_) => frame.regs[0] = u64::MAX,
     }

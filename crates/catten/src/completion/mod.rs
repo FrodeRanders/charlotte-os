@@ -715,23 +715,8 @@ pub fn submit_worker(
 }
 
 /// Register a completion capability that fires when the EL0 thread `tid`
-/// exits, exposing thread joining to userspace through the ordinary
-/// completion ABI. This is the syscall-facing half of `submit_worker`: the
-/// caller (typically a shard runtime) spawns the thread and then observes its
-/// exit with this helper, so `wait` on the returned capability blocks exactly
-/// until the thread has been reaped.
-///
-/// If the thread was already reaped before the observer could be registered,
-/// the capability completes immediately rather than leaving the joiner
-/// waiting for an observer that can never fire.
-pub(crate) fn observe_thread_exit(
-    asid: AddressSpaceId,
-    tid: crate::cpu::scheduler::threads::ThreadId,
-) -> Result<CompletionCap, SubmitError> {
-    observe_thread_exit_with_generation(asid, tid, None)
-}
-
-/// Generation-bound variant of [`observe_thread_exit`].
+/// exits. A supplied spawn-time generation prevents a delayed userspace join
+/// from attaching to a replacement in the same numeric TID slot.
 ///
 /// Thread IDs are recycled, so a caller that captured a `ServiceDomain`
 /// (which records the spawn-time generation) must pass that generation: if
@@ -1195,7 +1180,10 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
     {
         let mut registry = COMPLETIONS.write();
         if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-            && cq_state.work_generation != cq_state.last_seen_generation
+            && charlotte_lifecycle::classify_timed_wait(
+                cq_state.last_seen_generation,
+                cq_state.work_generation,
+            ) == charlotte_lifecycle::TimedWaitOutcome::Work
         {
             crate::debug_trace::trace(
                 crate::debug_trace::TAG_CQ_WAIT_FAST,
@@ -1326,7 +1314,10 @@ pub fn wait_on_cq_timeout(
     {
         let mut registry = COMPLETIONS.write();
         if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-            && cq_state.work_generation != cq_state.last_seen_generation
+            && charlotte_lifecycle::classify_timed_wait(
+                cq_state.last_seen_generation,
+                cq_state.work_generation,
+            ) == charlotte_lifecycle::TimedWaitOutcome::Work
         {
             cq_state.last_seen_generation = cq_state.work_generation;
             return true;
@@ -1375,7 +1366,10 @@ pub fn wait_on_cq_timeout(
 
     let mut registry = COMPLETIONS.write();
     if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-        && cq_state.work_generation != cq_state.last_seen_generation
+        && charlotte_lifecycle::classify_timed_wait(
+            cq_state.last_seen_generation,
+            cq_state.work_generation,
+        ) == charlotte_lifecycle::TimedWaitOutcome::Work
     {
         cq_state.last_seen_generation = cq_state.work_generation;
         return true;

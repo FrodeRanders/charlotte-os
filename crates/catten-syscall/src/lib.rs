@@ -248,6 +248,19 @@ pub mod ipc_status {
 pub const IPC_REPLY_CANCELLED: i64 = -3;
 pub const IPC_REPLY_ENDPOINT_CLOSED: i64 = -7;
 
+/// One entry in the packed capability-vector page consumed by vector IPC.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CapVectorEntry {
+    pub cap: u64,
+    /// 0=Copy, 1=Move, 2=BorrowRead, 3=BorrowWrite.
+    pub mode: u32,
+    pub reserved: u32,
+}
+
+pub const CAP_VECTOR_MAX: usize =
+    (4096 - core::mem::size_of::<u16>()) / core::mem::size_of::<CapVectorEntry>();
+
 pub type MemoryStatusCode = u64;
 
 pub mod memory_status {
@@ -348,6 +361,8 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             57 => asm!("svc #57", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             58 => asm!("svc #58", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             60 => asm!("svc #60", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            61 => asm!("svc #61", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
+            62 => asm!("svc #62", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             63 => asm!("svc #63", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             64 => asm!("svc #64", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             65 => asm!("svc #65", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
@@ -507,6 +522,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
     unsafe {
         match imm as u16 {
             3 => asm!("svc #3", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            7 => asm!("svc #7", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             10 => asm!("svc #10", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
@@ -813,7 +829,21 @@ pub fn close(cap: u64) {
 /// space. `target_lp` must be a valid LP id.
 #[inline(always)]
 pub unsafe fn spawn_thread(entry_vaddr: usize, target_lp: u32) -> u64 {
-    unsafe { svc3(SyscallNumber::SpawnThread, entry_vaddr as u64, target_lp as u64, 0) }
+    unsafe { spawn_thread_with_generation(entry_vaddr, target_lp).0 }
+}
+
+/// Spawn a new EL0 thread and return its recyclable numeric id together with
+/// the monotonic generation captured at publication time.
+///
+/// The generation must accompany the id when registering a delayed exit
+/// observer, otherwise TID reuse could attach the observer to a replacement.
+///
+/// # Safety
+/// `entry_vaddr` must point to valid executable code in the caller's address
+/// space. `target_lp` must be a valid LP id.
+#[inline(always)]
+pub unsafe fn spawn_thread_with_generation(entry_vaddr: usize, target_lp: u32) -> (u64, u64) {
+    unsafe { svc3_x1(SyscallNumber::SpawnThread, entry_vaddr as u64, target_lp as u64, 0) }
 }
 
 /// Terminate the calling EL0 thread.  Never returns.
@@ -859,6 +889,21 @@ pub fn domain_abort() -> ! {
 #[inline(always)]
 pub unsafe fn observe_thread_exit(tid: u64) -> u64 {
     unsafe { svc3(SyscallNumber::ObserveThreadExit, tid, 0, 0) }
+}
+
+/// Register a generation-bound completion for an EL0 thread's exit.
+///
+/// If the TID has already been reaped or recycled, the returned completion is
+/// completed immediately rather than observing the replacement thread.
+#[inline(always)]
+pub fn observe_thread_exit_generation(tid: u64, generation: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::ObserveThreadExit, tid, generation, 0) }
+}
+
+/// Return the calling EL0 thread's numeric kernel thread id.
+#[inline(always)]
+pub fn get_tid() -> u64 {
+    unsafe { svc3(SyscallNumber::GetTid, 0, 0, 0) }
 }
 
 /// Send a 64-bit message to the target LP's global mailbox.

@@ -1,0 +1,12 @@
+[package]
+name = "charlotte-lifecycle"
+version = "0.1.0"
+edition = "2024"
+description = "Pure lifecycle decisions shared by the CharlotteOS kernel and userspace"
+
+[lib]
+name = "charlotte_lifecycle"
+path = "src/lib.rs"
+bench = false
+
+[dependencies]

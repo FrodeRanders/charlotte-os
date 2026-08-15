@@ -66,20 +66,30 @@ and `config::output_ptr` address that page for low-level programs. Applications
 should still prefer their service protocol or completion queues for normal
 results rather than treating the status page as general IPC.
 
-## Ownership-aware memory
+## Ownership-aware resources
 
-Application code should prefer `catten_rt::owned` over raw memory and DMA
-syscalls. `OwnedMemory` is a linear capability, `MappedMemory<ReadOnly>` and
+Application code should prefer `catten_rt::owned` over raw capability syscalls.
+`OwnedMemory` is a linear capability, `MappedMemory<ReadOnly>` and
 `MappedMemory<Writable>` tie slices to the mapping lifetime, and `DmaTransfer`
-can only consume an unmapped object. `ReadOperation<'a>` similarly keeps an
-exclusive buffer borrow until completion or cancel-and-wait has reached a
-terminal state.
+can only consume an unmapped object. `Completion` and `ReadOperation<'a>` keep
+asynchronous resources alive through terminal completion, including the
+cancel-and-wait path. `Endpoint`, `Connection`, `PendingCall`, and
+`CapabilityVector` make close, move, copy, and borrow behavior explicit;
+vector loans remain borrowed until their pending call terminates. `MmioRegion`,
+`MappedMmio`, and `Interrupt` provide single-close device ownership while
+leaving register access unsafe. `ThreadHandle` retains the spawn-time thread
+generation so a delayed join cannot observe a recycled TID.
 
 The raw `catten-syscall` functions remain available for runtime and driver
 protocols. Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Once a raw capability is
 adopted with `OwnedMemory::from_raw`, it must not be used independently or
 adopted a second time.
+
+The host test suite injects failures at unmap, DMA release, MMIO release,
+completion cancellation, and IPC submission boundaries. The shared
+`charlotte-lifecycle` crate exhaustively checks the generation decisions used
+by both thread joins and timed completion waits.
 
 ## Building bundled examples
 

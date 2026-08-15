@@ -430,10 +430,13 @@ fn observe_thread_exit_matching(
 ) -> Result<(), system_scheduler::Error> {
     let table = MASTER_THREAD_TABLE.write();
     if let Ok(thread) = table.get(thread_id) {
-        let generation_matches = match expected_generation {
-            Some(expected) => thread.generation == expected,
-            None => true,
-        };
+        let generation_matches = expected_generation.is_none_or(|expected| {
+            let captured = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
+            let current =
+                charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, thread.generation);
+            charlotte_lifecycle::classify_join(captured, Some(current))
+                == charlotte_lifecycle::JoinDisposition::ObserveCurrent
+        });
         if generation_matches {
             thread.register_observer(observer);
             drop(table);

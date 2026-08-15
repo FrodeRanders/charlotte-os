@@ -1020,7 +1020,7 @@ pub fn test_vector_ipc_transaction_rollback() {
             ipc::CapVectorEntry {
                 cap: moved,
                 mode: 1,
-                _pad: 0,
+                reserved: 0,
             },
         );
         core::ptr::write_unaligned(
@@ -1028,7 +1028,7 @@ pub fn test_vector_ipc_transaction_rollback() {
             ipc::CapVectorEntry {
                 cap: u64::MAX,
                 mode: 0,
-                _pad: 0,
+                reserved: 0,
             },
         );
     }
@@ -1066,7 +1066,7 @@ pub fn test_vector_ipc_transaction_rollback() {
             ipc::CapVectorEntry {
                 cap: moved,
                 mode: 1,
-                _pad: 0,
+                reserved: 0,
             },
         );
     }

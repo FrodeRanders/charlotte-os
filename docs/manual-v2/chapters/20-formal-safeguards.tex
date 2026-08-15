@@ -120,7 +120,7 @@ provide.
 
 \section{What is modeled}
 
-The current suite contains eighteen safe specifications. They are divided by
+The current suite contains twenty safe specifications. They are divided by
 state ownership and failure boundary so that each model remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
@@ -150,11 +150,19 @@ different proof obligations.
     no lost wakeup; timer completion remains tied to its operation; a buffered
     operation retains its kernel loan through cancellation until terminal completion. \\
 \hline
+\tlbreak{Charlotte}{TimedWait} & Work-generation publication, delayed wake
+    delivery, and watchdog expiry & A timer cannot report timeout after a new
+    work generation has already been published. \\
+\hline
 \tlbreak{Charlotte}{Scheduler} & Spawn, admission, execution, blocking, migration,
     cross-LP abort, reaping, address-space destruction & At most one execution
     per LP; only the owner LP retires an executing thread; reaping occurs
     off-CPU; domain abort prevents late sibling publication; destroyed address
     spaces have no live threads. \\
+\hline
+\tlbreak{Charlotte}{ThreadJoin} & Recyclable TIDs, spawn generations, delayed
+    exit-observer registration & A captured handle observes only its exact
+    generation; a missing or recycled slot completes immediately. \\
 \hline
 \tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
     handles & A stale handle cannot close a replacement that reused the same
@@ -358,6 +366,13 @@ Other negative specifications preserve compact versions of repaired faults:
     before the operation becomes terminal. &
     \tlbreak{NonTerminalBuffer}{RemainsLoaned} \\
 \hline
+\tlbreak{UnsafeTimer}{Fire} & A watchdog reports timeout without rechecking a
+    concurrently published work generation. & \texttt{TimeoutObservedNoWork} \\
+\hline
+\tlbreak{UnsafeObserve}{Join} & A delayed join attaches its old handle to the
+    replacement occupying the same TID. &
+    \tlbreak{ObserverMatches}{CapturedHandle} \\
+\hline
 \tlbreak{UnsafeBeginExclusive}{Map} & Exclusive DMA begins while CPU or other
     transfer authority still exists. &
     \tlbreak{ExclusiveDmaHasNo}{CpuAuthority} \\
@@ -404,7 +419,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all eighteen negative configurations to fail for the named
+The check suite expects all twenty negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -450,12 +465,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all eighteen safe configurations;
+    \item runs all twenty safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs eighteen negative configurations and requires each one to fail on
+    \item runs twenty negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -476,7 +491,11 @@ fast configurations produced the following complete state graphs:
 \hline
 \texttt{CharlotteCQ} & 1,586,249 & 302,659 & 12 \\
 \hline
+\texttt{CharlotteTimedWait} & 22 & 15 & 8 \\
+\hline
 \texttt{CharlotteScheduler} & 4,308,577 & 819,972 & 22 \\
+\hline
+\texttt{CharlotteThreadJoin} & 37 & 32 & 9 \\
 \hline
 \tlbreak{Charlotte}{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
 \hline
@@ -506,6 +525,8 @@ repair, included:
         membership and restart between membership persistence and fence clear;
     \item host tests for \texttt{charlotte-protocol-msg}, including disjoint
         retry/restart sessions and fail-closed exhaustion;
+    \item host tests for ownership-aware runtime cleanup and the shared
+        \texttt{charlotte-lifecycle} thread-join and timed-wait classifiers;
     \item AArch64 release builds and warning-denied Clippy for the changed
         \texttt{raft}, \texttt{relmsg}, and \texttt{ns} services;
     \item AArch64 and x86-64 kernel checks, plus warning-denied AArch64 Clippy,

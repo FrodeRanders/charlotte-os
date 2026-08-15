@@ -99,6 +99,10 @@ run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \
     NonTerminalBufferRemainsLoaned UnsafeCancelReleasesBuffer
+run_model CharlotteTimedWait CharlotteTimedWait_small.cfg \
+    ArmWait PublishWork DeliverWake TimerFire Consume
+run_expected_violation CharlotteTimedWait CharlotteTimedWait_unsafe.cfg \
+    TimeoutObservedNoWork UnsafeTimerFire
 run_model CharlotteScheduler CharlotteScheduler_small.cfg \
     Spawn Admit Dispatch Preempt Block Wake SwitchOff Migrate \
     RequestRemoteAbort RetireRemoteAbort AbortNotRunning SelfAbort Reap \
@@ -107,6 +111,10 @@ run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
     ReapOnlyOffCpu UnsafeRemoteAbort
 run_expected_violation CharlotteScheduler CharlotteScheduler_domain_abort_unsafe.cfg \
     AbortingThreadsDoomed UnsafeSpawnDuringAbort
+run_model CharlotteThreadJoin CharlotteThreadJoin_small.cfg \
+    Spawn CaptureHandle Exit ObserveJoin Reap
+run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_unsafe.cfg \
+    ObserverMatchesCapturedHandle UnsafeObserveJoin
 run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \

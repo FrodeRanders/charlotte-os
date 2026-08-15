@@ -60,6 +60,7 @@ qemu = ["virtio_gpu"]
 
 [dependencies]
 catten-syscall = { path = "../catten-syscall" }
+charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 limine = { version = ">=0.3.0" }

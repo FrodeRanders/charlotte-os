@@ -95,11 +95,19 @@ corresponding to the repaired model and its retained negative counterexample.
 immediately. TLC must violate `NonTerminalBufferRemainsLoaned`, retaining the
 use-after-cancel scenario as an executable negative regression.
 
+`CharlotteTimedWait` splits work-generation publication from wake delivery,
+which exposes the interval in which a timer can run after work exists but
+before the ordinary wake is processed. `TimerFire` rechecks the registered
+generation, matching `block_until` and `wait_on_cq_timeout`; a changed
+generation returns work rather than a false timeout.
+`CharlotteTimedWait_unsafe.cfg` omits that recheck and must violate
+`TimeoutObservedNoWork`.
+
 ## Deliberately omitted behavior
 
 The models currently omit vector IPC, connection attachments, multiple memory
 attachments, memory contents, concrete page-table mappings, completion observers,
-detached operations, timeout races, address-space validation failures and
+detached operations, IPC reply-timeout races, address-space validation failures and
 cross-registry rollback steps.
 
 Those omissions matter when interpreting a result: TLC checks the modeled
@@ -139,6 +147,14 @@ retirement; it is not part of the repaired `Spec`.
 abort snapshot and must violate `AbortingThreadsDoomed`. The Rust publication
 gate prevents this trace and also prevents a captured numeric TID from being
 reused by another domain before the sweep reaches it.
+
+`CharlotteThreadJoin` isolates the userspace join contract from the larger
+scheduler state space. `spawn_thread_with_generation` returns the generation
+captured before thread publication; `ThreadHandle` retains it; and
+`observe_thread_exit_generation` passes it back to
+`observe_thread_exit_with_generation`. A missing or recycled slot completes
+immediately. `CharlotteThreadJoin_unsafe.cfg` restores TID-only registration
+and must violate `ObserverMatchesCapturedHandle` after slot reuse.
 
 ## Reusable address spaces and interrupt routes
 

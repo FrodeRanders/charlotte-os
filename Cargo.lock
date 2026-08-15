@@ -79,6 +79,7 @@ version = "0.8.1"
 dependencies = [
  "catten-syscall",
  "charlotte-launch",
+ "charlotte-lifecycle",
  "charlotte-protocol-disco",
  "concurrent-queue",
  "flanterm_bindings",
@@ -106,6 +107,7 @@ version = "0.1.0"
 dependencies = [
  "catten-syscall",
  "charlotte-launch",
+ "charlotte-lifecycle",
  "spin 0.9.9",
  "talc",
 ]
@@ -149,6 +151,10 @@ version = "0.1.0"
 dependencies = [
  "ed25519-compact",
 ]
+
+[[package]]
+name = "charlotte-lifecycle"
+version = "0.1.0"
 
 [[package]]
 name = "charlotte-protocol-block"

@@ -57,25 +57,15 @@ pub enum IpcError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectionRights(u32);
 
+/// Maximum capability vector entries per message (fits in one 4 KiB page
+/// with the `count` header). The page holds `count: u16` at offset 0,
+/// followed by up to this many entries.
+pub use catten_syscall::CAP_VECTOR_MAX;
 /// A single entry in a capability vector page. The sender packs an array
 /// of these into a one-page memory object and passes it to
 /// `ipc_vector_send` / `ipc_vector_call`. Each entry specifies a
 /// memory-object capability and how it should be transferred.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct CapVectorEntry {
-    /// The memory-object capability owned by the sender.
-    pub cap: u64,
-    /// Transfer mode: 0=Copy, 1=Move, 2=BorrowRead, 3=BorrowWrite.
-    pub mode: u32,
-    /// Reserved, must be zero.
-    pub _pad: u32,
-}
-
-/// Maximum capability vector entries per message (fits in one 4 KiB page
-/// with the `count` header). The page holds `count: u16` at offset 0,
-/// followed by up to this many entries.
-pub const CAP_VECTOR_MAX: usize = (4096 - 2) / core::mem::size_of::<CapVectorEntry>();
+pub use catten_syscall::CapVectorEntry;
 
 /// The kernel fills this struct into the receiver's result page during
 /// `ipc_recv_vec`. At most `count` caps were delivered; the receiver
@@ -1919,7 +1909,7 @@ fn read_vector_page(
     let mut entries = Vec::with_capacity(count);
     for i in 0..count {
         let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };
-        if entry._pad != 0 || entry.mode > 3 || (!is_call && entry.mode >= 2) {
+        if entry.reserved != 0 || entry.mode > 3 || (!is_call && entry.mode >= 2) {
             return Err(IpcError::MemoryTransferFailed);
         }
         if entries.iter().any(|prior: &CapVectorEntry| prior.cap == entry.cap) {

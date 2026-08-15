@@ -155,7 +155,7 @@ together, validates the launch ABI version, sets up the heap, and calls
 the address space is retired, so no sibling can continue after shared Rust
 state or a userspace lock has been left inconsistent.
 
-\subsection{Memory ownership in Rust}
+\subsection{Resource ownership in Rust}
 
 The register-level syscall ABI deliberately exposes capability handles as
 integers. Application code should use the linear wrappers in
@@ -173,6 +173,20 @@ integers. Application code should use the linear wrappers in
     \item \texttt{ReadOperation<'a>} retains its
         \texttt{\&'a mut [u8]} until completion, including the
         cancel-and-wait path in its destructor.
+    \item \texttt{Completion} cancels, waits, and closes on drop; timeout does
+        not consume the handle unless a terminal result was observed.
+    \item \texttt{Endpoint}, \texttt{Connection}, and \texttt{PendingCall}
+        close exactly once. A pending call retains any memory loan until reply
+        observation or cancellation.
+    \item \texttt{CapabilityVector} owns moved entries and retains read/write
+        loans across a vector call. Submission failure returns the builder
+        intact, including every moved object.
+    \item \texttt{MmioRegion}, \texttt{MappedMmio}, and \texttt{Interrupt}
+        provide single-close device ownership. Register access remains unsafe
+        because width, alignment, volatility, and ordering are device-specific.
+    \item \texttt{ThreadHandle} stores both the recyclable TID and the
+        spawn-time generation. Joining passes both values back to the kernel,
+        so a replacement thread cannot satisfy a delayed join.
 \end{itemize}
 
 The raw \texttt{catten-syscall} interface remains available to runtimes and
@@ -180,6 +194,12 @@ drivers. Coherent \texttt{dma\_map} is explicitly unsafe because the driver
 must synchronize CPU references and device access itself. Mixing raw
 operations with an adopted ownership wrapper violates the wrapper's safety
 contract.
+
+These wrappers have host-side failure injection for unmap, DMA/MMIO release,
+completion cancellation, IPC move rollback, vector descriptor rollback, and
+loan cancellation. The no-std \texttt{charlotte-lifecycle} crate supplies the
+pure generation classifiers used by both the kernel and runtime and exercises
+their bounded input spaces in host tests.
 
 \subsection{Bootstrap authority}
 

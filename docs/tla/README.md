@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for eighteen
+This directory contains finite, executable specifications for twenty
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -8,7 +8,9 @@ CharlotteOS subsystems:
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
 | Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
+| Timed-wait wake races | `CharlotteTimedWait.tla` | `CharlotteTimedWait_small.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
+| Generation-bound thread joins | `CharlotteThreadJoin.tla` | `CharlotteThreadJoin_small.cfg` |
 | Reusable ASID generation identity | `CharlotteAddressSpace.tla` | `CharlotteAddressSpace_small.cfg` |
 | AArch64 hardware-ASID recycling | `CharlotteHardwareAsid.tla` | `CharlotteHardwareAsid_small.cfg` |
 | Deferred interrupt-route reuse | `CharlotteInterruptRoute.tla` | `CharlotteInterruptRoute_small.cfg` |
@@ -44,8 +46,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all eighteen complete fast configurations plus expected-failure
-  endpoint-observer, CQ-buffer, scheduler, domain-abort, address-space,
+- runs all twenty complete fast configurations plus expected-failure
+  endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, domain-abort, address-space,
   hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
   Raft-join, and reliable-message regression configurations;
 - enables TLC action coverage;
@@ -70,7 +72,15 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteCQ -config CharlotteCQ_mini.cfg -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteTimedWait -config CharlotteTimedWait_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteScheduler -config CharlotteScheduler_small.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteThreadJoin -config CharlotteThreadJoin_small.cfg \
+  -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteAddressSpace -config CharlotteAddressSpace_small.cfg \
