@@ -52,6 +52,10 @@ Alternatively, set `TLA2TOOLS_JAR`. The script:
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
 
+The `TLA+ safety models` CI job runs this same harness with TLA+ Tools v1.7.4.
+It pins and verifies the tools JAR by SHA-256 before checking both the safe
+models and every expected-counterexample regression.
+
 The individual commands are:
 
 ```sh
