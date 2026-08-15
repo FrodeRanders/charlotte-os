@@ -12,7 +12,7 @@ ASSUME NullLp \notin LPs
 ASSUME MaxGeneration > 1
 
 ThreadPhase == {"Absent", "NeedsLp", "Ready", "Running", "Blocked", "Dead"}
-AddressSpacePhase == {"Live", "Destroyed"}
+AddressSpacePhase == {"Live", "Aborting", "Destroyed"}
 
 VARIABLES phase, generation, owner, location, affinity, pinned,
           migrationSafe, waiterGeneration, onCpu,
@@ -177,6 +177,33 @@ SelfAbort(t) ==
                    migrationSafe, waiterGeneration, onCpu,
                    abortRequested, abortOwner, addressSpacePhase>>
 
+\* Establish the domain-wide abort fence in one abstract transition. Concrete
+\* Rust first blocks thread publication, snapshots the address space, and then
+\* performs these per-thread state changes while publication remains blocked.
+\* Threads already executing are retired by their owner LP; all other threads
+\* are immediately removed from scheduling authority.
+BeginDomainAbort(as) ==
+    /\ addressSpacePhase[as] = "Live"
+    /\ addressSpacePhase' = [addressSpacePhase EXCEPT ![as] = "Aborting"]
+    /\ phase' =
+        [t \in Threads |->
+            IF owner[t] = as /\ phase[t] \in {"NeedsLp", "Ready", "Blocked"}
+               /\ ~onCpu[t]
+            THEN "Dead"
+            ELSE phase[t]]
+    /\ abortRequested' =
+        [t \in Threads |->
+            IF owner[t] = as /\ phase[t] # "Absent" /\ onCpu[t]
+            THEN TRUE
+            ELSE abortRequested[t]]
+    /\ abortOwner' =
+        [t \in Threads |->
+            IF owner[t] = as /\ phase[t] # "Absent" /\ onCpu[t]
+            THEN location[t]
+            ELSE abortOwner[t]]
+    /\ UNCHANGED <<generation, owner, location, affinity, pinned,
+                   migrationSafe, waiterGeneration, onCpu>>
+
 Reap(t) ==
     /\ phase[t] = "Dead"
     /\ ~onCpu[t]
@@ -192,7 +219,7 @@ Reap(t) ==
     /\ UNCHANGED <<generation, waiterGeneration, onCpu, addressSpacePhase>>
 
 DestroyAddressSpace(as) ==
-    /\ addressSpacePhase[as] = "Live"
+    /\ addressSpacePhase[as] \in {"Live", "Aborting"}
     /\ \A t \in Threads : owner[t] /= as \/ phase[t] = "Absent"
     /\ addressSpacePhase' = [addressSpacePhase EXCEPT ![as] = "Destroyed"]
     /\ UNCHANGED <<phase, generation, owner, location, affinity, pinned,
@@ -213,6 +240,7 @@ Next ==
     \/ \E t \in Threads, lp \in LPs : RetireRemoteAbort(t, lp)
     \/ \E t \in Threads : AbortNotRunning(t)
     \/ \E t \in Threads : SelfAbort(t)
+    \/ \E as \in ASID : BeginDomainAbort(as)
     \/ \E t \in Threads : Reap(t)
     \/ \E as \in ASID : DestroyAddressSpace(as)
 
@@ -233,10 +261,34 @@ UnsafeRemoteAbort(t, requester) ==
                    migrationSafe, waiterGeneration, onCpu,
                    abortRequested, abortOwner, addressSpacePhase>>
 
+\* Regression model of the unfenced implementation: a sibling publishes a
+\* fresh thread after domain abort took its snapshot.
+UnsafeSpawnDuringAbort(t, as, canMigrate, pin) ==
+    /\ phase[t] = "Absent"
+    /\ addressSpacePhase[as] = "Aborting"
+    /\ generation[t] < MaxGeneration
+    /\ pin \in LPs \cup {NullLp}
+    /\ phase' = [phase EXCEPT ![t] = "NeedsLp"]
+    /\ generation' = [generation EXCEPT ![t] = @ + 1]
+    /\ owner' = [owner EXCEPT ![t] = as]
+    /\ location' = [location EXCEPT ![t] = NullLp]
+    /\ affinity' = [affinity EXCEPT ![t] = pin]
+    /\ pinned' = [pinned EXCEPT ![t] = pin]
+    /\ migrationSafe' = [migrationSafe EXCEPT ![t] = canMigrate /\ pin = NullLp]
+    /\ abortRequested' = [abortRequested EXCEPT ![t] = FALSE]
+    /\ abortOwner' = [abortOwner EXCEPT ![t] = NullLp]
+    /\ UNCHANGED <<waiterGeneration, onCpu, addressSpacePhase>>
+
 UnsafeNext == Next \/
     \E t \in Threads, requester \in LPs : UnsafeRemoteAbort(t, requester)
 
 UnsafeSpec == Init /\ [][UnsafeNext]_vars
+
+UnsafeDomainNext == Next \/
+    \E t \in Threads, as \in ASID, movable \in BOOLEAN,
+       pin \in LPs \cup {NullLp} : UnsafeSpawnDuringAbort(t, as, movable, pin)
+
+UnsafeDomainSpec == Init /\ [][UnsafeDomainNext]_vars
 
 TypeOK ==
     /\ phase \in [Threads -> ThreadPhase]
@@ -268,7 +320,7 @@ LiveOwnerValid ==
     \A t \in Threads : phase[t] /= "Absent" => owner[t] \in ASID
 
 OnCpuHasLiveAddressSpace ==
-    \A t \in Threads : onCpu[t] => addressSpacePhase[owner[t]] = "Live"
+    \A t \in Threads : onCpu[t] => addressSpacePhase[owner[t]] # "Destroyed"
 
 ReapOnlyOffCpu ==
     \A t \in Threads : phase[t] = "Absent" => ~onCpu[t]
@@ -292,6 +344,12 @@ DestroyedAddressSpaceEmpty ==
         addressSpacePhase[as] = "Destroyed" =>
             \A t \in Threads : owner[t] /= as \/ phase[t] = "Absent"
 
+AbortingThreadsDoomed ==
+    \A as \in ASID :
+        addressSpacePhase[as] = "Aborting" =>
+            \A t \in Threads :
+                owner[t] /= as \/ phase[t] \in {"Absent", "Dead"} \/ abortRequested[t]
+
 Invariants ==
     /\ TypeOK
     /\ OneExecutingPerLp
@@ -304,5 +362,6 @@ Invariants ==
     /\ BlockedWakerMatches
     /\ MigrationRespectsAuthority
     /\ DestroyedAddressSpaceEmpty
+    /\ AbortingThreadsDoomed
 
 =============================================================================

@@ -89,9 +89,11 @@ VARIABLES
     cqRings,      \* [CqId -> CqRing]
     timers,       \* [TimerId -> Timer]
     waiters,      \* per-CQ waiter records (at most one per CQ)
-    nextOpId, nextTimerId
+    nextOpId, nextTimerId,
+    kernelOwnsBuffer
 
-vars == <<operations, cqRings, timers, waiters, nextOpId, nextTimerId>>
+vars == <<operations, cqRings, timers, waiters, nextOpId, nextTimerId,
+          kernelOwnsBuffer>>
 
 \* -----------------------------------------------------------------------------
 \* 4. INITIAL STATE
@@ -129,6 +131,7 @@ Init ==
        ]]
     /\ nextOpId    = 1
     /\ nextTimerId = 1
+    /\ kernelOwnsBuffer = [b \in OpId |-> FALSE]
 
 \* -----------------------------------------------------------------------------
 \* 5. HELPERS
@@ -170,7 +173,7 @@ SubmitNoBuffer(as, cqId) ==
                 op |-> opId, owner |-> as, state |-> "InFlight",
                 cq |-> cqId, buffer |-> 0, cqDrained |-> FALSE]]
           /\ nextOpId' = nextOpId + 1
-    /\ UNCHANGED <<cqRings, timers, waiters, nextTimerId>>
+    /\ UNCHANGED <<cqRings, timers, waiters, nextTimerId, kernelOwnsBuffer>>
 
 \* -- 6.2 Submit an operation with a buffer -----------------------------------
 SubmitWithBuffer(as, cqId, bufId) ==
@@ -178,11 +181,13 @@ SubmitWithBuffer(as, cqId, bufId) ==
     /\ cqRings[cqId].owner = as
     /\ ~cqRings[cqId].closed
     /\ bufId /= 0
+    /\ ~kernelOwnsBuffer[bufId]
     /\ LET opId == nextOpId
        IN /\ operations' = [operations EXCEPT ![opId] = [
                 op |-> opId, owner |-> as, state |-> "InFlight",
                 cq |-> cqId, buffer |-> bufId, cqDrained |-> FALSE]]
           /\ nextOpId' = nextOpId + 1
+    /\ kernelOwnsBuffer' = [kernelOwnsBuffer EXCEPT ![bufId] = TRUE]
     /\ UNCHANGED <<cqRings, timers, waiters, nextTimerId>>
 
 \* -- 6.3 Operation completes normally ----------------------------------------
@@ -196,6 +201,9 @@ Complete(opId, resultVal) ==
                     status |-> IF op.state = "CancelPending"
                                THEN "Cancelled" ELSE "Ok",
                     result |-> resultVal, buffer |-> op.buffer])
+          /\ kernelOwnsBuffer' =
+                IF op.buffer = 0 THEN kernelOwnsBuffer
+                ELSE [kernelOwnsBuffer EXCEPT ![op.buffer] = FALSE]
     /\ UNCHANGED <<timers, nextOpId, nextTimerId>>
 
 \* -- 6.4 Operation fails -----------------------------------------------------
@@ -209,13 +217,17 @@ Fail(opId, resultVal) ==
                     status |-> IF op.state = "CancelPending"
                                THEN "Cancelled" ELSE "Failed",
                     result |-> resultVal, buffer |-> op.buffer])
+          /\ kernelOwnsBuffer' =
+                IF op.buffer = 0 THEN kernelOwnsBuffer
+                ELSE [kernelOwnsBuffer EXCEPT ![op.buffer] = FALSE]
     /\ UNCHANGED <<timers, nextOpId, nextTimerId>>
 
 \* -- 6.5 Request cancellation. Rust defers the terminal completion. ----------
 CancelOp(opId) ==
     /\ operations[opId].state = "InFlight"
     /\ operations' = [operations EXCEPT ![opId].state = "CancelPending"]
-    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId,
+                   kernelOwnsBuffer>>
 
 \* -- 6.7 Userspace drains one entry from a CQ ring ---------------------------
 DrainOne(as, cqId) ==
@@ -237,7 +249,7 @@ DrainOne(as, cqId) ==
                               ![cqId].gen = IF refill THEN ring.gen + 1
                                            ELSE ring.gen]
           /\ operations' = [operations EXCEPT ![opId].cqDrained = TRUE]
-    /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId, kernelOwnsBuffer>>
 
 \* -- 6.8 Userspace drains ALL entries from a CQ ring -------------------------
 DrainAll(as, cqId) ==
@@ -263,7 +275,7 @@ DrainAll(as, cqId) ==
                IF op \in obsOps
                THEN [operations[op] EXCEPT !.cqDrained = TRUE]
                ELSE operations[op]]
-    /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<timers, waiters, nextOpId, nextTimerId, kernelOwnsBuffer>>
 
 \* -- 6.9 CQ_WAIT: block until a completion arrives or deadline -----------------
 CqWait(as, cqId) ==
@@ -273,19 +285,22 @@ CqWait(as, cqId) ==
        IF cqRings[cqId].entries /= <<>> \/ cqRings[cqId].backlog /= <<>>
        THEN \* Work already available: don't block, just update gen.
             /\ waiters' = [waiters EXCEPT ![cqId].lastSeen = cqRings[cqId].gen]
-            /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId>>
+            /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId,
+                            kernelOwnsBuffer>>
        ELSE \* No work: register waiter and block.
             /\ waiters' = [waiters EXCEPT ![cqId].owner    = as,
                                            ![cqId].lastSeen = cqRings[cqId].gen,
                                            ![cqId].waiting  = TRUE]
-            /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId>>
+            /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId,
+                            kernelOwnsBuffer>>
 
 \* -- 6.10 CQ_WAKE: unblock a waiter (called when new completion arrives) ----
 CqWake(cqId) ==
     /\ waiters[cqId].waiting
     /\ waiters' = [waiters EXCEPT ![cqId].waiting  = FALSE,
                                    ![cqId].lastSeen = cqRings[cqId].gen]
-    /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<operations, cqRings, timers, nextOpId, nextTimerId,
+                   kernelOwnsBuffer>>
 
 \* -- 6.11 Submit a timer ------------------------------------------------------
 SubmitTimer(as, cqId, timeout) ==
@@ -300,7 +315,7 @@ SubmitTimer(as, cqId, timeout) ==
                 timer |-> timerId, owner |-> as, op |-> opId, fired |-> FALSE]]
           /\ nextOpId'    = nextOpId + 1
           /\ nextTimerId' = nextTimerId + 1
-    /\ UNCHANGED <<cqRings, waiters>>
+    /\ UNCHANGED <<cqRings, waiters, kernelOwnsBuffer>>
 
 \* -- 6.12 Timer fires ---------------------------------------------------------
 TimerFire(timerId) ==
@@ -314,7 +329,7 @@ TimerFire(timerId) ==
                                     status |-> IF op.state = "CancelPending"
                                                THEN "Cancelled" ELSE "TimerFired",
                                     result |-> 0, buffer |-> 0])
-    /\ UNCHANGED <<nextOpId, nextTimerId>>
+    /\ UNCHANGED <<nextOpId, nextTimerId, kernelOwnsBuffer>>
 
 \* -- 6.14 Open a CQ (assign owner) --------------------------------------------
 OpenCq(as, cqId) ==
@@ -323,19 +338,22 @@ OpenCq(as, cqId) ==
     /\ cqRings' = [cqRings EXCEPT ![cqId].owner  = as,
                                    ![cqId].closed = FALSE,
                                    ![cqId].gen    = cqRings[cqId].gen + 1]
-    /\ UNCHANGED <<operations, timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<operations, timers, waiters, nextOpId, nextTimerId,
+                   kernelOwnsBuffer>>
 
 \* -- 6.14 Observe a capability result through poll/take ----------------------
 ObserveResult(opId) ==
     /\ operations[opId].state = "Completed"
     /\ operations' = [operations EXCEPT ![opId].state = "Observed"]
-    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId,
+                   kernelOwnsBuffer>>
 
 \* -- 6.15 Revoke a terminal completion capability ----------------------------
 Reclaim(opId) ==
     /\ operations[opId].state \in {"Completed", "Observed"}
     /\ operations' = [operations EXCEPT ![opId].state = "Reclaimed"]
-    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId,
+                   kernelOwnsBuffer>>
 
 \* -----------------------------------------------------------------------------
 \* 7. NEXT-STATE RELATION
@@ -362,6 +380,19 @@ Next ==
 
 Spec == Init /\ [][Next]_vars
 
+\* Regression action: treating cancellation as terminal releases the buffer
+\* while the kernel operation may still complete against it.
+UnsafeCancelReleasesBuffer(opId) ==
+    /\ operations[opId].state = "InFlight"
+    /\ operations[opId].buffer # 0
+    /\ operations' = [operations EXCEPT ![opId].state = "CancelPending"]
+    /\ kernelOwnsBuffer' =
+        [kernelOwnsBuffer EXCEPT ![operations[opId].buffer] = FALSE]
+    /\ UNCHANGED <<cqRings, timers, waiters, nextOpId, nextTimerId>>
+
+UnsafeNext == Next \/ \E opId \in OpId : UnsafeCancelReleasesBuffer(opId)
+UnsafeSpec == Init /\ [][UnsafeNext]_vars
+
 \* State constraint: bound the generation counter to prevent state explosion.
 MaxGen == 5
 StateConstraint == \A c \in CqId : cqRings[c].gen <= MaxGen
@@ -378,6 +409,7 @@ TypeOK ==
     /\ waiters \in [CqId -> Waiter]
     /\ nextOpId \in 1 .. (MaxOps + 1)
     /\ nextTimerId \in 1 .. (MaxTimers + 1)
+    /\ kernelOwnsBuffer \in [OpId -> BOOLEAN]
 
 \* I1: Non-lossy CQ delivery. Until userspace drains an operation's CQ entry,
 \*     it remains in the shared ring or the kernel backlog. Polling the
@@ -431,6 +463,19 @@ TimerFiredImpliesCompleted ==
         timers[t].fired /\ timers[t].op /= 0 =>
             operations[timers[t].op].state \in {"Completed", "Observed", "Reclaimed"}
 
+NonTerminalBufferRemainsLoaned ==
+    \A opId \in OpId :
+        (operations[opId].state \in {"InFlight", "CancelPending"}
+            /\ operations[opId].buffer # 0) =>
+            kernelOwnsBuffer[operations[opId].buffer]
+
+KernelBufferHasOneLiveOperation ==
+    \A buf \in OpId :
+        kernelOwnsBuffer[buf] =>
+            \E opId \in OpId :
+                /\ operations[opId].buffer = buf
+                /\ operations[opId].state \in {"InFlight", "CancelPending"}
+
 Invariants ==
     /\ TypeOK
     /\ CompletionIsTracked
@@ -440,6 +485,8 @@ Invariants ==
     /\ CqOwnerValid
     /\ OpCqValid
     /\ TimerFiredImpliesCompleted
+    /\ NonTerminalBufferRemainsLoaned
+    /\ KernelBufferHasOneLiveOperation
 
 \* Convert sequence to set (helper for invariants).
 SeqToSet(seq) == { seq[i] : i \in 1 .. Len(seq) }

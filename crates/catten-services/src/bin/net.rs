@@ -139,7 +139,9 @@ unsafe fn alloc_dma(
         memory_close(cap);
         return (0, 0, 0, 0);
     }
-    let iova = dma_map(dma_domain, cap, direction);
+    // SAFETY: queue memory is accessed only through this driver's volatile
+    // descriptor protocol and remains mapped and pinned until queue teardown.
+    let iova = unsafe { dma_map(dma_domain, cap, direction) };
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);

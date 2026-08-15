@@ -239,6 +239,18 @@ Exit(d) ==
                     staleActivateRejected, staleUnregisterRejected,
                     replacementLost>>
 
+\* A panic, fatal EL0 fault, or explicit DOMAIN_ABORT bypasses cooperative
+\* stopping. Scheduler-level retirement of every thread is abstracted into the
+\* transition to Exited; Reap and Teardown retain their ordinary ordering.
+DomainAbort(d) ==
+    /\ phase[d] \in {"Running", "Prepared", "LocallyPublished", "Published"}
+    /\ phase' = [phase EXCEPT ![d] = "Exited"]
+    /\ UNCHANGED <<domainGeneration, artifactState, rejectedUntrusted,
+                    localPublished, catalogGeneration, catalogOwner,
+                    catalogActive, lookupOwner, lookupGeneration, reapedProof,
+                    staleActivateRejected, staleUnregisterRejected,
+                    replacementLost>>
+
 Reap(d) ==
     /\ phase[d] = "Exited"
     /\ phase' = [phase EXCEPT ![d] = "Reaped"]
@@ -267,7 +279,7 @@ SafeNext ==
     \/ Lookup \/ ClearLookup
     \/ \E d \in Domains, g \in 1..MaxGeneration :
            FencedUnregister(d, g) \/ RejectStaleUnregister(d, g)
-    \/ \E d \in Domains : CleanupLocal(d) \/ RequestStop(d) \/ Exit(d)
+    \/ \E d \in Domains : CleanupLocal(d) \/ RequestStop(d) \/ Exit(d) \/ DomainAbort(d)
                               \/ Reap(d) \/ Teardown(d)
 
 UnsafeNext == SafeNext \/

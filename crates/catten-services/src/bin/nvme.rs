@@ -189,7 +189,11 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
         memory_close(cap);
         return None;
     }
-    let phys = dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional);
+    // SAFETY: admin/I/O queue fields use volatile device-ring access and the
+    // allocation remains pinned until the queue is dismantled.
+    let phys = unsafe {
+        dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional)
+    };
     if phys == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -347,7 +351,9 @@ fn prepare_prps(memory: u64, bytes: u64, direction: DmaDirection) -> Option<Prps
     if pages == 0 || pages > MAX_TRANSFER_PAGES {
         return None;
     }
-    let first = dma_map(DMA_DOMAIN.load(Ordering::Acquire), memory, direction);
+    // SAFETY: the request owns this buffer until its NVMe completion is
+    // observed; PRP teardown synchronously removes the DMA mapping afterward.
+    let first = unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), memory, direction) };
     if first == 0 {
         return None;
     }

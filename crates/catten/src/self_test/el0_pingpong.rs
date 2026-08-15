@@ -229,26 +229,22 @@ pub fn test_el0_ping_pong() {
         {
             use crate::cpu::scheduler::{
                 system_scheduler::SYSTEM_SCHEDULER,
-                threads::{
-                    MASTER_THREAD_TABLE,
-                    Thread,
-                },
+                threads::Thread,
             };
             let t = Thread::new(asid as crate::memory::AddressSpaceId, ping_entry);
-            let tid = MASTER_THREAD_TABLE.write().add_element(t);
+            let tid = crate::cpu::scheduler::system_scheduler::publish_thread(t)
+                .expect("PP: Ping address space rejected publication");
             SYSTEM_SCHEDULER.read().submit_to_lp(tid, 0).expect("PP: failed to pin Ping to LP0");
             logln!("[PP] Ping spawned tid={}, pinned to LP0", tid);
         }
         {
             use crate::cpu::scheduler::{
                 system_scheduler::SYSTEM_SCHEDULER,
-                threads::{
-                    MASTER_THREAD_TABLE,
-                    Thread,
-                },
+                threads::Thread,
             };
             let t = Thread::new(asid as crate::memory::AddressSpaceId, pong_entry);
-            let tid = MASTER_THREAD_TABLE.write().add_element(t);
+            let tid = crate::cpu::scheduler::system_scheduler::publish_thread(t)
+                .expect("PP: Pong address space rejected publication");
             SYSTEM_SCHEDULER.read().submit_to_lp(tid, 1).expect("PP: failed to pin Pong to LP1");
             logln!("[PP] Pong spawned tid={}, pinned to LP1", tid);
         }

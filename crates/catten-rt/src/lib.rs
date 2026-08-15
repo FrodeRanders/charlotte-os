@@ -30,6 +30,7 @@
 #![no_std]
 
 pub mod config;
+pub mod owned;
 pub use charlotte_launch::manifest_key;
 
 // ---- entry macro -----------------------------------------------------------
@@ -51,9 +52,7 @@ macro_rules! entry {
 
         #[panic_handler]
         fn __catten_panic(_info: &::core::panic::PanicInfo) -> ! {
-            unsafe {
-                $crate::thread_exit();
-            }
+            $crate::domain_abort();
         }
 
         #[unsafe(no_mangle)]
@@ -171,10 +170,7 @@ impl Context {
         if buffer.is_empty() {
             return Ok(());
         }
-        let cap =
-            unsafe { catten_syscall::submit_read(buffer.as_mut_ptr() as usize, buffer.len()) };
-        catten_syscall::wait(cap);
-        catten_syscall::close(cap);
+        owned::ReadOperation::submit(buffer).map_err(|_| InputError::SubmissionFailed)?.wait();
         Ok(())
     }
 }
@@ -277,13 +273,12 @@ impl Iterator for InitialCapabilities {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputError {
     TooLarge,
+    SubmissionFailed,
 }
 
 pub fn run_main(main: fn(Context) -> !) -> ! {
     if !config::launch_header_is_compatible() {
-        unsafe {
-            thread_exit();
-        }
+        domain_abort();
     }
     main(Context)
 }
@@ -306,4 +301,7 @@ pub const fn heap() -> HeapLock {
 
 // ---- plumbing (not user-facing) -------------------------------------------
 
-pub use catten_syscall::thread_exit;
+pub use catten_syscall::{
+    domain_abort,
+    thread_exit,
+};

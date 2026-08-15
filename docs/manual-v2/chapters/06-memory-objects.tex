@@ -161,8 +161,13 @@ The AArch64 SMMUv3 path tracks an explicit DMA pin per mapped memory object.
 The kernel validates access direction, installs only the object's frames in a
 device-private translation context, and releases the pin only after a
 synchronous IOTLB invalidation. Drivers receive IOVAs rather than physical
-addresses. CPU mappings are not yet automatically revoked for the duration of
-DMA, so callers must still obey the borrow protocol.
+addresses. CPU mappings are not automatically revoked at the raw syscall
+layer, so coherent descriptor rings remain an explicit driver protocol.
+Ordinary Rust applications should instead use \texttt{catten\_rt::owned}:
+calling \texttt{unmap} on \texttt{MappedMemory} consumes the CPU mapping, and
+only the resulting \texttt{OwnedMemory} can create a \texttt{DmaTransfer}.
+The memory cannot be mapped or exposed as a Rust slice again until the
+transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
 
 \section{Why memory objects matter for critical software}
 
@@ -184,8 +189,10 @@ DMA, so callers must still obey the borrow protocol.
 
     \item DMA ownership is tracked on the reference platform --- the AArch64
         SMMUv3 path pins mapped memory and restricts each requester to its DMA
-        domain. CPU mappings remain accessible, so callers must still follow the
-        borrow protocol. Other IOMMU platforms remain unsupported.
+        domain. The ownership-aware Rust API prevents ordinary CPU mappings
+        from overlapping a transfer; raw coherent-ring implementations remain
+        responsible for volatile/atomic access and the device protocol. Other
+        IOMMU platforms remain unsupported.
 
     \item Hardware enforcement, not language enforcement --- the page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler

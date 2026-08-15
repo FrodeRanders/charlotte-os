@@ -533,12 +533,14 @@ pub fn map(
     caller: crate::memory::AddressSpaceId,
     memory_cap: u64,
     direction: Direction,
+    exclusive: bool,
 ) -> Result<u64, Error> {
     let pin = object::pin_for_dma(
         caller,
         memory_cap,
         direction.0 & Direction::DEVICE_READ.0 != 0,
         direction.device_writes(),
+        exclusive,
     )
     .map_err(|_| Error::Memory)?;
     let mut pending_pin = Some(pin);

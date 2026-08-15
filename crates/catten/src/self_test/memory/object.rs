@@ -168,6 +168,35 @@ pub fn test_memory_objects() {
     object::close_cap(owner, borrower_cleanup_cap)
         .expect("memory object: borrower cleanup close failed");
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        let dma_cap = object::allocate(owner, 1).expect("memory object: DMA allocation failed");
+        let dma_base = VAddr::from(0xab000usize);
+        object::map(owner, dma_cap, dma_base, true).expect("memory object: DMA CPU map failed");
+        assert!(matches!(
+            object::pin_for_dma(owner, dma_cap, true, true, true),
+            Err(MemoryObjectError::LendingActive)
+        ));
+        object::unmap(owner, dma_cap).expect("memory object: DMA CPU unmap failed");
+        let pin = object::pin_for_dma(owner, dma_cap, true, true, true)
+            .expect("memory object: exclusive DMA pin failed");
+        assert_eq!(
+            object::map(owner, dma_cap, dma_base, true),
+            Err(MemoryObjectError::LendingActive),
+            "exclusive DMA ownership must reject a new CPU mapping"
+        );
+        assert_eq!(
+            object::lend_read(owner, dma_cap, reader),
+            Err(MemoryObjectError::LendingActive),
+            "exclusive DMA ownership must reject lending"
+        );
+        object::unpin_dma(pin);
+        object::map(owner, dma_cap, dma_base, true)
+            .expect("memory object: CPU map after DMA unpin failed");
+        object::unmap(owner, dma_cap).expect("memory object: CPU unmap after DMA failed");
+        object::close_cap(owner, dma_cap).expect("memory object: DMA close failed");
+    }
+
     let owner_cleanup_cap =
         object::allocate(owner, 1).expect("memory object: owner cleanup allocation failed");
     let owner_cleanup_lend = object::lend_read(owner, owner_cleanup_cap, reader)

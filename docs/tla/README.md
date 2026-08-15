@@ -45,9 +45,9 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
 - runs all eighteen complete fast configurations plus expected-failure
-  endpoint-observer, scheduler, address-space, hardware-ASID,
-  interrupt-route, service-lifecycle, authorization, Raft-join, and
-  reliable-message regression configurations;
+  endpoint-observer, CQ-buffer, scheduler, domain-abort, address-space,
+  hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
+  Raft-join, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -251,6 +251,11 @@ Cancellation changes it to `CancelPending`; the later completion is forced to
 the cancelled status. Draining a CQ entry is modeled separately from polling a
 completion capability, because the Rust paths are independent.
 
+Buffered submission additionally marks the buffer as kernel-owned. Neither a
+cancellation request nor CQ draining releases that loan; only terminal
+completion does. The negative buffer configuration deliberately releases it at
+`CancelPending` and must violate `NonTerminalBufferRemainsLoaned`.
+
 ### CQ invariants
 
 | Invariant | Property checked |
@@ -263,6 +268,8 @@ completion capability, because the Rust paths are independent.
 | `CqOwnerValid` | An open CQ has a valid owner. |
 | `OpCqValid` | Every active operation refers to a CQ. |
 | `TimerFiredImpliesCompleted` | A fired timer's operation is completed or reclaimed. |
+| `NonTerminalBufferRemainsLoaned` | An in-flight or cancel-pending buffered operation retains kernel ownership of its destination. |
+| `KernelBufferHasOneLiveOperation` | Every kernel-owned buffer is justified by a live operation. |
 
 `StateConstraint` bounds the otherwise unbounded generation counter for TLC.
 This is a model-checking bound, not a statement that the implementation's
@@ -294,14 +301,17 @@ the owner can switch off and retire the context. Wake and dispatch reject an
 abort-requested generation. `Dead` is the LP-local deferred-reaping interval;
 only `Reap`, while off-CPU, makes the reusable slot absent.
 
-The model also represents address-space destruction. Destruction requires all
-threads owned by the address space to be absent, and an invariant rejects a
-destroyed address space containing a physically executing thread.
+The model also represents domain abort and address-space destruction.
+`BeginDomainAbort` moves the address space to `Aborting`, marks every extant
+thread for owner-LP retirement or immediate death, and prevents further
+`Spawn`. Destruction requires all owned threads to be absent, and an invariant
+rejects a destroyed address space containing a physically executing thread.
 
 The checked invariants require one physically executing thread per LP, valid
 placement and pinning, live address spaces for on-CPU threads, off-CPU reaping,
-owner-CPU abort retirement, no redispatch after an abort request, matching
-blocked-waker generations, and migration authority for movable threads.
+owner-CPU abort retirement, no redispatch after an abort request, a doomed
+thread population after domain abort, matching blocked-waker generations, and
+migration authority for movable threads.
 
 `CharlotteScheduler_unsafe.cfg` deliberately enables `UnsafeRemoteAbort`, an
 abstraction of the former immediate cross-LP removal. The model runner requires
@@ -309,6 +319,12 @@ this configuration to violate `ReapOnlyOffCpu`; if the old transition stops
 producing its counterexample, the suite fails. Thus the repaired model is
 checked positively and the original bug trace is retained as an executable
 negative regression rather than generated TLC trace files.
+
+`CharlotteScheduler_domain_abort_unsafe.cfg` deliberately publishes a new
+sibling after the abort snapshot and must violate `AbortingThreadsDoomed`. The
+implementation's generation-aware publication gate makes the snapshot and
+thread-table publication mutually exclusive and remains held through the
+numeric-TID sweep.
 
 ### Cross-LP abort findings
 
@@ -338,7 +354,7 @@ which violated the model's atomic retirement projection and caused a
 scheduling-sensitive supervisor panic.
 
 With two threads, two LPs, two address spaces, and two generations, TLC 2.19
-completely explored 373,860 distinct repaired-model states (1,710,157 states
+completely explored 819,972 distinct repaired-model states (4,308,577 states
 generated, depth 22) without an invariant violation.
 
 ## Service lifecycle model
@@ -352,8 +368,9 @@ an active generation therefore has a bounded unavailable interval, matching
 `NameCatalog::CMD_REGISTER` rather than the former atomic-swap abstraction.
 
 The model also covers lookup, generation-fenced unregister, stale activation
-and unregister rejection, asynchronous local cleanup, shutdown, scheduler
-reaping, and address-space teardown. Its unsafe configuration removes the
+and unregister rejection, asynchronous local cleanup, cooperative shutdown,
+panic/fault-driven `DomainAbort`, scheduler reaping, and address-space
+teardown. Its unsafe configuration removes the
 owner/generation fence and must violate
 `ReplacementSurvivesStaleUnregister`. Generation allocation is guarded at the
 finite bound; the Rust catalog and local name service now likewise fail closed
@@ -404,15 +421,17 @@ gate and does not conform to the target principal-based policy contract.
 
 ## DMA and SMMUv3 model
 
-`CharlotteDMA.tla` separates memory pinning, page-table installation,
-translation revocation, pin release, driver exit, and memory reclamation. A
-domain-destruction timeout enters a quarantined state: mappings and pins remain
-live because hardware may still hold a usable translation.
+`CharlotteDMA.tla` separates CPU mappings, IPC loans, coherent and exclusive
+DMA pinning, page-table installation, translation revocation, pin release,
+driver exit, and memory reclamation. A domain-destruction timeout enters a
+quarantined state: mappings and pins remain live because hardware may still
+hold a usable translation.
 
 The invariants require every hardware-visible mapping to belong to the same
 driver as its memory object, every mapped or transitional object to remain
-pinned and unfreed, one domain per requester stream, and acknowledged stream
-revocation before domain resources can be finalized.
+pinned and unfreed, one domain per requester stream, acknowledged stream
+revocation before domain resources can be finalized, and exclusive DMA to
+overlap with neither CPU authority, an IPC loan, nor another DMA pin.
 
 Developing the model found two concrete error-path defects. A failed map could
 drop its `DmaPin` token without decrementing the memory object's pin count, and
@@ -420,6 +439,9 @@ domain destruction ignored failure to install and acknowledge the aborting
 stream-table entry before releasing pins. The implementation now rolls
 pre-installation failures back, retains an unpublished pinned mapping after an
 uncertain invalidation, and quarantines a domain on teardown failure.
+
+`CharlotteDMA_unsafe.cfg` deliberately creates an exclusive pin without the
+ownership precondition and must violate `ExclusiveDmaHasNoCpuAuthority`.
 
 ## Raft election model
 

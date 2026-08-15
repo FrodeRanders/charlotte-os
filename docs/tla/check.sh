@@ -97,12 +97,16 @@ run_expected_violation CharlotteEndpointObservers CharlotteEndpointObservers_uns
     CloseSignalImpliesClosed UnsafeMessageWake
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
+run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \
+    NonTerminalBufferRemainsLoaned UnsafeCancelReleasesBuffer
 run_model CharlotteScheduler CharlotteScheduler_small.cfg \
     Spawn Admit Dispatch Preempt Block Wake SwitchOff Migrate \
     RequestRemoteAbort RetireRemoteAbort AbortNotRunning SelfAbort Reap \
-    DestroyAddressSpace
+    BeginDomainAbort DestroyAddressSpace
 run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
     ReapOnlyOffCpu UnsafeRemoteAbort
+run_expected_violation CharlotteScheduler CharlotteScheduler_domain_abort_unsafe.cfg \
+    AbortingThreadsDoomed UnsafeSpawnDuringAbort
 run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \
@@ -118,7 +122,7 @@ run_expected_violation CharlotteInterruptRoute CharlotteInterruptRoute_unsafe.cf
 run_model CharlotteServiceLifecycle CharlotteServiceLifecycle_small.cfg \
     StageTrusted StageUntrusted RejectUntrustedLoad Load Start Prepare \
     PublishLocal Activate RejectStaleActivate Lookup ClearLookup \
-    FencedUnregister RejectStaleUnregister CleanupLocal RequestStop Exit Reap Teardown
+    FencedUnregister RejectStaleUnregister CleanupLocal RequestStop Exit DomainAbort Reap Teardown
 run_expected_violation CharlotteServiceLifecycle CharlotteServiceLifecycle_unsafe.cfg \
     ReplacementSurvivesStaleUnregister UnsafeStaleUnregister
 run_model CharlotteCapability CharlotteCapability_small.cfg \
@@ -142,9 +146,12 @@ run_expected_violation CharlotteAuthorization \
     CharlotteAuthorization_rights_unsafe.cfg \
     NoRightsAmplification UnsafeAmplifyRights
 run_model CharlotteDMA CharlotteDMA_small.cfg \
-    CreateMemory CreateDomain BeginMap CommitMap QuarantineMap FailMap RevokeMap ReleasePin \
+    CreateMemory CreateDomain CpuMap CpuUnmap BeginLoan EndLoan BeginMap \
+    CommitMap QuarantineMap FailMap RevokeMap ReleasePin \
     BeginDestroy AcknowledgeDestroy QuarantineDestroy FinalizeDomain \
     CloseMemory ExitDriver ReclaimMemory
+run_expected_violation CharlotteDMA CharlotteDMA_unsafe.cfg \
+    ExclusiveDmaHasNoCpuAuthority UnsafeBeginExclusiveMap
 run_model CharlotteRaft CharlotteRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
 run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \

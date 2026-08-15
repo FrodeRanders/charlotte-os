@@ -18,10 +18,7 @@ use spin::LazyLock;
 use crate::{
     cpu::scheduler::{
         system_scheduler::SYSTEM_SCHEDULER,
-        threads::{
-            MASTER_THREAD_TABLE,
-            Thread,
-        },
+        threads::Thread,
     },
     memory::KERNEL_ASID,
 };
@@ -55,7 +52,8 @@ impl DeferredWorkManager {
 
     pub fn spawn_worker(&self) {
         let thread = Thread::new(KERNEL_ASID, Self::do_work);
-        let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+        let tid = crate::cpu::scheduler::system_scheduler::publish_thread(thread)
+            .expect("kernel deferred-worker publication failed");
         SYSTEM_SCHEDULER
             .write()
             .submit_new_thread(tid)

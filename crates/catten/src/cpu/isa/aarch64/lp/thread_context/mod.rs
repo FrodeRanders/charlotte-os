@@ -242,31 +242,79 @@ impl ThreadContext {
         let user_stack_top_va = stack_base + USER_STACK_PAGES * PAGE_SIZE;
         // Pre-allocate all frames first (under the frame allocator lock), then
         // map them (inside the AS table lock).  Order matches el0.rs.
-        let stack_frames: [crate::memory::physical::PAddr; USER_STACK_PAGES] = {
-            let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            core::array::from_fn(|_| {
-                pfa.allocate_frame().expect("Failed to allocate user stack frame")
-            })
-        };
+        let mut stack_frames: [Option<crate::memory::physical::PAddr>; USER_STACK_PAGES] =
+            [None; USER_STACK_PAGES];
         {
+            let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
+            for index in 0..USER_STACK_PAGES {
+                let frame = match pfa.allocate_frame() {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        for allocated in stack_frames.iter_mut().filter_map(Option::take) {
+                            let _ = pfa.deallocate_frame(allocated);
+                        }
+                        return Err(Error::InvalidStack);
+                    }
+                };
+                // The physical allocator deliberately only tracks ownership;
+                // it does not scrub pages. Every frame must therefore be
+                // cleared before it becomes visible in an EL0 address space.
+                let page: *mut u8 = frame.into();
+                unsafe {
+                    core::ptr::write_bytes(page, 0, PAGE_SIZE);
+                }
+                stack_frames[index] = Some(frame);
+            }
+        }
+        let map_result = {
             let mut as_table = ADDRESS_SPACE_TABLE.lock();
-            let user_as = as_table.get_mut(asid).expect("Address space not found in AS table");
-            for (i, frame) in stack_frames.iter().copied().enumerate() {
-                let vaddr = VAddr::from(stack_base + i * PAGE_SIZE);
-                user_as
+            let Ok(user_as) = as_table.get_mut(asid) else {
+                drop(as_table);
+                let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
+                for frame in stack_frames.iter_mut().filter_map(Option::take) {
+                    let _ = pfa.deallocate_frame(frame);
+                }
+                return Err(Error::InvalidStack);
+            };
+            let mut result = Ok(());
+            for (index, frame) in stack_frames.iter().flatten().copied().enumerate() {
+                let vaddr = VAddr::from(stack_base + index * PAGE_SIZE);
+                if user_as
                     .map_page(MemoryMapping {
                         vaddr,
                         paddr: frame,
                         page_type: PageType::UserData,
                     })
-                    .expect("Failed to map user stack page");
+                    .is_err()
+                {
+                    for cleanup_index in 0..index {
+                        let _ =
+                            user_as.unmap_page(VAddr::from(stack_base + cleanup_index * PAGE_SIZE));
+                    }
+                    result = Err(Error::InvalidStack);
+                    break;
+                }
             }
+            result
+        };
+        if let Err(error) = map_result {
+            let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
+            for frame in stack_frames.iter_mut().filter_map(Option::take) {
+                let _ = pfa.deallocate_frame(frame);
+            }
+            return Err(error);
         }
         let user_stack = UserStack {
             asid,
             base: VAddr::from(stack_base),
         };
-        let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
+        let kernel_stack_buf = match allocate_stack(INIT_KERNEL_STACK_PAGES) {
+            Ok(stack) => stack,
+            Err(error) => {
+                let _ = deallocate_user_stack(user_stack);
+                return Err(error);
+            }
+        };
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // Run the user thread in its own address space's lower half (TTBR0).
         // TTBR0 is not stored in the frame: `switch_ctx` reloads it from the

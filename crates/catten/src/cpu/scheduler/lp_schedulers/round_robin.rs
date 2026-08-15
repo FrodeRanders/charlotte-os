@@ -33,7 +33,10 @@ use crate::{
                 LpScheduler,
             },
             monotonic_ticks,
-            system_scheduler::LP_LOAD_SUMMARIES,
+            system_scheduler::{
+                LP_LOAD_SUMMARIES,
+                publish_thread,
+            },
             threads::{
                 MASTER_THREAD_TABLE,
                 Thread,
@@ -103,7 +106,7 @@ impl RoundRobin {
         // ever returned by `next` as the fallback when nothing else is runnable.
         let idle_tid = {
             let idle = Thread::new(KERNEL_ASID, crate::cpu::isa::lp::ops::lp_idle_loop);
-            MASTER_THREAD_TABLE.write().add_element(idle)
+            publish_thread(idle).expect("kernel idle-thread publication failed")
         };
         Self {
             lp_id,

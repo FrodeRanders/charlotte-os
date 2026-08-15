@@ -45,8 +45,9 @@ Before calling `main`, crt0 validates a fixed-width header in the mapped launch
 page. Version 2.0 contains an eight-byte magic value, ABI major and minor
 versions, header size, config-page size, feature flags, bounded manifest and
 capability-vector locations, and the declared heap, input-buffer, default
-completion-queue, and mutable status layouts. An invalid or out-of-bounds layout terminates the
-initial thread rather than interpreting unchecked offsets.
+completion-queue, and mutable status layouts. An invalid or out-of-bounds layout
+aborts the entire domain rather than interpreting unchecked offsets or leaving
+sibling threads running with an invalid launch contract.
 
 The kernel and runtime import this representation from the shared no-std
 `charlotte-launch` crate. Compile-time size assertions keep the header and
@@ -64,6 +65,21 @@ progress use a separate zeroed status page; `config::read`, `config::write`,
 and `config::output_ptr` address that page for low-level programs. Applications
 should still prefer their service protocol or completion queues for normal
 results rather than treating the status page as general IPC.
+
+## Ownership-aware memory
+
+Application code should prefer `catten_rt::owned` over raw memory and DMA
+syscalls. `OwnedMemory` is a linear capability, `MappedMemory<ReadOnly>` and
+`MappedMemory<Writable>` tie slices to the mapping lifetime, and `DmaTransfer`
+can only consume an unmapped object. `ReadOperation<'a>` similarly keeps an
+exclusive buffer borrow until completion or cancel-and-wait has reached a
+terminal state.
+
+The raw `catten-syscall` functions remain available for runtime and driver
+protocols. Coherent `dma_map` is explicitly unsafe because the driver must
+synchronize CPU references and device access itself. Once a raw capability is
+adopted with `OwnedMemory::from_raw`, it must not be used independently or
+adopted a second time.
 
 ## Building bundled examples
 

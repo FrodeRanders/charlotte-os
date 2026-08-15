@@ -16,9 +16,11 @@ use crate::{
         scheduler::{
             sleep,
             spawn_thread,
-            system_scheduler::SYSTEM_SCHEDULER,
+            system_scheduler::{
+                SYSTEM_SCHEDULER,
+                publish_thread,
+            },
             threads::{
-                MASTER_THREAD_TABLE,
                 Thread,
                 ThreadId,
             },
@@ -43,7 +45,7 @@ pub fn spawn_async_syscall_demo() {
 
 fn spawn_thread_on_lp(entry_point: extern "C" fn(), target_lp: u32) -> ThreadId {
     let thread = Thread::new(KERNEL_ASID, entry_point);
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = publish_thread(thread).expect("kernel demo-thread publication failed");
     SYSTEM_SCHEDULER
         .read()
         .submit_to_lp(tid, target_lp)

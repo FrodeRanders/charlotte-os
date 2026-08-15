@@ -147,12 +147,14 @@ different proof obligations.
 \hline
 \tlbreak{Charlotte}{CQ} & Completion operations, CQ ring/backlog, wait/wake,
     cancellation, timers & Non-lossy completion tracking; bounded visible ring;
-    no lost wakeup; timer completion remains tied to its operation. \\
+    no lost wakeup; timer completion remains tied to its operation; a buffered
+    operation retains its kernel loan through cancellation until terminal completion. \\
 \hline
 \tlbreak{Charlotte}{Scheduler} & Spawn, admission, execution, blocking, migration,
     cross-LP abort, reaping, address-space destruction & At most one execution
     per LP; only the owner LP retires an executing thread; reaping occurs
-    off-CPU; destroyed address spaces have no live threads. \\
+    off-CPU; domain abort prevents late sibling publication; destroyed address
+    spaces have no live threads. \\
 \hline
 \tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
     handles & A stale handle cannot close a replacement that reused the same
@@ -177,16 +179,17 @@ different proof obligations.
     a subject, policy version, service generation and rights; redemption is
     single-use and cannot amplify authority. \\
 \hline
-\tlbreak{Charlotte}{DMA} & SMMU stream ownership, mapping, invalidation,
-    quarantine, driver exit, pin reclamation & Unique stream/domain ownership;
-    no cross-domain mapping; mapped memory stays pinned; failed hardware
+\tlbreak{Charlotte}{DMA} & CPU mapping, IPC loans, coherent/exclusive SMMU
+    mapping, invalidation, quarantine, driver exit, pin reclamation & Unique
+    stream/domain ownership; exclusive DMA has no overlapping CPU authority,
+    loan, or second pin; mapped memory stays pinned; failed hardware
     acknowledgement retains rather than prematurely frees authority. \\
 \hline
 \tlbreak{Charlotte}{ServiceLifecycle} & Signed artifact staging, loading, start,
     two-phase publication, lookup, fenced unregister, exit and teardown &
     Untrusted images never load; only activated generations resolve; stale
     activation/unregister cannot affect a replacement; teardown follows
-    domain-wide reaping. \\
+    domain-wide reaping after cooperative exit or domain abort. \\
 \hline
 \tlbreak{Charlotte}{Raft} & Terms, durable votes, election, higher-term step-down,
     crash/restart & A voter records at most one durable vote per term and at
@@ -348,6 +351,17 @@ Other negative specifications preserve compact versions of repaired faults:
 \tlbreak{Unsafe}{RemoteAbort} & A remote LP removes and reaps a context that may
     still execute. & \texttt{ReapOnlyOffCpu} \\
 \hline
+\tlbreak{UnsafeSpawn}{DuringAbort} & A sibling publishes after the domain-abort
+    snapshot. & \texttt{AbortingThreadsDoomed} \\
+\hline
+\tlbreak{UnsafeCancelReleases}{Buffer} & Cancellation releases a mutable buffer
+    before the operation becomes terminal. &
+    \tlbreak{NonTerminalBuffer}{RemainsLoaned} \\
+\hline
+\tlbreak{UnsafeBeginExclusive}{Map} & Exclusive DMA begins while CPU or other
+    transfer authority still exists. &
+    \tlbreak{ExclusiveDmaHasNo}{CpuAuthority} \\
+\hline
 \texttt{UnsafeStaleClose} & A recycled numeric ASID is closed through an old
     generation handle. & \tlbreak{ReplacementSurvives}{StaleHandle} \\
 \hline
@@ -390,7 +404,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all fifteen negative configurations to fail for the named
+The check suite expects all eighteen negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -441,7 +455,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs fifteen negative configurations and requires each one to fail on
+    \item runs eighteen negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -451,7 +465,7 @@ Action coverage is important. An invariant can pass because a transition is
 accidentally disabled. Requiring coverage does not prove that an action is
 correct, but it detects this common vacuity.
 
-At the 11 August 2026 implementation synchronization point, representative
+At the 15 August 2026 implementation synchronization point, representative
 fast configurations produced the following complete state graphs:
 
 \begin{longtable}{|p{0.32\textwidth}|r|r|r|}
@@ -460,11 +474,13 @@ fast configurations produced the following complete state graphs:
 \hline
 \texttt{CharlotteIPC} & 6,118,645 & 1,254,153 & 13 \\
 \hline
-\texttt{CharlotteCQ} & 1,688,159 & 321,967 & 12 \\
+\texttt{CharlotteCQ} & 1,586,249 & 302,659 & 12 \\
 \hline
-\texttt{CharlotteScheduler} & 1,710,157 & 373,860 & 22 \\
+\texttt{CharlotteScheduler} & 4,308,577 & 819,972 & 22 \\
 \hline
-\tlbreak{Charlotte}{ServiceLifecycle} & 665,641 & 74,232 & 41 \\
+\tlbreak{Charlotte}{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
+\hline
+\texttt{CharlotteDMA} & 19,331,379 & 2,092,882 & 26 \\
 \hline
 \tlbreak{Charlotte}{Authorization} & 144,598 & 54,705 & 12 \\
 \hline
@@ -481,8 +497,9 @@ coverage matter more than graph size.
 
 \subsection{Implementation validation}
 
-TLC is followed by validation proportional to the affected code. For the
-August synchronization and admission repair this included:
+TLC is followed by validation proportional to the affected code. The August
+synchronization work, including the 15 August domain-abort and memory-ownership
+repair, included:
 
 \begin{itemize}
     \item host tests for \texttt{catten-graft}, including restart before durable
@@ -491,8 +508,11 @@ August synchronization and admission repair this included:
         retry/restart sessions and fail-closed exhaustion;
     \item AArch64 release builds and warning-denied Clippy for the changed
         \texttt{raft}, \texttt{relmsg}, and \texttt{ns} services;
-    \item an AArch64 kernel check containing the updated persistent-storage join
-        self-test manifest; and
+    \item AArch64 and x86-64 kernel checks, plus warning-denied AArch64 Clippy,
+        for the domain-abort publication fence and memory-ownership paths;
+    \item a four-LP AArch64 QEMU boot whose authoritative result reported all
+        eighteen registered self-tests passing, including owner-LP retirement,
+        DMA/SMMU, completion cancellation, and service crash/restart; and
     \item formatting, shell syntax, and diff-whitespace checks.
 \end{itemize}
 

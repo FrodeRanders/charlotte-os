@@ -379,6 +379,30 @@ pub fn dma_map(
     memory_cap: u64,
     direction: u32,
 ) -> Result<u64, DeviceError> {
+    dma_map_with_ownership(asid, domain_cap, memory_cap, direction, false)
+}
+
+/// Map memory for exclusive device ownership. The memory object must have no
+/// CPU mappings, active lends, or other DMA pins, and the kernel rejects all
+/// new CPU mappings and lends until the IOMMU mapping is removed.
+#[cfg(target_arch = "aarch64")]
+pub fn dma_map_exclusive(
+    asid: AddressSpaceId,
+    domain_cap: DeviceCap,
+    memory_cap: u64,
+    direction: u32,
+) -> Result<u64, DeviceError> {
+    dma_map_with_ownership(asid, domain_cap, memory_cap, direction, true)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn dma_map_with_ownership(
+    asid: AddressSpaceId,
+    domain_cap: DeviceCap,
+    memory_cap: u64,
+    direction: u32,
+    exclusive: bool,
+) -> Result<u64, DeviceError> {
     let direction = smmu::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
     let id = {
         let mut devices = DEVICES.lock();
@@ -391,7 +415,7 @@ pub fn dma_map(
         };
         *id
     };
-    smmu::map(id, asid, memory_cap, direction).map_err(|_| DeviceError::DmaInvalid)
+    smmu::map(id, asid, memory_cap, direction, exclusive).map_err(|_| DeviceError::DmaInvalid)
 }
 
 #[cfg(target_arch = "aarch64")]

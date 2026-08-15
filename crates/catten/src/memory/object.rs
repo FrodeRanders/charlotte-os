@@ -89,6 +89,7 @@ struct MemoryObject {
     mappings: BTreeMap<AddressSpaceId, MemoryMappingState>,
     lend_state: LendState,
     dma_pins: usize,
+    exclusive_dma_pins: usize,
     destroy_when_unpinned: bool,
 }
 
@@ -96,6 +97,7 @@ struct MemoryObject {
 pub(crate) struct DmaPin {
     object: MemoryObjectId,
     frames: Vec<PAddr>,
+    exclusive: bool,
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -251,6 +253,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
+            exclusive_dma_pins: 0,
             destroy_when_unpinned: false,
         },
     );
@@ -484,6 +487,9 @@ fn map_locked(
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
+        if object.exclusive_dma_pins != 0 {
+            return Err(MemoryObjectError::LendingActive);
+        }
         check_map_lend_state(object, asid, writable)?;
         if object.mappings.contains_key(&asid) {
             return Err(MemoryObjectError::AlreadyMapped);
@@ -585,7 +591,7 @@ pub fn move_to(
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if object.lend_state.is_active() {
+        if object.lend_state.is_active() || object.dma_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         if !object.mappings.is_empty() {
@@ -625,7 +631,11 @@ pub(crate) fn rollback_move_to(
     let cap_entry = registry.lookup(target, target_cap)?;
     let object =
         registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.owner != target || object.lend_state.is_active() || !object.mappings.is_empty() {
+    if object.owner != target
+        || object.lend_state.is_active()
+        || object.dma_pins != 0
+        || !object.mappings.is_empty()
+    {
         return Err(MemoryObjectError::WrongOwner);
     }
     if registry.caps.get(&owner).is_some_and(|caps| caps.caps.contains_key(&original_cap)) {
@@ -674,7 +684,7 @@ pub fn copy_to(
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if matches!(object.lend_state, LendState::Write { .. }) {
+        if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         if object.mappings.values().any(|mapping| mapping.writable) {
@@ -718,6 +728,7 @@ pub fn copy_to(
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
+            exclusive_dma_pins: 0,
             destroy_when_unpinned: false,
         },
     );
@@ -752,7 +763,7 @@ pub fn lend_read(
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if matches!(object.lend_state, LendState::Write { .. }) {
+        if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         if let LendState::Read {
@@ -817,7 +828,7 @@ pub fn lend_write(
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if object.lend_state.is_active() {
+        if object.lend_state.is_active() || object.dma_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         if !object.mappings.is_empty() {
@@ -1141,6 +1152,7 @@ pub(crate) fn pin_for_dma(
     cap: MemoryObjectCap,
     device_reads: bool,
     device_writes: bool,
+    exclusive: bool,
 ) -> Result<DmaPin, MemoryObjectError> {
     if !device_reads && !device_writes {
         return Err(MemoryObjectError::MissingRight);
@@ -1157,10 +1169,26 @@ pub(crate) fn pin_for_dma(
     if object.destroy_when_unpinned {
         return Err(MemoryObjectError::LendingActive);
     }
-    object.dma_pins = object.dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
+    if object.exclusive_dma_pins != 0
+        || exclusive
+            && (object.dma_pins != 0
+                || object.lend_state.is_active()
+                || !object.mappings.is_empty())
+    {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    let dma_pins = object.dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
+    let exclusive_dma_pins = if exclusive {
+        object.exclusive_dma_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?
+    } else {
+        object.exclusive_dma_pins
+    };
+    object.dma_pins = dma_pins;
+    object.exclusive_dma_pins = exclusive_dma_pins;
     Ok(DmaPin {
         object: cap_entry.object,
         frames: object.frames.clone(),
+        exclusive,
     })
 }
 
@@ -1173,6 +1201,10 @@ pub(crate) fn unpin_dma(pin: DmaPin) {
         };
         debug_assert!(object.dma_pins != 0);
         object.dma_pins = object.dma_pins.saturating_sub(1);
+        if pin.exclusive {
+            debug_assert!(object.exclusive_dma_pins != 0);
+            object.exclusive_dma_pins = object.exclusive_dma_pins.saturating_sub(1);
+        }
         if object.dma_pins != 0 || !object.destroy_when_unpinned {
             return;
         }

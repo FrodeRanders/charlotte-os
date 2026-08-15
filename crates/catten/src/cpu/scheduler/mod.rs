@@ -20,7 +20,10 @@ use core::sync::atomic::{
 
 use crate::{
     cpu::scheduler::{
-        system_scheduler::SYSTEM_SCHEDULER,
+        system_scheduler::{
+            SYSTEM_SCHEDULER,
+            publish_thread,
+        },
         threads::{
             MASTER_THREAD_TABLE,
             Thread,
@@ -99,7 +102,7 @@ pub(crate) fn spawn_thread_after_publish(
     publish: impl FnOnce(ThreadId),
 ) -> ThreadId {
     let thread = Thread::new(asid, entry_point);
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = publish_thread(thread).expect("address space rejected thread publication");
     publish(tid);
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
     SYSTEM_SCHEDULER
@@ -120,7 +123,7 @@ pub fn spawn_thread_on_lp(
     lp: crate::cpu::isa::lp::LpId,
 ) -> ThreadId {
     let thread = Thread::new(asid, entry_point);
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = publish_thread(thread).expect("address space rejected thread publication");
     SYSTEM_SCHEDULER.read().submit_to_lp(tid, lp).expect("Error submitting thread to requested LP");
     tid
 }
@@ -140,7 +143,7 @@ pub fn spawn_migratable_thread_on_lp(
 ) -> ThreadId {
     let mut thread = Thread::new(asid, entry_point);
     thread.migration_safe = true;
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = publish_thread(thread).expect("address space rejected thread publication");
     SYSTEM_SCHEDULER
         .read()
         .submit_migratable_to_lp(tid, lp)
@@ -155,7 +158,7 @@ fn spawn_thread_with_migration(
 ) -> ThreadId {
     let mut thread = Thread::new(asid, entry_point);
     thread.migration_safe = migration_safe;
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = publish_thread(thread).expect("address space rejected thread publication");
     SYSTEM_SCHEDULER
         .read()
         .submit_new_thread(tid as ThreadId)
@@ -248,6 +251,19 @@ pub fn abort() -> ! {
             Err(error) => panic!("Error aborting thread: {:?}", error),
         }
     }
+    yield_lp();
+    unsafe { unreachable_unchecked() }
+}
+
+/// Abort every thread that belongs to `asid`, including the caller.
+///
+/// Running threads on remote LPs are first marked for acknowledged abort and
+/// interrupted. The calling thread is staged for deferred reaping, then this
+/// LP switches away from its kernel stack and can never return to EL0.
+pub fn abort_address_space(asid: AddressSpaceId) -> ! {
+    assert_ne!(asid, crate::memory::KERNEL_ASID, "refusing to abort the kernel address space");
+    crate::early_logln!("Aborting user address space {}", asid);
+    SYSTEM_SCHEDULER.read().abort_as_threads(asid);
     yield_lp();
     unsafe { unreachable_unchecked() }
 }

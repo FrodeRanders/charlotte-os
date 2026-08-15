@@ -151,7 +151,35 @@ fn main(ctx: Context) -> ! {
 The program does not define \texttt{\_start}, a panic handler, or an allocator.
 These are provided by \texttt{catten-rt}. The \texttt{entry!} macro wires them
 together, validates the launch ABI version, sets up the heap, and calls
-\texttt{main(ctx)}.
+\texttt{main(ctx)}. A panic invokes the domain-abort syscall: every thread in
+the address space is retired, so no sibling can continue after shared Rust
+state or a userspace lock has been left inconsistent.
+
+\subsection{Memory ownership in Rust}
+
+The register-level syscall ABI deliberately exposes capability handles as
+integers. Application code should use the linear wrappers in
+\texttt{catten\_rt::owned}:
+
+\begin{itemize}
+    \item \texttt{OwnedMemory} closes its capability on drop and is neither
+        \texttt{Copy} nor \texttt{Clone}.
+    \item \texttt{MappedMemory<ReadOnly>} and
+        \texttt{MappedMemory<Writable>} own both the mapping and capability;
+        only the writable state can produce \texttt{\&mut [u8]}.
+    \item \texttt{DmaTransfer} is created only from unmapped
+        \texttt{OwnedMemory} and returns CPU ownership after synchronous DMA
+        unmapping.
+    \item \texttt{ReadOperation<'a>} retains its
+        \texttt{\&'a mut [u8]} until completion, including the
+        cancel-and-wait path in its destructor.
+\end{itemize}
+
+The raw \texttt{catten-syscall} interface remains available to runtimes and
+drivers. Coherent \texttt{dma\_map} is explicitly unsafe because the driver
+must synchronize CPU references and device access itself. Mixing raw
+operations with an adopted ownership wrapper violates the wrapper's safety
+contract.
 
 \subsection{Bootstrap authority}
 

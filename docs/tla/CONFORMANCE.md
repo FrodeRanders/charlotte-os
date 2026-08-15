@@ -66,9 +66,9 @@ corresponding to the repaired model and its retained negative counterexample.
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `OpenCq` | completion address-space/CQ attachment | Abstract: allocation and shared mapping are omitted. |
-| `SubmitNoBuffer` / `SubmitWithBuffer` | `completion::submit`, `Completion::new` | Direct: a successful submission begins in `InFlight`; capacity failure is represented by the disabled action. |
-| `Complete` / `Fail` | `completion::complete`, `Completion::complete`, `post_to_cq` | Direct for idempotent terminal transition, CQ publication, generation increment and notification. Result variants are reduced to status/value. |
-| `CancelOp` | `completion::cancel`, `Completion::cancel` | Direct: `InFlight` becomes `CancelPending`; no CQ entry is posted until completion. |
+| `SubmitNoBuffer` / `SubmitWithBuffer` | `completion::submit`, `Completion::new`; `catten_rt::owned::ReadOperation::submit` | A successful submission begins in `InFlight`. Buffered submission also transfers the mutable borrow to the in-flight operation (`kernelOwnsBuffer`). |
+| `Complete` / `Fail` | `completion::complete`, `Completion::complete`, `post_to_cq`; `ReadOperation::wait` | Direct for the terminal transition, CQ publication, generation increment and notification. Only this terminal boundary releases the kernel's buffer loan. |
+| `CancelOp` | `completion::cancel`, `Completion::cancel`; `ReadOperation::drop` | Direct: `InFlight` becomes `CancelPending`; no CQ entry is posted and the buffer remains loaned until the later terminal completion. The safe wrapper cancels, waits, and closes before its Rust borrow can end. |
 | `DrainOne` / `DrainAll` | userspace ring drain plus kernel `flush_backlog` | Abstract: shared-memory head/tail mechanics and batching details are collapsed. Marks CQ delivery consumed, not the capability result observed. |
 | `ObserveResult` | `completion::poll`, `Completion::take` | Direct: `Completed` becomes `Observed`, independently of CQ draining. |
 | `CqWait` | `completion::wait_on_cq` and timeout variant | Abstract: scheduler blocking and the post-registration lost-wake recheck are represented by one atomic waiter transition. |
@@ -89,11 +89,16 @@ corresponding to the repaired model and its retained negative counterexample.
 | `cqRings.backlog` | `CqState::backlog`. |
 | `cqRings.gen` | `CqState::work_generation`. |
 | `waiters` | Queue observer registration and queue-wide `last_seen_generation`, reduced to one reactor per CQ. |
+| `kernelOwnsBuffer` | Whether an in-flight or cancel-pending operation can still access a submitted mutable buffer. |
+
+`CharlotteCQ_buffer_unsafe.cfg` makes cancellation release the buffer
+immediately. TLC must violate `NonTerminalBufferRemainsLoaned`, retaining the
+use-after-cancel scenario as an executable negative regression.
 
 ## Deliberately omitted behavior
 
 The models currently omit vector IPC, connection attachments, multiple memory
-attachments, memory contents, CPU page mappings, completion observers,
+attachments, memory contents, concrete page-table mappings, completion observers,
 detached operations, timeout races, address-space validation failures and
 cross-registry rollback steps.
 
@@ -106,7 +111,7 @@ actions and prove that their projection implements these abstract transitions.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Spawn` | `Thread::new`, `MASTER_THREAD_TABLE.add_element` | Direct for reusable TID allocation and fresh monotonic generation; context construction is omitted. |
+| `Spawn` | `Thread::new`, `system_scheduler::publish_thread` | Direct for reusable TID allocation and fresh monotonic generation. Publication shares the domain-abort gate, so a new sibling is either captured by the abort snapshot or rejected. |
 | `Admit` | `submit_new_thread`, `submit_to_lp` | Abstract: initial run-queue insertion and `ThreadState::Ready` are one transition. Deferred re-admission uses generation-checked `submit_woken_thread`. |
 | `Dispatch` / `Preempt` / `SwitchOff` | `RoundRobin::next`, ISA `cond_yield_lp` / `switch_ctx` | `onCpu` is deliberately separate from `ThreadState`: a blocking or wake-raced outgoing thread retains physical execution until the context switch. |
 | `Block` | `block_thread_with_constraint` | Direct for waker generation capture and `Blocked`; concrete observer registration shares the transition's linearization point. |
@@ -115,6 +120,7 @@ actions and prove that their projection implements these abstract transitions.
 | `RequestRemoteAbort` | `abort_thread`, `abort_requested`, `abort_owner_lp`, scheduler IPI | Direct for cross-LP termination: the caller records the physical owner but leaves the executing context in the master table. |
 | `RetireRemoteAbort` | `RoundRobin::next`, `retire_requested_threads` | Owner-LP transition after switching away. Run-queue selection and `add_thread` reject the requested generation, including block/wake races. |
 | `AbortNotRunning` / `SelfAbort` | `abort_thread`, `take_element`, `stage_dead_thread` | Non-running contexts can be removed immediately; self-exit is staged while still on its stack and switches away before reaping. |
+| `BeginDomainAbort` | `domain_abort`, `abort_address_space`, `abort_as_threads` | The concrete refinement holds the publication gate, records the current address-space generation, snapshots every owned thread, and retains the gate through the sweep. This is the linearization boundary for the model's bulk transition. |
 | `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; the concrete stack-pointer check may defer a context again. |
 | `DestroyAddressSpace` | `domain_exited`, `teardown_domain`, `close_user_address_space` | Requires every master-table and deferred-dead thread owned by the ASID to be gone. `OnCpuHasLiveAddressSpace` checks the resulting safety boundary. |
 
@@ -128,6 +134,11 @@ needed for the model's atomic `RetireRemoteAbort`/`AbortNotRunning` projection.
 transition and is required to produce a `ReapOnlyOffCpu` counterexample. This
 negative model corresponds to the stale-AS SVC panic fixed by owner-LP
 retirement; it is not part of the repaired `Spec`.
+
+`CharlotteScheduler_domain_abort_unsafe.cfg` publishes a sibling after the
+abort snapshot and must violate `AbortingThreadsDoomed`. The Rust publication
+gate prevents this trace and also prevents a captured numeric TID from being
+reused by another domain before the sweep reaches it.
 
 ## Reusable address spaces and interrupt routes
 
@@ -157,6 +168,7 @@ by `CharlotteAddressSpace`, not a new IPC transfer mode.
 | `FencedUnregister` / `RejectStaleUnregister` | `CMD_UNREGISTER_GENERATION`; local `OP_UNREGISTER_GENERATION` | Direct owner-and-generation fence. A delayed cleanup request cannot unpublish a replacement. The unsafe model removes this check and retains the corresponding counterexample. |
 | `CleanupLocal` | `pending_local_unregistrations`, `LocalPublication::local_cleanup_submitted` | Abstract asynchronous cleanup, separately fenced by the node-local generation. |
 | `RequestStop` / `Exit` | `ipc_connection_watch_closed`; service shutdown or `abort_thread` | Endpoint closure completes a retained kernel watch; the owner proposes the tombstone directly or sends a source-authenticated, retried request to the known leader. The catalog may remain briefly active while this asynchronous transition is in flight. |
+| `DomainAbort` | Rust panic handler, fatal EL0 exception handling, `DOMAIN_ABORT` | Abstract spontaneous failure: scheduler retirement of the complete address space is collapsed into `Exited`; catalog cleanup, reaping, and teardown retain their ordinary fences. |
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
 | `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
 
@@ -175,9 +187,12 @@ a separately delivered detached-timer completion.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `CreateMemory` | `memory::object::allocate` | Abstract: frame count, physical addresses and ordinary CPU mappings are omitted. |
+| `CreateMemory` | `memory::object::allocate` | Abstract: frame count and physical addresses are omitted. |
 | `CreateDomain` | `device::grant_dma_domain`, `smmu::create_domain` | Direct for unique requester-stream ownership and domain authority. Page-table allocation is omitted. |
-| `BeginMap` | `memory::object::pin_for_dma` | Direct: rights are checked and the complete object is pinned before entering the SMMU registry. |
+| `CpuMap` / `CpuUnmap` | `memory::object::map`, `unmap` | Abstract boolean projection of CPU page mappings. Exclusive DMA blocks mapping; concrete virtual addresses and permissions are omitted. |
+| `BeginLoan` / `EndLoan` | `lend_read`, `lend_write`, `return_lend` | Abstract projection of IPC memory loans. A new loan is rejected while any DMA pin exists. |
+| `BeginMap(..., "Coherent")` | unsafe `dma_map`, `memory::object::pin_for_dma` | The raw coherent-sharing path may coexist with CPU mappings or a previously established loan; synchronization remains the unsafe caller's obligation. It cannot coexist with an exclusive pin. |
+| `BeginMap(..., "Exclusive")` | safe `dma_map_exclusive`, `OwnedMemory::begin_dma` | Direct ownership transfer: requires no CPU mappings, loans, or other DMA pins. The mode remains exclusive until acknowledged unmap and pin release. |
 | `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. |
 | `FailMap` | partial-PTE cleanup and `memory::object::unpin_dma` | Direct rollback for failures before complete PTE installation, including unknown-domain lookup. |
 | `QuarantineMap` | failed `invalidate_asid` after `Domain::map` | Direct safety policy: the unpublished internal mapping retains its pin because hardware translation state is uncertain. A later acknowledged domain destroy reclaims it. |
@@ -187,6 +202,10 @@ a separately delivered detached-timer completion.
 | `QuarantineDestroy` | `destroy_domain` error return | Direct safety policy: the domain and pins remain retained when hardware acknowledgement is uncertain. |
 | `ExitDriver` | `device::close_address_space`, `memory::object::close_address_space` | Abstract bulk teardown; pinned owned memory becomes `destroy_when_unpinned`. |
 | `ReclaimMemory` | final `unpin_dma` for a destroy-pending object | Direct for last-pin removal, capability cleanup and frame reclamation. |
+
+`ExclusiveDmaHasNoCpuAuthority` checks that an exclusive pin cannot overlap a
+CPU mapping, IPC loan, or second DMA pin. `CharlotteDMA_unsafe.cfg` removes the
+exclusive precondition and must produce a counterexample.
 
 ## Raft election and durable voting
 

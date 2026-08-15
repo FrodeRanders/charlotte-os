@@ -66,10 +66,6 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
 
     if ec == EC_SVC_AARCH64 {
         let svc_imm = (esr_el1 & 0xffff) as u16;
-        if svc_imm > MAX_SYSCALL {
-            panic!("Unknown syscall number: {svc_imm}");
-        }
-
         let spsr: u64;
         let sp_el0: u64;
         unsafe {
@@ -117,6 +113,16 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             get_lp_id()
         );
         frame.asid = asid;
+
+        if svc_imm > MAX_SYSCALL {
+            early_logln!(
+                "FATAL EL0 UNKNOWN SYSCALL: ASID={} SVC={} ELR={:#x}",
+                asid,
+                svc_imm,
+                elr_el1
+            );
+            crate::cpu::scheduler::abort_address_space(asid);
+        }
 
         // Read the saved volatile registers from the kernel stack. `frame_base`
         // is the stack pointer captured by the vector entry immediately after
@@ -196,15 +202,29 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             return;
         }
         0x20 | 0x24 => {
-            // Abort from EL0: a stale TLB entry on this LP is the most
-            // likely cause (HVF does not faithfully emulate broadcast
-            // TLBI to other vCPUs).  Invalidate the faulting VA in the
-            // local TLB and retry the instruction.  Only recover for
-            // translation/permission faults (ISS[5:0] = 0001xx or 0011xx).
+            // A negative TLB entry can legitimately be stale under HVF after
+            // another LP installs a mapping. Retry only when the software page
+            // table says the faulting page really is mapped. An unmapped guard
+            // page, stale pointer, use-after-move, write to read-only memory,
+            // or execute-never violation is a domain fault, not a TLB event.
             let iss = (esr_el1 & 0x3f) as u32;
             let is_tf = (iss & 0b111100) == 0b000100; // translation fault
-            let is_pf = (iss & 0b111100) == 0b001100; // permission fault
-            if is_tf || is_pf {
+            let asid = crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID
+                [get_lp_id() as usize]
+                .load(core::sync::atomic::Ordering::Acquire);
+            let software_mapping_exists = if is_tf && asid != crate::memory::KERNEL_ASID {
+                use crate::cpu::isa::interface::memory::AddressSpaceInterface;
+                let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+                match table.get_mut(asid) {
+                    Ok(address_space) => address_space
+                        .is_mapped(crate::memory::VAddr::from(far_el1 as usize))
+                        .unwrap_or(false),
+                    Err(_) => false,
+                }
+            } else {
+                false
+            };
+            if software_mapping_exists {
                 unsafe {
                     asm!(
                             "dsb ishst",
@@ -217,13 +237,14 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                 }
                 return; // retry the faulting instruction
             }
-            // Unrecognised ISS — log and fall through to panic.
             early_logln!(
-                "DATA/INST ABORT EL0: ESR={:x} ELR={:x} FAR={:x}",
+                "FATAL EL0 DATA/INST ABORT: ASID={} ESR={:x} ELR={:x} FAR={:x}",
+                asid,
                 esr_el1,
                 elr_el1,
                 far_el1
             );
+            crate::cpu::scheduler::abort_address_space(asid);
         }
         0x25 | 0x21 => {
             // Abort from same EL: kernel fault — unrecoverable.
@@ -250,6 +271,13 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             return;
         }
         _ => {
+            let originated_at_el0 = {
+                let spsr_el1: u64;
+                unsafe {
+                    asm!("mrs {}, spsr_el1", out(reg) spsr_el1, options(nomem, nostack, preserves_flags));
+                }
+                spsr_el1 & 0xf == 0
+            };
             early_logln!(
                 "UNHANDLED SYNC: EC={:x} ESR={:x} ELR={:x} FAR={:x}",
                 ec,
@@ -257,6 +285,12 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                 elr_el1,
                 far_el1
             );
+            if originated_at_el0 {
+                let asid = crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID
+                    [get_lp_id() as usize]
+                    .load(core::sync::atomic::Ordering::Acquire);
+                crate::cpu::scheduler::abort_address_space(asid);
+            }
         }
     }
     early_logln!("  EC: {} (see Arm ARM D17.2.37 for exception classes)", ec);

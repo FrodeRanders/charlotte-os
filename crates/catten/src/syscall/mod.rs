@@ -73,6 +73,8 @@ pub mod call_no {
     pub const SPAWN_THREAD: u16 = SyscallNumber::SpawnThread as u16;
     /// Terminate the calling EL0 thread.
     pub const THREAD_EXIT: u16 = SyscallNumber::ThreadExit as u16;
+    /// Terminate every thread in the calling EL0 address space.
+    pub const DOMAIN_ABORT: u16 = SyscallNumber::DomainAbort as u16;
     /// Send a 64-bit message to a specific LP's mailbox.
     pub const MAILBOX_SEND: u16 = SyscallNumber::MailboxSend as u16;
     /// Receive a 64-bit message from the calling LP's mailbox.
@@ -190,6 +192,7 @@ pub mod call_no {
     /// driver constructs a scatter/gather descriptor.
     pub const MEMORY_GET_PHYS_PAGE: u16 = SyscallNumber::MemoryGetPhysPage as u16;
     pub const DMA_MAP: u16 = SyscallNumber::DmaMap as u16;
+    pub const DMA_MAP_EXCLUSIVE: u16 = SyscallNumber::DmaMapExclusive as u16;
     pub const DMA_UNMAP: u16 = SyscallNumber::DmaUnmap as u16;
     /// Snapshot scheduler statistics. x1=0 limits the snapshot to the caller;
     /// x1 naming a system-observer capability authorizes all threads. Returns
@@ -250,6 +253,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::CompletionClose => sys_completion_close(frame),
         SyscallNumber::SpawnThread => sys_spawn_thread(frame),
         SyscallNumber::ThreadExit => sys_thread_exit(frame),
+        SyscallNumber::DomainAbort => sys_domain_abort(frame),
         SyscallNumber::ObserveThreadExit => sys_observe_thread_exit(frame),
         SyscallNumber::GetTid => sys_get_tid(frame),
         SyscallNumber::MailboxSend => sys_mailbox_send(frame),
@@ -299,6 +303,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MemoryGetPhys => sys_memory_get_phys(frame),
         SyscallNumber::MemoryGetPhysPage => sys_memory_get_phys_page(frame),
         SyscallNumber::DmaMap => sys_dma_map(frame),
+        SyscallNumber::DmaMapExclusive => sys_dma_map_exclusive(frame),
         SyscallNumber::DmaUnmap => sys_dma_unmap(frame),
         SyscallNumber::ThreadStatistics => sys_thread_statistics(frame),
         SyscallNumber::IpcConnectionWatchClosed => sys_ipc_connection_watch_closed(frame),
@@ -603,11 +608,11 @@ fn sys_completion_close(frame: &mut TrapFrame) {
 
 fn sys_spawn_thread(frame: &mut TrapFrame) {
     use crate::cpu::scheduler::{
-        system_scheduler::SYSTEM_SCHEDULER,
-        threads::{
-            MASTER_THREAD_TABLE,
-            Thread,
+        system_scheduler::{
+            SYSTEM_SCHEDULER,
+            publish_thread,
         },
+        threads::Thread,
     };
     let asid = caller_asid(frame);
     let entry_vaddr = frame.regs[1] as usize;
@@ -631,7 +636,10 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     // and then `submit_to_lp`: that would enqueue the same thread on two run
     // queues.
     let thread = Thread::new(asid, entry_fn);
-    let tid = MASTER_THREAD_TABLE.write().add_element(thread);
+    let tid = match publish_thread(thread) {
+        Ok(tid) => tid,
+        Err(_) => crate::cpu::scheduler::abort_address_space(asid),
+    };
     SYSTEM_SCHEDULER.read().submit_to_lp(tid, target_lp).unwrap_or_else(|_| {
         let lpc = crate::cpu::multiprocessor::get_lp_count();
         logln!(
@@ -653,6 +661,10 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
 fn sys_thread_exit(_frame: &mut TrapFrame) {
     // `abort` deschedules the thread, reaps it, and never returns.
     crate::cpu::scheduler::abort();
+}
+
+fn sys_domain_abort(frame: &mut TrapFrame) {
+    crate::cpu::scheduler::abort_address_space(caller_asid(frame));
 }
 
 /// Register a completion capability that fires when thread `regs[1]` exits,
@@ -995,6 +1007,24 @@ fn sys_dma_map(frame: &mut TrapFrame) {
         frame.regs[0] =
             crate::device::dma_map(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
                 .unwrap_or(0);
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        frame.regs[0] = 0;
+    }
+}
+
+fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
+    #[cfg(target_arch = "aarch64")]
+    {
+        let asid = caller_asid(frame);
+        frame.regs[0] = crate::device::dma_map_exclusive(
+            asid,
+            frame.regs[1],
+            frame.regs[2],
+            frame.regs[3] as u32,
+        )
+        .unwrap_or(0);
     }
     #[cfg(not(target_arch = "aarch64"))]
     {
