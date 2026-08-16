@@ -217,7 +217,7 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
                                 .get_mut(curr_tid)
                                 .expect("Current thread not found during yield.");
                             let curr_sp_ptr = &raw mut curr_thread.context.saved_sp;
-                            let curr_on_cpu = &raw mut curr_thread.context.on_cpu;
+                            let curr_on_cpu = (&raw mut curr_thread.context.on_cpu).cast::<u8>();
                             let next_thread = tt_guard
                                 .get_mut(next_tid)
                                 .expect("Next thread not found during yield.");
@@ -226,7 +226,7 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
                                 [get_lp_id() as usize]
                                 .store(next_asid, core::sync::atomic::Ordering::Release);
                             let next_sp_ptr = &raw mut next_thread.context.saved_sp;
-                            let next_on_cpu = &raw mut next_thread.context.on_cpu;
+                            let next_on_cpu = (&raw mut next_thread.context.on_cpu).cast::<u8>();
                             (curr_sp_ptr, curr_on_cpu, next_sp_ptr, next_on_cpu, next_asid)
                         };
                         lsched.clear_ctx_switch_pending();
@@ -266,7 +266,7 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
                             .store(next_asid, core::sync::atomic::Ordering::Release);
                         (
                             &raw mut next_thread.context.saved_sp as *const u64,
-                            &raw mut next_thread.context.on_cpu,
+                            (&raw mut next_thread.context.on_cpu).cast::<u8>(),
                             next_asid,
                         )
                     };

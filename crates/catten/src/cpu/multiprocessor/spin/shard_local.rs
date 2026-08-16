@@ -138,7 +138,7 @@ impl<T> ShardLocal<T> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure that no other code on the *calling* LP
+    /// The caller must ensure that no other code on the *target* LP
     /// concurrently accesses this slot through `with` or `try_with`, and that
     /// the operation is reachable from a context where the assertion makes
     /// sense (e.g. an IPI-delivered closure running on the target LP).

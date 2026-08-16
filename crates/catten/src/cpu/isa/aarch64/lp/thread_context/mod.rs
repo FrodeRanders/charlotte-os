@@ -15,7 +15,11 @@
 //! a thread on an observable event, and completion is delivered by waking it,
 //! rather than by heavyweight thread-pool machinery.
 
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{
+    AtomicU8,
+    AtomicUsize,
+    Ordering,
+};
 
 use crate::{
     cpu::isa::{
@@ -127,7 +131,7 @@ impl InitialFrame {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct ThreadContext {
     /// The saved kernel stack pointer at which this thread's `switch_ctx` frame
     /// resides. `cond_yield_lp` reads and writes this field through a raw
@@ -142,7 +146,7 @@ pub struct ThreadContext {
     /// before the LP that last ran it has finished saving (the wake-before-save
     /// race). `switch_ctx` accesses this with byte-sized acquire/release and
     /// exclusive operations.
-    pub on_cpu: u8,
+    pub on_cpu: AtomicU8,
     _kernel_stack_buf: VAddr,
     _user_stack: Option<UserStack>,
 }
@@ -164,12 +168,7 @@ impl ThreadContext {
     /// Whether an LP still owns this context. Assembly accesses `on_cpu` with
     /// byte-sized acquire/release operations; use matching atomic semantics.
     pub(crate) fn is_on_cpu(&self) -> bool {
-        use core::sync::atomic::{
-            AtomicU8,
-            Ordering,
-        };
-
-        unsafe { (&*((&raw const self.on_cpu).cast::<AtomicU8>())).load(Ordering::Acquire) != 0 }
+        self.on_cpu.load(Ordering::Acquire) != 0
     }
 
     /// Whether `address` lies in this context's mapped kernel-stack pages.
@@ -215,7 +214,7 @@ impl ThreadContext {
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
-            on_cpu: 0,
+            on_cpu: AtomicU8::new(0),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack: None,
         })
@@ -234,6 +233,13 @@ impl ThreadContext {
         // VAs that have no TTBR0 mapping; EL0 can only use TTBR0.  Because
         // this prototype has no virtual-memory manager we place each user
         // thread's stack at a fixed VA region, offset by a per-thread index.
+        //
+        // Known limitation: `NEXT_STACK_INDEX` is monotonic and never recycled,
+        // and there is no runtime guard against the region eventually colliding
+        // with the ELF load region or the scratch window (base 0x0000_0000_4000_0000).
+        // The fixed-address loader means this is a bounded-but-unchecked VA
+        // reservation, not a dynamically managed one; it is far beyond any
+        // practical thread count today but is deliberately not a guarantee.
         const USER_STACK_VADDR_BASE: usize = 0x0000_0000_0100_0000;
         const USER_STACK_STRIDE: usize = USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
         static NEXT_STACK_INDEX: AtomicUsize = AtomicUsize::new(0);
@@ -347,7 +353,7 @@ impl ThreadContext {
         frame.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
-            on_cpu: 0,
+            on_cpu: AtomicU8::new(0),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack: Some(user_stack),
         })

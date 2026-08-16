@@ -249,7 +249,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
 
     let mut registry = MEMORY_OBJECTS.lock();
     let object_id = registry.next_object;
-    registry.next_object += 1;
+    registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
     registry.objects.insert(
         object_id,
         MemoryObject {
@@ -752,7 +752,7 @@ pub fn copy_to(
         object.copy_pins = object.copy_pins.saturating_sub(1);
     }
     let object_id = registry.next_object;
-    registry.next_object += 1;
+    registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
     registry.objects.insert(
         object_id,
         MemoryObject {
@@ -1237,11 +1237,12 @@ pub(crate) fn unpin_dma(pin: DmaPin) {
         let Some(object) = registry.objects.get_mut(&pin.object) else {
             return;
         };
-        debug_assert!(object.dma_pins != 0);
-        object.dma_pins = object.dma_pins.saturating_sub(1);
+        object.dma_pins = object.dma_pins.checked_sub(1).expect("unpin_dma: dma_pins underflow");
         if pin.exclusive {
-            debug_assert!(object.exclusive_dma_pins != 0);
-            object.exclusive_dma_pins = object.exclusive_dma_pins.saturating_sub(1);
+            object.exclusive_dma_pins = object
+                .exclusive_dma_pins
+                .checked_sub(1)
+                .expect("unpin_dma: exclusive_dma_pins underflow");
         }
         if object.dma_pins != 0 || !object.destroy_when_unpinned {
             return;

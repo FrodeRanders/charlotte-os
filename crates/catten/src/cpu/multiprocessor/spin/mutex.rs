@@ -16,8 +16,14 @@ pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 /// # A spinlock-based mutex that disables interrupts on the calling processor while locked.
 /// This lock is suitable for providing mutual exclusion during critical sections but it should be
 /// used with caution to avoid deadlocks between LPs. It prevents self deadlocks by
-/// masking maskable interrupts. It exists solely for use by the global allocator and should not be
-/// used for any other purpose.
+/// masking maskable interrupts for the complete ownership interval.
+///
+/// It guards the frame allocator, the address-space table, the kernel address
+/// space, domain-authority and lifecycle state, the scratch-window cursor, and
+/// the global (talc) allocator. The interrupt masking is essential: these
+/// locks are taken from both preemptible kernel threads and synchronous EL0
+/// exception paths, so a timer-preempted owner could otherwise be starved by
+/// every other LP spinning for the lock with IRQs masked.
 #[derive(Debug)]
 pub struct MutexCore {
     state: AtomicBool,
