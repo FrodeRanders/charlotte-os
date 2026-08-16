@@ -14,6 +14,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Investigations
 
+- [Frame-allocator interrupt-masking latency](investigations/2026-08-16-frame-allocator-irq-latency.md)
 - [Live-upgrade stall](investigations/live-upgrade-stall.md)
 - [Scheduler investigation](investigations/scheduler.md)
 - [Intermittent AArch64 SMP context-switch panic](investigations/smp-context-switch-panic.md)
