@@ -140,6 +140,86 @@ This conservative approach preserves cache warmth and eliminates migration races
 where the waiter was registered). Stable affinity is the correctness default;
 migration is an opt-in optimization.
 
+\section{Synchronization and lock ordering}
+
+Shared kernel state is synchronized by a small, deliberate set of primitives.
+Their full semantics and the cross-subsystem ordering rules are maintained in
+\repofile|docs/reference/locking.md|, which is authoritative over this
+overview.
+
+\subsection{Lock families}
+
+\begin{itemize}
+    \item \textbf{Interrupt-masking spin \texttt{Mutex}} guards the frame
+        allocator, address-space table, kernel address space, domain-authority
+        table, address-space lifecycle, scratch-window cursor, and the global
+        allocator. It saves the caller's interrupt-enable bit, masks maskable
+        IRQs, spins, and restores the bit on unlock. The masking exists to
+        prevent a preemption deadlock: these locks are taken from both
+        preemptible kernel threads and synchronous EL0 exception paths, so a
+        timer-preempted owner could otherwise be starved forever.
+
+    \item \textbf{Interrupt-masking spin \texttt{RwLock}} is the workhorse. It
+        protects the master thread table, the deferred-dead table, the system
+        scheduler, the IPC registry, the completion registry, the userspace
+        mailbox table, and each per-LP slot. A \texttt{waiting\_writers} counter
+        gives writers preference so a dense reader stream cannot starve a
+        writer.
+
+    \item \textbf{The external \texttt{spin} crate} is used only by the stack
+        allocator, which wraps its arena mutex in explicit
+        \texttt{mask\_interrupts!}/\texttt{unmask\_interrupts!} calls. Its
+        guard-page map is touched only from thread context, never from IRQ
+        context.
+
+    \item \textbf{Lock-free structures} cover the rest: \texttt{ShardLocal} and
+        \texttt{PerLp} for per-LP data, \texttt{ConcurrentQueue} for the
+        IRQ-to-thread deferred-wake handoff, and plain atomics for the
+        \texttt{on\_cpu} ownership handshake and generation counters.
+\end{itemize}
+
+A scheduler-blocking lock family exists under
+\texttt{cpu/scheduler/sync} that parks a contended caller via
+\texttt{block\_thread} instead of spinning. It currently has no callers and
+does not participate in any ordering guarantee.
+
+\subsection{Interrupt-masking discipline}
+
+Both spin locks mask IRQs, but only the \texttt{RwLock} is nesting-aware. It
+routes through a per-LP \texttt{INT\_STATE} record that counts save depth and
+re-enables interrupts exactly once on the outermost restore. This lets a thread
+take several different \texttt{RwLock}s, or a read after a read, without
+prematurely re-enabling IRQs. The \texttt{Mutex} records its pre-acquire
+interrupt bit on the lock object itself; acquiring different mutexes still
+nests correctly, but re-acquiring the same lock on one LP deadlocks.
+
+\subsection{Lock ordering}
+
+The scheduler's chain is fixed:
+
+\begin{verbatim}
+SYSTEM_SCHEDULER.read() -> lp_scheduler.lock() -> MASTER_THREAD_TABLE.write()
+\end{verbatim}
+
+Cross-subsystem rules hold today:
+
+\begin{itemize}
+    \item \textbf{Never take address-space or frame-allocator locks while the
+        heap lock is held.} The heap's growth reserve is pre-mapped at boot so
+        allocation can extend within mapped memory without those locks.
+    \item \textbf{Never hold the memory-object registry across the
+        address-space table lock.} Teardown takes table-then-frame-allocator
+        while allocation takes allocator-then-registry; registry-then-table
+        would close an AB-BC-CA cycle.
+    \item \textbf{Never block or yield while holding any lock.} A spin lock
+        also masks IRQs, so parking the thread would abandon the lock and the
+        LP could not schedule its successor. All guards are dropped before
+        \texttt{switch\_ctx}.
+    \item \textbf{IRQ context takes no locks and never blocks.} Interrupt
+        delivery uses atomics and MMIO only; a deferred wake crosses into
+        thread context through a lock-free queue.
+\end{itemize}
+
 \section{Backpressure and queue bounds}
 
 Backpressure is a design principle. Endpoint and hardware rings are bounded,

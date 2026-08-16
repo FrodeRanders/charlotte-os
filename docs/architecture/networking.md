@@ -312,7 +312,7 @@ Capability Invocation
         │
 Distributed Objects
         │
-RPC
+       RPC
         │
 Reliable Message Layer
         │
@@ -466,7 +466,7 @@ Applications never manipulate sockets.
 Traditional systems:
 
 ```
-DNS
+ DNS
   │
 Host
   │
@@ -478,9 +478,9 @@ CharlotteOS:
 ```
 Capability Directory
         │
-Service Name
+  Service Name
         │
-Capability
+   Capability
 ```
 
 Applications locate:
@@ -595,7 +595,7 @@ Advantages:
 VirtIO is merely one implementation.
 
 ```
-QEMU
+ QEMU
    │
 VirtIO
    │
@@ -689,7 +689,7 @@ Application
       │
 Capability Invocation
       │
-IPC
+     IPC
       │
 ─────────────┬──────────────
              │
@@ -703,7 +703,7 @@ IPC
              │
      Reliable Messages
              │
-        Ethernet
+         Ethernet
 ```
 
 From the application's perspective:
@@ -725,13 +725,13 @@ Receive path:
 ```
 VirtIO RX Buffer
         │
-Driver
+      Driver
         │
 Ownership Transfer
         │
-Message Layer
+  Message Layer
         │
-Application
+   Application
 ```
 
 Once processing completes:
@@ -800,18 +800,18 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 ```
 ┌──────────────────────────────────────────────┐
-│          Distributed Name Service             │  ← replicated service metadata
-│  (a StateMachine on top of the Raft service)  │
+│          Distributed Name Service            │  ← replicated service metadata
+│  (a StateMachine on top of the Raft service) │
 └──────────────────┬───────────────────────────┘
                    │ IPC (OP_CLIENT_COMMAND)
 ┌──────────────────▼───────────────────────────┐
-│          Raft Consensus Service               │  ← one EL0 service per node
+│          Raft Consensus Service              │  ← one EL0 service per node
 │  endpoint: "RAFT"  opcodes: 1=Vote 2=Append  │
-│           3=Snapshot  4=Command  8=Status     │
+│           3=Snapshot  4=Command  8=Status    │
 └──────────────────┬───────────────────────────┘
                    │ IPC / memory objects
 ┌──────────────────▼───────────────────────────┐
-│     Reliable Message Layer / NIC driver       │
+│     Reliable Message Layer / NIC driver      │
 └──────────────────────────────────────────────┘
 ```
 

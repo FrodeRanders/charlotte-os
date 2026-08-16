@@ -460,6 +460,10 @@ migration to the compute-only workload.
 
 ## 8. Lock Ordering Rules
 
+> See [`locking.md`](locking.md) for the full set of synchronization
+> primitives and the cross-subsystem ordering rules; this section covers only
+> the scheduler's own chain.
+
 The canonical lock order (outermost first):
 
 ```
