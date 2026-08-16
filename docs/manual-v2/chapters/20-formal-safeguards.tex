@@ -120,7 +120,7 @@ provide.
 
 \section{What is modeled}
 
-The current suite contains twenty safe specifications. They are divided by
+The current suite contains twenty-one safe specifications. They are divided by
 state ownership and failure boundary so that each model remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
@@ -140,6 +140,11 @@ different proof obligations.
     cancellation, endpoint close, domain teardown & Bounded queues; unique
     receiver-visible reply authority; exclusive write borrow; every remaining
     borrow backed by a live token; no dangling moved-memory capability. \\
+\hline
+\tlbreak{CharlotteIpc}{Transaction} & Multi-entry vector preparation,
+    connection attachment, rollback, delivery, reply and non-terminal timeout &
+    Failed preparation restores every affected registry; attached connections
+    cannot escape their transaction; timeout cannot release a live call's loan. \\
 \hline
 \tlbreak{Charlotte}{EndpointObservers} & Readiness observers and connection-close
     watches & Ordinary message arrival cannot falsely signal endpoint closure;
@@ -162,7 +167,8 @@ different proof obligations.
 \hline
 \tlbreak{Charlotte}{ThreadJoin} & Recyclable TIDs, spawn generations, delayed
     exit-observer registration & A captured handle observes only its exact
-    generation; a missing or recycled slot completes immediately. \\
+    generation; a missing or recycled slot completes immediately; exhausted
+    generation identity fails closed before wrap. \\
 \hline
 \tlbreak{Charlotte}{AddressSpace} & Reusable numeric ASIDs and software-generation
     handles & A stale handle cannot close a replacement that reused the same
@@ -250,11 +256,12 @@ fence.
 
 \subsection{Authorization is controlled capability issuance}
 
-The current name service has an optional reusable 64-bit access-key gate. It
-does not identify a stable principal, express different rights per caller,
-separate policy administration from service publication, or version a policy
-decision. It is therefore not the production policy service suggested by the
-architecture.
+The local name service now implements a co-located production authorization
+path alongside its older public and reusable-key compatibility protocols. The
+signed loader binds an artifact-derived stable principal, exact address-space
+generation, and roles in a kernel-only table. IPC enqueue places that
+authenticated snapshot in the receive envelope; request memory cannot choose
+the caller identity.
 
 The authorization model makes the intended boundary explicit. The catalog
 publishes a service generation and the maximum rights that may be delegated.
@@ -262,9 +269,14 @@ A separate logical policy role maps a stable principal and service identity to
 an allowed-rights set and policy version. A decision is bound to the
 kernel-authenticated subject, requested rights, current service generation and
 policy version, and can be redeemed once for an attenuated connection. A
-co-located name/policy process can perform decision and redemption as one
-serialized transition; a later split service needs an unforgeable single-use
-grant and must revalidate every binding at redemption.
+co-located name/policy process performs decision and attenuated connection
+delegation as one serialized transition. Policy mutation and authorized
+publication require distinct roles, and issuance, denial, and delegation
+failure enter a bounded administrator-readable audit stream. A later split
+service needs an unforgeable single-use grant and must revalidate every binding
+at redemption. Policy and audit state are not yet durable or replicated, and
+the compatibility lookup opcodes must not be treated as this authorization
+boundary.
 
 The model also prevents an attractive but false claim. A policy update blocks
 new issuance and invalidates unredeemed decisions, but cannot selectively
@@ -273,6 +285,25 @@ requires endpoint closure, a revocable proxy, or a future kernel lease object.
 This prospective revocation contract is safer than documenting authority that
 the implementation cannot enforce. The practical design is recorded in
 \repofile|docs/architecture/authorization-policy.md|.
+
+\subsection{IPC attachments are cross-registry transactions}
+
+The base IPC model intentionally collapses vector attachments. The
+\tlbreak{CharlotteIpc}{Transaction} refinement instead represents two or more
+moved entries, a live memory loan, an attached connection, the queue and the
+pending-call registry. Current vector calls carry the memory entries, whereas
+scalar calls carry connection attachments and may copy memory. The refinement
+deliberately composes these paths into a stronger rollback obligation; it does
+not claim that one current syscall carries every form. No request is visible
+until preparation commits, and every pre-commit failure restores all affected
+registries. Its unsafe rollback keeps one moved entry and a connection in the
+target after failure and must violate \texttt{RollbackRestoresAll}.
+
+A reply-wait timeout is also modeled separately from terminal call completion.
+It reports only that no reply was observed during the wait and therefore cannot
+release a buffer still reachable by the kernel or receiver. The unsafe timeout
+transition releases that loan while the call remains pending and must violate
+\texttt{TimeoutRetainsLoan}.
 
 \subsection{Two-phase service publication}
 
@@ -356,6 +387,13 @@ Other negative specifications preserve compact versions of repaired faults:
 \tlbreak{Unsafe}{MessageWake} & Message readiness and endpoint-close observation
     share one observer queue. & \tlbreak{CloseSignalImplies}{Closed} \\
 \hline
+\tlbreak{Unsafe}{Rollback} & A failed abstract attachment transaction leaves one
+    moved entry and its attached connection in target registries. &
+    \texttt{RollbackRestoresAll} \\
+\hline
+\tlbreak{UnsafeTimeout}{Release} & Reply timeout releases a loan while the
+    pending call can still access it. & \texttt{TimeoutRetainsLoan} \\
+\hline
 \tlbreak{Unsafe}{RemoteAbort} & A remote LP removes and reaps a context that may
     still execute. & \texttt{ReapOnlyOffCpu} \\
 \hline
@@ -372,6 +410,9 @@ Other negative specifications preserve compact versions of repaired faults:
 \tlbreak{UnsafeObserve}{Join} & A delayed join attaches its old handle to the
     replacement occupying the same TID. &
     \tlbreak{ObserverMatches}{CapturedHandle} \\
+\hline
+\tlbreak{UnsafeSpawn}{Wrap} & Exhausted thread generation wraps and aliases a
+    previously allocated identity. & \texttt{GenerationNeverReused} \\
 \hline
 \tlbreak{UnsafeBeginExclusive}{Map} & Exclusive DMA begins while CPU or other
     transfer authority still exists. &
@@ -419,7 +460,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all twenty negative configurations to fail for the named
+The check suite expects all twenty-three negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -465,12 +506,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all twenty safe configurations;
+    \item runs all twenty-one safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs twenty negative configurations and requires each one to fail on
+    \item runs twenty-three negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -495,7 +536,9 @@ fast configurations produced the following complete state graphs:
 \hline
 \texttt{CharlotteScheduler} & 4,308,577 & 819,972 & 22 \\
 \hline
-\texttt{CharlotteThreadJoin} & 37 & 32 & 9 \\
+\texttt{CharlotteThreadJoin} & 46 & 39 & 10 \\
+\hline
+\tlbreak{CharlotteIpc}{Transaction} & 71 & 26 & 11 \\
 \hline
 \tlbreak{Charlotte}{ServiceLifecycle} & 689,321 & 74,232 & 37 \\
 \hline

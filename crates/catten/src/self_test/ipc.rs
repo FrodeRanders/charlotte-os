@@ -516,6 +516,47 @@ pub fn test_endpoint_ipc() {
     object::unmap(memory_client, write_borrow).expect("memory IPC write borrow owner unmap failed");
     object::close_cap(memory_client, write_borrow).expect("memory IPC write borrow close failed");
 
+    // Force the last step of a reply transaction to fail after its returned
+    // memory has moved. The reply path must restore the server's exact source
+    // capability rather than leak a partial result into the caller.
+    let rollback_borrow =
+        object::allocate(memory_client, 1).expect("reply rollback borrow allocation failed");
+    let rollback_call = ipc::scalar_call_with_memory_borrow_read(
+        memory_client,
+        memory_connection,
+        48,
+        0x45,
+        rollback_borrow,
+    )
+    .expect("reply rollback borrow call failed");
+    let rollback_message =
+        ipc::receive(memory_server, memory_endpoint).expect("reply rollback receive failed");
+    let rollback_reply = rollback_message.reply.expect("reply rollback token missing");
+    let rollback_server_borrow =
+        rollback_message.memory.expect("reply rollback memory attachment missing");
+    object::revoke_lend(memory_client, rollback_borrow, memory_server, rollback_server_borrow)
+        .expect("reply rollback fault injection failed");
+    let returned_memory = object::allocate(memory_server, 1)
+        .expect("reply rollback returned memory allocation failed");
+    assert_eq!(
+        ipc::reply_with_memory_move(memory_server, rollback_reply, returned_memory, 126),
+        Err(IpcError::MemoryTransferFailed),
+        "failed loan revocation must fail the reply transaction"
+    );
+    assert!(
+        object::info(memory_server, returned_memory).is_ok(),
+        "failed reply must restore returned memory under its original server capability"
+    );
+    assert_eq!(
+        ipc::poll_reply(memory_client, rollback_call).expect("reply rollback poll failed"),
+        None,
+        "a failed reply transaction must remain unobservable to the caller"
+    );
+    object::close_cap(memory_server, returned_memory)
+        .expect("reply rollback returned memory cleanup failed");
+    object::close_cap(memory_client, rollback_borrow)
+        .expect("reply rollback borrow cleanup failed");
+
     close_test_address_space(memory_client).expect("memory IPC client AS close failed");
     close_test_address_space(memory_server).expect("memory IPC server AS close failed");
 

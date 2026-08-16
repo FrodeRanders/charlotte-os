@@ -1,4 +1,6 @@
 use charlotte_authorization::{
+    AuditLog,
+    AuditOutcome,
     AuthorizationError,
     AuthorizationRights as Rights,
     DomainIdentity,
@@ -239,4 +241,100 @@ fn configured_capacity_limits_fail_closed_without_losing_replacements() {
         store.issue_ticket(replacement, b"svc", Rights::CALL),
         Err(AuthorizationError::TicketCapacity)
     );
+}
+
+#[test]
+fn delayed_identity_provisioning_cannot_replace_a_newer_generation() {
+    let mut store = PolicyStore::new();
+    let newest = identity(7, 3);
+    let newest_principal = principal(70);
+    store.provision_identity_from_supervisor(newest, newest_principal, Roles::NONE).unwrap();
+
+    assert_eq!(
+        store.provision_identity_from_supervisor(identity(7, 2), principal(60), Roles::NONE),
+        Err(AuthorizationError::StaleIdentity)
+    );
+    assert_eq!(store.principal_for(newest), Some(newest_principal));
+}
+
+#[test]
+fn exact_identity_reprovisioning_is_idempotent_but_cannot_change_authority() {
+    let mut store = PolicyStore::new();
+    let domain = identity(7, 3);
+    let assigned_principal = principal(70);
+    store.provision_identity_from_supervisor(domain, assigned_principal, Roles::NONE).unwrap();
+
+    store.provision_identity_from_supervisor(domain, assigned_principal, Roles::NONE).unwrap();
+    assert_eq!(
+        store.provision_identity_from_supervisor(domain, principal(71), Roles::POLICY_ADMIN),
+        Err(AuthorizationError::IdentityConflict)
+    );
+    assert_eq!(store.principal_for(domain), Some(assigned_principal));
+    assert_eq!(store.roles_for(domain), Some(Roles::NONE));
+}
+
+#[test]
+fn audit_log_is_bounded_and_preserves_monotonic_sequence() {
+    let mut log = AuditLog::new(2).unwrap();
+    let caller = identity(2, 1);
+    for requested in [Rights::SEND, Rights::CALL, Rights::CLIENT] {
+        log.record(
+            caller,
+            Some(principal(20)),
+            SERVICE,
+            requested,
+            requested,
+            4,
+            8,
+            AuditOutcome::Issued,
+        )
+        .unwrap();
+    }
+    let records = log.iter().collect::<Vec<_>>();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].sequence, 2);
+    assert_eq!(records[1].sequence, 3);
+}
+
+#[test]
+fn policy_wire_requests_round_trip_and_exclude_caller_identity() {
+    use charlotte_authorization::wire::{
+        Request,
+        decode,
+        encode_lookup,
+        encode_publish,
+        encode_set_policy,
+    };
+
+    let mut bytes = [0u8; 512];
+    let len = encode_lookup(SERVICE, Rights::CALL, &mut bytes).unwrap();
+    assert_eq!(
+        decode(&bytes[..len]),
+        Some(Request::Lookup {
+            service: SERVICE,
+            requested: Rights::CALL,
+        })
+    );
+
+    let len = encode_set_policy(SERVICE, 20, Rights::CLIENT, 7, &mut bytes).unwrap();
+    assert_eq!(
+        decode(&bytes[..len]),
+        Some(Request::SetPolicy {
+            service: SERVICE,
+            subject: 20,
+            allowed: Rights::CLIENT,
+            expected_version: 7,
+        })
+    );
+
+    let len = encode_publish(SERVICE, Rights::SEND, &mut bytes).unwrap();
+    assert_eq!(
+        decode(&bytes[..len]),
+        Some(Request::Publish {
+            service: SERVICE,
+            ceiling: Rights::SEND,
+        })
+    );
+    bytes[12] = 1;
+    assert_eq!(decode(&bytes[..len]), None);
 }

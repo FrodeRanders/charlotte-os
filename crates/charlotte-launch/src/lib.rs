@@ -42,6 +42,24 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
     hash
 }
 
+/// Stable policy principal derived from a signed artifact's logical name.
+///
+/// The high tag keeps artifact principals non-zero and disjoint from the
+/// small reserved identities used by kernel control paths. The signer binds
+/// the name into the ELF signature, so a process cannot choose this value at
+/// runtime. SHA-256 makes deliberately finding a collision in the retained
+/// 63-bit namespace substantially harder than the FNV hash used for internal
+/// object-store placement.
+pub fn artifact_principal_id(name: &[u8]) -> u64 {
+    let mut hasher = sha256::Sha256::new();
+    hasher.update(name);
+    let digest = hasher.finalize();
+    let prefix = u64::from_be_bytes([
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+    ]);
+    0x8000_0000_0000_0000 | (prefix & 0x7fff_ffff_ffff_ffff)
+}
+
 /// Tag for the cluster-wide artifact namespace in the object store.
 pub const ARTIFACT_ID_TAG: u64 = 0xfffe_0000_0000_0000;
 

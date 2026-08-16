@@ -346,6 +346,11 @@ pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
 
 impl Thread {
     pub fn new(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Self {
+        let generation = NEXT_THREAD_GENERATION
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+                charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
+            })
+            .unwrap_or_else(|_| panic!("thread generation namespace exhausted"));
         Thread {
             context: Box::new(
                 if asid != KERNEL_ASID {
@@ -357,7 +362,7 @@ impl Thread {
                 },
             ),
             asid,
-            generation: NEXT_THREAD_GENERATION.fetch_add(1, Ordering::Relaxed),
+            generation,
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
             pinned_lp: None,

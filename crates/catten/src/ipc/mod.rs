@@ -117,6 +117,9 @@ impl BitOr for ConnectionRights {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScalarMessage {
     pub sender: AddressSpaceId,
+    pub sender_generation: u64,
+    pub sender_principal: u64,
+    pub sender_roles: u32,
     pub interface: u64,
     pub version: u32,
     pub opcode: u32,
@@ -173,6 +176,9 @@ impl AsIpcCaps {
 #[derive(Debug, Clone)]
 struct QueuedMessage {
     sender: AddressSpaceId,
+    sender_generation: u64,
+    sender_principal: u64,
+    sender_roles: u32,
     opcode: u32,
     arg0: u64,
     /// Internal token identity. The receiver-visible capability is allocated
@@ -1050,6 +1056,21 @@ fn enqueue_message(
     memory: Vec<MemoryObjectCap>,
     connection: Option<CapabilityId>,
 ) -> Result<Delivery, IpcError> {
+    let (sender_generation, sender_principal, sender_roles) =
+        if sender == crate::memory::KERNEL_ASID {
+            (
+                1,
+                1,
+                catten_syscall::domain_roles::POLICY_ADMIN
+                    | catten_syscall::domain_roles::SERVICE_MANAGER,
+            )
+        } else if let Some(authority) = crate::memory::domain_authority(sender) {
+            (authority.address_space.generation() as u64, authority.principal, authority.roles)
+        } else {
+            let generation = crate::memory::current_address_space_handle(sender)
+                .map_or(0, |handle| handle.generation() as u64);
+            (generation, 0, 0)
+        };
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
@@ -1060,6 +1081,9 @@ fn enqueue_message(
     let was_empty = endpoint.queue.is_empty();
     endpoint.queue.push_back(QueuedMessage {
         sender,
+        sender_generation,
+        sender_principal,
+        sender_roles,
         opcode,
         arg0,
         reply,
@@ -1117,6 +1141,9 @@ pub fn receive(
     let first_memory = message.memory.first().copied();
     Ok(ScalarMessage {
         sender: message.sender,
+        sender_generation: message.sender_generation,
+        sender_principal: message.sender_principal,
+        sender_roles: message.sender_roles,
         interface,
         version,
         opcode: message.opcode,
@@ -1354,8 +1381,12 @@ fn complete_reply(
     } else {
         None
     };
-    if let Some(borrow) = borrow {
-        revoke_memory_borrow(borrow).map_err(|_| IpcError::MemoryTransferFailed)?;
+    if borrow.is_some_and(|borrow| revoke_memory_borrow(borrow).is_err()) {
+        if let (Some(source_cap), Some(target_cap)) = (returned_memory, returned_memory_cap) {
+            crate::memory::object::rollback_move_to(caller, target_cap, server, source_cap)
+                .expect("reply rollback must restore the exact server memory capability");
+        }
+        return Err(IpcError::MemoryTransferFailed);
     }
     let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
         ipc.as_caps(caller).insert(
@@ -1750,6 +1781,9 @@ pub fn receive_vec(
     let reply = install_reply_cap(&mut ipc, receiver, message.reply)?;
     let response = ScalarMessage {
         sender: message.sender,
+        sender_generation: message.sender_generation,
+        sender_principal: message.sender_principal,
+        sender_roles: message.sender_roles,
         interface,
         version,
         opcode: message.opcode,

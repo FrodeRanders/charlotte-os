@@ -20,7 +20,7 @@ This is a reviewable correspondence map, not a refinement proof.
 | `ScalarCallCopy` | `ipc::scalar_call_with_memory_copy`, `memory::object::copy_to` | Abstract: contents and allocation failures are omitted. |
 | `ScalarCallBorrowRead` | `ipc::scalar_call_with_memory_borrow_read`, `memory::object::lend_read` | Direct for distinct borrower, shared readers and reply-bound revocation. Rights and mapping checks are omitted. |
 | `ScalarCallBorrowWrite` | `ipc::scalar_call_with_memory_borrow_write`, `memory::object::lend_write` | Direct for distinct borrower, exclusivity and reply-bound revocation. Rights and mapping checks are omitted. |
-| `Receive` | `ipc::receive`, `install_reply_cap` | Direct for authorization, FIFO dequeue and installation of receiver-visible reply authority. Vector attachments are omitted. |
+| `Receive` | `ipc::receive`, `install_reply_cap` | Direct for authorization, FIFO dequeue, kernel-captured sender identity, and installation of receiver-visible reply authority. Vector attachments are refined separately below. |
 | `Reply` | `ipc::reply`, `complete_reply` | Direct: validates and consumes the token, revokes any borrow, records the result and wakes observers. |
 | `ReplyReturnMemory` | `ipc::reply_with_memory_move`, `complete_reply`, `memory::object::move_to` | Abstract: connection return and concrete rollback ordering are omitted. |
 | `CancelPendingCall` | `ipc::close_cap` for `PendingCall`, `cancel_queued_call` | Abstract: closing the cap removes the pending record in Rust; the model retains a completed record for invariant inspection. |
@@ -43,6 +43,23 @@ turns that identity into a capability in the endpoint owner's table. The
 model's `delivered` bit records this linearization point; a live token has a
 receiver-visible capability exactly after delivery. Cancellation and teardown
 invalidate either queued identities or already delivered capabilities.
+
+### IPC attachment transaction refinement
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `BeginVector` / `TransferMove` / `BeginBorrow` | vector parsing plus `memory::object::move_to`, `lend_read`, and `lend_write` | Abstract preparation across the memory-object and unified capability registries before queue visibility. `Items` represents two or more vector memory attachments. |
+| `AttachConnection` | `scalar_call_with_connection` and `scalar_call_with_connection_copy` | Abstract connection transfer from the separate scalar attachment path. The model composes this with vector memory transfer as a stronger cross-registry obligation; it is not claiming one syscall carries both forms. |
+| `Commit` | successful vector enqueue, or scalar connection/copy enqueue, plus pending-call insertion | The queue/pending-call boundary is the transaction's visibility point. Preparation failure cannot leave a partially visible call. |
+| `FailAndRollback` | vector reverse-order rollback, including `memory::object::rollback_move_to`; reply memory rollback in `complete_reply` | Direct for the implemented multi-memory vector rollback and the move-plus-loan reply transaction. Composing a connection with all vector entries is a conservative formal obligation for future generalized attachment transactions. |
+| `Deliver` | `receive_vec` | Abstract delivery of the complete vector and reply authority. Result-page encoding is omitted. |
+| `WaitTimeout` | non-terminal `ipc_reply_wait_timeout` result | Direct: timeout reports that no reply was observed; it neither closes the pending call nor ends its memory loan. |
+| `Reply` / `ObserveReply` | `complete_reply`, then reply wait/poll observation | Direct for terminal loan release followed by userspace observation and close. |
+
+The retained unsafe rollback leaves one target-registry entry and its abstract
+connection attachment after failure. The retained unsafe timeout releases a
+loan while the pending call remains live. Both are required counterexamples in
+the model runner.
 
 ## Endpoint observers
 
@@ -105,10 +122,11 @@ generation returns work rather than a false timeout.
 
 ## Deliberately omitted behavior
 
-The models currently omit vector IPC, connection attachments, multiple memory
-attachments, memory contents, concrete page-table mappings, completion observers,
-detached operations, IPC reply-timeout races, address-space validation failures and
-cross-registry rollback steps.
+The models currently omit memory contents, concrete page-table mappings,
+completion observers, detached operations, address-space validation failures,
+and the byte-level layout of vector/result pages. Vector IPC, connection
+attachments, multiple moved entries, reply-wait timeout, and cross-registry
+rollback are covered by the transaction refinement above.
 
 Those omissions matter when interpreting a result: TLC checks the modeled
 protocol projection only. A future refinement effort should split concrete
@@ -154,7 +172,13 @@ captured before thread publication; `ThreadHandle` retains it; and
 `observe_thread_exit_generation` passes it back to
 `observe_thread_exit_with_generation`. A missing or recycled slot completes
 immediately. `CharlotteThreadJoin_unsafe.cfg` restores TID-only registration
-and must violate `ObserverMatchesCapturedHandle` after slot reuse.
+and must violate `ObserverMatchesCapturedHandle` after slot reuse. Generation
+allocation uses `charlotte_lifecycle::claim_generation` and the scheduler's
+single global atomic `try_update`; it starts at one and reserves `u64::MAX` as
+the exhausted state instead of ever issuing it. The safe model exercises
+`RejectExhaustedSpawn`, while
+`CharlotteThreadJoin_wrap_unsafe.cfg` wraps to generation one and must violate
+`GenerationNeverReused`.
 
 ## Reusable address spaces and interrupt routes
 
@@ -352,24 +376,26 @@ echoed session and pending sequence before consuming the pending call.
 ## Authorization policy and capability issuance
 
 The target-independent state machine is implemented and host-tested in
-`charlotte-authorization`, but production authorization is not yet wired into
-`ns`. The current service still maps names to re-delegable connections and
-optionally compares a service-selected bearer key. Its IPC envelope lacks the
-authenticated address-space generation required to use the engine's stable
-identity boundary safely, and it has no authorization audit records. The
-design contract and staged implementation plan are in
+`charlotte-authorization` and the co-located production path is wired into
+`ns`. The signed loader derives a stable principal from authenticated artifact
+metadata, installs its exact address-space generation and roles in a
+kernel-only table, and IPC enqueue snapshots those values for the explicit
+authenticated receive ABI. The legacy receive syscalls retain their original
+register contract. The name service synchronizes that exact identity into its policy
+store, evaluates default-deny rules, delegates only requested rights, and
+records bounded audit entries. The design contract is in
 [`../architecture/authorization-policy.md`](../architecture/authorization-policy.md).
 
 | TLA+ action | Intended CharlotteOS implementation | Correspondence |
 |---|---|---|
-| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, then generation-fenced `ns`/DNS publication | Direct in the engine for authenticated role, rights ceiling, checked generation, and stale-unpublish rejection. Runtime role provisioning and catalog integration remain unwired. |
-| `SetPolicy` | `PolicyStore::set_policy` | Direct for administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. The administration IPC endpoint and durable/audited storage remain target work. |
-| `IssueTicket` | `PolicyStore::issue_ticket` | Direct for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. Kernel-authenticated `DomainIdentity` delivery is still missing from the runtime adapter. |
+| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. Legacy registration is mirrored into the same binding store for compatibility. Distributed policy replication is not implemented. |
+| `SetPolicy` | `PolicyStore::set_policy`, `ns::OP_SET_POLICY` | Direct for authenticated administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. State and its bounded audit are currently volatile. |
+| `IssueTicket` | `PolicyStore::issue_ticket` | Direct in the engine for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. The co-located runtime path uses `authorize_now` instead of exporting a ticket. |
 | `CancelTicket` | `PolicyStore::cancel_ticket` | Direct for subject-bound removal. Expiry is not implemented. A co-located adapter can keep decisions internal by using `authorize_now`. |
-| `Redeem` | `PolicyStore::redeem_ticket`, followed by attenuated `ipc_reply_connection` | Direct in the engine for single use and subject, policy-version, service-generation, and rights revalidation. Connection delegation exists in `ns`, but the safe adapter joining the two is intentionally not wired. |
+| `Redeem` | `PolicyStore::redeem_ticket`, or co-located `authorize_now` followed by `ipc_reply_connection` | The split-engine path is direct for single use and revalidation. `OP_LOOKUP_AUTHORIZED` performs decision and attenuated delegation serially inside `ns`, records issuance or denial, and retains the caller identity for deferred lookup. |
 | `CloseCapability` | ordinary `ipc_close` or endpoint teardown | Direct for capability lifetime. Policy changes intentionally do not retract an already issued direct connection. |
 
-The five negative actions define concrete regression obligations for a future
+The five negative actions define concrete regression obligations for the
 implementation: ordinary callers cannot mutate rules; a decision cannot be
 redeemed for another principal; policy and service replacement fence stale
 decisions; and minting cannot amplify rights.

@@ -250,6 +250,9 @@ pub fn test_syscall_dispatch() {
     }
     {
         let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        f.regs[9] = 0x9999;
+        f.regs[10] = 0xaaaa;
+        f.regs[11] = 0xbbbb;
         syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
         assert_eq!(f.regs[0], 0, "IPC_RECV should return sent message");
         assert_eq!(f.regs[1], 11);
@@ -258,6 +261,11 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[4], asid as u64);
         assert_eq!(f.regs[5], 0x5445_5354);
         assert_eq!(f.regs[6], 1);
+        assert_eq!(
+            &f.regs[9..=11],
+            &[0x9999, 0xaaaa, 0xbbbb],
+            "legacy IPC receive must preserve its original x0--x8 ABI"
+        );
     }
     let call = {
         let mut f = synthetic_trap_frame_in(asid, 0, connection, 12, 0xbb66);

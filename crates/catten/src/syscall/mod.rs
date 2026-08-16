@@ -117,6 +117,11 @@ pub mod call_no {
     /// Block until endpoint x1 is readable, then receive one message. Returns
     /// the same register shape as IPC_RECV.
     pub const IPC_RECV_BLOCK: u16 = SyscallNumber::IpcRecvBlock as u16;
+    /// Receive with the same x0--x8 payload plus kernel-authenticated sender
+    /// generation, principal, and roles in x9--x11.
+    pub const IPC_RECV_AUTHENTICATED: u16 = SyscallNumber::IpcRecvAuthenticated as u16;
+    /// Blocking form of [`IPC_RECV_AUTHENTICATED`].
+    pub const IPC_RECV_BLOCK_AUTHENTICATED: u16 = SyscallNumber::IpcRecvBlockAuthenticated as u16;
     /// Allocate a memory object owned by the caller. x1=pages. Returns cap in x0.
     pub const MEMORY_ALLOC: u16 = SyscallNumber::MemoryAlloc as u16;
     /// Map memory object x1 at user VA x2. x3=1 writable, 0 read-only.
@@ -223,6 +228,8 @@ pub mod call_no {
     /// cap IDs of delivered memory objects. Returns the same register
     /// shape as IPC_RECV, plus the result page contents.
     pub const IPC_RECV_VEC: u16 = SyscallNumber::IpcRecvVec as u16;
+    /// Vector receive with authenticated sender metadata in x9--x11.
+    pub const IPC_RECV_VEC_AUTHENTICATED: u16 = SyscallNumber::IpcRecvVecAuthenticated as u16;
     /// Block until pending-call x1 has a reply, then return the same register
     /// shape as IPC_REPLY_POLL.
     pub const IPC_REPLY_WAIT: u16 = SyscallNumber::IpcReplyWait as u16;
@@ -256,6 +263,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::DomainAbort => sys_domain_abort(frame),
         SyscallNumber::ObserveThreadExit => sys_observe_thread_exit(frame),
         SyscallNumber::GetTid => sys_get_tid(frame),
+        SyscallNumber::GetDomainIdentity => sys_get_domain_identity(frame),
         SyscallNumber::MailboxSend => sys_mailbox_send(frame),
         SyscallNumber::MailboxRecv => sys_mailbox_recv(frame),
         SyscallNumber::CompletionWaitTimeout => sys_completion_wait_timeout(frame),
@@ -270,12 +278,14 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcScalarSend => sys_ipc_scalar_send(frame),
         SyscallNumber::IpcScalarCall => sys_ipc_scalar_call(frame),
         SyscallNumber::IpcRecv => sys_ipc_recv(frame),
+        SyscallNumber::IpcRecvAuthenticated => sys_ipc_recv_authenticated(frame),
         SyscallNumber::IpcReply => sys_ipc_reply(frame),
         SyscallNumber::IpcReplyPoll => sys_ipc_reply_poll(frame),
         SyscallNumber::IpcReplyWait => sys_ipc_reply_wait(frame),
         SyscallNumber::IpcClose => sys_ipc_close(frame),
         SyscallNumber::IpcReplyConnection => sys_ipc_reply_connection(frame),
         SyscallNumber::IpcRecvBlock => sys_ipc_recv_block(frame),
+        SyscallNumber::IpcRecvBlockAuthenticated => sys_ipc_recv_block_authenticated(frame),
         SyscallNumber::MemoryAlloc => sys_memory_alloc(frame),
         SyscallNumber::MemoryMap => sys_memory_map(frame),
         SyscallNumber::MemoryMapAny => sys_memory_map_any(frame),
@@ -334,6 +344,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcVectorSend => sys_ipc_vector_send(frame),
         SyscallNumber::IpcVectorCall => sys_ipc_vector_call(frame),
         SyscallNumber::IpcRecvVec => sys_ipc_recv_vec(frame),
+        SyscallNumber::IpcRecvVecAuthenticated => sys_ipc_recv_vec_authenticated(frame),
         SyscallNumber::CompletionSubmitDetachedTimer => sys_completion_submit_detached_timer(frame),
     }
 }
@@ -429,6 +440,16 @@ fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
         "address-space-scoped syscalls require a non-kernel caller ASID"
     );
     frame.asid
+}
+
+fn sys_get_domain_identity(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let authority = crate::memory::domain_authority(asid)
+        .expect("running EL0 domain is missing signed authority metadata");
+    frame.regs[0] = authority.address_space.id() as u64;
+    frame.regs[1] = authority.address_space.generation() as u64;
+    frame.regs[2] = authority.principal;
+    frame.regs[3] = authority.roles as u64;
 }
 
 /// Atomically validate and write the four-byte completion smoke-test value to
@@ -1087,10 +1108,21 @@ fn sys_ipc_scalar_call(frame: &mut TrapFrame) {
 fn sys_ipc_recv(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let endpoint = frame.regs[1];
-    recv_into_frame(frame, asid, endpoint);
+    recv_into_frame(frame, asid, endpoint, false);
 }
 
-fn recv_into_frame(frame: &mut TrapFrame, asid: AddressSpaceId, endpoint: u64) {
+fn sys_ipc_recv_authenticated(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    recv_into_frame(frame, asid, endpoint, true);
+}
+
+fn recv_into_frame(
+    frame: &mut TrapFrame,
+    asid: AddressSpaceId,
+    endpoint: u64,
+    authenticated: bool,
+) {
     match ipc::receive(asid, endpoint) {
         Ok(message) => {
             frame.regs[0] = 0;
@@ -1102,10 +1134,20 @@ fn recv_into_frame(frame: &mut TrapFrame, asid: AddressSpaceId, endpoint: u64) {
             frame.regs[6] = message.version as u64;
             frame.regs[7] = message.memory.unwrap_or(0);
             frame.regs[8] = message.connection.unwrap_or(0);
+            if authenticated {
+                frame.regs[9] = message.sender_generation;
+                frame.regs[10] = message.sender_principal;
+                frame.regs[11] = message.sender_roles as u64;
+            }
         }
         Err(error) => {
             frame.regs[0] = ipc_status(error);
-            for reg in &mut frame.regs[1..=8] {
+            let last = if authenticated {
+                11
+            } else {
+                8
+            };
+            for reg in &mut frame.regs[1..=last] {
                 *reg = 0;
             }
         }
@@ -1113,16 +1155,29 @@ fn recv_into_frame(frame: &mut TrapFrame, asid: AddressSpaceId, endpoint: u64) {
 }
 
 fn sys_ipc_recv_block(frame: &mut TrapFrame) {
+    recv_block_into_frame(frame, false);
+}
+
+fn sys_ipc_recv_block_authenticated(frame: &mut TrapFrame) {
+    recv_block_into_frame(frame, true);
+}
+
+fn recv_block_into_frame(frame: &mut TrapFrame, authenticated: bool) {
     let asid = caller_asid(frame);
     let endpoint = frame.regs[1];
     if let Err(error) = ipc::wait_readable(asid, endpoint) {
         frame.regs[0] = ipc_status(error);
-        for reg in &mut frame.regs[1..=8] {
+        let last = if authenticated {
+            11
+        } else {
+            8
+        };
+        for reg in &mut frame.regs[1..=last] {
             *reg = 0;
         }
         return;
     }
-    recv_into_frame(frame, asid, endpoint);
+    recv_into_frame(frame, asid, endpoint, authenticated);
 }
 
 fn sys_ipc_reply(frame: &mut TrapFrame) {
@@ -1326,6 +1381,14 @@ fn sys_ipc_vector_call(frame: &mut TrapFrame) {
 }
 
 fn sys_ipc_recv_vec(frame: &mut TrapFrame) {
+    recv_vec_into_frame(frame, false);
+}
+
+fn sys_ipc_recv_vec_authenticated(frame: &mut TrapFrame) {
+    recv_vec_into_frame(frame, true);
+}
+
+fn recv_vec_into_frame(frame: &mut TrapFrame, authenticated: bool) {
     let asid = caller_asid(frame);
     let endpoint = frame.regs[1];
     let result_page = frame.regs[3];
@@ -1340,9 +1403,22 @@ fn sys_ipc_recv_vec(frame: &mut TrapFrame) {
             frame.regs[6] = msg.version as u64;
             frame.regs[7] = msg.memory.unwrap_or(0);
             frame.regs[8] = msg.connection.unwrap_or(0);
+            if authenticated {
+                frame.regs[9] = msg.sender_generation;
+                frame.regs[10] = msg.sender_principal;
+                frame.regs[11] = msg.sender_roles as u64;
+            }
         }
         Err(error) => {
             frame.regs[0] = error as u64;
+            let last = if authenticated {
+                11
+            } else {
+                8
+            };
+            for reg in &mut frame.regs[1..=last] {
+                *reg = 0;
+            }
         }
     }
 }

@@ -130,11 +130,30 @@ pub mod ns {
     /// [`ERR_NOT_FOUND`] and leaves a replacement untouched.
     pub const OP_UNREGISTER_GENERATION: u32 = 10;
 
+    /// Register a service through the production authorization path. The call
+    /// attaches a re-delegable connection plus a copied
+    /// `authorization::wire::Publish` request. Only a kernel-authenticated
+    /// service-manager principal may publish. Reply = binding generation.
+    pub const OP_REGISTER_AUTHORIZED: u32 = 11;
+    /// Resolve a service through default-deny policy. The copied request is an
+    /// `authorization::wire::Lookup`; the returned connection is attenuated
+    /// to the explicitly requested rights and the decision is audited.
+    pub const OP_LOOKUP_AUTHORIZED: u32 = 12;
+    /// Replace an exact principal/service rule. The copied request is an
+    /// `authorization::wire::SetPolicy`; only a kernel-authenticated policy
+    /// administrator may mutate policy. Reply = new policy version.
+    pub const OP_SET_POLICY: u32 = 13;
+    /// Return a bounded, variable-length snapshot of authorization audit
+    /// records in a moved page. Only policy administrators may inspect it.
+    pub const OP_AUTH_AUDIT: u32 = 14;
+
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
     pub const STATUS_OFFSET_PENDING: u32 = 2;
     /// `"NSST"` LE.
     pub const STATUS_MAGIC: u32 = 0x5453_534e;
+    /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
+    pub const AUDIT_MAGIC: u32 = 0x3141_5541;
 
     /// Read a u64 access key from a memory object, or 0 if none.
     /// Consumes (unmaps and closes) the memory cap on success.

@@ -1,11 +1,12 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty
+This directory contains finite, executable specifications for twenty-one
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
 |---|---|---|
 | Endpoint IPC and memory transfer | `CharlotteIPC.tla` | `CharlotteIPC_small.cfg` |
+| IPC attachment rollback and reply waits | `CharlotteIpcTransaction.tla` | `CharlotteIpcTransaction_small.cfg` |
 | Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Timed-wait wake races | `CharlotteTimedWait.tla` | `CharlotteTimedWait_small.cfg` |
@@ -46,8 +47,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all twenty complete fast configurations plus expected-failure
-  endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, domain-abort, address-space,
+- runs all twenty-one complete fast configurations plus expected-failure
+  IPC-transaction, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, domain-abort, address-space,
   hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
   Raft-join, and reliable-message regression configurations;
 - enables TLC action coverage;
@@ -63,6 +64,10 @@ The individual commands are:
 ```sh
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteIPC -config CharlotteIPC_small.cfg -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteIpcTransaction -config CharlotteIpcTransaction_small.cfg \
+  -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteEndpointObservers -config CharlotteEndpointObservers_small.cfg \
@@ -201,6 +206,23 @@ server's capability table. Every reply action automatically revokes an
 attached borrow, matching `complete_reply`.
 Cancellation, endpoint close, and domain teardown also revoke outstanding
 borrows as part of the same abstract transition that completes the call.
+
+## IPC attachment transaction model
+
+`CharlotteIpcTransaction.tla` refines the attachment work deliberately
+collapsed in the base IPC model. Concrete vector calls carry multiple memory
+entries, while scalar calls can carry a connection and copied memory; the
+model composes those paths into a stronger cross-registry rollback obligation
+without claiming that one current syscall carries every attachment form. It
+requires a failed preparation to roll back every moved entry, loan, and
+attached connection. A committed call retains its loan when a reply wait times
+out because timeout is only a non-terminal observation; reply completion
+releases the loan.
+
+The rollback negative configuration leaves one moved entry and the attached
+connection in their target registries and must violate `RollbackRestoresAll`.
+The timeout negative configuration releases the loan while the call remains
+pending and must violate `TimeoutRetainsLoan`.
 
 ### IPC invariants
 
@@ -429,9 +451,11 @@ invariant. The complete fast configuration explores 144,598 generated states,
 54,705 distinct states, and depth 12 with TLC 2.19.
 
 The design and implementation sequence are described in
-[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md). This model is
-forward-looking: the existing keyed name lookup is only a reusable bearer-key
-gate and does not conform to the target principal-based policy contract.
+[`../architecture/authorization-policy.md`](../architecture/authorization-policy.md). The local
+name service now implements the co-located decision-and-delegation path using
+kernel-authenticated domain generations and principals. The older keyed name
+lookup remains a quarantined compatibility protocol and does not conform to
+the principal-based contract.
 
 ## DMA and SMMUv3 model
 

@@ -54,6 +54,20 @@ pub enum TimedWaitOutcome {
     Timeout,
 }
 
+/// Claim a non-zero monotonically increasing generation from a counter that
+/// stores the next value to allocate.
+///
+/// Returning `None` at zero or `u64::MAX` makes exhaustion fail closed: zero
+/// remains available as an ABI sentinel and no previously issued generation
+/// can be reused after integer wraparound.
+pub const fn claim_generation(next: u64) -> Option<(u64, u64)> {
+    if next == 0 || next == u64::MAX {
+        None
+    } else {
+        Some((next, next + 1))
+    }
+}
+
 /// Classify a timed wait after wakeup. Any observed generation change wins
 /// over the watchdog because publication happened after the waiter captured
 /// `registered_generation`.
@@ -76,9 +90,18 @@ mod tests {
         JoinDisposition,
         ThreadIdentity,
         TimedWaitOutcome,
+        claim_generation,
         classify_join,
         classify_timed_wait,
     };
+
+    #[test]
+    fn generation_claims_fail_closed_before_wrap_or_zero() {
+        assert_eq!(claim_generation(0), None);
+        assert_eq!(claim_generation(1), Some((1, 2)));
+        assert_eq!(claim_generation(u64::MAX - 1), Some((u64::MAX - 1, u64::MAX)));
+        assert_eq!(claim_generation(u64::MAX), None);
+    }
 
     #[test]
     fn join_exhaustively_rejects_other_slots_and_generations() {

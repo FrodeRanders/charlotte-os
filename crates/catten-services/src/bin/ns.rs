@@ -9,11 +9,9 @@
 //! OP_REGISTER, all waiting callers receive their connections. No polling,
 //! no retry loops — the caller's future resolves when the service appears.
 //!
-//! `OP_REGISTER_KEYED`/`OP_LOOKUP_KEYED` provide only an interim reusable
-//! bearer-key gate. They are not identity-based authorization policy: the
-//! target-independent engine lives in `charlotte-authorization`, and the
-//! remaining authenticated-identity/runtime integration is documented in
-//! `docs/architecture/authorization-policy.md`.
+//! `OP_REGISTER_KEYED`/`OP_LOOKUP_KEYED` remain a quarantined compatibility
+//! gate. Production callers use the explicit-rights authorization operations,
+//! whose subject identity and roles come only from the kernel IPC envelope.
 #![no_std]
 #![no_main]
 
@@ -30,14 +28,17 @@ use catten_rt::{
 };
 use catten_services::{
     MAX_NAME_LEN,
-    broker::EventBroker,
+    broker::{
+        Catalog,
+        EventBroker,
+    },
     ns,
 };
 use catten_syscall::{
     IpcMessage,
     IpcRights,
     ipc_close,
-    ipc_recv_block,
+    ipc_recv_block_authenticated,
     ipc_reply,
     ipc_reply_connection,
     ipc_reply_move,
@@ -47,6 +48,17 @@ use catten_syscall::{
     memory_map_any,
     memory_unmap,
     thread_exit,
+};
+use charlotte_authorization::{
+    AuditLog,
+    AuditOutcome,
+    AuthorizationError,
+    AuthorizationRights,
+    DomainIdentity,
+    PolicyStore,
+    PrincipalId,
+    Roles,
+    wire,
 };
 
 const STATUS_SNAPSHOT_MAX: usize = 4096;
@@ -58,6 +70,19 @@ struct Registration {
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
+
+#[derive(Debug)]
+enum PendingLookup {
+    Legacy {
+        reply: u64,
+        access_key: u64,
+    },
+    Authorized {
+        reply: u64,
+        caller: DomainIdentity,
+        requested: AuthorizationRights,
+    },
+}
 
 /// The registry viewed as an immediate catalog (the broker's lookups).
 struct RegistryCatalog<'a>(&'a Registry);
@@ -82,7 +107,7 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
 /// establish the gate after the lookup has blocked. The waitlist is the
 /// service's *event-broker* face; the registry is its *catalog* face (see
 /// `catten_services::broker`).
-type Waitlist = catten_services::broker::KeyedWaitlist<(u64, u64)>;
+type Waitlist = catten_services::broker::KeyedWaitlist<PendingLookup>;
 
 fn scalar_key(packed: u64) -> Vec<u8> {
     let bytes = packed.to_le_bytes();
@@ -121,6 +146,52 @@ fn read_named_key(message: &IpcMessage) -> Option<Vec<u8>> {
     Some(key)
 }
 
+fn read_authorization_request(message: &IpcMessage) -> Option<Vec<u8>> {
+    if message.memory == 0 {
+        return None;
+    }
+    let len = match usize::try_from(message.arg0) {
+        Ok(len) => len,
+        Err(_) => {
+            memory_close(message.memory);
+            return None;
+        }
+    };
+    if !(wire::HEADER_LEN..=wire::MAX_REQUEST_LEN).contains(&len) {
+        memory_close(message.memory);
+        return None;
+    }
+    let (status, base) = memory_map_any(message.memory, false);
+    if status != 0 {
+        memory_close(message.memory);
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(len);
+    unsafe {
+        let source = base as *const u8;
+        for offset in 0..len {
+            bytes.push(core::ptr::read_volatile(source.add(offset)));
+        }
+    }
+    memory_unmap(message.memory);
+    memory_close(message.memory);
+    Some(bytes)
+}
+
+fn synchronize_sender(
+    policy: &mut PolicyStore,
+    message: &IpcMessage,
+) -> Result<DomainIdentity, AuthorizationError> {
+    let identity = DomainIdentity::new(message.sender, message.sender_generation)
+        .ok_or(AuthorizationError::UnknownIdentity)?;
+    let principal =
+        PrincipalId::new(message.sender_principal).ok_or(AuthorizationError::UnknownIdentity)?;
+    let roles =
+        Roles::from_bits(message.sender_roles).ok_or(AuthorizationError::UnknownIdentity)?;
+    policy.provision_identity_from_supervisor(identity, principal, roles)?;
+    Ok(identity)
+}
+
 fn read_generation(message: &IpcMessage) -> Option<u64> {
     if message.memory == 0 {
         return None;
@@ -153,12 +224,201 @@ fn reply_connection_or_error(reply: u64, connection: u64, generation: i64) {
     }
 }
 
+fn record_denial(
+    policy: &PolicyStore,
+    audit: &mut AuditLog,
+    caller: DomainIdentity,
+    service: &[u8],
+    requested: AuthorizationRights,
+    error: AuthorizationError,
+) {
+    let _ = audit.record(
+        caller,
+        policy.principal_for(caller),
+        service,
+        requested,
+        AuthorizationRights::NONE,
+        policy.service(service).map_or(0, |binding| binding.generation),
+        policy
+            .principal_for(caller)
+            .and_then(|principal| policy.policy(principal, service))
+            .map_or(0, |rule| rule.version),
+        AuditOutcome::Denied(error),
+    );
+}
+
+fn authorize_and_reply(
+    policy: &mut PolicyStore,
+    audit: &mut AuditLog,
+    registry: &Registry,
+    service: &[u8],
+    caller: DomainIdentity,
+    requested: AuthorizationRights,
+    reply: u64,
+) {
+    if !audit.can_record() {
+        unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        return;
+    }
+    let principal = policy.principal_for(caller);
+    let grant = match policy.authorize_now(caller, service, requested) {
+        Ok(grant) => grant,
+        Err(error) => {
+            record_denial(policy, audit, caller, service, requested, error);
+            unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+            return;
+        }
+    };
+    let Some(registration) = registry.get(service) else {
+        record_denial(
+            policy,
+            audit,
+            caller,
+            service,
+            requested,
+            AuthorizationError::ServiceMissing,
+        );
+        unsafe { ipc_reply(reply, ns::ERR_NOT_FOUND) };
+        return;
+    };
+    if registration.connection == 0
+        || u64::try_from(registration.generation) != Ok(grant.service_generation)
+    {
+        record_denial(
+            policy,
+            audit,
+            caller,
+            service,
+            requested,
+            AuthorizationError::StaleServiceGeneration,
+        );
+        unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        return;
+    }
+
+    let status = unsafe {
+        ipc_reply_connection(
+            reply,
+            registration.connection,
+            IpcRights::from_bits(grant.rights.bits()),
+            registration.generation,
+        )
+    };
+    let outcome = if status == 0 {
+        AuditOutcome::Issued
+    } else {
+        unsafe { ipc_reply(reply, ns::ERR_INVALID) };
+        AuditOutcome::DelegationFailed
+    };
+    let _ = audit.record(
+        caller,
+        principal,
+        service,
+        requested,
+        if status == 0 {
+            grant.rights
+        } else {
+            AuthorizationRights::NONE
+        },
+        grant.service_generation,
+        grant.policy_version,
+        outcome,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn authorized_lookup_or_defer(
+    policy: &mut PolicyStore,
+    audit: &mut AuditLog,
+    registry: &Registry,
+    waitlist: &mut Waitlist,
+    service: &[u8],
+    caller: DomainIdentity,
+    requested: AuthorizationRights,
+    reply: u64,
+) {
+    if RegistryCatalog(registry).resolve(service).is_some() {
+        authorize_and_reply(policy, audit, registry, service, caller, requested, reply);
+    } else {
+        let _ = waitlist.park(
+            service,
+            PendingLookup::Authorized {
+                reply,
+                caller,
+                requested,
+            },
+            &RegistryCatalog(registry),
+        );
+    }
+}
+
+fn write_audit_snapshot(audit: &AuditLog, base: usize) -> usize {
+    const HEADER_LEN: usize = 8;
+    const RECORD_HEADER_LEN: usize = 64;
+    unsafe {
+        core::ptr::write_unaligned(base as *mut u32, ns::AUDIT_MAGIC);
+        core::ptr::write_unaligned((base + 4) as *mut u32, 0);
+    }
+    let mut offset = HEADER_LEN;
+    let mut count = 0u32;
+    for record in audit.iter() {
+        let Some(end) = offset
+            .checked_add(RECORD_HEADER_LEN)
+            .and_then(|header_end| header_end.checked_add(record.service.len()))
+        else {
+            break;
+        };
+        if end > STATUS_SNAPSHOT_MAX || record.service.len() > u16::MAX as usize {
+            break;
+        }
+        let principal = record.principal.map_or(0, PrincipalId::get);
+        let outcome = match record.outcome {
+            AuditOutcome::Issued => 0i32,
+            AuditOutcome::Denied(_) => -1,
+            AuditOutcome::DelegationFailed => -2,
+        };
+        unsafe {
+            core::ptr::write_unaligned((base + offset) as *mut u64, record.sequence);
+            core::ptr::write_unaligned((base + offset + 8) as *mut u64, record.caller.asid());
+            core::ptr::write_unaligned(
+                (base + offset + 16) as *mut u64,
+                record.caller.generation(),
+            );
+            core::ptr::write_unaligned((base + offset + 24) as *mut u64, principal);
+            core::ptr::write_unaligned((base + offset + 32) as *mut u64, record.service_generation);
+            core::ptr::write_unaligned((base + offset + 40) as *mut u64, record.policy_version);
+            core::ptr::write_unaligned((base + offset + 48) as *mut u32, record.requested.bits());
+            core::ptr::write_unaligned((base + offset + 52) as *mut u32, record.granted.bits());
+            core::ptr::write_unaligned((base + offset + 56) as *mut i32, outcome);
+            core::ptr::write_unaligned(
+                (base + offset + 60) as *mut u16,
+                record.service.len() as u16,
+            );
+            core::ptr::write_unaligned((base + offset + 62) as *mut u16, 0);
+            core::ptr::copy_nonoverlapping(
+                record.service.as_ptr(),
+                (base + offset + RECORD_HEADER_LEN) as *mut u8,
+                record.service.len(),
+            );
+        }
+        offset = end;
+        count += 1;
+    }
+    unsafe { core::ptr::write_unaligned((base + 4) as *mut u32, count) };
+    offset
+}
+
+#[allow(clippy::too_many_arguments)]
 fn register(
     registry: &mut Registry,
     waitlist: &mut Waitlist,
+    policy: &mut PolicyStore,
+    audit: &mut AuditLog,
+    publisher: DomainIdentity,
     key: Vec<u8>,
     connection: u64,
     access_key: u64,
+    ceiling: AuthorizationRights,
 ) -> i64 {
     let generation = match registry.get(&key) {
         Some(previous) => previous.generation.checked_add(1),
@@ -173,6 +433,19 @@ fn register(
             }
         }
         return ns::ERR_INVALID;
+    };
+    let binding = match policy.publish_service(publisher, &key, ceiling) {
+        Ok(binding)
+            if i64::try_from(binding.generation) == Ok(generation) && binding.generation != 0 =>
+        {
+            binding
+        }
+        _ => {
+            if connection != 0 {
+                ipc_close(connection);
+            }
+            return ns::ERR_ACCESS_DENIED;
+        }
     };
     // Publishing the new entry is the replacement linearization point. Retire
     // the old connection only after no subsequent lookup can observe it.
@@ -193,14 +466,26 @@ fn register(
     }
 
     // Wake all callers only after the new generation is authoritative.
-    for (reply, caller_key) in waitlist.fire(&key) {
-        if access_key != 0 && access_key != caller_key {
-            unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
-        } else {
-            reply_connection_or_error(reply, connection, generation);
+    for waiter in waitlist.fire(&key) {
+        match waiter {
+            PendingLookup::Legacy {
+                reply,
+                access_key: caller_key,
+            } => {
+                if access_key != 0 && access_key != caller_key {
+                    unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+                } else {
+                    reply_connection_or_error(reply, connection, generation);
+                }
+            }
+            PendingLookup::Authorized {
+                reply,
+                caller,
+                requested,
+            } => authorize_and_reply(policy, audit, registry, &key, caller, requested, reply),
         }
     }
-    generation
+    binding.generation as i64
 }
 
 fn lookup_or_defer(
@@ -221,7 +506,14 @@ fn lookup_or_defer(
         _ => {
             // Defer: the event broker retains the reply token until the
             // service registers (fulfillment by the publishing side).
-            let _ = waitlist.park(key, (reply, caller_key), &RegistryCatalog(registry));
+            let _ = waitlist.park(
+                key,
+                PendingLookup::Legacy {
+                    reply,
+                    access_key: caller_key,
+                },
+                &RegistryCatalog(registry),
+            );
         }
     }
 }
@@ -250,10 +542,24 @@ fn main(ctx: Context) -> ! {
 
     let mut registry: Registry = BTreeMap::new();
     let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
+    let own = catten_syscall::get_domain_identity();
+    let own_identity = DomainIdentity::new(own.asid, own.generation)
+        .expect("name service received an invalid kernel identity");
+    let own_principal =
+        PrincipalId::new(own.principal).expect("name service received an invalid kernel principal");
+    let mut policy = PolicyStore::new();
+    policy
+        .provision_identity_from_supervisor(
+            own_identity,
+            own_principal,
+            Roles::POLICY_ADMIN | Roles::SERVICE_MANAGER,
+        )
+        .expect("name-service policy bootstrap failed");
+    let mut audit = AuditLog::new(256).expect("invalid authorization audit capacity");
     let mut handled: u32 = 0;
 
     loop {
-        let message = unsafe { ipc_recv_block(endpoint) };
+        let message = ipc_recv_block_authenticated(endpoint);
         if message.status == ipc_status::ENDPOINT_CLOSED {
             unsafe { thread_exit() };
         }
@@ -273,9 +579,13 @@ fn main(ctx: Context) -> ! {
                     register(
                         &mut registry,
                         &mut waitlist,
+                        &mut policy,
+                        &mut audit,
+                        own_identity,
                         scalar_key(message.arg0),
                         message.connection,
                         0,
+                        AuthorizationRights::CLIENT,
                     )
                 };
                 if message.reply != 0 {
@@ -292,9 +602,13 @@ fn main(ctx: Context) -> ! {
                     register(
                         &mut registry,
                         &mut waitlist,
+                        &mut policy,
+                        &mut audit,
+                        own_identity,
                         scalar_key(message.arg0),
                         message.connection,
                         access_key,
+                        AuthorizationRights::CLIENT,
                     )
                 };
                 if message.reply != 0 {
@@ -306,9 +620,17 @@ fn main(ctx: Context) -> ! {
             ns::OP_REGISTER_NAMED => {
                 let key = read_named_key(&message);
                 let result = match (key, message.connection) {
-                    (Some(key), connection) if connection != 0 => {
-                        register(&mut registry, &mut waitlist, key, connection, 0)
-                    }
+                    (Some(key), connection) if connection != 0 => register(
+                        &mut registry,
+                        &mut waitlist,
+                        &mut policy,
+                        &mut audit,
+                        own_identity,
+                        key,
+                        connection,
+                        0,
+                        AuthorizationRights::CLIENT,
+                    ),
                     (_, connection) => {
                         if connection != 0 {
                             unsafe {
@@ -338,13 +660,20 @@ fn main(ctx: Context) -> ! {
             }
             ns::OP_UNREGISTER => {
                 let key = scalar_key(message.arg0);
-                let result = match registry.get_mut(&key) {
-                    Some(registration) if registration.connection != 0 => {
-                        unsafe {
-                            ipc_close(registration.connection);
-                        }
+                let current = registry
+                    .get(&key)
+                    .filter(|registration| registration.connection != 0)
+                    .map(|registration| registration.generation);
+                let result = match current {
+                    Some(generation)
+                        if policy
+                            .unpublish_service(own_identity, &key, generation as u64)
+                            .is_ok() =>
+                    {
+                        let registration = registry.get_mut(&key).expect("registration vanished");
+                        ipc_close(registration.connection);
                         registration.connection = 0;
-                        registration.generation
+                        generation
                     }
                     _ => ns::ERR_NOT_FOUND,
                 };
@@ -357,16 +686,19 @@ fn main(ctx: Context) -> ! {
             ns::OP_UNREGISTER_GENERATION => {
                 let key = scalar_key(message.arg0);
                 let expected_generation = read_generation(&message);
-                let result = match (registry.get_mut(&key), expected_generation) {
-                    (Some(registration), Some(expected))
-                        if registration.connection != 0
-                            && u64::try_from(registration.generation) == Ok(expected) =>
+                let current = registry
+                    .get(&key)
+                    .filter(|registration| registration.connection != 0)
+                    .map(|registration| registration.generation);
+                let result = match (current, expected_generation) {
+                    (Some(generation), Some(expected))
+                        if u64::try_from(generation) == Ok(expected)
+                            && policy.unpublish_service(own_identity, &key, expected).is_ok() =>
                     {
-                        unsafe {
-                            ipc_close(registration.connection);
-                        }
+                        let registration = registry.get_mut(&key).expect("registration vanished");
+                        ipc_close(registration.connection);
                         registration.connection = 0;
-                        registration.generation
+                        generation
                     }
                     _ => ns::ERR_NOT_FOUND,
                 };
@@ -404,6 +736,137 @@ fn main(ctx: Context) -> ! {
                     None => unsafe {
                         ipc_reply(message.reply, ns::ERR_INVALID);
                     },
+                }
+            }
+            ns::OP_REGISTER_AUTHORIZED => {
+                let request = read_authorization_request(&message);
+                let actor = synchronize_sender(&mut policy, &message);
+                let result = match (request.as_deref().and_then(wire::decode), actor) {
+                    (
+                        Some(wire::Request::Publish {
+                            service,
+                            ceiling,
+                        }),
+                        Ok(actor),
+                    ) if message.connection != 0 => register(
+                        &mut registry,
+                        &mut waitlist,
+                        &mut policy,
+                        &mut audit,
+                        actor,
+                        service.to_vec(),
+                        message.connection,
+                        0,
+                        ceiling,
+                    ),
+                    _ => {
+                        if message.connection != 0 {
+                            ipc_close(message.connection);
+                        }
+                        ns::ERR_ACCESS_DENIED
+                    }
+                };
+                if message.reply != 0 {
+                    unsafe { ipc_reply(message.reply, result) };
+                }
+            }
+            ns::OP_LOOKUP_AUTHORIZED => {
+                let request = read_authorization_request(&message);
+                if message.connection != 0 {
+                    ipc_close(message.connection);
+                }
+                let caller = synchronize_sender(&mut policy, &message);
+                if message.reply == 0 {
+                    continue;
+                }
+                match (request.as_deref().and_then(wire::decode), caller) {
+                    (
+                        Some(wire::Request::Lookup {
+                            service,
+                            requested,
+                        }),
+                        Ok(caller),
+                    ) => authorized_lookup_or_defer(
+                        &mut policy,
+                        &mut audit,
+                        &registry,
+                        &mut waitlist,
+                        service,
+                        caller,
+                        requested,
+                        message.reply,
+                    ),
+                    _ => unsafe {
+                        ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
+                    },
+                }
+            }
+            ns::OP_SET_POLICY => {
+                let request = read_authorization_request(&message);
+                if message.connection != 0 {
+                    ipc_close(message.connection);
+                }
+                let actor = synchronize_sender(&mut policy, &message);
+                let result = match (request.as_deref().and_then(wire::decode), actor) {
+                    (
+                        Some(wire::Request::SetPolicy {
+                            service,
+                            subject,
+                            allowed,
+                            expected_version,
+                        }),
+                        Ok(actor),
+                    ) => PrincipalId::new(subject)
+                        .ok_or(AuthorizationError::UnknownIdentity)
+                        .and_then(|subject| {
+                            policy.set_policy(actor, subject, service, allowed, expected_version)
+                        })
+                        .and_then(|rule| {
+                            i64::try_from(rule.version)
+                                .map_err(|_| AuthorizationError::PolicyVersionExhausted)
+                        })
+                        .unwrap_or(ns::ERR_ACCESS_DENIED),
+                    _ => ns::ERR_ACCESS_DENIED,
+                };
+                if message.reply != 0 {
+                    unsafe { ipc_reply(message.reply, result) };
+                }
+            }
+            ns::OP_AUTH_AUDIT => {
+                if message.memory != 0 {
+                    memory_close(message.memory);
+                }
+                if message.connection != 0 {
+                    ipc_close(message.connection);
+                }
+                let actor = synchronize_sender(&mut policy, &message);
+                let permitted = actor
+                    .ok()
+                    .and_then(|actor| policy.roles_for(actor))
+                    .is_some_and(|roles| roles.contains(Roles::POLICY_ADMIN));
+                if message.reply == 0 {
+                    continue;
+                }
+                if !permitted {
+                    unsafe { ipc_reply(message.reply, ns::ERR_ACCESS_DENIED) };
+                    continue;
+                }
+                let cap = memory_alloc(1);
+                if cap == 0 {
+                    unsafe { ipc_reply(message.reply, ns::ERR_INVALID) };
+                    continue;
+                }
+                let (status, base) = memory_map_any(cap, true);
+                if status != 0 {
+                    memory_close(cap);
+                    unsafe { ipc_reply(message.reply, ns::ERR_INVALID) };
+                    continue;
+                }
+                let length = write_audit_snapshot(&audit, base);
+                memory_unmap(cap);
+                if ipc_reply_move(message.reply, cap, length as i64) != 0 {
+                    memory_close(cap);
+                    ipc_reply(message.reply, ns::ERR_INVALID);
                 }
             }
             ns::OP_STATUS => {

@@ -222,6 +222,24 @@ at startup. There is no ambient authority, no global filesystem, no
 
 Syscalls derive the caller's address space from trusted thread and trap context.
 Userspace cannot select another domain's address space or capability table.
+The signed loader also installs a stable artifact principal, exact address-space
+generation, and deployment roles in a kernel-only table. IPC enqueue snapshots
+that authentication data; the explicit authenticated receive ABI returns it
+alongside the numeric sender ASID, so a delayed message cannot inherit the
+identity of a later occupant of the same slot. The legacy nine-register receive
+syscalls remain unchanged and omit this extra envelope.
+
+Security-sensitive discovery uses the name service's
+\texttt{OP\_LOOKUP\_AUTHORIZED} protocol. The request names a service and an
+explicit \texttt{SEND}/\texttt{CALL} rights set, but contains no caller identity.
+The co-located policy engine defaults to deny, evaluates the kernel-authenticated
+principal and exact generation, and delegates only an attenuated connection.
+\texttt{OP\_SET\_POLICY} and \texttt{OP\_REGISTER\_AUTHORIZED} separately require
+administrator and service-manager roles. Issuance, denial, and delegation
+failure enter a bounded administrator-readable audit stream. The legacy public
+and bearer-key name-service operations remain compatibility paths, not a
+principal authorization boundary; policy/audit persistence and retroactive
+revocation of already-issued direct connections are not currently promised.
 
 \subsection{Backpressure is normal}
 

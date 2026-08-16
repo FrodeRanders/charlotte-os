@@ -432,7 +432,20 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
     verify_image_signature(image)
         .map_err(|_| AddressSpaceRegistrationError::SignatureVerificationFailed)?;
+    let metadata = charlotte_launch::signature_note::artifact_metadata(image)
+        .ok_or(AddressSpaceRegistrationError::SignatureVerificationFailed)?;
     let address_space = try_create_user_address_space_handle()?;
+    let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
+    {
+        catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
+    } else {
+        0
+    };
+    crate::memory::register_domain_authority(
+        address_space,
+        charlotte_launch::artifact_principal_id(metadata.name()),
+        roles,
+    );
     let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);
 

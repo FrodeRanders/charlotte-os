@@ -598,6 +598,14 @@ entry path. An unknown numeric syscall still terminates at the kernel boundary;
 ordinary callers use the shared enumeration and therefore cannot name an
 unimplemented syscall through the typed API.
 
+The original IPC receive operations retain their x0--x8 result contract.
+Authorization-aware servers opt into separate authenticated receive operations,
+which return the same message plus sender address-space generation, stable
+signed-artifact principal, and role bits in x9--x11. Keeping this an explicit
+ABI avoids silently clobbering scratch registers in existing hand-written or
+alternate-language runtimes. The kernel snapshots the identity at enqueue,
+so a delayed message cannot resolve through a recycled numeric ASID.
+
 **Update (branch `shard-local-kernel`):** the first real-EL0 user thread now
 exists as a self-test (`crates/catten/src/self_test/el0.rs`). It creates a user
 address space, maps a user-code page at `0x0001_0000` with `AP_EL0` access,

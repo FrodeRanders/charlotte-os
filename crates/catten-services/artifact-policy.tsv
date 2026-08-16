@@ -8,7 +8,7 @@ echo               service     1       1        0x0   -
 client             service     1       1        0x0   -
 uart               bootstrap   1       1        0x0   -
 cclient            service     1       1        0x0   -
-servicemgr         service     1       1        0x0   -
+servicemgr         admin       1       1        0x0   -
 sitas-user         service     1       1        0x0   -
 raft               service     1       1        0x0   -
 nvme               bootstrap   1       1        0x0   -

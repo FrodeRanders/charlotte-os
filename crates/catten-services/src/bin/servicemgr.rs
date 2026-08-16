@@ -14,6 +14,10 @@ use catten_rt::{
     config,
 };
 use catten_services::{
+    authorization::{
+        AuthorizationRights,
+        wire,
+    },
     echo,
     ns,
     objstore,
@@ -30,7 +34,12 @@ use catten_syscall::{
     ipc_reply_wait_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
+    ipc_scalar_call_copy,
     ipc_status,
+    memory_alloc,
+    memory_close,
+    memory_map_any,
+    memory_unmap,
     spawn_upgrade,
     thread_exit,
 };
@@ -80,6 +89,66 @@ fn lookup(ns_conn: u64, target: u64) -> Option<(u64, u64)> {
     }
 }
 
+fn policy_call(ns_conn: u64, opcode: u32, request: &[u8]) -> Option<(i64, u64)> {
+    let memory = memory_alloc(1);
+    if memory == 0 {
+        return None;
+    }
+    let (status, base) = memory_map_any(memory, true);
+    if status != 0 {
+        memory_close(memory);
+        return None;
+    }
+    unsafe {
+        core::ptr::copy_nonoverlapping(request.as_ptr(), base as *mut u8, request.len());
+    }
+    memory_unmap(memory);
+    let call = ipc_scalar_call_copy(ns_conn, opcode, request.len() as u64, memory);
+    memory_close(memory);
+    if call == 0 {
+        return None;
+    }
+    let (status, result, connection) = ipc_reply_wait(call);
+    ipc_close(call);
+    (status == 0).then_some((result as i64, connection))
+}
+
+fn verify_authorized_lookup(ns_conn: u64) -> bool {
+    let identity = catten_syscall::get_domain_identity();
+    if identity.principal == 0 || identity.roles & catten_syscall::domain_roles::POLICY_ADMIN == 0 {
+        return false;
+    }
+    let mut request = [0u8; wire::MAX_REQUEST_LEN];
+    let Some(length) = wire::encode_set_policy(
+        b"echo",
+        identity.principal,
+        AuthorizationRights::CALL,
+        0,
+        &mut request,
+    ) else {
+        return false;
+    };
+    if let Some((_version, returned)) = policy_call(ns_conn, ns::OP_SET_POLICY, &request[..length])
+        && returned != 0
+    {
+        ipc_close(returned);
+    }
+
+    let Some(length) = wire::encode_lookup(b"echo", AuthorizationRights::CALL, &mut request) else {
+        return false;
+    };
+    let Some((generation, connection)) =
+        policy_call(ns_conn, ns::OP_LOOKUP_AUTHORIZED, &request[..length])
+    else {
+        return false;
+    };
+    if generation < 1 || connection == 0 {
+        return false;
+    }
+    ipc_close(connection);
+    true
+}
+
 fn main(ctx: Context) -> ! {
     config::write::<u32>(STAGE_OFFSET, 1);
     let ns_connection = match ctx.bootstrap_cap() {
@@ -104,6 +173,11 @@ fn main(ctx: Context) -> ! {
     }
     let r = unsafe { spin_call(reg, "register") };
     if r.0 == 0 {
+        unsafe { thread_exit() };
+    }
+
+    if !verify_authorized_lookup(ns_connection) {
+        config::write::<u32>(ERROR_OFFSET, 8);
         unsafe { thread_exit() };
     }
 

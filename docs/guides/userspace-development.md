@@ -91,6 +91,31 @@ completion cancellation, and IPC submission boundaries. The shared
 `charlotte-lifecycle` crate exhaustively checks the generation decisions used
 by both thread joins and timed completion waits.
 
+## Authenticated service lookup
+
+Security-sensitive service discovery uses the name service's authorized
+protocol, not `OP_LOOKUP`, `OP_LOOKUP_KEYED`, or a caller-provided identity.
+The explicit authenticated receive syscalls supply the sender's exact address-
+space generation, stable signed-artifact principal, and deployment roles while
+leaving the legacy nine-register receive ABI unchanged.
+Callers encode only the service name and explicit requested rights with
+`charlotte_authorization::wire::encode_lookup`, copy that request into
+`OP_LOOKUP_AUTHORIZED`, and receive a connection attenuated to the policy
+decision. Default is deny.
+
+Administration artifacts may set an exact principal/service rule through
+`OP_SET_POLICY`; service-manager artifacts may publish through
+`OP_REGISTER_AUTHORIZED`. Both operations are authorized from the kernel IPC
+envelope. `get_domain_identity()` exposes a workload's own assigned identity
+for administration tooling, but placing another identity in request memory
+cannot impersonate it. Authorized lookup outcomes are retained in the bounded,
+administrator-readable `OP_AUTH_AUDIT` stream.
+
+The older public and bearer-key opcodes remain compatibility paths and do not
+provide principal-based authorization. Policy and audit storage are currently
+node-local and volatile, and policy updates provide prospective—not selective
+retroactive—revocation of connections already issued.
+
 ## Building bundled examples
 
 ```sh

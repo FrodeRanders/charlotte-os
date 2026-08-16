@@ -91,6 +91,15 @@ run_model CharlotteIPC CharlotteIPC_small.cfg \
     MemoryCreate ScalarCallMove ScalarCallBorrowRead ScalarCallBorrowWrite \
     ScalarCallCopy Receive ReplyReturnMemory EndpointClose \
     DomainTeardown
+run_model CharlotteIpcTransaction CharlotteIpcTransaction_small.cfg \
+    BeginVector TransferMove BeginBorrow AttachConnection Commit \
+    FailAndRollback Deliver WaitTimeout Reply ObserveReply
+run_expected_violation CharlotteIpcTransaction \
+    CharlotteIpcTransaction_rollback_unsafe.cfg \
+    RollbackRestoresAll UnsafeRollback
+run_expected_violation CharlotteIpcTransaction \
+    CharlotteIpcTransaction_timeout_unsafe.cfg \
+    TimeoutRetainsLoan UnsafeTimeoutRelease
 run_model CharlotteEndpointObservers CharlotteEndpointObservers_small.cfg \
     ArmReadiness ArmCloseWatch Send Receive Close ObserveClose
 run_expected_violation CharlotteEndpointObservers CharlotteEndpointObservers_unsafe.cfg \
@@ -112,9 +121,11 @@ run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
 run_expected_violation CharlotteScheduler CharlotteScheduler_domain_abort_unsafe.cfg \
     AbortingThreadsDoomed UnsafeSpawnDuringAbort
 run_model CharlotteThreadJoin CharlotteThreadJoin_small.cfg \
-    Spawn CaptureHandle Exit ObserveJoin Reap
+    Spawn RejectExhaustedSpawn CaptureHandle Exit ObserveJoin Reap
 run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_unsafe.cfg \
     ObserverMatchesCapturedHandle UnsafeObserveJoin
+run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_wrap_unsafe.cfg \
+    GenerationNeverReused UnsafeSpawnWrap
 run_model CharlotteAddressSpace CharlotteAddressSpace_small.cfg \
     Allocate CaptureHandle CloseExact
 run_expected_violation CharlotteAddressSpace CharlotteAddressSpace_unsafe.cfg \

@@ -15,7 +15,10 @@
 extern crate alloc;
 
 use alloc::{
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
     vec::Vec,
 };
 use core::ops::BitOr;
@@ -85,6 +88,14 @@ impl Roles {
 
     pub const fn bits(self) -> u8 {
         self.0
+    }
+
+    pub const fn from_bits(bits: u32) -> Option<Self> {
+        if bits & !((Self::POLICY_ADMIN.0 | Self::SERVICE_MANAGER.0) as u32) == 0 {
+            Some(Self(bits as u8))
+        } else {
+            None
+        }
     }
 }
 
@@ -187,9 +198,12 @@ pub struct AuthorizedGrant {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AuthorizationError {
+    AuditSequenceExhausted,
     InvalidService,
     InvalidLimits,
+    InvalidAuditCapacity,
     IdentityCapacity,
+    IdentityConflict,
     PolicyCapacity,
     ServiceCapacity,
     TicketCapacity,
@@ -208,7 +222,99 @@ pub enum AuthorizationError {
     TicketMissing,
     PrincipalMismatch,
     StalePolicy,
+    StaleIdentity,
     StaleServiceGeneration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuditOutcome {
+    Issued,
+    Denied(AuthorizationError),
+    DelegationFailed,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuditRecord {
+    pub sequence: u64,
+    pub caller: DomainIdentity,
+    pub principal: Option<PrincipalId>,
+    pub service: Vec<u8>,
+    pub requested: AuthorizationRights,
+    pub granted: AuthorizationRights,
+    pub service_generation: u64,
+    pub policy_version: u64,
+    pub outcome: AuditOutcome,
+}
+
+/// Bounded authorization audit stream. Old records are evicted in FIFO order;
+/// sequence exhaustion fails closed before a new capability is issued.
+pub struct AuditLog {
+    capacity: usize,
+    next_sequence: u64,
+    records: VecDeque<AuditRecord>,
+}
+
+impl AuditLog {
+    pub fn new(capacity: usize) -> Result<Self, AuthorizationError> {
+        if capacity == 0 {
+            return Err(AuthorizationError::InvalidAuditCapacity);
+        }
+        Ok(Self {
+            capacity,
+            next_sequence: 1,
+            records: VecDeque::new(),
+        })
+    }
+
+    pub fn can_record(&self) -> bool {
+        self.next_sequence != u64::MAX
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record(
+        &mut self,
+        caller: DomainIdentity,
+        principal: Option<PrincipalId>,
+        service: &[u8],
+        requested: AuthorizationRights,
+        granted: AuthorizationRights,
+        service_generation: u64,
+        policy_version: u64,
+        outcome: AuditOutcome,
+    ) -> Result<u64, AuthorizationError> {
+        if !self.can_record() {
+            return Err(AuthorizationError::AuditSequenceExhausted);
+        }
+        let sequence = self.next_sequence;
+        self.next_sequence = sequence + 1;
+        if self.records.len() == self.capacity {
+            let _ = self.records.pop_front();
+        }
+        self.records.push_back(AuditRecord {
+            sequence,
+            caller,
+            principal,
+            service: service.to_vec(),
+            requested,
+            granted,
+            service_generation,
+            policy_version,
+            outcome,
+        });
+        Ok(sequence)
+    }
+
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &AuditRecord> {
+        self.records.iter()
+    }
 }
 
 /// Explicit memory bounds for a policy store hosted by an EL0 service.
@@ -289,6 +395,19 @@ impl PolicyStore {
         principal: PrincipalId,
         roles: Roles,
     ) -> Result<(), AuthorizationError> {
+        if let Some(existing) = self.identities.get(&identity) {
+            if existing.principal != principal || existing.roles != roles {
+                return Err(AuthorizationError::IdentityConflict);
+            }
+            return Ok(());
+        }
+        if self
+            .identities
+            .keys()
+            .any(|known| known.asid == identity.asid && known.generation > identity.generation)
+        {
+            return Err(AuthorizationError::StaleIdentity);
+        }
         let replaces_asid = self.identities.keys().any(|known| known.asid == identity.asid);
         if !replaces_asid && self.identities.len() >= self.limits.identities {
             return Err(AuthorizationError::IdentityCapacity);
@@ -311,6 +430,10 @@ impl PolicyStore {
 
     pub fn principal_for(&self, identity: DomainIdentity) -> Option<PrincipalId> {
         self.identities.get(&identity).map(|record| record.principal)
+    }
+
+    pub fn roles_for(&self, identity: DomainIdentity) -> Option<Roles> {
+        self.identities.get(&identity).map(|record| record.roles)
     }
 
     /// Publish or replace a service binding and allocate a new generation.
@@ -549,5 +672,146 @@ impl PolicyStore {
 impl Default for PolicyStore {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Bounded wire format for the co-located name-service policy endpoint.
+/// Request bytes are carried in a copied memory object; caller identity is
+/// deliberately absent because it comes from the kernel IPC envelope.
+pub mod wire {
+    use super::AuthorizationRights;
+
+    pub const MAGIC: u32 = 0x3154_5541; // "AUT1" little-endian
+    pub const HEADER_LEN: usize = 32;
+    pub const MAX_SERVICE_LEN: usize = 256;
+    pub const MAX_REQUEST_LEN: usize = HEADER_LEN + MAX_SERVICE_LEN;
+
+    const KIND_LOOKUP: u16 = 1;
+    const KIND_SET_POLICY: u16 = 2;
+    const KIND_PUBLISH: u16 = 3;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum Request<'a> {
+        Lookup {
+            service: &'a [u8],
+            requested: AuthorizationRights,
+        },
+        SetPolicy {
+            service: &'a [u8],
+            subject: u64,
+            allowed: AuthorizationRights,
+            expected_version: u64,
+        },
+        Publish {
+            service: &'a [u8],
+            ceiling: AuthorizationRights,
+        },
+    }
+
+    fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+        Some(u16::from_le_bytes(bytes.get(offset..offset + 2)?.try_into().ok()?))
+    }
+
+    fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+        Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
+    }
+
+    fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+        Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
+    }
+
+    pub fn decode(bytes: &[u8]) -> Option<Request<'_>> {
+        if bytes.len() < HEADER_LEN || read_u32(bytes, 0)? != MAGIC || read_u32(bytes, 12)? != 0 {
+            return None;
+        }
+        let kind = read_u16(bytes, 4)?;
+        let name_len = usize::from(read_u16(bytes, 6)?);
+        if name_len == 0 || name_len > MAX_SERVICE_LEN || bytes.len() != HEADER_LEN + name_len {
+            return None;
+        }
+        let rights = AuthorizationRights::from_bits(read_u32(bytes, 8)?)?;
+        let subject = read_u64(bytes, 16)?;
+        let version = read_u64(bytes, 24)?;
+        let service = &bytes[HEADER_LEN..];
+        match kind {
+            KIND_LOOKUP if subject == 0 && version == 0 && !rights.is_empty() => {
+                Some(Request::Lookup {
+                    service,
+                    requested: rights,
+                })
+            }
+            KIND_SET_POLICY if subject != 0 => Some(Request::SetPolicy {
+                service,
+                subject,
+                allowed: rights,
+                expected_version: version,
+            }),
+            KIND_PUBLISH if subject == 0 && version == 0 && !rights.is_empty() => {
+                Some(Request::Publish {
+                    service,
+                    ceiling: rights,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn encode(
+        kind: u16,
+        service: &[u8],
+        rights: AuthorizationRights,
+        subject: u64,
+        version: u64,
+        output: &mut [u8],
+    ) -> Option<usize> {
+        if service.is_empty() || service.len() > MAX_SERVICE_LEN {
+            return None;
+        }
+        let len = HEADER_LEN.checked_add(service.len())?;
+        let bytes = output.get_mut(..len)?;
+        bytes.fill(0);
+        bytes[0..4].copy_from_slice(&MAGIC.to_le_bytes());
+        bytes[4..6].copy_from_slice(&kind.to_le_bytes());
+        bytes[6..8].copy_from_slice(&(service.len() as u16).to_le_bytes());
+        bytes[8..12].copy_from_slice(&rights.bits().to_le_bytes());
+        bytes[16..24].copy_from_slice(&subject.to_le_bytes());
+        bytes[24..32].copy_from_slice(&version.to_le_bytes());
+        bytes[HEADER_LEN..len].copy_from_slice(service);
+        Some(len)
+    }
+
+    pub fn encode_lookup(
+        service: &[u8],
+        requested: AuthorizationRights,
+        output: &mut [u8],
+    ) -> Option<usize> {
+        if requested.is_empty() {
+            return None;
+        }
+        encode(KIND_LOOKUP, service, requested, 0, 0, output)
+    }
+
+    pub fn encode_set_policy(
+        service: &[u8],
+        subject: u64,
+        allowed: AuthorizationRights,
+        expected_version: u64,
+        output: &mut [u8],
+    ) -> Option<usize> {
+        if subject == 0 {
+            return None;
+        }
+        encode(KIND_SET_POLICY, service, allowed, subject, expected_version, output)
+    }
+
+    pub fn encode_publish(
+        service: &[u8],
+        ceiling: AuthorizationRights,
+        output: &mut [u8],
+    ) -> Option<usize> {
+        if ceiling.is_empty() {
+            return None;
+        }
+        encode(KIND_PUBLISH, service, ceiling, 0, 0, output)
     }
 }

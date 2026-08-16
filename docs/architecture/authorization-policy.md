@@ -14,8 +14,10 @@ policy service possible without making names themselves authoritative.
 
 The kernel already provides useful enforcement foundations:
 
-- IPC delivery identifies the immediate sender with a kernel-supplied address
-  space ID.
+- The explicit authenticated IPC receive ABI identifies the immediate sender
+  with a kernel-supplied exact address-space generation, stable principal, and
+  role bits captured when the message is queued. Legacy receive syscalls keep
+  their original register contract and omit this metadata.
 - Connections carry `SEND`, `CALL`, and `MINT_CONNECTION` rights.
 - Delegation can attenuate a connection to `SEND | CALL`.
 - The local and distributed name catalogs retain service generations and fence
@@ -36,9 +38,11 @@ policy:
 
 The raw sender ASID is suitable for authenticating the immediate IPC hop, but
 not as a durable policy identity. Numeric address spaces may be recycled and a
-service restart creates a new execution instance. Policy should use a stable
-`PrincipalId` assigned by the trusted launcher or supervisor and resolve the
-active `(ASID, generation)` to that identity.
+service restart creates a new execution instance. The signed loader therefore
+derives a stable `PrincipalId` from the authenticated artifact name and binds
+it to the active `(ASID, generation)` in a kernel-only authority table. Only
+artifacts classified as administration workloads receive policy-administrator
+and service-manager roles.
 
 An implementation skeleton now exists in the host-testable
 `charlotte-authorization` crate. It implements the modeled policy state
@@ -49,12 +53,23 @@ attenuation, and subject-bound single-use decisions. Every collection and
 service identifier has an explicit configured bound and fails closed at
 capacity.
 
-This is not yet production authorization. `ns` deliberately does not call the
-engine because its receive envelope supplies an ASID but not the authenticated
-address-space generation needed to construct `DomainIdentity`. Wiring it with
-an ASID alone would recreate the identity-reuse flaw that the model excludes.
-The next runtime step is therefore a kernel/supervisor identity channel, then a
-co-located `ns` policy endpoint and capability-minting adapter.
+The local `ns` service now hosts this engine. `OP_REGISTER_AUTHORIZED` requires
+the kernel-authenticated service-manager role, `OP_SET_POLICY` requires the
+policy-administrator role, and `OP_LOOKUP_AUTHORIZED` performs a default-deny
+decision followed by an attenuated connection delegation. The caller cannot
+supply or override its identity in request bytes. Deferred lookups retain the
+same exact `DomainIdentity`, and stale ASID generations are rejected rather
+than being rebound.
+
+Authorization decisions and delegation failures enter a bounded FIFO audit
+stream containing sequence, exact caller identity, stable principal, service,
+requested/granted rights, service generation, and policy version. Audit
+sequence exhaustion fails closed before issuance; `OP_AUTH_AUDIT` is restricted
+to policy administrators. Policy and audit state remain volatile, and the
+distributed catalog does not yet replicate policy. The legacy public and
+bearer-key opcodes remain available for compatibility and are explicitly not
+an authorization boundary; security-sensitive clients must use the authorized
+opcodes.
 
 ## Proposed contract
 
@@ -94,17 +109,18 @@ Policy mutation requires a separately delegated policy-administrator
 capability. Publication and replacement require service-manager authority.
 Ordinary discovery clients receive neither capability.
 
-### Co-located first implementation
+### Co-located implementation
 
-For an initial implementation, `ns` can own a `PolicyStore` alongside its
-catalog. A lookup should perform these logical steps as one serialized
-operation:
+`ns` owns a `PolicyStore` alongside its catalog. An authorized lookup performs
+these logical steps as one serialized operation:
 
-1. Take the kernel-authenticated sender identity from the IPC envelope.
-2. Resolve its current address-space generation to a stable principal.
+1. Take the kernel-authenticated sender generation, principal, and roles from
+   the IPC envelope.
+2. Synchronize the exact address-space lifetime into the bounded identity map.
 3. Read the active service binding and its generation.
 4. Evaluate the current subject/service rule and requested rights.
-5. Delegate an attenuated connection bound to that binding.
+5. Delegate a connection attenuated to the approved rights and bound to that
+   service generation.
 6. Record the subject, service generation, policy version, rights, and result
    in a bounded audit stream.
 
@@ -180,30 +196,23 @@ counterexamples for unauthorized policy mutation, cross-principal redemption,
 stale policy redemption, stale service-generation redemption, and rights
 amplification.
 
-Cryptographic encoding, principal provisioning, audit retention, policy
-language parsing, distributed consistency, availability, and hard revocation
-are outside this first model. They remain explicit implementation and modeling
-work rather than implicit claims.
+Cryptographic artifact verification and principal provisioning happen below
+the model boundary. Durable audit retention, policy-language parsing,
+distributed policy consistency, availability, and hard revocation remain
+outside this first model and are not implicit claims.
 
-## Practical implementation sequence
+## Remaining implementation sequence
 
-1. Keep `PrincipalId`, `DomainIdentity`, policy versions, service generations,
-   and authorization rights as distinct engine types. Do not expose raw ASIDs
-   as durable principals. The initial types and state machine are implemented
-   in `charlotte-authorization`.
-2. Have the launcher/supervisor install the active domain-to-principal binding
-   through authority unavailable to ordinary services.
-3. Add a policy store and administrator-only mutation endpoint. Start with an
-   exact-match allowlist and default deny.
-4. Make lookup request explicit rights and perform policy evaluation plus
-   attenuated delegation at one linearization point in `ns`.
-5. Add denial/issuance audit records without placing secrets in them.
-6. Replace bearer-key lookup users with principal rules, then remove or clearly
-   quarantine the keyed protocol.
-7. Only split the policy service after the grant format, replay defense,
+1. Migrate security-sensitive clients from the public/bearer-key compatibility
+   opcodes to explicit principal rules and authorized lookup.
+2. Persist or replicate policy and audit state with generation/version fencing;
+   Raft agreement must not replace caller authentication.
+3. Separate administration and service-management assignments when deployment
+   policy needs finer privilege than the current administration artifact class.
+4. Only split the policy service after the grant format, replay defense,
    revision fencing, and failure behavior have tests corresponding to the TLA+
    actions.
-8. Model a revocable proxy or lease separately before promising selective hard
+5. Model a revocable proxy or lease separately before promising selective hard
    revocation.
 
 The engine's host tests run through `scripts/run-host-tests.sh`; the repository

@@ -90,7 +90,17 @@ repository history remain authoritative.
 
     \item \textbf{Syscall dispatch:} AArch64 SVC dispatch uses the shared typed
         \texttt{SyscallNumber} enum. Caller identity comes from trusted thread and
-        trap context, never a userspace parameter.
+        trap context, never a userspace parameter. Explicit authenticated IPC
+        receive operations add the sender's exact address-space generation,
+        signed-artifact principal, and roles without changing the legacy
+        nine-register receive ABI.
+
+    \item \textbf{Authorization:} the local name service hosts a default-deny
+        policy engine. Separate roles protect policy changes and service
+        publication. Connection issuance is attenuated and generation-fenced;
+        an administrator can read its bounded audit stream. Policy and audit
+        persistence, distributed replication, and hard revocation remain
+        future work.
 
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
         idempotent wakes, deferred reaper, per-LP thread pinning.

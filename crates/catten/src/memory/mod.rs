@@ -47,6 +47,21 @@ pub struct AddressSpaceHandle {
     generation: usize,
 }
 
+/// Kernel-authenticated policy identity assigned by the trusted loader from
+/// signed artifact metadata. IPC snapshots this record when a message is
+/// enqueued, so receivers never trust an ASID or principal supplied in the
+/// request body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainAuthority {
+    pub address_space: AddressSpaceHandle,
+    pub principal: u64,
+    pub roles: u32,
+}
+
+static DOMAIN_AUTHORITIES: LazyLock<
+    Mutex<alloc::collections::BTreeMap<AddressSpaceId, DomainAuthority>>,
+> = LazyLock::new(|| Mutex::new(alloc::collections::BTreeMap::new()));
+
 impl AddressSpaceHandle {
     pub const fn id(self) -> AddressSpaceId {
         self.id
@@ -55,6 +70,40 @@ impl AddressSpaceHandle {
     pub const fn generation(self) -> usize {
         self.generation
     }
+}
+
+/// Install authority metadata for one exact address-space lifetime.
+///
+/// This is called only by the signed ELF loader before the domain starts.
+#[cfg_attr(not(target_arch = "aarch64"), allow(dead_code))]
+pub(crate) fn register_domain_authority(
+    address_space: AddressSpaceHandle,
+    principal: u64,
+    roles: u32,
+) {
+    assert_ne!(principal, 0, "domain principal zero is reserved");
+    assert!(
+        address_space_handle_is_current(address_space),
+        "cannot authorize a stale address-space handle"
+    );
+    let previous = DOMAIN_AUTHORITIES.lock().insert(
+        address_space.id(),
+        DomainAuthority {
+            address_space,
+            principal,
+            roles,
+        },
+    );
+    assert!(previous.is_none(), "domain authority installed twice for one ASID");
+}
+
+/// Resolve the current supervisor-assigned authority for `asid`.
+pub fn domain_authority(asid: AddressSpaceId) -> Option<DomainAuthority> {
+    let authority = {
+        let authorities = DOMAIN_AUTHORITIES.lock();
+        authorities.get(&asid).copied()?
+    };
+    address_space_handle_is_current(authority.address_space).then_some(authority)
 }
 
 /*The kernel address space is always ASID 0 and it is handled differently from userspace address
@@ -180,6 +229,11 @@ fn close_user_address_space_locked(
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);
     crate::capability::close_address_space(asid);
+
+    let removed_authority = DOMAIN_AUTHORITIES.lock().remove(&asid);
+    if let Some(authority) = removed_authority {
+        debug_assert_eq!(authority.address_space, handle);
+    }
 
     ADDRESS_SPACE_TABLE
         .lock()
