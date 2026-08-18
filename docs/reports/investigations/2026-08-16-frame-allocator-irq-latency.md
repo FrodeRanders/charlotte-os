@@ -103,6 +103,12 @@ from ~zero-time to ~allocation-time. Also pre-reserving capacity removes the
 existing DMA discipline and removes *both* locks from the copy loop. It is the
 only correct way to make IPC copy lock-free.
 
+The copy pin is a shared-read pin, not only a lifetime reference: while it is
+held, new writable CPU mappings, in-kernel writes, writable DMA pins, ownership
+changes, and write lends are rejected. Read-only mappings and DMA pins may
+coexist. Copy and DMA release share one deferred-destruction check, which frees
+the object only after both pin counts reach zero.
+
 ### Option 3 — Background zeroed-frame pool
 
 A kernel thread (or per-LP worker) pre-zeroes free frames into a clean list;
@@ -141,7 +147,8 @@ later. Fold in `Vec::with_capacity` as part of Option 1.
 
 - Existing host self-test `crates/catten/src/self_test/memory/object.rs`
   (exercises `allocate`, the `MAX_MEMORY_OBJECT_PAGES + 1` rejection, and
-  ownership/move paths) must still pass.
+  ownership/move paths) must still pass. Its AArch64 coverage also asserts
+  copy-pin writer exclusion and copy/DMA deferred destruction after owner exit.
 - A QEMU boot (`scripts/run-aarch64.sh`) must show the full self-test suite
   passing, since `copy_to` changes touch the IPC move/reply path.
 - A targeted latency probe: while one LP performs a 64 MiB `allocate`/`copy_to`,

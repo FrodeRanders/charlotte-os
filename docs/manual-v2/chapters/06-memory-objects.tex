@@ -58,6 +58,16 @@ unmodified.
         copies independently.
 \end{itemize}
 
+The kernel performs the potentially large byte copy without holding the
+interrupt-masking memory-object or frame-allocator locks. Before releasing the
+registry lock it acquires a shared-read copy pin on the source object. That pin
+keeps the frames alive and rejects every tracked operation that could introduce
+a writer---a writable CPU mapping, in-kernel write, writable or exclusive DMA
+pin, write lend, move, or ownership rollback---until the snapshot is complete.
+Read-only mappings and DMA pins may coexist. If the source domain exits during
+the copy, destruction is deferred until both the copy-pin and DMA-pin counts
+reach zero; physical frames are freed only after the registry lock is released.
+
 \subsection{Move}
 
 Ownership transfers to the receiver. The sender loses all mappings and all

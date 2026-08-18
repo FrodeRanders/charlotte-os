@@ -168,6 +168,41 @@ pub fn test_memory_objects() {
     object::close_cap(owner, borrower_cleanup_cap)
         .expect("memory object: borrower cleanup close failed");
 
+    let copy_pin_cap =
+        object::allocate(owner, 1).expect("memory object: copy-pin allocation failed");
+    let copy_pin =
+        object::pin_for_copy(owner, copy_pin_cap).expect("memory object: copy pin failed");
+    assert_eq!(
+        object::write_bytes(owner, copy_pin_cap, &[0x5a]),
+        Err(MemoryObjectError::LendingActive),
+        "copy pin must reject an in-kernel write"
+    );
+    assert_eq!(
+        object::map(owner, copy_pin_cap, VAddr::from(0xac000usize), true),
+        Err(MemoryObjectError::LendingActive),
+        "copy pin must reject a new writable CPU mapping"
+    );
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        assert!(matches!(
+            object::pin_for_dma(owner, copy_pin_cap, false, true, false),
+            Err(MemoryObjectError::LendingActive)
+        ));
+        assert!(matches!(
+            object::pin_for_dma(owner, copy_pin_cap, true, false, true),
+            Err(MemoryObjectError::LendingActive)
+        ));
+        let read_pin = object::pin_for_dma(owner, copy_pin_cap, true, false, false)
+            .expect("memory object: read-only DMA should coexist with a copy pin");
+        object::unpin_dma(read_pin);
+    }
+
+    object::unpin_copy(copy_pin);
+    object::write_bytes(owner, copy_pin_cap, &[0xa5])
+        .expect("memory object: write after copy unpin failed");
+    object::close_cap(owner, copy_pin_cap).expect("memory object: copy-pin close failed");
+
     #[cfg(target_arch = "aarch64")]
     {
         let dma_cap = object::allocate(owner, 1).expect("memory object: DMA allocation failed");
@@ -195,6 +230,19 @@ pub fn test_memory_objects() {
             .expect("memory object: CPU map after DMA unpin failed");
         object::unmap(owner, dma_cap).expect("memory object: CPU unmap after DMA failed");
         object::close_cap(owner, dma_cap).expect("memory object: DMA close failed");
+
+        let pinned_owner = create_memory_object_test_address_space("deferred pin cleanup");
+        let pinned_cap = object::allocate(pinned_owner, 1)
+            .expect("memory object: deferred cleanup allocation failed");
+        let copy_pin = object::pin_for_copy(pinned_owner, pinned_cap)
+            .expect("memory object: deferred cleanup copy pin failed");
+        let dma_pin = object::pin_for_dma(pinned_owner, pinned_cap, true, false, false)
+            .expect("memory object: deferred cleanup DMA pin failed");
+        object::close_address_space(pinned_owner);
+        object::unpin_dma(dma_pin);
+        object::unpin_copy(copy_pin);
+        close_test_address_space(pinned_owner)
+            .expect("memory object: failed to close deferred-cleanup AS");
     }
 
     let owner_cleanup_cap =

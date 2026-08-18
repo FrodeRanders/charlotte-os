@@ -94,6 +94,11 @@ struct MemoryObject {
     destroy_when_unpinned: bool,
 }
 
+pub(crate) struct CopyPin {
+    object: MemoryObjectId,
+    frames: Vec<PAddr>,
+}
+
 #[cfg(target_arch = "aarch64")]
 pub(crate) struct DmaPin {
     object: MemoryObjectId,
@@ -365,6 +370,9 @@ pub(crate) fn write_bytes(
     }
     let object =
         registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if object.copy_pins != 0 {
+        return Err(MemoryObjectError::LendingActive);
+    }
     if bytes.is_empty() || bytes.len() > object.frames.len().saturating_mul(PAGE_SIZE) {
         return Err(MemoryObjectError::InvalidLength);
     }
@@ -493,7 +501,7 @@ fn map_locked(
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.exclusive_dma_pins != 0 {
+        if object.exclusive_dma_pins != 0 || writable && object.copy_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         check_map_lend_state(object, asid, writable)?;
@@ -640,6 +648,7 @@ pub(crate) fn rollback_move_to(
     if object.owner != target
         || object.lend_state.is_active()
         || object.dma_pins != 0
+        || object.copy_pins != 0
         || !object.mappings.is_empty()
     {
         return Err(MemoryObjectError::WrongOwner);
@@ -668,6 +677,37 @@ pub(crate) fn rollback_move_to(
     Ok(())
 }
 
+/// Hold a shared-read pin on a memory object while its frames are copied.
+///
+/// The pin keeps the frames alive and prevents every tracked path that can
+/// grant or perform writes until [`unpin_copy`] releases it.
+pub(crate) fn pin_for_copy(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> Result<CopyPin, MemoryObjectError> {
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(owner, cap)?;
+    if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object =
+        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if object.owner != owner {
+        return Err(MemoryObjectError::WrongOwner);
+    }
+    if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    if object.mappings.values().any(|mapping| mapping.writable) {
+        return Err(MemoryObjectError::AlreadyMapped);
+    }
+    object.copy_pins = object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
+    Ok(CopyPin {
+        object: cap_entry.object,
+        frames: object.frames.clone(),
+    })
+}
+
 pub fn copy_to(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -678,39 +718,15 @@ pub fn copy_to(
     }
     validate_address_space(target)?;
 
-    let (source_object, source_frames) = {
-        let mut registry = MEMORY_OBJECTS.lock();
-        let cap_entry = registry.lookup(owner, cap)?;
-        if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
-            return Err(MemoryObjectError::MissingRight);
-        }
-        let object = registry
-            .objects
-            .get_mut(&cap_entry.object)
-            .ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.owner != owner {
-            return Err(MemoryObjectError::WrongOwner);
-        }
-        if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if object.mappings.values().any(|mapping| mapping.writable) {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-        // Pin the source frames for the copy so the owner cannot close the
-        // object and reuse its frames underneath the lock-free copy below.
-        object.copy_pins =
-            object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
-        (cap_entry.object, object.frames.clone())
-    };
+    let copy_pin = pin_for_copy(owner, cap)?;
 
     // Allocate every target frame under the allocator lock only; no copying is
     // performed while a lock is held.
-    let mut copied_frames = Vec::with_capacity(source_frames.len());
+    let mut copied_frames = Vec::with_capacity(copy_pin.frames.len());
     let alloc_error = {
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         let mut error = None;
-        for _ in &source_frames {
+        for _ in &copy_pin.frames {
             match allocator.allocate_frame() {
                 Ok(frame) => copied_frames.push(frame),
                 Err(_) => {
@@ -729,16 +745,13 @@ pub fn copy_to(
         error
     };
     if let Some(error) = alloc_error {
-        let mut registry = MEMORY_OBJECTS.lock();
-        if let Some(object) = registry.objects.get_mut(&source_object) {
-            object.copy_pins = object.copy_pins.saturating_sub(1);
-        }
+        unpin_copy(copy_pin);
         return Err(error);
     }
 
     // Copy source -> target with no lock held; the source frames remain valid
     // because of the copy_pins reference above.
-    for (source, target_frame) in source_frames.iter().zip(copied_frames.iter()) {
+    for (source, target_frame) in copy_pin.frames.iter().zip(copied_frames.iter()) {
         let source_ptr: *const u8 = (*source).into();
         let target_ptr: *mut u8 = (*target_frame).into();
         unsafe {
@@ -747,10 +760,7 @@ pub fn copy_to(
     }
 
     let mut registry = MEMORY_OBJECTS.lock();
-    if let Some(object) = registry.objects.get_mut(&source_object) {
-        debug_assert!(object.copy_pins != 0);
-        object.copy_pins = object.copy_pins.saturating_sub(1);
-    }
+    let source_frames_to_free = release_copy_pin_locked(&mut registry, copy_pin.object);
     let object_id = registry.next_object;
     registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
     registry.objects.insert(
@@ -773,6 +783,9 @@ pub fn copy_to(
             rights: MemoryObjectRights::ALL,
         },
     );
+    drop(registry);
+    drop(copy_pin);
+    deallocate_frames(source_frames_to_free);
     Ok(target_cap)
 }
 
@@ -1144,6 +1157,61 @@ fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: Memory
     }
 }
 
+/// Remove an object whose owner has exited once no DMA or copy operation can
+/// still access its frames. The returned frames must be freed after releasing
+/// the registry lock so the two IRQ-masking locks are never nested here.
+fn take_deferred_frames_if_unpinned(
+    registry: &mut MemoryObjectRegistry,
+    object_id: MemoryObjectId,
+) -> Option<Vec<PAddr>> {
+    let should_destroy = registry.objects.get(&object_id).is_some_and(|object| {
+        object.destroy_when_unpinned && object.dma_pins == 0 && object.copy_pins == 0
+    });
+    if !should_destroy {
+        return None;
+    }
+    remove_caps_for_object(registry, object_id);
+    registry.objects.remove(&object_id).map(|object| object.frames)
+}
+
+fn release_copy_pin_locked(
+    registry: &mut MemoryObjectRegistry,
+    object_id: MemoryObjectId,
+) -> Option<Vec<PAddr>> {
+    let object = registry
+        .objects
+        .get_mut(&object_id)
+        .expect("release_copy_pin: pinned memory object missing");
+    object.copy_pins =
+        object.copy_pins.checked_sub(1).expect("release_copy_pin: copy_pins underflow");
+    take_deferred_frames_if_unpinned(registry, object_id)
+}
+
+fn deallocate_frames(frames: Option<Vec<PAddr>>) {
+    let Some(frames) = frames else {
+        return;
+    };
+    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+    let mut failed = false;
+    for frame in frames {
+        if allocator.deallocate_frame(frame).is_err() {
+            failed = true;
+        }
+    }
+    drop(allocator);
+    if failed {
+        crate::early_logln!("WARNING: failed to free one or more deferred memory-object frames");
+    }
+}
+
+pub(crate) fn unpin_copy(pin: CopyPin) {
+    let frames = {
+        let mut registry = MEMORY_OBJECTS.lock();
+        release_copy_pin_locked(&mut registry, pin.object)
+    };
+    deallocate_frames(frames);
+}
+
 fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), MemoryObjectError> {
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let address_space = table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
@@ -1208,8 +1276,10 @@ pub(crate) fn pin_for_dma(
         return Err(MemoryObjectError::LendingActive);
     }
     if object.exclusive_dma_pins != 0
+        || device_writes && object.copy_pins != 0
         || exclusive
             && (object.dma_pins != 0
+                || object.copy_pins != 0
                 || object.lend_state.is_active()
                 || !object.mappings.is_empty())
     {
@@ -1244,16 +1314,7 @@ pub(crate) fn unpin_dma(pin: DmaPin) {
                 .checked_sub(1)
                 .expect("unpin_dma: exclusive_dma_pins underflow");
         }
-        if object.dma_pins != 0 || !object.destroy_when_unpinned {
-            return;
-        }
-        remove_caps_for_object(&mut registry, pin.object);
-        registry.objects.remove(&pin.object).map(|object| object.frames)
+        take_deferred_frames_if_unpinned(&mut registry, pin.object)
     };
-    if let Some(frames) = frames {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in frames {
-            let _ = allocator.deallocate_frame(frame);
-        }
-    }
+    deallocate_frames(frames);
 }

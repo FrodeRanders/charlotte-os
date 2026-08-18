@@ -15,7 +15,7 @@ the defining module.
 
 | Family | Module | Interrupt policy | Blocking? | Typical users |
 |---|---|---|---|---|
-| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs for the whole critical section | No (spin) | Frame allocator, address-space table, kernel AS, domain authorities, AS lifecycle, scratch window, talc |
+| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs for the whole critical section | No (spin) | Frame allocator, memory-object registry, address-space table, kernel AS, domain authorities, AS lifecycle, scratch window, talc |
 | Interrupt-masking spin `RwLock` | `cpu/multiprocessor/spin/rwlock.rs` | Masks IRQs; nesting-aware save/restore | No (spin) | `MASTER_THREAD_TABLE`, `DEAD_THREADS`, `SYSTEM_SCHEDULER`, `IPC`, `COMPLETIONS`, `USER_MAILBOX_CAPS`, each `PerLp` slot |
 | External `spin` crate | `spin::{Mutex, RwLock, LazyLock}` | None (manual, see §3) | No (spin) | Stack allocator arena + guard-page map; one-time lazy init everywhere |
 | talc global-allocator lock | `TalcLock<MutexCore, ExtendOnOom>` in `memory/allocators/global_allocator.rs` | Masks IRQs (reuses the spin `MutexCore`) | No (spin) | Kernel heap |
@@ -50,8 +50,9 @@ Properties:
   correct only because IRQs are masked for the entire ownership interval.
 
 Users (all via `memory::Mutex`): `PHYSICAL_FRAME_ALLOCATOR`,
-`ADDRESS_SPACE_TABLE`, `KERNEL_AS`, `DOMAIN_AUTHORITIES`,
-`ADDRESS_SPACE_LIFECYCLE`, `SCRATCH_WINDOW_NEXT`, and the talc lock.
+`MEMORY_OBJECTS`, `ADDRESS_SPACE_TABLE`, `KERNEL_AS`,
+`DOMAIN_AUTHORITIES`, `ADDRESS_SPACE_LIFECYCLE`, `SCRATCH_WINDOW_NEXT`, and
+the talc lock.
 
 ### 2.2 `RwLock` (`spin/rwlock.rs`)
 
@@ -127,7 +128,8 @@ Cross-subsystem rules that hold today:
 | Rule | Description | Source |
 |---|---|---|
 | **LO-alloc** | Never take the address-space or frame-allocator locks while the talc heap lock is held. The heap's growth reserve is pre-mapped at boot so `ExtendOnOom` can extend within mapped memory without taking those locks. | `global_allocator.rs:41-48` |
-| **LO-mem** | Do not hold the memory-object registry across the address-space table lock. Teardown takes table → frame allocator; allocation takes allocator → registry; holding registry → table closes an AB-BC-CA cycle. | `memory/object.rs:509-512` |
+| **LO-mem** | Do not hold the memory-object registry across the address-space table lock. Teardown takes table → frame allocator; allocation takes allocator → registry; holding registry → table closes an AB-BC-CA cycle. | `memory/object.rs` (`map_locked`) |
+| **LO-mem-copy** | Bulk copying may run without the memory-object registry only after acquiring a shared-read copy pin. While any copy pin exists, every tracked writer path (writable CPU mapping, in-kernel write, writable or exclusive DMA pin, write lend, move, or rollback) must fail. Owner teardown marks the object for deferred destruction; the final DMA/copy release removes it only when both pin counts are zero. Frame deallocation occurs after releasing the registry lock. | `memory/object.rs` (`pin_for_copy`, `take_deferred_frames_if_unpinned`) |
 | **LO-noblock-under-lock** | Never call `block_thread`/`yield_lp`/`cond_yield_lp` while holding any lock. A spin lock additionally masks IRQs; parking the thread would abandon the lock and the LP cannot schedule its successor. All guards are dropped before `switch_ctx` (`scheduler-state-machines.md` LO4). | `scheduler-state-machines.md:372-375` |
 | **LO-irq** | IRQ context takes no locks and never blocks. | `scheduler-state-machines.md` LO5 |
 

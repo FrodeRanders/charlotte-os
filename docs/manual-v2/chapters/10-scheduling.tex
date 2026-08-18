@@ -151,13 +151,14 @@ overview.
 
 \begin{itemize}
     \item \textbf{Interrupt-masking spin \texttt{Mutex}} guards the frame
-        allocator, address-space table, kernel address space, domain-authority
-        table, address-space lifecycle, scratch-window cursor, and the global
-        allocator. It saves the caller's interrupt-enable bit, masks maskable
-        IRQs, spins, and restores the bit on unlock. The masking exists to
-        prevent a preemption deadlock: these locks are taken from both
-        preemptible kernel threads and synchronous EL0 exception paths, so a
-        timer-preempted owner could otherwise be starved forever.
+        allocator, memory-object registry, address-space table, kernel address
+        space, domain-authority table, address-space lifecycle, scratch-window
+        cursor, and the global allocator. It saves the caller's
+        interrupt-enable bit, masks maskable IRQs, spins, and restores the bit
+        on unlock. The masking exists to prevent a preemption deadlock: these
+        locks are taken from both preemptible kernel threads and synchronous
+        EL0 exception paths, so a timer-preempted owner could otherwise be
+        starved forever.
 
     \item \textbf{Interrupt-masking spin \texttt{RwLock}} is the workhorse. It
         protects the master thread table, the deferred-dead table, the system
@@ -211,6 +212,13 @@ Cross-subsystem rules hold today:
         address-space table lock.} Teardown takes table-then-frame-allocator
         while allocation takes allocator-then-registry; registry-then-table
         would close an AB-BC-CA cycle.
+    \item \textbf{Dropping the memory-object registry for a bulk copy requires
+        a shared-read copy pin.} While such a pin exists, writable CPU
+        mappings, in-kernel writes, writable or exclusive DMA pins, write
+        lends, moves, and ownership rollback are rejected. Owner teardown is
+        deferred until both the DMA-pin and copy-pin counts reach zero. The
+        final release removes the object under the registry lock and frees its
+        frames only after dropping that lock.
     \item \textbf{Never block or yield while holding any lock.} A spin lock
         also masks IRQs, so parking the thread would abandon the lock and the
         LP could not schedule its successor. All guards are dropped before
