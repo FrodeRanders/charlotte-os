@@ -37,7 +37,7 @@ brew install qemu mtools          # one-time
 rustup component add rust-src     # one-time (build-std)
 rustup component add llvm-tools   # one-time (only needed for --display)
 ./scripts/run-aarch64.sh          # headless: builds kernel, image, boots QEMU (TCG)
-./scripts/run-aarch64.sh --hvf    # Apple Silicon: HVF acceleration
+./scripts/run-aarch64.sh --hvf    # Apple Silicon: accelerated non-storage suite
 ./scripts/run-aarch64.sh --display  # framebuffer window + serial
 # serial console is on stdio; press Ctrl-A X to quit
 ```
@@ -206,6 +206,13 @@ default.
   present. On macOS the `display` build additionally requires the toolchain
   `llvm-ar` (ELF-aware archiver) rather than Apple's `ar`; this is wired up
   automatically by `scripts/run-aarch64.sh --display`.
+- **HVF storage boundary.** QEMU/HVF does not expose the SMMUv3 configuration
+  used by the protected-DMA NVMe driver. The `hvf_compat` boot therefore omits
+  NVMe and the two persistent-Raft results and expects 15 non-storage tests.
+  The additional service images needed by that subset are embedded, so boot
+  cannot wait on an object store that cannot start. Use TCG for the full
+  18-test storage-backed suite; `--live-upgrade-test` is rejected with `--hvf`
+  because it also requires that store.
 - **Device-tree discovery.** GIC distributor/redistributor and PL011 base
   addresses are hardcoded to the QEMU `virt` defaults. They should be read from
   the `/intc` and `/pl011` device-tree nodes; the `devicetree` feature and

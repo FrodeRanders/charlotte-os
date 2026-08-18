@@ -20,6 +20,11 @@
 //! useful in other operating systems, embedded firmware, and other types of software systems
 //! as well.
 
+#[cfg(all(feature = "hvf_compat", feature = "live_upgrade_test"))]
+compile_error!(
+    "live_upgrade_test requires the protected-DMA object store and is incompatible with hvf_compat"
+);
+
 extern crate alloc;
 
 pub mod capability;
@@ -298,8 +303,10 @@ extern "C" fn finish_boot() {
     // Publish the node's boot-done marker once the boot storm settles, so
     // network-initiating services wait until this node is through boot before
     // communicating with the rest of the cluster.
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(all(target_arch = "aarch64", not(feature = "hvf_compat")))]
     crate::service::supervisor::start_local_ready_publisher();
+    #[cfg(all(target_arch = "aarch64", feature = "hvf_compat"))]
+    logln!("Local storage-backed node-ready publication skipped under hvf_compat.");
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from
     // overloaded LPs before any of those contexts begin executing.

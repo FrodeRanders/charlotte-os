@@ -4,11 +4,11 @@
 //! that are easy to break silently:
 //!
 //! - **Timer-affinity retention** — workers co-located on LP0 at boot freeze their established home
-//!   (`migration_safe = false`) and must still be on that LP after a `sleep_millis(128)` (several
-//!   timer wakes). Stale generation-free admission of a live thread must be rejected
-//!   (`submit_new_thread` / `submit_woken_thread` with a stale generation fail). Outcome: timer
-//!   wakes do not migrate a thread whose affinity was established while queued, and generation
-//!   checks block stale re-admission.
+//!   (`migration_safe = false`) and must still be on that LP after each of 64 short timer waits.
+//!   Stale generation-free admission of a live thread must be rejected (`submit_new_thread` /
+//!   `submit_woken_thread` with a stale generation fail). Outcome: timer wakes do not migrate a
+//!   thread whose affinity was established while queued, and generation checks block stale
+//!   re-admission.
 //! - **Runtime rebalance** — after the affinity phase, a coordinator induces a controlled imbalance
 //!   and a *sustained-window sampling* mechanism migrates the workers, certifying `migration_safe`
 //!   threads. Outcome: the certified-migration counter advances to the target.
@@ -90,6 +90,7 @@ static REMOTE_WAKE_SENT: AtomicBool = AtomicBool::new(false);
 static REMOTE_TARGET_RESUMED: AtomicBool = AtomicBool::new(false);
 
 const WORKER_COUNT: u64 = 3;
+const TIMER_WAKE_CYCLES: u64 = 64;
 
 #[derive(Default)]
 struct AbortRaceEvent {
@@ -144,20 +145,26 @@ extern "C" fn worker() {
         SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation.wrapping_add(1)).is_err(),
         "stale generation re-admitted a live thread"
     );
-    sleep_millis(128);
-    assert_eq!(get_lp_id(), home);
-    let table = MASTER_THREAD_TABLE.read();
-    let thread = table.get(tid).expect("lifecycle worker vanished");
-    assert_eq!(thread.migration_constraints, 0);
-    assert!(!thread.is_fully_migratable());
-    drop(table);
-    SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
+    // Repetition makes the Blocked -> timer queued -> Ready transition a
+    // regression gate for preemption windows, while varied short durations
+    // exercise queue reordering without the dispatch-latency amplification of
+    // hundreds of one-millisecond sleeps.
+    for iteration in 0..TIMER_WAKE_CYCLES {
+        sleep_millis(2 + iteration % 7);
+        assert_eq!(get_lp_id(), home);
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).expect("lifecycle worker vanished");
+        assert_eq!(thread.migration_constraints, 0);
+        assert!(!thread.is_fully_migratable());
+        drop(table);
+        SCHEDULER_LIFECYCLE_PROGRESS.fetch_add(1, Ordering::Relaxed);
+    }
     logln!("[scheduler lifecycle] worker tid={} completed on LP{}", tid, home);
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
         logln!(
             "[scheduler lifecycle] {} timer wakes retained established LP affinity; inducing a \
              controlled runtime imbalance before the cross-LP abort regression.",
-            WORKER_COUNT
+            WORKER_COUNT * TIMER_WAKE_CYCLES
         );
         spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
     }

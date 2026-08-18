@@ -133,7 +133,10 @@ repository history remain authoritative.
         \texttt{switch\_ctx} flushes the whole TLB on every context switch
         (\texttt{tlbi vmalle1is}) and the SVC handler attributes syscalls from a
         per-LP tracked logical ASID rather than a \texttt{ttbr0\_el1} readback.
-        See \emph{AArch64 Port Status} for the full diagnosis.
+        See \emph{AArch64 Port Status} for the full diagnosis. HVF also exposes
+        no guest SMMU for the protected-DMA NVMe path. Its compatibility boot
+        therefore runs 15 non-storage tests; the full 18-test suite and
+        persistent-storage workflows require TCG.
     \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists;
         the EL0 test and real-EL0 user thread are AArch64-only.
     \item \textbf{Virtio-net runtime:} initialization and transmit submission

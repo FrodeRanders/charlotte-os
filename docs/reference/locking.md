@@ -131,12 +131,15 @@ Cross-subsystem rules that hold today:
 | **LO-mem** | Do not hold the memory-object registry across the address-space table lock. Teardown takes table → frame allocator; allocation takes allocator → registry; holding registry → table closes an AB-BC-CA cycle. | `memory/object.rs` (`map_locked`) |
 | **LO-mem-copy** | Bulk copying may run without the memory-object registry only after acquiring a shared-read copy pin. While any copy pin exists, every tracked writer path (writable CPU mapping, in-kernel write, writable or exclusive DMA pin, write lend, move, or rollback) must fail. Owner teardown marks the object for deferred destruction; the final DMA/copy release removes it only when both pin counts are zero. Frame deallocation occurs after releasing the registry lock. | `memory/object.rs` (`pin_for_copy`, `take_deferred_frames_if_unpinned`) |
 | **LO-noblock-under-lock** | Never call `block_thread`/`yield_lp`/`cond_yield_lp` while holding any lock. A spin lock additionally masks IRQs; parking the thread would abandon the lock and the LP cannot schedule its successor. All guards are dropped before `switch_ctx` (`scheduler-state-machines.md` LO4). | `scheduler-state-machines.md:372-375` |
+| **LO-block-event** | If a thread publishes itself as `Blocked` before installing the event that will wake it, mask local IRQs across both operations. Otherwise a scheduler-quantum IRQ can switch out a `Blocked` thread before any wake source exists. Restore the caller's IRQ state before yielding; do not hold a lock across the yield. | `scheduler/mod.rs` (`sleep`) |
 | **LO-irq** | IRQ context takes no locks and never blocks. | `scheduler-state-machines.md` LO5 |
 
 The interrupt-masking spin locks and the scheduler's `block_thread` path are
 compatible only because blocking never happens under a held spin lock: a
 blocking syscall releases its registry guards before registering a waker and
-yielding.
+yielding. Local IRQ masking without lock ownership is permitted for the short
+`Blocked`-publication/event-installation transaction described by
+**LO-block-event**; IRQ state is restored before `yield_lp()`.
 
 ---
 

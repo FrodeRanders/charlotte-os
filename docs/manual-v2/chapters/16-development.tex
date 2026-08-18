@@ -20,6 +20,9 @@ This chapter gives the current build, boot, test, and code-reading workflow.
         write-up --- so HVF builds rely on the
         \texttt{hvf\_compat} whole-TLB-flush-on-switch fallback. Do not assume
         ASID-based TLB isolation works when debugging under \texttt{--hvf}.
+        HVF also exposes no SMMU for protected NVMe DMA, so its compatibility
+        boot runs the 15-test non-storage suite. Use TCG for the full 18-test
+        suite, object-store tests, persistent Raft, and live upgrade.
     \item \textbf{Build dependencies:} \texttt{cargo}, \texttt{just} (optional,
         for convenience targets in the
         \repofiletext|Justfile|{\texttt{Justfile}}).
@@ -100,7 +103,7 @@ The boot entry points are \repofile|scripts/boot-smp1.sh|,
 # Or choose the profile, LP count, and timeout directly:
 ./scripts/run-aarch64.sh debug --smp 4 --timeout 180
 
-# Apple Silicon: request HVF explicitly if suitable:
+# Apple Silicon: accelerated 15-test non-storage compatibility suite:
 ./scripts/run-aarch64.sh debug --hvf --smp 4 --timeout 180
 \end{verbatim}
 

@@ -252,14 +252,21 @@ pub fn run_deferred_self_tests() {
     el0::test_el0_syscall_round_trip();
     // The disk stack is registered first: every other service-bearing test
     // loads its ELF from the object store, which comes up as part of the
-    // NVMe test. Registering it early lets the later tests' store reads
-    // retry without deadlocking the registration thread.
-    #[cfg(target_arch = "aarch64")]
+    // NVMe test. Registering it early lets the later tests' store reads retry
+    // without deadlocking the registration thread. The no-SMMU HVF
+    // compatibility suite instead embeds its non-storage service subset.
+    #[cfg(all(target_arch = "aarch64", not(feature = "hvf_compat")))]
     el0_nvme::test_el0_nvme();
+    #[cfg(all(target_arch = "aarch64", feature = "hvf_compat"))]
+    logln!(
+        "Skipping NVMe/object-store and persistent-Raft tests (hvf_compat: protected DMA requires \
+         an SMMU)."
+    );
     #[cfg(target_arch = "aarch64")]
     el0_uart::test_el0_uart();
     #[cfg(target_arch = "aarch64")]
     el0_sitas::test_el0_sitas();
+    #[cfg(not(feature = "hvf_compat"))]
     el0_raft::test_el0_raft();
     el0_ipc::test_el0_endpoint_ipc();
     el0_ipc::test_el0_endpoint_ipc_blocking_receive();

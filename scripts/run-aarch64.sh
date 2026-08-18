@@ -157,6 +157,10 @@ if [ "$SBSA_REF" = "1" ] && [ "$USE_HVF" = "1" ]; then
     echo "error: --sbsa-ref is incompatible with --hvf (the sbsa-ref machine needs TCG)" >&2
     exit 1
 fi
+if [ "$LIVE_UPGRADE_TEST" = "1" ] && [ "$USE_HVF" = "1" ]; then
+    echo "error: --live-upgrade-test requires the protected-DMA object store and is incompatible with --hvf" >&2
+    exit 1
+fi
 if [ "$SBSA_REF" = "1" ] && [ "$NET_TEST" = "1" ]; then
     echo "error: network tests are virt-only; --sbsa-ref has no --net-test" >&2
     exit 1

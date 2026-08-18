@@ -237,7 +237,9 @@ for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
 > `hvf_compat` fallback (whole-TLB flush on every context switch, per-LP
 > tracked caller ASID). See the "HVF and hardware ASIDs" section of
 > [`docs/platforms/aarch64.md`](docs/platforms/aarch64.md) before debugging
-> under HVF.
+> under HVF. HVF also provides no SMMU to the guest, so its compatibility boot
+> runs the 15-test non-storage suite; use the default TCG path for protected
+> NVMe DMA, the object store, and persistent Raft tests.
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*
 

@@ -19,16 +19,22 @@ use core::sync::atomic::{
 };
 
 use crate::{
-    cpu::scheduler::{
-        system_scheduler::{
-            SYSTEM_SCHEDULER,
-            publish_thread,
+    cpu::{
+        isa::lp::ops::{
+            mask_interrupts,
+            unmask_interrupts,
         },
-        threads::{
-            MASTER_THREAD_TABLE,
-            Thread,
-            ThreadGeneration,
-            ThreadId,
+        scheduler::{
+            system_scheduler::{
+                SYSTEM_SCHEDULER,
+                publish_thread,
+            },
+            threads::{
+                MASTER_THREAD_TABLE,
+                Thread,
+                ThreadGeneration,
+                ThreadId,
+            },
         },
     },
     klib::{
@@ -286,6 +292,14 @@ pub fn sleep(duration: ExtDuration) {
     // holding the read guard across the write would deadlock the RwLock.
     let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
     if let Some(tid) = tid {
+        // Publishing Blocked before the timer is queued must be one local
+        // non-preemptible transition. Otherwise a scheduler-quantum IRQ can
+        // switch this thread out in the gap, leaving it permanently Blocked
+        // with no event capable of waking it. Once the event is in the local
+        // queue it is safe to restore IRQs before yielding: if it fires first,
+        // the scheduler's wake-before-save handling re-admits this thread.
+        let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
+        mask_interrupts!();
         SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint(
@@ -299,6 +313,9 @@ pub fn sleep(duration: ExtDuration) {
         // already expired after contending on the global scheduler locks.
         timer_event.reset_after(duration);
         crate::timers::enqueue_event(timer_event);
+        if interrupts_were_enabled {
+            unmask_interrupts!();
+        }
         // Yield so the sleep takes effect: `block_thread` marks the thread
         // Blocked and registers its waker on the timer event; this yield saves
         // the thread's context and switches away. When the timer expires it

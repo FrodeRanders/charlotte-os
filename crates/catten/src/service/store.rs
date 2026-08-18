@@ -10,7 +10,10 @@
 //! first time a test asks for one, then caches them for the rest of the
 //! boot. The EL0 loader enforces a valid cluster signature on whatever
 //! source the bytes come from, so the store-sourced path is exactly as
-//! trusted as the embedded one.
+//! trusted as the embedded one. The `hvf_compat` development configuration
+//! has no SMMU and therefore cannot start the protected-DMA disk stack; it
+//! embeds the additional non-storage services used by its reduced boot suite
+//! so service lookup never waits for an object store that cannot exist.
 
 #![cfg(target_arch = "aarch64")]
 
@@ -48,6 +51,19 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     // The system observer is started by the kernel itself during boot,
     // before the disk stack is up, so it must be embedded too.
     bootstrap_elf!(b"observe", "observe"),
+    // HVF cannot provide the SMMU required by the NVMe driver's protected DMA
+    // domain. Keep its explicitly non-storage compatibility suite useful
+    // without weakening DMA isolation or blocking on an unavailable store.
+    #[cfg(feature = "hvf_compat")]
+    bootstrap_elf!(b"cclient", "cclient"),
+    #[cfg(feature = "hvf_compat")]
+    bootstrap_elf!(b"sitas-user", "sitas-user"),
+    #[cfg(feature = "hvf_compat")]
+    bootstrap_elf!(b"echo", "echo"),
+    #[cfg(feature = "hvf_compat")]
+    bootstrap_elf!(b"client", "client"),
+    #[cfg(feature = "hvf_compat")]
+    bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.

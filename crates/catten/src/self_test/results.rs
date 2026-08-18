@@ -19,7 +19,9 @@
 //! any feature-gated network tests), every verifier reports exactly once via
 //! [`pass`]/[`fail`] (asserting it was registered and has not already
 //! resolved), and the coordinator terminates with `failed=0 pending=0` — on
-//! virt/TCG and sbsa-ref this is `passed=18 failed=0 pending=0`.
+//! virt/TCG and sbsa-ref this is `passed=18 failed=0 pending=0`. The HVF
+//! compatibility suite omits NVMe and the two persistent-Raft results because
+//! protected DMA is unavailable there, and expects 15 passes.
 //!
 //! A panic in a verifier is routed through [`fail_verifier_tid`] (installed
 //! by the panic handler) so a crashing verifier atomically fails its own bit
@@ -244,8 +246,6 @@ pub fn register(id: TestId) {
 pub fn register_boot_suite() {
     let tests = [
         TestId::El0,
-        TestId::Raft,
-        TestId::RaftStorage,
         TestId::El0Ipc,
         TestId::El0IpcBlocking,
         TestId::El0IpcCrossAs,
@@ -260,10 +260,15 @@ pub fn register_boot_suite() {
         TestId::Device,
         TestId::Uart,
         TestId::SchedulerLifecycle,
-        TestId::Nvme,
     ];
     for test in tests {
         register(test);
+    }
+    #[cfg(not(feature = "hvf_compat"))]
+    {
+        register(TestId::Raft);
+        register(TestId::RaftStorage);
+        register(TestId::Nvme);
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     register(TestId::Net);

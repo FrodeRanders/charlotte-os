@@ -42,6 +42,14 @@ A thread blocks by calling \texttt{block\_thread(tid, \&observable)}:
         context. The blocked thread is suspended at the point of the yield.
 \end{enumerate}
 
+For a timer sleep, steps 1--2 include creation of the wake source itself.
+Publishing \texttt{Blocked} and inserting the timer into the local queue must
+therefore be one local non-preemptible transaction. \texttt{sleep()} masks
+local interrupts across both operations; otherwise a scheduler-quantum
+interrupt can switch out the newly blocked thread before any event exists to
+wake it. The previous interrupt state is restored before \texttt{yield\_lp()},
+and no lock is held across the yield.
+
 \subsection{Wake}
 
 An event fires (timer expired, completion posted, message arrived):

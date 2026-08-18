@@ -505,3 +505,49 @@ admission) from slow dispatch.
 Both AArch64 and x86-64 target checks passed after the conversions. A complete
 SMP4 HVF run with the low-perturbation debugger endpoint also observed every
 required deferred marker.
+
+### Correction: blocked-before-timer preemption gap (2026-08-18)
+
+A stronger lifecycle gate later disproved the scheduler-latency conclusion
+above. Three fixed-affinity workers each performed 64 varied sleeps of 2--8 ms.
+Before the fix, repeated SMP4 runs stranded one worker, including a failure at
+its first sleep. The stranded thread had the decisive state combination:
+
+- master state `Blocked`, still owned by its home LP but not executing;
+- absent from every LP's current slot and run queue;
+- its home LP's anonymous-timer accounting balanced exactly, with no queued
+  anonymous event; and
+- no rejected or stale Waker admission for that thread.
+
+This is not queue loss or slow dispatch. `sleep()` first called
+`block_thread_with_constraint()`, which published `Blocked` and registered the
+Waker, and only afterwards reset and enqueued the `TimerEvent`. Releasing the
+scheduler locks restored local IRQs between those operations. A quantum IRQ in
+that interval could switch out the already-blocked current thread. Because the
+interrupted `sleep()` invocation never resumed to enqueue its timer, no event
+could make the thread ready again.
+
+The fix masks local IRQs before publishing `Blocked`, keeps them masked through
+timer reset and insertion, then restores the caller's prior IRQ state before
+yielding. It does not hold a scheduler or timer lock across the yield. A timer
+that fires after insertion but before the explicit yield is safe: the existing
+wake-before-save path admits the thread, and the scheduler's `on_cpu` protocol
+prevents concurrent context restoration.
+
+The strengthened 192-wake lifecycle gate passed nine consecutive SMP4 runs
+after the fix and had failed repeatedly beforehand. It remains in-tree as the
+regression for this precise transition. The earlier timer-accounting evidence
+was accurate, but its interpretation was incomplete: balanced accounting
+proved that no *enqueued* timer was lost; it did not prove that every blocked
+sleep had reached timer insertion.
+
+The HVF reproduction exposed a separate, deterministic bootstrap stall rather
+than another scheduler failure. `hvf_compat` deliberately has no SMMU, so the
+NVMe verifier reported unsupported before starting the object store. Since
+most service ELFs had subsequently moved into that store, the boot admission
+thread then blocked resolving `cclient` and never reached result finalization.
+HVF now has an explicit 15-test non-storage suite: NVMe and both persistent-Raft
+results are not registered, the five additional non-storage ELFs it needs are
+embedded, and the storage-backed node-ready publisher is not started. The full
+18-test suite remains the TCG gate; this avoids weakening protected DMA merely
+to retain acceleration.

@@ -39,6 +39,7 @@ Any live state ── abort_thread() ──► staged DEAD ── reap after swi
 | T4 | `idle_tid` is never in `run_queue` and never `Blocked`. |
 | T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
 | T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
+| T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
 
 ### Lock order for transitions
 
@@ -485,6 +486,7 @@ thread context.
 | LO4 | **ALL locks dropped before `switch_ctx`.** Raw pointers captured under lock, dereferenced lock-free. |
 | LO5 | **deliver_interrupt (IRQ context) takes NO locks.** Only atomics + MMIO. Deferred wake crosses to thread context via lock-free `ConcurrentQueue`. |
 | LO6 | **Timer queue/comparator mutation masks local IRQs.** The timer IRQ handler accesses the queue directly only because exception entry already masks IRQs. |
+| LO7 | **A self-block must not become preemptible before its wake source exists.** `sleep()` masks local IRQs across `block_thread()` and timer insertion, restores the caller's IRQ state, and only then yields. This is an IRQ-state transaction, not permission to hold a lock across a yield. |
 
 ---
 
@@ -507,6 +509,7 @@ An LP enters `wfi` (idle) when:
 | `is_idle` is false but only idle thread runs | `next()` requeues the sole runnable thread instead of selecting idle; thread never blocks | Thread must transition to `Blocked`, not stay in `Ready`/`Running` |
 | Timer never fires after LP goes idle | `clear_ctx_switch_pending()` skips quantum re-arm when `is_idle`; next wake depends on IPI or device IRQ | This is CORRECT behaviour — idle LP is woken by admission IPI |
 | Timer events stranded, LP stays in `wfi` forever | Queue/comparator state diverged, or an immediately due IRQ re-entered queue mutation | Keyed quantum ownership plus interrupt-masked enqueue and idle reconciliation |
+| Thread is `Blocked`, absent from all run queues, and has no queued timer | A quantum IRQ preempted the thread after `block_thread()` but before timer insertion | Mask local IRQs across `Blocked` publication and wake-event installation |
 
 ### Expected long-lived services after boot tests
 
@@ -524,5 +527,6 @@ runnable:
 
 The system should reach low CPU in steady state. The principal periodic work is
 the Raft nodes' timer wakeups; idle LPs carry no round-robin quantum. The
-bounded runner also requires the 128-cycle scheduler timer/affinity lifecycle
-gate.
+bounded runner also requires the scheduler timer/affinity lifecycle gate:
+three workers each complete 64 varied short sleeps while retaining their
+established LP affinity.
