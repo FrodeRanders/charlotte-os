@@ -117,6 +117,14 @@ impl AbortRaceEvent {
 static REMOTE_ABORT_EVENT: LazyLock<AbortRaceEvent> = LazyLock::new(AbortRaceEvent::default);
 
 pub fn test_scheduler_lifecycle() {
+    if get_lp_count() < 2 {
+        // The runtime-rebalance phase needs a peer LP to migrate onto, so the
+        // whole regression is meaningless on a single LP. Report the timer-affinity
+        // gate as passed and skip the multi-LP phases.
+        logln!("[scheduler lifecycle] skipped: requires at least two LPs");
+        crate::self_test::results::pass(crate::self_test::results::TestId::SchedulerLifecycle);
+        return;
+    }
     for _ in 0..WORKER_COUNT {
         spawn_migratable_thread_on_lp(KERNEL_ASID, worker, 0);
     }

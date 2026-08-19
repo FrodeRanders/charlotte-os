@@ -56,6 +56,10 @@ pub mod x2apic {
 /// # TSC_AUX MSR
 pub const TSC_AUX: u32 = 0xc000_0103;
 
+/// Kernel GS base (swapped in by `swapgs` on SYSCALL entry). Points at the
+/// per-LP [`PerCpuData`](crate::cpu::isa::x86_64::lp::ops::PerCpuData) area.
+pub const KERNEL_GS_BASE: u32 = 0xc000_0102;
+
 // ---- SYSCALL / SYSRET MSRs -----------------------------------------------
 
 /// Extended Feature Enable Register. Bit 0 (SCE) must be set for SYSCALL.

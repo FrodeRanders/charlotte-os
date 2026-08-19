@@ -244,31 +244,44 @@ pub fn register(id: TestId) {
 }
 
 pub fn register_boot_suite() {
-    let tests = [
-        TestId::El0,
-        TestId::El0Ipc,
-        TestId::El0IpcBlocking,
-        TestId::El0IpcCrossAs,
-        TestId::El0IpcMemory,
-        TestId::El0IpcMemoryCancel,
-        TestId::El0IpcMemoryCopy,
-        TestId::El0CrossLp,
-        TestId::PingPong,
-        TestId::Sitas,
-        TestId::Service,
-        TestId::CqWait,
-        TestId::Device,
-        TestId::Uart,
-        TestId::SchedulerLifecycle,
-    ];
-    for test in tests {
-        register(test);
-    }
-    #[cfg(not(feature = "hvf_compat"))]
+    #[cfg(target_arch = "aarch64")]
     {
-        register(TestId::Raft);
-        register(TestId::RaftStorage);
-        register(TestId::Nvme);
+        let tests = [
+            TestId::El0,
+            TestId::El0Ipc,
+            TestId::El0IpcBlocking,
+            TestId::El0IpcCrossAs,
+            TestId::El0IpcMemory,
+            TestId::El0IpcMemoryCancel,
+            TestId::El0IpcMemoryCopy,
+            TestId::El0CrossLp,
+            TestId::PingPong,
+            TestId::Sitas,
+            TestId::Service,
+            TestId::CqWait,
+            TestId::Device,
+            TestId::Uart,
+            TestId::SchedulerLifecycle,
+        ];
+        for test in tests {
+            register(test);
+        }
+        #[cfg(not(feature = "hvf_compat"))]
+        {
+            register(TestId::Raft);
+            register(TestId::RaftStorage);
+            register(TestId::Nvme);
+        }
+    }
+    // The x86_64 port does not yet run the EL0 IPC / service / device / Raft
+    // suites (they remain AArch64-only), so only the tests that actually
+    // execute and report are registered. Registering a test that can never
+    // resolve would leave the coordinator permanently in `SELFTEST WAITING`.
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        register(TestId::El0);
+        register(TestId::CqWait);
+        register(TestId::SchedulerLifecycle);
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     register(TestId::Net);

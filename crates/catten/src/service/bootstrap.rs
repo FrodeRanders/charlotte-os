@@ -11,7 +11,6 @@
 //!
 //! Names, lookup policy, and restart generations live entirely in the
 //! userspace name service; the kernel only moves opaque capabilities.
-#![cfg(target_arch = "aarch64")]
 
 use charlotte_launch::{
     CAPABILITY_VECTOR_CAPACITY,

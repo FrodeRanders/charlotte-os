@@ -24,6 +24,7 @@ const EXECUTE_DISABLE_BIT_INDEX: u64 = 63;
 
 /// The page table entry structure
 #[repr(transparent)]
+#[derive(Clone, Copy)]
 pub struct PageTableEntry(u64);
 
 impl PageTableEntry {

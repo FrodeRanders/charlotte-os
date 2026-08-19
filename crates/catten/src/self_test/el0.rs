@@ -1,19 +1,21 @@
-//! Self-test: create a user thread at EL0 that invokes SVC and verifies the
-//! kernel's syscall dispatch → return path *and* its side effects.
+//! Self-test: create a user thread at EL0 (ring 3) that invokes the syscall ABI
+//! and verifies the kernel's syscall dispatch → return path *and* its side
+//! effects.
 //!
 //! This is the first real-EL0 exercise in the kernel. It:
-//! 1. Creates a user address space, maps a code page (`AP_EL0`), a shared CQ ring page, and a
-//!    writable result page.
-//! 2. Writes a small hand-written AArch64 stub to the code page.
+//! 1. Creates a user address space, maps a code page, a shared CQ ring page, and a writable result
+//!    page.
+//! 2. Writes a small hand-written stub to the code page.
 //! 3. Creates a user thread whose entry point is the mapped code page.
-//! 4. The stub executes `SVC #1` (COMPLETION_SUBMIT), stores the returned capability and a sentinel
-//!    to the result page, then loops via `wfe`.
+//! 4. The stub executes a syscall (SVC #1 on AArch64, SYSCALL with RAX=1 on x86_64) for
+//!    COMPLETION_SUBMIT, stores the returned capability and a sentinel to the result page, then
+//!    exits the thread.
 //!
-//! When the user thread runs, `SVC #1` traps to `sync_dispatcher`, which decodes
-//! ESR_EL1.EC, builds a TrapFrame, dispatches to the submit handler (which
-//! writes the allocated cap back into x0), advances ELR_EL1 by 4, and `eret`s
-//! back to EL0. The stub then writes `0xDEAD` and the returned cap to the
-//! result page.
+//! When the user thread runs, the syscall traps to the synchronous dispatcher,
+//! which decodes the exception class, builds a TrapFrame, dispatches to the
+//! submit handler (which writes the allocated cap back into the return
+//! register), and returns to EL0. The stub then writes `0xDEAD` and the
+//! returned cap to the result page.
 //!
 //! Because self-tests run on the boot path *before* `yield_lp()`, the spawned
 //! user thread cannot run inline. A companion kernel thread
@@ -24,18 +26,13 @@
 //! **Why the stub is hand-written assembly:** like the sibling syscall-level
 //! tests (`el0_ipc`, `el0_pingpong`), the stub runs at EL0 with no runtime —
 //! no crt0, heap, panic handler or config-page parsing — so the first EL0
-//! exercise isolates the SVC dispatch path as the only variable under test.
-//! Higher-level EL0 tests load Rust-compiled ELFs via `load_domain`; this
-//! minimal stub is deliberately assembly (embedded through `core::arch::asm!`).
+//! exercise isolates the syscall dispatch path as the only variable under test.
 
-#[cfg(target_arch = "aarch64")]
 use core::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
 
-use crate::logln;
-#[cfg(target_arch = "aarch64")]
 use crate::{
     completion::{
         self,
@@ -49,6 +46,7 @@ use crate::{
         },
         scheduler::spawn_thread,
     },
+    logln,
     memory::{
         ADDRESS_SPACE_TABLE,
         KERNEL_AS,
@@ -63,41 +61,30 @@ use crate::{
 
 /// Physical frame of the result page, stored so the test function can read the
 /// user binary's output via HHDM after the thread runs.
-#[cfg(target_arch = "aarch64")]
 static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 /// Numeric TID plus one; zero means the payload has not been spawned.
-#[cfg(target_arch = "aarch64")]
 static EL0_USER_TID: AtomicUsize = AtomicUsize::new(0);
 /// Address-space id plus one, used by the deferred verifier.
-#[cfg(target_arch = "aarch64")]
 static EL0_USER_ASID: AtomicUsize = AtomicUsize::new(0);
 
-#[cfg(target_arch = "aarch64")]
 const USER_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
 const USER_CQ_VADDR: usize = 0x0000_0000_0001_1000;
-#[cfg(target_arch = "aarch64")]
 const USER_RESULT_VADDR: usize = 0x0000_0000_0001_2000;
 
-/// Handwritten, position-independent AArch64 EL0 stub. Replaces the previously
-/// embedded (and stale) `catten-user.bin` so the test validates the *current*
-/// syscall ABI rather than a committed binary. It exercises the submit path and
-/// the syscall return-value contract:
+/// Handwritten, position-independent AArch64 EL0 stub. It exercises the submit
+/// path and the syscall return-value contract:
 ///
 /// ```asm
 ///     mov   x0, #0                 // unused by the ASID authority path
 ///     mov   x1, #0                 // OpCode::Nop
 ///     svc   #1                     // COMPLETION_SUBMIT -> kernel returns cap in x0
-///     movz  x2, #0x2000
+///     mov   x2, #0x2000
 ///     movk  x2, #0x1, lsl #16      // x2 = 0x0001_2000 (USER_RESULT_VADDR)
-///     movz  w3, #0xdead            // sentinel proving the stub ran
+///     mov   w3, #0xdead            // sentinel proving the stub ran
 ///     str   w3, [x2]               // result[0] = 0xDEAD
-///     str   w0, [x2, #4]            // result[1] = returned cap
+///     str   w0, [x2, #4]           // result[1] = returned cap
 ///     svc   #8                     // THREAD_EXIT
 /// ```
-///
-/// Assembled with `clang -arch arm64`; the little-endian encodings below are
-/// copied verbatim from `llvm-objdump -d`.
 #[cfg(target_arch = "aarch64")]
 const USER_THREAD_CODE: &[u8] = &[
     0x00, 0x00, 0x80, 0xd2, // mov  x0, #0
@@ -111,10 +98,43 @@ const USER_THREAD_CODE: &[u8] = &[
     0x08, 0x01, 0x00, 0xd4, // svc #8 (THREAD_EXIT)
 ];
 
+/// Handwritten, position-independent x86_64 ring-3 stub. Mirrors the AArch64
+/// stub using the x86_64 syscall ABI (RAX = syscall number, arguments start at
+/// RDI):
+///
+/// ```asm
+///     mov   eax, 1                 // COMPLETION_SUBMIT
+///     xor   edi, edi               // OpCode::Nop
+///     xor   esi, esi               // buf ptr = 0
+///     xor   edx, edx               // buf len = 0
+///     syscall                      // -> cap in rax
+///     mov   rbx, rax               // save cap
+///     mov   rax, 0x12000           // USER_RESULT_VADDR
+///     mov   dword ptr [rax], 0xdead
+///     mov   dword ptr [rax+4], ebx // result[1] = cap
+///     mov   eax, 8                 // THREAD_EXIT
+///     syscall                      // never returns
+///     jmp   $                      // unreachable
+/// ```
+#[cfg(target_arch = "x86_64")]
+const USER_THREAD_CODE: &[u8] = &[
+    0xb8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
+    0x31, 0xff, // xor edi, edi
+    0x31, 0xf6, // xor esi, esi
+    0x31, 0xd2, // xor edx, edx
+    0x0f, 0x05, // syscall
+    0x48, 0x89, 0xc3, // mov rbx, rax
+    0x48, 0xb8, 0x00, 0x20, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, 0x12000
+    0xc7, 0x00, 0xad, 0xde, 0x00, 0x00, // mov dword ptr [rax], 0xdead
+    0x89, 0x58, 0x04, // mov dword ptr [rax+4], ebx
+    0xb8, 0x08, 0x00, 0x00, 0x00, // mov eax, 8
+    0x0f, 0x05, // syscall
+    0xeb, 0xfe, // jmp $ (unreachable)
+];
+
 /// Creates a user address space, maps a user-code page at `vaddr`, a shared
 /// CQ ring page at `cq_vaddr`, and a writable result page at `result_vaddr`,
 /// writes the assembly stub, and returns the `AddressSpaceId`.
-#[cfg(target_arch = "aarch64")]
 fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr) -> usize {
     let user_as = {
         let _kas = KERNEL_AS.lock();
@@ -152,9 +172,9 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
             USER_THREAD_CODE.len(),
         );
     }
-    // Full I-cache invalidation sequence: clean D-cache to PoU, then invalidate
-    // I-cache to PoU, with barriers. This is the architected sequence for
-    // making code visible to the instruction fetch after writing via D-side.
+    // AArch64 requires an explicit instruction-cache invalidation after writing
+    // code through the data side; x86-64 keeps the I-cache coherent.
+    #[cfg(target_arch = "aarch64")]
     unsafe {
         core::arch::asm!(
             "dsb ishst",  // ensure prior stores are visible
@@ -218,73 +238,62 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
 }
 
 /// The user thread's entry point at EL0: the virtual address of the mapped
-/// code page. When `user_trampoline` drops to EL0, it loads `ELR_EL1` from
-/// x19 (= this address), `SP_EL0` from x20 (= user stack top), `SPSR_EL1 = 0`
-/// (= EL0t, AArch64, interrupts unmasked), and `eret`s.
+/// code page. When `user_trampoline` drops to EL0, it loads the entry from the
+/// initial frame (x19/ELR_EL1 on AArch64, the iretq frame RIP on x86_64).
 ///
 /// The `spawn_thread` API expects `extern "C" fn()`; we transmute the VAddr to
 /// that type since `create_user_thread_context` immediately casts it back to
 /// `usize` for storage in the initial frame.
-#[cfg(target_arch = "aarch64")]
 fn user_thread_entry_ptr(vaddr: VAddr) -> extern "C" fn() {
     let raw: usize = vaddr.into();
     unsafe { core::mem::transmute::<usize, extern "C" fn()>(raw) }
 }
 
 pub fn test_el0_syscall_round_trip() {
-    // Only meaningful on AArch64 where the SVC handler is wired.
-    #[cfg(target_arch = "aarch64")]
-    {
-        logln!("Testing EL0 SVC round-trip...");
+    logln!("Testing EL0 syscall round-trip...");
 
-        let vaddr = VAddr::from(USER_CODE_VADDR);
-        let cq_vaddr = VAddr::from(USER_CQ_VADDR);
-        let result_vaddr = VAddr::from(USER_RESULT_VADDR);
-        let asid = prepare_user_address_space(vaddr, cq_vaddr, result_vaddr);
+    let vaddr = VAddr::from(USER_CODE_VADDR);
+    let cq_vaddr = VAddr::from(USER_CQ_VADDR);
+    let result_vaddr = VAddr::from(USER_RESULT_VADDR);
+    let asid = prepare_user_address_space(vaddr, cq_vaddr, result_vaddr);
 
-        // --- verify CQ ring visible from kernel side --------------------------
-        let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
-        assert_eq!(completion::cq_pending(asid, 0), 0);
-        completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
-        assert_eq!(completion::cq_pending(asid, 0), 1);
+    // --- verify CQ ring visible from kernel side --------------------------
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    assert_eq!(completion::cq_pending(asid, 0), 0);
+    completion::complete(asid, cap, OpResult::Ok(1)).unwrap();
+    assert_eq!(completion::cq_pending(asid, 0), 1);
 
-        // Read head via HHDM — the kernel should see head == 1 (one entry written).
-        let ring_ptr =
-            unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must be attached");
-        let ring = unsafe { &mut *ring_ptr };
-        let head = unsafe { core::ptr::read_volatile(&ring.head) };
-        assert_eq!(head, 1, "kernel must see head == 1 after one completion");
+    // Read head via HHDM — the kernel should see head == 1 (one entry written).
+    let ring_ptr = unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must be attached");
+    let ring = unsafe { &mut *ring_ptr };
+    let head = unsafe { core::ptr::read_volatile(&ring.head) };
+    assert_eq!(head, 1, "kernel must see head == 1 after one completion");
 
-        // Revoke the kernel-side probe capability before the user submits its
-        // own operation. Unified capability handles are monotonic and are not
-        // reused, so the EL0 result is validated by table membership below
-        // rather than by assuming a particular integer.
-        completion::close(asid, cap).unwrap();
+    // Revoke the kernel-side probe capability before the user submits its
+    // own operation. Unified capability handles are monotonic and are not
+    // reused, so the EL0 result is validated by table membership below
+    // rather than by assuming a particular integer.
+    completion::close(asid, cap).unwrap();
 
-        // Spawn the EL0 user thread. The completion table + phys-mapped CQ that
-        // `prepare_user_address_space` attached stay in place — we deliberately
-        // do NOT reopen the AS with a heap-backed CQ, which would detach the
-        // page mapped into the user address space.
-        let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
-        logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-        EL0_USER_TID.store(tid + 1, Ordering::Release);
-        EL0_USER_ASID.store(asid + 1, Ordering::Release);
+    // Spawn the EL0 user thread. The completion table + phys-mapped CQ that
+    // `prepare_user_address_space` attached stay in place — we deliberately
+    // do NOT reopen the AS with a heap-backed CQ, which would detach the
+    // page mapped into the user address space.
+    let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
+    logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
+    EL0_USER_TID.store(tid + 1, Ordering::Release);
+    EL0_USER_ASID.store(asid + 1, Ordering::Release);
 
-        // The verification thread runs after `yield_lp()` (self-tests run on the
-        // boot path before the scheduler is entered), polls the result page via
-        // HHDM, and asserts the sentinel + returned cap. It panics on timeout or
-        // mismatch, so a broken EL0/submit path fails the boot rather than
-        // silently logging success.
-        let vtid = crate::self_test::results::spawn_verifier(
-            crate::self_test::results::TestId::El0,
-            verify_el0_result,
-        );
-        logln!("EL0 verifier thread spawned with tid={}; assertion deferred to scheduler.", vtid);
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        logln!("Skipping EL0 SVC round-trip test (AArch64 only).");
-    }
+    // The verification thread runs after `yield_lp()` (self-tests run on the
+    // boot path before the scheduler is entered), polls the result page via
+    // HHDM, and asserts the sentinel + returned cap. It panics on timeout or
+    // mismatch, so a broken EL0/submit path fails the boot rather than
+    // silently logging success.
+    let vtid = crate::self_test::results::spawn_verifier(
+        crate::self_test::results::TestId::El0,
+        verify_el0_result,
+    );
+    logln!("EL0 verifier thread spawned with tid={}; assertion deferred to scheduler.", vtid);
 }
 
 /// Kernel thread that verifies the EL0 user thread's side effects. Polls the
@@ -293,7 +302,6 @@ pub fn test_el0_syscall_round_trip() {
 ///
 /// Uses cooperative `yield_lp` polling rather than `sleep` so it does not add a
 /// blocking waiter to the timer path while the rest of the system is coming up.
-#[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_result() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -319,15 +327,15 @@ extern "C" fn verify_el0_result() {
                 cap
             );
             logln!(
-                "[EL0] SUCCESS: user thread ran at EL0, submit returned cap {}, result page \
+                "[EL0] SUCCESS: user thread ran at ring 3, submit returned cap {}, result page \
                  verified.",
                 cap
             );
             crate::self_test::results::pass(crate::self_test::results::TestId::El0);
             // Teardown belongs to the verifier: once the observable result is
             // committed, the payload has no further role. This is idempotent
-            // when svc #8 already removed it and prevents a failed exit path
-            // from becoming permanent scheduler load.
+            // when the exit syscall already removed it and prevents a failed
+            // exit path from becoming permanent scheduler load.
             let encoded_tid = EL0_USER_TID.swap(0, Ordering::AcqRel);
             if encoded_tid != 0 {
                 let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER

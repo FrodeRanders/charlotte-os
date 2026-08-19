@@ -8,6 +8,7 @@
 use core::ptr::NonNull;
 
 use super::{
+    CR3_ADDRESS_MASK,
     PAGE_SIZE,
     is_pagetable_unused,
 };
@@ -25,8 +26,6 @@ use crate::{
     },
     memory::PHYSICAL_FRAME_ALLOCATOR,
 };
-
-const CR3_ADDRESS_MASK: u64 = 0x000ffffffffff000;
 type WalkerError = <super::MemoryInterfaceImpl as MemoryInterface>::Error;
 type WalkerResult<T> = Result<T, WalkerError>;
 
@@ -197,6 +196,29 @@ impl<'vas> PthWalker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> WalkerResult<()> {
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, true)
+    }
+
+    /// Map a page that is already owned and populated (e.g. a memory-object
+    /// frame being moved into another address space) without zeroing it.
+    pub fn map_existing_page(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+    ) -> WalkerResult<()> {
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, false)
+    }
+
+    fn map_page_with_attrs(
+        &mut self,
+        frame: PAddr,
+        writable: bool,
+        user_accessible: bool,
+        no_execute: bool,
+        zero: bool,
+    ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk())?;
         self.ensure_pml4();
         if self.pdpt_ptr.is_null() {
@@ -245,6 +267,36 @@ impl<'vas> PthWalker<'vas> {
                 no_execute,
             );
         }
+        // A shared subtree may contain a mix of read-only (e.g. code) and
+        // writable (e.g. data) pages. Intermediate entries are created with the
+        // flags of the first page mapped beneath them, so widening them here
+        // ensures a later writable/user mapping is not silently made read-only
+        // (or supervisor-only) by a stale parent bit.
+        if writable || user_accessible {
+            unsafe {
+                let pml4e = &mut (*self.pml4_ptr)[self.vaddr.pml4_index()];
+                if writable {
+                    pml4e.set_writable(true);
+                }
+                if user_accessible {
+                    pml4e.set_user_accessible(true);
+                }
+                let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+                if writable {
+                    pdpte.set_writable(true);
+                }
+                if user_accessible {
+                    pdpte.set_user_accessible(true);
+                }
+                let pde = &mut (*self.pd_ptr)[self.vaddr.pd_index()];
+                if writable {
+                    pde.set_writable(true);
+                }
+                if user_accessible {
+                    pde.set_user_accessible(true);
+                }
+            }
+        }
         // Map the page frame
         unsafe {
             Self::set_table_entry(
@@ -255,16 +307,20 @@ impl<'vas> PthWalker<'vas> {
                 no_execute,
                 false,
             );
-            // for those who may not immediately see it, this is the Rust equivalent of
-            // memset being used to clear the newly mapped page
-            core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            if zero {
+                // for those who may not immediately see it, this is the Rust equivalent of
+                // memset being used to clear the newly mapped page
+                core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            }
         }
-        self.address_space.load().expect("Failed to reload the address space");
+        // Do NOT reload CR3 here: the address space being mapped may not be the
+        // one currently active (e.g. mapping pages into a freshly created user
+        // address space while the kernel AS is live). A non-current address
+        // space is flushed when its CR3 is next loaded; a current one is
+        // flushed below by invalidating the single translation.
         unsafe {
             // Get rid of any stale TLB entries referring to the linear address space
-            // aperture into which the newly allocated page frame has been mapped
-            // This works as is in the single LP world but to operate with multiple
-            // processors we need a proper TLB shootdown here.
+            // aperture into which the newly allocated page frame has been mapped.
             core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
         }
 
@@ -312,7 +368,11 @@ impl<'vas> PthWalker<'vas> {
                             .unwrap();
                         (*pml4e).set_present(false);
                     }
-                    //super::tlb::invalidate_page(self.address_space, self.vaddr);
+                    // Invalidate the removed translation locally. The cross-LP
+                    // shootdown is the responsibility of the VMM client, which
+                    // knows the address-space identity and can rendezvous once
+                    // per logical operation rather than per page.
+                    core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
                     Ok(paddr)
                 }
             }
@@ -373,7 +433,7 @@ impl<'vas> PthWalker<'vas> {
             let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
             let paddr = (*pde).try_get_frame().unwrap();
             (*pde).set_present(false);
-            //super::tlb::invalidate_page(self.address_space, self.vaddr);
+            core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
             Ok(paddr)
         }
     }
@@ -421,7 +481,7 @@ impl<'vas> PthWalker<'vas> {
             let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
             let paddr = (*pdpte).try_get_frame().unwrap();
             (*pdpte).set_present(false);
-            //super::tlb::invalidate_page(self.address_space, self.vaddr);
+            core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
             Ok(paddr)
         }
     }

@@ -88,6 +88,12 @@ path = "src/bin/observe.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "smoke"
+path = "src/bin/smoke.rs"
+test = false
+bench = false
+
 [dependencies]
 charlotte-authorization = { path = "../charlotte-authorization" }
 catten-rt = { path = "../catten-rt" }

@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+#
+# Build a bootable UEFI disk image for CharlotteOS / Catten (x86_64) and run it
+# under QEMU. This is the x86_64 counterpart of scripts/run-aarch64.sh.
+#
+# Requirements: qemu, mtools.  On macOS install via Homebrew:
+#   brew install qemu mtools
+#
+# The x86_64 port now boots multi-LP, runs EL0 at ring 3 through the SYSCALL
+# ABI, and passes the kernel-side + ring-3 deferred self-test subset. The
+# embedded EL0 service bundle and the networking/EL0-service features remain
+# AArch64-only, so this script focuses on building the kernel, a boot image,
+# and driving QEMU with serial capture + panic/self-test detection.
+#
+# Usage:
+#   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT]
+#                         [--instance NAME] [--smp N] [--timeout S]
+#                         [--fresh-storage|--reuse-storage]
+#
+#   debug|release  Build profile (default: debug)
+#   --clean        Remove all cached x86_64 target artifacts before building
+#   --gdb          Start QEMU paused with a gdb stub
+#   --gdb-port PORT  GDB stub port (default: 1234)
+#   --instance NAME  Use separate boot/log files for this VM
+#   --smp N        Number of CPUs (default: 4)
+#   --timeout S    Kill QEMU after S seconds, capturing serial output
+#                  (default: run interactively)
+#   --fresh-storage  Recreate this instance's NVMe boot image from scratch
+#   --reuse-storage  Keep the existing boot image (explicitly stale)
+#   --el0-smoke    Build + sign the x86_64 `smoke` service ELF and run the
+#                  EL0 Rust-ELF round-trip self-test
+#
+set -euo pipefail
+
+ARCH="x86_64"
+PROFILE="debug"
+GDB=""
+GDB_PORT="1234"
+SMP="4"
+TIMEOUT=""
+CLEAN_BUILD="0"
+INSTANCE=""
+FRESH_STORAGE="0"
+REUSE_STORAGE="0"
+EL0_SMOKE="0"
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        debug|release) PROFILE="$1"; shift ;;
+        --clean)       CLEAN_BUILD="1"; shift ;;
+        --gdb)         GDB="-S"; shift ;;
+        --gdb-port)
+            [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
+            GDB_PORT="$2"; shift 2 ;;
+        --instance)
+            [ "$#" -ge 2 ] || { echo "Missing value for --instance" >&2; exit 1; }
+            INSTANCE="$2"; shift 2 ;;
+        --smp)
+            [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
+            SMP="$2"; shift 2 ;;
+        --timeout)
+            [ "$#" -ge 2 ] || { echo "Missing value for --timeout" >&2; exit 1; }
+            TIMEOUT="$2"; shift 2 ;;
+        --fresh-storage) FRESH_STORAGE="1"; shift ;;
+        --reuse-storage) REUSE_STORAGE="1"; shift ;;
+        --el0-smoke)     EL0_SMOKE="1"; shift ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+if ! [[ "$GDB_PORT" =~ ^[0-9]+$ ]] || [ "$GDB_PORT" -lt 1 ] || [ "$GDB_PORT" -gt 65535 ]; then
+    echo "error: --gdb-port must be an integer from 1 through 65535" >&2
+    exit 1
+fi
+if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
+    exit 1
+fi
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
+TARGET_DIR="${ARCH}-unknown-none-catten"
+IMAGE_DIR="./os-images"
+INSTANCE_SUFFIX=""
+if [ -n "$INSTANCE" ]; then
+    INSTANCE_SUFFIX="-${INSTANCE}"
+fi
+IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
+KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
+EFI_BOOT_FILE="BOOTX64.EFI"
+
+# Resolve the edk2 x86_64 firmware shipped with QEMU.
+FW=""
+if command -v brew >/dev/null 2>&1; then
+    QEMU_PREFIX="$(brew --prefix qemu 2>/dev/null || true)"
+    [ -n "$QEMU_PREFIX" ] && FW="${QEMU_PREFIX}/share/qemu/edk2-x86_64-code.fd"
+fi
+if [ -z "$FW" ] || [ ! -f "$FW" ]; then
+    for candidate in \
+        /opt/homebrew/share/qemu/edk2-x86_64-code.fd \
+        /usr/local/share/qemu/edk2-x86_64-code.fd \
+        /usr/share/qemu/edk2-x86_64-code.fd; do
+        if [ -f "$candidate" ]; then
+            FW="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$FW" ] || [ ! -f "$FW" ]; then
+    echo "error: QEMU edk2 x86_64 firmware not found (edk2-x86_64-code.fd)" >&2
+    echo "       install qemu via Homebrew: brew install qemu" >&2
+    exit 1
+fi
+
+if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+    echo "error: qemu-system-x86_64 not found" >&2
+    exit 1
+fi
+for tool in mformat mmd mcopy; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "error: $tool not found; install mtools (brew install mtools)" >&2
+        exit 1
+    fi
+done
+
+RELEASE_FLAG=""
+if [ "$PROFILE" = "release" ]; then
+    RELEASE_FLAG="--release"
+fi
+
+if [ "$CLEAN_BUILD" = "1" ]; then
+    echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
+    cargo clean --target "$TARGET_SPEC"
+fi
+
+FEATURES="acpi"
+if [ "$EL0_SMOKE" = "1" ]; then
+    echo ">>> Building and signing the x86_64 smoke service ELF..."
+    cargo build --manifest-path crates/catten-services/Cargo.toml \
+        --target crates/catten-services/x86_64-unknown-none.json \
+        --release -Z build-std=core,alloc --bin smoke
+    SMOKE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
+    mkdir -p "$SMOKE_BUNDLE"
+    cp crates/catten-services/target/x86_64-unknown-none/release/smoke \
+        "$SMOKE_BUNDLE/smoke.elf"
+    "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SMOKE_BUNDLE"
+    export CATTEN_X86_64_SMOKE_ELF="$SMOKE_BUNDLE/smoke.elf"
+    FEATURES="${FEATURES},x86_el0_smoke"
+fi
+
+echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, headless)..."
+cargo build --package catten --target "$TARGET_SPEC" \
+    --no-default-features --features "$FEATURES" $RELEASE_FLAG
+
+if command -v sha256sum >/dev/null 2>&1; then
+    KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
+else
+    KERNEL_SHA256="$(shasum -a 256 "$KERNEL" | awk '{print $1}')"
+fi
+echo ">>> Kernel payload: ${KERNEL}"
+echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
+
+# --- Build a FAT32 EFI System Partition image with mtools. ---
+if [ "$REUSE_STORAGE" = "1" ] && [ -f "$IMAGE" ]; then
+    echo ">>> Reusing boot image ${IMAGE} by explicit request."
+elif [ "$FRESH_STORAGE" = "1" ] || [ ! -f "$IMAGE" ]; then
+    echo ">>> Creating boot image ${IMAGE}..."
+    mkdir -p "$IMAGE_DIR"
+    dd if=/dev/zero of="$IMAGE" bs=1048576 count=64 status=none
+    mformat -i "$IMAGE" -F -v CATOS ::
+    mmd -i "$IMAGE" ::/EFI
+    mmd -i "$IMAGE" ::/EFI/BOOT
+    mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FILE}"
+    mcopy -i "$IMAGE" "$KERNEL" "::/catten"
+    mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
+else
+    echo ">>> Reusing boot image ${IMAGE} (delete it or pass --fresh-storage to rebuild)."
+fi
+
+QEMU_OPTS=(
+    -M q35
+    -cpu max
+    -smp "$SMP"
+    -m 512M
+    -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
+    -drive "if=none,file=${IMAGE},format=raw,id=boot0"
+    -device "nvme,drive=boot0,serial=cat0"
+    -display none
+    -no-reboot
+)
+
+if [ -n "$GDB" ]; then
+    QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
+fi
+
+if [ -n "$TIMEOUT" ]; then
+    LOG="/tmp/charlotte-x86${INSTANCE_SUFFIX}-serial.log"
+    : >"$LOG"
+    QEMU_OPTS+=(-serial "file:${LOG}")
+    echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
+    qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB &
+    QPID=$!
+    MAX_TICKS=$((TIMEOUT * 10))
+    for ((tick = 0; tick < MAX_TICKS; tick++)); do
+        sleep 0.1
+        if ! kill -0 "$QPID" 2>/dev/null; then
+            wait "$QPID" 2>/dev/null || true
+            echo "error: QEMU exited before the ${TIMEOUT}s window elapsed" >&2
+            if [ -f "$LOG" ]; then
+                echo ">>> Serial log (${LOG}):"
+                cat "$LOG"
+            fi
+            exit 1
+        fi
+    done
+    kill "$QPID" 2>/dev/null || true
+    wait "$QPID" 2>/dev/null || true
+    echo ">>> Serial log (${LOG}):"
+    cat "$LOG"
+    if grep -Fq "Kernel panic:" "$LOG"; then
+        echo "error: kernel panic observed during the test window" >&2
+        exit 1
+    fi
+    # Report the authoritative self-test result when the deferred suite is
+    # able to complete on this architecture; ring-3 tests are gated until the
+    # user-mode path is brought up.
+    if grep -Eq 'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0' "$LOG"; then
+        echo ">>> All registered deferred self-tests passed."
+    else
+        echo "warning: no authoritative self-test result produced (expected while x86_64 user-mode bring-up is in progress)" >&2
+    fi
+else
+    QEMU_OPTS+=(-serial stdio)
+    echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."
+    exec qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB
+fi

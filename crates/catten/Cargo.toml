@@ -56,6 +56,9 @@ http_net_test = ["virtio_net_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []
+# Run the x86_64 EL0 smoke test: loads a real Rust ELF (the `smoke` service)
+# into ring 3. Requires CATTEN_X86_64_SMOKE_ELF to point at the signed ELF.
+x86_el0_smoke = []
 qemu = ["virtio_gpu"]
 
 [dependencies]

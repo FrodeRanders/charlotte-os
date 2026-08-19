@@ -87,3 +87,15 @@ pub fn test_ipi_bounded_queue() {
 
     logln!("Bounded IPI queue and typed-message dispatch tests passed.");
 }
+
+/// Verify the synchronous cross-LP TLB-shootdown rendezvous completes once the
+/// scheduler is live and every LP can field the sync IPI. This must run
+/// deferred: during the boot-path synchronous suite the APs are still masked at
+/// the yield barrier and could not acknowledge the shootdown.
+#[cfg(target_arch = "x86_64")]
+pub fn test_sync_ipi_shootdown() {
+    let lp_count = crate::cpu::multiprocessor::get_lp_count();
+    logln!("[ipi] verifying synchronous TLB-shootdown rendezvous across {lp_count} LP(s)...");
+    crate::cpu::isa::interrupts::fixed::ipis::send_sync_shootdown();
+    logln!("[ipi] synchronous TLB-shootdown rendezvous completed.");
+}

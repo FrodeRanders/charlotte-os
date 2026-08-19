@@ -1,16 +1,54 @@
 //! # Low-level operations for x86_64 Logical Processors
 
+/// Per-LP data reached through the kernel GS base (`swapgs` on SYSCALL entry).
+///
+/// `kernel_stack` holds the top of the currently active user thread's kernel
+/// stack (kept in lockstep with `TSS.RSP0`); the SYSCALL trampoline loads it as
+/// its kernel stack. `user_stack` is a scratch slot in which the trampoline
+/// saves the user's RSP before switching stacks.
+#[repr(C)]
+pub struct PerCpuData {
+    pub kernel_stack: u64,
+    pub user_stack: u64,
+}
+
+#[unsafe(no_mangle)]
+pub static mut PER_CPU: [PerCpuData; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] = [const {
+    PerCpuData {
+        kernel_stack: 0,
+        user_stack: 0,
+    }
+};
+    crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
+
 pub fn init_lp_state() {
     unsafe {
         core::arch::asm! {
             "mov rax, cr4",
-            "or rax, 1<<16",
+            "or rax, 1<<16",     // enable FSGSBASE
+            // Supervisor Mode Access/Execution Prevention would trap the
+            // SYSCALL trampoline's save of RAX/RCX/RDX onto the user stack and
+            // any future kernel access to EL0 memory. SMAP/SMEP hardening is
+            // deferred until the user-mode path is complete; clear both here.
+            "btr rax, 20",       // clear SMEP
+            "btr rax, 21",       // clear SMAP
             "mov cr4, rax",
             "mov rax, 0",
             "wrfsbase rax",
             "wrgsbase rax",
             out("rax") _
         }
+    }
+    // Point the kernel GS base at this LP's per-CPU area. `swapgs` on SYSCALL
+    // entry then exposes `gs:[0]` (kernel stack) and `gs:[8]` (user-stack
+    // save slot) to the trampoline.
+    let lp_id = get_lp_id() as usize;
+    let per_cpu_addr = unsafe { core::ptr::addr_of!(PER_CPU[lp_id]) } as u64;
+    unsafe {
+        crate::cpu::isa::x86_64::constants::msrs::write(
+            crate::cpu::isa::x86_64::constants::msrs::KERNEL_GS_BASE,
+            per_cpu_addr,
+        );
     }
     // Enable SYSCALL/SYSRET. The handler address comes from the
     // syscall_entry trampoline in interrupts/syscall.rs.
@@ -94,9 +132,12 @@ pub fn get_lic_id() -> u32 {
     apic_id
 }
 
-use core::arch::{
-    asm,
-    naked_asm,
+use core::{
+    arch::{
+        asm,
+        naked_asm,
+    },
+    sync::atomic::Ordering,
 };
 
 use super::LpId;
@@ -186,7 +227,7 @@ pub extern "C" fn cond_yield_lp() {
     // Collect switch parameters and release all locks before calling switch_ctx.
     // switch_ctx may permanently abandon the current stack (initial non-thread switch),
     // so any guards held across it would never be dropped, leaving locks permanently locked.
-    let switch_params: Option<(*mut u64, *const u64)> = {
+    let switch_params: Option<(*mut u64, *const u64, usize, u64)> = {
         let sched = SYSTEM_SCHEDULER.read();
         let mut lsched = sched.get_lp_scheduler().lock();
         if lsched.is_ctx_switch_pending() {
@@ -194,7 +235,7 @@ pub extern "C" fn cond_yield_lp() {
             if let Ok(next_tid) = lsched.next() {
                 if curr_tid.is_some() {
                     if next_tid != curr_tid.unwrap() {
-                        let (curr_rsp0_ptr, next_rsp0_ptr) = {
+                        let (curr_rsp0_ptr, next_rsp0_ptr, next_asid, next_stack_top) = {
                             let mut tt_guard = MASTER_THREAD_TABLE.write();
                             let curr_thread = tt_guard
                                 .get_mut(
@@ -206,7 +247,9 @@ pub extern "C" fn cond_yield_lp() {
                                 .get_mut(next_tid)
                                 .expect("Next thread not found during yield.");
                             let next_rsp0_ptr = &raw mut next_thread.context.rsp_cpl0;
-                            (curr_rsp0_ptr, next_rsp0_ptr)
+                            let next_asid = next_thread.asid;
+                            let next_stack_top = next_thread.context.kernel_stack_top;
+                            (curr_rsp0_ptr, next_rsp0_ptr, next_asid, next_stack_top)
                         };
                         #[cfg(feature = "yield_trace")]
                         {
@@ -217,7 +260,7 @@ pub extern "C" fn cond_yield_lp() {
                             };
                         }
                         lsched.clear_ctx_switch_pending();
-                        Some((curr_rsp0_ptr, next_rsp0_ptr))
+                        Some((curr_rsp0_ptr, next_rsp0_ptr, next_asid, next_stack_top))
                     } else {
                         #[cfg(feature = "yield_trace")]
                         {
@@ -232,12 +275,16 @@ pub extern "C" fn cond_yield_lp() {
                         None
                     }
                 } else {
-                    let next_rsp0_ptr = {
+                    let (next_rsp0_ptr, next_asid, next_stack_top) = {
                         let mut tt_guard = MASTER_THREAD_TABLE.write();
                         let next_thread = tt_guard
                             .get_mut(next_tid)
                             .expect("Next thread not found during yield.");
-                        &raw mut next_thread.context.rsp_cpl0
+                        (
+                            &raw mut next_thread.context.rsp_cpl0,
+                            next_thread.asid,
+                            next_thread.context.kernel_stack_top,
+                        )
                     };
                     #[cfg(feature = "yield_trace")]
                     {
@@ -247,7 +294,7 @@ pub extern "C" fn cond_yield_lp() {
                         };
                     }
                     lsched.clear_ctx_switch_pending();
-                    Some((core::ptr::null_mut(), next_rsp0_ptr))
+                    Some((core::ptr::null_mut(), next_rsp0_ptr, next_asid, next_stack_top))
                 }
             } else {
                 logln!(
@@ -282,12 +329,25 @@ pub extern "C" fn cond_yield_lp() {
             lp_id,
         } => logln!("Yielding from non-thread context to thread {:?} on LP {:?}", next, lp_id),
     }
-    if let Some((curr_rsp0_ptr, next_rsp0_ptr)) = switch_params {
+    if let Some((curr_rsp0_ptr, next_rsp0_ptr, next_asid, next_stack_top)) = switch_params {
+        // Publish the incoming thread's ASID and kernel-stack top before the
+        // switch so the SYSCALL entry path attributes the caller to the right
+        // address space and lands on the correct per-thread kernel stack.
+        let lp_id = get_lp_id() as usize;
+        crate::cpu::isa::x86_64::memory::paging::CURRENT_LOGICAL_ASID[lp_id]
+            .store(next_asid, Ordering::Release);
+        if next_asid != crate::memory::KERNEL_ASID {
+            crate::cpu::isa::x86_64::init::gdt::write_rsp0(next_stack_top);
+            unsafe {
+                PER_CPU[lp_id].kernel_stack = next_stack_top;
+            }
+        }
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
     }
     crate::cpu::scheduler::threads::retire_requested_threads();
     // Reap exited threads now that we are on a different thread's stack.
     crate::cpu::scheduler::threads::reap_dead_threads();
+    crate::cpu::scheduler::maybe_sample_rebalance();
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -368,6 +428,11 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
     // properly set up with a `UserEntryFrames` struct, and that the CPU is in the correct state for
     // executing this trampoline (e.g., interrupts disabled, correct segment selectors, etc.).
     naked_asm!(
+        // Enter ring 3 with the user GS base (0) regardless of the GS state
+        // left behind by whatever context ran previously (e.g. a blocked
+        // syscall). FSGSBASE is enabled by init_lp_state.
+        "xor eax, eax",
+        "wrgsbase rax",
         // `iretq` to the user entry point
         "iretq",
     );

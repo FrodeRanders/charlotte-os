@@ -5,7 +5,6 @@
 //! their linked virtual addresses with page permissions derived from ELF
 //! flags, and the canonical `catten-rt` runtime pages (config, input, heap)
 //! are mapped and zeroed.
-#![cfg(target_arch = "aarch64")]
 
 pub use charlotte_launch::{
     CONFIG_VADDR,
@@ -59,10 +58,30 @@ const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
 const ELFCLASS64: u8 = 2;
 const ELFDATA2LSB: u8 = 1;
 const ET_EXEC: u16 = 2;
+#[cfg(target_arch = "aarch64")]
 const EM_AARCH64: u16 = 0xb7;
+#[cfg(target_arch = "x86_64")]
+const EM_X86_64: u16 = 0x3e;
 const PT_LOAD: u32 = 1;
 const PF_X: u32 = 1;
 const PF_W: u32 = 2;
+
+/// The ELF machine type the loader accepts for the architecture it is built for.
+#[inline]
+fn expected_machine() -> u16 {
+    #[cfg(target_arch = "aarch64")]
+    {
+        EM_AARCH64
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        EM_X86_64
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        0
+    }
+}
 
 /// A user protection domain prepared by the loader but not yet running.
 pub struct LoadedDomain {
@@ -121,7 +140,7 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
         || image[4] != ELFCLASS64
         || image[5] != ELFDATA2LSB
         || read_u16_le(image, 16) != ET_EXEC
-        || read_u16_le(image, 18) != EM_AARCH64
+        || read_u16_le(image, 18) != expected_machine()
     {
         return false;
     }
@@ -212,7 +231,11 @@ fn parse_elf_header(image: &[u8]) -> (usize, usize, usize, usize) {
     assert_eq!(image[4], ELFCLASS64, "[loader] ELF image is not 64-bit");
     assert_eq!(image[5], ELFDATA2LSB, "[loader] ELF image is not little-endian");
     assert_eq!(read_u16_le(image, 16), ET_EXEC, "[loader] ELF image must be ET_EXEC");
-    assert_eq!(read_u16_le(image, 18), EM_AARCH64, "[loader] ELF image is not AArch64");
+    assert_eq!(
+        read_u16_le(image, 18),
+        expected_machine(),
+        "[loader] ELF image has the wrong machine type"
+    );
 
     let entry = read_u64_le(image, 24) as usize;
     let phoff = read_u64_le(image, 32) as usize;
@@ -370,6 +393,9 @@ pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
     }
     assert!(load_segments > 0, "[loader] ELF image has no LOAD segments");
 
+    // AArch64 requires an explicit instruction-cache invalidation after writing
+    // code through the data side; x86-64 keeps the I-cache coherent.
+    #[cfg(target_arch = "aarch64")]
     unsafe {
         core::arch::asm!(
             "dsb ishst",

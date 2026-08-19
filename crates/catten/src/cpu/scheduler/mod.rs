@@ -11,11 +11,12 @@
 //! to its affinity LP rather than the globally least-loaded one.
 
 use alloc::sync::Weak;
-use core::hint::unreachable_unchecked;
-#[cfg(target_arch = "aarch64")]
-use core::sync::atomic::{
-    AtomicU64,
-    Ordering,
+use core::{
+    hint::unreachable_unchecked,
+    sync::atomic::{
+        AtomicU64,
+        Ordering,
+    },
 };
 
 use crate::{
@@ -55,9 +56,7 @@ pub mod system_scheduler;
 pub mod threads;
 
 const SCHED_TRACE: bool = false;
-#[cfg(target_arch = "aarch64")]
 const REBALANCE_SAMPLE_MILLIS: u64 = 10;
-#[cfg(target_arch = "aarch64")]
 static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
 
 /// Current monotonic time in milliseconds since the architecture counter's
@@ -172,7 +171,6 @@ fn spawn_thread_with_migration(
     tid
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn maybe_sample_rebalance() {
     use crate::cpu::isa::lp::ops::get_lp_id;
 
@@ -190,9 +188,6 @@ pub fn maybe_sample_rebalance() {
     }
     SYSTEM_SCHEDULER.read().try_rebalance_sustained(now_millis);
 }
-
-#[cfg(not(target_arch = "aarch64"))]
-pub fn maybe_sample_rebalance() {}
 
 /// Returns the address-space id of the currently running thread, if execution
 /// is currently inside scheduler-managed thread context.

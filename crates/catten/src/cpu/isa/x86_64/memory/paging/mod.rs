@@ -23,12 +23,28 @@ use crate::{
         mebibytes,
     },
     logln,
-    memory::PAddr,
+    memory::{
+        KERNEL_ASID,
+        PAddr,
+        PHYSICAL_FRAME_ALLOCATOR,
+    },
 };
 
 pub const PAGE_SIZE: usize = 4096;
 pub const N_PAGE_TABLE_ENTRIES: usize = 512;
 pub type PageTable = [pte::PageTableEntry; N_PAGE_TABLE_ENTRIES];
+
+/// Mask of the address bits of CR3 (the top-level page-table physical base).
+pub const CR3_ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
+
+/// The logical [`AddressSpaceId`](crate::memory::AddressSpaceId) of the thread
+/// currently executing on each logical processor, maintained by the context
+/// switch and read by the SYSCALL entry path to attribute the caller's
+/// syscalls. Mirror of the AArch64 [`CURRENT_LOGICAL_ASID`].
+pub static CURRENT_LOGICAL_ASID: [core::sync::atomic::AtomicUsize;
+    crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] =
+    [const { core::sync::atomic::AtomicUsize::new(KERNEL_ASID) };
+        crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
 pub fn is_pagetable_unused(table_ptr: NonNull<PageTable>) -> bool {
     unsafe {
@@ -48,12 +64,36 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
-    /// Construct a user address space from the current kernel mappings.
-    /// x86-64 ring-3 isolation is not yet implemented, so this currently
-    /// retains the active CR3; the explicit constructor keeps callers from
-    /// depending on architecture-specific register mutation.
+    /// Construct an isolated user address space sharing only the kernel
+    /// (higher-half) mappings.
+    ///
+    /// A fresh, zeroed PML4 is allocated and the kernel's top-level entries
+    /// (indices 256..512, i.e. the whole higher half) are copied from the
+    /// active translation root. Because those entries point at the same shared
+    /// PML3/PML2/PML1 tables, later kernel mapping changes below the PML4 level
+    /// remain visible in every address space; the user half (indices 0..256)
+    /// starts empty so ring-3 code can only reach what the loader explicitly
+    /// maps. The new address space is not installed: callers map into it
+    /// through the address-space table and it becomes active only when a thread
+    /// switches CR3 to it.
     pub fn new_user() -> Self {
-        Self::get_current()
+        let current = Self::get_current();
+        let new_pml4 = PHYSICAL_FRAME_ALLOCATOR
+            .lock()
+            .allocate_frame()
+            .expect("Failed to allocate a PML4 frame for a user address space.");
+        let new_pml4_ptr: *mut PageTable = new_pml4.into();
+        unsafe {
+            core::ptr::write_bytes(new_pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
+            let cur_pml4: *const PageTable =
+                PAddr::try_from((current.cr3 & CR3_ADDRESS_MASK) as usize).unwrap().into();
+            for index in 256..N_PAGE_TABLE_ENTRIES {
+                (*new_pml4_ptr)[index] = (*cur_pml4)[index];
+            }
+        }
+        AddressSpace {
+            cr3: <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK,
+        }
     }
 
     pub fn get_cr3(&self) -> u64 {
@@ -240,6 +280,20 @@ impl AddressSpaceInterface for AddressSpace {
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         let mut walker = pth_walker::PthWalker::new(self, mapping.vaddr);
         walker.map_page(
+            mapping.paddr,
+            mapping.page_type.is_writable(),
+            mapping.page_type.is_user_accessible(),
+            mapping.page_type.is_no_execute(),
+        )?;
+        Ok(())
+    }
+
+    fn map_existing_page(
+        &mut self,
+        mapping: MemoryMapping,
+    ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        let mut walker = pth_walker::PthWalker::new(self, mapping.vaddr);
+        walker.map_existing_page(
             mapping.paddr,
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),

@@ -25,7 +25,7 @@
 //! ```
 #![no_std]
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use core::arch::asm;
 use core::ops::BitOr;
 
@@ -454,43 +454,351 @@ unsafe fn svc6(
     ret
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            in("rdi") arg1,
+            in("rsi") arg2,
+            in("rdx") arg3,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    ret
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            in("rdi") arg1,
+            in("rsi") arg2,
+            in("rdx") arg3,
+            in("r10") arg4,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    ret
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
+    let ret: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            in("rdi") arg1,
+            in("rsi") arg2,
+            in("rdx") arg3,
+            in("r10") arg4,
+            in("r8") arg5,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    ret
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc6(
+    imm: SyscallNumber,
+    arg1: u64,
+    arg2: u64,
+    arg3: u64,
+    arg4: u64,
+    arg5: u64,
+    arg6: u64,
+) -> u64 {
+    let ret: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            in("rdi") arg1,
+            in("rsi") arg2,
+            in("rdx") arg3,
+            in("r10") arg4,
+            in("r8") arg5,
+            in("r9") arg6,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    ret
+}
+
+/// Like [`svc3`] but also captures the `regs[1]` (rdi) return value.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64) {
+    let ret: u64;
+    let x1_out: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            inlateout("rdi") arg1 => x1_out,
+            in("rsi") arg2,
+            in("rdx") arg3,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    (ret, x1_out)
+}
+
+/// Like [`svc3`] but also captures the `regs[1]`/`regs[2]` (rdi/rsi) returns.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64, u64) {
+    let ret: u64;
+    let x1_out: u64;
+    let x2_out: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            inlateout("rdi") arg1 => x1_out,
+            inlateout("rsi") arg2 => x2_out,
+            in("rdx") arg3,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    (ret, x1_out, x2_out)
+}
+
+/// Like [`svc3`] but also captures the `regs[1]`/`regs[2]`/`regs[3]` returns.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64, u64, u64) {
+    let ret: u64;
+    let x1_out: u64;
+    let x2_out: u64;
+    let x3_out: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") imm as u64 => ret,
+            inlateout("rdi") arg1 => x1_out,
+            inlateout("rsi") arg2 => x2_out,
+            inlateout("rdx") arg3 => x3_out,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    (ret, x1_out, x2_out, x3_out)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecv as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            lateout("rdx") reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation: 0,
+        sender_principal: 0,
+        sender_roles: 0,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecvBlock as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            lateout("rdx") reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation: 0,
+        sender_principal: 0,
+        sender_roles: 0,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    let sender_generation: u64;
+    let sender_principal: u64;
+    let sender_roles: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecvAuthenticated as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            lateout("rdx") reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            lateout("r12") sender_generation,
+            lateout("r13") sender_principal,
+            lateout("r14") sender_roles,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation,
+        sender_principal,
+        sender_roles: sender_roles as u32,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    let sender_generation: u64;
+    let sender_principal: u64;
+    let sender_roles: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecvBlockAuthenticated as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            lateout("rdx") reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            lateout("r12") sender_generation,
+            lateout("r13") sender_principal,
+            lateout("r14") sender_roles,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation,
+        sender_principal,
+        sender_roles: sender_roles as u32,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc3(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> u64 {
     0
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc4(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64, _arg4: u64) -> u64 {
     0
 }
 
-#[cfg(not(target_arch = "aarch64"))]
-#[inline(always)]
-unsafe fn svc3_x1(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64) {
-    (0, 0)
-}
-
-#[cfg(not(target_arch = "aarch64"))]
-#[inline(always)]
-unsafe fn svc3_x2(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
-    (0, 0, 0)
-}
-
-#[cfg(not(target_arch = "aarch64"))]
-#[inline(always)]
-unsafe fn svc3_x3(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
-    (0, 0, 0, 0)
-}
-
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc5(_imm: SyscallNumber, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     0
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc6(
     _imm: SyscallNumber,
@@ -504,7 +812,25 @@ unsafe fn svc6(
     0
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+unsafe fn svc3_x1(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64) {
+    (0, 0)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+unsafe fn svc3_x2(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64) {
+    (0, 0, 0)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+unsafe fn svc3_x3(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
+    (0, 0, 0, 0)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc_ipc_recv(_endpoint: u64) -> IpcMessage {
     IpcMessage {
@@ -523,7 +849,7 @@ unsafe fn svc_ipc_recv(_endpoint: u64) -> IpcMessage {
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc_ipc_recv_block(_endpoint: u64) -> IpcMessage {
     IpcMessage {
@@ -542,13 +868,13 @@ unsafe fn svc_ipc_recv_block(_endpoint: u64) -> IpcMessage {
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv(endpoint) }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv_block(endpoint) }

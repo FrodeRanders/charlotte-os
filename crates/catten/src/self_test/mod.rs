@@ -147,6 +147,8 @@ pub mod el0_raft;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_service;
 pub mod el0_sitas;
+#[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
+pub mod el0_smoke;
 #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
 pub mod el0_tcpip;
 #[cfg(target_arch = "aarch64")]
@@ -282,6 +284,10 @@ pub fn run_deferred_self_tests() {
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
     device::test_device_capabilities();
+    #[cfg(target_arch = "x86_64")]
+    ipi::test_sync_ipi_shootdown();
+    #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
+    el0_smoke::test_el0_smoke();
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     el0_net::test_el0_net();
     #[cfg(all(feature = "virtio_net_test", feature = "hvf_compat", target_arch = "aarch64"))]
