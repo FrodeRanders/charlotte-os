@@ -15,8 +15,6 @@
 //! embeds the additional non-storage services used by its reduced boot suite
 //! so service lookup never waits for an object store that cannot exist.
 
-#![cfg(target_arch = "aarch64")]
-
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -35,14 +33,23 @@ const OBJ_OP_READ: u32 = 4;
 // heap before the ELF verifier can reject them.
 const MAX_SERVICE_ELF_SIZE: usize = 4 * 1024 * 1024;
 
-// The embedded bootstrap set. `CATTEN_AARCH64_SERVICE_BUNDLE` points at the
+// The embedded bootstrap set. `CATTEN_{ARCH}_SERVICE_BUNDLE` points at the
 // staged, signed bundle (the build pipeline signs every ELF in it).
+#[cfg(target_arch = "aarch64")]
 macro_rules! bootstrap_elf {
     ($name:literal, $file:literal) => {
         ($name, include_bytes!(concat!(env!("CATTEN_AARCH64_SERVICE_BUNDLE"), "/", $file, ".elf")))
     };
 }
 
+#[cfg(target_arch = "x86_64")]
+macro_rules! bootstrap_elf {
+    ($name:literal, $file:literal) => {
+        ($name, include_bytes!(concat!(env!("CATTEN_X86_64_SERVICE_BUNDLE"), "/", $file, ".elf")))
+    };
+}
+
+#[cfg(target_arch = "aarch64")]
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"ns", "ns"),
     bootstrap_elf!(b"nvme", "nvme"),
@@ -65,6 +72,13 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     #[cfg(feature = "hvf_compat")]
     bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
+
+// x86_64 embeds only the device-independent bootstrap services (the name
+// service and the system observer); the disk/device services require the
+// IOAPIC/MSI work that is not yet ported.
+#[cfg(target_arch = "x86_64")]
+const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] =
+    &[bootstrap_elf!(b"ns", "ns"), bootstrap_elf!(b"observe", "observe")];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.
 static STORE_ELFS: spin::Mutex<alloc::vec::Vec<(&'static [u8], &'static [u8])>> =

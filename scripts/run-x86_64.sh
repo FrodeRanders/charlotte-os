@@ -136,17 +136,30 @@ if [ "$CLEAN_BUILD" = "1" ]; then
 fi
 
 FEATURES="acpi"
+
+# Build and sign the device-independent x86_64 bootstrap services (the name
+# service and the system observer). The store embeds these at compile time, so
+# the bundle must exist before the kernel build, mirroring run-aarch64.sh.
+echo ">>> Building and signing the x86_64 bootstrap service bundle..."
+SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
+mkdir -p "$SERVICE_BUNDLE"
+cargo build --manifest-path crates/catten-services/Cargo.toml \
+    --target crates/catten-services/x86_64-unknown-none.json \
+    --release -Z build-std=core,alloc --bin ns --bin observe
+cp crates/catten-services/target/x86_64-unknown-none/release/ns "$SERVICE_BUNDLE/ns.elf"
+cp crates/catten-services/target/x86_64-unknown-none/release/observe "$SERVICE_BUNDLE/observe.elf"
+"${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
+export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
+
 if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
     cargo build --manifest-path crates/catten-services/Cargo.toml \
         --target crates/catten-services/x86_64-unknown-none.json \
         --release -Z build-std=core,alloc --bin smoke
-    SMOKE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-    mkdir -p "$SMOKE_BUNDLE"
     cp crates/catten-services/target/x86_64-unknown-none/release/smoke \
-        "$SMOKE_BUNDLE/smoke.elf"
-    "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SMOKE_BUNDLE"
-    export CATTEN_X86_64_SMOKE_ELF="$SMOKE_BUNDLE/smoke.elf"
+        "$SERVICE_BUNDLE/smoke.elf"
+    "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
+    export CATTEN_X86_64_SMOKE_ELF="$SERVICE_BUNDLE/smoke.elf"
     FEATURES="${FEATURES},x86_el0_smoke"
 fi
 

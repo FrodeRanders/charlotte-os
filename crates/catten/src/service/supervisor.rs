@@ -4,7 +4,6 @@
 //! generations belong to the userspace name service; the supervisor's job is
 //! to create protection domains, deliver exactly one bootstrap capability to
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
-#![cfg(target_arch = "aarch64")]
 
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
 const NODE_NAME_SERVICE_VERSION: u32 = 1;
@@ -106,6 +105,7 @@ pub(crate) static DEPLOYMENT_AGENT_ASID: spin::LazyLock<
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// The domain currently owned by the deployment agent on this node.
+#[cfg(target_arch = "aarch64")]
 pub(crate) static DEPLOYED_DOMAIN: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<ServiceDomain>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
@@ -456,6 +456,7 @@ pub struct UpgradeGrant {
 /// and delivered through the config-page contract. The driver never names a
 /// physical address or interrupt vector; it only maps and binds the
 /// capabilities it is handed.
+#[cfg(target_arch = "aarch64")]
 pub fn spawn_driver_with_name_service(
     image: &[u8],
     name_service: &NameServiceHandle,
@@ -682,6 +683,7 @@ pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
 /// loader refuses anything that is not validly signed, so provenance here is
 /// the signature note, not a byte-for-byte match against a kernel-embedded
 /// copy (the old hash-equality constraint, which the signing work removed).
+#[cfg(target_arch = "aarch64")]
 pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
     charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
         == charlotte_launch::signature_note::VerifyOutcome::Valid

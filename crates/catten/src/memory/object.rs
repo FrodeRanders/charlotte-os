@@ -278,7 +278,6 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     Ok(cap)
 }
 
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn allocate_with_bytes(
     owner: AddressSpaceId,
     bytes: &[u8],
@@ -324,7 +323,6 @@ pub fn info(
 /// This is used at trust boundaries such as executable loading: the complete
 /// image is snapshotted before validation so userspace cannot mutate bytes
 /// between ELF validation and segment mapping.
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn snapshot_bytes(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
