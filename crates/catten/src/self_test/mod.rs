@@ -287,6 +287,8 @@ pub fn run_deferred_self_tests() {
     #[cfg(target_arch = "x86_64")]
     device::test_ioapic_routing();
     #[cfg(target_arch = "x86_64")]
+    device::test_msi_routing();
+    #[cfg(target_arch = "x86_64")]
     ipi::test_sync_ipi_shootdown();
     #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
     el0_smoke::test_el0_smoke();

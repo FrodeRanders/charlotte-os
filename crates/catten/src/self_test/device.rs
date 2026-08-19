@@ -495,3 +495,59 @@ pub fn test_ioapic_routing() {
     device::close_cap(TEST_ASID, cap).expect("[device] close_cap failed");
     logln!("[device] x86_64 IOAPIC routing delivered a routed GSI to the completion path.");
 }
+
+/// x86_64 MSI allocation smoke test.
+///
+/// Allocates an MSI (delivered directly to the LAPIC via the message address),
+/// verifies the message is well-formed, routes it through the device-capability
+/// path, and injects a synthetic delivery on the returned vector.
+#[cfg(target_arch = "x86_64")]
+pub fn test_msi_routing() {
+    use crate::{
+        cpu::isa::{
+            interface::interrupts::LocalIntCtlrIfce,
+            interrupts::LocalIntCtlr,
+            lp::ops::get_lp_id,
+        },
+        device,
+    };
+
+    const TEST_ASID: usize = 0x000d_e71c;
+
+    logln!("[device] testing x86_64 MSI allocation...");
+    let message = device::allocate_msi(0).expect("[device] allocate_msi failed");
+    assert_eq!(
+        message.address & 0xffff_fff0,
+        0xfee0_0000,
+        "MSI address must target the LAPIC MSI window"
+    );
+    let vector = message.data as u8;
+    assert!((35..=254).contains(&vector), "MSI data must encode a dynamic vector, got {vector}");
+    assert!(message.intid >= 256, "MSI intid must live in the synthetic MSI range");
+    logln!(
+        "[device] MSI address={:#x} data={} intid={}",
+        message.address,
+        message.data,
+        message.intid
+    );
+
+    let cap =
+        device::grant_interrupt(TEST_ASID, message.intid).expect("[device] grant_interrupt failed");
+    device::interrupt_bind_cq(TEST_ASID, cap, 0).expect("[device] interrupt_bind_cq failed");
+
+    // Inject a synthetic delivery on the returned vector (a self-IPI stands in
+    // for the device writing the MSI message to the LAPIC).
+    LocalIntCtlr::send_unicast_ipi(get_lp_id(), vector).expect("[device] MSI self-IPI failed");
+
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    loop {
+        let (_pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+        if count >= 1 {
+            break;
+        }
+        deadline.assert_pending("MSI interrupt delivery");
+        crate::cpu::scheduler::yield_lp();
+    }
+    device::close_cap(TEST_ASID, cap).expect("[device] close_cap failed");
+    logln!("[device] x86_64 MSI allocation delivered a routed interrupt to the completion path.");
+}

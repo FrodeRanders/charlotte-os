@@ -187,22 +187,40 @@ const MIN_ROUTED_INTID: u32 = 32;
 const MIN_ROUTED_INTID: u32 = 0;
 /// The first LPI INTID delivered by the GIC ITS. LPIs are always numbered from
 /// 8192 (see `cpu::isa::aarch64::interrupts::gic::lpi`).
+#[cfg(target_arch = "aarch64")]
 const LPI_INTID_BASE: u32 = 8192;
 /// Number of LPI slots tracked by the routing tables (LPIs `LPI_INTID_BASE` ..
 /// `LPI_INTID_BASE + LPI_SLOTS - 1`).
+#[cfg(target_arch = "aarch64")]
 const LPI_SLOTS: usize = 32;
-/// Total routing-table slots: the SPI space plus the LPI window.
+/// x86_64 MSI interrupts are numbered in a synthetic range above the wired GSI
+/// space: `MSI_INTID_BASE` .. `MSI_INTID_BASE + MSI_SLOTS - 1`.
+#[cfg(target_arch = "x86_64")]
+pub(crate) const MSI_INTID_BASE: u32 = 256;
+#[cfg(target_arch = "x86_64")]
+const MSI_SLOTS: usize = 220;
+/// Total routing-table slots: the SPI/GSI space plus the LPI (AArch64) or MSI
+/// (x86_64) window.
+#[cfg(target_arch = "aarch64")]
 pub(crate) const TOTAL_ROUTE_SLOTS: usize = MAX_ROUTED_INTID + LPI_SLOTS;
+#[cfg(target_arch = "x86_64")]
+pub(crate) const TOTAL_ROUTE_SLOTS: usize = MAX_ROUTED_INTID + MSI_SLOTS;
 
-/// Map an INTID to a routing-table slot: the SPI space is indexed directly and
-/// the LPI window is packed after it. Returns `None` for unroutable INTIDs.
+/// Map an INTID to a routing-table slot: the SPI/GSI space is indexed directly
+/// and the LPI (AArch64) or MSI (x86_64) window is packed after it. Returns
+/// `None` for unroutable INTIDs.
 fn route_slot(intid: u32) -> Option<usize> {
     let i = intid as usize;
     if i < MAX_ROUTED_INTID {
         return Some(i);
     }
+    #[cfg(target_arch = "aarch64")]
     if i >= LPI_INTID_BASE as usize && i < LPI_INTID_BASE as usize + LPI_SLOTS {
         return Some(MAX_ROUTED_INTID + (i - LPI_INTID_BASE as usize));
+    }
+    #[cfg(target_arch = "x86_64")]
+    if i >= MSI_INTID_BASE as usize && i < MSI_INTID_BASE as usize + MSI_SLOTS {
+        return Some(MAX_ROUTED_INTID + (i - MSI_INTID_BASE as usize));
     }
     None
 }
@@ -314,6 +332,44 @@ fn arch_enable_irq(_intid: u32, _target_lp: LpId) {}
 fn arch_disable_irq(_intid: u32) {}
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn arch_clear_irq_pending(_intid: u32) {}
+
+/// Whether the kernel's MSI mechanism is available on this platform.
+pub fn msi_available() -> bool {
+    #[cfg(target_arch = "aarch64")]
+    {
+        crate::cpu::isa::interrupts::gic::msi_available()
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::cpu::isa::interrupts::device_irq::msi_available()
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        false
+    }
+}
+
+/// Allocate one MSI for the PCI function identified by `device_id` (its PCI
+/// Requester ID), returning the address/data pair written to raise it.
+pub fn allocate_msi(
+    device_id: u32,
+) -> Option<
+    crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+>{
+    #[cfg(target_arch = "aarch64")]
+    {
+        crate::cpu::isa::interrupts::gic::allocate_msi(device_id)
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        crate::cpu::isa::interrupts::device_irq::allocate_msi(device_id)
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        let _ = device_id;
+        None
+    }
+}
 
 // ---- grants (kernel-side, supervisor only) ---------------------------------
 

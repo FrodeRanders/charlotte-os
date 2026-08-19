@@ -759,12 +759,11 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                     (bar0_phys, header.interrupt_line() as u32)
                 };
                 if phys_base != 0 {
-                    #[cfg(target_arch = "aarch64")]
                     // Only program MSI-X when the kernel's MSI mechanism (the
-                    // GIC ITS or a GICv2m frame) is actually available.
-                    if crate::cpu::isa::interrupts::gic::msi_available()
-                        && let Some(message) =
-                            crate::cpu::isa::interrupts::gic::allocate_msi(requester_id)
+                    // GIC ITS/v2m on AArch64, the LAPIC on x86_64) is actually
+                    // available.
+                    if crate::device::msi_available()
+                        && let Some(message) = crate::device::allocate_msi(requester_id)
                         && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
                             message,

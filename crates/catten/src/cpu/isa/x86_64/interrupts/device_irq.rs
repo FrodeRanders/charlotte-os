@@ -93,6 +93,11 @@ pub extern "C" fn ih_device_interrupt(offset: InterruptVectorNum) {
 /// once a GSI is routed, a later call (e.g. the driver's interrupt acknowledge)
 /// only re-arms the existing route.
 pub fn enable_irq(gsi: u32, target_lp: LpId) {
+    // MSI interrupts are already routed by `allocate_msi` (their vector and
+    // handler were installed there); there is no IOAPIC pin to program.
+    if gsi >= crate::device::MSI_INTID_BASE {
+        return;
+    }
     let slot = gsi as usize;
     if slot >= MAX_GSI {
         return;
@@ -116,8 +121,11 @@ pub fn enable_irq(gsi: u32, target_lp: LpId) {
     let _ = ioapic.set_ext_int_mask_state(gsi_to_pin(gsi), false);
 }
 
-/// Mask (disable) a routed GSI.
+/// Mask (disable) a routed GSI. MSI interrupts have no IOAPIC pin to mask.
 pub fn disable_irq(gsi: u32) {
+    if gsi >= crate::device::MSI_INTID_BASE {
+        return;
+    }
     let mut ioapic = IOAPIC.lock();
     let _ = ioapic.set_ext_int_mask_state(gsi_to_pin(gsi), true);
 }
@@ -136,4 +144,39 @@ pub fn gsi_vector(gsi: u32) -> Option<InterruptVectorNum> {
     }
     let offset = GSI_TO_OFFSET[slot].load(Ordering::Acquire);
     (offset != u32::MAX).then(|| offset_to_vector(offset))
+}
+
+/// Whether the kernel's MSI mechanism is available. On x86_64, MSI is delivered
+/// directly to the LAPIC via the message address, so it is always available.
+pub fn msi_available() -> bool {
+    true
+}
+
+/// Allocate one MSI vector and return the address/data pair the PCI function
+/// writes to raise it. The vector is delivered directly to the LAPIC (the
+/// message address encodes the target APIC id); the returned `intid` is the
+/// synthetic identifier the device-capability layer routes through.
+pub fn allocate_msi(
+    _device_id: u32,
+) -> Option<
+    crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+>{
+    use crate::{
+        cpu::isa::interrupts::x2apic::X2Apic,
+        device_management::drivers::busses::pci_express::ecam::capabilities::standard::msi::MsiMessage,
+    };
+
+    let target_lp = crate::cpu::isa::lp::ops::get_lp_id();
+    let dest = X2Apic::physical_apic_id(target_lp)?;
+    let offset = NEXT_DYN_VECTOR.fetch_add(1, Ordering::Relaxed) % DYN_VECS_PER_LP as u32;
+    let intid = crate::device::MSI_INTID_BASE + offset;
+    VECTOR_TO_INTID[offset as usize].store(intid, Ordering::Release);
+    let handler: InterruptHandler = ih_device_interrupt;
+    DYN_IH_MATRIX.set_dyn_ih(target_lp, offset as InterruptVectorNum, handler);
+    let vector = offset_to_vector(offset);
+    Some(MsiMessage {
+        address: 0xfee0_0000 | ((dest as u64) << 12),
+        data: vector as u32,
+        intid,
+    })
 }
