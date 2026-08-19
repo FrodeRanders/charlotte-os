@@ -7,6 +7,7 @@ use super::{
 use crate::{
     cpu::isa::{
         interrupts::{
+            dynamic::register_dynamic_isr_gates,
             fixed::register_fixed_isr_gates,
             idt::Idt,
         },
@@ -27,6 +28,7 @@ static BSP_GDT: LazyLock<Gdt> = LazyLock::new(|| Gdt::new(&BSP_TSS));
 pub static BSP_IDT: LazyLock<Idt> = LazyLock::new(|| {
     let mut idt = Idt::new();
     register_fixed_isr_gates(&mut idt);
+    register_dynamic_isr_gates(&mut idt);
     idt
 });
 

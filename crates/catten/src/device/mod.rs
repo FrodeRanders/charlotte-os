@@ -179,7 +179,12 @@ static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
 pub(crate) const MAX_ROUTED_INTID: usize = 256;
 /// The first GIC Shared Peripheral Interrupt. SGIs and PPIs are private to a
 /// processor and cannot be delegated as device interrupts.
+// AArch64 SPIs (the GIC's device interrupts) start at INTID 32; x86_64 Global
+// System Interrupts are numbered from 0.
+#[cfg(target_arch = "aarch64")]
 const MIN_ROUTED_INTID: u32 = 32;
+#[cfg(not(target_arch = "aarch64"))]
+const MIN_ROUTED_INTID: u32 = 0;
 /// The first LPI INTID delivered by the GIC ITS. LPIs are always numbered from
 /// 8192 (see `cpu::isa::aarch64::interrupts::gic::lpi`).
 const LPI_INTID_BASE: u32 = 8192;
@@ -288,11 +293,26 @@ fn arch_clear_irq_pending(intid: u32) {
     crate::cpu::isa::interrupts::gic::clear_spi_pending(intid);
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
+fn arch_enable_irq(intid: u32, target_lp: LpId) {
+    crate::cpu::isa::interrupts::device_irq::enable_irq(intid, target_lp);
+}
+
+#[cfg(target_arch = "x86_64")]
+fn arch_disable_irq(intid: u32) {
+    crate::cpu::isa::interrupts::device_irq::disable_irq(intid);
+}
+
+#[cfg(target_arch = "x86_64")]
+fn arch_clear_irq_pending(intid: u32) {
+    crate::cpu::isa::interrupts::device_irq::clear_irq_pending(intid);
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn arch_enable_irq(_intid: u32, _target_lp: LpId) {}
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn arch_disable_irq(_intid: u32) {}
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 fn arch_clear_irq_pending(_intid: u32) {}
 
 // ---- grants (kernel-side, supervisor only) ---------------------------------

@@ -2,6 +2,7 @@
 
 .extern get_dyn_ih
 .extern cond_yield_lp
+.extern signal_eoi
 .extern DYN_VECS_PER_LP
 .extern DYN_VEC_START_OFFSET
 
@@ -18,14 +19,20 @@ dyn_isr_\vector:
     push r9
     push r10
     push r11
+    //; Acknowledge the interrupt up front so this vector does not remain
+    //; in-service and block the lower-priority LAPIC timer.
+    call signal_eoi
     lea rdi, [DYN_IH_MATRIX]
     mov rsi, \vector
     call get_dyn_ih
 //; if the function pointer returned by get_dyn_ih is null, skip the call
     test rax, rax
     jz skip_ih_call_\vector
-//; make the call to the interrupt handler if the function pointer is non-null
-    call qword ptr [rax]
+//; make the call to the interrupt handler if the function pointer is non-null,
+//; passing the vector offset as its argument. get_dyn_ih returns the handler
+//; address itself (not a pointer to it), so call it directly.
+    mov rdi, \vector
+    call rax
 skip_ih_call_\vector:
     //; Execute context switch if pending
     call cond_yield_lp

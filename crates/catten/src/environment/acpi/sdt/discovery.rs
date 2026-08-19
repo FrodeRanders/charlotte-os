@@ -179,3 +179,41 @@ pub fn madt_its_base() -> Option<u64> {
     }
     None
 }
+
+/// The first I/O APIC base address and its global-system-interrupt (GSI) base
+/// from the MADT. Returns `(ioapic_address, gsi_base)`.
+///
+/// MADT type 0x01 (I/O APIC) is a 12-byte structure: the 32-bit MMIO base at
+/// offset 4 and the 32-bit GSI base at offset 8.
+pub fn madt_ioapic() -> Option<(u64, u32)> {
+    const IO_APIC: u8 = 0x01;
+    const MADT_HEADER_SIZE: u64 = 36 + 4 + 4; // SdtHeader + LAPIC address + flags
+    const ENTRY_ADDRESS_OFFSET: u64 = 4;
+    const ENTRY_GSI_BASE_OFFSET: u64 = 8;
+
+    let madt = find_table_physical(*b"APIC")?;
+    let header: &SdtHeader = unsafe { &*PAddr::from(madt).into_hhdm_ptr::<SdtHeader>() };
+    let end = madt + header.length as u64;
+    let mut ptr = madt + MADT_HEADER_SIZE;
+    while ptr < end {
+        let entry = unsafe { PAddr::from(ptr).into_hhdm_ptr::<u8>() };
+        let entry_type = unsafe { *entry };
+        let entry_len = unsafe { *entry.add(1) } as u64;
+        if entry_len == 0 || ptr + entry_len > end {
+            break;
+        }
+        if entry_type == IO_APIC {
+            let address = unsafe {
+                (PAddr::from(ptr + ENTRY_ADDRESS_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned()
+            };
+            let gsi_base = unsafe {
+                (PAddr::from(ptr + ENTRY_GSI_BASE_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned()
+            };
+            if address != 0 {
+                return Some((address as u64, gsi_base));
+            }
+        }
+        ptr += entry_len;
+    }
+    None
+}

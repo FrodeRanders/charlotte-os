@@ -4,12 +4,16 @@ use redirection_table_entry::*;
 
 use crate::{
     cpu::isa::{
+        interface::interrupts::ExternalInterruptControllerIfce,
         io::{
             IReg32Ifce,
             IoReg32,
             OReg32Ifce,
         },
-        lp::LpId,
+        lp::{
+            InterruptVectorNum,
+            LpId,
+        },
     },
     klib::bitwise::{
         mask_from_len,
@@ -29,6 +33,7 @@ const IOAPIC_MAX_REDIR_SHIFT: u8 = 16;
 const IOAPIC_MAX_REDIR_MASK: u32 = 0xffu32 << IOAPIC_MAX_REDIR_SHIFT;
 
 /// IOAPIC Error type
+#[derive(Debug)]
 pub enum Error {
     InvalidDeliveryMode(u8),
     LpIdOutOfRange(LpId),
@@ -53,7 +58,7 @@ pub type RedirIdx = u32;
 impl IoApic {
     //const ARB_REG_IDX: u32 = 2;
     const ID_REG_IDX: u32 = 0;
-    const IOWIN_MMIO_BYTE_OFFSET: u16 = 4;
+    const IOWIN_MMIO_BYTE_OFFSET: u16 = 0x10;
     const REDIR_TABLE_BASE_IDX: u32 = 16;
     const REG_BITS: u8 = 32;
     const VER_ENTRY_MAX_REG_IDX: u32 = 1;
@@ -119,5 +124,85 @@ impl IoApic {
             self.write64(Self::REDIR_TABLE_BASE_IDX + index * REDIR_SIZE_IN_IOAPIC_REGS, entry.0);
             Ok(())
         }
+    }
+}
+
+impl IoApic {
+    /// Construct an I/O APIC controller at its MMIO base address.
+    pub fn new(address: u64) -> Self {
+        IoApic(IoReg32::Mmio(crate::memory::PAddr::from(address)))
+    }
+
+    /// Map the controller's MMIO register block into the kernel address space.
+    /// Limine only HHDM-maps RAM, so the redirection table must be reachable
+    /// before the first access.
+    pub fn map_mmio(&mut self) {
+        use crate::memory::KERNEL_AS;
+        if let IoReg32::Mmio(address) = self.0 {
+            let base = <crate::memory::PAddr as Into<usize>>::into(address);
+            KERNEL_AS.lock().map_mmio_region(base, 0x1000).expect("failed to map IOAPIC MMIO");
+        }
+    }
+
+    /// Route a GSI (a redirection-table pin) to `vector` on `target_lp`.
+    pub fn route_gsi(
+        &mut self,
+        gsi: u32,
+        target_lp: LpId,
+        vector: InterruptVectorNum,
+        active_low: bool,
+        level_triggered: bool,
+    ) -> Result<(), Error> {
+        let dest = super::x2apic::X2Apic::physical_apic_id(target_lp)
+            .ok_or(Error::LpIdOutOfRange(target_lp))?;
+        let mut entry = IoApicRedirEntry::default();
+        entry.set_vector(vector);
+        entry.set_delivery_mode(IoApicDeliveryMode::Fixed);
+        entry.set_dest_mode(false);
+        entry.set_pin_polarity(active_low);
+        entry.set_trigger_mode(level_triggered);
+        entry.set_destination(dest as LpId)?;
+        entry.set_mask_state(false);
+        self.set_redirection_entry(gsi, entry)
+    }
+}
+
+impl ExternalInterruptControllerIfce for IoApic {
+    type EicPinNum = u32;
+    type Error = Error;
+
+    fn init(&mut self) {
+        self.map_mmio();
+    }
+
+    fn setup_ext_int(
+        &mut self,
+        lp: LpId,
+        vector: InterruptVectorNum,
+        pin_num: Self::EicPinNum,
+        active_low: bool,
+        level_triggered: bool,
+        mask_state: bool,
+    ) -> Result<(), Self::Error> {
+        let dest = super::x2apic::X2Apic::physical_apic_id(lp).ok_or(Error::LpIdOutOfRange(lp))?;
+        let mut entry = IoApicRedirEntry::default();
+        entry.set_vector(vector);
+        entry.set_delivery_mode(IoApicDeliveryMode::Fixed);
+        entry.set_dest_mode(false);
+        entry.set_pin_polarity(active_low);
+        entry.set_trigger_mode(level_triggered);
+        entry.set_destination(dest as LpId)?;
+        entry.set_mask_state(mask_state);
+        self.set_redirection_entry(pin_num, entry)
+    }
+
+    fn set_ext_int_mask_state(
+        &mut self,
+        pin_num: Self::EicPinNum,
+        mask_state: bool,
+    ) -> Result<(), Self::Error> {
+        let mut entry = self.get_redirection_entry(pin_num);
+        entry.set_mask_state(mask_state);
+        self.set_redirection_entry(pin_num, entry)
     }
 }

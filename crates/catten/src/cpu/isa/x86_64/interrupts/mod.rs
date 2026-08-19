@@ -1,5 +1,6 @@
 //! # x86_64 Interrupt Management
 
+pub mod device_irq;
 pub mod dynamic;
 pub mod fixed;
 pub mod idt;

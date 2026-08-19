@@ -130,7 +130,10 @@ impl AddressSpace {
                 paddr: frame,
                 page_type: PageType::Mmio,
             };
-            match self.map_page(mapping) {
+            // Never zero an MMIO frame: writing zeros to a device register
+            // block would corrupt the hardware. `map_existing_page` installs
+            // the mapping without touching the target.
+            match self.map_existing_page(mapping) {
                 Ok(()) | Err(<MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped) => {}
                 Err(error) => return Err(error),
             }

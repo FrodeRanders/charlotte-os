@@ -442,3 +442,56 @@ fn spin_until(flag: &AtomicU32, what: &str) {
         crate::cpu::scheduler::yield_lp();
     }
 }
+
+/// x86_64 IOAPIC routing smoke test.
+///
+/// Routes a Global System Interrupt through the device-capability path
+/// (grant → bind, which programs the IOAPIC redirection table), then injects a
+/// synthetic delivery on the routed vector via a self-IPI and verifies the
+/// architecture-independent delivery path claims it.
+#[cfg(target_arch = "x86_64")]
+pub fn test_ioapic_routing() {
+    use crate::{
+        cpu::isa::{
+            interface::interrupts::LocalIntCtlrIfce,
+            interrupts::LocalIntCtlr,
+            lp::ops::get_lp_id,
+        },
+        device,
+    };
+
+    // A pseudo address-space id for the kernel-API capability test; never
+    // scheduled, only present in the device registry.
+    const TEST_ASID: usize = 0x000d_e71c;
+    // An unused wired GSI on QEMU q35 (the RTC's interrupt line).
+    const TEST_GSI: u32 = 8;
+
+    logln!("[device] testing x86_64 IOAPIC routing (GSI {TEST_GSI})...");
+
+    let cap =
+        device::grant_interrupt(TEST_ASID, TEST_GSI).expect("[device] grant_interrupt failed");
+    device::interrupt_bind_cq(TEST_ASID, cap, 0).expect("[device] interrupt_bind_cq failed");
+
+    let vector = crate::cpu::isa::interrupts::device_irq::gsi_vector(TEST_GSI)
+        .expect("[device] GSI was not routed to a vector");
+    logln!("[device] GSI {TEST_GSI} routed to vector {vector}");
+
+    // Inject a synthetic delivery on the routed vector: a self-IPI exercises
+    // the dynamic ISR → handler → deliver_interrupt path without a real device.
+    LocalIntCtlr::send_unicast_ipi(get_lp_id(), vector).expect("[device] self-IPI failed");
+
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    loop {
+        let (_pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+        if count >= 1 {
+            break;
+        }
+        deadline.assert_pending("IOAPIC-routed interrupt delivery");
+        crate::cpu::scheduler::yield_lp();
+    }
+    let (pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+    assert_eq!(count, 1, "one IOAPIC-routed interrupt must be counted");
+    assert_eq!(pending, 1, "the delivered interrupt must remain pending until acknowledged");
+    device::close_cap(TEST_ASID, cap).expect("[device] close_cap failed");
+    logln!("[device] x86_64 IOAPIC routing delivered a routed GSI to the completion path.");
+}

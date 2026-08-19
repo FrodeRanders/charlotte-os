@@ -27,7 +27,7 @@ use crate::{
     },
 };
 
-pub type InterruptHandler = extern "C" fn();
+pub type InterruptHandler = extern "C" fn(InterruptVectorNum);
 
 pub enum Error {
     InterruptVectorsExhausted,

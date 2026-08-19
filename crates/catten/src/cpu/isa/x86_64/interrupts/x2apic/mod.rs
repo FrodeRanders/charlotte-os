@@ -85,6 +85,12 @@ impl X2Apic {
         id::X2APIC_ID_TABLE.lock().get(&lp_id).cloned()
     }
 
+    /// The physical (x2APIC) id of the given logical processor, used as the
+    /// destination field when programming an IOAPIC redirection-table entry.
+    pub fn physical_apic_id(lp_id: LpId) -> Option<u32> {
+        id::X2APIC_ID_TABLE.lock().get(&lp_id).map(|lapic| lapic.physical)
+    }
+
     fn make_icr_low(
         vector: u8,
         delivery_mode: IcrDeliveryMode,
