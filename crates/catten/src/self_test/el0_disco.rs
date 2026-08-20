@@ -4,7 +4,6 @@
 //! successfully. When `disco_net_test` is active, the verifier also waits for
 //! cross-node peer discovery to confirm that the Ethernet broadcast bootstrap
 //! protocol works end-to-end.
-#![cfg(target_arch = "aarch64")]
 
 mod inner {
     use crate::{

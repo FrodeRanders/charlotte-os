@@ -147,7 +147,7 @@ fi
 
 FEATURES="acpi"
 if [ "$NET" = "1" ]; then
-    FEATURES="${FEATURES},virtio_net_test"
+    FEATURES="${FEATURES},virtio_net_test,disco_net_test"
 fi
 
 # Build and sign the device-independent x86_64 bootstrap services (the name
@@ -161,8 +161,8 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
     --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-    --bin ahci --bin virtio_blk --bin net --bin nclient
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient; do
+    --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null

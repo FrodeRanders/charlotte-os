@@ -292,7 +292,7 @@ pub fn register_boot_suite() {
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat")))]
     register(TestId::Net);
-    #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "disco_net_test")]
     register(TestId::Disco);
     #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
     register(TestId::Dns);

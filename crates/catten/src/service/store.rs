@@ -92,6 +92,8 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"virtio_blk", "virtio_blk"),
     bootstrap_elf!(b"net", "net"),
     bootstrap_elf!(b"nclient", "nclient"),
+    bootstrap_elf!(b"disco", "disco"),
+    bootstrap_elf!(b"frouter", "frouter"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.

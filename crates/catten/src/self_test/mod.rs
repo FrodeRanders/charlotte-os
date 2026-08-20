@@ -129,7 +129,7 @@ pub mod el0;
 #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
 pub mod el0_clusterctl;
 pub mod el0_demo;
-#[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+#[cfg(feature = "disco_net_test")]
 pub mod el0_disco;
 #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
 pub mod el0_dns;
@@ -294,9 +294,9 @@ pub fn run_deferred_self_tests() {
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
     #[cfg(not(feature = "virtio_net_test"))]
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
-    #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "disco_net_test")]
     el0_disco::test_el0_disco();
-    #[cfg(all(not(feature = "disco_net_test"), target_arch = "aarch64"))]
+    #[cfg(not(feature = "disco_net_test"))]
     logln!("Skipping EL0 disco test (enable disco_net_test with matching PCI hardware).");
     #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
     el0_dns::test_el0_dns();
