@@ -44,6 +44,7 @@ FRESH_STORAGE="0"
 REUSE_STORAGE="0"
 EL0_SMOKE="0"
 IOMMU="intel"
+BLOCK="nvme"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -65,6 +66,9 @@ while [ "$#" -gt 0 ]; do
         --iommu)
             [ "$#" -ge 2 ] || { echo "Missing value for --iommu" >&2; exit 1; }
             IOMMU="$2"; shift 2 ;;
+        --block)
+            [ "$#" -ge 2 ] || { echo "Missing value for --block" >&2; exit 1; }
+            BLOCK="$2"; shift 2 ;;
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
         --el0-smoke)     EL0_SMOKE="1"; shift ;;
@@ -151,8 +155,9 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --target crates/catten-services/x86_64-unknown-none.json \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
-    --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr; do
+    --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
+    --bin ahci
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
@@ -205,6 +210,12 @@ case "$IOMMU" in
     *) echo "error: --iommu must be 'intel' or 'amd'" >&2; exit 1 ;;
 esac
 
+case "$BLOCK" in
+    nvme) BLOCK_DEVICE=("-device" "nvme,drive=boot0,serial=cat0") ;;
+    ahci) BLOCK_DEVICE=("-device" "ide-hd,drive=boot0,bus=ide.0") ;;
+    *) echo "error: --block must be 'nvme' or 'ahci'" >&2; exit 1 ;;
+esac
+
 QEMU_OPTS=(
     -M q35
     -cpu max
@@ -212,7 +223,7 @@ QEMU_OPTS=(
     -m 512M
     -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
     -drive "if=none,file=${IMAGE},format=raw,id=boot0"
-    -device "nvme,drive=boot0,serial=cat0"
+    "${BLOCK_DEVICE[@]}"
     -device "$IOMMU_DEVICE"
     -display none
     -no-reboot

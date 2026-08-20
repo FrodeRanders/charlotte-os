@@ -806,3 +806,77 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
     }
     None
 }
+
+/// Find the first AHCI SATA controller and return its HBA (ABAR) MMIO base,
+/// legacy interrupt line, and requester id. AHCI completion is polled by the
+/// driver, so no MSI/MSI-X vector is configured here.
+pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
+    for group in &topology.segments {
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
+            for dev in &bus.devices {
+                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
+                    PcieDevice::SingleFunc(sfd) => {
+                        let mut v = alloc::vec::Vec::new();
+                        if let PcieFunction::Endpoint(ep) = &sfd.function {
+                            v.push((ep.as_ref(), sfd.number.get_inner(), ep.number.get_inner()));
+                        }
+                        v
+                    }
+                    PcieDevice::MultiFunc(mfd) => mfd
+                        .functions
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(func, function)| match function {
+                            PcieFunction::Endpoint(ep) => {
+                                Some((ep.as_ref(), mfd.number.get_inner(), func as u8))
+                            }
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => alloc::vec::Vec::new(),
+                };
+                for (ep, device, function) in functions {
+                    let requester_id =
+                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+                    if (ep.identifier.class_code, ep.identifier.subclass, ep.identifier.prog_if)
+                        != (0x01, 0x06, 0x01)
+                    {
+                        continue;
+                    }
+                    let cfg = ep.cfg_ptr.lock();
+                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    // The HBA register block (ABAR) is memory BAR 5.
+                    let bar5 = header.bar(5) as u64;
+                    let abar = if bar5 & 0x4 != 0 {
+                        let bar6 = header.bar(6) as u64;
+                        (bar5 & 0xffff_fff0) | ((bar6 & 0xffff_ffff) << 32)
+                    } else {
+                        bar5 & 0xffff_fff0
+                    };
+                    let legacy_irq = header.interrupt_line() as u32;
+                    if abar != 0 {
+                        return Some((abar, legacy_irq, requester_id, None));
+                    }
+                }
+            }
+            for dev in &bus.devices {
+                let child = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Bridge(b) => Some(b),
+                        _ => None,
+                    },
+                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
+                        Some(PcieFunction::Bridge(b)) => Some(b),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(child_bus) = child {
+                    stack.push(child_bus);
+                }
+            }
+        }
+    }
+    None
+}
