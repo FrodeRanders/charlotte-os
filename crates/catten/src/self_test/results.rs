@@ -273,17 +273,21 @@ pub fn register_boot_suite() {
             register(TestId::Nvme);
         }
     }
-    // The x86_64 port does not yet run the EL0 IPC / service / device / Raft
-    // suites (they remain AArch64-only), so only the tests that actually
-    // execute and report are registered. Registering a test that can never
-    // resolve would leave the coordinator permanently in `SELFTEST WAITING`.
+    // The x86_64 port does not yet run the EL0 IPC / service / device suites
+    // (they remain AArch64-only), so only the tests that actually execute and
+    // report are registered. Registering a test that can never resolve would
+    // leave the coordinator permanently in `SELFTEST WAITING`.
     #[cfg(not(target_arch = "aarch64"))]
     {
         register(TestId::El0);
         register(TestId::CqWait);
         register(TestId::SchedulerLifecycle);
         #[cfg(not(feature = "hvf_compat"))]
-        register(TestId::Nvme);
+        {
+            register(TestId::Raft);
+            register(TestId::RaftStorage);
+            register(TestId::Nvme);
+        }
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     register(TestId::Net);

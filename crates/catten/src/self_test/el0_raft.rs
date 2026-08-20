@@ -24,7 +24,6 @@
 //! Expected outcome: each verifier logs `SUCCESS` and calls
 //! [`crate::self_test::results::pass`] for `TestId::Raft` / `TestId::RaftStorage`;
 //! the authoritative coordinator then reports both bits passed.
-#[cfg(target_arch = "aarch64")]
 mod inner {
     use crate::{
         ipc::ConnectionRights,
@@ -315,15 +314,10 @@ mod inner {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn test_el0_raft() {
     inner::test_el0_raft();
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn test_persistent_raft(name_service: &crate::service::supervisor::NameServiceHandle) {
     inner::test_persistent_raft(name_service);
 }
-
-#[cfg(not(target_arch = "aarch64"))]
-pub fn test_el0_raft() {}

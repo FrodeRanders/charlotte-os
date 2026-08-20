@@ -286,14 +286,13 @@ extern "C" fn verify_el0_nvme() {
     // lifecycle event before releasing the address space.
     supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client);
-    // The persistent Raft/upgrade phases need additional service images
-    // (servicemgr, raft) that remain AArch64-only.
+    // The persistent upgrade phase needs the servicemgr image, which remains
+    // AArch64-only; the persistent Raft recovery phase uses the raft image and
+    // runs on both architectures.
     #[cfg(target_arch = "aarch64")]
-    {
-        crate::self_test::el0_service::verify_persistent_upgrade(&ns);
-        #[cfg(not(feature = "live_upgrade_test"))]
-        crate::self_test::el0_raft::test_persistent_raft(&ns);
-    }
+    crate::self_test::el0_service::verify_persistent_upgrade(&ns);
+    #[cfg(not(feature = "live_upgrade_test"))]
+    crate::self_test::el0_raft::test_persistent_raft(&ns);
     logln!("[nvme] SUCCESS: storage stack verified.");
     crate::self_test::results::pass(crate::self_test::results::TestId::Nvme);
 }
