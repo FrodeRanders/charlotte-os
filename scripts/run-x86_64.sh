@@ -147,8 +147,8 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --target crates/catten-services/x86_64-unknown-none.json \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
-    --bin objstore_client --bin echo --bin raft
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft; do
+    --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null

@@ -86,6 +86,8 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"objstore_client", "objstore_client"),
     bootstrap_elf!(b"echo", "echo"),
     bootstrap_elf!(b"raft", "raft"),
+    bootstrap_elf!(b"client", "client"),
+    bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.

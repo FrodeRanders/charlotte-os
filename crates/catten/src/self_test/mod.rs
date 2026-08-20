@@ -143,7 +143,6 @@ pub mod el0_net;
 pub mod el0_nvme;
 pub mod el0_pingpong;
 pub mod el0_raft;
-#[cfg(target_arch = "aarch64")]
 pub mod el0_service;
 pub mod el0_sitas;
 #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
@@ -277,7 +276,6 @@ pub fn run_deferred_self_tests() {
     el0_ipc::test_el0_endpoint_ipc_memory_cancel();
     el0_demo::test_el0_cross_lp_async();
     el0_pingpong::test_el0_ping_pong();
-    #[cfg(target_arch = "aarch64")]
     el0_service::test_el0_service();
     cq::test_cq_ring();
     cq_completion::test_cq_ring_in_completion();

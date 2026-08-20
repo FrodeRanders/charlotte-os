@@ -286,10 +286,8 @@ extern "C" fn verify_el0_nvme() {
     // lifecycle event before releasing the address space.
     supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client);
-    // The persistent upgrade phase needs the servicemgr image, which remains
-    // AArch64-only; the persistent Raft recovery phase uses the raft image and
-    // runs on both architectures.
-    #[cfg(target_arch = "aarch64")]
+    // The persistent upgrade phase reloads the echo service ELF through the
+    // service manager; the persistent Raft recovery phase uses the raft image.
     crate::self_test::el0_service::verify_persistent_upgrade(&ns);
     #[cfg(not(feature = "live_upgrade_test"))]
     crate::self_test::el0_raft::test_persistent_raft(&ns);

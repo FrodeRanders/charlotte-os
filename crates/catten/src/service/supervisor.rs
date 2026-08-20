@@ -682,7 +682,6 @@ pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
 /// loader refuses anything that is not validly signed, so provenance here is
 /// the signature note, not a byte-for-byte match against a kernel-embedded
 /// copy (the old hash-equality constraint, which the signing work removed).
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
     charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
         == charlotte_launch::signature_note::VerifyOutcome::Valid

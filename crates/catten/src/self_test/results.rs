@@ -281,6 +281,7 @@ pub fn register_boot_suite() {
     {
         register(TestId::El0);
         register(TestId::CqWait);
+        register(TestId::Service);
         register(TestId::SchedulerLifecycle);
         #[cfg(not(feature = "hvf_compat"))]
         {

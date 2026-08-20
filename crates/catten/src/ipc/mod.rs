@@ -433,7 +433,6 @@ pub fn connection_delegate(
 /// service the requesting manager can actually call. The caller must hold a
 /// live connection with CALL authority; raw ASIDs supplied by userspace are
 /// never trusted.
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn connection_endpoint_owner(
     caller: AddressSpaceId,
     connection_cap: CapabilityId,

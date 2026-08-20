@@ -318,12 +318,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::ThreadStatistics => sys_thread_statistics(frame),
         SyscallNumber::IpcConnectionWatchClosed => sys_ipc_connection_watch_closed(frame),
         SyscallNumber::SpawnUpgrade => {
-            #[cfg(target_arch = "aarch64")]
             sys_spawn_upgrade(frame);
-            #[cfg(not(target_arch = "aarch64"))]
-            {
-                frame.regs[0] = 0;
-            }
         }
         SyscallNumber::SpawnArtifact => {
             #[cfg(target_arch = "aarch64")]
@@ -1633,7 +1628,6 @@ fn sys_device_close(frame: &mut TrapFrame) {
     };
 }
 
-#[cfg(target_arch = "aarch64")]
 fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     let elf_cap = frame.regs[1];

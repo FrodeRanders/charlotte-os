@@ -20,7 +20,6 @@
 //! restarts the service, and observes the instance generation increment.
 
 use crate::logln;
-#[cfg(target_arch = "aarch64")]
 use crate::{
     ipc::{
         self,
@@ -35,7 +34,6 @@ use crate::{
     },
 };
 
-#[cfg(target_arch = "aarch64")]
 const fn packed_name(bytes: &[u8]) -> u64 {
     let mut packed = [0u8; 8];
     let mut i = 0;
@@ -46,31 +44,20 @@ const fn packed_name(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(packed)
 }
 
-#[cfg(target_arch = "aarch64")]
 const NAME_ECHO: u64 = packed_name(b"echo");
-#[cfg(target_arch = "aarch64")]
 const NAME_SVCMGR: u64 = packed_name(b"svcmgr");
-#[cfg(target_arch = "aarch64")]
 const OP_LOOKUP: u32 = 2;
-#[cfg(target_arch = "aarch64")]
 const OP_ECHO: u32 = 1;
-#[cfg(target_arch = "aarch64")]
 const OP_SHUTDOWN: u32 = 2;
-#[cfg(target_arch = "aarch64")]
 const ECHO_VALUE: u64 = 0x1234_5678;
-#[cfg(target_arch = "aarch64")]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 
 /// The kernel verifier acts as a second client through the direct kernel
 /// API under this pseudo address-space id. It only exists in the IPC
 /// capability registry.
-#[cfg(target_arch = "aarch64")]
 const KCLIENT_ASID: usize = 0x7100;
-#[cfg(target_arch = "aarch64")]
-#[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<TestState> = None;
 
-#[cfg(target_arch = "aarch64")]
 struct TestState {
     name_service: NameServiceHandle,
     echo: Option<ServiceDomain>,
@@ -81,8 +68,6 @@ struct TestState {
 }
 
 pub fn test_el0_service() {
-    #[cfg(target_arch = "aarch64")]
-    {
         logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
 
         let name_service = supervisor::node_name_service();
@@ -125,14 +110,8 @@ pub fn test_el0_service() {
             verify_el0_service,
         );
         logln!("[service] verifier deferred");
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        logln!("Skipping EL0 service test (AArch64 only).");
-    }
 }
 
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     let passed = crate::self_test::results::wait_until_resolved(
         crate::self_test::results::TestId::Service,
@@ -193,7 +172,6 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
 
 /// Block on a pending call created through the direct kernel API until the
 /// EL0 server replies (event-driven, with a deadline watchdog).
-#[cfg(target_arch = "aarch64")]
 fn wait_reply_k2(kclient_asid: usize, call: u64, what: &str) -> ipc::ReplyValue {
     let ready = ipc::wait_reply_timeout(kclient_asid, call, 30_000)
         .unwrap_or_else(|e| panic!("[srv] K2 fail {}: {:?}", what, e));
@@ -210,7 +188,6 @@ fn wait_reply_k2(kclient_asid: usize, call: u64, what: &str) -> ipc::ReplyValue 
 /// resolve the previous generation's stale entry, so the lookup is retried
 /// with a parked sleep between attempts. Returns the pending-call cap of the
 /// successful lookup (reply not yet drained). Panics on timeout.
-#[cfg(target_arch = "aarch64")]
 fn lookup_until_generation(
     caller_asid: usize,
     ns_conn: u64,
@@ -242,7 +219,6 @@ fn lookup_until_generation(
     }
 }
 
-#[cfg(target_arch = "aarch64")]
 fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
     let ready = ipc::wait_reply_timeout(KCLIENT_ASID, call, 30_000)
         .unwrap_or_else(|error| panic!("[service] wait_reply failed for {}: {:?}", what, error));
@@ -254,7 +230,6 @@ fn wait_reply(call: u64, what: &str) -> ipc::ReplyValue {
     value
 }
 
-#[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_service() {
     let state = unsafe { TEST_STATE.as_mut() }.expect("[service] test state missing");
 
