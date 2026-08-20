@@ -30,17 +30,17 @@ static mut TEST_STATE: Option<NameServiceHandle> = None;
 pub fn test_el0_net() {
     logln!("Testing EL0 userspace virtio-net driver...");
 
-        let name_service = supervisor::node_name_service();
-        let ns_asid = name_service.domain.asid;
-        logln!("[net] using node name service (asid={})", ns_asid);
+    let name_service = supervisor::node_name_service();
+    let ns_asid = name_service.domain.asid;
+    logln!("[net] using node name service (asid={})", ns_asid);
 
-        unsafe { TEST_STATE = Some(name_service) };
+    unsafe { TEST_STATE = Some(name_service) };
 
-        let _vtid = crate::self_test::results::spawn_verifier(
-            crate::self_test::results::TestId::Net,
-            verify_el0_net,
-        );
-        logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
+    let _vtid = crate::self_test::results::spawn_verifier(
+        crate::self_test::results::TestId::Net,
+        verify_el0_net,
+    );
+    logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
 }
 
 fn wait_for_virtio_net() -> (usize, usize, u32, u32, Option<u64>) {

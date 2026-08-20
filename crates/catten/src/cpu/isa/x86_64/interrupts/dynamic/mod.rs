@@ -17,8 +17,8 @@ use crate::cpu::{
     multiprocessor::spin::per_lp::PerLp,
 };
 
-pub const DYN_VECS_PER_LP: u64 = 220;
-pub const DYN_VEC_START_OFFSET: u64 = 35;
+pub const DYN_VECS_PER_LP: u64 = 219;
+pub const DYN_VEC_START_OFFSET: u64 = 36;
 #[unsafe(no_mangle)]
 pub static DYN_IH_MATRIX: LazyLock<DynInterruptDispatcher> =
     LazyLock::new(DynInterruptDispatcher::default);
@@ -287,7 +287,6 @@ unsafe extern "custom" {
     fn dyn_isr_216();
     fn dyn_isr_217();
     fn dyn_isr_218();
-    fn dyn_isr_219();
 }
 
 macro_rules! register_dyn_isr {
@@ -525,5 +524,4 @@ pub fn register_dynamic_isr_gates(idt: &mut Idt) {
     register_dyn_isr!(idt, 216, dyn_isr_216);
     register_dyn_isr!(idt, 217, dyn_isr_217);
     register_dyn_isr!(idt, 218, dyn_isr_218);
-    register_dyn_isr!(idt, 219, dyn_isr_219);
 }

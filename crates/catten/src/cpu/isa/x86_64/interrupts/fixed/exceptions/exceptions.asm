@@ -26,8 +26,9 @@
 .extern ih_vmm_communication
 .extern ih_security_exception
 
-.macro EX_PROLOGUE_NO_ERROR_CODE
+.macro EX_SAVE_REGISTERS
 	// save the caller saved registers
+	push r12
 	push rax
 	push rdi
 	push rsi
@@ -39,7 +40,23 @@
 	push r11
 .endm
 
-.macro EX_EPILOGUE_NO_ERROR_CODE
+.macro EX_ALIGN_CALL_STACK
+	mov r12, rsp
+	and rsp, -16
+	cld
+.endm
+
+.macro EX_PROLOGUE_NO_ERROR_CODE
+	test byte ptr [rsp + 8], 3 // saved CS RPL
+	jz 1f
+	swapgs
+1:
+	EX_SAVE_REGISTERS
+	EX_ALIGN_CALL_STACK
+.endm
+
+.macro EX_RESTORE_REGISTERS
+	mov rsp, r12
 	// restore the caller saved registers
 	pop r11
 	pop r10
@@ -50,21 +67,39 @@
 	pop rsi
 	pop rdi
 	pop rax
+	pop r12
+.endm
+
+.macro EX_EPILOGUE_NO_ERROR_CODE
+	EX_RESTORE_REGISTERS
+	test byte ptr [rsp + 8], 3
+	jz 1f
+	swapgs
+1:
 .endm
 
 .macro EX_PROLOGUE_WITH_ERROR_CODE
-	EX_PROLOGUE_NO_ERROR_CODE
-	mov rdi, [rsp + 8 * 9] // load the error code
+	test byte ptr [rsp + 8 * 2], 3 // saved CS follows error code and RIP
+	jz 1f
+	swapgs
+1:
+	EX_SAVE_REGISTERS
+	mov rdi, [rsp + 8 * 10] // load the error code
 .endm
 
 .macro EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
 	EX_PROLOGUE_WITH_ERROR_CODE
-	mov rsi, [rsp + 8 * 10]
+	mov rsi, [rsp + 8 * 11] // saved RIP
+	EX_ALIGN_CALL_STACK
 .endm
 
 .macro EX_EPILOGUE_WITH_ERROR_CODE
-	EX_EPILOGUE_NO_ERROR_CODE
+	EX_RESTORE_REGISTERS
 	add rsp, 8 // Clean up the error code from the stack
+	test byte ptr [rsp + 8], 3
+	jz 1f
+	swapgs
+1:
 .endm
 
 //The actual ISRs
@@ -79,13 +114,15 @@ isr_divide_by_zero:
 isr_double_fault:
 	//Registers are not saved since this exception is an abort
 	pop rdi //pop the error code (should always be 0)
+	and rsp, -16
+	cld
 	call ih_double_fault
 	hlt //halt the core since double faults are an abort
 
 .global isr_general_protection_fault
 isr_general_protection_fault:
 	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
-	mov rdx, [rsp + 8 * 8]
+	mov rdx, [r12 + 8 * 8] // saved RAX
 	call ih_general_protection_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -158,6 +195,7 @@ isr_device_not_available:
 .global isr_invalid_tss
 isr_invalid_tss:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_invalid_tss
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -165,6 +203,7 @@ isr_invalid_tss:
 .global isr_stack_segment_fault
 isr_stack_segment_fault:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_stack_segment_fault
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -179,6 +218,7 @@ isr_x87_floating_point:
 .global isr_alignment_check
 isr_alignment_check:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_alignment_check
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -187,6 +227,8 @@ isr_alignment_check:
 isr_machine_check:
 	// Registers are not saved since this exception is an abort
 	// Unlike Double Fault, Machine Check does not push an error code
+	and rsp, -16
+	cld
 	call ih_machine_check
 	hlt // Halt the core since machine checks indicate severe hardware issues
 
@@ -207,6 +249,7 @@ isr_virtualization:
 .global isr_control_protection
 isr_control_protection:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_control_protection
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -221,6 +264,7 @@ isr_hypervisor_injection:
 .global isr_vmm_communication
 isr_vmm_communication:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_vmm_communication
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq
@@ -228,6 +272,7 @@ isr_vmm_communication:
 .global isr_security_exception
 isr_security_exception:
 	EX_PROLOGUE_WITH_ERROR_CODE
+	EX_ALIGN_CALL_STACK
 	call ih_security_exception
 	EX_EPILOGUE_WITH_ERROR_CODE
 	iretq

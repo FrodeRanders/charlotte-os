@@ -31,6 +31,11 @@ pub fn test_el0_smoke() {
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
     let tid = spawn_thread(loaded.asid, entry);
+    let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
+        .read()
+        .get(tid)
+        .expect("EL0 smoke thread disappeared after spawn")
+        .generation;
     logln!("[el0 smoke] spawned tid={} asid={}", tid, loaded.asid);
 
     // Poll the status page (via its HHDM alias) until the service writes the
@@ -43,8 +48,9 @@ pub fn test_el0_smoke() {
         let sentinel = unsafe { core::ptr::read_volatile(status) };
         if sentinel == SMOKE_SENTINEL {
             logln!("[el0 smoke] SUCCESS: x86_64 Rust ELF ran at ring 3 and wrote the sentinel.");
-            let _ =
-                crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read().abort_thread(tid);
+            let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .abort_thread_generation(tid, generation);
             return;
         }
         deadline.assert_pending("el0 smoke status sentinel");

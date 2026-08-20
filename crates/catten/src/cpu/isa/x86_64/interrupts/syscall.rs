@@ -35,11 +35,9 @@
 //! ## GS base
 //!
 //! The kernel accesses a per-LP [`PerCpuData`](crate::cpu::isa::x86_64::lp::ops::PerCpuData)
-//! area (kernel stack top + a scratch slot) through GS. FSGSBASE is enabled by
-//! [`init_lp_state`], so the trampoline sets GS absolutely with `wrgsbase`
-//! rather than `swapgs`: absolute writes are insensitive to which context was
-//! interrupted and therefore survive the cooperative context switch (which does
-//! not save GS).
+//! area (kernel stack top + a scratch slot) through GS. `IA32_KERNEL_GS_BASE`
+//! is initialized for each LP, and the trampoline uses `swapgs` before touching
+//! either the user stack or user-controlled memory.
 
 use core::{
     arch::global_asm,
@@ -59,25 +57,12 @@ use crate::{
 global_asm!(
     ".global syscall_entry",
     "syscall_entry:",
-    // SYSCALL leaves RSP at the user stack pointer, RCX holding the user RIP,
-    // and R11 holding the user RFLAGS. Resolve the per-LP area, but RDTSCP
-    // clobbers RAX/RCX/RDX, so stash those three on the user stack first.
-    "push rax",                 // [user_rsp -  8] = syscall number
-    "push rcx",                 // [user_rsp - 16] = user rip
-    "push rdx",                 // [user_rsp - 24] = arg3
-    "rdtscp",                   // ecx = TSC_AUX = LP id
-    "shl rcx, 4",               // rcx = lp_id * sizeof(PerCpuData)
-    "lea rax, [rip + PER_CPU]",
-    "add rax, rcx",
-    "wrgsbase rax",             // GS = per-CPU area
-    "lea rax, [rsp + 24]",      // rax = true user rsp
-    "mov gs:[0x8], rax",        // save true user rsp in the scratch slot
+    // SYSCALL leaves RSP at a user-controlled address. Switch GS and stacks
+    // before the first write: writing register saves through the user RSP at
+    // CPL0 would otherwise give userspace an arbitrary kernel-memory write.
+    "swapgs",
+    "mov gs:[0x8], rsp",        // save true user rsp in the scratch slot
     "mov rsp, gs:[0x0]",        // switch to this thread's kernel stack
-    // Restore the three stashed registers from the user stack.
-    "mov rax, gs:[0x8]",        // rax = true user rsp
-    "mov rcx, [rax - 16]",      // rcx = user rip
-    "mov rdx, [rax - 24]",      // rdx = arg3
-    "mov rax, [rax - 8]",       // rax = syscall number
     // Build the iretq frame (pushed first => highest addresses). The RSP field
     // is the true user stack pointer, captured above.
     "push 0x23",                // SS = user data selector
@@ -106,7 +91,13 @@ global_asm!(
     "push rdi",                 // regs[1]
     "push rax",                 // regs[0] = syscall number
     "mov rdi, rsp",             // frame_base = &regs[0]
+    // Entry state now lives entirely on the trusted kernel stack. Keep
+    // preemption and TLB-shootdown IPIs live while Rust dispatches or waits
+    // for a contended lock.
+    "sti",
     "call {syscall_entry_handler}",
+    // The GS swap and privilege return must be atomic with respect to IRQs.
+    "cli",
     // Restore the return registers.
     "pop rax",                  // regs[0]
     "pop rdi",                  // regs[1]
@@ -124,12 +115,8 @@ global_asm!(
     "pop rbx",                  // regs[13]
     "pop rbp",                  // regs[14]
     "add rsp, 32",              // skip regs[15..18]
-    // Restore GS to the user value (0) without disturbing the return value in
-    // RAX, then return through the iretq frame to ring 3.
-    "push rax",
-    "xor eax, eax",
-    "wrgsbase rax",             // GS = user (0)
-    "pop rax",
+    // Restore the userspace GS base and return through the ring-3 frame.
+    "swapgs",
     "iretq",
     syscall_entry_handler = sym crate::cpu::isa::x86_64::interrupts::syscall::syscall_entry_handler,
 );

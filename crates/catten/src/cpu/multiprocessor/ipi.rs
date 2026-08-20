@@ -40,7 +40,6 @@ use crate::{
     },
     memory::{
         AddressSpaceId,
-        KERNEL_ASID,
         linear::VAddr,
     },
 };
@@ -197,13 +196,27 @@ pub fn drain_local_ipi_queue() {
 fn dispatch_ipi_rpc(ipi: IpiRpc) {
     match ipi {
         IpiRpc::VMemInval(asid, base, size) => {
-            if asid == KERNEL_ASID {
+            #[cfg(target_arch = "x86_64")]
+            {
+                let _ = asid;
+                tlb::inval_range_local(base, size);
+            }
+            #[cfg(target_arch = "aarch64")]
+            if asid == crate::memory::KERNEL_ASID {
                 tlb::inval_range_kernel(base, size);
             } else {
                 tlb::inval_range_user(asid, base, size);
             }
         }
-        IpiRpc::AsidInval(asid) => tlb::inval_asid(asid),
+        IpiRpc::AsidInval(asid) => {
+            #[cfg(target_arch = "x86_64")]
+            {
+                let _ = asid;
+                tlb::inval_asid_local();
+            }
+            #[cfg(target_arch = "aarch64")]
+            tlb::inval_asid(asid);
+        }
         IpiRpc::Wakeup => {
             SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().set_ctx_switch_pending();
         }

@@ -46,18 +46,31 @@ impl Default for MutexCore {
 }
 
 unsafe impl RawMutex for MutexCore {
-    type GuardMarker = lock_api::GuardSend;
+    type GuardMarker = lock_api::GuardNoSend;
 
     const INIT: Self = Self::new();
 
     fn lock(&self) {
-        let int_state = get_int_state();
-
-        mask_interrupts!();
-        while self.state.swap(true, core::sync::atomic::Ordering::Acquire) {
-            core::hint::spin_loop();
+        loop {
+            let int_state = get_int_state();
+            mask_interrupts!();
+            if self
+                .state
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                self.saved_interrupt_flag.store(int_state, Ordering::Release);
+                return;
+            }
+            // A lock owner may be waiting for this LP to acknowledge a TLB
+            // shootdown. Keep maskable interrupts live while contending.
+            if int_state {
+                unmask_interrupts!();
+            }
+            while self.state.load(Ordering::Acquire) {
+                core::hint::spin_loop();
+            }
         }
-        self.saved_interrupt_flag.store(int_state, core::sync::atomic::Ordering::Release);
     }
 
     unsafe fn unlock(&self) {
@@ -71,14 +84,13 @@ unsafe impl RawMutex for MutexCore {
     fn try_lock(&self) -> bool {
         let int_state = get_int_state();
         mask_interrupts!();
-        let locked = self.state.swap(true, core::sync::atomic::Ordering::Acquire);
-        if !locked {
+        let acquired =
+            self.state.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok();
+        if acquired {
             self.saved_interrupt_flag.store(int_state, core::sync::atomic::Ordering::Release);
-        } else {
-            if int_state {
-                unmask_interrupts!();
-            }
+        } else if int_state {
+            unmask_interrupts!();
         }
-        !locked
+        acquired
     }
 }

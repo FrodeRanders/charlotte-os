@@ -501,7 +501,7 @@ impl SystemScheduler {
                     return Err(Error::InvalidThread);
                 }
                 guard
-                    .remove_thread(tid)
+                    .remove_thread(tid, Some(thread.generation))
                     .expect("Error removing thread from LP scheduler while blocking");
             }
             ThreadState::NeedsLpAssignment => {}
@@ -519,24 +519,39 @@ impl SystemScheduler {
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
+        let generation =
+            MASTER_THREAD_TABLE.read().get(tid).map_err(|_| Error::InvalidThread)?.generation;
+        self.abort_thread_generation(tid, generation)
+    }
+
+    /// Abort exactly one published thread lifetime.
+    ///
+    /// Numeric TIDs are recycled. Delayed cleanup code must use this method so
+    /// it cannot kill a later occupant of the same table slot.
+    pub fn abort_thread_generation(
+        &self,
+        tid: ThreadId,
+        expected_generation: ThreadGeneration,
+    ) -> Result<ThreadId, Error> {
         // Determine where the thread is known to be under a short-lived read
         // lock, so we do NOT hold a MASTER_THREAD_TABLE guard across the later
         // write lock (doing so would self-deadlock the non-reentrant RwLock).
         let state_lp = {
             let table = MASTER_THREAD_TABLE.read();
             match table.get(tid) {
-                Ok(thread) => match thread.state {
+                Ok(thread) if thread.generation == expected_generation => match thread.state {
                     ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => Some(lp_id),
                     _ => None,
                 },
-                Err(_) => return Err(Error::InvalidThread),
+                Ok(_) | Err(_) => return Err(Error::InvalidThread),
             }
         };
         // The LP scheduler is the authority for a currently executing thread.
         // A migration/context-switch boundary can leave the separately stored
         // ThreadState snapshot briefly pointing at the previous LP; preferring
         // that stale snapshot makes self-abort remove from the wrong scheduler.
-        let current_lp = self.current_lp_for_thread(tid).or(state_lp);
+        let current_lp =
+            self.current_lp_for_thread_generation(tid, expected_generation).or(state_lp);
         // A remote caller must not remove a context which is still executing:
         // its owning CPU may otherwise enter the kernel after the address space
         // or stack has already been reclaimed. Ask that CPU to switch first.
@@ -545,6 +560,9 @@ impl SystemScheduler {
         {
             let table = MASTER_THREAD_TABLE.read();
             let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+            if thread.generation != expected_generation {
+                return Err(Error::InvalidThread);
+            }
             thread.abort_owner_lp.store(owner_lp as usize, Ordering::Release);
             thread.abort_requested.store(true, Ordering::Release);
             if LocalIntCtlr::send_unicast_ipi(owner_lp, SCHEDULER_IPI_VECTOR).is_err() {
@@ -564,7 +582,7 @@ impl SystemScheduler {
         if let Some(lp_id) = remove_lp {
             self.lp_schedulers[&lp_id]
                 .lock()
-                .remove_thread(tid)
+                .remove_thread(tid, Some(expected_generation))
                 .map_err(|_| Error::InvalidThread)?;
         }
         // Move the thread out of the table WITHOUT dropping it: a thread cannot
@@ -575,8 +593,12 @@ impl SystemScheduler {
         // on any other LP would risk freeing a stack still in use.
         let stage_lp = current_lp.unwrap_or_else(get_lp_id);
         let _retirement = begin_retirement();
-        let thread =
-            MASTER_THREAD_TABLE.write().take_element(tid).map_err(|_| Error::InvalidThread)?;
+        let mut table = MASTER_THREAD_TABLE.write();
+        if !table.get(tid).is_ok_and(|thread| thread.generation == expected_generation) {
+            return Err(Error::InvalidThread);
+        }
+        let thread = table.take_element(tid).map_err(|_| Error::InvalidThread)?;
+        drop(table);
         record_exit(stage_lp, tid, thread.generation);
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);
         Ok(tid)
@@ -619,13 +641,14 @@ impl SystemScheduler {
         self.lp_schedulers.iter().min_by_key(|sched| sched.1.lock().thread_count()).unwrap().1
     }
 
-    fn current_lp_for_thread(&self, tid: ThreadId) -> Option<LpId> {
+    fn current_lp_for_thread_generation(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+    ) -> Option<LpId> {
         self.lp_schedulers.iter().find_map(|(&lp_id, sched)| {
-            if sched.lock().get_tid() == Some(tid) {
-                Some(lp_id)
-            } else {
-                None
-            }
+            let scheduler = sched.lock();
+            (scheduler.get_current_handle() == Some((tid, generation))).then_some(lp_id)
         })
     }
 }

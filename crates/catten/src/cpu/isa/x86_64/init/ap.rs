@@ -53,6 +53,15 @@ static AP_DF_STACKS: LazyLock<Vec<[u8; INTERRUPT_STACK_SIZE]>> = LazyLock::new(|
     ret
 });
 
+static AP_NMI_STACKS: LazyLock<Vec<[u8; INTERRUPT_STACK_SIZE]>> = LazyLock::new(|| {
+    let num_aps = get_lp_count() - 1;
+    let mut stacks = Vec::with_capacity(num_aps as usize);
+    for _ in 0..num_aps {
+        stacks.push(*(Box::new([0u8; INTERRUPT_STACK_SIZE])));
+    }
+    stacks
+});
+
 pub static AP_TSS: LazyLock<Vec<super::gdt::Tss>> = LazyLock::new(|| {
     logln!("LP {}: Creating the TSS vector.", (get_lp_id()));
     let mut tsses = Vec::new();
@@ -62,6 +71,7 @@ pub static AP_TSS: LazyLock<Vec<super::gdt::Tss>> = LazyLock::new(|| {
             unsafe { (&raw const AP_INTERRUPT_STACKS[i as usize]).byte_add(INTERRUPT_STACK_SIZE) }
                 as u64,
             unsafe { (&raw const AP_DF_STACKS[i as usize]).byte_add(INTERRUPT_STACK_SIZE) } as u64,
+            unsafe { (&raw const AP_NMI_STACKS[i as usize]).byte_add(INTERRUPT_STACK_SIZE) } as u64,
         ));
     }
     logln!("LP {}: TSS vector initialized.", (get_lp_id()));

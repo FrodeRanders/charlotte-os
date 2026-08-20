@@ -22,32 +22,52 @@ pub static mut PER_CPU: [PerCpuData; crate::cpu::scheduler::system_scheduler::MA
     crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
 pub fn init_lp_state() {
+    let basic_max = core::arch::x86_64::__cpuid(0).eax;
+    let extended_max = core::arch::x86_64::__cpuid(0x8000_0000).eax;
+    let leaf7 = (basic_max >= 7).then(|| core::arch::x86_64::__cpuid_count(7, 0));
+    assert!(
+        leaf7.is_some_and(|features| features.ebx & (1 << 0) != 0),
+        "x86_64 CPU lacks required FSGSBASE support"
+    );
+    assert!(
+        leaf7.is_some_and(|features| features.ebx & (1 << 7) != 0),
+        "x86_64 CPU lacks required SMEP support"
+    );
+    assert!(
+        extended_max >= 0x8000_0001
+            && core::arch::x86_64::__cpuid(0x8000_0001).edx & (1 << 27) != 0,
+        "x86_64 CPU lacks required RDTSCP support"
+    );
     unsafe {
         core::arch::asm! {
             "mov rax, cr4",
             "or rax, 1<<16",     // enable FSGSBASE
-            // Supervisor Mode Access/Execution Prevention would trap the
-            // SYSCALL trampoline's save of RAX/RCX/RDX onto the user stack and
-            // any future kernel access to EL0 memory. SMAP/SMEP hardening is
-            // deferred until the user-mode path is complete; clear both here.
-            "btr rax, 20",       // clear SMEP
+            // The kernel never executes user mappings. User data is reached
+            // through validated physical/HHDM aliases, so SMEP can remain on.
+            "bts rax, 20",       // enable SMEP
+            // Direct supervisor accesses to user mappings have not all been
+            // converted to explicit STAC/CLAC regions yet.
             "btr rax, 21",       // clear SMAP
             "mov cr4, rax",
             "mov rax, 0",
             "wrfsbase rax",
-            "wrgsbase rax",
             out("rax") _
         }
     }
-    // Point the kernel GS base at this LP's per-CPU area. `swapgs` on SYSCALL
-    // entry then exposes `gs:[0]` (kernel stack) and `gs:[8]` (user-stack
-    // save slot) to the trampoline.
+    // Kernel execution always keeps the active GS base pointed at this LP's
+    // per-CPU area. Ring-3 entry swaps to the zero user GS base; SYSCALL and
+    // interrupt entry swap the per-CPU base back in before running Rust code.
     let lp_id = get_lp_id() as usize;
     let per_cpu_addr = unsafe { core::ptr::addr_of!(PER_CPU[lp_id]) } as u64;
     unsafe {
+        core::arch::asm!(
+            "wrgsbase {}",
+            in(reg) per_cpu_addr,
+            options(nomem, nostack, preserves_flags)
+        );
         crate::cpu::isa::x86_64::constants::msrs::write(
             crate::cpu::isa::x86_64::constants::msrs::KERNEL_GS_BASE,
-            per_cpu_addr,
+            0,
         );
     }
     // Enable SYSCALL/SYSRET. The handler address comes from the
@@ -428,11 +448,10 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
     // properly set up with a `UserEntryFrames` struct, and that the CPU is in the correct state for
     // executing this trampoline (e.g., interrupts disabled, correct segment selectors, etc.).
     naked_asm!(
-        // Enter ring 3 with the user GS base (0) regardless of the GS state
-        // left behind by whatever context ran previously (e.g. a blocked
-        // syscall). FSGSBASE is enabled by init_lp_state.
-        "xor eax, eax",
-        "wrgsbase rax",
+        // Context switches run with the per-LP kernel GS base active. Swap to
+        // the zero user base before entering ring 3; the hidden kernel base is
+        // retained for the next privilege transition.
+        "swapgs",
         // `iretq` to the user entry point
         "iretq",
     );

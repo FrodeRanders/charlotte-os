@@ -104,11 +104,16 @@ pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Threa
 pub(crate) fn spawn_thread_after_publish(
     asid: AddressSpaceId,
     entry_point: extern "C" fn(),
-    publish: impl FnOnce(ThreadId),
+    publish: impl FnOnce(ThreadId, threads::ThreadGeneration),
 ) -> ThreadId {
     let thread = Thread::new(asid, entry_point);
     let tid = publish_thread(thread).expect("address space rejected thread publication");
-    publish(tid);
+    let generation = MASTER_THREAD_TABLE
+        .read()
+        .get(tid)
+        .expect("newly published thread disappeared before admission")
+        .generation;
+    publish(tid, generation);
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
     SYSTEM_SCHEDULER
         .read()
@@ -277,6 +282,12 @@ pub fn current_tid_nonblocking() -> Option<ThreadId> {
     let scheduler = SYSTEM_SCHEDULER.try_read()?;
     let local = scheduler.get_lp_scheduler();
     local.try_lock()?.get_tid()
+}
+
+pub fn current_thread_identity_nonblocking() -> Option<(ThreadId, threads::ThreadGeneration)> {
+    let scheduler = SYSTEM_SCHEDULER.try_read()?;
+    let local = scheduler.get_lp_scheduler();
+    local.try_lock()?.get_current_handle()
 }
 
 /// Blocks the current thread for at least the specified duration.

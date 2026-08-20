@@ -73,9 +73,9 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
 
-// x86_64 embeds the device-independent bootstrap services plus the NVMe
-// storage stack (now reachable via direct DMA). The remaining services
-// (servicemgr, raft, networking) are still AArch64-only.
+// x86_64 embeds the same service set exercised by its storage, lifecycle, and
+// networking suites. The runner also stages these signed artifacts on the
+// separate persistent block image used by store-backed service loading.
 #[cfg(target_arch = "x86_64")]
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"ns", "ns"),

@@ -23,7 +23,7 @@
 //! compatibility suite omits NVMe and the two persistent-Raft results because
 //! protected DMA is unavailable there, and expects 15 passes.
 //!
-//! A panic in a verifier is routed through [`fail_verifier_tid`] (installed
+//! A panic in a verifier is routed through [`fail_verifier_thread`] (installed
 //! by the panic handler) so a crashing verifier atomically fails its own bit
 //! instead of hanging the boot.
 
@@ -177,6 +177,8 @@ static FINALIZED: AtomicBool = AtomicBool::new(false);
 const NO_VERIFIER: u64 = u64::MAX;
 static VERIFIER_TIDS: [AtomicU64; TestId::ALL.len()] =
     [const { AtomicU64::new(NO_VERIFIER) }; TestId::ALL.len()];
+static VERIFIER_GENERATIONS: [AtomicU64; TestId::ALL.len()] =
+    [const { AtomicU64::new(0) }; TestId::ALL.len()];
 
 /// Waiters (verifier threads) parked on the results bitmap. `pass`/`fail`
 /// notify them so a verifier waiting for a specific test resolves as soon as
@@ -320,6 +322,7 @@ pub fn pass(id: TestId) {
     );
     PASSED.fetch_or(test_bit, Ordering::AcqRel);
     VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
+    VERIFIER_GENERATIONS[id as usize].store(0, Ordering::Release);
     notify_results_observers();
 }
 
@@ -344,12 +347,14 @@ pub fn fail(id: TestId) {
     );
     FAILED.fetch_or(test_bit, Ordering::AcqRel);
     VERIFIER_TIDS[id as usize].store(NO_VERIFIER, Ordering::Release);
+    VERIFIER_GENERATIONS[id as usize].store(0, Ordering::Release);
     notify_results_observers();
 }
 
 /// Spawn a deferred verifier and associate its kernel TID with its result bit.
 pub fn spawn_verifier(id: TestId, entry: extern "C" fn()) -> ThreadId {
-    crate::cpu::scheduler::spawn_thread_after_publish(KERNEL_ASID, entry, |tid| {
+    crate::cpu::scheduler::spawn_thread_after_publish(KERNEL_ASID, entry, |tid, generation| {
+        VERIFIER_GENERATIONS[id as usize].store(generation, Ordering::Release);
         VERIFIER_TIDS[id as usize].store(tid as u64, Ordering::Release);
     })
 }
@@ -357,10 +362,14 @@ pub fn spawn_verifier(id: TestId, entry: extern "C" fn()) -> ThreadId {
 /// Panic-handler hook: atomically fail the test owned by `tid`.
 ///
 /// This deliberately performs no allocation, logging, or locking.
-pub fn fail_verifier_tid(tid: u64) {
+pub fn fail_verifier_thread(tid: u64, generation: u64) {
     for (index, verifier) in VERIFIER_TIDS.iter().enumerate() {
-        if verifier.compare_exchange(tid, NO_VERIFIER, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        if VERIFIER_GENERATIONS[index].load(Ordering::Acquire) == generation
+            && verifier
+                .compare_exchange(tid, NO_VERIFIER, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
         {
+            VERIFIER_GENERATIONS[index].store(0, Ordering::Release);
             FAILED.fetch_or(1 << index, Ordering::AcqRel);
             return;
         }

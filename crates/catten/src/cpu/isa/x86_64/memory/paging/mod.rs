@@ -57,10 +57,10 @@ pub fn is_pagetable_unused(table_ptr: NonNull<PageTable>) -> bool {
     true
 }
 
-#[repr(transparent)]
 pub struct AddressSpace {
     // control register 3 i.e. top level page table base register
     cr3: u64,
+    owns_root: bool,
 }
 
 impl AddressSpace {
@@ -93,6 +93,7 @@ impl AddressSpace {
         }
         AddressSpace {
             cr3: <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK,
+            owns_root: true,
         }
     }
 
@@ -154,6 +155,7 @@ impl AddressSpaceInterface for AddressSpace {
         }
         AddressSpace {
             cr3: cr3,
+            owns_root: false,
         }
     }
 
@@ -522,5 +524,55 @@ impl AddressSpaceInterface for AddressSpace {
             return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::PermissionDenied);
         }
         Ok(frame + offset)
+    }
+}
+
+impl Drop for AddressSpace {
+    fn drop(&mut self) {
+        if !self.owns_root || self.cr3 & CR3_ADDRESS_MASK == 0 {
+            return;
+        }
+
+        unsafe fn free_table(table: *mut PageTable, level: u8) {
+            for entry in unsafe { &mut *table } {
+                if !entry.is_present() || level > 1 && entry.get_page_size() {
+                    continue;
+                }
+                if level > 1 {
+                    let child_frame = entry.try_get_frame().expect("present page-table entry");
+                    let child: *mut PageTable = child_frame.into();
+                    unsafe { free_table(child, level - 1) };
+                    PHYSICAL_FRAME_ALLOCATOR
+                        .lock()
+                        .deallocate_frame(child_frame)
+                        .expect("failed to release user page-table frame");
+                }
+                entry.set_present(false);
+            }
+        }
+
+        let root_frame = PAddr::try_from((self.cr3 & CR3_ADDRESS_MASK) as usize)
+            .expect("owned CR3 root is not a physical frame");
+        let root: *mut PageTable = root_frame.into();
+        // The upper half is shared with the kernel and must never be traversed
+        // or released by a user address-space lifetime.
+        unsafe {
+            for entry in &mut (&mut *root)[..256] {
+                if entry.is_present() {
+                    let child_frame = entry.try_get_frame().expect("present PML4 entry");
+                    free_table(child_frame.into(), 3);
+                    PHYSICAL_FRAME_ALLOCATOR
+                        .lock()
+                        .deallocate_frame(child_frame)
+                        .expect("failed to release user PDPT frame");
+                    entry.set_present(false);
+                }
+            }
+        }
+        PHYSICAL_FRAME_ALLOCATOR
+            .lock()
+            .deallocate_frame(root_frame)
+            .expect("failed to release user PML4 frame");
+        self.owns_root = false;
     }
 }

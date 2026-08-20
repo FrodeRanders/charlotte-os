@@ -20,9 +20,9 @@ pub struct RwLockCore {
     /// - A positive value `n` means there are `n` readers holding the lock.
     /// - `-1` means the lock is held by a writer.
     state: AtomicI64,
-    /// Number of writers waiting for the lock. Gives writers preference:
-    /// once a writer is queued, new readers must wait for it, so a continuous
-    /// stream of readers cannot starve the writer indefinitely.
+    /// Number of writers currently making an IRQ-masked acquisition attempt.
+    /// Readers defer during that attempt without leaving IRQs masked while a
+    /// writer waits for another LP.
     waiting_writers: AtomicUsize,
 }
 
@@ -42,32 +42,30 @@ impl Default for RwLockCore {
 }
 
 unsafe impl RawRwLock for RwLockCore {
-    type GuardMarker = lock_api::GuardSend;
+    type GuardMarker = lock_api::GuardNoSend;
 
     const INIT: Self = Self::new();
 
     fn lock_shared(&self) {
-        INT_STATE.save_int();
         loop {
-            // Writer preference: once a writer is waiting, new readers must
-            // wait for it. Otherwise a dense reader stream (e.g. the IPC
-            // registry probes around a reply) can starve the writer forever.
-            if self.waiting_writers.load(Ordering::Acquire) != 0 {
-                core::hint::spin_loop();
-                continue;
-            }
-            let state = self.state.load(Ordering::Acquire);
-            if state >= 0 {
+            INT_STATE.save_int();
+            // Briefly defer to a writer making its atomic acquisition attempt.
+            if self.waiting_writers.load(Ordering::Acquire) == 0 {
+                let state = self.state.load(Ordering::Acquire);
                 // Try to acquire the lock for reading by incrementing the reader count.
-                if self
-                    .state
-                    .compare_exchange(state, state + 1, Ordering::AcqRel, Ordering::Acquire)
-                    .is_ok()
+                if state >= 0
+                    && self
+                        .state
+                        .compare_exchange(state, state + 1, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
                 {
-                    break; // Successfully acquired the lock for reading.
+                    return;
                 }
-            } else {
-                // The lock is held by a writer, so we need to wait.
+            }
+            INT_STATE.restore_int();
+            while self.waiting_writers.load(Ordering::Acquire) != 0
+                || self.state.load(Ordering::Acquire) < 0
+            {
                 core::hint::spin_loop();
             }
         }
@@ -123,19 +121,19 @@ unsafe impl RawRwLock for RwLockCore {
     }
 
     fn lock_exclusive(&self) {
-        INT_STATE.save_int();
-        // Announce the waiting writer so new readers defer to it.
-        self.waiting_writers.fetch_add(1, Ordering::AcqRel);
         loop {
-            let state = self.state.load(Ordering::Acquire);
-            if state == 0 {
-                // Try to acquire the lock for writing by setting it to -1.
-                if self.state.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok() {
-                    self.waiting_writers.fetch_sub(1, Ordering::AcqRel);
-                    break; // Successfully acquired the lock for writing.
-                }
-            } else {
-                // The lock is held by readers or a writer, so we need to wait.
+            INT_STATE.save_int();
+            // Keep writer preference inside the IRQ-masked attempt. Leaving a
+            // writer announced while waiting with interrupts enabled could
+            // deadlock an interrupt handler that needs a read guard here.
+            self.waiting_writers.fetch_add(1, Ordering::AcqRel);
+            if self.state.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                self.waiting_writers.fetch_sub(1, Ordering::AcqRel);
+                return;
+            }
+            self.waiting_writers.fetch_sub(1, Ordering::AcqRel);
+            INT_STATE.restore_int();
+            while self.state.load(Ordering::Acquire) != 0 {
                 core::hint::spin_loop();
             }
         }

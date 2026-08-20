@@ -28,12 +28,34 @@
     pop rax
 .endm
 
+.macro m_enter_kernel_gs
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
+.endm
+
+.macro m_leave_kernel_gs
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
+.endm
+
 
 .global isr_lapic_timer
 isr_lapic_timer:
+    m_enter_kernel_gs
+    push r12
     m_push_caller_saved
+    mov r12, rsp
+    and rsp, -16
+    cld
     call signal_eoi
     call process_events
     call cond_yield_lp
+    mov rsp, r12
     m_pop_caller_saved
+    pop r12
+    m_leave_kernel_gs
     iretq

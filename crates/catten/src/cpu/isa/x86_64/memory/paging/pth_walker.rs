@@ -132,6 +132,7 @@ impl<'vas> PthWalker<'vas> {
             if self.address_space.cr3 & CR3_ADDRESS_MASK == 0 {
                 let new_pml4 = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
                 self.address_space.cr3 = <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK;
+                self.address_space.owns_root = true;
                 self.address_space.load().expect("Error reloading the CR3 register");
             }
             self.pml4_ptr = self.root_table_ptr();

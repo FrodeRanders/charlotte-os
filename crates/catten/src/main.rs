@@ -256,6 +256,8 @@ pub extern "C" fn bsp_main() -> ! {
     // idle schedulers before the continuation admits EL0 work; store-backed
     // service discovery may then yield and make progress on any LP.
     YIELD_BARRIER.wait();
+    #[cfg(target_arch = "x86_64")]
+    crate::cpu::isa::interrupts::fixed::ipis::enable_sync_shootdowns();
     unmask_interrupts!();
     yield_lp();
     /* We've switched into thread context and never come back. */

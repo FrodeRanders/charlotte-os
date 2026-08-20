@@ -26,6 +26,10 @@ use core::{
 
 use spin::LazyLock;
 
+pub use super::dma_common::{
+    Direction,
+    Error,
+};
 use crate::{
     cpu::{
         isa::interface::memory::AddressSpaceInterface,
@@ -45,16 +49,11 @@ use crate::{
     },
 };
 
-pub use super::dma_common::{
-    Direction,
-    Error,
-};
-
 const PAGE_SIZE: usize = 4096;
 const IOVA_START: u64 = 0x1000_0000;
 // Physical address field mask (bits 51:12), shared by the device-table entry
 // and every page-table entry.
-const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
+const ADDR_MASK: u64 = 0x000f_ffff_ffff_f000;
 
 // Register offsets (bytes) from the remapping unit's register base.
 const DEV_TABLE: usize = 0x0000;
@@ -96,6 +95,9 @@ const CMD_BUFFER_ENTRIES: u64 = 256;
 const CMD_BUFFER_BYTES: usize = CMD_BUFFER_ENTRIES as usize * 16;
 const EVENT_LOG_ENTRIES: u64 = 256;
 const EVENT_LOG_BYTES: usize = EVENT_LOG_ENTRIES as usize * 16;
+const DEVICE_TABLE_ENTRIES: usize = 1 << 16;
+const DEVICE_TABLE_BYTES: usize = DEVICE_TABLE_ENTRIES * 32;
+const DEVICE_TABLE_FRAMES: usize = DEVICE_TABLE_BYTES / PAGE_SIZE;
 
 struct Mapping {
     pin: DmaPin,
@@ -108,6 +110,7 @@ struct Domain {
     table_frames: Vec<PAddr>,
     next_iova: u64,
     mappings: BTreeMap<u64, Mapping>,
+    quarantined_pins: Vec<DmaPin>,
 }
 
 impl Domain {
@@ -119,6 +122,7 @@ impl Domain {
             table_frames: alloc::vec![root],
             next_iova: IOVA_START,
             mappings: BTreeMap::new(),
+            quarantined_pins: Vec::new(),
         })
     }
 
@@ -299,29 +303,54 @@ fn alloc_zeroed_frame() -> Result<PAddr, Error> {
     Ok(frame)
 }
 
+fn alloc_device_table() -> Result<PAddr, Error> {
+    let table = PHYSICAL_FRAME_ALLOCATOR
+        .lock()
+        .allocate_contiguous(DEVICE_TABLE_FRAMES, DEVICE_TABLE_BYTES)
+        .map_err(|_| Error::MapFailed)?;
+    unsafe { ptr::write_bytes(table.into_hhdm_mut::<u8>(), 0, DEVICE_TABLE_BYTES) };
+    Ok(table)
+}
+
+fn free_frames(base: PAddr, count: usize) {
+    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+    for index in 0..count {
+        let _ = allocator.deallocate_frame(base + index * PAGE_SIZE);
+    }
+}
+
 fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result<Unit, Error> {
     let mut current = AddressSpace::get_current();
     current.map_mmio_region(config.base, 0x4000).map_err(|_| Error::MapFailed)?;
     let base = unsafe { PAddr::from(config.base as u64).into_hhdm_ptr::<u8>() } as usize;
 
-    let devtab = alloc_zeroed_frame()?;
-    let cmd_buf = alloc_zeroed_frame()?;
-    let event_log = alloc_zeroed_frame()?;
+    let devtab = alloc_device_table()?;
+    let cmd_buf = match alloc_zeroed_frame() {
+        Ok(frame) => frame,
+        Err(error) => {
+            free_frames(devtab, DEVICE_TABLE_FRAMES);
+            return Err(error);
+        }
+    };
+    let event_log = match alloc_zeroed_frame() {
+        Ok(frame) => frame,
+        Err(error) => {
+            free_frames(cmd_buf, 1);
+            free_frames(devtab, DEVICE_TABLE_FRAMES);
+            return Err(error);
+        }
+    };
 
-    // Install the device table (4 KiB, 128 entries), command buffer (256
-    // entries), and event log (256 entries) before enabling the unit.
-    write64(base, DEV_TABLE, u64::from(devtab));
+    // Cover the complete 16-bit DeviceID space. Bits 8:0 encode one less than
+    // the table length in 4-KiB units (511 for a 2-MiB table).
+    write64(base, DEV_TABLE, u64::from(devtab) | (DEVICE_TABLE_FRAMES as u64 - 1));
     write64(base, CMD_BASE, u64::from(cmd_buf) | (8 << 56));
     write64(base, EVENT_BASE, u64::from(event_log) | (8 << 56));
     write64(base, CMD_HEAD, 0);
     write64(base, CMD_TAIL, 0);
     write64(base, EVENT_HEAD, 0);
     write64(base, EVENT_TAIL, 0);
-    write64(
-        base,
-        CONTROL,
-        CONTROL_IOMMU_EN | CONTROL_CMD_BUF_EN | CONTROL_EVENT_LOG_EN,
-    );
+    write64(base, CONTROL, CONTROL_IOMMU_EN | CONTROL_CMD_BUF_EN | CONTROL_EVENT_LOG_EN);
 
     IRQ_MMIO.store(base, Ordering::Release);
     crate::logln!("[amdvi] enabled AMD-Vi at {:#x}", config.base);
@@ -369,7 +398,24 @@ pub fn create_domain(sid: u32, _msi_address: Option<u64>) -> Result<u64, Error> 
         unit.domains.insert(id, domain);
         unit.sources.insert(source_id, id);
         unit.write_dte(source_id, root, true);
-        unit.flush_device_table(source_id)?;
+        if let Err(error) = unit.flush_device_table(source_id) {
+            unit.write_dte(source_id, PAddr::from(0u64), false);
+            if unit.flush_device_table(source_id).is_ok() && unit.flush_iotlb().is_ok() {
+                unit.sources.remove(&source_id);
+                let domain = unit.domains.remove(&id).expect("new AMD-Vi domain disappeared");
+                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+                for frame in domain.table_frames {
+                    let _ = allocator.deallocate_frame(frame);
+                }
+            } else {
+                crate::logln!(
+                    "[amdvi] quarantining failed domain {} for source {:#x}",
+                    id,
+                    source_id
+                );
+            }
+            return Err(error);
+        }
         Ok(id)
     })
 }
@@ -402,7 +448,20 @@ pub fn map(
                 }
             }
         };
-        unit.flush_iotlb()?;
+        if let Err(error) = unit.flush_iotlb() {
+            let mapping = unit
+                .domains
+                .get_mut(&domain_id)
+                .expect("AMD-Vi domain disappeared during map rollback")
+                .clear_mapping(iova)
+                .expect("new AMD-Vi mapping disappeared during rollback");
+            if unit.flush_iotlb().is_ok() {
+                pending_pin = Some(mapping.pin);
+            } else {
+                unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(mapping.pin);
+            }
+            return Err(error);
+        }
         Ok(iova)
     });
     if let Some(pin) = pending_pin {
@@ -413,9 +472,12 @@ pub fn map(
 
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     let mapping = with_unit(|unit| {
-        let domain = unit.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
-        let mapping = domain.clear_mapping(iova)?;
-        unit.flush_iotlb()?;
+        let mapping =
+            unit.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?.clear_mapping(iova)?;
+        if let Err(error) = unit.flush_iotlb() {
+            unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(mapping.pin);
+            return Err(error);
+        }
         Ok(mapping)
     })?;
     object::unpin_dma(mapping.pin);
@@ -432,17 +494,22 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
         // the page tables a device might still walk.
         unit.write_dte(source_id, PAddr::from(0u64), false);
         unit.flush_device_table(source_id)?;
+        unit.flush_iotlb()?;
         let mut domain = unit.domains.remove(&domain_id).expect("AMD-Vi domain disappeared");
-        let mappings = core::mem::take(&mut domain.mappings).into_values().collect::<Vec<_>>();
+        let mut pins = core::mem::take(&mut domain.mappings)
+            .into_values()
+            .map(|mapping| mapping.pin)
+            .collect::<Vec<_>>();
+        pins.append(&mut domain.quarantined_pins);
         unit.sources.remove(&source_id);
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in domain.table_frames {
             let _ = allocator.deallocate_frame(frame);
         }
-        Ok(mappings)
+        Ok(pins)
     })?;
-    for mapping in mappings {
-        object::unpin_dma(mapping.pin);
+    for pin in mappings {
+        object::unpin_dma(pin);
     }
     Ok(())
 }

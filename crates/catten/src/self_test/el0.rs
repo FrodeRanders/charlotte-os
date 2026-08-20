@@ -39,12 +39,9 @@ use crate::{
         OpCode,
         OpResult,
     },
-    cpu::{
-        isa::{
-            interface::memory::AddressSpaceInterface,
-            memory::paging::AddressSpace,
-        },
-        scheduler::spawn_thread,
+    cpu::isa::{
+        interface::memory::AddressSpaceInterface,
+        memory::paging::AddressSpace,
     },
     logln,
     memory::{
@@ -64,6 +61,8 @@ use crate::{
 static mut TEST_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 /// Numeric TID plus one; zero means the payload has not been spawned.
 static EL0_USER_TID: AtomicUsize = AtomicUsize::new(0);
+/// Generation paired with [`EL0_USER_TID`].
+static EL0_USER_GENERATION: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 /// Address-space id plus one, used by the deferred verifier.
 static EL0_USER_ASID: AtomicUsize = AtomicUsize::new(0);
 
@@ -279,9 +278,15 @@ pub fn test_el0_syscall_round_trip() {
     // `prepare_user_address_space` attached stay in place — we deliberately
     // do NOT reopen the AS with a heap-backed CQ, which would detach the
     // page mapped into the user address space.
-    let tid = spawn_thread(asid as crate::memory::AddressSpaceId, user_thread_entry_ptr(vaddr));
+    let tid = crate::cpu::scheduler::spawn_thread_after_publish(
+        asid as crate::memory::AddressSpaceId,
+        user_thread_entry_ptr(vaddr),
+        |tid, generation| {
+            EL0_USER_GENERATION.store(generation, Ordering::Release);
+            EL0_USER_TID.store(tid + 1, Ordering::Release);
+        },
+    );
     logln!("User thread spawned with tid={} asid={} vaddr={:?}", tid, asid, vaddr);
-    EL0_USER_TID.store(tid + 1, Ordering::Release);
     EL0_USER_ASID.store(asid + 1, Ordering::Release);
 
     // The verification thread runs after `yield_lp()` (self-tests run on the
@@ -338,9 +343,10 @@ extern "C" fn verify_el0_result() {
             // exit path from becoming permanent scheduler load.
             let encoded_tid = EL0_USER_TID.swap(0, Ordering::AcqRel);
             if encoded_tid != 0 {
+                let generation = EL0_USER_GENERATION.swap(0, Ordering::AcqRel);
                 let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                     .read()
-                    .abort_thread(encoded_tid - 1);
+                    .abort_thread_generation(encoded_tid - 1, generation);
             }
             return;
         }

@@ -88,7 +88,9 @@ pub unsafe fn setup_syscall(handler_addr: u64) {
         let star_val: u64 = (0x0010u64 << 48) | (0x0008u64 << 32);
         write(STAR, star_val);
         write(LSTAR, handler_addr);
-        write(SFMASK, 1 << 9);
+        // Enter Rust with interrupts, single-step, direction, nested-task,
+        // and alignment-check state cleared. IRET restores the user's flags.
+        write(SFMASK, (1 << 8) | (1 << 9) | (1 << 10) | (1 << 14) | (1 << 18));
         enable_syscall();
     }
 }

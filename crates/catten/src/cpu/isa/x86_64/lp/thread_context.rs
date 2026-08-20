@@ -150,19 +150,25 @@ struct UserStack {
 
 fn deallocate_user_stack(stack: UserStack) -> bool {
     let mut ok = true;
-    let mut as_table = ADDRESS_SPACE_TABLE.lock();
-    let Ok(user_as) = as_table.get_mut(stack.asid) else {
-        return false;
-    };
-    for page_idx in 0..USER_STACK_PAGES {
-        let vaddr = stack.base + page_idx * PAGE_SIZE;
-        match user_as.unmap_page(vaddr) {
-            Ok(frame) => {
-                if PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame).is_err() {
-                    ok = false;
-                }
+    let mut frames = [None; USER_STACK_PAGES];
+    {
+        let mut as_table = ADDRESS_SPACE_TABLE.lock();
+        let Ok(user_as) = as_table.get_mut(stack.asid) else {
+            return false;
+        };
+        for (page_idx, frame) in frames.iter_mut().enumerate() {
+            let vaddr = stack.base + page_idx * PAGE_SIZE;
+            match user_as.unmap_page(vaddr) {
+                Ok(unmapped) => *frame = Some(unmapped),
+                Err(_) => ok = false,
             }
-            Err(_) => ok = false,
+        }
+    }
+    crate::cpu::isa::memory::tlb::inval_range_user(stack.asid, stack.base, USER_STACK_PAGES);
+    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+    for frame in frames.into_iter().flatten() {
+        if allocator.deallocate_frame(frame).is_err() {
+            ok = false;
         }
     }
     ok
@@ -248,26 +254,34 @@ impl ThreadContext {
             [None; USER_STACK_PAGES];
         {
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            for frame in stack_frames.iter_mut() {
-                *frame = Some(pfa.allocate_frame().map_err(|_| {
-                    Error::StackAllocError(
-                        crate::memory::allocators::stack_allocator::Error::InvalidStack,
-                    )
-                })?);
+            for index in 0..USER_STACK_PAGES {
+                match pfa.allocate_frame() {
+                    Ok(allocated) => stack_frames[index] = Some(allocated),
+                    Err(_) => {
+                        for allocated in stack_frames.iter_mut().filter_map(Option::take) {
+                            let _ = pfa.deallocate_frame(allocated);
+                        }
+                        return Err(Error::StackAllocError(
+                            crate::memory::allocators::stack_allocator::Error::InvalidStack,
+                        ));
+                    }
+                }
             }
         }
 
-        let map_result = {
+        let (map_result, mapped_pages) = {
             let mut as_table = ADDRESS_SPACE_TABLE.lock();
             match as_table.get_mut(asid) {
                 Ok(user_as) => {
                     let mut result = Ok(());
-                    for (index, frame) in stack_frames.iter().flatten().copied().enumerate() {
+                    let mut mapped_pages = 0;
+                    for (index, frame) in stack_frames.iter_mut().enumerate() {
                         let vaddr = VAddr::from(stack_base + index * PAGE_SIZE);
+                        let allocated = (*frame).expect("preallocated user-stack frame missing");
                         if user_as
                             .map_page(MemoryMapping {
                                 vaddr,
-                                paddr: frame,
+                                paddr: allocated,
                                 page_type: PageType::UserData,
                             })
                             .is_err()
@@ -277,15 +291,32 @@ impl ThreadContext {
                             ));
                             break;
                         }
+                        *frame = None;
+                        mapped_pages += 1;
                     }
-                    result
+                    (result, mapped_pages)
                 }
-                Err(_) => Err(Error::AddressSpaceNotFound),
+                Err(_) => (Err(Error::AddressSpaceNotFound), 0),
             }
         };
         if let Err(error) = map_result {
+            let mut mapped_frames = [None; USER_STACK_PAGES];
+            if mapped_pages != 0 {
+                let mut as_table = ADDRESS_SPACE_TABLE.lock();
+                if let Ok(user_as) = as_table.get_mut(asid) {
+                    for (index, frame) in mapped_frames.iter_mut().enumerate().take(mapped_pages) {
+                        *frame =
+                            user_as.unmap_page(VAddr::from(stack_base + index * PAGE_SIZE)).ok();
+                    }
+                }
+            }
+            crate::cpu::isa::memory::tlb::inval_range_user(
+                asid,
+                VAddr::from(stack_base),
+                mapped_pages,
+            );
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            for frame in stack_frames.iter_mut().filter_map(Option::take) {
+            for frame in mapped_frames.into_iter().chain(stack_frames.into_iter()).flatten() {
                 let _ = pfa.deallocate_frame(frame);
             }
             return Err(error);
@@ -296,7 +327,13 @@ impl ThreadContext {
             base: VAddr::from(stack_base),
         };
 
-        let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
+        let kernel_stack_buf = match allocate_stack(INIT_KERNEL_STACK_PAGES) {
+            Ok(stack) => stack,
+            Err(error) => {
+                let _ = deallocate_user_stack(user_stack);
+                return Err(error.into());
+            }
+        };
         let kernel_stack_top_va = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         let mut kernel_stack_top = kernel_stack_top_va;
         let isf =

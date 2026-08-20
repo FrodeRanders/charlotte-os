@@ -143,7 +143,11 @@ impl From<memory::Error> for Error {
 /// [`KERNEL_GUARD_PAGE_SET`] so the stack can later be validated and freed.
 pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
     // Serialize the whole region-search-then-map sequence against other LPs.
-    with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages))
+    let result = with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages));
+    if let Ok(base) = result {
+        crate::cpu::isa::memory::tlb::inval_range_kernel(base, n_pages);
+    }
+    result
 }
 
 fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
@@ -173,7 +177,12 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
 /// argument is the base address returned by `allocate_stack`.
 pub fn deallocate_stack(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
     // Serialize teardown against concurrent alloc/free on other LPs.
-    with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base, n_pages))
+    let result =
+        with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base, n_pages));
+    if result.is_ok() {
+        crate::cpu::isa::memory::tlb::inval_range_kernel(stack_buf_base, n_pages);
+    }
+    result
 }
 
 fn deallocate_stack_locked(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {

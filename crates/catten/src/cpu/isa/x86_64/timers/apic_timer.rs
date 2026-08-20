@@ -157,10 +157,7 @@ impl LpTimerIfce for ApicTimer {
             } else {
                 0
             };
-        self.reset_value = ticks
-            .max(1)
-            .try_into()
-            .map_err(|_| LpTimerError::DurationOutOfRange)?;
+        self.reset_value = ticks.max(1).try_into().map_err(|_| LpTimerError::DurationOutOfRange)?;
         Ok(())
     }
 

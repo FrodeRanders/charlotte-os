@@ -233,16 +233,17 @@ pub struct Tss {
 impl Tss {
     // We will use the first IST entry for double fault exceptions
     pub const DOUBLE_FAULT_IST_INDEX: u8 = 1;
+    pub const NMI_IST_INDEX: u8 = 2;
 
-    pub fn new(rsp0: u64, ist1: u64) -> Self {
+    pub fn new(rsp0: u64, double_fault_stack: u64, nmi_stack: u64) -> Self {
         Tss {
             res0: 0,
             rsp0: rsp0,
             rsp1: 0,
             rsp2: 0,
             res1: 0,
-            ist1: ist1,
-            ist2: 0,
+            ist1: double_fault_stack,
+            ist2: nmi_stack,
             ist3: 0,
             ist4: 0,
             ist5: 0,

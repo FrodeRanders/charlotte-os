@@ -19,13 +19,13 @@
 //! domain, observes that stale connections fail with `EndpointClosed`,
 //! restarts the service, and observes the instance generation increment.
 
-use crate::logln;
 use crate::{
     ipc::{
         self,
         ConnectionRights,
         IpcError,
     },
+    logln,
     memory::physical::PAddr,
     service::supervisor::{
         self,
@@ -68,48 +68,48 @@ struct TestState {
 }
 
 pub fn test_el0_service() {
-        logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
+    logln!("Testing EL0 name service, bootstrap delivery, and service restart...");
 
-        let name_service = supervisor::node_name_service();
-        let ns_asid = name_service.domain.asid;
-        let ns_tid = name_service.domain.tid;
-        logln!("[service] using node name service (asid={}, tid={})", ns_asid, ns_tid);
+    let name_service = supervisor::node_name_service();
+    let ns_asid = name_service.domain.asid;
+    let ns_tid = name_service.domain.tid;
+    logln!("[service] using node name service (asid={}, tid={})", ns_asid, ns_tid);
 
-        let echo = supervisor::spawn_with_name_service(
-            crate::service::store::service_elf(b"echo").expect("[el0_service] echo.elf"),
-            &name_service,
-            ConnectionRights::CALL,
-        );
-        let echo_asid = echo.asid;
-        let echo_tid = echo.tid;
-        logln!("[service] echo service spawned (asid={}, tid={})", echo_asid, echo_tid);
+    let echo = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"echo").expect("[el0_service] echo.elf"),
+        &name_service,
+        ConnectionRights::CALL,
+    );
+    let echo_asid = echo.asid;
+    let echo_tid = echo.tid;
+    logln!("[service] echo service spawned (asid={}, tid={})", echo_asid, echo_tid);
 
-        let client = supervisor::spawn_with_name_service(
-            crate::service::store::service_elf(b"client").expect("[el0_service] client.elf"),
-            &name_service,
-            ConnectionRights::CALL,
-        );
-        let client_asid = client.asid;
-        let client_tid = client.tid;
-        let client_generation = client.generation;
-        logln!("[service] client spawned (asid={}, tid={})", client_asid, client_tid);
+    let client = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"client").expect("[el0_service] client.elf"),
+        &name_service,
+        ConnectionRights::CALL,
+    );
+    let client_asid = client.asid;
+    let client_tid = client.tid;
+    let client_generation = client.generation;
+    logln!("[service] client spawned (asid={}, tid={})", client_asid, client_tid);
 
-        unsafe {
-            TEST_STATE = Some(TestState {
-                name_service,
-                echo: Some(echo),
-                client_config: client.status_frame,
-                client_asid,
-                client_tid,
-                client_generation,
-            });
-        }
+    unsafe {
+        TEST_STATE = Some(TestState {
+            name_service,
+            echo: Some(echo),
+            client_config: client.status_frame,
+            client_asid,
+            client_tid,
+            client_generation,
+        });
+    }
 
-        let _vtid = crate::self_test::results::spawn_verifier(
-            crate::self_test::results::TestId::Service,
-            verify_el0_service,
-        );
-        logln!("[service] verifier deferred");
+    let _vtid = crate::self_test::results::spawn_verifier(
+        crate::self_test::results::TestId::Service,
+        verify_el0_service,
+    );
+    logln!("[service] verifier deferred");
 }
 
 pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {

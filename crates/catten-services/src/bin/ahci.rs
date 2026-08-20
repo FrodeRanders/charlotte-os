@@ -41,6 +41,7 @@ use catten_syscall::{
     memory_alloc,
     memory_close,
     memory_map_any,
+    memory_size,
     memory_unmap,
     thread_exit,
 };
@@ -86,7 +87,7 @@ const FIS_TYPE_REG_H2D: u8 = 0x27;
 
 // Command header DW0 fields.
 const CMDHDR_CFL: u32 = 5; // 5 DWs for the register H2D FIS
-const CMDHDR_WRITE: u32 = 1 << 6; // device writes to host memory (disk READ)
+const CMDHDR_WRITE: u32 = 1 << 6; // host writes data to the device
 const CMDHDR_PRDTL: u32 = 1 << 16;
 
 const PRDT_OFFSET: usize = 0x80;
@@ -198,12 +199,18 @@ fn submit_and_wait(
     core::sync::atomic::fence(Ordering::Release);
     write_mmio32(pb + PXCI, 1);
 
+    let mut completed = false;
     for _ in 0..1_000_000 {
         if read_mmio32(pb + PXCI) & 1 == 0 {
+            completed = true;
             break;
         }
         core::hint::spin_loop();
     }
+    if !completed {
+        return false;
+    }
+    core::sync::atomic::fence(Ordering::Acquire);
     // The task-file status carries ERR in bit 0 after a failed command.
     let tfd = read_mmio32(pb + PXTFD);
     let status = (tfd & 0xff) as u8;
@@ -223,9 +230,16 @@ fn identify(port: usize, cmd_list: &QueueMemory, cmd_table: &QueueMemory, buf: &
     }
     let words = buf.vaddr as *const u16;
     // Prefer the logical-sector-size words (117/118) when valid, else 512.
-    let lss = unsafe { words.add(117).read_volatile() };
-    let block_size = if lss & (1 << 12) != 0 {
-        (lss as u32) | ((unsafe { words.add(118).read_volatile() } as u32) << 16)
+    let word106 = unsafe { words.add(106).read_volatile() };
+    let words_per_sector = unsafe {
+        (words.add(117).read_volatile() as u32)
+            | ((words.add(118).read_volatile() as u32) << 16)
+    };
+    let block_size = if word106 & 0xc000 == 0x4000
+        && word106 & (1 << 12) != 0
+        && words_per_sector != 0
+    {
+        words_per_sector.checked_mul(2)?
     } else {
         512
     };
@@ -241,9 +255,9 @@ fn identify(port: usize, cmd_list: &QueueMemory, cmd_table: &QueueMemory, buf: &
         let lba28 = unsafe {
             (words.add(60).read_volatile() as u64) | ((words.add(61).read_volatile() as u64) << 16)
         };
-        return Some((block_size, lba28 as u32));
+        return Some((block_size, lba28.min(u32::MAX as u64) as u32));
     }
-    Some((block_size, total as u32))
+    Some((block_size, total.min(u32::MAX as u64) as u32))
 }
 
 fn main(ctx: Context) -> ! {
@@ -296,8 +310,37 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(0, 2);
     config::write::<u32>(4, 12);
 
-    // Stop the port, allocate the DMA structures, then (re)start it.
-    write_mmio32(pb + PXCMD, 0);
+    // Stop command issue before FIS receive, waiting for each engine to go
+    // idle as required by AHCI before replacing CLB/FB.
+    let mut cmd = read_mmio32(pb + PXCMD);
+    cmd &= !PXCMD_ST;
+    write_mmio32(pb + PXCMD, cmd);
+    let mut command_stopped = false;
+    for _ in 0..1_000_000 {
+        if read_mmio32(pb + PXCMD) & PXCMD_CR == 0 {
+            command_stopped = true;
+            break;
+        }
+        core::hint::spin_loop();
+    }
+    if !command_stopped {
+        config::write::<u32>(4, 0xe4);
+        unsafe { thread_exit() };
+    }
+    cmd &= !PXCMD_FRE;
+    write_mmio32(pb + PXCMD, cmd);
+    let mut fis_stopped = false;
+    for _ in 0..1_000_000 {
+        if read_mmio32(pb + PXCMD) & PXCMD_FR == 0 {
+            fis_stopped = true;
+            break;
+        }
+        core::hint::spin_loop();
+    }
+    if !fis_stopped {
+        config::write::<u32>(4, 0xe5);
+        unsafe { thread_exit() };
+    }
     let Some(cmd_list) = alloc_dma_buffer(1024) else {
         unsafe { thread_exit() };
     };
@@ -322,12 +365,18 @@ fn main(ctx: Context) -> ! {
     write_mmio32(pb + PXIE, 0);
     // Start the command engine and FIS receive, then wait for both to come up.
     write_mmio32(pb + PXCMD, PXCMD_FRE | PXCMD_ST);
+    let mut engines_started = false;
     for _ in 0..1_000_000 {
         let cmd = read_mmio32(pb + PXCMD);
         if cmd & (PXCMD_CR | PXCMD_FR) == PXCMD_CR | PXCMD_FR {
+            engines_started = true;
             break;
         }
         core::hint::spin_loop();
+    }
+    if !engines_started {
+        config::write::<u32>(4, 0xe6);
+        unsafe { thread_exit() };
     }
     config::write::<u32>(4, 14);
 
@@ -395,6 +444,8 @@ fn main(ctx: Context) -> ! {
                     || transfer_bytes == 0
                     || transfer_bytes > 0x3f_ff00
                     || message.memory == 0
+                    || transfer_bytes > memory_size(message.memory) as u64
+                    || count > u16::MAX as u32
                     || lba.checked_add(count as u64).is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
@@ -429,6 +480,8 @@ fn main(ctx: Context) -> ! {
                     || transfer_bytes == 0
                     || transfer_bytes > 0x3f_ff00
                     || message.memory == 0
+                    || transfer_bytes > memory_size(message.memory) as u64
+                    || count > u16::MAX as u32
                     || lba.checked_add(count as u64).is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);

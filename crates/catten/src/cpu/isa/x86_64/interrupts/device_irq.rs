@@ -61,9 +61,33 @@ static VECTOR_TO_INTID: [AtomicU32; DYN_VECS_PER_LP as usize] =
 const MAX_GSI: usize = 256;
 static GSI_TO_OFFSET: [AtomicU32; MAX_GSI] = [const { AtomicU32::new(u32::MAX) }; MAX_GSI];
 
-/// Monotonic round-robin cursor over the dynamic-vector space. Collisions on a
-/// long-lived system would wrap and overwrite; the current scale never does.
+/// Round-robin starting point for bounded free-slot scans.
 static NEXT_DYN_VECTOR: AtomicU32 = AtomicU32::new(0);
+
+fn claim_vector(intid: u32) -> Option<u32> {
+    let start = NEXT_DYN_VECTOR.fetch_add(1, Ordering::Relaxed) % DYN_VECS_PER_LP as u32;
+    for index in 0..DYN_VECS_PER_LP as u32 {
+        let offset = (start + index) % DYN_VECS_PER_LP as u32;
+        if VECTOR_TO_INTID[offset as usize]
+            .compare_exchange(u32::MAX, intid, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            return Some(offset);
+        }
+    }
+    None
+}
+
+fn release_vector(offset: u32, intid: u32) {
+    if offset < DYN_VECS_PER_LP as u32 {
+        let _ = VECTOR_TO_INTID[offset as usize].compare_exchange(
+            intid,
+            u32::MAX,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+}
 
 /// Translate a GSI to its IOAPIC redirection-table pin index.
 fn gsi_to_pin(gsi: u32) -> u32 {
@@ -106,10 +130,29 @@ pub fn enable_irq(gsi: u32, target_lp: LpId) {
         return;
     }
     let mut offset = GSI_TO_OFFSET[slot].load(Ordering::Acquire);
+    let mut new_route = false;
     if offset == u32::MAX {
-        offset = NEXT_DYN_VECTOR.fetch_add(1, Ordering::Relaxed) % DYN_VECS_PER_LP as u32;
-        VECTOR_TO_INTID[offset as usize].store(gsi, Ordering::Release);
-        GSI_TO_OFFSET[slot].store(offset, Ordering::Release);
+        let Some(claimed) = claim_vector(gsi) else {
+            crate::early_logln!("WARNING: no x86 interrupt vector available for GSI {}", gsi);
+            return;
+        };
+        match GSI_TO_OFFSET[slot].compare_exchange(
+            u32::MAX,
+            claimed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => {
+                offset = claimed;
+                new_route = true;
+            }
+            Err(existing) => {
+                release_vector(claimed, gsi);
+                offset = existing;
+            }
+        }
+    }
+    if new_route {
         let handler: InterruptHandler = ih_device_interrupt;
         DYN_IH_MATRIX.set_dyn_ih(target_lp, offset as InterruptVectorNum, handler);
         let vector = offset_to_vector(offset);
@@ -131,6 +174,23 @@ pub fn disable_irq(gsi: u32) {
     }
     let mut ioapic = IOAPIC.lock();
     let _ = ioapic.set_ext_int_mask_state(gsi_to_pin(gsi), true);
+}
+
+/// Permanently release a route and make its vector available for reuse.
+pub fn release_irq(intid: u32) {
+    if intid >= crate::device::MSI_INTID_BASE {
+        release_vector(intid - crate::device::MSI_INTID_BASE, intid);
+        return;
+    }
+    let slot = intid as usize;
+    if slot >= MAX_GSI {
+        return;
+    }
+    disable_irq(intid);
+    let offset = GSI_TO_OFFSET[slot].swap(u32::MAX, Ordering::AcqRel);
+    if offset != u32::MAX {
+        release_vector(offset, intid);
+    }
 }
 
 /// There is no separate software-clearable pending bit for a wired IOAPIC
@@ -171,9 +231,22 @@ pub fn allocate_msi(
 
     let target_lp = crate::cpu::isa::lp::ops::get_lp_id();
     let dest = X2Apic::physical_apic_id(target_lp)?;
-    let offset = NEXT_DYN_VECTOR.fetch_add(1, Ordering::Relaxed) % DYN_VECS_PER_LP as u32;
-    let intid = crate::device::MSI_INTID_BASE + offset;
-    VECTOR_TO_INTID[offset as usize].store(intid, Ordering::Release);
+    // The synthetic MSI intid is derived from its vector slot. Claim with the
+    // final intid so a live route can never be overwritten on cursor wrap.
+    let start = NEXT_DYN_VECTOR.fetch_add(1, Ordering::Relaxed) % DYN_VECS_PER_LP as u32;
+    let mut allocation = None;
+    for index in 0..DYN_VECS_PER_LP as u32 {
+        let offset = (start + index) % DYN_VECS_PER_LP as u32;
+        let intid = crate::device::MSI_INTID_BASE + offset;
+        if VECTOR_TO_INTID[offset as usize]
+            .compare_exchange(u32::MAX, intid, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            allocation = Some((offset, intid));
+            break;
+        }
+    }
+    let (offset, intid) = allocation?;
     let handler: InterruptHandler = ih_device_interrupt;
     DYN_IH_MATRIX.set_dyn_ih(target_lp, offset as InterruptVectorNum, handler);
     let vector = offset_to_vector(offset);

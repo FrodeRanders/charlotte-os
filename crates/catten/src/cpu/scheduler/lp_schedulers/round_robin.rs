@@ -154,6 +154,10 @@ impl LpScheduler for RoundRobin {
             .map(|_| handle.tid)
     }
 
+    fn get_current_handle(&self) -> Option<(ThreadId, ThreadGeneration)> {
+        self.current_handle.map(|handle| (handle.tid, handle.generation))
+    }
+
     fn is_ctx_switch_pending(&self) -> bool {
         self.timer_event_observer.pending.load(Ordering::Acquire)
     }
@@ -370,10 +374,18 @@ impl LpScheduler for RoundRobin {
         }
     }
 
-    fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error> {
-        let handle = self.run_queue.iter().find(|handle| handle.tid == tid).copied();
+    fn remove_thread(
+        &mut self,
+        tid: ThreadId,
+        expected_generation: Option<ThreadGeneration>,
+    ) -> Result<(), Error> {
+        let matches = |handle: &ThreadHandle| {
+            handle.tid == tid
+                && expected_generation.is_none_or(|generation| handle.generation == generation)
+        };
+        let handle = self.run_queue.iter().find(|handle| matches(handle)).copied();
 
-        if self.current_handle.is_some_and(|handle| handle.tid == tid) {
+        if self.current_handle.as_ref().is_some_and(matches) {
             self.current_handle = None;
             self.publish_load();
             Ok(())

@@ -446,17 +446,22 @@ pub fn map_any(
     // The scratch reservation and page-table installation belong to the same
     // address-space lifetime. Otherwise teardown/reuse could occur between
     // them and apply the old generation's reservation to the new occupant.
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    let pages = {
-        let registry = MEMORY_OBJECTS.lock();
-        let cap_entry = registry.lookup(asid, cap)?;
-        let object =
-            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-        object.frames.len()
+    let (base, pages, result) = {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let pages = {
+            let registry = MEMORY_OBJECTS.lock();
+            let cap_entry = registry.lookup(asid, cap)?;
+            let object = registry
+                .objects
+                .get(&cap_entry.object)
+                .ok_or(MemoryObjectError::UnknownCapability)?;
+            object.frames.len()
+        };
+        let base = reserve_scratch(asid, pages)?;
+        (base, pages, map_locked(asid, cap, base, writable))
     };
-    let base = reserve_scratch(asid, pages)?;
-    map_locked(asid, cap, base, writable)?;
-    Ok(base)
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    result.map(|_| base)
 }
 
 pub fn map(
@@ -470,8 +475,22 @@ pub fn map(
     }
 
     // Serialize against address-space teardown/reuse for the complete map.
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    map_locked(asid, cap, base, writable)
+    let (pages, result) = {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let pages = {
+            let registry = MEMORY_OBJECTS.lock();
+            let cap_entry = registry.lookup(asid, cap)?;
+            registry
+                .objects
+                .get(&cap_entry.object)
+                .ok_or(MemoryObjectError::UnknownCapability)?
+                .frames
+                .len()
+        };
+        (pages, map_locked(asid, cap, base, writable))
+    };
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    result
 }
 
 /// Install a mapping while the caller holds `ADDRESS_SPACE_LIFECYCLE`.
@@ -566,21 +585,39 @@ fn map_locked(
 }
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    let mut registry = MEMORY_OBJECTS.lock();
-    let cap_entry = registry.lookup(asid, cap)?;
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    let base = object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?.base;
+    let (base, pages, result) = {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let mut registry = MEMORY_OBJECTS.lock();
+        let cap_entry = registry.lookup(asid, cap)?;
+        let object = registry
+            .objects
+            .get_mut(&cap_entry.object)
+            .ok_or(MemoryObjectError::UnknownCapability)?;
+        let base = object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?.base;
+        let pages = object.frames.len();
 
-    let mut table = ADDRESS_SPACE_TABLE.lock();
-    let address_space = table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
-    for index in 0..object.frames.len() {
-        let vaddr = base + (index * PAGE_SIZE);
-        address_space.unmap_page(vaddr).map_err(|_| MemoryObjectError::UnmapFailed)?;
-    }
-    object.mappings.remove(&asid);
-    Ok(())
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        let result = match table.get_mut(asid) {
+            Ok(address_space) => {
+                let mut result = Ok(());
+                for index in 0..pages {
+                    let vaddr = base + (index * PAGE_SIZE);
+                    if address_space.unmap_page(vaddr).is_err() {
+                        result = Err(MemoryObjectError::UnmapFailed);
+                        break;
+                    }
+                }
+                result
+            }
+            Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
+        };
+        if result.is_ok() {
+            object.mappings.remove(&asid);
+        }
+        (base, pages, result)
+    };
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    result
 }
 
 pub fn move_to(
@@ -1007,6 +1044,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
 
 pub fn close_address_space(asid: AddressSpaceId) {
     let mut frames_to_free = Vec::new();
+    let mut invalidations = Vec::new();
     {
         let mut registry = MEMORY_OBJECTS.lock();
         let owned_objects = registry
@@ -1031,12 +1069,14 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 object.destroy_when_unpinned = true;
                 for (mapped_asid, mapping) in core::mem::take(&mut object.mappings) {
                     let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
+                    invalidations.push((mapped_asid, mapping.base, object.frames.len()));
                 }
                 continue;
             }
             if let Some(object) = registry.objects.remove(&object_id) {
                 for (mapped_asid, mapping) in object.mappings {
                     let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
+                    invalidations.push((mapped_asid, mapping.base, object.frames.len()));
                 }
                 remove_caps_for_object(&mut registry, object_id);
                 frames_to_free.extend(object.frames);
@@ -1046,6 +1086,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
         for object in registry.objects.values_mut() {
             if let Some(mapping) = object.mappings.remove(&asid) {
                 let _ = unmap_pages(asid, mapping.base, object.frames.len());
+                invalidations.push((asid, mapping.base, object.frames.len()));
             }
             match &mut object.lend_state {
                 LendState::None => {}
@@ -1077,6 +1118,13 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 );
             }
         }
+    }
+
+    // Mapping removal and frame reuse must be separated by a completed
+    // cross-LP shootdown. An object owned by the closing domain may still have
+    // mappings in other, live address spaces.
+    for (mapped_asid, base, pages) in invalidations {
+        crate::cpu::isa::memory::tlb::inval_range_user(mapped_asid, base, pages);
     }
 
     if !frames_to_free.is_empty() {

@@ -9,7 +9,11 @@
 .macro m_dyn_isr vector:req
 .global dyn_isr_\vector
 dyn_isr_\vector:
-    pushfq
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
+    push r12
     push rax
     push rdi
     push rsi
@@ -19,6 +23,9 @@ dyn_isr_\vector:
     push r9
     push r10
     push r11
+    mov r12, rsp
+    and rsp, -16
+    cld
     //; Acknowledge the interrupt up front so this vector does not remain
     //; in-service and block the lower-priority LAPIC timer.
     call signal_eoi
@@ -36,6 +43,7 @@ dyn_isr_\vector:
 skip_ih_call_\vector:
     //; Execute context switch if pending
     call cond_yield_lp
+    mov rsp, r12
     pop r11
     pop r10
     pop r9
@@ -45,7 +53,11 @@ skip_ih_call_\vector:
     pop rsi
     pop rdi
     pop rax
-    popfq
+    pop r12
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
     iretq
 .endm
 

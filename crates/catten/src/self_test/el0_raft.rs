@@ -86,7 +86,7 @@ mod inner {
     fn stop_domain(domain: ServiceDomain) {
         {
             let scheduler = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
-            let _ = scheduler.abort_thread(domain.tid);
+            let _ = scheduler.abort_thread_generation(domain.tid, domain.generation);
         }
         supervisor::wait_domain_exit(&domain, 30_000);
         supervisor::teardown_domain(domain);

@@ -467,7 +467,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             in("rdx") arg3,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     ret
@@ -487,7 +487,7 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
             in("r10") arg4,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     ret
@@ -508,7 +508,7 @@ unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, a
             in("r8") arg5,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     ret
@@ -538,7 +538,7 @@ unsafe fn svc6(
             in("r9") arg6,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     ret
@@ -559,7 +559,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             in("rdx") arg3,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     (ret, x1_out)
@@ -581,7 +581,7 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             in("rdx") arg3,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     (ret, x1_out, x2_out)
@@ -604,7 +604,7 @@ unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             inlateout("rdx") arg3 => x3_out,
             lateout("rcx") _,
             lateout("r11") _,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     (ret, x1_out, x2_out, x3_out)
@@ -634,7 +634,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
             lateout("r9") version,
             lateout("r11") memory,
             lateout("rcx") connection,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -677,7 +677,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
             lateout("r9") version,
             lateout("r11") memory,
             lateout("rcx") connection,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -726,7 +726,7 @@ unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
             lateout("r12") sender_generation,
             lateout("r13") sender_principal,
             lateout("r14") sender_roles,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -775,7 +775,7 @@ unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
             lateout("r12") sender_generation,
             lateout("r13") sender_principal,
             lateout("r14") sender_roles,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -1006,7 +1006,7 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
             lateout("x6") version,
             lateout("x7") memory,
             lateout("x8") connection,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -1050,7 +1050,7 @@ unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
             lateout("x6") version,
             lateout("x7") memory,
             lateout("x8") connection,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -1100,7 +1100,7 @@ unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
             lateout("x9") sender_generation,
             lateout("x10") sender_principal,
             lateout("x11") sender_roles,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {
@@ -1150,7 +1150,7 @@ unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
             lateout("x9") sender_generation,
             lateout("x10") sender_principal,
             lateout("x11") sender_roles,
-            options(nostack, nomem, preserves_flags),
+            options(preserves_flags),
         );
     }
     IpcMessage {

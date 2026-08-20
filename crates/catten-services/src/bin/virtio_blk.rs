@@ -40,6 +40,7 @@ use catten_syscall::{
     memory_alloc,
     memory_close,
     memory_map_any,
+    memory_size,
     memory_unmap,
     thread_exit,
 };
@@ -74,6 +75,10 @@ unsafe fn r8(a: usize) -> u8 {
 #[inline]
 unsafe fn r16(a: usize) -> u16 {
     unsafe { core::ptr::read_volatile(a as *const u16) }
+}
+#[inline]
+unsafe fn r32(a: usize) -> u32 {
+    unsafe { core::ptr::read_volatile(a as *const u32) }
 }
 #[inline]
 unsafe fn r64(a: usize) -> u64 {
@@ -169,12 +174,17 @@ fn main(ctx: Context) -> ! {
             common + virtio::M_DEVICE_STATUS,
             virtio::STATUS_ACKNOWLEDGE | virtio::STATUS_DRIVER,
         );
+        w32(common + virtio::M_DEVICE_FEATURE_SELECT, 1);
+    }
+    let required_features = virtio::FEATURE_VERSION_1 | virtio::FEATURE_ACCESS_PLATFORM;
+    if unsafe { r32(common + virtio::M_DEVICE_FEATURE) } & required_features != required_features {
+        config::write::<u32>(4, 0xe0);
+        unsafe { thread_exit() };
+    }
+    unsafe {
         // Negotiate VIRTIO_F_VERSION_1 | VIRTIO_F_ACCESS_PLATFORM.
         w32(common + virtio::M_DRIVER_FEATURE_SELECT, 1);
-        w32(
-            common + virtio::M_DRIVER_FEATURE,
-            virtio::FEATURE_VERSION_1 | virtio::FEATURE_ACCESS_PLATFORM,
-        );
+        w32(common + virtio::M_DRIVER_FEATURE, required_features);
         w8(
             common + virtio::M_DEVICE_STATUS,
             virtio::STATUS_ACKNOWLEDGE | virtio::STATUS_DRIVER | virtio::STATUS_FEATURES_OK,
@@ -190,7 +200,7 @@ fn main(ctx: Context) -> ! {
     let device = bar4 + virtio::MODERN_DEVICE;
     let capacity = unsafe { r64(device) };
     let block_size: u32 = 512;
-    let total_blocks = capacity as u32;
+    let total_blocks = capacity.min(u32::MAX as u64) as u32;
     if capacity == 0 || total_blocks == 0 {
         config::write::<u32>(4, 0xe3);
         unsafe { thread_exit() };
@@ -207,12 +217,24 @@ fn main(ctx: Context) -> ! {
     unsafe {
         core::ptr::write_bytes(ring.vaddr as *mut u8, 0, vring_pages(QUEUE_SIZE) * PAGE_SIZE);
         w16(common + virtio::M_QUEUE_SELECT, 0);
+        let maximum_queue_size = r16(common + virtio::M_QUEUE_SIZE);
+        if maximum_queue_size < QUEUE_SIZE {
+            config::write::<u32>(4, 0xe4);
+            thread_exit();
+        }
         w16(common + virtio::M_QUEUE_VECTOR, 0);
         w16(common + virtio::M_QUEUE_SIZE, QUEUE_SIZE);
         w64(common + virtio::M_QUEUE_DESC, ring.iova);
         w64(common + virtio::M_QUEUE_DRIVER, ring.iova + avail_offset(QUEUE_SIZE) as u64);
         w64(common + virtio::M_QUEUE_DEVICE, ring.iova + used_offset(QUEUE_SIZE) as u64);
         w16(common + virtio::M_QUEUE_ENABLE, 1);
+        w8(
+            common + virtio::M_DEVICE_STATUS,
+            virtio::STATUS_ACKNOWLEDGE
+                | virtio::STATUS_DRIVER
+                | virtio::STATUS_FEATURES_OK
+                | virtio::STATUS_DRIVER_OK,
+        );
     }
     let notify_offset = unsafe { r16(common + virtio::M_QUEUE_NOTIFY_OFF) };
     let notify = bar4 + virtio::MODERN_NOTIFY + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER;
@@ -232,10 +254,11 @@ fn main(ctx: Context) -> ! {
         );
         w16(desc + 0 * virtio::DESC_SIZE + virtio::DESC_NEXT, 1);
         // Descriptor 2: status byte (device writes).
-        w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_LO, req.iova as u32 + 16);
+        let status_iova = req.iova.checked_add(16).expect("virtio status IOVA overflow");
+        w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_LO, status_iova as u32);
         w32(
             desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_HI,
-            (req.iova >> 32) as u32,
+            (status_iova >> 32) as u32,
         );
         w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_LENGTH, 1);
         w16(
@@ -286,6 +309,7 @@ fn main(ctx: Context) -> ! {
             w32(hdr.add(0) as usize, req_type);
             w32(hdr.add(4) as usize, 0);
             w64(hdr.add(8) as usize, sector);
+            w8(hdr.add(16) as usize, 0xff);
             // The FLUSH request carries no data descriptor; the header chains
             // straight to the status byte.
             if data_len == 0 {
@@ -308,17 +332,20 @@ fn main(ctx: Context) -> ! {
             let slot = *avail_pos as usize % QUEUE_SIZE as usize;
             w16(avail_ring + slot * 2, 0);
             *avail_pos = avail_pos.wrapping_add(1);
-            w16(avail_idx, *avail_pos);
             core::sync::atomic::fence(Ordering::Release);
+            w16(avail_idx, *avail_pos);
             w32(notify, 0);
             // Poll the used ring for this request.
+            let mut completed = false;
             for _ in 0..1_000_000 {
                 if r16(used_idx) == *avail_pos {
+                    completed = true;
                     break;
                 }
                 core::hint::spin_loop();
             }
-            r8(req.vaddr as usize + 16) == 0
+            core::sync::atomic::fence(Ordering::Acquire);
+            completed && r8(req.vaddr as usize + 16) == 0
         }
     };
 
@@ -351,8 +378,12 @@ fn main(ctx: Context) -> ! {
                 };
                 if count == 0
                     || transfer_bytes == 0
+                    || transfer_bytes > u32::MAX as u64
                     || message.memory == 0
-                    || lba.checked_add(count as u64).is_none_or(|end| end > capacity)
+                    || transfer_bytes > memory_size(message.memory) as u64
+                    || lba
+                        .checked_add(count as u64)
+                        .is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
@@ -374,8 +405,12 @@ fn main(ctx: Context) -> ! {
                 };
                 if count == 0
                     || transfer_bytes == 0
+                    || transfer_bytes > u32::MAX as u64
                     || message.memory == 0
-                    || lba.checked_add(count as u64).is_none_or(|end| end > capacity)
+                    || transfer_bytes > memory_size(message.memory) as u64
+                    || lba
+                        .checked_add(count as u64)
+                        .is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;

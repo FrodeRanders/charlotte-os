@@ -37,6 +37,7 @@ use crate::{
 pub trait LpScheduler: Debug + Send {
     fn get_lp_id(&self) -> LpId;
     fn get_tid(&self) -> Option<ThreadId>;
+    fn get_current_handle(&self) -> Option<(ThreadId, ThreadGeneration)>;
     fn is_ctx_switch_pending(&self) -> bool;
     /* The following two functions should use interior mutability to access an internal atomic
      * for safe lock free operaton. */
@@ -51,7 +52,11 @@ pub trait LpScheduler: Debug + Send {
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
     ) -> Result<(), Error>;
-    fn remove_thread(&mut self, tid: ThreadId) -> Result<(), Error>;
+    fn remove_thread(
+        &mut self,
+        tid: ThreadId,
+        expected_generation: Option<ThreadGeneration>,
+    ) -> Result<(), Error>;
     /// Return a queued thread that may be considered for migration. The
     /// system scheduler validates policy and state under the thread-table lock.
     fn ready_migration_candidates(&self) -> Vec<(ThreadId, ThreadGeneration)>;

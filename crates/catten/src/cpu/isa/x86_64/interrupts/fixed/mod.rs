@@ -9,6 +9,7 @@ use crate::cpu::isa::{
     constants::interrupt_vectors::{
         ASYNC_IPI_VECTOR,
         LAPIC_TIMER_VECTOR,
+        SCHEDULER_IPI_VECTOR,
         SPURIOUS_INTERRUPT_VECTOR_NUM,
         SYNC_IPI_VECTOR,
     },
@@ -45,6 +46,14 @@ pub fn register_fixed_isr_gates(idt: &mut Idt) {
     idt.set_gate(
         SYNC_IPI_VECTOR,
         ipis::isr_synchronous_ipi,
+        KERNEL_CODE_SELECTOR,
+        None,
+        false,
+        true,
+    );
+    idt.set_gate(
+        SCHEDULER_IPI_VECTOR,
+        ipis::isr_scheduler_ipi,
         KERNEL_CODE_SELECTOR,
         None,
         false,

@@ -1,6 +1,10 @@
 .code64
 
 .macro IPI_PROLOGUE
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
     push rax
     push rbx
     push rcx
@@ -16,7 +20,9 @@
     push r13
     push r14
     push r15
-    pushfq
+    mov r12, rsp
+    and rsp, -16
+    cld
 /* IPIs are always level triggered so as not to be missed. Thus when the ISR runs we must signal
    end of interrupt to the local interrupt controller to ensure the ISR isn't called repeatedly
    ad infinitum
@@ -25,7 +31,7 @@
 .endm
 
 .macro IPI_EPILOGUE
-    popfq
+    mov rsp, r12
     pop r15
     pop r14
     pop r13
@@ -41,6 +47,10 @@
     pop rcx
     pop rbx
     pop rax
+    test byte ptr [rsp + 8], 3
+    jz 1f
+    swapgs
+1:
 .endm
 
 .section .text
@@ -55,5 +65,12 @@ isr_asynchronous_ipi:
 isr_synchronous_ipi:
     IPI_PROLOGUE
     call ih_synchronous_ipi
+    IPI_EPILOGUE
+    iretq
+
+.global isr_scheduler_ipi
+isr_scheduler_ipi:
+    IPI_PROLOGUE
+    call cond_yield_lp
     IPI_EPILOGUE
     iretq

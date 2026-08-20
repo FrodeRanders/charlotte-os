@@ -143,6 +143,7 @@ mod inner {
     /// `object_id`, set its size, write the bytes, and flush. Mirrors the
     /// agent's former self-staging; the kernel does it for the demo so the
     /// artifact bytes can live kernel-side.
+    #[cfg(feature = "deploy_net_test")]
     fn stage_deploy_artifact(
         ns: &NameServiceHandle,
         object_id: u64,
@@ -764,7 +765,7 @@ mod inner {
             assert_eq!(status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES), 2);
             crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                 .read()
-                .abort_thread(echo.tid)
+                .abort_thread_generation(echo.tid, echo.generation)
                 .expect("[dns] hosted echo abort");
             crate::service::supervisor::wait_domain_exit(&echo, 30_000);
             crate::service::supervisor::teardown_domain(echo);

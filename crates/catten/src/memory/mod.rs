@@ -203,7 +203,15 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
 pub fn close_user_address_space_handle(
     handle: AddressSpaceHandle,
 ) -> Result<(), AddressSpaceCloseError> {
+    // Serialize validation, shootdown, and removal as one address-space
+    // lifetime operation. Otherwise this handle could be validated, then the
+    // ASID closed and reused before its stale translations are purged.
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    match ADDRESS_SPACE_TABLE.lock().generation(handle.id) {
+        Ok(generation) if generation == handle.generation => {}
+        Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
+        Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
+    }
     close_user_address_space_locked(handle)
 }
 
@@ -229,6 +237,11 @@ fn close_user_address_space_locked(
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);
     crate::capability::close_address_space(asid);
+
+    // All mappings have now been removed. Domain supervision retired this
+    // lifetime's threads before entering teardown; purge every LP before the
+    // page-table hierarchy itself is returned to the frame allocator.
+    crate::cpu::isa::memory::tlb::inval_asid(asid);
 
     let removed_authority = DOMAIN_AUTHORITIES.lock().remove(&asid);
     if let Some(authority) = removed_authority {

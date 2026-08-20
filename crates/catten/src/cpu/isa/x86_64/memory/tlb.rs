@@ -48,9 +48,22 @@ fn invlpg_range(base: VAddr, num_pages: usize) {
 /// Invalidate a range of user page translations across every LP. Locally
 /// invalidates each translation and then performs a synchronous cross-LP
 /// shootdown (a CR3 reload on every other LP).
-pub fn inval_range_user(_asid: AddressSpaceId, base: VAddr, size: usize) {
-    invlpg_range(base, size);
+pub fn inval_range_user(_asid: AddressSpaceId, _base: VAddr, size: usize) {
+    if size == 0 {
+        return;
+    }
     super::super::interrupts::fixed::ipis::send_sync_shootdown();
+}
+
+/// Handle an already-delivered architecture-independent invalidation RPC.
+/// This must stay local: initiating another rendezvous from an IPI handler
+/// deadlocks against an in-flight synchronous shootdown.
+pub(crate) fn inval_range_local(base: VAddr, num_pages: usize) {
+    invlpg_range(base, num_pages);
+}
+
+pub(crate) fn inval_asid_local() {
+    flush_current_non_global();
 }
 
 /// Invalidate all translations of an address space across every LP. Without
@@ -61,7 +74,9 @@ pub fn inval_asid(_asid: AddressSpaceId) {
 }
 
 /// Invalidate a range of kernel page translations across every LP.
-pub fn inval_range_kernel(base: VAddr, num_pages: usize) {
-    invlpg_range(base, num_pages);
+pub fn inval_range_kernel(_base: VAddr, num_pages: usize) {
+    if num_pages == 0 {
+        return;
+    }
     super::super::interrupts::fixed::ipis::send_sync_shootdown();
 }

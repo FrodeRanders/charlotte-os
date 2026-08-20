@@ -924,10 +924,8 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                     // Locate the modern transport BAR via the common-config
                     // vendor capability (type 1).
                     let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                    let mut capability = header
-                        .get_capabilities_offset()
-                        .map(|offset| offset as usize)
-                        .unwrap_or(0);
+                    let mut capability =
+                        header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
                     let mut modern_bar = None;
                     for _ in 0..48 {
                         if capability < 0x40 || capability + 16 > 0x100 {
@@ -935,9 +933,10 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                         }
                         let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
                         let next =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
-                        let len =
-                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) }
+                                as usize;
+                        let len = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) }
+                            as usize;
                         let cfg_type =
                             unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
                         if id == 0x09 && len >= 16 && cfg_type == 1 {
@@ -965,7 +964,8 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                         if bar_index + 1 >= 6 {
                             continue;
                         }
-                        (bar & 0xffff_fff0) | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                        (bar & 0xffff_fff0)
+                            | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
                     } else {
                         bar & 0xffff_fff0
                     };

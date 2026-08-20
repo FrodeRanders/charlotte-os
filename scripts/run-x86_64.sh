@@ -7,7 +7,7 @@
 #   brew install qemu mtools
 #
 # The x86_64 port boots multi-LP, runs EL0 at ring 3 through the SYSCALL
-# ABI, and passes the kernel-side + ring-3 deferred self-test subset, including
+# ABI, and passes the kernel-side + ring-3 deferred self-test suite, including
 # the NVMe/AHCI/virtio-blk storage stack (behind VT-d or AMD-Vi) and the
 # virtio-net + cluster-discovery networking path.
 #
@@ -34,8 +34,8 @@
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
-#   --fresh-storage  Recreate this instance's boot image from scratch
-#   --reuse-storage  Keep the existing boot image (explicitly stale)
+#   --fresh-storage  Recreate this instance's persistent block-device image
+#   --reuse-storage  Keep it even when the signed service bundle changed
 #   --el0-smoke    Build + sign the x86_64 `smoke` service ELF and run the
 #                  EL0 Rust-ELF round-trip self-test
 #
@@ -114,6 +114,22 @@ if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
     echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
     exit 1
 fi
+if ! [[ "$SMP" =~ ^[0-9]+$ ]] || [ "$SMP" -lt 1 ]; then
+    echo "error: --smp must be a positive integer" >&2
+    exit 1
+fi
+if [ -n "$TIMEOUT" ] && { ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [ "$TIMEOUT" -lt 1 ]; }; then
+    echo "error: --timeout must be a positive integer" >&2
+    exit 1
+fi
+if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
+    echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
+    exit 1
+fi
+if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
+    echo "error: socket networking requires a network test option" >&2
+    exit 1
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -126,6 +142,8 @@ if [ -n "$INSTANCE" ]; then
     INSTANCE_SUFFIX="-${INSTANCE}"
 fi
 IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
+DATA_IMAGE="${IMAGE_DIR}/x86-data${INSTANCE_SUFFIX}.img"
+DATA_BUNDLE_HASH="${DATA_IMAGE}.bundle-sha256"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTX64.EFI"
 
@@ -194,9 +212,9 @@ if [ "$HTTP_TEST" = "1" ]; then
     FEATURES="${FEATURES},http_net_test"
 fi
 
-# Build and sign the device-independent x86_64 bootstrap services (the name
-# service and the system observer). The store embeds these at compile time, so
-# the bundle must exist before the kernel build, mirroring run-aarch64.sh.
+# Build and sign the x86_64 service bundle. The bootstrap set is embedded at
+# compile time and the same signed artifacts seed the persistent object-store
+# image, so the bundle must exist before the kernel build.
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
 mkdir -p "$SERVICE_BUNDLE"
@@ -237,21 +255,44 @@ fi
 echo ">>> Kernel payload: ${KERNEL}"
 echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
 
-# --- Build a FAT32 EFI System Partition image with mtools. ---
-if [ "$REUSE_STORAGE" = "1" ] && [ -f "$IMAGE" ]; then
-    echo ">>> Reusing boot image ${IMAGE} by explicit request."
-elif [ "$FRESH_STORAGE" = "1" ] || [ ! -f "$IMAGE" ]; then
-    echo ">>> Creating boot image ${IMAGE}..."
-    mkdir -p "$IMAGE_DIR"
-    dd if=/dev/zero of="$IMAGE" bs=1048576 count=64 status=none
-    mformat -i "$IMAGE" -F -v CATOS ::
-    mmd -i "$IMAGE" ::/EFI
-    mmd -i "$IMAGE" ::/EFI/BOOT
-    mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FILE}"
-    mcopy -i "$IMAGE" "$KERNEL" "::/catten"
-    mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
+# --- Build a disposable FAT32 EFI System Partition image with mtools. ---
+# It is deliberately separate from the block device delegated to userspace:
+# formatting or object-store writes can no longer corrupt the next boot.
+echo ">>> Creating boot image ${IMAGE}..."
+mkdir -p "$IMAGE_DIR"
+dd if=/dev/zero of="$IMAGE" bs=1048576 count=64 status=none
+mformat -i "$IMAGE" -F -v CATOS ::
+mmd -i "$IMAGE" ::/EFI
+mmd -i "$IMAGE" ::/EFI/BOOT
+mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FILE}"
+mcopy -i "$IMAGE" "$KERNEL" "::/catten"
+mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
+
+BUNDLE_DIGESTS=""
+for service_elf in "$SERVICE_BUNDLE"/*.elf; do
+    if command -v sha256sum >/dev/null 2>&1; then
+        service_digest="$(sha256sum "$service_elf" | awk '{print $1}')"
+    else
+        service_digest="$(shasum -a 256 "$service_elf" | awk '{print $1}')"
+    fi
+    BUNDLE_DIGESTS="${BUNDLE_DIGESTS}$(basename "$service_elf"):${service_digest}
+"
+done
+if command -v sha256sum >/dev/null 2>&1; then
+    CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | sha256sum | awk '{print $1}')"
 else
-    echo ">>> Reusing boot image ${IMAGE} (delete it or pass --fresh-storage to rebuild)."
+    CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | shasum -a 256 | awk '{print $1}')"
+fi
+STORED_BUNDLE_HASH="$(test -f "$DATA_BUNDLE_HASH" && tr -d '[:space:]' < "$DATA_BUNDLE_HASH" || true)"
+if [ "$REUSE_STORAGE" = "1" ] && [ -f "$DATA_IMAGE" ]; then
+    echo ">>> Reusing block image ${DATA_IMAGE} by explicit request."
+elif [ ! -f "$DATA_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
+    || [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
+    echo ">>> Producing block image ${DATA_IMAGE} from the signed bundle..."
+    python3 "${ROOT_DIR}/scripts/make-nvme-image.py" "$DATA_IMAGE" "$SERVICE_BUNDLE"
+    printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$DATA_BUNDLE_HASH"
+else
+    echo ">>> Reusing block image ${DATA_IMAGE} (signed bundle unchanged)."
 fi
 
 case "$IOMMU" in
@@ -261,9 +302,9 @@ case "$IOMMU" in
 esac
 
 case "$BLOCK" in
-    nvme)   BLOCK_DEVICE=("-device" "nvme,drive=boot0,serial=cat0") ;;
-    ahci)   BLOCK_DEVICE=("-device" "ide-hd,drive=boot0,bus=ide.0") ;;
-    virtio) BLOCK_DEVICE=("-device" "virtio-blk-pci-non-transitional,drive=boot0,iommu_platform=on") ;;
+    nvme)   BLOCK_DEVICE=("-device" "nvme,drive=data0,serial=cat0") ;;
+    ahci)   BLOCK_DEVICE=("-device" "ide-hd,drive=data0,bus=ide.0") ;;
+    virtio) BLOCK_DEVICE=("-device" "virtio-blk-pci-non-transitional,drive=data0,iommu_platform=on") ;;
     *) echo "error: --block must be 'nvme', 'ahci', or 'virtio'" >&2; exit 1 ;;
 esac
 
@@ -273,7 +314,10 @@ QEMU_OPTS=(
     -smp "$SMP"
     -m 512M
     -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
-    -drive "if=none,file=${IMAGE},format=raw,id=boot0"
+    -drive "if=none,file=${IMAGE},format=raw,id=esp,readonly=on"
+    -device "qemu-xhci,id=xhci"
+    -device "usb-storage,bus=xhci.0,drive=esp,bootindex=1"
+    -drive "if=none,file=${DATA_IMAGE},format=raw,id=data0"
     "${BLOCK_DEVICE[@]}"
     -device "$IOMMU_DEVICE"
     -display none
@@ -287,13 +331,16 @@ if [ "$NET_TEST" = "1" ]; then
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"
-            QEMU_OPTS+=(-netdev "stream,id=net0,server=on,addr.type=inet,addr.host=0.0.0.0,addr.port=${NET_PORT}")
+            # QEMU 11.1's stream backend can dereference a cleared channel
+            # while virtio-net is transmitting on macOS.  The socket backend
+            # implements the same point-to-point LAN without that host crash.
+            QEMU_OPTS+=(-netdev "socket,id=net0,listen=0.0.0.0:${NET_PORT}")
             ;;
         connect:*)
             NET_PEER="${NET_BACKEND#connect:}"
             NET_HOST="${NET_PEER%%:*}"
             NET_PORT="${NET_PEER#*:}"
-            QEMU_OPTS+=(-netdev "stream,id=net0,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
+            QEMU_OPTS+=(-netdev "socket,id=net0,connect=${NET_HOST}:${NET_PORT}")
             ;;
     esac
     QEMU_OPTS+=(
@@ -333,13 +380,11 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: kernel panic observed during the test window" >&2
         exit 1
     fi
-    # Report the authoritative self-test result when the deferred suite is
-    # able to complete on this architecture; ring-3 tests are gated until the
-    # user-mode path is brought up.
     if grep -Eq 'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0' "$LOG"; then
         echo ">>> All registered deferred self-tests passed."
     else
-        echo "warning: no authoritative self-test result produced (expected while x86_64 user-mode bring-up is in progress)" >&2
+        echo "error: no successful authoritative self-test result was produced" >&2
+        exit 1
     fi
 else
     QEMU_OPTS+=(-serial stdio)

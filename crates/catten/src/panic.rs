@@ -14,8 +14,8 @@ use crate::cpu::isa::lp::ops::await_interrupt;
 /// silent hang). Writing straight to the serial console avoids that trap.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if let Some(tid) = crate::cpu::scheduler::current_tid_nonblocking() {
-        crate::self_test::results::fail_verifier_tid(tid as u64);
+    if let Some((tid, generation)) = crate::cpu::scheduler::current_thread_identity_nonblocking() {
+        crate::self_test::results::fail_verifier_thread(tid as u64, generation);
     }
     crate::early_logln!("***\nKernel panic:\n{}\n***", info);
     await_interrupt!();
