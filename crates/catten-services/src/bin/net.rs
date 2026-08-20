@@ -14,6 +14,8 @@ use alloc::{
     collections::VecDeque,
     vec,
 };
+#[cfg(target_arch = "aarch64")]
+use core::arch::asm;
 
 use catten_rt::{
     Context,
@@ -69,10 +71,14 @@ const MIN_ETHERNET_FRAME_SIZE: usize = 60;
 const MAX_QUEUE_SIZE: u16 = 256;
 
 /// Publish split-ring updates to a DMA observer before the subsequent index
-/// update or queue notification. A Rust atomic release fence orders prior
-/// writes before the notification store on every supported architecture.
+/// update or queue notification. On AArch64 an outer-shareable `dmb` is needed
+/// to order normal memory against Device MMIO; x86_64 is strongly ordered and
+/// a release fence is sufficient.
 #[inline]
 fn dma_write_barrier() {
+    #[cfg(target_arch = "aarch64")]
+    unsafe { asm!("dmb oshst", options(nostack, preserves_flags)) }
+    #[cfg(not(target_arch = "aarch64"))]
     core::sync::atomic::fence(core::sync::atomic::Ordering::Release)
 }
 
@@ -82,6 +88,9 @@ fn dma_write_barrier() {
 /// that handoff rather than speculatively before it.
 #[inline]
 fn dma_read_barrier() {
+    #[cfg(target_arch = "aarch64")]
+    unsafe { asm!("dmb oshld", options(nostack, preserves_flags)) }
+    #[cfg(not(target_arch = "aarch64"))]
     core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire)
 }
 
