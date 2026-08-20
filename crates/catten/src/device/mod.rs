@@ -491,6 +491,11 @@ pub fn fault_count() -> u64 {
     dma::fault_count()
 }
 
+/// Number of fault events the hardware has latched but not yet consumed.
+pub fn pending_fault_events() -> u32 {
+    dma::pending_fault_events()
+}
+
 pub fn dma_map(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,

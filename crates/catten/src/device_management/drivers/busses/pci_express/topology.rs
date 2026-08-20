@@ -670,8 +670,8 @@ pub fn lookup_first_virtio_net(
                 };
                 let legacy_irq = header.interrupt_line() as u32;
                 if phys_base != 0 {
-                    #[cfg(target_arch = "aarch64")]
-                    if let Some(message) = crate::cpu::isa::interrupts::gic::allocate_v2m_msi()
+                    if crate::device::msi_available()
+                        && let Some(message) = crate::device::allocate_msi(requester_id)
                         && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
                             cfg.as_ptr(),
                             message,

@@ -45,6 +45,7 @@ REUSE_STORAGE="0"
 EL0_SMOKE="0"
 IOMMU="intel"
 BLOCK="nvme"
+NET="0"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -72,6 +73,7 @@ while [ "$#" -gt 0 ]; do
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
         --el0-smoke)     EL0_SMOKE="1"; shift ;;
+        --net)           NET="1"; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -144,6 +146,9 @@ if [ "$CLEAN_BUILD" = "1" ]; then
 fi
 
 FEATURES="acpi"
+if [ "$NET" = "1" ]; then
+    FEATURES="${FEATURES},virtio_net_test"
+fi
 
 # Build and sign the device-independent x86_64 bootstrap services (the name
 # service and the system observer). The store embeds these at compile time, so
@@ -156,8 +161,8 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
     --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-    --bin ahci --bin virtio_blk
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk; do
+    --bin ahci --bin virtio_blk --bin net --bin nclient
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
@@ -229,6 +234,13 @@ QEMU_OPTS=(
     -display none
     -no-reboot
 )
+
+if [ "$NET" = "1" ]; then
+    QEMU_OPTS+=(
+        -netdev "user,id=net0"
+        -device "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on"
+    )
+fi
 
 if [ -n "$GDB" ]; then
     QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")

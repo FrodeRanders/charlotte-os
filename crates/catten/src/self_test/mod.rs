@@ -138,7 +138,6 @@ pub mod el0_http;
 pub mod el0_ipc;
 #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
 pub mod el0_join;
-#[cfg(target_arch = "aarch64")]
 pub mod el0_net;
 pub mod el0_nvme;
 pub mod el0_pingpong;
@@ -289,11 +288,11 @@ pub fn run_deferred_self_tests() {
     ipi::test_sync_ipi_shootdown();
     #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
     el0_smoke::test_el0_smoke();
-    #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
+    #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat")))]
     el0_net::test_el0_net();
-    #[cfg(all(feature = "virtio_net_test", feature = "hvf_compat", target_arch = "aarch64"))]
+    #[cfg(all(feature = "virtio_net_test", feature = "hvf_compat"))]
     logln!("Skipping EL0 net test (hvf_compat: HVF cannot emulate EL0 MMIO).");
-    #[cfg(all(not(feature = "virtio_net_test"), target_arch = "aarch64"))]
+    #[cfg(not(feature = "virtio_net_test"))]
     logln!("Skipping EL0 net test (enable virtio_net_test with matching PCI hardware).");
     #[cfg(all(feature = "disco_net_test", target_arch = "aarch64"))]
     el0_disco::test_el0_disco();

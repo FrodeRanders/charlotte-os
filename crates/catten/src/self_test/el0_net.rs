@@ -10,7 +10,6 @@
 //! become active) discovers the virtio-net PCI device, grants its BAR0 + IRQ
 //! to the driver domain, spawns a client that queries status, and verifies
 //! the MAC and link state.
-#![cfg(target_arch = "aarch64")]
 
 use crate::{
     ipc::ConnectionRights,
@@ -22,18 +21,14 @@ use crate::{
     },
 };
 
-#[cfg(target_arch = "aarch64")]
 #[cfg(not(feature = "relmsg_net_test"))]
 const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(feature = "relmsg_net_test")]
 const CLIENT_SENTINEL: u32 = 0xc0de_cafe;
-#[cfg(target_arch = "aarch64")]
 static mut TEST_STATE: Option<NameServiceHandle> = None;
 
 pub fn test_el0_net() {
-    #[cfg(target_arch = "aarch64")]
-    {
-        logln!("Testing EL0 userspace virtio-net driver...");
+    logln!("Testing EL0 userspace virtio-net driver...");
 
         let name_service = supervisor::node_name_service();
         let ns_asid = name_service.domain.asid;
@@ -46,11 +41,6 @@ pub fn test_el0_net() {
             verify_el0_net,
         );
         logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        logln!("Skipping EL0 net driver test (AArch64 only).");
-    }
 }
 
 fn wait_for_virtio_net() -> (usize, usize, u32, u32, Option<u64>) {
@@ -67,7 +57,6 @@ fn wait_for_virtio_net() -> (usize, usize, u32, u32, Option<u64>) {
     (bar0 as usize & !0xfff, pages, intid, requester_id, msi_address)
 }
 
-#[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_net() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -221,8 +210,8 @@ extern "C" fn verify_el0_net() {
                     };
                     let rx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(6)) };
                     let tx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(7)) };
-                    let dma_faults = crate::device::smmu::fault_count();
-                    let pending_faults = crate::device::smmu::pending_fault_events();
+                    let dma_faults = crate::device::fault_count();
+                    let pending_faults = crate::device::pending_fault_events();
                     let driver_send = unsafe {
                         core::ptr::read_volatile((driver_cfg as *const u8).add(36) as *const u32)
                     };

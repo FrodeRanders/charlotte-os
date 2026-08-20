@@ -14,7 +14,6 @@ use alloc::{
     collections::VecDeque,
     vec,
 };
-use core::arch::asm;
 
 use catten_rt::{
     Context,
@@ -69,12 +68,12 @@ const MAX_FRAME_SIZE: usize = BUFFER_SIZE - VIRTIO_NET_TX_HEADER_SIZE;
 const MIN_ETHERNET_FRAME_SIZE: usize = 60;
 const MAX_QUEUE_SIZE: u16 = 256;
 
-/// Publish split-ring updates to an outer-shareable DMA observer before the
-/// subsequent index update or queue notification. A Rust atomic fence alone
-/// does not define ordering between normal memory and Device MMIO on AArch64.
+/// Publish split-ring updates to a DMA observer before the subsequent index
+/// update or queue notification. A Rust atomic release fence orders prior
+/// writes before the notification store on every supported architecture.
 #[inline]
 fn dma_write_barrier() {
-    unsafe { asm!("dmb oshst", options(nostack, preserves_flags)) }
+    core::sync::atomic::fence(core::sync::atomic::Ordering::Release)
 }
 
 /// Order reads from a device-written DMA ring after observing its producer
@@ -83,7 +82,7 @@ fn dma_write_barrier() {
 /// that handoff rather than speculatively before it.
 #[inline]
 fn dma_read_barrier() {
-    unsafe { asm!("dmb oshld", options(nostack, preserves_flags)) }
+    core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire)
 }
 
 #[inline]

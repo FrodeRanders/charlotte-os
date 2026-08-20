@@ -90,6 +90,8 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"servicemgr", "servicemgr"),
     bootstrap_elf!(b"ahci", "ahci"),
     bootstrap_elf!(b"virtio_blk", "virtio_blk"),
+    bootstrap_elf!(b"net", "net"),
+    bootstrap_elf!(b"nclient", "nclient"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.
