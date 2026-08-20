@@ -28,7 +28,7 @@
 //! endpoints, so there is no user-facing grant syscall.
 
 #[cfg(target_arch = "x86_64")]
-pub mod direct_dma;
+pub mod vt_d;
 #[cfg(target_arch = "aarch64")]
 pub mod smmu;
 
@@ -41,7 +41,7 @@ use core::sync::atomic::{
 
 use concurrent_queue::ConcurrentQueue;
 #[cfg(target_arch = "x86_64")]
-use direct_dma as dma;
+use vt_d as dma;
 #[cfg(target_arch = "aarch64")]
 use smmu as dma;
 use spin::LazyLock;
@@ -475,7 +475,7 @@ pub fn grant_dma_domain(
 }
 
 /// Resolve a PCI requester id to the DMA stream id used by the platform's
-/// IOMMU (SMMU on AArch64; identity on x86_64 until a VT-d/AMD-Vi driver).
+/// IOMMU (SMMU on AArch64; VT-d source id on x86_64).
 pub fn stream_id(requester_id: u32) -> Result<u32, DeviceError> {
     dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)
 }

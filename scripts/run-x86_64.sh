@@ -203,6 +203,7 @@ QEMU_OPTS=(
     -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
     -drive "if=none,file=${IMAGE},format=raw,id=boot0"
     -device "nvme,drive=boot0,serial=cat0"
+    -device "intel-iommu"
     -display none
     -no-reboot
 )

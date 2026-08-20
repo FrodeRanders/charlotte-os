@@ -2,6 +2,7 @@
 //! ACPI System Description Tables (SDTs)
 
 pub mod discovery;
+pub mod dmar;
 pub mod fadt;
 pub mod iort;
 pub mod madt;

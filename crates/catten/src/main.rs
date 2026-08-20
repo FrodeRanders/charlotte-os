@@ -229,6 +229,18 @@ pub extern "C" fn bsp_main() -> ! {
         }
         Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
     }
+    #[cfg(all(
+        target_arch = "x86_64",
+        not(feature = "hvf_compat"),
+        not(feature = "live_upgrade_test")
+    ))]
+    match crate::device::vt_d::initialize_early() {
+        Ok(()) => logln!("[vtd] early initialization complete."),
+        Err(crate::device::vt_d::Error::Unsupported) => {
+            logln!("[vtd] no supported VT-d unit discovered; DMA isolation unavailable.")
+        }
+        Err(error) => panic!("[vtd] early initialization failed: {:?}", error),
+    }
     self_test::run_synchronous_self_tests();
     // The remaining boot work resolves store-backed ELFs and therefore may
     // yield while the NVMe/object-store bootstrap domains run. Execute it in a
