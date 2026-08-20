@@ -21,6 +21,7 @@ use alloc::{
 use core::{
     ptr,
     sync::atomic::{
+        AtomicU32,
         AtomicU64,
         AtomicUsize,
         Ordering,
@@ -65,6 +66,10 @@ const GSTS: usize = 0x1c;
 const RTADDR: usize = 0x20;
 const CCMD: usize = 0x28;
 const FSTS: usize = 0x34;
+const FECTL: usize = 0x38;
+const FEDATA: usize = 0x3c;
+const FEADDR: usize = 0x40;
+const FEUADDR: usize = 0x44;
 
 // Global command register bits.
 const GCMD_SRTP: u32 = 1 << 30;
@@ -79,6 +84,9 @@ const CCMD_CIRG: u64 = 1 << 62;
 const IOTLB_INV: usize = 0x80;
 const IOTLB_IVA: u64 = 1 << 63;
 const IOTLB_IIRG: u64 = 1 << 60;
+
+// Fault status register bits (bits 0..7 are the latched fault/error sources).
+const FSTS_FAULT_MASK: u32 = 0xff;
 
 // Context entry adjusted guest address width (AW) encodings.
 const CTX_AW_39BIT: u64 = 1;
@@ -298,6 +306,8 @@ impl Unit {
 static UNIT: LazyLock<Mutex<Option<Unit>>> = LazyLock::new(|| Mutex::new(None));
 static IRQ_MMIO: AtomicUsize = AtomicUsize::new(0);
 static FAULT_COUNT: AtomicU64 = AtomicU64::new(0);
+static FAULT_INTID: AtomicU32 = AtomicU32::new(u32::MAX);
+static FRCD_OFFSET: AtomicUsize = AtomicUsize::new(0);
 
 fn read32(base: usize, offset: usize) -> u32 {
     unsafe { ptr::read_volatile((base + offset) as *const u32) }
@@ -373,6 +383,15 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
     }
     let cap = read64(base, CAP);
     let agaw = supported_agaw(cap).ok_or(Error::Unsupported)?;
+    // The fault recording register (FRCD) sits at CAP.FRO * 16 bytes; extend
+    // the MMIO mapping past the first page if it lands beyond it.
+    let frcd_offset = (((cap >> 24) & 0xfff) as usize) * 16;
+    FRCD_OFFSET.store(frcd_offset, Ordering::Release);
+    if frcd_offset + 0x10 > 0x1000 {
+        current
+            .map_mmio_region(config.base, frcd_offset + 0x10)
+            .map_err(|_| Error::MapFailed)?;
+    }
 
     let root_table = alloc_zeroed_frame()?;
 
@@ -388,6 +407,22 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
     wait_gsts(base, GSTS_TES)?;
 
     IRQ_MMIO.store(base, Ordering::Release);
+    // Route fault events through an MSI. Program the fault-event message
+    // address/data registers, then unmask the fault interrupt.
+    match crate::device::allocate_msi(0) {
+        Some(msi) => {
+            write32(base, FEADDR, msi.address as u32);
+            write32(base, FEUADDR, (msi.address >> 32) as u32);
+            write32(base, FEDATA, msi.data);
+            write32(base, FECTL, 0);
+            FAULT_INTID.store(msi.intid, Ordering::Release);
+            crate::logln!("[vtd] fault MSI enabled (intid={})", msi.intid);
+        }
+        None => {
+            crate::logln!("[vtd] fault MSI unavailable; faults detected via polling");
+        }
+    }
+
     crate::logln!(
         "[vtd] enabled VT-d at {:#x}: {} bit AGAW, {} translation levels",
         config.base,
@@ -534,23 +569,51 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     Ok(())
 }
 
-/// Handle a VT-d fault interrupt. The first implementation has no MSI fault
-/// route (faults are drained by [`fault_count`] instead), so this never claims
-/// an interrupt; it exists for interface parity with the SMMU driver.
-pub fn handle_interrupt(_intid: u32) -> bool {
-    false
+/// Handle a VT-d fault interrupt. The fault event is delivered as an MSI whose
+/// synthetic intid was captured during initialization; any other intid is left
+/// to the device-capability layer.
+pub fn handle_interrupt(intid: u32) -> bool {
+    if intid != FAULT_INTID.load(Ordering::Acquire) {
+        return false;
+    }
+    let base = IRQ_MMIO.load(Ordering::Acquire);
+    if base == 0 {
+        return true;
+    }
+    let fsts = read32(base, FSTS);
+    if fsts & FSTS_FAULT_MASK != 0 {
+        FAULT_COUNT.fetch_add(1, Ordering::Relaxed);
+        let frcd = FRCD_OFFSET.load(Ordering::Acquire);
+        let fault_info = read64(base, frcd);
+        let fault_meta = read64(base, frcd + 8);
+        let fault_address = fault_info & 0xffff_ffff_ffff_f000;
+        crate::early_logln!(
+            "[vtd] DMA fault: fsts={:#x} sid={:#x} reason={:#x} address={:#x}",
+            fsts,
+            fault_meta & 0xffff,
+            (fault_meta >> 32) & 0xff,
+            fault_address
+        );
+        // The fault status bits are write-1-to-clear.
+        write32(base, FSTS, fsts & FSTS_FAULT_MASK);
+    }
+    true
 }
 
-/// Number of DMA translation faults observed since boot. Latched faults are
-/// drained (W1C) here because there is no MSI fault route yet.
+/// Number of DMA translation faults observed since boot. When a fault MSI
+/// route is installed the counter is maintained by [`handle_interrupt`];
+/// otherwise latched faults are drained here.
 pub fn fault_count() -> u64 {
+    if FAULT_INTID.load(Ordering::Acquire) != u32::MAX {
+        return FAULT_COUNT.load(Ordering::Acquire);
+    }
     let base = IRQ_MMIO.load(Ordering::Acquire);
     if base == 0 {
         return FAULT_COUNT.load(Ordering::Acquire);
     }
     let fsts = read32(base, FSTS);
-    if fsts != 0 {
-        write32(base, FSTS, fsts);
+    if fsts & FSTS_FAULT_MASK != 0 {
+        write32(base, FSTS, fsts & FSTS_FAULT_MASK);
         return FAULT_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     }
     FAULT_COUNT.load(Ordering::Acquire)

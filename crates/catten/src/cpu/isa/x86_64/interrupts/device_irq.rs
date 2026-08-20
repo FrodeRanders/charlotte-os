@@ -84,6 +84,9 @@ fn offset_to_vector(offset: u32) -> InterruptVectorNum {
 pub extern "C" fn ih_device_interrupt(offset: InterruptVectorNum) {
     let intid = VECTOR_TO_INTID[offset as usize].load(Ordering::Acquire);
     if intid != u32::MAX {
+        if crate::device::vt_d::handle_interrupt(intid) {
+            return;
+        }
         crate::device::deliver_interrupt(intid);
     }
 }
