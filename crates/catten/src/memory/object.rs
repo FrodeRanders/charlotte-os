@@ -99,14 +99,12 @@ pub(crate) struct CopyPin {
     frames: Vec<PAddr>,
 }
 
-#[cfg(target_arch = "aarch64")]
 pub(crate) struct DmaPin {
     object: MemoryObjectId,
     frames: Vec<PAddr>,
     exclusive: bool,
 }
 
-#[cfg(target_arch = "aarch64")]
 impl DmaPin {
     pub(crate) fn frames(&self) -> &[PAddr] {
         &self.frames
@@ -1250,7 +1248,6 @@ pub fn get_phys_page(asid: AddressSpaceId, cap: MemoryObjectCap, page_index: usi
     object.frames.get(page_index).copied().map(<PAddr as Into<u64>>::into).unwrap_or(0)
 }
 
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn pin_for_dma(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -1298,7 +1295,6 @@ pub(crate) fn pin_for_dma(
     })
 }
 
-#[cfg(target_arch = "aarch64")]
 pub(crate) fn unpin_dma(pin: DmaPin) {
     let frames = {
         let mut registry = MEMORY_OBJECTS.lock();

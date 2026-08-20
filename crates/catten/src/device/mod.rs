@@ -27,6 +27,8 @@
 //! by the supervisor and delivered downward, exactly like bootstrap
 //! endpoints, so there is no user-facing grant syscall.
 
+#[cfg(target_arch = "x86_64")]
+pub mod direct_dma;
 #[cfg(target_arch = "aarch64")]
 pub mod smmu;
 
@@ -38,6 +40,10 @@ use core::sync::atomic::{
 };
 
 use concurrent_queue::ConcurrentQueue;
+#[cfg(target_arch = "x86_64")]
+use direct_dma as dma;
+#[cfg(target_arch = "aarch64")]
+use smmu as dma;
 use spin::LazyLock;
 
 use crate::{
@@ -133,7 +139,6 @@ struct InterruptObject {
 enum DeviceObject {
     Mmio(MmioRegion),
     Interrupt(InterruptObject),
-    #[cfg(target_arch = "aarch64")]
     DmaDomain {
         id: u64,
     },
@@ -430,14 +435,13 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     ))
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn grant_dma_domain(
     owner: AddressSpaceId,
     requester_id: u32,
     msi_address: Option<u64>,
 ) -> Result<DeviceCap, DeviceError> {
-    let sid = smmu::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
-    let id = smmu::create_domain(sid, msi_address).map_err(|_| DeviceError::DmaUnavailable)?;
+    let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
+    let id = dma::create_domain(sid, msi_address).map_err(|_| DeviceError::DmaUnavailable)?;
     let mut devices = DEVICES.lock();
     let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
     Ok(caps.insert(
@@ -448,7 +452,6 @@ pub fn grant_dma_domain(
     ))
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn dma_map(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
@@ -461,7 +464,6 @@ pub fn dma_map(
 /// Map memory for exclusive device ownership. The memory object must have no
 /// CPU mappings, active lends, or other DMA pins, and the kernel rejects all
 /// new CPU mappings and lends until the IOMMU mapping is removed.
-#[cfg(target_arch = "aarch64")]
 pub fn dma_map_exclusive(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
@@ -471,7 +473,6 @@ pub fn dma_map_exclusive(
     dma_map_with_ownership(asid, domain_cap, memory_cap, direction, true)
 }
 
-#[cfg(target_arch = "aarch64")]
 fn dma_map_with_ownership(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
@@ -479,7 +480,7 @@ fn dma_map_with_ownership(
     direction: u32,
     exclusive: bool,
 ) -> Result<u64, DeviceError> {
-    let direction = smmu::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
+    let direction = dma::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
     let id = {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, domain_cap)?;
@@ -491,10 +492,9 @@ fn dma_map_with_ownership(
         };
         *id
     };
-    smmu::map(id, asid, memory_cap, direction, exclusive).map_err(|_| DeviceError::DmaInvalid)
+    dma::map(id, asid, memory_cap, direction, exclusive).map_err(|_| DeviceError::DmaInvalid)
 }
 
-#[cfg(target_arch = "aarch64")]
 pub fn dma_unmap(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
@@ -511,7 +511,7 @@ pub fn dma_unmap(
         };
         *id
     };
-    smmu::unmap(id, iova).map_err(|_| DeviceError::DmaInvalid)
+    dma::unmap(id, iova).map_err(|_| DeviceError::DmaInvalid)
 }
 
 // ---- MMIO operations -------------------------------------------------------
@@ -715,11 +715,10 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
             }
         }
         DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
-        #[cfg(target_arch = "aarch64")]
         DeviceObject::DmaDomain {
             id,
         } => {
-            if smmu::destroy_domain(id).is_err() {
+            if dma::destroy_domain(id).is_err() {
                 let mut devices = DEVICES.lock();
                 devices.entry(asid).or_insert_with(AsDeviceCaps::new).caps.insert(cap, object);
                 return Err(DeviceError::DmaInvalid);
@@ -772,13 +771,12 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 }
             }
             DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
-            #[cfg(target_arch = "aarch64")]
             DeviceObject::DmaDomain {
                 id,
             } => {
-                if let Err(error) = smmu::destroy_domain(*id) {
+                if let Err(error) = dma::destroy_domain(*id) {
                     crate::logln!(
-                        "[smmu] quarantining DMA domain {} after teardown failure: {:?}",
+                        "[dma] quarantining DMA domain {} after teardown failure: {:?}",
                         id,
                         error
                     );
