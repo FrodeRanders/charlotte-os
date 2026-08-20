@@ -209,6 +209,12 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 - Full standards conforming UEFI and ACPI firmware environment
 - Intel or AMD compatible IOMMU
 
+The QEMU `q35` development target boots on multiple logical processors, runs
+the userspace service stack at ring 3, and exercises NVMe, AHCI, virtio-blk,
+virtio-net, cluster discovery, and distributed DNS behind VT-d or AMD-Vi. See
+[`docs/platforms/x86_64.md`](docs/platforms/x86_64.md) for the tested matrix,
+runner commands, and remaining limitations.
+
 #### AArch64 (ARM64)
 
 - ARMv8-A or later application processor
@@ -273,8 +279,9 @@ PC and Server:
 - Minimum: 4 GiB
 - Supported device classes:
   - [Prototype in this fork] NVMe (PCIe, QEMU-tested)
+  - [Prototype in this fork] AHCI (SATA, x86-64 QEMU-tested)
+  - [Prototype in this fork] virtio-blk (PCI, x86-64 QEMU-tested)
   - [Planned] USB Mass Storage Device Class (MSC)
-  - [Planned] AHCI (SATA)
   - [Planned] SDHCI (PCIe SD card reader)
 
 ### Display

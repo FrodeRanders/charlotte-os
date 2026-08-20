@@ -240,7 +240,7 @@ The intended network stack avoids copying whenever practical:
     \item Buffer recycling --- after the application consumes a received
         buffer, it returns the (now empty) memory object to the driver's RX pool.
         The driver reuses it for DMA and the cycle repeats. IOMMU-backed pinning
-        is implemented on the reference AArch64 SMMUv3 path.
+        is implemented with AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi.
 \end{itemize}
 
 This is the memory-object transfer model (Chapter~6) applied to networking.
@@ -264,8 +264,8 @@ This is the memory-object transfer model (Chapter~6) applied to networking.
 
     \item Copy avoidance is a design goal --- page ownership transfer can
         avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
-        isolation is implemented for the reference AArch64 SMMUv3 path. No
-        performance comparison with sockets has yet been established.
+        isolation is implemented with SMMUv3, VT-d, and AMD-Vi. No performance
+        comparison with sockets has yet been established.
 
     \item Message boundaries are preserved --- the native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no

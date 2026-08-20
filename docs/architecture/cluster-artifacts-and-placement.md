@@ -7,8 +7,8 @@ vision in manual Chapter 19.
 ## Artifact admission
 
 Cluster nodes do not build software or resolve package dependencies. A host
-build produces self-contained AArch64 ELFs. Every staged name must occur
-exactly once in
+build produces self-contained, architecture-native ELFs in separate AArch64
+and x86-64 bundles. Every staged name must occur exactly once in
 [`artifact-policy.tsv`](../../crates/catten-services/artifact-policy.tsv), then
 `tools/cluster-sign` writes a CLS2 `SHT_NOTE` record and signs the resulting
 ELF with the off-cluster Ed25519 private key.
@@ -57,18 +57,23 @@ Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no
 authority.
 
-## Initial NVMe image
+## Initial block-device image
 
 `scripts/make-nvme-image.py` writes the blessed bundle into a version-3 object
-store. Only `ns`, `nvme`, `objstore`, `uart`, and `observe` remain embedded as
-the bootstrap path. Other service bytes are read from the store on first use.
+store. AArch64 embeds the small bootstrap set needed to reach the object store
+and reads other service bytes from it on first use. The x86 parity suite
+currently embeds its complete tested service set and also stages the same
+signed artifacts in the persistent image. The historical script name does not
+restrict that image to NVMe: the x86 runner can attach it through NVMe, AHCI,
+or virtio-blk.
 
-`scripts/run-aarch64.sh` fingerprints every blessed ELF. It recreates an
-instance image when the fingerprint changes, accepts `--fresh-storage` to
-force recreation, and requires `--reuse-storage` to retain a stale service
-store deliberately. The producer detects an object-id collision within the
-bundle. The current 48-bit derived name-id remains a prototype limitation; a
-production catalog needs collision resolution or full content addressing.
+`scripts/run-aarch64.sh` and `scripts/run-x86_64.sh` fingerprint every blessed
+ELF. They recreate an instance image when the fingerprint changes, accept
+`--fresh-storage` to force recreation, and require `--reuse-storage` to retain
+a stale service store deliberately. The producer detects an object-id
+collision within the bundle. The current 48-bit derived name-id remains a
+prototype limitation; a production catalog needs collision resolution or full
+content addressing.
 
 ## Placement contract
 

@@ -37,10 +37,10 @@ CharlotteOS supports three architectures via custom target JSON specs in
 \hline
 \textbf{Target spec} & \textbf{Status} \\
 \hline
-AArch64 custom target & Primary development target; all
+AArch64 custom target & Original development target; all
     features and self-tests pass \\
-x86-64 custom target & Boots, core self-tests pass;
-    ring-3 userspace implemented but not yet exercised \\
+x86-64 custom target & Four-LP ring-3 service, storage, IOMMU,
+    networking, discovery, and distributed DNS paths pass under QEMU TCG \\
 RISC-V custom target & Planned, not actively
     maintained \\
 \hline
@@ -75,10 +75,17 @@ Service binaries are built separately because they target \texttt{no\_std} /
 \texttt{no\_main} with custom EL0 targets that depend on build-std:
 
 \begin{verbatim}
-# EL0 service programs:
-cargo build --release --package catten-services \
-  --target aarch64-unknown-none.json \
-  -Zbuild-std=core,alloc
+# AArch64 EL0 service programs:
+cargo build --release \
+  --manifest-path crates/catten-services/Cargo.toml \
+  --target crates/catten-services/aarch64-unknown-none.json \
+  -Z build-std=core,alloc
+
+# x86-64 ring-3 service programs:
+cargo build --release \
+  --manifest-path crates/catten-services/Cargo.toml \
+  --target crates/catten-services/x86_64-unknown-none.json \
+  -Z build-std=core,alloc
 
 # Sitas user binary (requires external sitas crates):
 cargo +nightly build --package catten-user \
@@ -109,11 +116,18 @@ The boot entry points are \repofile|scripts/boot-smp1.sh|,
 
 \subsection{x86-64}
 
-The x86-64 entry point is \repofile|scripts/boot-x86.sh|.
+The x86-64 runner is \repofile|scripts/run-x86_64.sh|;
+\repofile|scripts/boot-x86.sh| is its single-instance convenience wrapper.
+Both use mtools to construct the disposable FAT boot image, which avoids
+platform-specific mounted-image discovery on macOS.
 
 \begin{verbatim}
 # Requires -cpu max for RDTSCP/FSGSBASE support:
 ./scripts/boot-x86.sh
+
+# Select storage/IOMMU and run the four-LP bounded suite directly:
+./scripts/run-x86_64.sh debug --smp 4 --block nvme --iommu intel \
+  --fresh-storage --timeout 90
 \end{verbatim}
 
 \subsection{Expected output}
@@ -161,7 +175,7 @@ Representative boot suites include:
     \item \repofiletext|crates/catten/src/self_test/ipi.rs|{\texttt{ipi.rs}} --- bounded queue, backpressure, closure dispatch.
     \item \repofiletext|crates/catten/src/self_test/shard.rs|{\texttt{shard.rs}} --- \texttt{ShardLocal<T>} owner-check /
         re-entrancy guard, \texttt{ShardMailbox<M>} send/recv.
-    \item \repofiletext|crates/catten/src/self_test/el0.rs|{\texttt{el0.rs}} --- real-EL0 user thread (AArch64 only).
+    \item \repofiletext|crates/catten/src/self_test/el0.rs|{\texttt{el0.rs}} --- real userspace thread (AArch64 EL0 and x86-64 ring 3).
     \item \repofiletext|crates/catten/src/self_test/el0_demo.rs|{\texttt{el0\_demo.rs}} --- EL0 userspace smoke test.
     \item \repofiletext|crates/catten/src/self_test/el0_ipc.rs|{\texttt{el0\_ipc.rs}} --- EL0 endpoint IPC between domains.
     \item \repofiletext|crates/catten/src/self_test/el0_net.rs|{\texttt{el0\_net.rs}} --- EL0 networking test.

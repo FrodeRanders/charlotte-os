@@ -32,7 +32,7 @@ is evidence about one revision and configuration, not a standing guarantee.
 | [`architecture/`](architecture/README.md) | Living designs, security boundaries, protocols, and future direction |
 | [`reference/`](reference/README.md) | Code-facing invariants, conformance rules, and subsystem mechanics |
 | [`guides/`](guides/README.md) | Repeatable contributor workflows: testing, userspace development, and networking |
-| [`platforms/`](platforms/README.md) | AArch64, `sbsa-ref`, and x86-64 bring-up state |
+| [`platforms/`](platforms/README.md) | AArch64, `sbsa-ref`, and x86-64 platform status |
 | [`reports/`](reports/README.md) | Dated audits, debugging investigations, and milestone records |
 | [`research/`](research/README.md) | Prior systems, their afterlives, and CharlotteOS's inheritance |
 | [`tla/`](tla/README.md) | Executable TLA+ models, model-checking instructions, and Rust conformance map |

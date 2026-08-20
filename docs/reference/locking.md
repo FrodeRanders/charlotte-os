@@ -15,8 +15,8 @@ the defining module.
 
 | Family | Module | Interrupt policy | Blocking? | Typical users |
 |---|---|---|---|---|
-| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs for the whole critical section | No (spin) | Frame allocator, memory-object registry, address-space table, kernel AS, domain authorities, AS lifecycle, scratch window, talc |
-| Interrupt-masking spin `RwLock` | `cpu/multiprocessor/spin/rwlock.rs` | Masks IRQs; nesting-aware save/restore | No (spin) | `MASTER_THREAD_TABLE`, `DEAD_THREADS`, `SYSTEM_SCHEDULER`, `IPC`, `COMPLETIONS`, `USER_MAILBOX_CAPS`, each `PerLp` slot |
+| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs while owned; restores the caller's state while contending | No (spin) | Frame allocator, memory-object registry, address-space table, kernel AS, domain authorities, AS lifecycle, scratch window, talc |
+| Interrupt-masking spin `RwLock` | `cpu/multiprocessor/spin/rwlock.rs` | Masks IRQs while owned; nesting-aware save/restore and interruptible contention | No (spin) | `MASTER_THREAD_TABLE`, `DEAD_THREADS`, `SYSTEM_SCHEDULER`, `IPC`, `COMPLETIONS`, `USER_MAILBOX_CAPS`, each `PerLp` slot |
 | External `spin` crate | `spin::{Mutex, RwLock, LazyLock}` | None (manual, see §3) | No (spin) | Stack allocator arena + guard-page map; one-time lazy init everywhere |
 | talc global-allocator lock | `TalcLock<MutexCore, ExtendOnOom>` in `memory/allocators/global_allocator.rs` | Masks IRQs (reuses the spin `MutexCore`) | No (spin) | Kernel heap |
 | Lock-free containers | `ShardLocal`, `concurrent_queue::ConcurrentQueue`, `Atomic*` | n/a | n/a | Per-LP state, IRQ→thread deferred-wake handoff, generation counters, `on_cpu` |
@@ -33,21 +33,28 @@ of any ordering guarantee until a consumer exists.
 
 ### 2.1 `Mutex` (`spin/mutex.rs`)
 
-A `lock_api::RawMutex` (`GuardSend`) that saves the caller's interrupt-enable
-bit, masks maskable IRQs, spins on an `AtomicBool`, and restores the saved bit
-on unlock. Why it masks IRQs is explained in `memory/mod.rs:19-24`: the locks
-it guards are taken from both preemptible kernel threads and synchronous EL0
-exception paths. If the owner could be timer-preempted, every LP could end up
-spinning for a lock whose owner can never be scheduled again.
+A `lock_api::RawMutex` (`GuardNoSend`) that attempts acquisition with maskable
+IRQs disabled and keeps them disabled for the ownership interval. If the
+attempt fails, it restores the caller's original interrupt state before
+spinning and retries with IRQs masked. Unlock restores the state saved by the
+successful attempt. Why ownership masks IRQs is explained in
+`memory/mod.rs:19-24`: the locks it guards are taken from both preemptible
+kernel threads and synchronous userspace exception paths. If the owner could
+be timer-preempted, every LP could end up spinning for a lock whose owner can
+never be scheduled again.
 
 Properties:
 
 - **Non-reentrant**: re-acquiring the *same* lock on one LP deadlocks.
+- **Interruptible contention**: a waiting LP can handle timer and synchronous
+  TLB-shootdown IPIs. This prevents a lock holder waiting for an IPI
+  acknowledgement from deadlocking with a remote contender.
 - **Nesting across *different* locks works**: each lock records its own
   pre-acquire interrupt state, so a nested acquire on another `Mutex` sees
   "already masked" and correctly defers unmasking to the outermost unlock.
 - The saved interrupt flag lives on the lock object itself, not per-LP; it is
-  correct only because IRQs are masked for the entire ownership interval.
+  correct because the guard is non-sendable and IRQs are masked for the entire
+  ownership interval.
 
 Users (all via `memory::Mutex`): `PHYSICAL_FRAME_ALLOCATOR`,
 `MEMORY_OBJECTS`, `ADDRESS_SPACE_TABLE`, `KERNEL_AS`,
@@ -56,16 +63,23 @@ the talc lock.
 
 ### 2.2 `RwLock` (`spin/rwlock.rs`)
 
-A `lock_api::RawRwLock` (`GuardSend`) over an `AtomicI64` reader count with
-`-1` for a writer, plus a `waiting_writers` counter that gives **writer
-preference**: once a writer queues, new readers defer so a dense reader stream
-cannot starve the writer (documented in `rwlock.rs:53-56`).
+A `lock_api::RawRwLock` (`GuardNoSend`) over an `AtomicI64` reader count with
+`-1` for a writer. Acquisition attempts run with IRQs masked, but a failed
+attempt restores `INT_STATE` before spinning. The `waiting_writers` counter
+gives a writer preference only during its masked atomic acquisition attempt;
+it is deliberately cleared before the writer waits. Leaving writer preference
+asserted while waiting could deadlock an interrupt handler on the same LP that
+needs a read guard before the writer can acquire the lock.
 
 Instead of a per-lock saved flag, it uses the shared per-LP
 [`INT_STATE`](#3-interrupt-masking-discipline) save/restore, which is
 **nesting-aware** (a per-LP save count). This lets a thread take several
 different `RwLock`s, or a read-after-read, without prematurely re-enabling
 IRQs. Re-acquiring the same lock for writing is still a deadlock.
+
+As with `Mutex`, interruptible contention is required by synchronous cross-LP
+operations. A CPU waiting for a lifecycle or page-table lock must remain able
+to acknowledge a TLB-shootdown IPI initiated by the current lock owner.
 
 This is the workhorse lock: it protects the IPC registry, the completion
 registry, the master thread table, the deferred-dead table, the system
@@ -148,7 +162,7 @@ yielding. Local IRQ masking without lock ownership is permitted for the short
 | Need | Primitive |
 |---|---|
 | Shared state touched from syscall and/or IRQ context | Interrupt-masking spin `Mutex` (single writer) or `RwLock` (read-mostly) |
-| Data read from several LPs, written rarely | Interrupt-masking spin `RwLock` (writer preference prevents reader starvation) |
+| Data read from several LPs, written rarely | Interrupt-masking spin `RwLock` (brief writer preference during each acquisition attempt) |
 | Strictly per-LP data | `ShardLocal` (lock-free) or `PerLp` (if ISR/cross-LP reach is needed) |
 | IRQ → thread handoff | `ConcurrentQueue` + atomics, drained in thread context |
 | Cross-LP mutation | IPI/closure dispatch, never direct shared-memory writes |

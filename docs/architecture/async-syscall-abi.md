@@ -38,7 +38,7 @@ comment on `Thread` in
 
 sitas asks the *same* question from userspace: *what is the right
 submission/completion boundary for async I/O?* Its answer — visible in the
-`os-backend-seam` branch — is a three-method reactor contract plus an
+the experimental OS-backend branch — is a three-method reactor contract plus an
 owned-buffer completion model. Option C is the observation that **sitas's
 reactor contract is the shape of CharlotteOS's syscall ABI**, and its io_uring
 buffer discipline is the shape of the kernel's buffer-ownership contract.
@@ -176,7 +176,7 @@ observer/waker wake path, per-LP timer queues, the AArch64
 
 ---
 
-## 4. The ABI surface
+## 4. The ABI interface
 
 Five operations. Everything sitas needs is expressible in terms of them.
 
@@ -506,7 +506,7 @@ backend falls out as a translation.
 
 The type sketch above is no longer only on paper. A **reference model of this
 ABI now exists and is tested in the sitas repository** (branch
-`reactor-handle-seam`, `src/charlotte_abi.rs`): an in-memory `MockKernel`
+the reactor-handle integration branch (`src/charlotte_abi.rs`): an in-memory `MockKernel`
 implementing the five operations (`submit`/`wait`/`wake`/`cancel`/`close`), plus
 a `CharlotteReactor` that implements sitas's `ReactorBackend` contract with
 `Handle = CompletionCap`. It is not a Unix backend and talks to no kernel — it
@@ -718,7 +718,7 @@ it. The zero-syscall completion loop is fully wired on the kernel side.
 - Earlier collaboration design note: `sitas-runtime-model.md` (not retained in
   this repository)
   (§3 Option C, §5.4 async syscalls, §7 friction, §9a phased plan, §11 findings).
-- sitas Option A seam (`os-backend-seam` branch): `src/reactor_backend.rs`
+- sitas Option A adapter: `src/reactor_backend.rs`
   (`ReactorBackend`/`ReactorWaker`/`ReactorEvent`), `src/executor/driver.rs`
   (idle wait), `src/os/uring.rs` + `src/executor/uring.rs` (buffer-ownership),
   `src/sharded_executor.rs` (`ShardedSubmitter`), `src/shard_mailbox.rs`

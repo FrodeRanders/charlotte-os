@@ -35,7 +35,7 @@ is in the repository history and earlier revisions of this document.
 | 4 | First-class memory objects: allocate, map, unmap, close, ownership accounting | Done |
 | 5 | Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation, cancellation, server-death recovery | Done |
 | 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, backlog batching, §8.2 32-byte richer completion records | Done |
-| 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), `ShardParker` seam (spin free), per-shard CQ rings, `kv::spin_recv` retired | Done |
+| 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), spin-free `ShardParker` integration, per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
 | 9 | Virtio-net driver: PCI discovery, translated legacy register aperture + MSI-X delegation, SMMU DMA domain, feature negotiation, MAC/link read, virtqueue setup, and EL0 frame submission. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary compile. The driver smoke path is runtime-validated under QEMU TCG; receive, completion reclamation, batching, and the TCP/IP service remain incomplete. | Driver smoke path TCG-validated; full data path pending |
 | 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Implemented; intermittent SMP timer/lifecycle validation remains |
@@ -1293,12 +1293,14 @@ Strong userspace-driver isolation requires an IOMMU/SMMU:
 -   IOMMU/SMMU protects against device DMA;
 -   Rust ownership protects safe client code from accidental reuse.
 
-The AArch64 QEMU `virt` path implements this model with ACPI IORT and
-SMMUv3 stage-1 translation. The implementation maps only explicitly
-authorized memory objects plus the device's MSI doorbell page, reports
-translation faults through the SMMU event queue, and revokes all mappings
-on driver-domain teardown. Non-coherent SMMUs, ATS/PRI, multiple remapping
-units, and other architectures remain future work.
+The AArch64 QEMU `virt` path implements this model with ACPI IORT and SMMUv3
+stage-1 translation. The x86-64 QEMU `q35` path implements the same DMA-domain
+contract with Intel VT-d or AMD-Vi. Each backend maps only explicitly
+authorized memory objects plus required interrupt-doorbell pages, reports or
+drains translation faults, synchronously invalidates stale IOTLB entries, and
+revokes all mappings on driver-domain teardown. Non-coherent SMMUv3, ATS/PRI,
+multiple remapping units, complex VT-d bridge scopes, and AMD-Vi MSI fault
+delivery remain future work.
 
 ## 10.4 Driver service layering
 
@@ -1742,7 +1744,7 @@ Prioritize:
 
 Only then promote rich IPC payloads.
 
-## 16.7 Replace global smoke-test ABI surfaces
+## 16.7 Replace global smoke-test ABI interfaces
 
 ### Current implementation
 
@@ -2344,7 +2346,7 @@ Current status:
     including typed manifest and capability records; crt0
     validates it before calling `main(Context)`.
     Completion, IPC, and protocol records are designed as fixed-width wire
-    structures; remaining experimental/raw surfaces still need consolidation
+    structures; remaining experimental/raw APIs still need consolidation
     before declaring every public ABI stable.
 -   Criterion 12 is partially met by wrong-domain, stale-generation,
     insufficient-rights, double-close, double-reply, queue-full, cancellation,

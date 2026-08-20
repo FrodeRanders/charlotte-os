@@ -148,6 +148,17 @@ This conservative approach preserves cache warmth and eliminates migration races
 where the waiter was registered). Stable affinity is the correctness default;
 migration is an opt-in optimization.
 
+\subsection{Generation-safe retirement}
+
+A numeric thread identifier is a recyclable table slot, not a permanent
+identity. Every queued scheduler handle, waker, deferred verifier callback, and
+asynchronous retirement request therefore carries the thread generation.
+\texttt{abort\_thread\_generation} and the LP scheduler's removal operation
+validate both values before changing state. A delayed cleanup request for an
+exited thread consequently cannot abort a newer thread that reused the same
+numeric identifier. The scheduler-lifecycle boot test exercises stale wake
+rejection and remote owner-LP retirement.
+
 \section{Synchronization and lock ordering}
 
 Shared kernel state is synchronized by a small, deliberate set of primitives.
@@ -161,19 +172,22 @@ overview.
     \item \textbf{Interrupt-masking spin \texttt{Mutex}} guards the frame
         allocator, memory-object registry, address-space table, kernel address
         space, domain-authority table, address-space lifecycle, scratch-window
-        cursor, and the global allocator. It saves the caller's
-        interrupt-enable bit, masks maskable IRQs, spins, and restores the bit
-        on unlock. The masking exists to prevent a preemption deadlock: these
-        locks are taken from both preemptible kernel threads and synchronous
-        EL0 exception paths, so a timer-preempted owner could otherwise be
-        starved forever.
+        cursor, and the global allocator. It attempts acquisition with
+        maskable IRQs disabled and keeps them disabled while owned. A failed
+        attempt restores the caller's interrupt state before spinning, then
+        retries with IRQs masked. The ownership masking exists to prevent a
+        preemption deadlock: these locks are taken from both preemptible kernel
+        threads and synchronous EL0 exception paths, so a timer-preempted owner
+        could otherwise be starved forever.
 
     \item \textbf{Interrupt-masking spin \texttt{RwLock}} is the workhorse. It
         protects the master thread table, the deferred-dead table, the system
         scheduler, the IPC registry, the completion registry, the userspace
-        mailbox table, and each per-LP slot. A \texttt{waiting\_writers} counter
-        gives writers preference so a dense reader stream cannot starve a
-        writer.
+        mailbox table, and each per-LP slot. Failed reader and writer attempts
+        likewise restore \texttt{INT\_STATE} while contending. A
+        \texttt{waiting\_writers} counter gives writers preference only during
+        the masked atomic acquisition attempt; retaining that preference while
+        waiting could deadlock a same-LP interrupt reader.
 
     \item \textbf{The external \texttt{spin} crate} is used only by the stack
         allocator, which wraps its arena mutex in explicit
@@ -194,13 +208,17 @@ does not participate in any ordering guarantee.
 
 \subsection{Interrupt-masking discipline}
 
-Both spin locks mask IRQs, but only the \texttt{RwLock} is nesting-aware. It
+Both spin locks mask IRQs while owned, but leave IRQs in the caller's original
+state while waiting for another LP. This is required for synchronous
+TLB-shootdown rendezvous: a contender must remain able to acknowledge the
+lock owner's IPI. Only the \texttt{RwLock} is nesting-aware. It
 routes through a per-LP \texttt{INT\_STATE} record that counts save depth and
 re-enables interrupts exactly once on the outermost restore. This lets a thread
 take several different \texttt{RwLock}s, or a read after a read, without
 prematurely re-enabling IRQs. The \texttt{Mutex} records its pre-acquire
-interrupt bit on the lock object itself; acquiring different mutexes still
-nests correctly, but re-acquiring the same lock on one LP deadlocks.
+interrupt bit on the lock object itself. Both guard types are non-sendable;
+acquiring different mutexes still nests correctly, but re-acquiring the same
+lock on one LP deadlocks.
 
 \subsection{Lock ordering}
 

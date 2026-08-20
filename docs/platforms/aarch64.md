@@ -127,7 +127,7 @@ boots:
   panicking, and `log!`/`logln!` fall back to the PL011 serial console so output
   is never lost.
 - **Status.** When Limine hands over a usable framebuffer (e.g. `ramfb` with a
-  real display surface) flanterm initialises (observed 800×600×32). GOP mode
+  real framebuffer) flanterm initialises (observed 800×600×32). GOP mode
   provisioning on QEMU aarch64 `virt` + edk2 is itself flaky between boots and is
   outside the kernel's control; the serial fallback covers the gap.
 
@@ -185,7 +185,7 @@ consequences, both encountered on the port:
    and `tlbi` invalidation is ASID-qualified (`vae1is`/`aside1is`). With ASIDs
    non-functional under HVF, switching from address space A to B left stale
    entries mapping A's physical frames, so a thread executed/corrupted through
-   another domain's pages. This surfaced as a cascade of unrelated-looking
+   another domain's pages. This appeared as a cascade of unrelated-looking
    failures: kernel data aborts at bogus addresses (`FAR = 0x5`), wrong syscall
    return values, `completion submit` failing with `UnknownAddressSpace`, and
    dozens of "self-test deadline expired" panics in EL0 service tests.
@@ -202,7 +202,7 @@ default.
   now builds and boots on AArch64; see the "Display / framebuffer" section below.
   The remaining rough edge is that a usable framebuffer is not reliably
   provisioned by QEMU/edk2 on `virt` (GOP mode setup is flaky and requires a real
-  display surface), so the kernel falls back to the serial console when none is
+  framebuffer), so the kernel falls back to the serial console when none is
   present. On macOS the `display` build additionally requires the toolchain
   `llvm-ar` (ELF-aware archiver) rather than Apple's `ar`; this is wired up
   automatically by `scripts/run-aarch64.sh --display`.

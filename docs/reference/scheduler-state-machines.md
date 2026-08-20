@@ -26,7 +26,8 @@ Blocked(Waker) ◄──── block_thread() ───────── Runnin
                                            │
                                   soft-affinity LP
 
-Any live state ── abort_thread() ──► staged DEAD ── reap after switch
+Any live state ── abort_thread_generation(tid, generation)
+               ──► staged DEAD ── reap after switch
 ```
 
 ### Invariants
@@ -40,6 +41,7 @@ Any live state ── abort_thread() ──► staged DEAD ── reap after swi
 | T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
 | T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
+| T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
 
 ### Lock order for transitions
 
@@ -54,6 +56,12 @@ cond_yield_lp:        SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER
 ```
 
 The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thread` for self-block goes `MASTER_THREAD_TABLE` first (no LP lock needed), then `yield_lp` re-acquires in the canonical order. The `abort()` and `sleep()` callers bind `tid` in a temporary scope, drop all guards, then proceed — this avoids holding a read guard across a write for the non-reentrant `RwLock`.
+
+Generation-qualified retirement is mandatory for every asynchronous owner of a
+thread handle. `remove_thread(tid, expected_generation)` validates the queued
+handle before removal, and `abort_thread_generation` repeats the validation in
+the master table. This closes the slot-reuse race in which deferred verifier
+cleanup could otherwise abort an unrelated thread before its body ran.
 
 ---
 
@@ -389,9 +397,10 @@ switch_ctx saves T's context
                                          restore from *next_sp
 ```
 
-Automatic and wake-path load migration remain disabled. `affinity_lp` keeps
-ordinary threads on their established LP, while `pinned_lp` is a hard
-constraint for explicit shard placement.
+Wake-path migration and general work stealing remain disabled. `affinity_lp`
+keeps ordinary threads on their established LP, while `pinned_lp` is a hard
+constraint for explicit shard placement. A low-pass runtime sampler may move
+only explicitly certified compute-only work after a sustained imbalance.
 
 The scheduler supports one deliberately narrow rebalancing operation:
 `try_rebalance()` may move an explicitly certified, queued `Ready` thread from
@@ -404,8 +413,10 @@ timer/resource ownership may still be live.
 Migration locks both LP schedulers in numeric LP order and then the master
 thread table. It revalidates generation, state, pin and certification before
 moving the queue handle and updating `ThreadState::Ready(destination)` plus
-soft affinity as one transaction. It currently runs only at the boot quiescent
-point. There is no departure-, periodic-, or wake-driven work stealing. In
+soft affinity as one transaction. Direct `try_rebalance()` calls are used at
+the boot quiescent point; sustained runtime sampling reaches the same
+transactional operation later. There is no departure- or wake-driven work
+stealing. In
 particular, timer and CQ wake admission return to the established affinity LP.
 A tested departure trigger was rejected because wake-before-save can make a
 still-on-CPU thread appear `Ready`. The `on_cpu` protocol prevents concurrent
@@ -417,7 +428,8 @@ constraints are general scheduler waits, timer waits, CQ waits, and endpoint
 waits. `block_thread_with_constraint` installs the appropriate bit while the
 thread is Blocked; the LP scheduler clears the temporary blocking bits only on
 the validated `Blocked -> Ready` transition. A migration candidate must also
-have an empty constraint mask and an acquire-load of AArch64 `on_cpu == 0`.
+have an empty constraint mask and an acquire-load of `on_cpu == 0` on either
+supported architecture.
 The lifecycle regression checks after every timer wake that the timer
 constraint has cleared while the running context is still rejected by the
 `on_cpu` condition.
@@ -441,8 +453,9 @@ every LP still perturbed the device gate, so each round-robin scheduler now
 publishes its runnable count to an atomic per-LP summary whenever its queue or
 current thread changes. LP0's rate-limited sample reads only those atomics; LP
 locks are acquired only after an imbalance survives the full low-pass window
-and transactional migration is actually attempted. x86_64 sampling remains
-disabled until it has an `on_cpu` ownership protocol.
+and transactional migration is actually attempted. Both AArch64 and x86-64
+invoke the sampler after context switching and dead-thread reaping; the x86-64
+lifecycle regression verifies a certified runtime migration on four LPs.
 
 The regression suite starts a delayed runtime workload after the early service,
 device and timer-affinity gates: three certified compute-only workers are

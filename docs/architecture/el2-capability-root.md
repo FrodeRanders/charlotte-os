@@ -40,7 +40,7 @@ mint new ones.
 ### The interface (capability operations become EL2 calls)
 
 Because CharlotteOS already funnels authority through a small set of
-operations, the EL2 surface stays tiny:
+operations, the EL2 interface stays tiny:
 
 - `cap_mint(parent, rights) -> cap` — create a child capability with a subset
   of the caller's rights (EL2 checks the parent exists and the rights are a
@@ -72,7 +72,7 @@ existing architecture and syscall ABI; only the authority layer moves.
   security mechanism, it's relocating its root.
 - The operation set is small and well-bounded (the `ipc`, `device`, and
   `service` layers already reduce authority to a few call shapes), so the EL2
-  surface can be audited.
+  interface can be audited.
 - It pairs naturally with the SMMU: EL2 stage-2 polices CPU accesses to
   granted memory, the SMMU polices DMA — capability enforcement is enforced
   on both sides of every transfer.

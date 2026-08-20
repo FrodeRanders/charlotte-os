@@ -1,19 +1,19 @@
 //! The service-ELF registry: where the kernel gets the userspace binaries
 //! it loads.
 //!
-//! Only a small bootstrap set is embedded in the kernel image — the name
-//! service, the disk stack (`ns`, `nvme`, `objstore`), the `uart` service
-//! the earliest synchronous test needs, and the system observer the kernel
-//! starts during boot — everything else lives in the object store on the
-//! boot disk. An initial NVMe image produced by `scripts/make-nvme-image.py`
-//! stages the signed ELFs, and the registry reads them from the store the
-//! first time a test asks for one, then caches them for the rest of the
-//! boot. The EL0 loader enforces a valid cluster signature on whatever
-//! source the bytes come from, so the store-sourced path is exactly as
-//! trusted as the embedded one. The `hvf_compat` development configuration
-//! has no SMMU and therefore cannot start the protected-DMA disk stack; it
-//! embeds the additional non-storage services used by its reduced boot suite
-//! so service lookup never waits for an object store that cannot exist.
+//! AArch64 embeds only the small set needed to reach naming, storage, UART,
+//! and observation; other services live in the object store on the boot disk.
+//! The x86_64 parity suite currently embeds its complete tested service set and
+//! stages the same signed artifacts in the persistent object-store image. An
+//! image produced by `scripts/make-nvme-image.py` can be attached through NVMe,
+//! AHCI, or virtio-blk. The registry reads non-embedded services from the store
+//! on first use and caches them for the rest of the boot. The userspace loader
+//! enforces a valid cluster signature regardless of where the bytes came from,
+//! so the store-sourced path is exactly as trusted as the embedded one. The
+//! `hvf_compat` development configuration has no SMMU and therefore cannot
+//! start the protected-DMA disk stack; it embeds the additional non-storage
+//! services used by its reduced boot suite so lookup never waits for an object
+//! store that cannot exist.
 
 use core::sync::atomic::{
     AtomicBool,

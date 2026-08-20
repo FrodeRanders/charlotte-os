@@ -7,7 +7,7 @@
 //!
 //! - Requests are handed to the owning reactor (which drives `RaftNode::handle_*`) and answered
 //!   with a tagged response back to the source MAC.
-//! - Responses are buffered and surfaced through `poll_completions`, exactly like
+//! - Responses are buffered and exposed through `poll_completions`, exactly like
 //!   `CharlotteTransport`.
 //!
 //! relmsg allows one outstanding `OP_SEND` per peer (it replies `ERR_BUSY`

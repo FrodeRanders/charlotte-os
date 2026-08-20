@@ -443,7 +443,7 @@ The latest fatal-path `A64DBG` instrumentation (`lp`, `spsr`, `handler_sp`) and 
   exceptions, and the `x18` padding fixes stack alignment.
 - #6 (atomic add_thread transition) should stay; it is a small, concrete scheduler race fix.
 - #2 (arena lock + IRQ masking) and #4 (`switch_ctx` asm handshake) are correct but larger /
-  asm‑level; they can be reverted if a smaller surface is preferred while the real bug is
+  asm-level; they can be reverted if a smaller patch is preferred while the real bug is
   hunted, but doing so would intentionally re-open real races found during the investigation.
 
 ---

@@ -10,7 +10,7 @@
 //!
 //! The virtual timer is used in preference to the EL1 physical timer (`CNTP_*`)
 //! because hypervisors such as Apple's HVF only expose the virtual timer to a
-//! guest and trap physical-timer register accesses (which surface as an
+//! guest and trap physical-timer register accesses (which appear as an
 //! "unknown reason" synchronous exception). The virtual timer behaves
 //! identically under emulated (TCG) execution, so this works in both cases.
 //!

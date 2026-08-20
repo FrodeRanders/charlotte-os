@@ -79,7 +79,7 @@ written data reaches durable media before replying.
 
 \subsection{Lessons from bringup}
 
-The NVMe driver surfaced several non-obvious requirements:
+The NVMe driver exposed several non-obvious requirements:
 
 \begin{itemize}
     \item CDW11 bit 0 (PC) must be 1 --- QEMU's NVMe device model
@@ -124,8 +124,13 @@ device consumers and drivers:
 
 The protocol is device-independent: consumers speak
 \texttt{OP\_READ}/\texttt{OP\_WRITE} without knowing the underlying hardware.
-Only the NVMe implementation is currently present; AHCI, virtio-blk, ramdisk,
-and network block drivers would require separate implementations.
+Three userspace implementations are present. NVMe is exercised on AArch64 and
+x86-64; x86-64 additionally runs AHCI and virtio-blk implementations through
+the same protocol. The QEMU matrix validates identify/capacity discovery,
+bounded read and write requests, flush completion, controller timeouts, and
+the persistent object-store/Raft restart path. On x86-64 all three transports
+are tested behind VT-d or AMD-Vi DMA domains. Ramdisk and network block drivers
+would still require separate implementations.
 
 \section{Object store}
 

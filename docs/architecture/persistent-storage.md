@@ -206,16 +206,17 @@ learning physical addresses.
 
 The NVMe controller performs DMA directly to/from the caller's memory
 objects (for READ/WRITE) and to/from the driver's queue memory (for SQ/CQ
-entries). On the AArch64 ACPI path, the supervisor grants a `DmaDomain`
-alongside MMIO and IRQ capabilities. `dma_map` validates the memory
-capability's direction, pins every frame, installs SMMUv3 translations, and
-returns an IOVA. `dma_unmap` synchronously invalidates the IOTLB before
-unpinning. The device stream can otherwise address no RAM; its one additional
-mapping is the page containing its MSI-X doorbell.
+entries). The supervisor grants a `DmaDomain` alongside MMIO and IRQ
+capabilities. `dma_map` validates the memory capability's direction, pins every
+frame, installs translations, and returns an IOVA. `dma_unmap` synchronously
+invalidates the IOTLB before unpinning. The device stream can otherwise address
+no RAM; its one additional mapping is the page containing its MSI-X doorbell.
 
-The current implementation targets coherent SMMUv3 systems described by ACPI
-IORT. Non-coherent table walks, ATS/PRI, and multi-SMMU topologies are not yet
-supported.
+The AArch64 ACPI path uses coherent SMMUv3 discovered through IORT. The x86-64
+path uses Intel VT-d from DMAR or AMD-Vi from IVRS and runs NVMe, AHCI,
+virtio-blk, and virtio-net through requester-specific domains. Non-coherent
+SMMUv3 table walks, ATS/PRI, multi-IOMMU topologies, VT-d multi-hop bridge
+scopes, and AMD-Vi MSI fault delivery are not yet supported.
 
 ---
 

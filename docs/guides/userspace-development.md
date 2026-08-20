@@ -118,17 +118,20 @@ retroactive—revocation of connections already issued.
 
 ## Building bundled examples
 
+For AArch64, build and stage the service and sitas bundles before invoking the
+runner:
+
 ```sh
 scripts/build-catten-services.sh --embed
 scripts/build-catten-user.sh --embed
 scripts/run-aarch64.sh debug --hvf --timeout 10
 ```
 
-The build scripts use Charlotte's AArch64 target specification and linker
-script and validate the generated ELF layout. Generated programs are staged
-under `target/embedded-services/aarch64-unknown-none/`; they are not source
-files and are not version-controlled. `scripts/run-aarch64.sh` exports that
-architecture-qualified bundle path while compiling the kernel. A direct
+These build scripts use Charlotte's AArch64 target specification and linker
+script and validate the generated ELF layout. Generated AArch64 programs are
+staged under `target/embedded-services/aarch64-unknown-none/`; they are not
+source files and are not version-controlled. `scripts/run-aarch64.sh` exports
+that architecture-qualified bundle path while compiling the kernel. A direct
 AArch64 kernel build must do the same:
 
 ```sh
@@ -138,9 +141,20 @@ cargo build --package catten \
   --no-default-features --features acpi
 ```
 
-Non-AArch64 kernel builds neither require nor embed this bundle. Each future
-EL0-capable architecture must provide its own native service build and
-qualified bundle directory.
+x86-64 uses native ring-3 service ELFs from its own target and bundle directory.
+The x86 runner builds, signs, and stages those artifacts automatically before
+compiling the kernel:
+
+```sh
+scripts/run-x86_64.sh debug --smp 4 --timeout 20
+```
+
+The generated services are staged under
+`target/embedded-services/x86_64-unknown-none/`, and the runner exports
+`CATTEN_X86_64_SERVICE_BUNDLE`. A direct kernel build that enables x86 service
+tests must point that variable at an already built and signed native bundle.
+Service bundles are architecture-qualified and must never be shared between
+AArch64 and x86-64 builds.
 
 `catten-user` currently integrates the sibling `sitas` checkout. CI obtains
 `FrodeRanders/sitas` at the pinned revision recorded in the workflow and places

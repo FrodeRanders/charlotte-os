@@ -275,10 +275,12 @@ pub fn register_boot_suite() {
             register(TestId::Nvme);
         }
     }
-    // The x86_64 port does not yet run the EL0 IPC / service / device suites
-    // (they remain AArch64-only), so only the tests that actually execute and
-    // report are registered. Registering a test that can never resolve would
-    // leave the coordinator permanently in `SELFTEST WAITING`.
+    // x86_64 runs the architecture-neutral userspace, service, storage,
+    // scheduler, and feature-selected network suites. The hand-written IPC
+    // demos, PL011 UART, and sitas integration remain AArch64-specific, so
+    // register only tests that execute and report on x86. Registering a test
+    // that can never resolve would leave the coordinator permanently in
+    // `SELFTEST WAITING`.
     #[cfg(not(target_arch = "aarch64"))]
     {
         register(TestId::El0);

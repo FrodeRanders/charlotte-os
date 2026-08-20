@@ -270,7 +270,7 @@ impl NameCatalog {
                 let mut generation = self.cluster_key_generation.lock();
                 if let Some(existing) = *current {
                     // Establishment is idempotent, not an unauthenticated key
-                    // rotation surface. Rotation needs a separately
+                    // rotation exposure. Rotation needs a separately
                     // authorized protocol and overlap policy.
                     if existing != key {
                         return Vec::new();

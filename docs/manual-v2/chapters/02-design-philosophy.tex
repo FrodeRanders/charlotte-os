@@ -183,7 +183,7 @@ capabilities, endpoints, and memory objects. New kernel primitives should be
 introduced only when they cannot be naturally composed from the existing ones.}
 \end{quote}
 
-This rule limits the kernel surface and keeps the ABI and trust model reviewable.
+This rule limits the kernel interface and keeps the ABI and trust model reviewable.
 
 \section{What ``asynchronous throughout'' means}
 
@@ -277,7 +277,7 @@ principles from Chapter~1:
     \item Memory objects constrain stale cross-domain access --- ownership moves
         through the kernel and is enforced by page tables. Correctness still
         depends on MMU, TLB, and DMA handling.
-    \item Composition limits the privileged surface --- most system functionality
+    \item Composition limits the privileged code footprint --- most system functionality
         lives in userspace, where faults can be contained to a service domain.
     \item The async model reduces adaptation --- the kernel and runtime share
         submission, completion, and wake semantics.

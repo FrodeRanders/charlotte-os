@@ -8,7 +8,7 @@
 //!
 //! ### Why these stubs are hand-written assembly, not Rust
 //!
-//! This is a deliberate minimal-surface syscall-ABI test. The EL0 stubs
+//! This is a deliberately narrow syscall-ABI test. The EL0 stubs
 //! included below run with **no runtime at all** — no crt0, no heap, no panic
 //! handler, no config-page parsing — and drive the kernel purely through raw
 //! `svc` traps and fixed virtual addresses. A failure therefore isolates the
@@ -44,7 +44,7 @@ use crate::memory::{
 
 #[cfg(target_arch = "aarch64")]
 // Hand-written EL0 syscall-ABI stubs; see the module doc for why these are
-// assembly rather than Rust ELFs (minimal-surface syscall-ABI isolation).
+// assembly rather than Rust ELFs (narrow syscall-ABI isolation).
 core::arch::global_asm!(include_str!("el0_ipc.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_block.asm"));

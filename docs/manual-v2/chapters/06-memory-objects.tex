@@ -167,12 +167,12 @@ When a device performs DMA, a memory object enters a third ownership state:
     \item Rust/API ownership --- which domain holds the capability.
 \end{itemize}
 
-The AArch64 SMMUv3 path tracks an explicit DMA pin per mapped memory object.
-The kernel validates access direction, installs only the object's frames in a
-device-private translation context, and releases the pin only after a
-synchronous IOTLB invalidation. Drivers receive IOVAs rather than physical
-addresses. CPU mappings are not automatically revoked at the raw syscall
-layer, so coherent descriptor rings remain an explicit driver protocol.
+The AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi paths track an explicit DMA pin per
+mapped memory object. The kernel validates access direction, installs only the
+object's frames in a device-private translation context, and releases the pin
+only after a synchronous IOTLB invalidation. Drivers receive IOVAs rather than
+physical addresses. CPU mappings are not automatically revoked at the raw
+syscall layer, so coherent descriptor rings remain an explicit driver protocol.
 Ordinary Rust applications should instead use \texttt{catten\_rt::owned}:
 calling \texttt{unmap} on \texttt{MappedMemory} consumes the CPU mapping, and
 only the resulting \texttt{OwnedMemory} can create a \texttt{DmaTransfer}.
@@ -197,18 +197,19 @@ transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
         IPC call. When the call completes (reply, cancellation, timeout, or
         server death), the borrow ends. There is no ``I forgot to return it.''
 
-    \item DMA ownership is tracked on the reference platform --- the AArch64
-        SMMUv3 path pins mapped memory and restricts each requester to its DMA
-        domain. The ownership-aware Rust API prevents ordinary CPU mappings
-        from overlapping a transfer; raw coherent-ring implementations remain
-        responsible for volatile/atomic access and the device protocol. Other
-        IOMMU platforms remain unsupported.
+    \item DMA ownership is tracked on the reference platforms --- AArch64
+        SMMUv3 and x86-64 VT-d/AMD-Vi pin mapped memory and restrict each
+        requester to its DMA domain. The ownership-aware Rust API prevents
+        ordinary CPU mappings from overlapping a transfer; raw coherent-ring
+        implementations remain responsible for volatile/atomic access and the
+        device protocol.
 
     \item Hardware enforcement, not language enforcement --- the page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
         bug should access CPU pages that are not mapped, assuming correct MMU
-        setup and TLB maintenance. The reference SMMUv3 path provides the
-        corresponding DMA boundary for explicitly mapped objects.
+        setup and TLB maintenance. The implemented SMMUv3, VT-d, and AMD-Vi
+        paths provide the corresponding DMA boundary for explicitly mapped
+        objects.
 \end{enumerate}
 
 \endinput

@@ -349,7 +349,7 @@ The full ABI is described in
     \item \textbf{The ABI is auditable.} Userspace wrappers and the kernel
         dispatcher share the typed \texttt{SyscallNumber} enum, and dispatch is
         exhaustive. The source enum, rather than a duplicated count here, defines
-        the current surface.
+        the current interface.
 
     \item \textbf{The programming model is testable.} Self-tests exercise
         owner checks, re-entrancy guards, selected backpressure paths, and

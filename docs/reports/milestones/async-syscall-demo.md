@@ -5,7 +5,7 @@
 > [documentation index](../../README.md) for current sources of truth.
 
 > This note records the end-to-end async-syscall demonstration
-> (`crates/catten/src/demo.rs`) and the scheduler bugs it surfaced and fixed.
+> (`crates/catten/src/demo.rs`) and the scheduler bugs it exposed and fixed.
 > It complements the [async-syscall ABI](../../architecture/async-syscall-abi.md)
 > and [Sitas/Xous architecture](../../architecture/sitas-xous.md).
 
@@ -41,7 +41,7 @@ intends. The worker never references the capability.
 ## Scheduler / timer / lifecycle bugs found and fixed
 
 Building the demo exercised the *block → yield → wake → resume* and the
-*thread-exit* paths for the first time and surfaced a series of latent bugs
+*thread-exit* paths for the first time and exposed a series of latent bugs
 (none fired before because no kernel thread had ever blocked-and-resumed,
 slept, or returned). All are now fixed; the demo runs with real timer-based
 `sleep` and clean thread exit, and reports `Ok(42)` / `SUCCESS` with zero

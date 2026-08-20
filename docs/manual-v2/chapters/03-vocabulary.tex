@@ -167,7 +167,9 @@ IPC call & Cross-domain service invocation & A kernel operation submission \\
     \item[ASID] Address Space Identifier. 0 = kernel; $>$0 = user address space.
     \item[CQ] Completion Queue. Shared-memory ring buffer for async operation
         results.
-    \item[EL0] Exception Level 0 (AArch64). Userspace execution.
+    \item[EL0] Exception Level 0 on AArch64. CharlotteOS also retains
+        \texttt{EL0} as an architecture-neutral source and test label for
+        userspace execution, including ring 3 on x86-64.
     \item[EL1] Exception Level 1 (AArch64). Kernel execution.
     \item[HHDM] Higher Half Direct Mapping. Linear mapping of all physical memory
         into kernel virtual address space (provided by the Limine bootloader).

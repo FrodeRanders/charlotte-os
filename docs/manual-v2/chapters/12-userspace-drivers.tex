@@ -140,8 +140,17 @@ synchronously invalidates the IOTLB before releasing the memory pin. QEMU's
 coherent SMMUv3 is boot-tested with the userspace NVMe driver. Each PCI
 requester receives a private stage-1 context containing only explicitly mapped
 memory objects and its MSI doorbell page. SMMU event-queue faults are handled
-by the kernel. Non-coherent SMMUs, ATS/PRI, multiple SMMUs, and non-AArch64
-IOMMUs remain unsupported.
+by the kernel.
+
+On x86-64, ACPI DMAR selects Intel VT-d and IVRS selects AMD-Vi. Both backends
+create per-requester DMA domains, validate domain and requester limits, map and
+unmap IOVAs, perform synchronous IOTLB invalidation, and roll back partial
+attachment failures before frames can be reused. QEMU boots validate NVMe,
+AHCI, virtio-blk, and virtio-net through these domains. VT-d supports
+\texttt{INCLUDE\_PCI\_ALL} units and directly attached endpoint scopes;
+multi-hop bridge scopes remain rejected. AMD-Vi fault events are polled until
+post-topology MSI delivery is implemented. Non-coherent SMMUv3, ATS/PRI, and
+multi-IOMMU topologies remain future work.
 
 \section{Driver service layering}
 
@@ -181,9 +190,9 @@ instance.
         driver restart (device reset, grant re-issuance, generation bump).
         Driver authors do not write recovery code.
 
-    \item Hardware-isolated DMA is implemented on the reference
-        AArch64 SMMUv3 platform --- other IOMMU implementations and advanced
-        SMMU facilities remain future work.
+    \item Hardware-isolated DMA is implemented on the reference AArch64
+        SMMUv3 platform and on x86-64 with Intel VT-d or AMD-Vi. Advanced
+        facilities and more complex IOMMU topologies remain future work.
 \end{enumerate}
 
 \endinput

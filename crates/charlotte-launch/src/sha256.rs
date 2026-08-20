@@ -1,5 +1,5 @@
 //! FIPS 180-4 SHA-256, hand-rolled so the kernel and the EL0 services share
-//! one implementation with no allocation and no dependency surface.
+//! one implementation with no allocation and no dependency footprint.
 //!
 //! Used by the ELF signature-note verification (`super::signature_note`):
 //! the artifact hash that a cluster signature covers.

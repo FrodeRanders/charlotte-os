@@ -26,7 +26,7 @@ repository history remain authoritative.
     per-shard CQ rings & Done \\
 8 & Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes,
     interrupt-driven deferred reads, crash recovery & Done \\
-9 & Virtio-net driver: PCI discovery, MSI-X and SMMU delegation, feature
+9 & Virtio-net driver: PCI discovery, MSI-X and IOMMU/SMMU delegation, feature
     negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
     Smoltcp 0.13 adapter + TCP/IP service binary compile, and the frame
     demultiplexer routes IPv4/ARP to the tcpip service. &
@@ -36,6 +36,9 @@ repository history remain authoritative.
 11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
     \texttt{Context}, fixed-width versioned launch header, explicit startup
     input & Done \\
+12 & x86-64 multi-LP ring-3 platform: shared service ABI, synchronous TLB
+    shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net, discovery, and
+    distributed DNS & Four-LP and two-guest TCG suites \\
 \hline
 \end{longtable}
 
@@ -68,8 +71,13 @@ repository history remain authoritative.
         success banner before those deferred tests finish. The sitas
         \texttt{basic\_kv} binary runs with 2 shards on per-shard CQ rings.
 
-    \item \textbf{x86-64:} boots with \texttt{-cpu max}, core self-tests pass.
-        Ring-3 userspace is implemented but not yet exercised.
+    \item \textbf{x86-64:} boots with \texttt{-cpu max} on four LPs, enters
+        ring 3, and runs native Rust service ELFs through the shared syscall and
+        launch ABI. The tested service path includes naming, object storage,
+        Raft persistence, service management, live upgrade, virtio-net,
+        discovery, and two-guest distributed DNS. NVMe, AHCI, and virtio-blk
+        run behind Intel VT-d or AMD-Vi. TCP/IP and HTTP boot-test registration
+        remain AArch64-only.
 
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
@@ -81,16 +89,18 @@ repository history remain authoritative.
         (move/lend/copy), deferred replies, reply-time connection delegation.
 
     \item \textbf{Device capabilities:} MmioRegion and Interrupt object types,
-        user-accessible Device-nGnRnE page mapping, GICv3 SPI enable/route/mask,
-        IRQ-to-CQ coalesced delivery (lock-free deferred wake).
+        user-accessible device mappings, GICv3 SPI and x86 MSI/MSI-X routing,
+        and IRQ-to-CQ coalesced delivery (lock-free deferred wake).
 
-    \item \textbf{Userspace drivers:} reference UART driver (PL011) with
-        delegated MMIO + IRQ, interrupt-driven deferred reads, crash-test
-        restart with device reset and operation reconciliation.
+    \item \textbf{Userspace drivers:} reference UART, NVMe, AHCI, virtio-blk,
+        and virtio-net drivers use delegated MMIO, interrupts, and DMA domains.
+        The UART path additionally validates crash-test restart with device
+        reset and operation reconciliation.
 
-    \item \textbf{Syscall dispatch:} AArch64 SVC dispatch uses the shared typed
-        \texttt{SyscallNumber} enum. Caller identity comes from trusted thread and
-        trap context, never a userspace parameter. Explicit authenticated IPC
+    \item \textbf{Syscall dispatch:} AArch64 SVC and x86-64 SYSCALL entry use
+        the shared typed \texttt{SyscallNumber} enum. Caller identity comes
+        from trusted thread and trap context, never a userspace parameter.
+        Explicit authenticated IPC
         receive operations add the sender's exact address-space generation,
         signed-artifact principal, and roles without changing the legacy
         nine-register receive ABI.
@@ -103,7 +113,8 @@ repository history remain authoritative.
         future work.
 
     \item \textbf{Scheduler:} RoundRobin, quantum timer, block/yield/wake,
-        idempotent wakes, deferred reaper, per-LP thread pinning.
+        generation-qualified wakes and retirement, deferred reaper, per-LP
+        thread pinning, certified runtime migration, and remote owner-LP abort.
 
     \item \textbf{Sitas integration:} sitas-core compiles for aarch64-none.
         sitas-charlotte links against the kernel's syscall ABI. Per-shard CQ
@@ -137,8 +148,10 @@ repository history remain authoritative.
         no guest SMMU for the protected-DMA NVMe path. Its compatibility boot
         therefore runs 15 non-storage tests; the full 18-test suite and
         persistent-storage workflows require TCG.
-    \item \textbf{x86-64 ring-3 userspace:} SYSCALL entry trampoline exists;
-        the EL0 test and real-EL0 user thread are AArch64-only.
+    \item \textbf{x86-64 architectural limitations:} PCID/INVPCID and SMAP are
+        not enabled; TLB shootdowns conservatively reload CR3. SMEP is enabled.
+        VT-d multi-hop bridge scopes are rejected, and AMD-Vi fault delivery is
+        polled until post-topology MSI setup is implemented.
     \item \textbf{Virtio-net runtime:} initialization and transmit submission
         are runtime-validated on macOS under QEMU TCG. HVF remains unsuitable
         for direct EL0 device MMIO. The receive/transmit data path, frame
@@ -150,17 +163,20 @@ repository history remain authoritative.
         setup.
     \item \textbf{Resource accounting:} per-domain quotas are not yet
         implemented; capability-table capacity is fixed.
-    \item \textbf{Cross-machine Raft boundary:} two TCG guests share a QEMU stream LAN;
-        the reliable-message frame transport and remote Raft peer routing are
+    \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
+        QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
+        reliable-message frame transport and remote Raft peer routing are
         connected and validated (\texttt{--dns-test}).
     \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
         \texttt{observe} snapshot and per-service status into a JSON report
         served over the TCP/IP service (\texttt{--http-test}).
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
-        ACPI IORT, per-requester DMA-domain capabilities, memory pinning,
-        IOVA map/unmap, synchronous invalidation, fault reporting, teardown,
-        and NVMe integration are implemented and QEMU-tested. Non-coherent
-        systems, ATS/PRI, multiple SMMUs, and other IOMMU architectures remain.
+        ACPI IORT, Intel VT-d via DMAR, and AMD-Vi via IVRS provide
+        per-requester DMA-domain capabilities, memory pinning, IOVA map/unmap,
+        synchronous invalidation, rollback, fault handling, and teardown.
+        Storage and network drivers are QEMU-tested through these backends.
+        Non-coherent SMMUv3, ATS/PRI, multiple-IOMMU topologies, VT-d multi-hop
+        bridge scopes, and AMD-Vi MSI fault delivery remain incomplete.
     \item \textbf{Upgrade:} the EL0 service manager performs handoff and invokes
         the capability-checked replacement spawn path. It can
         fetch a replacement ELF from a well-known NVMe object, pass it as a

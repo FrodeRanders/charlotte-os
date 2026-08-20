@@ -2,7 +2,7 @@
 //!
 //! Deferred verifiers map moved-memory reply caps into the *kernel* address
 //! space to read their contents. Because every verifier shares one address
-//! space, fixed scratch vaddrs are a collision surface — two tests once both
+//! space, fixed scratch vaddrs create a collision risk — two tests once both
 //! used `0x601000`, corrupting each other's reads. The allocator bump-carves
 //! distinct scratch pages from a reserved region, so each mapping gets a
 //! vaddr that no other test can own, by construction.
