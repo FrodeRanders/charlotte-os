@@ -6,15 +6,17 @@
 # Requirements: qemu, mtools.  On macOS install via Homebrew:
 #   brew install qemu mtools
 #
-# The x86_64 port now boots multi-LP, runs EL0 at ring 3 through the SYSCALL
-# ABI, and passes the kernel-side + ring-3 deferred self-test subset. The
-# embedded EL0 service bundle and the networking/EL0-service features remain
-# AArch64-only, so this script focuses on building the kernel, a boot image,
-# and driving QEMU with serial capture + panic/self-test detection.
+# The x86_64 port boots multi-LP, runs EL0 at ring 3 through the SYSCALL
+# ABI, and passes the kernel-side + ring-3 deferred self-test subset, including
+# the NVMe/AHCI/virtio-blk storage stack (behind VT-d or AMD-Vi) and the
+# virtio-net + cluster-discovery networking path.
 #
 # Usage:
 #   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT]
 #                         [--instance NAME] [--smp N] [--timeout S]
+#                         [--iommu intel|amd] [--block nvme|ahci|virtio]
+#                         [--net-test|--disco-test] [--mac ADDRESS]
+#                         [--net-listen PORT|--net-connect HOST:PORT]
 #                         [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
@@ -25,7 +27,14 @@
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output
 #                  (default: run interactively)
-#   --fresh-storage  Recreate this instance's NVMe boot image from scratch
+#   --iommu intel|amd  DMA remapping unit (default: intel)
+#   --block nvme|ahci|virtio  Block device transport (default: nvme)
+#   --net-test     Build and run the virtio-net test
+#   --disco-test   Run the cluster discovery test (implies --net-test)
+#   --mac ADDRESS  Set the guest NIC MAC address
+#   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
+#   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
+#   --fresh-storage  Recreate this instance's boot image from scratch
 #   --reuse-storage  Keep the existing boot image (explicitly stale)
 #   --el0-smoke    Build + sign the x86_64 `smoke` service ELF and run the
 #                  EL0 Rust-ELF round-trip self-test
@@ -45,7 +54,10 @@ REUSE_STORAGE="0"
 EL0_SMOKE="0"
 IOMMU="intel"
 BLOCK="nvme"
-NET="0"
+NET_TEST="0"
+DISCO_TEST="0"
+NET_BACKEND="user"
+NET_MAC="52:54:00:12:34:56"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -70,10 +82,20 @@ while [ "$#" -gt 0 ]; do
         --block)
             [ "$#" -ge 2 ] || { echo "Missing value for --block" >&2; exit 1; }
             BLOCK="$2"; shift 2 ;;
+        --net-test)    NET_TEST="1"; shift ;;
+        --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
+        --net-listen)
+            [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
+            NET_BACKEND="listen:$2"; shift 2 ;;
+        --net-connect)
+            [ "$#" -ge 2 ] || { echo "Missing value for --net-connect" >&2; exit 1; }
+            NET_BACKEND="connect:$2"; shift 2 ;;
+        --mac)
+            [ "$#" -ge 2 ] || { echo "Missing value for --mac" >&2; exit 1; }
+            NET_MAC="$2"; shift 2 ;;
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
         --el0-smoke)     EL0_SMOKE="1"; shift ;;
-        --net)           NET="1"; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -146,8 +168,15 @@ if [ "$CLEAN_BUILD" = "1" ]; then
 fi
 
 FEATURES="acpi"
-if [ "$NET" = "1" ]; then
-    FEATURES="${FEATURES},virtio_net_test,disco_net_test"
+if [ "$NET_TEST" = "1" ]; then
+    FEATURES="${FEATURES},virtio_net_test"
+fi
+if [ "$DISCO_TEST" = "1" ]; then
+    FEATURES="${FEATURES},disco_net_test"
+    # Enable cross-node verification when two instances are linked via socket.
+    if [ "$NET_BACKEND" != "user" ]; then
+        FEATURES="${FEATURES},disco_cross_node_test"
+    fi
 fi
 
 # Build and sign the device-independent x86_64 bootstrap services (the name
@@ -235,10 +264,24 @@ QEMU_OPTS=(
     -no-reboot
 )
 
-if [ "$NET" = "1" ]; then
+if [ "$NET_TEST" = "1" ]; then
+    case "$NET_BACKEND" in
+        user)
+            QEMU_OPTS+=(-netdev "user,id=net0")
+            ;;
+        listen:*)
+            NET_PORT="${NET_BACKEND#listen:}"
+            QEMU_OPTS+=(-netdev "stream,id=net0,server=on,addr.type=inet,addr.host=0.0.0.0,addr.port=${NET_PORT}")
+            ;;
+        connect:*)
+            NET_PEER="${NET_BACKEND#connect:}"
+            NET_HOST="${NET_PEER%%:*}"
+            NET_PORT="${NET_PEER#*:}"
+            QEMU_OPTS+=(-netdev "stream,id=net0,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
+            ;;
+    esac
     QEMU_OPTS+=(
-        -netdev "user,id=net0"
-        -device "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on"
+        -device "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=${NET_MAC}"
     )
 fi
 

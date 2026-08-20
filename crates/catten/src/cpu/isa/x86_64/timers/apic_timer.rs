@@ -147,14 +147,20 @@ impl LpTimerIfce for ApicTimer {
     }
 
     fn set_duration(&mut self, duration: ExtDuration) -> Result<(), LpTimerError> {
-        self.reset_value = (duration.as_picos() / (self.resolution.as_picos())
+        // Clamp to at least one timer tick: a deadline equal to `now` produces
+        // a zero duration, and `start` rejects a zero initial count as
+        // `DurationNotSet`. One tick is ~one TSC period, well below any
+        // observable timer resolution.
+        let ticks = duration.as_picos() / (self.resolution.as_picos())
             + if duration.as_picos() % self.resolution.as_picos() > 0 {
                 1
             } else {
                 0
-            })
-        .try_into()
-        .map_err(|_| LpTimerError::DurationOutOfRange)?;
+            };
+        self.reset_value = ticks
+            .max(1)
+            .try_into()
+            .map_err(|_| LpTimerError::DurationOutOfRange)?;
         Ok(())
     }
 

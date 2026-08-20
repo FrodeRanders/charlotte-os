@@ -314,9 +314,9 @@ extern "C" fn finish_boot() {
     // Publish the node's boot-done marker once the boot storm settles, so
     // network-initiating services wait until this node is through boot before
     // communicating with the rest of the cluster.
-    #[cfg(all(target_arch = "aarch64", not(feature = "hvf_compat")))]
+    #[cfg(not(feature = "hvf_compat"))]
     crate::service::supervisor::start_local_ready_publisher();
-    #[cfg(all(target_arch = "aarch64", feature = "hvf_compat"))]
+    #[cfg(feature = "hvf_compat")]
     logln!("Local storage-backed node-ready publication skipped under hvf_compat.");
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified Ready work from
