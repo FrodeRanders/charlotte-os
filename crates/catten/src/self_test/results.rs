@@ -282,6 +282,8 @@ pub fn register_boot_suite() {
         register(TestId::El0);
         register(TestId::CqWait);
         register(TestId::SchedulerLifecycle);
+        #[cfg(not(feature = "hvf_compat"))]
+        register(TestId::Nvme);
     }
     #[cfg(all(feature = "virtio_net_test", not(feature = "hvf_compat"), target_arch = "aarch64"))]
     register(TestId::Net);

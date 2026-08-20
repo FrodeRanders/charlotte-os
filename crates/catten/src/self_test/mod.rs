@@ -140,7 +140,6 @@ pub mod el0_ipc;
 pub mod el0_join;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_net;
-#[cfg(target_arch = "aarch64")]
 pub mod el0_nvme;
 pub mod el0_pingpong;
 pub mod el0_raft;
@@ -257,12 +256,12 @@ pub fn run_deferred_self_tests() {
     // NVMe test. Registering it early lets the later tests' store reads retry
     // without deadlocking the registration thread. The no-SMMU HVF
     // compatibility suite instead embeds its non-storage service subset.
-    #[cfg(all(target_arch = "aarch64", not(feature = "hvf_compat")))]
+    #[cfg(not(feature = "hvf_compat"))]
     el0_nvme::test_el0_nvme();
-    #[cfg(all(target_arch = "aarch64", feature = "hvf_compat"))]
+    #[cfg(feature = "hvf_compat")]
     logln!(
         "Skipping NVMe/object-store and persistent-Raft tests (hvf_compat: protected DMA requires \
-         an SMMU)."
+         an IOMMU)."
     );
     #[cfg(target_arch = "aarch64")]
     el0_uart::test_el0_uart();

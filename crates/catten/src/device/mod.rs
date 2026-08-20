@@ -286,12 +286,34 @@ fn arch_map_user_mmio(
 
 #[cfg(not(target_arch = "aarch64"))]
 fn arch_map_user_mmio(
-    _asid: AddressSpaceId,
-    _vaddr: VAddr,
-    _frame: PAddr,
-    _writable: bool,
+    asid: AddressSpaceId,
+    vaddr: VAddr,
+    frame: PAddr,
+    writable: bool,
 ) -> Result<(), ()> {
-    Err(())
+    use crate::{
+        cpu::isa::interface::memory::AddressSpaceInterface,
+        memory::linear::{
+            MemoryMapping,
+            PageType,
+        },
+    };
+    let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+    let address_space = table.get_mut(asid).map_err(|_| ())?;
+    let page_type = if writable {
+        PageType::UserData
+    } else {
+        PageType::UserRoData
+    };
+    // `map_existing_page` installs the mapping without zeroing the target, so
+    // the device register block is left untouched.
+    address_space
+        .map_existing_page(MemoryMapping {
+            vaddr,
+            paddr: frame,
+            page_type,
+        })
+        .map_err(|_| ())
 }
 
 fn arch_unmap(asid: AddressSpaceId, vaddr: VAddr) -> Result<(), ()> {
@@ -450,6 +472,17 @@ pub fn grant_dma_domain(
             id,
         },
     ))
+}
+
+/// Resolve a PCI requester id to the DMA stream id used by the platform's
+/// IOMMU (SMMU on AArch64; identity on x86_64 until a VT-d/AMD-Vi driver).
+pub fn stream_id(requester_id: u32) -> Result<u32, DeviceError> {
+    dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)
+}
+
+/// Number of DMA translation faults observed since boot.
+pub fn fault_count() -> u64 {
+    dma::fault_count()
 }
 
 pub fn dma_map(

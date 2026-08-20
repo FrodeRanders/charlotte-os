@@ -37,7 +37,6 @@
 //! Expected outcome: the verifier logs
 //! `SUCCESS: storage stack and persistent Raft recovery verified` and the
 //! authoritative coordinator reports `TestId::Nvme` passed.
-#![cfg(target_arch = "aarch64")]
 
 use crate::{
     ipc::ConnectionRights,
@@ -58,27 +57,19 @@ const OBJSTORE_NAME: u64 = u64::from_le_bytes(*b"obj\0\0\0\0\0");
 /// until the service registers).
 const NS_OP_LOOKUP: u32 = 2;
 
-#[cfg(target_arch = "aarch64")]
 static TEST_STATE: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 pub fn test_el0_nvme() {
-    #[cfg(target_arch = "aarch64")]
-    {
-        logln!("Testing EL0 userspace NVMe block device driver and object store...");
-        let name_service = supervisor::node_name_service();
-        *TEST_STATE.lock() = Some(name_service);
-        let _vtid = crate::self_test::results::spawn_verifier(
-            crate::self_test::results::TestId::Nvme,
-            verify_el0_nvme,
-        );
-        logln!("[nvme] verifier deferred");
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        logln!("Skipping EL0 NVMe + objstore test (AArch64 only).");
-    }
+    logln!("Testing EL0 userspace NVMe block device driver and object store...");
+    let name_service = supervisor::node_name_service();
+    *TEST_STATE.lock() = Some(name_service);
+    let _vtid = crate::self_test::results::spawn_verifier(
+        crate::self_test::results::TestId::Nvme,
+        verify_el0_nvme,
+    );
+    logln!("[nvme] verifier deferred");
 }
 
 fn wait_for_nvme() -> (usize, u32, u32, Option<u64>) {
@@ -107,32 +98,26 @@ fn wait_for_nvme() -> (usize, u32, u32, Option<u64>) {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
 extern "C" fn verify_el0_nvme() {
     let ns = TEST_STATE.lock().as_ref().copied().expect("[nvme] test state missing");
     logln!("[nvme] verifier running, discovering NVMe...");
 
-    // MSI-X setup relies on the kernel's GICv2m MSI allocator, which only
-    // works where the MADT publishes a GICv2m frame at the address the kernel
-    // uses (QEMU virt). On sbsa-ref MSI goes through the GIC ITS (not yet
-    // supported); the gicv2m probe would fault. Report unsupported before
-    // touching the frame.
-    if !crate::cpu::isa::interrupts::gic::msi_available() {
-        logln!("[nvme] SKIP: no supported GICv2m MSI frame in the ACPI MADT; NVMe test not run.");
+    // MSI(-X) setup relies on the kernel's MSI allocator, which requires an
+    // available mechanism (the GICv2m/ITS on AArch64, the LAPIC on x86_64).
+    if !crate::device::msi_available() {
+        logln!("[nvme] SKIP: no supported MSI mechanism; NVMe test not run.");
         crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
         return;
     }
 
     let (bar0, intid, requester_id, msi_address) = wait_for_nvme();
 
-    // Protected DMA requires an SMMU to exist and to map this requester to a
-    // stream. On platforms without one (e.g. HVF, where the ECAM window and
-    // SMMU are absent), the driver cannot be granted a DMA domain. Report the
-    // test as unsupported rather than panicking inside the driver spawn, which
-    // would abort the verifier before it reports and leave the boot waiting on
-    // a result that never arrives.
-    if crate::device::smmu::stream_id(requester_id).is_err() {
-        logln!("[nvme] SKIP: protected DMA unavailable (no SMMU); NVMe test not run.");
+    // Protected DMA requires an IOMMU to exist and to map this requester to a
+    // stream. On platforms without one, the driver cannot be granted a DMA
+    // domain. Report the test as unsupported rather than panicking inside the
+    // driver spawn, which would abort the verifier before it reports.
+    if crate::device::stream_id(requester_id).is_err() {
+        logln!("[nvme] SKIP: protected DMA unavailable; NVMe test not run.");
         crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
         return;
     }
@@ -166,6 +151,12 @@ extern "C" fn verify_el0_nvme() {
         ConnectionRights::CALL,
     );
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
+    logln!(
+        "[nvme] driver stage={} raw_dw3={:#x} irq_count={}",
+        unsafe { core::ptr::read_volatile(driver_cfg.add(1)) },
+        unsafe { core::ptr::read_volatile(driver_cfg.add(17)) },
+        unsafe { core::ptr::read_volatile(driver_cfg.add(20)) }
+    );
 
     // The object store registers with the name service under its interface
     // name once its endpoint is up. A deferred lookup resolves exactly when
@@ -232,12 +223,8 @@ extern "C" fn verify_el0_nvme() {
     let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
     assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
     logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);
-    assert_eq!(
-        crate::device::smmu::fault_count(),
-        0,
-        "[nvme] valid DMA traffic caused an SMMU fault"
-    );
-    logln!("[nvme] SMMU domain completed the transfer without translation faults");
+    assert_eq!(crate::device::fault_count(), 0, "[nvme] valid DMA traffic caused a DMA fault");
+    logln!("[nvme] DMA domain completed the transfer without translation faults");
 
     let completion_ns = crate::ipc::connection_delegate(
         ns.domain.asid,
@@ -299,11 +286,14 @@ extern "C" fn verify_el0_nvme() {
     // lifecycle event before releasing the address space.
     supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client);
-    crate::self_test::el0_service::verify_persistent_upgrade(&ns);
-    #[cfg(not(feature = "live_upgrade_test"))]
+    // The persistent Raft/upgrade phases need additional service images
+    // (servicemgr, raft) that remain AArch64-only.
+    #[cfg(target_arch = "aarch64")]
     {
+        crate::self_test::el0_service::verify_persistent_upgrade(&ns);
+        #[cfg(not(feature = "live_upgrade_test"))]
         crate::self_test::el0_raft::test_persistent_raft(&ns);
     }
-    logln!("[nvme] SUCCESS: storage stack and persistent Raft recovery verified.");
+    logln!("[nvme] SUCCESS: storage stack verified.");
     crate::self_test::results::pass(crate::self_test::results::TestId::Nvme);
 }

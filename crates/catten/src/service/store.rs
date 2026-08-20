@@ -73,12 +73,19 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"servicemgr", "servicemgr"),
 ];
 
-// x86_64 embeds only the device-independent bootstrap services (the name
-// service and the system observer); the disk/device services require the
-// IOAPIC/MSI work that is not yet ported.
+// x86_64 embeds the device-independent bootstrap services plus the NVMe
+// storage stack (now reachable via direct DMA). The remaining services
+// (servicemgr, raft, networking) are still AArch64-only.
 #[cfg(target_arch = "x86_64")]
-const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] =
-    &[bootstrap_elf!(b"ns", "ns"), bootstrap_elf!(b"observe", "observe")];
+const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
+    bootstrap_elf!(b"ns", "ns"),
+    bootstrap_elf!(b"observe", "observe"),
+    bootstrap_elf!(b"nvme", "nvme"),
+    bootstrap_elf!(b"objstore", "objstore"),
+    bootstrap_elf!(b"nvme_client", "nvme_client"),
+    bootstrap_elf!(b"objstore_client", "objstore_client"),
+    bootstrap_elf!(b"echo", "echo"),
+];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.
 static STORE_ELFS: spin::Mutex<alloc::vec::Vec<(&'static [u8], &'static [u8])>> =

@@ -456,7 +456,6 @@ pub struct UpgradeGrant {
 /// and delivered through the config-page contract. The driver never names a
 /// physical address or interrupt vector; it only maps and binds the
 /// capabilities it is handed.
-#[cfg(target_arch = "aarch64")]
 pub fn spawn_driver_with_name_service(
     image: &[u8],
     name_service: &NameServiceHandle,

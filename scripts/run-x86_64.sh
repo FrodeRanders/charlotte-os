@@ -145,9 +145,12 @@ SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
 mkdir -p "$SERVICE_BUNDLE"
 cargo build --manifest-path crates/catten-services/Cargo.toml \
     --target crates/catten-services/x86_64-unknown-none.json \
-    --release -Z build-std=core,alloc --bin ns --bin observe
-cp crates/catten-services/target/x86_64-unknown-none/release/ns "$SERVICE_BUNDLE/ns.elf"
-cp crates/catten-services/target/x86_64-unknown-none/release/observe "$SERVICE_BUNDLE/observe.elf"
+    --release -Z build-std=core,alloc \
+    --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
+    --bin objstore_client --bin echo
+for svc in ns observe nvme objstore nvme_client objstore_client echo; do
+    cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
+done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
 

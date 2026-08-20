@@ -1027,48 +1027,22 @@ fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
 }
 
 fn sys_dma_map(frame: &mut TrapFrame) {
-    #[cfg(target_arch = "aarch64")]
-    {
-        let asid = caller_asid(frame);
-        frame.regs[0] =
-            crate::device::dma_map(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
-                .unwrap_or(0);
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        frame.regs[0] = 0;
-    }
+    let asid = caller_asid(frame);
+    frame.regs[0] =
+        crate::device::dma_map(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
+            .unwrap_or(0);
 }
 
 fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
-    #[cfg(target_arch = "aarch64")]
-    {
-        let asid = caller_asid(frame);
-        frame.regs[0] = crate::device::dma_map_exclusive(
-            asid,
-            frame.regs[1],
-            frame.regs[2],
-            frame.regs[3] as u32,
-        )
-        .unwrap_or(0);
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        frame.regs[0] = 0;
-    }
+    let asid = caller_asid(frame);
+    frame.regs[0] =
+        crate::device::dma_map_exclusive(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
+            .unwrap_or(0);
 }
 
 fn sys_dma_unmap(frame: &mut TrapFrame) {
-    #[cfg(target_arch = "aarch64")]
-    {
-        let asid = caller_asid(frame);
-        frame.regs[0] =
-            crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2]).map_or(1, |()| 0);
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        frame.regs[0] = 1;
-    }
+    let asid = caller_asid(frame);
+    frame.regs[0] = crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2]).map_or(1, |()| 0);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {

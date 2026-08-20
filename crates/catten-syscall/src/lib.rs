@@ -465,6 +465,8 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             in("rdi") arg1,
             in("rsi") arg2,
             in("rdx") arg3,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -483,6 +485,8 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
             in("rsi") arg2,
             in("rdx") arg3,
             in("r10") arg4,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -502,6 +506,8 @@ unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, a
             in("rdx") arg3,
             in("r10") arg4,
             in("r8") arg5,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -530,6 +536,8 @@ unsafe fn svc6(
             in("r10") arg4,
             in("r8") arg5,
             in("r9") arg6,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -549,6 +557,8 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             inlateout("rdi") arg1 => x1_out,
             in("rsi") arg2,
             in("rdx") arg3,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -569,6 +579,8 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             inlateout("rdi") arg1 => x1_out,
             inlateout("rsi") arg2 => x2_out,
             in("rdx") arg3,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
@@ -590,6 +602,8 @@ unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> (u64, 
             inlateout("rdi") arg1 => x1_out,
             inlateout("rsi") arg2 => x2_out,
             inlateout("rdx") arg3 => x3_out,
+            lateout("rcx") _,
+            lateout("r11") _,
             options(nostack, nomem, preserves_flags),
         );
     }
