@@ -104,6 +104,21 @@ fn wait_for_block_device() -> BlockDevice {
             };
         }
         if let Some((abar, irq, requester_id, msi_address)) =
+            crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_blk(
+                &topo.pcie,
+            )
+        {
+            logln!("[virtio-blk] PCI topology: BAR4={:#x} intid={}", abar, irq);
+            return BlockDevice {
+                driver: b"virtio_blk",
+                mmio_base: abar as usize,
+                mmio_pages: 4,
+                intid: irq,
+                requester_id,
+                msi_address,
+            };
+        }
+        if let Some((abar, irq, requester_id, msi_address)) =
             crate::device_management::drivers::busses::pci_express::topology::lookup_first_ahci(
                 &topo.pcie,
             )
@@ -118,7 +133,7 @@ fn wait_for_block_device() -> BlockDevice {
                 msi_address,
             };
         }
-        panic!("[block] no NVMe or AHCI controller in the published PCI topology");
+        panic!("[block] no NVMe, AHCI, or virtio-blk controller in the published PCI topology");
     }
     #[cfg(feature = "hvf_compat")]
     {

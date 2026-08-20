@@ -14,6 +14,7 @@ raft               service     1       1        0x0   -
 nvme               bootstrap   1       1        0x0   -
 nvme_client        service     1       1        0x0   -
 ahci               bootstrap   1       1        0x0   -
+virtio_blk         bootstrap   1       1        0x0   -
 objstore           bootstrap   1       1        0x0   -
 objstore_client    service     1       1        0x0   -
 fs                 service     1       1        0x0   -

@@ -156,8 +156,8 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
     --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-    --bin ahci
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci; do
+    --bin ahci --bin virtio_blk
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
@@ -211,9 +211,10 @@ case "$IOMMU" in
 esac
 
 case "$BLOCK" in
-    nvme) BLOCK_DEVICE=("-device" "nvme,drive=boot0,serial=cat0") ;;
-    ahci) BLOCK_DEVICE=("-device" "ide-hd,drive=boot0,bus=ide.0") ;;
-    *) echo "error: --block must be 'nvme' or 'ahci'" >&2; exit 1 ;;
+    nvme)   BLOCK_DEVICE=("-device" "nvme,drive=boot0,serial=cat0") ;;
+    ahci)   BLOCK_DEVICE=("-device" "ide-hd,drive=boot0,bus=ide.0") ;;
+    virtio) BLOCK_DEVICE=("-device" "virtio-blk-pci-non-transitional,drive=boot0,iommu_platform=on") ;;
+    *) echo "error: --block must be 'nvme', 'ahci', or 'virtio'" >&2; exit 1 ;;
 esac
 
 QEMU_OPTS=(

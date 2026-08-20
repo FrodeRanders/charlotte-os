@@ -880,3 +880,118 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
     }
     None
 }
+
+/// Find the first virtio-blk device and return its modern (BAR 4) MMIO base,
+/// legacy interrupt line, and requester id. Completion is polled through the
+/// used ring, so no MSI/MSI-X vector is configured.
+pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
+    for group in &topology.segments {
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
+            for dev in &bus.devices {
+                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
+                    PcieDevice::SingleFunc(sfd) => {
+                        let mut v = alloc::vec::Vec::new();
+                        if let PcieFunction::Endpoint(ep) = &sfd.function {
+                            v.push((ep.as_ref(), sfd.number.get_inner(), ep.number.get_inner()));
+                        }
+                        v
+                    }
+                    PcieDevice::MultiFunc(mfd) => mfd
+                        .functions
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(func, function)| match function {
+                            PcieFunction::Endpoint(ep) => {
+                                Some((ep.as_ref(), mfd.number.get_inner(), func as u8))
+                            }
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => alloc::vec::Vec::new(),
+                };
+                for (ep, device, function) in functions {
+                    if ep.identifier.vendor_id != 0x1af4 {
+                        continue;
+                    }
+                    if (ep.identifier.class_code, ep.identifier.subclass) != (0x01, 0x00) {
+                        continue;
+                    }
+                    let requester_id =
+                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+                    let cfg = ep.cfg_ptr.lock();
+                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    // Locate the modern transport BAR via the common-config
+                    // vendor capability (type 1).
+                    let cfg_bytes = cfg.as_ptr().cast::<u8>();
+                    let mut capability = header
+                        .get_capabilities_offset()
+                        .map(|offset| offset as usize)
+                        .unwrap_or(0);
+                    let mut modern_bar = None;
+                    for _ in 0..48 {
+                        if capability < 0x40 || capability + 16 > 0x100 {
+                            break;
+                        }
+                        let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                        let next =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) } as usize;
+                        let len =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) } as usize;
+                        let cfg_type =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                        if id == 0x09 && len >= 16 && cfg_type == 1 {
+                            modern_bar = Some(unsafe {
+                                core::ptr::read_volatile(cfg_bytes.add(capability + 4))
+                            });
+                        }
+                        if next == 0 || next == capability {
+                            break;
+                        }
+                        capability = next;
+                    }
+                    let Some(bar_index) = modern_bar else {
+                        continue;
+                    };
+                    let bar_index = bar_index as usize;
+                    if bar_index >= 6 {
+                        continue;
+                    }
+                    let bar = header.bar(bar_index) as u64;
+                    if bar & 1 != 0 {
+                        continue;
+                    }
+                    let phys_base = if bar & 0x4 != 0 {
+                        if bar_index + 1 >= 6 {
+                            continue;
+                        }
+                        (bar & 0xffff_fff0) | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                    } else {
+                        bar & 0xffff_fff0
+                    };
+                    let legacy_irq = header.interrupt_line() as u32;
+                    if phys_base != 0 {
+                        return Some((phys_base, legacy_irq, requester_id, None));
+                    }
+                }
+            }
+            for dev in &bus.devices {
+                let child = match dev {
+                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
+                        PcieFunction::Bridge(b) => Some(b),
+                        _ => None,
+                    },
+                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
+                        Some(PcieFunction::Bridge(b)) => Some(b),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(child_bus) = child {
+                    stack.push(child_bus);
+                }
+            }
+        }
+    }
+    None
+}
