@@ -28,6 +28,12 @@
 //! endpoints, so there is no user-facing grant syscall.
 
 #[cfg(target_arch = "x86_64")]
+pub mod amd_vi;
+#[cfg(target_arch = "x86_64")]
+pub mod dma_common;
+#[cfg(target_arch = "x86_64")]
+pub mod iommu;
+#[cfg(target_arch = "x86_64")]
 pub mod vt_d;
 #[cfg(target_arch = "aarch64")]
 pub mod smmu;
@@ -41,7 +47,7 @@ use core::sync::atomic::{
 
 use concurrent_queue::ConcurrentQueue;
 #[cfg(target_arch = "x86_64")]
-use vt_d as dma;
+use iommu as dma;
 #[cfg(target_arch = "aarch64")]
 use smmu as dma;
 use spin::LazyLock;

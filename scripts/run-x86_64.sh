@@ -43,6 +43,7 @@ INSTANCE=""
 FRESH_STORAGE="0"
 REUSE_STORAGE="0"
 EL0_SMOKE="0"
+IOMMU="intel"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -61,6 +62,9 @@ while [ "$#" -gt 0 ]; do
         --timeout)
             [ "$#" -ge 2 ] || { echo "Missing value for --timeout" >&2; exit 1; }
             TIMEOUT="$2"; shift 2 ;;
+        --iommu)
+            [ "$#" -ge 2 ] || { echo "Missing value for --iommu" >&2; exit 1; }
+            IOMMU="$2"; shift 2 ;;
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
         --el0-smoke)     EL0_SMOKE="1"; shift ;;
@@ -195,6 +199,12 @@ else
     echo ">>> Reusing boot image ${IMAGE} (delete it or pass --fresh-storage to rebuild)."
 fi
 
+case "$IOMMU" in
+    intel) IOMMU_DEVICE="intel-iommu" ;;
+    amd)   IOMMU_DEVICE="amd-iommu,dma-remap=on" ;;
+    *) echo "error: --iommu must be 'intel' or 'amd'" >&2; exit 1 ;;
+esac
+
 QEMU_OPTS=(
     -M q35
     -cpu max
@@ -203,7 +213,7 @@ QEMU_OPTS=(
     -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
     -drive "if=none,file=${IMAGE},format=raw,id=boot0"
     -device "nvme,drive=boot0,serial=cat0"
-    -device "intel-iommu"
+    -device "$IOMMU_DEVICE"
     -display none
     -no-reboot
 )

@@ -93,39 +93,10 @@ const CTX_AW_39BIT: u64 = 1;
 const CTX_AW_48BIT: u64 = 2;
 const CTX_AW_57BIT: u64 = 3;
 
-#[derive(Debug)]
-pub enum Error {
-    Unsupported,
-    InvalidStream,
-    StreamInUse,
-    InvalidDirection,
-    Memory,
-    OutOfIova,
-    MapFailed,
-    UnknownDomain,
-    UnknownMapping,
-    HardwareTimeout,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Direction(u32);
-
-impl Direction {
-    pub const DEVICE_READ: Self = Self(1);
-    pub const DEVICE_WRITE: Self = Self(2);
-
-    pub fn from_bits(bits: u32) -> Result<Self, Error> {
-        if bits != 0 && bits & !3 == 0 {
-            Ok(Self(bits))
-        } else {
-            Err(Error::InvalidDirection)
-        }
-    }
-
-    fn device_writes(self) -> bool {
-        self.0 & Self::DEVICE_WRITE.0 != 0
-    }
-}
+pub use super::dma_common::{
+    Direction,
+    Error,
+};
 
 struct Mapping {
     pin: DmaPin,
@@ -500,7 +471,7 @@ pub fn map(
     let pin = object::pin_for_dma(
         caller,
         memory_cap,
-        direction.0 & Direction::DEVICE_READ.0 != 0,
+        direction.device_reads(),
         direction.device_writes(),
         exclusive,
     )

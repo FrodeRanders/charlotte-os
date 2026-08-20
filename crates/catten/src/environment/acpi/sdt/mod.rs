@@ -5,6 +5,7 @@ pub mod discovery;
 pub mod dmar;
 pub mod fadt;
 pub mod iort;
+pub mod ivrs;
 pub mod madt;
 pub mod mcfg;
 

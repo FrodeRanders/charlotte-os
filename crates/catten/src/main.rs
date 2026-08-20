@@ -234,12 +234,12 @@ pub extern "C" fn bsp_main() -> ! {
         not(feature = "hvf_compat"),
         not(feature = "live_upgrade_test")
     ))]
-    match crate::device::vt_d::initialize_early() {
-        Ok(()) => logln!("[vtd] early initialization complete."),
-        Err(crate::device::vt_d::Error::Unsupported) => {
-            logln!("[vtd] no supported VT-d unit discovered; DMA isolation unavailable.")
+    match crate::device::iommu::initialize_early() {
+        Ok(()) => logln!("[iommu] early initialization complete."),
+        Err(crate::device::iommu::Error::Unsupported) => {
+            logln!("[iommu] no supported VT-d/AMD-Vi unit discovered; DMA isolation unavailable.")
         }
-        Err(error) => panic!("[vtd] early initialization failed: {:?}", error),
+        Err(error) => panic!("[iommu] early initialization failed: {:?}", error),
     }
     self_test::run_synchronous_self_tests();
     // The remaining boot work resolves store-backed ELFs and therefore may
