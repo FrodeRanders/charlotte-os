@@ -4,7 +4,6 @@
 //! two-node Raft group to elect a leader over the network, registers a name
 //! through the leader, and verifies the name replicates to every replica's
 //! catalog (cross-node). Both QEMU guests must run this test.
-#![cfg(target_arch = "aarch64")]
 
 mod inner {
     use alloc::vec::Vec;

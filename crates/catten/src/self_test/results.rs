@@ -294,7 +294,7 @@ pub fn register_boot_suite() {
     register(TestId::Net);
     #[cfg(feature = "disco_net_test")]
     register(TestId::Disco);
-    #[cfg(all(feature = "dns_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "dns_net_test")]
     register(TestId::Dns);
     #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
     register(TestId::Tcpip);

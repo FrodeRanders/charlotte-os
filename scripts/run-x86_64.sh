@@ -56,6 +56,9 @@ IOMMU="intel"
 BLOCK="nvme"
 NET_TEST="0"
 DISCO_TEST="0"
+DNS_TEST="0"
+TCPIP_TEST="0"
+HTTP_TEST="0"
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 
@@ -84,6 +87,9 @@ while [ "$#" -gt 0 ]; do
             BLOCK="$2"; shift 2 ;;
         --net-test)    NET_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
+        --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
+        --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
+        --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -178,6 +184,15 @@ if [ "$DISCO_TEST" = "1" ]; then
         FEATURES="${FEATURES},disco_cross_node_test"
     fi
 fi
+if [ "$DNS_TEST" = "1" ]; then
+    FEATURES="${FEATURES},dns_net_test"
+fi
+if [ "$TCPIP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},tcpip_net_test"
+fi
+if [ "$HTTP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},http_net_test"
+fi
 
 # Build and sign the device-independent x86_64 bootstrap services (the name
 # service and the system observer). The store embeds these at compile time, so
@@ -190,8 +205,9 @@ cargo build --manifest-path crates/catten-services/Cargo.toml \
     --release -Z build-std=core,alloc \
     --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
     --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-    --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter; do
+    --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter \
+    --bin dns --bin agent --bin greet --bin relmsg --bin tcpip --bin tcpclient --bin httpd
+for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter dns agent greet relmsg tcpip tcpclient httpd; do
     cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
 done
 "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null

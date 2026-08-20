@@ -94,6 +94,13 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"nclient", "nclient"),
     bootstrap_elf!(b"disco", "disco"),
     bootstrap_elf!(b"frouter", "frouter"),
+    bootstrap_elf!(b"dns", "dns"),
+    bootstrap_elf!(b"agent", "agent"),
+    bootstrap_elf!(b"greet", "greet"),
+    bootstrap_elf!(b"relmsg", "relmsg"),
+    bootstrap_elf!(b"tcpip", "tcpip"),
+    bootstrap_elf!(b"tcpclient", "tcpclient"),
+    bootstrap_elf!(b"httpd", "httpd"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.
