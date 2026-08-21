@@ -19,7 +19,8 @@
 #                         [--tcpip-test|--http-test] [--live-upgrade-test]
 #                         [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
-#                         [--fresh-storage|--reuse-storage]
+#                         [--fresh-storage|--reuse-storage|--blank-storage]
+#                         [--data-size-mib N] [--build-only]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached x86_64 target artifacts before building
@@ -45,6 +46,9 @@
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --fresh-storage  Recreate this instance's persistent block-device image
 #   --reuse-storage  Keep it even when the signed service bundle changed
+#   --blank-storage  Create an empty data disk for first-boot formatting/seeding
+#   --data-size-mib N  Empty data-disk size with --blank-storage (default: 64)
+#   --build-only    Produce the boot/data images without starting QEMU
 #   --el0-smoke    Build + sign the x86_64 `smoke` service ELF and run the
 #                  EL0 Rust-ELF round-trip self-test
 #
@@ -60,6 +64,9 @@ CLEAN_BUILD="0"
 INSTANCE=""
 FRESH_STORAGE="0"
 REUSE_STORAGE="0"
+BLANK_STORAGE="0"
+DATA_SIZE_MIB="${CATTEN_DATA_SIZE_MIB:-64}"
+BUILD_ONLY="0"
 EL0_SMOKE="0"
 IOMMU="intel"
 BLOCK="nvme"
@@ -115,6 +122,11 @@ while [ "$#" -gt 0 ]; do
             NET_MAC="$2"; shift 2 ;;
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
+        --blank-storage) BLANK_STORAGE="1"; shift ;;
+        --data-size-mib)
+            [ "$#" -ge 2 ] || { echo "Missing value for --data-size-mib" >&2; exit 1; }
+            DATA_SIZE_MIB="$2"; shift 2 ;;
+        --build-only)    BUILD_ONLY="1"; shift ;;
         --el0-smoke)     EL0_SMOKE="1"; shift ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -138,6 +150,10 @@ if [ -n "$TIMEOUT" ] && { ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [ "$TIMEOUT" -lt 1 ]
 fi
 if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
+    exit 1
+fi
+if ! [[ "$DATA_SIZE_MIB" =~ ^[0-9]+$ ]] || [ "$DATA_SIZE_MIB" -lt 16 ]; then
+    echo "error: --data-size-mib must be an integer of at least 16" >&2
     exit 1
 fi
 if ! [[ "$HTTP_HOST_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_HOST_PORT" -lt 1 ] \
@@ -174,32 +190,36 @@ DATA_BUNDLE_HASH="${DATA_IMAGE}.bundle-sha256"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTX64.EFI"
 
-# Resolve the edk2 x86_64 firmware shipped with QEMU.
+# Resolve the edk2 x86_64 firmware shipped with QEMU only when this invocation
+# will actually boot QEMU. Image-only consumers such as VMware need no QEMU
+# firmware or system emulator.
 FW=""
-if command -v brew >/dev/null 2>&1; then
-    QEMU_PREFIX="$(brew --prefix qemu 2>/dev/null || true)"
-    [ -n "$QEMU_PREFIX" ] && FW="${QEMU_PREFIX}/share/qemu/edk2-x86_64-code.fd"
-fi
-if [ -z "$FW" ] || [ ! -f "$FW" ]; then
-    for candidate in \
-        /opt/homebrew/share/qemu/edk2-x86_64-code.fd \
-        /usr/local/share/qemu/edk2-x86_64-code.fd \
-        /usr/share/qemu/edk2-x86_64-code.fd; do
-        if [ -f "$candidate" ]; then
-            FW="$candidate"
-            break
-        fi
-    done
-fi
-if [ -z "$FW" ] || [ ! -f "$FW" ]; then
-    echo "error: QEMU edk2 x86_64 firmware not found (edk2-x86_64-code.fd)" >&2
-    echo "       install qemu via Homebrew: brew install qemu" >&2
-    exit 1
-fi
+if [ "$BUILD_ONLY" != "1" ]; then
+    if command -v brew >/dev/null 2>&1; then
+        QEMU_PREFIX="$(brew --prefix qemu 2>/dev/null || true)"
+        [ -n "$QEMU_PREFIX" ] && FW="${QEMU_PREFIX}/share/qemu/edk2-x86_64-code.fd"
+    fi
+    if [ -z "$FW" ] || [ ! -f "$FW" ]; then
+        for candidate in \
+            /opt/homebrew/share/qemu/edk2-x86_64-code.fd \
+            /usr/local/share/qemu/edk2-x86_64-code.fd \
+            /usr/share/qemu/edk2-x86_64-code.fd; do
+            if [ -f "$candidate" ]; then
+                FW="$candidate"
+                break
+            fi
+        done
+    fi
+    if [ -z "$FW" ] || [ ! -f "$FW" ]; then
+        echo "error: QEMU edk2 x86_64 firmware not found (edk2-x86_64-code.fd)" >&2
+        echo "       install qemu via Homebrew: brew install qemu" >&2
+        exit 1
+    fi
 
-if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-    echo "error: qemu-system-x86_64 not found" >&2
-    exit 1
+    if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
+        echo "error: qemu-system-x86_64 not found" >&2
+        exit 1
+    fi
 fi
 for tool in mformat mmd mcopy; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -337,7 +357,17 @@ else
     CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | shasum -a 256 | awk '{print $1}')"
 fi
 STORED_BUNDLE_HASH="$(test -f "$DATA_BUNDLE_HASH" && tr -d '[:space:]' < "$DATA_BUNDLE_HASH" || true)"
-if [ "$REUSE_STORAGE" = "1" ] && [ -f "$DATA_IMAGE" ]; then
+BLANK_LAYOUT="blank:${DATA_SIZE_MIB}MiB"
+if [ "$BLANK_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ] && [ -f "$DATA_IMAGE" ]; then
+    echo ">>> Reusing empty/installed first-boot disk ${DATA_IMAGE} by explicit request."
+elif [ "$BLANK_STORAGE" = "1" ] && { [ ! -f "$DATA_IMAGE" ] \
+    || [ "$FRESH_STORAGE" = "1" ] || [ "$STORED_BUNDLE_HASH" != "$BLANK_LAYOUT" ]; }; then
+    echo ">>> Producing empty ${DATA_SIZE_MIB} MiB first-boot disk ${DATA_IMAGE}..."
+    dd if=/dev/zero of="$DATA_IMAGE" bs=1 count=0 seek=$((DATA_SIZE_MIB * 1048576)) status=none
+    printf '%s\n' "$BLANK_LAYOUT" > "$DATA_BUNDLE_HASH"
+elif [ "$BLANK_STORAGE" = "1" ]; then
+    echo ">>> Reusing empty/installed first-boot disk ${DATA_IMAGE}."
+elif [ "$REUSE_STORAGE" = "1" ] && [ -f "$DATA_IMAGE" ]; then
     echo ">>> Reusing block image ${DATA_IMAGE} by explicit request."
 elif [ ! -f "$DATA_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
     || [ "$STORED_BUNDLE_HASH" != "$CURRENT_BUNDLE_HASH" ]; then
@@ -346,6 +376,13 @@ elif [ ! -f "$DATA_IMAGE" ] || [ "$FRESH_STORAGE" = "1" ] \
     printf '%s\n' "$CURRENT_BUNDLE_HASH" > "$DATA_BUNDLE_HASH"
 else
     echo ">>> Reusing block image ${DATA_IMAGE} (signed bundle unchanged)."
+fi
+
+if [ "$BUILD_ONLY" = "1" ]; then
+    echo ">>> Image build complete."
+    echo ">>> Boot image: ${IMAGE}"
+    echo ">>> Data image: ${DATA_IMAGE}"
+    exit 0
 fi
 
 case "$IOMMU" in

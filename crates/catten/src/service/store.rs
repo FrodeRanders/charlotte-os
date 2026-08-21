@@ -26,6 +26,12 @@ use crate::{
 };
 
 const OBJ_OP_READ: u32 = 4;
+const OBJ_OP_WRITE: u32 = 3;
+const OBJ_OP_FLUSH: u32 = 6;
+const OBJ_OP_CREATE_AT: u32 = 8;
+const OBJ_OP_SET_SIZE: u32 = 9;
+const OBJ_ERR_OK: i64 = 0;
+const OBJ_ERR_EXISTS: i64 = 5;
 
 // This is a loader resource bound, not an object-store format limit. Keep it
 // comfortably above the largest staged service while preventing corrupted or
@@ -219,38 +225,127 @@ fn verified_for_name(name: &[u8], image: &[u8]) -> bool {
     ) == charlotte_launch::signature_note::VerifyOutcome::Valid
 }
 
-/// Read one object (the signed ELF) from the object store by its derived
-/// cluster-wide artifact id. Retries until the objstore service is up.
-fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
-    let name_service = crate::service::supervisor::node_name_service();
-    let kernel_ns = match ipc::connection_delegate(
-        name_service.domain.asid,
-        name_service.endpoint_cap,
-        KERNEL_ASID,
-        crate::ipc::ConnectionRights::CALL,
-    ) {
-        Ok(conn) => KernelIpcCap(conn),
-        Err(error) => {
-            crate::logln!("[store] delegate failed: {error:?}");
-            return None;
-        }
+/// Outcome of an idempotent embedded-service seed pass.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SeedReport {
+    /// Valid signed artifacts that were already present and left untouched.
+    pub retained: usize,
+    /// Missing or invalid artifacts restored from the trusted boot bundle.
+    pub written: usize,
+}
+
+/// Populate a newly formatted object store from the signed bootstrap bundle.
+///
+/// Existing artifacts are retained when they carry a valid cluster signature
+/// for their logical name. This preserves a newer artifact installed through
+/// `clusterctl`; only missing, empty, corrupt, or incorrectly signed objects
+/// are repaired from the immutable boot bundle. The pass is safe to repeat on
+/// every boot and flushes once after all required writes.
+pub fn seed_embedded_services() -> Result<SeedReport, &'static str> {
+    let obj_conn = connect_objstore().ok_or("object-store connection unavailable")?;
+    let mut report = SeedReport {
+        retained: 0,
+        written: 0,
     };
 
-    // The name service defers this one call until objstore registers. Boot's
-    // store-dependent phase runs in a scheduler-owned kernel thread, so use
-    // the ordinary waitable IPC path rather than issuing and leaking repeated
-    // polling calls under load.
+    for (name, image) in BOOTSTRAP_ELFS {
+        if read_from_store_connection(obj_conn.raw(), name)
+            .is_some_and(|stored| verified_for_name(name, &stored))
+        {
+            report.retained += 1;
+            continue;
+        }
+        if !verified_for_name(name, image) {
+            return Err("embedded service signature is invalid");
+        }
+        write_store_artifact(obj_conn.raw(), name, image)?;
+        report.written += 1;
+    }
+
+    if report.written != 0 {
+        let result = scalar_result(obj_conn.raw(), OBJ_OP_FLUSH, 0)
+            .ok_or("object-store flush call failed")?;
+        if result != OBJ_ERR_OK {
+            return Err("object-store flush rejected");
+        }
+    }
+    Ok(report)
+}
+
+fn connect_objstore() -> Option<KernelIpcCap> {
+    let name_service = crate::service::supervisor::node_name_service();
+    let kernel_ns = KernelIpcCap(
+        ipc::connection_delegate(
+            name_service.domain.asid,
+            name_service.endpoint_cap,
+            KERNEL_ASID,
+            crate::ipc::ConnectionRights::CALL,
+        )
+        .ok()?,
+    );
     let lookup = KernelIpcCap(
         ipc::scalar_call(KERNEL_ASID, kernel_ns.raw(), 2, charlotte_launch::OBJSTORE_NAME).ok()?,
     );
     ipc::wait_reply(KERNEL_ASID, lookup.raw()).ok()?;
-    let lookup_reply = ipc::poll_reply(KERNEL_ASID, lookup.raw()).ok().flatten()?;
-    let _unexpected_memory = lookup_reply.memory.map(KernelMemoryCap);
-    let obj_conn = KernelIpcCap(lookup_reply.cap?);
+    let reply = ipc::poll_reply(KERNEL_ASID, lookup.raw()).ok().flatten()?;
+    let _unexpected_memory = reply.memory.map(KernelMemoryCap);
+    reply.cap.map(KernelIpcCap)
+}
 
+fn scalar_result(connection: u64, opcode: u32, arg0: u64) -> Option<i64> {
+    let call = KernelIpcCap(ipc::scalar_call(KERNEL_ASID, connection, opcode, arg0).ok()?);
+    ipc::wait_reply(KERNEL_ASID, call.raw()).ok()?;
+    let reply = ipc::poll_reply(KERNEL_ASID, call.raw()).ok().flatten()?;
+    let _unexpected_connection = reply.cap.map(KernelIpcCap);
+    let _unexpected_memory = reply.memory.map(KernelMemoryCap);
+    Some(reply.result)
+}
+
+fn move_bytes_result(connection: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
+    let memory = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
+    let call =
+        match ipc::scalar_call_with_memory_move(KERNEL_ASID, connection, opcode, arg0, memory) {
+            Ok(call) => KernelIpcCap(call),
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+                return None;
+            }
+        };
+    ipc::wait_reply(KERNEL_ASID, call.raw()).ok()?;
+    let reply = ipc::poll_reply(KERNEL_ASID, call.raw()).ok().flatten()?;
+    let _unexpected_connection = reply.cap.map(KernelIpcCap);
+    let _unexpected_memory = reply.memory.map(KernelMemoryCap);
+    Some(reply.result)
+}
+
+fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<(), &'static str> {
+    let object_id = charlotte_launch::artifact_object_id(name);
+    let create = scalar_result(connection, OBJ_OP_CREATE_AT, object_id)
+        .ok_or("object-store create call failed")?;
+    if create != OBJ_ERR_OK && create != OBJ_ERR_EXISTS {
+        return Err("object-store create rejected");
+    }
+    let size = (image.len() as u64).to_le_bytes();
+    if move_bytes_result(connection, OBJ_OP_SET_SIZE, object_id, &size) != Some(OBJ_ERR_OK) {
+        return Err("object-store resize rejected");
+    }
+    if move_bytes_result(connection, OBJ_OP_WRITE, object_id, image) != Some(OBJ_ERR_OK) {
+        return Err("object-store write rejected");
+    }
+    Ok(())
+}
+
+/// Read one object (the signed ELF) from the object store by its derived
+/// cluster-wide artifact id. Retries until the objstore service is up.
+fn read_from_store(name: &'static [u8]) -> Option<alloc::vec::Vec<u8>> {
+    let obj_conn = connect_objstore()?;
+    read_from_store_connection(obj_conn.raw(), name)
+}
+
+fn read_from_store_connection(connection: u64, name: &[u8]) -> Option<alloc::vec::Vec<u8>> {
     let object_id = charlotte_launch::artifact_object_id(name);
     let read =
-        KernelIpcCap(ipc::scalar_call(KERNEL_ASID, obj_conn.raw(), OBJ_OP_READ, object_id).ok()?);
+        KernelIpcCap(ipc::scalar_call(KERNEL_ASID, connection, OBJ_OP_READ, object_id).ok()?);
     ipc::wait_reply(KERNEL_ASID, read.raw()).ok()?;
     let reply = ipc::poll_reply(KERNEL_ASID, read.raw()).ok().flatten()?;
     let _unexpected_connection = reply.cap.map(KernelIpcCap);

@@ -182,11 +182,7 @@ impl PcieSegmentGroup {
             ecam_vaddr,
             start_bus_num,
             end_bus_num,
-            root_bus: Box::new(PcieBusSegment::new(
-                ecam_vaddr,
-                pcie_segment_group_num,
-                start_bus_num,
-            )),
+            root_bus: PcieBusSegment::new_boxed(ecam_vaddr, pcie_segment_group_num, start_bus_num),
         }
     }
 }
@@ -194,36 +190,44 @@ impl PcieSegmentGroup {
 #[derive(Debug)]
 pub struct PcieBusSegment {
     number: PcieBusSegmentNum,
-    devices: [PcieDevice; MAX_DEVICES_PER_BUS],
+    devices: Vec<PcieDevice>,
 }
 
 impl PcieBusSegment {
-    fn new(
+    /// Allocate the bus before descending through any bridges it contains.
+    ///
+    /// A bus used to own a comparatively large fixed device array. Constructing
+    /// that array recursively retained one copy on the kernel stack for every
+    /// bridge level. VMware's PCIe topology is deep enough to exhaust that
+    /// stack, while QEMU's shallow topology did not expose the problem. Store
+    /// only occupied slots; every device retains its PCI device number.
+    fn new_boxed(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
-    ) -> Self {
+    ) -> Box<Self> {
         logln!(
             "[drivers::busses::pci_express] Enumerating PCIe bus segment {} of segment group {}",
             bus_num,
             segment_group_num
         );
-        let mut devices: [PcieDevice; MAX_DEVICES_PER_BUS] =
-            [const { PcieDevice::Empty }; MAX_DEVICES_PER_BUS];
+        let mut bus = Box::new(PcieBusSegment {
+            number: bus_num,
+            devices: Vec::new(),
+        });
         logln!(
             "[drivers::busses::pci_express] Initialized device array for bus segment {} of \
              segment group {}. Starting device enumeration...",
             bus_num,
             segment_group_num
         );
-        for (i, device) in devices.iter_mut().enumerate() {
-            *device = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, i as u8);
+        for device_num in 0..MAX_DEVICES_PER_BUS {
+            let device = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, device_num as u8);
+            if !matches!(device, PcieDevice::Empty) {
+                bus.devices.push(device);
+            }
         }
-
-        PcieBusSegment {
-            number: bus_num,
-            devices,
-        }
+        bus
     }
 }
 
@@ -383,11 +387,11 @@ impl PcieFunction {
         } else if cfg_space.device_is_bridge() {
             let secondary_bus_segment_number =
                 unsafe { cfg_space.header.bridge.get_secondary_bus_num() };
-            PcieFunction::Bridge(Box::new(PcieBusSegment::new(
+            PcieFunction::Bridge(PcieBusSegment::new_boxed(
                 ecam_vaddr,
                 segment_group_num,
                 secondary_bus_segment_number,
-            )))
+            ))
         } else {
             PcieFunction::Endpoint(Box::new(PcieEndpoint::new(
                 ecam_vaddr,

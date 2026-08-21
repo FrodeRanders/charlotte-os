@@ -82,6 +82,13 @@ repository history remain authoritative.
         and virtio-blk run behind Intel VT-d or AMD-Vi. The full cluster suite
         is qualified with four LPs under QEMU TCG.
 
+        A two-disk VMware Fusion appliance additionally qualifies UEFI boot,
+        guest-visible VT-d, the virtual NVMe controller, blank-store formatting,
+        idempotent installation of 26 signed service artifacts, and persistent
+        restart. VMware networking is not yet supported because the current
+        userspace network driver requires virtio-net; VMware presents VMXNET3
+        or emulated Intel adapters instead.
+
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
         integrated with AS, non-lossy CQ overflow backlog, per-shard CQ

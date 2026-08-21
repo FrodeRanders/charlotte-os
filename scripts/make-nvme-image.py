@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Produce an initial CharlotteOS object-store image seeded with the signed
-userspace service ELFs.
+"""Produce a CharlotteOS object-store image preseeded with signed userspace
+service ELFs.
 
-The kernel no longer embeds the full EL0 service bundle: it carries only a
-small bootstrap set (ns, nvme, objstore, uart) and loads everything else
-from the object store at boot. This tool writes the v3 object-store format
-(the same format `objstore` formats at first boot, and that
-`scripts/fs-inspect.py` parses) with every staged ELF stored under its
-derived cluster-wide artifact id (`dns::artifact_object_id(name)`), so a
-node boots straight into a populated store.
+AArch64 uses a small embedded storage bootstrap and loads the remaining
+services from a host-preseeded image. The x86-64 appliance can instead start
+with a blank disk and idempotently install its immutable signed bundle during
+first boot. This tool remains the QEMU path for constructing a version-3 store
+ahead of boot (the same format `objstore` creates and that
+`scripts/fs-inspect.py` parses). It stores every staged ELF under its derived
+cluster-wide artifact id (`dns::artifact_object_id(name)`).
 
 Usage:
     python3 scripts/make-nvme-image.py <image> <bundle-dir>

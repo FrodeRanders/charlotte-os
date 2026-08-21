@@ -90,6 +90,7 @@ const IOTLB_IIRG: u64 = 1 << 60;
 const FSTS_FAULT_MASK: u32 = 0xff;
 
 // Context entry adjusted guest address width (AW) encodings.
+const CTX_AW_30BIT: u64 = 0;
 const CTX_AW_39BIT: u64 = 1;
 const CTX_AW_48BIT: u64 = 2;
 const CTX_AW_57BIT: u64 = 3;
@@ -343,13 +344,19 @@ fn alloc_zeroed_frame() -> Result<PAddr, Error> {
 }
 
 fn supported_agaw(cap: u64) -> Option<u8> {
-    let sagaw = (cap >> 10) & 0x7;
-    if sagaw & (1 << 1) != 0 {
+    // CAP.SAGAW is the five-bit field at bits 12:8. Its bit positions
+    // correspond to 30-, 39-, 48-, and 57-bit adjusted guest widths. Prefer
+    // 48 bits for the normal four-level table, then the narrower formats;
+    // retain 57-bit support for units which expose only that format.
+    let sagaw = (cap >> 8) & 0x1f;
+    if sagaw & (1 << 2) != 0 {
         Some(48)
-    } else if sagaw & 1 != 0 {
+    } else if sagaw & (1 << 1) != 0 {
         Some(39)
-    } else if sagaw & (1 << 2) != 0 {
+    } else if sagaw & (1 << 3) != 0 {
         Some(57)
+    } else if sagaw & 1 != 0 {
+        Some(30)
     } else {
         None
     }
@@ -357,9 +364,11 @@ fn supported_agaw(cap: u64) -> Option<u8> {
 
 fn agaw_aw(agaw: u8) -> u64 {
     match agaw {
+        30 => CTX_AW_30BIT,
         39 => CTX_AW_39BIT,
         48 => CTX_AW_48BIT,
-        _ => CTX_AW_57BIT,
+        57 => CTX_AW_57BIT,
+        _ => unreachable!("unsupported VT-d adjusted guest address width"),
     }
 }
 

@@ -56,12 +56,14 @@ The main additions and extensions currently maintained here are:
   replacement generation, transfer state, synchronize registration, and
   invalidate stale connections. This remains prototype work rather than a
   production upgrade framework.
-- **Store-backed, blessed service artifacts:** the kernel embeds only the
-  bootstrap storage path; the remaining AArch64 service ELFs are loaded by
-  logical name from an initial NVMe object-store image. CLS2 Ed25519 notes bind
+- **Store-backed, blessed service artifacts:** AArch64 embeds only the
+  bootstrap storage path and loads the remaining service ELFs by logical name
+  from an initial NVMe object-store image. x86-64 can also install its complete
+  immutable signed bundle onto a blank object store during first boot, while
+  retaining valid persisted upgrades on later boots. CLS2 Ed25519 notes bind
   bytes to name, class, release/rollback policy, parallel-instance permission,
-  and optional provenance evidence. The runner refreshes stale seed images,
-  while deployment pins the complete artifact SHA-256.
+  and optional provenance evidence. Deployment pins the complete artifact
+  SHA-256.
 - **Sitas shard runtime at EL0:** the `sitas` no_std shard-per-core runtime
   (external crates) runs as a real EL0 image (`catten-user`) boot-tested by
   the kernel. A mailbox index demo shows the division of responsibility:
@@ -215,7 +217,10 @@ the userspace service stack at ring 3, and exercises NVMe, AHCI, virtio-blk,
 virtio-net, discovery, distributed DNS, smoltcp TCP/IP, HTTP reporting, signed
 deployment, migration, and dynamic membership behind VT-d or AMD-Vi. See
 [`docs/platforms/x86_64.md`](docs/platforms/x86_64.md) for the tested matrix,
-runner commands, and remaining limitations.
+runner commands, and remaining limitations. A generated two-disk
+[VMware appliance](docs/platforms/vmware-x86_64.md) also boots the local
+storage and service stack under Fusion; VMware networking awaits a VMXNET3 or
+E1000E driver.
 
 #### AArch64 (ARM64)
 

@@ -1,0 +1,61 @@
+.encoding = "UTF-8"
+config.version = "8"
+virtualHW.version = "21"
+displayName = "CharlotteOS"
+guestOS = "other-64"
+
+# CharlotteOS boots through Limine's fallback BOOTX64.EFI. The development
+# bootloader is not enrolled in VMware's Secure Boot trust database.
+firmware = "efi"
+uefi.secureBoot.enabled = "FALSE"
+
+numvcpus = "4"
+cpuid.coresPerSocket = "4"
+memsize = "1024"
+
+# Hosted VMware products normally add these PCIe root ports when a VM is
+# created through the UI. Declare them explicitly because this appliance is
+# generated directly from a template and its NVMe controller needs one.
+pciBridge0.present = "TRUE"
+pciBridge4.present = "TRUE"
+pciBridge4.virtualDev = "pcieRootPort"
+pciBridge4.functions = "8"
+
+# Keep boot and persistent storage on distinct controllers. The boot FAT image
+# is immutable operating-system media; the NVMe disk belongs to the Charlotte
+# object store from LBA zero onward.
+sata0.present = "TRUE"
+sata0:0.present = "TRUE"
+sata0:0.fileName = "charlotte-boot.vmdk"
+sata0:0.deviceType = "disk"
+sata0:0.mode = "independent-nonpersistent"
+
+nvme0.present = "TRUE"
+nvme0:0.present = "TRUE"
+nvme0:0.fileName = "charlotte-data.vmdk"
+nvme0:0.deviceType = "disk"
+
+# The protected userspace drivers require a guest-visible IOMMU. Product and
+# host support varies; CharlotteOS will refuse DMA delegation if no usable
+# DMAR/IVRS description is exposed.
+vvtd.enable = "TRUE"
+
+# Kernel output and the administration console use COM1. The generated log is
+# placed beside the VMX and VMDK files.
+serial0.present = "TRUE"
+serial0.fileType = "file"
+serial0.fileName = "charlotte-serial.log"
+serial0.startConnected = "TRUE"
+serial0.yieldOnMsrRead = "TRUE"
+answer.msg.serial.file.open = "Append"
+
+# VMware normally presents VMXNET3 or E1000E. CharlotteOS does not yet have
+# either driver, so avoid attaching an unusable NIC to the initial appliance.
+ethernet0.present = "FALSE"
+
+sound.present = "FALSE"
+floppy0.present = "FALSE"
+usb.present = "FALSE"
+ehci.present = "FALSE"
+tools.syncTime = "FALSE"
+checkpoint.vmState = ""

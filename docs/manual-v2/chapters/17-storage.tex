@@ -191,16 +191,24 @@ accidental corruption, but is not cryptographic authentication.
 
 \subsection{The initial service-artifact store}
 
-The kernel no longer embeds every EL0 program. The host build produces an
-architecture-qualified service bundle, blesses every ELF according to
-\repofile|crates/catten-services/artifact-policy.tsv|, and
-\repofile|scripts/make-nvme-image.py| writes one object per logical service into
-an initial version-3 object-store image. The kernel embeds only the bootstrap
+The host build produces an architecture-qualified service bundle and blesses
+every ELF according to
+\repofile|crates/catten-services/artifact-policy.tsv|. AArch64 embeds only the
 set needed to reach storage (name service, NVMe, object store, UART, and the
-system observer). Other services are resolved by logical name, read through
-the object-store protocol on first use, identity-checked, and cached for the
-boot. The ordinary loader independently enforces the ELF and signature policy
-before mapping.
+system observer); \repofile|scripts/make-nvme-image.py| writes the remaining
+services into an initial version-3 object-store image. The QEMU x86-64 runner
+can use the same host-preseeded model.
+
+The x86-64 kernel also carries an immutable signed installation bundle for the
+blank-disk appliance path. Once NVMe and the object store are available, it
+checks the stable object ID for every bundled logical name. A valid stored
+artifact is retained, including a newer deployed version; a missing artifact
+or one that fails identity and signature verification is replaced from the
+bundle. The installer flushes the store before dependent services start, so
+the operation is idempotent across reboot. Services are subsequently resolved
+by logical name, read through the object-store protocol, identity-checked, and
+cached for the boot. The ordinary loader independently enforces ELF and
+signature policy before mapping.
 
 The signature record is CLS2, an identity-bearing ELF note. Besides signing
 the complete bytes, it binds the logical service name, artifact class, release
@@ -210,13 +218,14 @@ digest. Consequently a validly signed \texttt{dns} ELF cannot occupy the
 SHA-256, preventing an object replaced under the same logical name from
 changing already-committed code.
 
-The runner fingerprints the whole blessed bundle. It rebuilds an instance's
-initial NVMe image when that fingerprint changes, while
-\texttt{--reuse-storage} deliberately retains an older store and emits a
-staleness warning. \texttt{--fresh-storage} always recreates it. This separates
-development reproducibility from explicit persistence experiments. The image
+For preseeded QEMU images, the runner fingerprints the whole blessed bundle.
+It rebuilds an instance's initial NVMe image when that fingerprint changes,
+while \texttt{--reuse-storage} deliberately retains an older store and emits a
+staleness warning. \texttt{--fresh-storage} always recreates it. The image
 producer refuses an object-id collision rather than silently replacing an
-earlier service.
+earlier service. The x86-64 options \texttt{--blank-storage} and
+\texttt{--build-only} instead support guest-side installation and appliance
+packaging without constructing a preseeded store.
 
 \section{Raft persistence}
 
