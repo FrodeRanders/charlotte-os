@@ -61,7 +61,6 @@ use catten_syscall::{
 use charlotte_protocol_msg::unpack_address_and_len;
 use charlotte_protocol_net::decode_status;
 
-const SCRATCH: usize = 0x0000_0000_00e0_0000;
 const HTTP_PORT: u16 = 80;
 const ACCEPT_POLL_MS: u64 = 50;
 const SENTINEL: u32 = 0x4854_5450; // "HTTP"
@@ -239,7 +238,8 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
     let count = (header[3] as usize).min(max_by_len);
     let mut rows = alloc::vec::Vec::with_capacity(count);
     for i in 0..count {
-        let base = SCRATCH + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
+        let base =
+            scratch_5_vaddr + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
         let mut rec: [u64; THREAD_STATISTICS_RECORD_U64S] = [0; THREAD_STATISTICS_RECORD_U64S];
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -467,7 +467,8 @@ fn render_ns(s: &mut String, ns_conn: u64) {
         let mut offset = 12usize;
         let mut emitted = 0u32;
         while emitted < registered && offset + 1 < len.min(4096) {
-            let name_len = core::ptr::read_volatile((SCRATCH + offset) as *const u8) as usize;
+            let name_len =
+                core::ptr::read_volatile((scratch_3_vaddr + offset) as *const u8) as usize;
             if offset + 1 + name_len > len.min(4096) {
                 break;
             }
@@ -475,13 +476,29 @@ fn render_ns(s: &mut String, ns_conn: u64) {
                 s.push(',');
             }
             s.push('"');
-            for i in 0..name_len {
-                let byte = core::ptr::read_volatile((SCRATCH + offset + 1 + i) as *const u8);
-                if byte == b'"' {
-                    s.push('\\');
-                }
-                if byte >= 0x20 {
+            let printable = (0..name_len).all(|i| {
+                let byte = core::ptr::read_volatile(
+                    (scratch_3_vaddr + offset + 1 + i) as *const u8,
+                );
+                byte.is_ascii_graphic()
+            });
+            if printable {
+                for i in 0..name_len {
+                    let byte = core::ptr::read_volatile(
+                        (scratch_3_vaddr + offset + 1 + i) as *const u8,
+                    );
+                    if byte == b'"' || byte == b'\\' {
+                        s.push('\\');
+                    }
                     s.push(byte as char);
+                }
+            } else {
+                s.push_str("hex:");
+                for i in 0..name_len {
+                    let byte = core::ptr::read_volatile(
+                        (scratch_3_vaddr + offset + 1 + i) as *const u8,
+                    );
+                    let _ = write!(s, "{byte:02x}");
                 }
             }
             s.push('"');

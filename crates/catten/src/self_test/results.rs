@@ -276,8 +276,8 @@ pub fn register_boot_suite() {
         }
     }
     // x86_64 runs the architecture-neutral userspace, service, storage,
-    // scheduler, and feature-selected network suites. The hand-written IPC
-    // demos, PL011 UART, and sitas integration remain AArch64-specific, so
+    // scheduler, and feature-selected network/cluster suites. The hand-written
+    // IPC demos, PL011 UART, and sitas integration remain AArch64-specific, so
     // register only tests that execute and report on x86. Registering a test
     // that can never resolve would leave the coordinator permanently in
     // `SELFTEST WAITING`.
@@ -300,11 +300,11 @@ pub fn register_boot_suite() {
     register(TestId::Disco);
     #[cfg(feature = "dns_net_test")]
     register(TestId::Dns);
-    #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "tcpip_net_test")]
     register(TestId::Tcpip);
-    #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "http_net_test")]
     register(TestId::Http);
-    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    #[cfg(feature = "clusterctl_test")]
     {
         register(TestId::Clusterctl);
         register(TestId::Join);

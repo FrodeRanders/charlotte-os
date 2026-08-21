@@ -321,20 +321,10 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
             sys_spawn_upgrade(frame);
         }
         SyscallNumber::SpawnArtifact => {
-            #[cfg(target_arch = "aarch64")]
             sys_spawn_artifact(frame);
-            #[cfg(not(target_arch = "aarch64"))]
-            {
-                frame.regs[0] = 0;
-            }
         }
         SyscallNumber::RetireArtifact => {
-            #[cfg(target_arch = "aarch64")]
             sys_retire_artifact(frame);
-            #[cfg(not(target_arch = "aarch64"))]
-            {
-                frame.regs[0] = u64::MAX;
-            }
         }
         SyscallNumber::IpcVectorSend => sys_ipc_vector_send(frame),
         SyscallNumber::IpcVectorCall => sys_ipc_vector_call(frame),
@@ -346,12 +336,10 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 
 // ---- individual syscall implementations ------------------------------------
 
-#[cfg(target_arch = "aarch64")]
 fn push_u64(bytes: &mut alloc::vec::Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
-#[cfg(target_arch = "aarch64")]
 fn sys_thread_statistics(frame: &mut TrapFrame) {
     use catten_syscall::{
         OBSERVABILITY_NONE,
@@ -420,12 +408,6 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
     }
     frame.regs[0] = cap;
     frame.regs[1] = exact_len as u64;
-}
-
-#[cfg(not(target_arch = "aarch64"))]
-fn sys_thread_statistics(frame: &mut TrapFrame) {
-    frame.regs[0] = 0;
-    frame.regs[1] = 0;
 }
 
 fn caller_asid(frame: &TrapFrame) -> crate::memory::AddressSpaceId {
@@ -1754,14 +1736,12 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     frame.regs[0] = loaded.asid as u64;
 }
 
-#[cfg(target_arch = "aarch64")]
 fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bool {
     crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock().is_some_and(|handle| {
         handle.id() == caller_asid && crate::memory::address_space_handle_is_current(handle)
     })
 }
 
-#[cfg(target_arch = "aarch64")]
 fn sys_spawn_artifact(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     let elf_cap = frame.regs[1];
@@ -1839,7 +1819,6 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
     frame.regs[0] = domain.asid as u64;
 }
 
-#[cfg(target_arch = "aarch64")]
 fn sys_retire_artifact(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     if !deployment_agent_authorized(caller_asid) {

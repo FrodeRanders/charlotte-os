@@ -38,7 +38,8 @@ repository history remain authoritative.
     input & Done \\
 12 & x86-64 multi-LP ring-3 platform: shared service ABI, synchronous TLB
     shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net, discovery, and
-    distributed DNS & Four-LP and two-guest TCG suites \\
+    distributed DNS, smoltcp TCP/IP, HTTP reporting, signed deployment,
+    migration, and dynamic membership & Four-LP and two-guest TCG suites \\
 \hline
 \end{longtable}
 
@@ -75,9 +76,11 @@ repository history remain authoritative.
         ring 3, and runs native Rust service ELFs through the shared syscall and
         launch ABI. The tested service path includes naming, object storage,
         Raft persistence, service management, live upgrade, virtio-net,
-        discovery, and two-guest distributed DNS. NVMe, AHCI, and virtio-blk
-        run behind Intel VT-d or AMD-Vi. TCP/IP and HTTP boot-test registration
-        remain AArch64-only.
+        discovery, two-guest distributed DNS and smoltcp TCP exchange, the HTTP
+        state report, signed deployment, cross-node invocation, migration,
+        retirement, \texttt{clusterctl}, and dynamic membership. NVMe, AHCI,
+        and virtio-blk run behind Intel VT-d or AMD-Vi. The full cluster suite
+        is qualified with four LPs under QEMU TCG.
 
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring

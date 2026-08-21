@@ -8,8 +8,6 @@
 //! ceremony that commits the cluster's public key to replicated state. A kernel
 //! thread then runs the interactive serial console (commands: `help`,
 //! `upload`, `deploy`, `status`) on top of the same service.
-#![cfg(target_arch = "aarch64")]
-
 mod inner {
     use alloc::vec::Vec;
 
@@ -348,8 +346,8 @@ mod inner {
         }
 
         // --- Serial admin console ---
-        // The console thread reads commands from the PL011 RX FIFO and calls
-        // the same clusterctl service.
+        // The console thread reads commands from the platform serial RX FIFO
+        // and calls the same clusterctl service.
         crate::cpu::scheduler::spawn_thread(KERNEL_ASID, console_entry);
         logln!(
             "[clusterctl] SUCCESS: clusterctl uploaded, deployed, and reported the artifact; \

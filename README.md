@@ -154,8 +154,9 @@ execution. Nodes are "dumb" compute over a shared
 object store, validating signed software against a cluster-wide key held in
 replicated state.
 
-A first end-to-end slice of this is implemented and boot-tested on the
-two-guest QEMU cluster (`scripts/run-aarch64.sh --deploy-test`): the
+A first end-to-end slice of this is implemented and boot-tested on two-guest
+AArch64 and x86-64 QEMU clusters (`scripts/run-aarch64.sh --deploy-test` and
+`scripts/run-x86_64.sh --deploy-test`): the
 deployment manifest is replicated Raft state and pins an immutable digest. An
 agent with narrowly delegated deployment authority picks up and verifies the
 artifact; the kernel starts that exact ELF in a separate address space, and
@@ -211,7 +212,8 @@ CharlotteOS aims to support platforms that offer **standardized, documented, and
 
 The QEMU `q35` development target boots on multiple logical processors, runs
 the userspace service stack at ring 3, and exercises NVMe, AHCI, virtio-blk,
-virtio-net, cluster discovery, and distributed DNS behind VT-d or AMD-Vi. See
+virtio-net, discovery, distributed DNS, smoltcp TCP/IP, HTTP reporting, signed
+deployment, migration, and dynamic membership behind VT-d or AMD-Vi. See
 [`docs/platforms/x86_64.md`](docs/platforms/x86_64.md) for the tested matrix,
 runner commands, and remaining limitations.
 

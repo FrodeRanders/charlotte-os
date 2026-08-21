@@ -105,7 +105,6 @@ pub(crate) static DEPLOYMENT_AGENT_ASID: spin::LazyLock<
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// The domain currently owned by the deployment agent on this node.
-#[cfg(target_arch = "aarch64")]
 pub(crate) static DEPLOYED_DOMAIN: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<ServiceDomain>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));

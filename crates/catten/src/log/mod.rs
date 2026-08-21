@@ -106,6 +106,8 @@ pub mod flanterm;
 pub mod serial;
 #[cfg(target_arch = "x86_64")]
 pub mod serial_x86;
+#[cfg(target_arch = "x86_64")]
+pub use serial_x86 as serial;
 
 #[inline(always)]
 pub fn early_save_interrupts() -> bool {

@@ -37,6 +37,8 @@ const LSR: u16 = 5; // Line Status Register
 
 /// LSR bit: transmit holding register empty.
 const LSR_THRE: u8 = 1 << 5;
+/// LSR bit: receive data is ready.
+const LSR_DATA_READY: u8 = 1;
 
 /// The global serial console instance.
 pub static SERIAL: Mutex<Uart16550> = Mutex::new(Uart16550);
@@ -79,6 +81,15 @@ impl Uart16550 {
     #[inline]
     fn is_tx_ready() -> bool {
         unsafe { inb(COM1 + LSR) & LSR_THRE != 0 }
+    }
+
+    /// Receive one byte when the COM1 RX FIFO is non-empty.
+    #[inline]
+    pub fn try_get_byte(&self) -> Option<u8> {
+        if !READY.load(Ordering::Acquire) || unsafe { inb(COM1 + LSR) } & LSR_DATA_READY == 0 {
+            return None;
+        }
+        Some(unsafe { inb(COM1 + DATA) })
     }
 
     #[inline]

@@ -8,8 +8,6 @@
 //!
 //! Requires the net driver and the frouter (both spawned by the net self-test
 //! under `virtio_net_test` with the frouter enabled).
-#![cfg(target_arch = "aarch64")]
-
 mod inner {
     use crate::{
         ipc::ConnectionRights,

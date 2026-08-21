@@ -10,8 +10,6 @@
 //! Requires the net driver and the frouter to be up (the net self-test spawns
 //! both under `virtio_net_test` with the frouter enabled). Both QEMU guests
 //! must run this test.
-#![cfg(target_arch = "aarch64")]
-
 mod inner {
     use crate::{
         ipc::ConnectionRights,

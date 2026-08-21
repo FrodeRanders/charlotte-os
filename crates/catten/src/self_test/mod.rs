@@ -95,7 +95,7 @@
 //!   round trip with real MSI-X completions, an object-store format/mount, and (with storage)
 //!   persistent Raft recovery.
 //!
-//! Networking (feature-gated, `target_arch = "aarch64"`):
+//! Networking (feature-gated):
 //! - [`el0_net`] (`virtio_net_test`), [`el0_disco`] (`disco_net_test`), [`el0_dns`]
 //!   (`dns_net_test`), [`el0_tcpip`] (`tcpip_net_test`), [`el0_http`] (`http_net_test`) —
 //!   virtio-net, cluster discovery, the distributed name service over Raft, the smoltcp adapter,
@@ -126,17 +126,17 @@ pub mod cq_completion;
 pub mod cq_wait;
 pub mod device;
 pub mod el0;
-#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+#[cfg(feature = "clusterctl_test")]
 pub mod el0_clusterctl;
 pub mod el0_demo;
 #[cfg(feature = "disco_net_test")]
 pub mod el0_disco;
 #[cfg(feature = "dns_net_test")]
 pub mod el0_dns;
-#[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
+#[cfg(feature = "http_net_test")]
 pub mod el0_http;
 pub mod el0_ipc;
-#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+#[cfg(feature = "clusterctl_test")]
 pub mod el0_join;
 pub mod el0_net;
 pub mod el0_nvme;
@@ -146,7 +146,7 @@ pub mod el0_service;
 pub mod el0_sitas;
 #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
 pub mod el0_smoke;
-#[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
+#[cfg(feature = "tcpip_net_test")]
 pub mod el0_tcpip;
 #[cfg(target_arch = "aarch64")]
 pub mod el0_uart;
@@ -155,7 +155,7 @@ pub mod ipi;
 pub mod memory;
 pub mod results;
 pub mod scheduler_lifecycle;
-#[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+#[cfg(feature = "clusterctl_test")]
 pub mod scratch;
 pub mod shard;
 pub mod statistics;
@@ -189,14 +189,9 @@ pub(crate) fn close_test_address_space(
 pub fn run_synchronous_self_tests() {
     logln!("Running self tests...");
     if cfg!(feature = "live_upgrade_test") {
-        #[cfg(not(target_arch = "aarch64"))]
-        panic!("live_upgrade_test requires AArch64 EL0 service images");
-        #[cfg(target_arch = "aarch64")]
-        {
-            results::register(results::TestId::Nvme);
-            results::register(results::TestId::Service);
-            return;
-        }
+        results::register(results::TestId::Nvme);
+        results::register(results::TestId::Service);
+        return;
     }
     results::register_boot_suite();
     // These raw probes target specific x86-64 HHDM/heap virtual addresses used
@@ -236,17 +231,14 @@ pub fn run_synchronous_self_tests() {
 /// live.
 pub fn run_deferred_self_tests() {
     if cfg!(feature = "live_upgrade_test") {
-        #[cfg(target_arch = "aarch64")]
-        {
-            // The service ELFs (echo, client, servicemgr) are store-sourced;
-            // bring up the disk stack first so the object store registers and
-            // service_elf can resolve them. The NVMe verifier also runs the
-            // persistent-upgrade path itself.
-            el0_nvme::test_el0_nvme();
-            el0_service::test_el0_service();
-            logln!("Live-upgrade verifier is pending.");
-            return;
-        }
+        // The service ELFs (echo, client, servicemgr) are store-sourced;
+        // bring up the disk stack first so the object store registers and
+        // service_elf can resolve them. The NVMe verifier also runs the
+        // persistent-upgrade path itself.
+        el0_nvme::test_el0_nvme();
+        el0_service::test_el0_service();
+        logln!("Live-upgrade verifier is pending.");
+        return;
     }
     el0::test_el0_syscall_round_trip();
     // The disk stack is registered first: every other service-bearing test
@@ -302,17 +294,17 @@ pub fn run_deferred_self_tests() {
     el0_dns::test_el0_dns();
     #[cfg(not(feature = "dns_net_test"))]
     logln!("Skipping EL0 dns test (enable dns_net_test with matching PCI hardware).");
-    #[cfg(all(feature = "tcpip_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "tcpip_net_test")]
     el0_tcpip::test_el0_tcpip();
-    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    #[cfg(feature = "clusterctl_test")]
     el0_clusterctl::test_el0_clusterctl();
-    #[cfg(all(feature = "clusterctl_test", target_arch = "aarch64"))]
+    #[cfg(feature = "clusterctl_test")]
     el0_join::test_el0_join();
-    #[cfg(all(not(feature = "tcpip_net_test"), target_arch = "aarch64"))]
+    #[cfg(not(feature = "tcpip_net_test"))]
     logln!("Skipping EL0 tcpip test (enable tcpip_net_test with matching PCI hardware).");
-    #[cfg(all(feature = "http_net_test", target_arch = "aarch64"))]
+    #[cfg(feature = "http_net_test")]
     el0_http::test_el0_http();
-    #[cfg(all(not(feature = "http_net_test"), target_arch = "aarch64"))]
+    #[cfg(not(feature = "http_net_test"))]
     logln!("Skipping EL0 http test (enable http_net_test with matching PCI hardware).");
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }

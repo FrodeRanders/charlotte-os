@@ -15,7 +15,9 @@
 #   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT]
 #                         [--instance NAME] [--smp N] [--timeout S]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
-#                         [--net-test|--disco-test] [--mac ADDRESS]
+#                         [--net-test|--disco-test|--dns-test|--deploy-test]
+#                         [--tcpip-test|--http-test] [--live-upgrade-test]
+#                         [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
 #                         [--fresh-storage|--reuse-storage]
 #
@@ -31,6 +33,13 @@
 #   --block nvme|ahci|virtio  Block device transport (default: nvme)
 #   --net-test     Build and run the virtio-net test
 #   --disco-test   Run the cluster discovery test (implies --net-test)
+#   --dns-test     Run the distributed DNS test (implies --disco-test)
+#   --deploy-test  Run cluster deployment, clusterctl, and dynamic join tests
+#                  (implies --dns-test; both guests must use this option)
+#   --tcpip-test   Exchange TCP data through the userspace smoltcp service
+#                  (requires two socket-linked guests)
+#   --http-test    Serve the HTTP state keyhole through SLIRP host forwarding
+#   --live-upgrade-test  Run the isolated persistent service-upgrade test
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
@@ -59,6 +68,9 @@ DISCO_TEST="0"
 DNS_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
+DEPLOY_TEST="0"
+LIVE_UPGRADE_TEST="0"
+HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 
@@ -88,8 +100,10 @@ while [ "$#" -gt 0 ]; do
         --net-test)    NET_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
+        --deploy-test) NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
+        --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -126,8 +140,21 @@ if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
     exit 1
 fi
+if ! [[ "$HTTP_HOST_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_HOST_PORT" -lt 1 ] \
+    || [ "$HTTP_HOST_PORT" -gt 65535 ]; then
+    echo "error: CATTEN_HTTP_HOST_PORT must be an integer from 1 through 65535" >&2
+    exit 1
+fi
 if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
     echo "error: socket networking requires a network test option" >&2
+    exit 1
+fi
+if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
+    echo "error: --tcpip-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
+    echo "error: --http-test requires the default user network (hostfwd)" >&2
     exit 1
 fi
 
@@ -205,11 +232,17 @@ fi
 if [ "$DNS_TEST" = "1" ]; then
     FEATURES="${FEATURES},dns_net_test"
 fi
+if [ "$DEPLOY_TEST" = "1" ]; then
+    FEATURES="${FEATURES},deploy_net_test,clusterctl_test"
+fi
 if [ "$TCPIP_TEST" = "1" ]; then
     FEATURES="${FEATURES},tcpip_net_test"
 fi
 if [ "$HTTP_TEST" = "1" ]; then
     FEATURES="${FEATURES},http_net_test"
+fi
+if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
+    FEATURES="${FEATURES},live_upgrade_test"
 fi
 
 # Build and sign the x86_64 service bundle. The bootstrap set is embedded at
@@ -218,17 +251,29 @@ fi
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
 mkdir -p "$SERVICE_BUNDLE"
-cargo build --manifest-path crates/catten-services/Cargo.toml \
-    --target crates/catten-services/x86_64-unknown-none.json \
-    --release -Z build-std=core,alloc \
-    --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
-    --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-    --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter \
-    --bin dns --bin agent --bin greet --bin relmsg --bin tcpip --bin tcpclient --bin httpd
-for svc in ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter dns agent greet relmsg tcpip tcpclient httpd; do
-    cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
-done
-"${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd fs clusterctl"
+if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
+    for svc in $SERVICE_NAMES; do
+        if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then
+            echo "error: CATTEN_SKIP_EMBED_BUILD=1 but $SERVICE_BUNDLE/$svc.elf is missing" >&2
+            exit 1
+        fi
+    done
+    echo ">>> Reusing staged x86_64 service bundle."
+else
+    cargo build --manifest-path crates/catten-services/Cargo.toml \
+        --target crates/catten-services/x86_64-unknown-none.json \
+        --release -Z build-std=core,alloc \
+        --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
+        --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
+        --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter \
+        --bin dns --bin agent --bin greet --bin relmsg --bin rclient --bin tcpip \
+        --bin tcpclient --bin httpd --bin fs --bin clusterctl
+    for svc in $SERVICE_NAMES; do
+        cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
+    done
+    "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
+fi
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
 
 if [ "$EL0_SMOKE" = "1" ]; then
@@ -244,8 +289,16 @@ if [ "$EL0_SMOKE" = "1" ]; then
 fi
 
 echo ">>> Building Catten kernel (${ARCH}, ${PROFILE}, headless)..."
-cargo build --package catten --target "$TARGET_SPEC" \
-    --no-default-features --features "$FEATURES" $RELEASE_FLAG
+if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
+    if [ ! -f "$KERNEL" ]; then
+        echo "error: CATTEN_SKIP_KERNEL_BUILD=1 but $KERNEL is missing" >&2
+        exit 1
+    fi
+    echo ">>> Reusing previously built Catten kernel."
+else
+    cargo build --package catten --target "$TARGET_SPEC" \
+        --no-default-features --features "$FEATURES" $RELEASE_FLAG
+fi
 
 if command -v sha256sum >/dev/null 2>&1; then
     KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
@@ -327,7 +380,11 @@ QEMU_OPTS=(
 if [ "$NET_TEST" = "1" ]; then
     case "$NET_BACKEND" in
         user)
-            QEMU_OPTS+=(-netdev "user,id=net0")
+            if [ "$HTTP_TEST" = "1" ]; then
+                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:80")
+            else
+                QEMU_OPTS+=(-netdev "user,id=net0")
+            fi
             ;;
         listen:*)
             NET_PORT="${NET_BACKEND#listen:}"
@@ -359,6 +416,14 @@ if [ -n "$TIMEOUT" ]; then
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    SELFTEST_COMPLETE=0
+    SELFTEST_COMPLETE_TICK=-1
+    CLUSTER_DRAIN_TICKS=0
+    if [ "$NET_BACKEND" != "user" ]; then
+        CLUSTER_DRAIN_TICKS=150
+    fi
+    HTTP_PROBED=0
+    HTTP_PROBE_OK=0
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
@@ -371,11 +436,48 @@ if [ -n "$TIMEOUT" ]; then
             fi
             exit 1
         fi
+        if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
+            && grep -Fq "httpd is listening" "$LOG"; then
+            HTTP_PROBED=1
+            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:${HTTP_HOST_PORT}/ ..."
+            for _ in 1 2 3 4 5 6 7 8; do
+                HTTP_BODY="$(curl -fsS --max-time 5 http://127.0.0.1:${HTTP_HOST_PORT}/ 2>&1 || true)"
+                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":'; then
+                    HTTP_PROBE_OK=1
+                    break
+                fi
+                sleep 2
+            done
+            echo ">>> Guest HTTP keyhole response:"
+            echo "$HTTP_BODY"
+        fi
+        if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
+            SELFTEST_COMPLETE=1
+            if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
+                SELFTEST_COMPLETE_TICK=$tick
+                echo ">>> Authoritative self-test result observed after $(((tick + 1) / 10))s."
+                if [ "$CLUSTER_DRAIN_TICKS" -gt 0 ]; then
+                    echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
+                fi
+            fi
+            if [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ] \
+                && { [ "$HTTP_TEST" != "1" ] || [ "$HTTP_PROBE_OK" = "1" ]; }; then
+                break
+            fi
+        fi
     done
     kill "$QPID" 2>/dev/null || true
     wait "$QPID" 2>/dev/null || true
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
+    if [ "$HTTP_TEST" = "1" ] && { [ "$HTTP_PROBED" = "0" ] || [ "$HTTP_PROBE_OK" = "0" ]; }; then
+        echo "error: guest HTTP keyhole was not validated from the host" >&2
+        exit 1
+    fi
+    if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
+        echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        exit 1
+    fi
     if grep -Fq "Kernel panic:" "$LOG"; then
         echo "error: kernel panic observed during the test window" >&2
         exit 1

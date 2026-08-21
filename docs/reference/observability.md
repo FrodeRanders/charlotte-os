@@ -43,6 +43,10 @@ address space. Each snapshot contains:
 - saturation status; and
 - the start tick of a currently running slice, when applicable.
 
+Threads do not currently carry human-readable names. The snapshot identifies
+them by thread ID, generation, and owning address-space ID; application and
+service names belong to the name-service registry and are not thread labels.
+
 The header reports the architectural counter frequency and capture tick.
 Consumers can therefore derive CPU time, mean and variance of execution slices,
 and interval utilization by comparing two snapshots. The active slice is
@@ -104,7 +108,11 @@ The TCP/IP service provides the complete server-side
 and end-to-end NIC operation is validated. `httpd` aggregates the `observe`
 snapshot plus the `net`/`tcpip`/`frouter`/`ns`/`dns`/`disco`/`relmsg` status
 ops into one JSON page, reachable from the host via SLIRP `hostfwd`
-(`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
+(`scripts/run-aarch64.sh --http-test` or
+`scripts/run-x86_64.sh --http-test`). The name-service section preserves
+printable registry names as JSON strings and represents internal binary keys as
+`hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,
+not unnamed threads or malformed text.
 
 The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the

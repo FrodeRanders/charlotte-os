@@ -1996,7 +1996,54 @@ pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+/// # Safety
+///
+/// `result_page` must name an owned or BorrowWrite memory-object capability
+/// containing enough space for the kernel's packed capability-vector result.
+pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecvVec as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            inlateout("rdx") result_page => reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            options(preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation: 0,
+        sender_principal: 0,
+        sender_roles: 0,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 /// # Safety
 ///
 /// Mirrors the AArch64 ABI: `result_page` must identify a writable result
@@ -2073,7 +2120,60 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
     }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+/// # Safety
+///
+/// `result_page` must name an owned or BorrowWrite memory-object capability
+/// containing enough space for the kernel's packed capability-vector result.
+pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> IpcMessage {
+    let status: u64;
+    let opcode: u64;
+    let arg0: u64;
+    let reply: u64;
+    let sender: u64;
+    let interface: u64;
+    let version: u64;
+    let memory: u64;
+    let connection: u64;
+    let sender_generation: u64;
+    let sender_principal: u64;
+    let sender_roles: u64;
+    unsafe {
+        asm!(
+            "syscall",
+            inlateout("rax") SyscallNumber::IpcRecvVecAuthenticated as u64 => status,
+            inlateout("rdi") endpoint => opcode,
+            lateout("rsi") arg0,
+            inlateout("rdx") result_page => reply,
+            lateout("r10") sender,
+            lateout("r8") interface,
+            lateout("r9") version,
+            lateout("r11") memory,
+            lateout("rcx") connection,
+            lateout("r12") sender_generation,
+            lateout("r13") sender_principal,
+            lateout("r14") sender_roles,
+            options(preserves_flags),
+        );
+    }
+    IpcMessage {
+        status,
+        opcode: opcode as u32,
+        arg0,
+        reply,
+        sender,
+        sender_generation,
+        sender_principal,
+        sender_roles: sender_roles as u32,
+        interface,
+        version: version as u32,
+        memory,
+        connection,
+    }
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 /// # Safety
 ///
 /// Mirrors the AArch64 authenticated vector-receive ABI.

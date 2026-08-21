@@ -40,7 +40,8 @@ CharlotteOS supports three architectures via custom target JSON specs in
 AArch64 custom target & Original development target; all
     features and self-tests pass \\
 x86-64 custom target & Four-LP ring-3 service, storage, IOMMU,
-    networking, discovery, and distributed DNS paths pass under QEMU TCG \\
+    discovery, distributed DNS, smoltcp TCP/IP, HTTP, deployment, migration,
+    and dynamic-membership paths pass under QEMU TCG \\
 RISC-V custom target & Planned, not actively
     maintained \\
 \hline
@@ -128,7 +129,23 @@ platform-specific mounted-image discovery on macOS.
 # Select storage/IOMMU and run the four-LP bounded suite directly:
 ./scripts/run-x86_64.sh debug --smp 4 --block nvme --iommu intel \
   --fresh-storage --timeout 90
+
+# Serve and host-probe the HTTP state report through smoltcp:
+./scripts/run-x86_64.sh release --http-test --timeout 90
+
+# In two terminals, run the complete four-LP cluster suite on both guests:
+./scripts/run-x86_64.sh release --deploy-test --smp 4 \
+  --instance node-a --mac 52:54:00:12:34:01 \
+  --net-listen 12002 --timeout 360
+./scripts/run-x86_64.sh release --deploy-test --smp 4 \
+  --instance node-b --mac 52:54:00:12:34:02 \
+  --net-connect 127.0.0.1:12002 --timeout 360
 \end{verbatim}
+
+Use \texttt{--tcpip-test} instead of \texttt{--deploy-test} for the smaller
+two-guest smoltcp exchange. \texttt{--live-upgrade-test} runs the isolated
+persistent service-manager handoff. The complete deployment suite is qualified
+with four LPs; two LPs are not a supported test configuration for that load.
 
 \subsection{Expected output}
 
