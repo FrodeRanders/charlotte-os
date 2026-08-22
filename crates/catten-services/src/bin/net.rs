@@ -77,7 +77,9 @@ const MAX_QUEUE_SIZE: u16 = 256;
 #[inline]
 fn dma_write_barrier() {
     #[cfg(target_arch = "aarch64")]
-    unsafe { asm!("dmb oshst", options(nostack, preserves_flags)) }
+    unsafe {
+        asm!("dmb oshst", options(nostack, preserves_flags))
+    }
     #[cfg(not(target_arch = "aarch64"))]
     core::sync::atomic::fence(core::sync::atomic::Ordering::Release)
 }
@@ -89,7 +91,9 @@ fn dma_write_barrier() {
 #[inline]
 fn dma_read_barrier() {
     #[cfg(target_arch = "aarch64")]
-    unsafe { asm!("dmb oshld", options(nostack, preserves_flags)) }
+    unsafe {
+        asm!("dmb oshld", options(nostack, preserves_flags))
+    }
     #[cfg(not(target_arch = "aarch64"))]
     core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire)
 }

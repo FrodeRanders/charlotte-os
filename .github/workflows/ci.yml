@@ -150,6 +150,9 @@ jobs:
             scripts/build-catten-services.sh --embed
             scripts/build-catten-user.sh --embed
             export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
+          else
+            scripts/build-catten-services-x86_64.sh
+            export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           fi
           cargo build --package catten \
             --target "target_specs/${{ matrix.target }}.json" \

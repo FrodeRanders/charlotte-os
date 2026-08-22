@@ -166,29 +166,19 @@ unsafe fn desc_read_u16(base: usize, slot: usize, offset: usize) -> u16 {
 #[inline]
 unsafe fn desc_write_u32(base: usize, slot: usize, offset: usize, value: u32) {
     unsafe {
-        core::ptr::write_volatile(
-            (base + slot * DESCRIPTOR_SIZE + offset) as *mut u32,
-            value,
-        )
+        core::ptr::write_volatile((base + slot * DESCRIPTOR_SIZE + offset) as *mut u32, value)
     }
 }
 
 #[inline]
 unsafe fn desc_write_u64(base: usize, slot: usize, offset: usize, value: u64) {
     unsafe {
-        core::ptr::write_volatile(
-            (base + slot * DESCRIPTOR_SIZE + offset) as *mut u64,
-            value,
-        )
+        core::ptr::write_volatile((base + slot * DESCRIPTOR_SIZE + offset) as *mut u64, value)
     }
 }
 
 /// Allocate, map, and pin one DMA object for the lifetime of this process.
-unsafe fn alloc_dma(
-    dma_domain: u64,
-    pages: usize,
-    direction: DmaDirection,
-) -> (u64, u64, usize) {
+unsafe fn alloc_dma(dma_domain: u64, pages: usize, direction: DmaDirection) -> (u64, u64, usize) {
     let cap = memory_alloc(pages);
     if cap == 0 {
         return (0, 0, 0);
@@ -315,7 +305,10 @@ unsafe fn drain_rx(
                         )
                     };
                     memory_unmap(cap);
-                    queue.push_back(ReceivedFrame { cap, len });
+                    queue.push_back(ReceivedFrame {
+                        cap,
+                        len,
+                    });
                     *accepted = accepted.wrapping_add(1);
                 } else {
                     memory_close(cap);
@@ -393,18 +386,8 @@ fn main(ctx: Context) -> ! {
         core::ptr::write_bytes(rx_ring as *mut u8, 0, ring_pages * PAGE_SIZE);
         core::ptr::write_bytes(tx_ring as *mut u8, 0, ring_pages * PAGE_SIZE);
         for slot in 0..RING_SIZE {
-            desc_write_u64(
-                rx_ring,
-                slot,
-                0,
-                rx_buffer_iova + (slot * BUFFER_SIZE) as u64,
-            );
-            desc_write_u64(
-                tx_ring,
-                slot,
-                0,
-                tx_buffer_iova + (slot * BUFFER_SIZE) as u64,
-            );
+            desc_write_u64(rx_ring, slot, 0, rx_buffer_iova + (slot * BUFFER_SIZE) as u64);
+            desc_write_u64(tx_ring, slot, 0, tx_buffer_iova + (slot * BUFFER_SIZE) as u64);
             // An idle transmit descriptor is initially complete.
             desc_write_u32(tx_ring, slot, 12, TXD_STAT_DD as u32);
         }

@@ -27,7 +27,6 @@ use catten_services::{
     virtio,
 };
 use catten_syscall::{
-    ipc_status,
     DmaDirection,
     IpcRights,
     dma_map,
@@ -37,6 +36,7 @@ use catten_syscall::{
     ipc_recv,
     ipc_reply,
     ipc_scalar_call_connection,
+    ipc_status,
     memory_alloc,
     memory_close,
     memory_map_any,
@@ -126,7 +126,8 @@ fn alloc_dma(pages: usize) -> Option<DmaBuf> {
         memory_close(cap);
         return None;
     }
-    let iova = unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
+    let iova =
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -170,10 +171,7 @@ fn main(ctx: Context) -> ! {
     unsafe {
         w8(common + virtio::M_DEVICE_STATUS, 0);
         w8(common + virtio::M_DEVICE_STATUS, virtio::STATUS_ACKNOWLEDGE);
-        w8(
-            common + virtio::M_DEVICE_STATUS,
-            virtio::STATUS_ACKNOWLEDGE | virtio::STATUS_DRIVER,
-        );
+        w8(common + virtio::M_DEVICE_STATUS, virtio::STATUS_ACKNOWLEDGE | virtio::STATUS_DRIVER);
         w32(common + virtio::M_DEVICE_FEATURE_SELECT, 1);
     }
     let required_features = virtio::FEATURE_VERSION_1 | virtio::FEATURE_ACCESS_PLATFORM;
@@ -237,7 +235,8 @@ fn main(ctx: Context) -> ! {
         );
     }
     let notify_offset = unsafe { r16(common + virtio::M_QUEUE_NOTIFY_OFF) };
-    let notify = bar4 + virtio::MODERN_NOTIFY + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER;
+    let notify =
+        bar4 + virtio::MODERN_NOTIFY + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER;
     config::write::<u32>(4, 13);
 
     // Pre-build the descriptor chain (header@0 → data@1 → status@2). Only the
@@ -245,26 +244,17 @@ fn main(ctx: Context) -> ! {
     let desc: usize = ring.vaddr;
     unsafe {
         // Descriptor 0: request header (device reads).
-        w32(desc + 0 * virtio::DESC_SIZE + virtio::DESC_ADDR_LO, req.iova as u32);
-        w32(desc + 0 * virtio::DESC_SIZE + virtio::DESC_ADDR_HI, (req.iova >> 32) as u32);
-        w32(desc + 0 * virtio::DESC_SIZE + virtio::DESC_LENGTH, 16);
-        w16(
-            desc + 0 * virtio::DESC_SIZE + virtio::DESC_FLAGS,
-            virtio::VRING_DESC_F_NEXT,
-        );
-        w16(desc + 0 * virtio::DESC_SIZE + virtio::DESC_NEXT, 1);
+        w32(desc + virtio::DESC_ADDR_LO, req.iova as u32);
+        w32(desc + virtio::DESC_ADDR_HI, (req.iova >> 32) as u32);
+        w32(desc + virtio::DESC_LENGTH, 16);
+        w16(desc + virtio::DESC_FLAGS, virtio::VRING_DESC_F_NEXT);
+        w16(desc + virtio::DESC_NEXT, 1);
         // Descriptor 2: status byte (device writes).
         let status_iova = req.iova.checked_add(16).expect("virtio status IOVA overflow");
         w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_LO, status_iova as u32);
-        w32(
-            desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_HI,
-            (status_iova >> 32) as u32,
-        );
+        w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_ADDR_HI, (status_iova >> 32) as u32);
         w32(desc + 2 * virtio::DESC_SIZE + virtio::DESC_LENGTH, 1);
-        w16(
-            desc + 2 * virtio::DESC_SIZE + virtio::DESC_FLAGS,
-            virtio::VRING_DESC_F_WRITE,
-        );
+        w16(desc + 2 * virtio::DESC_SIZE + virtio::DESC_FLAGS, virtio::VRING_DESC_F_WRITE);
         w16(desc + 2 * virtio::DESC_SIZE + virtio::DESC_NEXT, 0);
     }
 
@@ -297,57 +287,53 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(20, 0x900d);
 
     // Build a request in the shared chain and return its completion status.
-    let submit = |req_type: u32,
-                  sector: u64,
-                  data_iova: u64,
-                  data_len: u32,
-                  avail_pos: &mut u16|
-     -> bool {
-        unsafe {
-            // Header: type + reserved + sector.
-            let hdr = req.vaddr as *mut u8;
-            w32(hdr.add(0) as usize, req_type);
-            w32(hdr.add(4) as usize, 0);
-            w64(hdr.add(8) as usize, sector);
-            w8(hdr.add(16) as usize, 0xff);
-            // The FLUSH request carries no data descriptor; the header chains
-            // straight to the status byte.
-            if data_len == 0 {
-                w16(desc + 0 * virtio::DESC_SIZE + virtio::DESC_NEXT, 2);
-            } else {
-                w16(desc + 0 * virtio::DESC_SIZE + virtio::DESC_NEXT, 1);
-                let d = desc + 1 * virtio::DESC_SIZE;
-                w32(d + virtio::DESC_ADDR_LO, data_iova as u32);
-                w32(d + virtio::DESC_ADDR_HI, (data_iova >> 32) as u32);
-                w32(d + virtio::DESC_LENGTH, data_len);
-                let flags = if req_type == BLK_T_IN {
-                    virtio::VRING_DESC_F_NEXT | virtio::VRING_DESC_F_WRITE
+    let submit =
+        |req_type: u32, sector: u64, data_iova: u64, data_len: u32, avail_pos: &mut u16| -> bool {
+            unsafe {
+                // Header: type + reserved + sector.
+                let hdr = req.vaddr as *mut u8;
+                w32(hdr.add(0) as usize, req_type);
+                w32(hdr.add(4) as usize, 0);
+                w64(hdr.add(8) as usize, sector);
+                w8(hdr.add(16) as usize, 0xff);
+                // The FLUSH request carries no data descriptor; the header chains
+                // straight to the status byte.
+                if data_len == 0 {
+                    w16(desc + virtio::DESC_NEXT, 2);
                 } else {
-                    virtio::VRING_DESC_F_NEXT
-                };
-                w16(d + virtio::DESC_FLAGS, flags);
-                w16(d + virtio::DESC_NEXT, 2);
-            }
-            // Publish the chain head and kick.
-            let slot = *avail_pos as usize % QUEUE_SIZE as usize;
-            w16(avail_ring + slot * 2, 0);
-            *avail_pos = avail_pos.wrapping_add(1);
-            core::sync::atomic::fence(Ordering::Release);
-            w16(avail_idx, *avail_pos);
-            w32(notify, 0);
-            // Poll the used ring for this request.
-            let mut completed = false;
-            for _ in 0..1_000_000 {
-                if r16(used_idx) == *avail_pos {
-                    completed = true;
-                    break;
+                    w16(desc + virtio::DESC_NEXT, 1);
+                    let d = desc + virtio::DESC_SIZE;
+                    w32(d + virtio::DESC_ADDR_LO, data_iova as u32);
+                    w32(d + virtio::DESC_ADDR_HI, (data_iova >> 32) as u32);
+                    w32(d + virtio::DESC_LENGTH, data_len);
+                    let flags = if req_type == BLK_T_IN {
+                        virtio::VRING_DESC_F_NEXT | virtio::VRING_DESC_F_WRITE
+                    } else {
+                        virtio::VRING_DESC_F_NEXT
+                    };
+                    w16(d + virtio::DESC_FLAGS, flags);
+                    w16(d + virtio::DESC_NEXT, 2);
                 }
-                core::hint::spin_loop();
+                // Publish the chain head and kick.
+                let slot = *avail_pos as usize % QUEUE_SIZE as usize;
+                w16(avail_ring + slot * 2, 0);
+                *avail_pos = avail_pos.wrapping_add(1);
+                core::sync::atomic::fence(Ordering::Release);
+                w16(avail_idx, *avail_pos);
+                w32(notify, 0);
+                // Poll the used ring for this request.
+                let mut completed = false;
+                for _ in 0..1_000_000 {
+                    if r16(used_idx) == *avail_pos {
+                        completed = true;
+                        break;
+                    }
+                    core::hint::spin_loop();
+                }
+                core::sync::atomic::fence(Ordering::Acquire);
+                completed && r8(req.vaddr + 16) == 0
             }
-            core::sync::atomic::fence(Ordering::Acquire);
-            completed && r8(req.vaddr as usize + 16) == 0
-        }
-    };
+        };
 
     loop {
         let message = ipc_recv(endpoint);
@@ -381,21 +367,27 @@ fn main(ctx: Context) -> ! {
                     || transfer_bytes > u32::MAX as u64
                     || message.memory == 0
                     || transfer_bytes > memory_size(message.memory) as u64
-                    || lba
-                        .checked_add(count as u64)
-                        .is_none_or(|end| end > total_blocks as u64)
+                    || lba.checked_add(count as u64).is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
                 }
-                let iova = unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) };
+                let iova =
+                    unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) };
                 if iova == 0 {
                     ipc_reply(message.reply, block::ERR_IO_ERROR);
                     continue;
                 }
                 let ok = submit(BLK_T_IN, lba, iova, transfer_bytes as u32, &mut avail_pos);
                 dma_unmap(dma_domain, iova);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             block::OP_WRITE => {
                 let (lba, count) = charlotte_protocol_block::unpack_lba_count(message.arg0);
@@ -408,9 +400,7 @@ fn main(ctx: Context) -> ! {
                     || transfer_bytes > u32::MAX as u64
                     || message.memory == 0
                     || transfer_bytes > memory_size(message.memory) as u64
-                    || lba
-                        .checked_add(count as u64)
-                        .is_none_or(|end| end > total_blocks as u64)
+                    || lba.checked_add(count as u64).is_none_or(|end| end > total_blocks as u64)
                 {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
@@ -422,11 +412,25 @@ fn main(ctx: Context) -> ! {
                 }
                 let ok = submit(BLK_T_OUT, lba, iova, transfer_bytes as u32, &mut avail_pos);
                 dma_unmap(dma_domain, iova);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             block::OP_FLUSH => {
                 let ok = submit(BLK_T_FLUSH, 0, 0, 0, &mut avail_pos);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             _ => {
                 if message.reply != 0 {

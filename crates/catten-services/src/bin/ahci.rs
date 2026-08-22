@@ -28,7 +28,6 @@ use catten_services::{
     spin_reply,
 };
 use catten_syscall::{
-    ipc_status,
     DmaDirection,
     IpcRights,
     dma_map,
@@ -38,6 +37,7 @@ use catten_syscall::{
     ipc_recv,
     ipc_reply,
     ipc_scalar_call_connection,
+    ipc_status,
     memory_alloc,
     memory_close,
     memory_map_any,
@@ -113,7 +113,8 @@ fn alloc_dma_buffer(bytes: usize) -> Option<QueueMemory> {
         memory_close(cap);
         return None;
     }
-    let iova = unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
+    let iova =
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -131,7 +132,9 @@ fn read_mmio32(offset: usize) -> u32 {
 }
 
 fn write_mmio32(offset: usize, value: u32) {
-    unsafe { ((HBA_BASE.load(Ordering::Acquire) as usize + offset) as *mut u32).write_volatile(value) }
+    unsafe {
+        ((HBA_BASE.load(Ordering::Acquire) as usize + offset) as *mut u32).write_volatile(value)
+    }
 }
 
 fn port_base(port: usize) -> usize {
@@ -170,26 +173,38 @@ fn write_prdt(cmd_table: &QueueMemory, iova: u64, byte_count: u32) {
 
 /// Issue the command in slot 0 and poll for completion. `data_iova` is the
 /// DMA-mapped data buffer (0 for a data-less command such as FLUSH).
-fn submit_and_wait(
-    port: usize,
-    cmd_list: &QueueMemory,
-    cmd_table: &QueueMemory,
-    command: u8,
+struct AtaCommand {
+    opcode: u8,
     lba: u64,
     count: u16,
     data_iova: u64,
     byte_count: u32,
+}
+
+fn submit_and_wait(
+    port: usize,
+    cmd_list: &QueueMemory,
+    cmd_table: &QueueMemory,
+    request: AtaCommand,
 ) -> bool {
     let pb = port_base(port);
-    write_fis(cmd_table, command, lba, count);
-    if data_iova != 0 {
-        write_prdt(cmd_table, data_iova, byte_count);
+    write_fis(cmd_table, request.opcode, request.lba, request.count);
+    if request.data_iova != 0 {
+        write_prdt(cmd_table, request.data_iova, request.byte_count);
     }
 
     // Command header for slot 0: CFL + (W for disk writes) + PRDTL.
     let header = cmd_list.vaddr as *mut u32;
-    let prdtl = if data_iova != 0 { CMDHDR_PRDTL } else { 0 };
-    let write_bit = if command == ATA_WRITE_DMA_EXT { CMDHDR_WRITE } else { 0 };
+    let prdtl = if request.data_iova != 0 {
+        CMDHDR_PRDTL
+    } else {
+        0
+    };
+    let write_bit = if request.opcode == ATA_WRITE_DMA_EXT {
+        CMDHDR_WRITE
+    } else {
+        0
+    };
     unsafe {
         header.add(0).write_volatile(CMDHDR_CFL | write_bit | prdtl);
         header.add(1).write_volatile(0);
@@ -224,25 +239,38 @@ fn submit_and_wait(
     true
 }
 
-fn identify(port: usize, cmd_list: &QueueMemory, cmd_table: &QueueMemory, buf: &QueueMemory) -> Option<(u32, u32)> {
-    if !submit_and_wait(port, cmd_list, cmd_table, ATA_IDENTIFY, 0, 1, buf.iova, 512) {
+fn identify(
+    port: usize,
+    cmd_list: &QueueMemory,
+    cmd_table: &QueueMemory,
+    buf: &QueueMemory,
+) -> Option<(u32, u32)> {
+    if !submit_and_wait(
+        port,
+        cmd_list,
+        cmd_table,
+        AtaCommand {
+            opcode: ATA_IDENTIFY,
+            lba: 0,
+            count: 1,
+            data_iova: buf.iova,
+            byte_count: 512,
+        },
+    ) {
         return None;
     }
     let words = buf.vaddr as *const u16;
     // Prefer the logical-sector-size words (117/118) when valid, else 512.
     let word106 = unsafe { words.add(106).read_volatile() };
     let words_per_sector = unsafe {
-        (words.add(117).read_volatile() as u32)
-            | ((words.add(118).read_volatile() as u32) << 16)
+        (words.add(117).read_volatile() as u32) | ((words.add(118).read_volatile() as u32) << 16)
     };
-    let block_size = if word106 & 0xc000 == 0x4000
-        && word106 & (1 << 12) != 0
-        && words_per_sector != 0
-    {
-        words_per_sector.checked_mul(2)?
-    } else {
-        512
-    };
+    let block_size =
+        if word106 & 0xc000 == 0x4000 && word106 & (1 << 12) != 0 && words_per_sector != 0 {
+            words_per_sector.checked_mul(2)?
+        } else {
+            512
+        };
     // LBA48 capacity (words 100-103).
     let total = unsafe {
         (words.add(100).read_volatile() as u64)
@@ -380,7 +408,8 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(4, 14);
 
-    let Some((block_size, total_blocks)) = identify(port, &cmd_list, &cmd_table, &identify_buf) else {
+    let Some((block_size, total_blocks)) = identify(port, &cmd_list, &cmd_table, &identify_buf)
+    else {
         config::write::<u32>(4, 0xe1);
         unsafe { thread_exit() };
     };
@@ -430,7 +459,10 @@ fn main(ctx: Context) -> ! {
         match message.opcode {
             block::OP_INFO => {
                 if message.reply != 0 {
-                    ipc_reply(message.reply, ((block_size as u64) | ((total_blocks as u64) << 32)) as i64);
+                    ipc_reply(
+                        message.reply,
+                        ((block_size as u64) | ((total_blocks as u64) << 32)) as i64,
+                    );
                 }
             }
             block::OP_READ => {
@@ -451,7 +483,8 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
                 }
-                let iova = unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) };
+                let iova =
+                    unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) };
                 if iova == 0 {
                     ipc_reply(message.reply, block::ERR_IO_ERROR);
                     continue;
@@ -460,14 +493,23 @@ fn main(ctx: Context) -> ! {
                     port,
                     &cmd_list,
                     &cmd_table,
-                    ATA_READ_DMA_EXT,
-                    lba,
-                    count as u16,
-                    iova,
-                    transfer_bytes as u32,
+                    AtaCommand {
+                        opcode: ATA_READ_DMA_EXT,
+                        lba,
+                        count: count as u16,
+                        data_iova: iova,
+                        byte_count: transfer_bytes as u32,
+                    },
                 );
                 dma_unmap(dma_domain, iova);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             block::OP_WRITE => {
                 let (lba, count) = charlotte_protocol_block::unpack_lba_count(message.arg0);
@@ -496,18 +538,45 @@ fn main(ctx: Context) -> ! {
                     port,
                     &cmd_list,
                     &cmd_table,
-                    ATA_WRITE_DMA_EXT,
-                    lba,
-                    count as u16,
-                    iova,
-                    transfer_bytes as u32,
+                    AtaCommand {
+                        opcode: ATA_WRITE_DMA_EXT,
+                        lba,
+                        count: count as u16,
+                        data_iova: iova,
+                        byte_count: transfer_bytes as u32,
+                    },
                 );
                 dma_unmap(dma_domain, iova);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             block::OP_FLUSH => {
-                let ok = submit_and_wait(port, &cmd_list, &cmd_table, ATA_FLUSH_CACHE, 0, 0, 0, 0);
-                ipc_reply(message.reply, if ok { block::ERR_OK } else { block::ERR_IO_ERROR });
+                let ok = submit_and_wait(
+                    port,
+                    &cmd_list,
+                    &cmd_table,
+                    AtaCommand {
+                        opcode: ATA_FLUSH_CACHE,
+                        lba: 0,
+                        count: 0,
+                        data_iova: 0,
+                        byte_count: 0,
+                    },
+                );
+                ipc_reply(
+                    message.reply,
+                    if ok {
+                        block::ERR_OK
+                    } else {
+                        block::ERR_IO_ERROR
+                    },
+                );
             }
             _ => {
                 if message.reply != 0 {

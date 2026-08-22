@@ -279,7 +279,6 @@ fi
 # image, so the bundle must exist before the kernel build.
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-mkdir -p "$SERVICE_BUNDLE"
 SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd fs clusterctl"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
@@ -290,18 +289,7 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     done
     echo ">>> Reusing staged x86_64 service bundle."
 else
-    cargo build --manifest-path crates/catten-services/Cargo.toml \
-        --target crates/catten-services/x86_64-unknown-none.json \
-        --release -Z build-std=core,alloc \
-        --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
-        --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-        --bin ahci --bin virtio_blk --bin net --bin e1000e --bin nclient --bin disco --bin frouter \
-        --bin dns --bin agent --bin greet --bin relmsg --bin rclient --bin tcpip \
-        --bin tcpclient --bin httpd --bin fs --bin clusterctl
-    for svc in $SERVICE_NAMES; do
-        cp "crates/catten-services/target/x86_64-unknown-none/release/$svc" "$SERVICE_BUNDLE/$svc.elf"
-    done
-    "${ROOT_DIR}/scripts/sign-service-elfs.sh" "$SERVICE_BUNDLE" >/dev/null
+    "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh"
 fi
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
 

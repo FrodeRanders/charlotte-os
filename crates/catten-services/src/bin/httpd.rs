@@ -238,8 +238,7 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
     let count = (header[3] as usize).min(max_by_len);
     let mut rows = alloc::vec::Vec::with_capacity(count);
     for i in 0..count {
-        let base =
-            scratch_5_vaddr + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
+        let base = scratch_5_vaddr + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
         let mut rec: [u64; THREAD_STATISTICS_RECORD_U64S] = [0; THREAD_STATISTICS_RECORD_U64S];
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -477,16 +476,14 @@ fn render_ns(s: &mut String, ns_conn: u64) {
             }
             s.push('"');
             let printable = (0..name_len).all(|i| {
-                let byte = core::ptr::read_volatile(
-                    (scratch_3_vaddr + offset + 1 + i) as *const u8,
-                );
+                let byte =
+                    core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
                 byte.is_ascii_graphic()
             });
             if printable {
                 for i in 0..name_len {
-                    let byte = core::ptr::read_volatile(
-                        (scratch_3_vaddr + offset + 1 + i) as *const u8,
-                    );
+                    let byte =
+                        core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
                     if byte == b'"' || byte == b'\\' {
                         s.push('\\');
                     }
@@ -495,9 +492,8 @@ fn render_ns(s: &mut String, ns_conn: u64) {
             } else {
                 s.push_str("hex:");
                 for i in 0..name_len {
-                    let byte = core::ptr::read_volatile(
-                        (scratch_3_vaddr + offset + 1 + i) as *const u8,
-                    );
+                    let byte =
+                        core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
                     let _ = write!(s, "{byte:02x}");
                 }
             }
