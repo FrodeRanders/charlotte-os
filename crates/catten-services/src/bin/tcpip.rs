@@ -172,6 +172,16 @@ fn main(ctx: Context) -> ! {
     let (_link, mac) = decode_status(status);
     let mtu: usize = 1500;
 
+    // Log the NIC MAC address (packed big-endian into the payload) so it is
+    // visible in the serial log alongside the DHCP-acquired address.
+    let mac_bits = (mac[0] as u64) << 40
+        | (mac[1] as u64) << 32
+        | (mac[2] as u64) << 24
+        | (mac[3] as u64) << 16
+        | (mac[4] as u64) << 8
+        | (mac[5] as u64);
+    catten_syscall::el0_log(0x4d41_4300, mac_bits); // "MAC\0" tag
+
     // DHCP mode: when the `dhcp` manifest key is present, skip the static (or
     // MAC-derived) address and acquire the interface configuration from a DHCP
     // server instead. The static path remains the default for raw two-node
@@ -287,6 +297,14 @@ fn main(ctx: Context) -> ! {
                     router,
                 } => {
                     local_ip = cidr.address();
+                    // Log the DHCP-acquired address (packed big-endian) so it
+                    // is visible in the serial log.
+                    let octets = local_ip.octets();
+                    let ip_bits = (octets[0] as u64) << 24
+                        | (octets[1] as u64) << 16
+                        | (octets[2] as u64) << 8
+                        | (octets[3] as u64);
+                    catten_syscall::el0_log(0x4950_0000, ip_bits); // "IP\0\0" tag
                     iface.update_ip_addrs(|addrs| {
                         addrs.clear();
                         let _ = addrs.push(IpCidr::Ipv4(cidr));
