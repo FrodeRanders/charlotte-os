@@ -111,6 +111,7 @@ pub enum SyscallNumber {
     IpcRecvAuthenticated = 71,
     IpcRecvBlockAuthenticated = 72,
     IpcRecvVecAuthenticated = 73,
+    LogStr = 74,
 }
 
 impl TryFrom<u16> for SyscallNumber {
@@ -192,12 +193,13 @@ impl TryFrom<u16> for SyscallNumber {
             71 => Ok(Self::IpcRecvAuthenticated),
             72 => Ok(Self::IpcRecvBlockAuthenticated),
             73 => Ok(Self::IpcRecvVecAuthenticated),
+            74 => Ok(Self::LogStr),
             _ => Err(()),
         }
     }
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::IpcRecvVecAuthenticated as u16;
+pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::LogStr as u16;
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
 /// envelope. These bits intentionally match `charlotte_authorization::Roles`.
@@ -1179,6 +1181,16 @@ unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
 pub fn el0_log(a: u64, b: u64) {
     unsafe {
         svc3(SyscallNumber::Log, a, b, 0);
+    }
+}
+
+/// Emit a kernel debug log line carrying a UTF-8 string. `len` bytes are read
+/// from `ptr` (a pointer into the caller's address space, up to a kernel
+/// capped maximum) and rendered on the serial log.
+#[inline(always)]
+pub fn el0_log_str(ptr: *const u8, len: usize) {
+    unsafe {
+        svc3(SyscallNumber::LogStr, ptr as u64, len as u64, 0);
     }
 }
 

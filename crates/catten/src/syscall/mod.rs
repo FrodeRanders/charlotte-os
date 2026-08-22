@@ -252,6 +252,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
     let syscall = SyscallNumber::try_from(syscall_no).expect("unknown syscall number");
     match syscall {
         SyscallNumber::Log => sys_log(frame),
+        SyscallNumber::LogStr => sys_log_str(frame),
         SyscallNumber::CompletionSubmit => sys_completion_submit(frame),
         SyscallNumber::CompletionComplete => sys_completion_complete(frame),
         SyscallNumber::CompletionPoll => sys_completion_poll(frame),
@@ -466,6 +467,51 @@ fn sys_log(frame: &mut TrapFrame) {
     let lp = frame.lp_id;
     let asid = frame.asid;
     crate::early_logln!("[EL0 LOG] lp={} asid={} a={:#x} b={:#x}", lp, asid, a, b);
+}
+
+const MAX_EL0_LOG_LEN: usize = 256;
+
+/// Copy up to `len` bytes from a caller-supplied buffer at `address` into
+/// `out`, translating each byte through the caller's page table (the read-side
+/// counterpart of `write_user_u32`). Returns the number of bytes copied; a
+/// translation failure truncates the copy.
+fn read_user_bytes(
+    asid: crate::memory::AddressSpaceId,
+    address: usize,
+    len: usize,
+    out: &mut [u8],
+) -> usize {
+    let mut table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+    let Ok(address_space) = table.get_mut(asid) else {
+        return 0;
+    };
+    let limit = len.min(out.len());
+    for index in 0..limit {
+        let user_address = address.wrapping_add(index);
+        let Ok(physical) = address_space
+            .translate_user_writable_address(crate::memory::linear::VAddr::from(user_address))
+        else {
+            return index;
+        };
+        let pointer: *const u8 = physical.into();
+        out[index] = unsafe { core::ptr::read_volatile(pointer) };
+    }
+    limit
+}
+
+fn sys_log_str(frame: &mut TrapFrame) {
+    let ptr = frame.regs[1] as usize;
+    let len = frame.regs[2] as usize;
+    let lp = frame.lp_id;
+    let asid = frame.asid;
+    let mut buffer = [0u8; MAX_EL0_LOG_LEN];
+    let read = read_user_bytes(asid, ptr, len, &mut buffer);
+    match core::str::from_utf8(&buffer[..read]) {
+        Ok(text) => crate::early_logln!("[EL0 LOG] lp={} asid={} {}", lp, asid, text),
+        Err(_) => {
+            crate::early_logln!("[EL0 LOG] lp={} asid={} <{} non-UTF8 bytes>", lp, asid, read)
+        }
+    }
 }
 
 fn sys_completion_submit(frame: &mut TrapFrame) {
