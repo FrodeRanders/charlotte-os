@@ -156,13 +156,11 @@ mod inner {
 
         let ns = unsafe { HTTP_NS.as_ref() }.expect("[http] test state missing");
 
-        let tcpip_manifest = [
-            ManifestEntry {
-                key: DHCP_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(b"1"),
-            },
-        ];
+        let tcpip_manifest = [ManifestEntry {
+            key: DHCP_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(b"1"),
+        }];
         let tcpip = spawn_binary(
             crate::service::store::service_elf(b"tcpip").expect("[el0_http] tcpip.elf"),
             ns,

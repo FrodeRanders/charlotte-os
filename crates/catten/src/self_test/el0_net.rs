@@ -180,7 +180,12 @@ extern "C" fn verify_el0_net() {
         logln!("[frouter] reached serving stage.");
     }
     #[cfg(all(
-        any(feature = "disco_net_test", feature = "tcpip_net_test", feature = "http_net_test", feature = "dhcp_test"),
+        any(
+            feature = "disco_net_test",
+            feature = "tcpip_net_test",
+            feature = "http_net_test",
+            feature = "dhcp_test"
+        ),
         not(feature = "relmsg_net_test")
     ))]
     let _ = frouter_config;

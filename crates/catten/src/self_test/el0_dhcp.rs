@@ -18,7 +18,10 @@ mod inner {
     use alloc::vec::Vec;
 
     use crate::{
-        ipc::{self, ConnectionRights},
+        ipc::{
+            self,
+            ConnectionRights,
+        },
         logln,
         service::{
             bootstrap::{

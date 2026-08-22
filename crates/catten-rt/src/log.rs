@@ -26,6 +26,12 @@ impl LogBuffer {
     }
 }
 
+impl Default for LogBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl core::fmt::Write for LogBuffer {
     fn write_str(&mut self, text: &str) -> core::fmt::Result {
         let bytes = text.as_bytes();

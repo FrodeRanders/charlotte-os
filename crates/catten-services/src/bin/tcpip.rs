@@ -20,10 +20,9 @@
 //!
 //! ## Launch manifest
 //!
-//! - `dhcp`: when present, skip the static address and acquire the interface
-//!   configuration (address, prefix, gateway, DNS servers) from a DHCP server.
-//!   Use this on a network with a DHCP server (e.g. the QEMU SLIRP user
-//!   network).
+//! - `dhcp`: when present, skip the static address and acquire the interface configuration
+//!   (address, prefix, gateway, DNS servers) from a DHCP server. Use this on a network with a DHCP
+//!   server (e.g. the QEMU SLIRP user network).
 //! - `ip`: optional local IPv4 address as four bytes. Defaults to a MAC-derived `10.0.0.(100 +
 //!   mac[5] % 100)`; override with `10.0.2.15` (plus `gateway`) when the guest sits on a SLIRP user
 //!   network.

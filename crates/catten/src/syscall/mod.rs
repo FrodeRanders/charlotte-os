@@ -486,7 +486,7 @@ fn read_user_bytes(
         return 0;
     };
     let limit = len.min(out.len());
-    for index in 0..limit {
+    for (index, item) in out.iter_mut().enumerate().take(limit) {
         let user_address = address.wrapping_add(index);
         let Ok(physical) = address_space
             .translate_user_writable_address(crate::memory::linear::VAddr::from(user_address))
@@ -494,7 +494,7 @@ fn read_user_bytes(
             return index;
         };
         let pointer: *const u8 = physical.into();
-        out[index] = unsafe { core::ptr::read_volatile(pointer) };
+        *item = unsafe { core::ptr::read_volatile(pointer) };
     }
     limit
 }
