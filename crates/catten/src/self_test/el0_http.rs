@@ -1,10 +1,11 @@
 //! Self-test: hardcoded HTTP keyhole serving observable node state.
 //!
-//! Spawns the `tcpip` service configured for the SLIRP user network
-//! (10.0.2.15, gateway 10.0.2.2) and the `httpd` service, then waits for the
-//! httpd to reach its listening stage. The actual request/response round trip
-//! is performed by the host through `--http-test`: the run script curls the
-//! hostfwd port after the self-test completes and verifies the JSON payload.
+//! Spawns the `tcpip` service in DHCP mode (it acquires its address from the
+//! SLIRP user network's built-in DHCP server, which hands out 10.0.2.15) and
+//! the `httpd` service, then waits for the httpd to reach its listening stage.
+//! The actual request/response round trip is performed by the host through
+//! `--http-test`: the run script curls the hostfwd port after the self-test
+//! completes and verifies the JSON payload.
 //!
 //! Requires the net driver and the frouter (both spawned by the net self-test
 //! under `virtio_net_test` with the frouter enabled).
@@ -25,8 +26,7 @@ mod inner {
         },
     };
 
-    const IP_KEY: u64 = charlotte_launch::manifest_key(b"ip");
-    const GATEWAY_KEY: u64 = charlotte_launch::manifest_key(b"gateway");
+    const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const NODE_ID_KEY: u64 = charlotte_launch::manifest_key(b"node-id");
     const PEERS_KEY: u64 = charlotte_launch::manifest_key(b"peers");
@@ -158,14 +158,9 @@ mod inner {
 
         let tcpip_manifest = [
             ManifestEntry {
-                key: IP_KEY,
+                key: DHCP_KEY,
                 flags: 0,
-                value: ManifestValue::Bytes(&[10, 0, 2, 15]),
-            },
-            ManifestEntry {
-                key: GATEWAY_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&[10, 0, 2, 2]),
+                value: ManifestValue::Bytes(b"1"),
             },
         ];
         let tcpip = spawn_binary(

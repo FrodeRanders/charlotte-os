@@ -20,6 +20,10 @@
 //!
 //! ## Launch manifest
 //!
+//! - `dhcp`: when present, skip the static address and acquire the interface
+//!   configuration (address, prefix, gateway, DNS servers) from a DHCP server.
+//!   Use this on a network with a DHCP server (e.g. the QEMU SLIRP user
+//!   network).
 //! - `ip`: optional local IPv4 address as four bytes. Defaults to a MAC-derived `10.0.0.(100 +
 //!   mac[5] % 100)`; override with `10.0.2.15` (plus `gateway`) when the guest sits on a SLIRP user
 //!   network.
@@ -69,9 +73,12 @@ use smoltcp::{
         Interface,
         SocketSet,
     },
-    socket::tcp::{
-        Socket as TcpSocket,
-        SocketBuffer as TcpSocketBuffer,
+    socket::{
+        dhcpv4,
+        tcp::{
+            Socket as TcpSocket,
+            SocketBuffer as TcpSocketBuffer,
+        },
     },
     time::Instant,
     wire::{
@@ -165,12 +172,22 @@ fn main(ctx: Context) -> ! {
     let (_link, mac) = decode_status(status);
     let mtu: usize = 1500;
 
+    // DHCP mode: when the `dhcp` manifest key is present, skip the static (or
+    // MAC-derived) address and acquire the interface configuration from a DHCP
+    // server instead. The static path remains the default for raw two-node
+    // links and SLIRP runs with an explicit address.
+    let dhcp = ctx.manifest_value(charlotte_launch::manifest_key(b"dhcp")).is_some();
+
     let default_ip = Ipv4Address::new(10, 0, 0, 100u8.wrapping_add(mac[5] % 100));
-    let local_ip = match ctx.manifest_value(charlotte_launch::manifest_key(b"ip")) {
-        Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
-            Ipv4Address::new(raw[0], raw[1], raw[2], raw[3])
+    let mut local_ip = if dhcp {
+        Ipv4Address::new(0, 0, 0, 0)
+    } else {
+        match ctx.manifest_value(charlotte_launch::manifest_key(b"ip")) {
+            Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
+                Ipv4Address::new(raw[0], raw[1], raw[2], raw[3])
+            }
+            _ => default_ip,
         }
-        _ => default_ip,
     };
     let gateway = match ctx.manifest_value(charlotte_launch::manifest_key(b"gateway")) {
         Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
@@ -214,14 +231,21 @@ fn main(ctx: Context) -> ! {
     let mut cfg = Config::new(hw);
     cfg.random_seed = 0x0123_4567_89ab_cdef;
     let mut iface = Interface::new(cfg, &mut device, Instant::from_millis(0));
-    iface.update_ip_addrs(|addrs| {
-        let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(local_ip, 24)));
-    });
-    if let Some(gw) = gateway {
-        iface.routes_mut().add_default_ipv4_route(gw).ok();
+    if !dhcp {
+        iface.update_ip_addrs(|addrs| {
+            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(local_ip, 24)));
+        });
+        if let Some(gw) = gateway {
+            iface.routes_mut().add_default_ipv4_route(gw).ok();
+        }
     }
     let mut sock_storage: [_; 16] = Default::default();
     let mut sockets = SocketSet::new(&mut sock_storage[..]);
+    let dhcp_handle = if dhcp {
+        Some(sockets.add(dhcpv4::Socket::new()))
+    } else {
+        None
+    };
     let mut state = TcpipState {
         sockets: BTreeMap::new(),
         next_sock_id: 1,
@@ -235,6 +259,54 @@ fn main(ctx: Context) -> ! {
 
     loop {
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
+
+        // Apply DHCP configuration changes to the interface. The DHCP socket
+        // reports `Configured` on a fresh/renewed lease and `Deconfigured` on
+        // lease expiry; copy the Copy-able fields out before touching `iface`.
+        if let Some(handle) = dhcp_handle {
+            enum DhcpUpdate {
+                None,
+                Configured {
+                    cidr: Ipv4Cidr,
+                    router: Option<Ipv4Address>,
+                },
+                Deconfigured,
+            }
+            let update = match sockets.get_mut::<dhcpv4::Socket>(handle).poll() {
+                None => DhcpUpdate::None,
+                Some(dhcpv4::Event::Configured(config)) => DhcpUpdate::Configured {
+                    cidr: config.address,
+                    router: config.router,
+                },
+                Some(dhcpv4::Event::Deconfigured) => DhcpUpdate::Deconfigured,
+            };
+            match update {
+                DhcpUpdate::None => {}
+                DhcpUpdate::Configured {
+                    cidr,
+                    router,
+                } => {
+                    local_ip = cidr.address();
+                    iface.update_ip_addrs(|addrs| {
+                        addrs.clear();
+                        let _ = addrs.push(IpCidr::Ipv4(cidr));
+                    });
+                    match router {
+                        Some(r) => {
+                            let _ = iface.routes_mut().add_default_ipv4_route(r);
+                        }
+                        None => {
+                            iface.routes_mut().remove_default_ipv4_route();
+                        }
+                    }
+                }
+                DhcpUpdate::Deconfigured => {
+                    local_ip = Ipv4Address::new(0, 0, 0, 0);
+                    iface.update_ip_addrs(|addrs| addrs.clear());
+                    iface.routes_mut().remove_default_ipv4_route();
+                }
+            }
+        }
 
         // Sweep sockets that have fully closed (graceful close finished) so
         // their handles are recycled.

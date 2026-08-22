@@ -107,7 +107,7 @@ charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-net = { path = "../charlotte-protocol-net" }
 charlotte-protocol-msg = { path = "../charlotte-protocol-msg" }
 charlotte-smoltcp = { path = "../charlotte-smoltcp" }
-smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "socket-raw", "socket-udp", "socket-tcp"] }
+smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ethernet", "proto-ipv4", "proto-ipv6", "proto-dhcpv4", "socket-raw", "socket-udp", "socket-tcp", "socket-dhcpv4"] }
 catten-syscall = { path = "../catten-syscall" }
 catten-graft = { path = "../catten-graft" }
 spin = ">=0.10.0"
