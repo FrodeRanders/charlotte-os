@@ -129,6 +129,8 @@ pub mod el0;
 #[cfg(feature = "clusterctl_test")]
 pub mod el0_clusterctl;
 pub mod el0_demo;
+#[cfg(feature = "dhcp_test")]
+pub mod el0_dhcp;
 #[cfg(feature = "disco_net_test")]
 pub mod el0_disco;
 #[cfg(feature = "dns_net_test")]
@@ -306,6 +308,10 @@ pub fn run_deferred_self_tests() {
     el0_http::test_el0_http();
     #[cfg(not(feature = "http_net_test"))]
     logln!("Skipping EL0 http test (enable http_net_test with matching PCI hardware).");
+    #[cfg(feature = "dhcp_test")]
+    el0_dhcp::test_el0_dhcp();
+    #[cfg(not(feature = "dhcp_test"))]
+    logln!("Skipping EL0 dhcp test (enable dhcp_test with matching PCI hardware).");
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }
 

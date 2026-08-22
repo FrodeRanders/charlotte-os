@@ -16,7 +16,7 @@
 #                         [--instance NAME] [--smp N] [--timeout S]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
-#                         [--tcpip-test|--http-test] [--live-upgrade-test]
+#                         [--tcpip-test|--http-test|--dhcp-test] [--live-upgrade-test]
 #                         [--nic virtio|e1000e] [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
 #                         [--fresh-storage|--reuse-storage|--blank-storage]
@@ -41,6 +41,7 @@
 #   --tcpip-test   Exchange TCP data through the userspace smoltcp service
 #                  (requires two socket-linked guests)
 #   --http-test    Serve the HTTP state keyhole through SLIRP host forwarding
+#   --dhcp-test    Acquire a DHCP lease through the tcpip service (single guest)
 #   --live-upgrade-test  Run the isolated persistent service-upgrade test
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
@@ -76,6 +77,7 @@ DISCO_TEST="0"
 DNS_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
+DHCP_TEST="0"
 DEPLOY_TEST="0"
 LIVE_UPGRADE_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
@@ -112,6 +114,7 @@ while [ "$#" -gt 0 ]; do
         --deploy-test) NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
+        --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # implies --net-test
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
@@ -269,6 +272,9 @@ if [ "$TCPIP_TEST" = "1" ]; then
 fi
 if [ "$HTTP_TEST" = "1" ]; then
     FEATURES="${FEATURES},http_net_test"
+fi
+if [ "$DHCP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},dhcp_test"
 fi
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"

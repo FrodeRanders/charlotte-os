@@ -53,6 +53,11 @@ tcpip_net_test = ["virtio_net_test"]
 # observable node state over the tcpip service, reachable from the host via
 # SLIRP hostfwd (single guest, user network).
 http_net_test = ["virtio_net_test"]
+# Run the single-node DHCP smoke test: spawn tcpip in DHCP mode and verify it
+# acquires a non-zero interface address from the network's DHCP server. Unlike
+# the cross-node tcpip_net_test this runs in a single guest (QEMU SLIRP or
+# VMware NAT) and only exercises the lease-acquisition path.
+dhcp_test = ["virtio_net_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []

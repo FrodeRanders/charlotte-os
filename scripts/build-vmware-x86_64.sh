@@ -51,7 +51,7 @@ BUILD_ARGS=(
     --build-only
     --instance vmware
     --blank-storage
-    --net-test
+    --dhcp-test
     --nic e1000e
     --data-size-mib "$DATA_SIZE_MIB"
     --fresh-storage

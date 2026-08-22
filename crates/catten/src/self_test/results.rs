@@ -108,10 +108,11 @@ pub enum TestId {
     Http = 22,
     Clusterctl = 23,
     Join = 24,
+    Dhcp = 25,
 }
 
 impl TestId {
-    const ALL: [Self; 25] = [
+    const ALL: [Self; 26] = [
         Self::El0,
         Self::Raft,
         Self::RaftStorage,
@@ -137,6 +138,7 @@ impl TestId {
         Self::Http,
         Self::Clusterctl,
         Self::Join,
+        Self::Dhcp,
     ];
 
     const fn name(self) -> &'static str {
@@ -166,6 +168,7 @@ impl TestId {
             Self::Http => "http",
             Self::Clusterctl => "clusterctl",
             Self::Join => "join",
+            Self::Dhcp => "dhcp",
         }
     }
 }
@@ -312,6 +315,8 @@ pub fn register_boot_suite() {
     register(TestId::Tcpip);
     #[cfg(feature = "http_net_test")]
     register(TestId::Http);
+    #[cfg(feature = "dhcp_test")]
+    register(TestId::Dhcp);
     #[cfg(feature = "clusterctl_test")]
     {
         register(TestId::Clusterctl);
