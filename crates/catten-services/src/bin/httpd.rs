@@ -702,24 +702,21 @@ fn main(ctx: Context) -> ! {
             fail(0xe009);
         }
 
-        let mut accepted = false;
-        for _ in 0..3000 {
+        // Poll for a connection indefinitely: this is a long-lived keyhole
+        // server, so an idle listener must stay alive rather than abort.
+        loop {
             let accept = ipc_scalar_call(tcp_conn, socket::OP_ACCEPT, sock_id as u64);
             if accept == 0 {
                 fail(0xe00a);
             }
             let (result, _) = unsafe { wait_reply(accept, 0) };
             if result == 0 {
-                accepted = true;
                 break;
             }
             if result != socket::ERR_WOULD_BLOCK {
                 fail(0xe00b);
             }
             sleep_ms(ACCEPT_POLL_MS);
-        }
-        if !accepted {
-            fail(0xe00c);
         }
 
         // Read whatever request arrived (the response is hardcoded state, so
