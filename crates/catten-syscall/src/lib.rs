@@ -34,172 +34,119 @@ use core::ops::BitOr;
 /// Both userspace wrappers and the kernel dispatcher consume this enum. Adding
 /// a variant therefore requires the kernel's exhaustive dispatch match to be
 /// updated before the workspace can compile.
-#[repr(u16)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyscallNumber {
-    Log = 0,
-    CompletionSubmit = 1,
-    CompletionComplete = 2,
-    CompletionPoll = 3,
-    CompletionWait = 4,
-    CompletionCancel = 5,
-    CompletionClose = 6,
-    SpawnThread = 7,
-    ThreadExit = 8,
-    MailboxSend = 9,
-    MailboxRecv = 10,
-    CompletionWaitTimeout = 11,
-    CqWait = 12,
-    MailboxOpenSend = 13,
-    MailboxOpenRecv = 14,
-    MailboxSendCap = 15,
-    MailboxRecvCap = 16,
-    MailboxClose = 17,
-    IpcEndpointCreate = 18,
-    IpcConnect = 19,
-    IpcScalarSend = 20,
-    IpcScalarCall = 21,
-    IpcRecv = 22,
-    IpcReply = 23,
-    IpcReplyPoll = 24,
-    IpcClose = 25,
-    IpcReplyConnection = 26,
-    IpcRecvBlock = 27,
-    MemoryAlloc = 28,
-    MemoryMap = 29,
-    MemoryUnmap = 30,
-    MemoryClose = 31,
-    IpcScalarSendMove = 32,
-    IpcScalarCallMove = 33,
-    IpcReplyMove = 34,
-    IpcScalarCallBorrowRead = 35,
-    IpcScalarCallBorrowWrite = 36,
-    IpcScalarSendCopy = 37,
-    IpcScalarCallCopy = 38,
-    IpcScalarCallConnection = 39,
-    IpcScalarCallConnectionCopy = 40,
-    CqWake = 41,
-    CqWaitTimeout = 42,
-    IpcEndpointBindCq = 43,
-    DeviceMmioMap = 44,
-    DeviceMmioUnmap = 45,
-    DeviceIrqBindCq = 46,
-    DeviceIrqAck = 47,
-    DeviceClose = 48,
-    MemoryGetPhys = 49,
-    SpawnUpgrade = 50,
-    IpcVectorSend = 51,
-    IpcVectorCall = 52,
-    IpcRecvVec = 53,
-    IpcReplyWait = 54,
-    CompletionSubmitDetachedTimer = 55,
-    MemoryGetPhysPage = 56,
-    DmaMap = 57,
-    DmaUnmap = 58,
-    ThreadStatistics = 59,
-    IpcConnectionWatchClosed = 60,
-    ObserveThreadExit = 61,
-    GetTid = 62,
-    MemorySize = 63,
-    SpawnArtifact = 64,
-    RetireArtifact = 65,
-    MemoryMapAny = 66,
-    DeviceMmioMapAny = 67,
-    DomainAbort = 68,
-    DmaMapExclusive = 69,
-    GetDomainIdentity = 70,
-    IpcRecvAuthenticated = 71,
-    IpcRecvBlockAuthenticated = 72,
-    IpcRecvVecAuthenticated = 73,
-    LogStr = 74,
-}
-
-impl TryFrom<u16> for SyscallNumber {
-    type Error = ();
-
-    fn try_from(value: u16) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Log),
-            1 => Ok(Self::CompletionSubmit),
-            2 => Ok(Self::CompletionComplete),
-            3 => Ok(Self::CompletionPoll),
-            4 => Ok(Self::CompletionWait),
-            5 => Ok(Self::CompletionCancel),
-            6 => Ok(Self::CompletionClose),
-            7 => Ok(Self::SpawnThread),
-            8 => Ok(Self::ThreadExit),
-            9 => Ok(Self::MailboxSend),
-            10 => Ok(Self::MailboxRecv),
-            11 => Ok(Self::CompletionWaitTimeout),
-            12 => Ok(Self::CqWait),
-            13 => Ok(Self::MailboxOpenSend),
-            14 => Ok(Self::MailboxOpenRecv),
-            15 => Ok(Self::MailboxSendCap),
-            16 => Ok(Self::MailboxRecvCap),
-            17 => Ok(Self::MailboxClose),
-            18 => Ok(Self::IpcEndpointCreate),
-            19 => Ok(Self::IpcConnect),
-            20 => Ok(Self::IpcScalarSend),
-            21 => Ok(Self::IpcScalarCall),
-            22 => Ok(Self::IpcRecv),
-            23 => Ok(Self::IpcReply),
-            24 => Ok(Self::IpcReplyPoll),
-            25 => Ok(Self::IpcClose),
-            26 => Ok(Self::IpcReplyConnection),
-            27 => Ok(Self::IpcRecvBlock),
-            28 => Ok(Self::MemoryAlloc),
-            29 => Ok(Self::MemoryMap),
-            30 => Ok(Self::MemoryUnmap),
-            31 => Ok(Self::MemoryClose),
-            32 => Ok(Self::IpcScalarSendMove),
-            33 => Ok(Self::IpcScalarCallMove),
-            34 => Ok(Self::IpcReplyMove),
-            35 => Ok(Self::IpcScalarCallBorrowRead),
-            36 => Ok(Self::IpcScalarCallBorrowWrite),
-            37 => Ok(Self::IpcScalarSendCopy),
-            38 => Ok(Self::IpcScalarCallCopy),
-            39 => Ok(Self::IpcScalarCallConnection),
-            40 => Ok(Self::IpcScalarCallConnectionCopy),
-            41 => Ok(Self::CqWake),
-            42 => Ok(Self::CqWaitTimeout),
-            43 => Ok(Self::IpcEndpointBindCq),
-            44 => Ok(Self::DeviceMmioMap),
-            45 => Ok(Self::DeviceMmioUnmap),
-            46 => Ok(Self::DeviceIrqBindCq),
-            47 => Ok(Self::DeviceIrqAck),
-            48 => Ok(Self::DeviceClose),
-            49 => Ok(Self::MemoryGetPhys),
-            50 => Ok(Self::SpawnUpgrade),
-            51 => Ok(Self::IpcVectorSend),
-            52 => Ok(Self::IpcVectorCall),
-            53 => Ok(Self::IpcRecvVec),
-            54 => Ok(Self::IpcReplyWait),
-            55 => Ok(Self::CompletionSubmitDetachedTimer),
-            56 => Ok(Self::MemoryGetPhysPage),
-            57 => Ok(Self::DmaMap),
-            58 => Ok(Self::DmaUnmap),
-            59 => Ok(Self::ThreadStatistics),
-            60 => Ok(Self::IpcConnectionWatchClosed),
-            61 => Ok(Self::ObserveThreadExit),
-            62 => Ok(Self::GetTid),
-            63 => Ok(Self::MemorySize),
-            64 => Ok(Self::SpawnArtifact),
-            65 => Ok(Self::RetireArtifact),
-            66 => Ok(Self::MemoryMapAny),
-            67 => Ok(Self::DeviceMmioMapAny),
-            68 => Ok(Self::DomainAbort),
-            69 => Ok(Self::DmaMapExclusive),
-            70 => Ok(Self::GetDomainIdentity),
-            71 => Ok(Self::IpcRecvAuthenticated),
-            72 => Ok(Self::IpcRecvBlockAuthenticated),
-            73 => Ok(Self::IpcRecvVecAuthenticated),
-            74 => Ok(Self::LogStr),
-            _ => Err(()),
+///
+/// The full list (and its [`MAX_SYSCALL_NUMBER`]) is defined in one place by
+/// [`define_syscall_numbers!`], so the accepted syscall range can never drift
+/// out of sync with the enum.
+macro_rules! define_syscall_numbers {
+    ($(($variant:ident, $number:expr)),+ $(,)?) => {
+        #[repr(u16)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum SyscallNumber {
+            $($variant = $number),+
         }
-    }
+
+        impl TryFrom<u16> for SyscallNumber {
+            type Error = ();
+
+            fn try_from(value: u16) -> Result<Self, Self::Error> {
+                match value {
+                    $($number => Ok(Self::$variant),)+
+                    _ => Err(()),
+                }
+            }
+        }
+
+        /// The largest assigned syscall number.
+        ///
+        /// Derived from the list above at compile time, so adding a new syscall
+        /// automatically extends the accepted range — there is deliberately no
+        /// hand-maintained copy of this value to update.
+        pub const MAX_SYSCALL_NUMBER: u16 = {
+            let mut max = 0u16;
+            $( if ($number as u16) > max { max = $number as u16; } )+
+            max
+        };
+    };
 }
 
-pub const MAX_SYSCALL_NUMBER: u16 = SyscallNumber::LogStr as u16;
+define_syscall_numbers!(
+    (Log, 0),
+    (CompletionSubmit, 1),
+    (CompletionComplete, 2),
+    (CompletionPoll, 3),
+    (CompletionWait, 4),
+    (CompletionCancel, 5),
+    (CompletionClose, 6),
+    (SpawnThread, 7),
+    (ThreadExit, 8),
+    (MailboxSend, 9),
+    (MailboxRecv, 10),
+    (CompletionWaitTimeout, 11),
+    (CqWait, 12),
+    (MailboxOpenSend, 13),
+    (MailboxOpenRecv, 14),
+    (MailboxSendCap, 15),
+    (MailboxRecvCap, 16),
+    (MailboxClose, 17),
+    (IpcEndpointCreate, 18),
+    (IpcConnect, 19),
+    (IpcScalarSend, 20),
+    (IpcScalarCall, 21),
+    (IpcRecv, 22),
+    (IpcReply, 23),
+    (IpcReplyPoll, 24),
+    (IpcClose, 25),
+    (IpcReplyConnection, 26),
+    (IpcRecvBlock, 27),
+    (MemoryAlloc, 28),
+    (MemoryMap, 29),
+    (MemoryUnmap, 30),
+    (MemoryClose, 31),
+    (IpcScalarSendMove, 32),
+    (IpcScalarCallMove, 33),
+    (IpcReplyMove, 34),
+    (IpcScalarCallBorrowRead, 35),
+    (IpcScalarCallBorrowWrite, 36),
+    (IpcScalarSendCopy, 37),
+    (IpcScalarCallCopy, 38),
+    (IpcScalarCallConnection, 39),
+    (IpcScalarCallConnectionCopy, 40),
+    (CqWake, 41),
+    (CqWaitTimeout, 42),
+    (IpcEndpointBindCq, 43),
+    (DeviceMmioMap, 44),
+    (DeviceMmioUnmap, 45),
+    (DeviceIrqBindCq, 46),
+    (DeviceIrqAck, 47),
+    (DeviceClose, 48),
+    (MemoryGetPhys, 49),
+    (SpawnUpgrade, 50),
+    (IpcVectorSend, 51),
+    (IpcVectorCall, 52),
+    (IpcRecvVec, 53),
+    (IpcReplyWait, 54),
+    (CompletionSubmitDetachedTimer, 55),
+    (MemoryGetPhysPage, 56),
+    (DmaMap, 57),
+    (DmaUnmap, 58),
+    (ThreadStatistics, 59),
+    (IpcConnectionWatchClosed, 60),
+    (ObserveThreadExit, 61),
+    (GetTid, 62),
+    (MemorySize, 63),
+    (SpawnArtifact, 64),
+    (RetireArtifact, 65),
+    (MemoryMapAny, 66),
+    (DeviceMmioMapAny, 67),
+    (DomainAbort, 68),
+    (DmaMapExclusive, 69),
+    (GetDomainIdentity, 70),
+    (IpcRecvAuthenticated, 71),
+    (IpcRecvBlockAuthenticated, 72),
+    (IpcRecvVecAuthenticated, 73),
+    (LogStr, 74),
+);
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
 /// envelope. These bits intentionally match `charlotte_authorization::Roles`.
