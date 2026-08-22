@@ -651,12 +651,15 @@ impl IoState {
         prp1: u64,
         prp2: u64,
     ) -> Option<u32> {
+        config::write::<u32>(100, opcode as u32);
+        config::write::<u32>(108, nblocks as u32);
         // A circular SQ must always leave one entry unused so full and empty
         // remain distinguishable.
         if self.outstanding >= IO_QUEUE_SIZE - 1 {
             return None;
         }
         let slot = self.sq_tail;
+        config::write::<u32>(104, slot);
         unsafe {
             nvm_sqe(
                 self.sq_vaddr,
@@ -685,6 +688,7 @@ impl IoState {
         unsafe {
             let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
             let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
+            config::write::<u32>(84, dw3);
             let phase = ((dw3 >> 16) & 1) as u8;
             if phase != self.cq_phase {
                 return None;
@@ -692,11 +696,14 @@ impl IoState {
             core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
             let cid = (dw3 & 0xffff) as u16;
             let status = ((dw3 >> 17) & 0x7fff) as u16;
+            config::write::<u32>(88, status as u32);
+            config::write::<u32>(92, cid as u32);
             self.cq_head = (self.cq_head + 1) % IO_QUEUE_SIZE;
             if self.cq_head == 0 {
                 self.cq_phase ^= 1;
             }
             self.outstanding = self.outstanding.saturating_sub(1);
+            config::write::<u32>(96, self.outstanding);
             core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
             doorbell_write(cq1_hdbl(), self.cq_head as u16);
             Some((cid, status))
@@ -746,8 +753,10 @@ fn main(ctx: Context) -> ! {
 
     let endpoint = ipc_endpoint_create(block::INTERFACE, block::VERSION, 64);
     if endpoint == 0 {
+        config::write::<u32>(0, 0xe3);
         unsafe { thread_exit() };
     }
+    config::write::<u32>(0, 21);
 
     let register = ipc_scalar_call_connection(
         ns_connection,
@@ -757,12 +766,16 @@ fn main(ctx: Context) -> ! {
         IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
     );
     if register == 0 {
+        config::write::<u32>(0, 0xe4);
         unsafe { thread_exit() };
     }
+    config::write::<u32>(0, 22);
     let (generation, _) = spin_reply(register);
     if generation < 1 {
+        config::write::<u32>(0, 0xe5);
         unsafe { thread_exit() };
     }
+    config::write::<u32>(0, 23);
 
     ipc_endpoint_bind_cq(endpoint, 0);
     let irq_delivery = device_irq_bind_cq(irq_cap, 0) == 0;
@@ -858,6 +871,7 @@ fn main(ctx: Context) -> ! {
 
             match message.opcode {
                 block::OP_INFO => {
+                    config::write::<u32>(112, block::OP_INFO);
                     if message.reply != 0 {
                         ipc_reply(message.reply, ((blk as u64) | ((tot as u64) << 32)) as i64);
                     }

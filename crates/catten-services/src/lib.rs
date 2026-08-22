@@ -56,7 +56,7 @@ pub const fn name(bytes: &[u8]) -> u64 {
 ///
 /// Chosen above the program image (linked at `0x20000`, well under 1 MiB) and
 /// away from the fixed runtime pages: config (`0x10000`), CQ ring
-/// (`0x11000`), launch input (`0x12000`), and heap (`0x13000..0x20000`).
+/// (`0x11000`), launch input (`0x12000`), and heap (`0x300000..0x700000`).
 pub const NAME_SCRATCH_VADDR: usize = 0x0000_0000_0010_0000;
 
 /// Maximum memory-carried name length (fits one page with room to spare).

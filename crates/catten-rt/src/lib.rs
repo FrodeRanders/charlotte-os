@@ -292,7 +292,7 @@ pub use talc::{
 
 pub type HeapLock = TalcLock<spin::Mutex<()>, Claim>;
 
-/// Construct the heap arena at the canonical heap VADDR (0x13000).
+/// Construct the heap arena at the canonical heap virtual address.
 pub const fn heap() -> HeapLock {
     TalcLock::new(unsafe {
         Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, charlotte_launch::HEAP_SIZE)

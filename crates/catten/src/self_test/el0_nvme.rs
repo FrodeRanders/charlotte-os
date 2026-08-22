@@ -205,6 +205,10 @@ extern "C" fn verify_el0_nvme() {
         &ns,
         ConnectionRights::CALL,
     );
+    let objstore_cfg: *const u32 = {
+        let base: *mut u8 = objstore.status_frame.into();
+        base as *const u32
+    };
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
     logln!(
         "[nvme] driver stage={} raw_dw3={:#x} irq_count={}",
@@ -229,7 +233,39 @@ extern "C" fn verify_el0_nvme() {
             .expect("[nvme] objstore registration lookup");
     let registered = crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, obj_lookup, 30_000)
         .expect("[nvme] objstore registration reply error");
-    assert!(registered, "[nvme] objstore registration deadline expired");
+    if !registered {
+        let driver_threads = crate::cpu::scheduler::threads::statistics_for_asid(driver.asid);
+        let objstore_threads = crate::cpu::scheduler::threads::statistics_for_asid(objstore.asid);
+        logln!(
+            "[nvme] timeout diagnostics: driver main={} init={} io_dw3={:#x} io_status={} \
+             io_cid={} outstanding={} opcode={:#x} slot={} nblocks={}",
+            unsafe { core::ptr::read_volatile(driver_cfg) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(1)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(21)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(22)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(23)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(24)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(25)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(26)) },
+            unsafe { core::ptr::read_volatile(driver_cfg.add(27)) }
+        );
+        logln!(
+            "[nvme] timeout diagnostics: objstore stage={} error={:#x} block_result={:#x} \
+             block_op={:#x} reply_status={:#x} detail={:#x}",
+            unsafe { core::ptr::read_volatile(objstore_cfg) },
+            unsafe { core::ptr::read_volatile(objstore_cfg.add(2)) },
+            unsafe { core::ptr::read_volatile(objstore_cfg.cast::<u64>().add(4)) },
+            unsafe { core::ptr::read_volatile(objstore_cfg.add(4)) },
+            unsafe { core::ptr::read_volatile(objstore_cfg.add(6)) },
+            unsafe { core::ptr::read_volatile(objstore_cfg.add(7)) }
+        );
+        logln!(
+            "[nvme] timeout diagnostics: driver_threads={:?} objstore_threads={:?}",
+            driver_threads,
+            objstore_threads
+        );
+        panic!("[nvme] objstore registration deadline expired");
+    }
     if let Ok(Some(reply)) = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, obj_lookup)
         && let Some(connection) = reply.cap
     {

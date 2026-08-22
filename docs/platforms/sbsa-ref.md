@@ -212,11 +212,13 @@ a leader). The boot completes (boot-done marker).
 **Status: the full self-test suite passes on sbsa-ref (18/18), matching
 virt/TCG.** The last gap was the object store: its mount allocates a bitmap
 plus a directory-entry vector (~96 KiB for a 128 MiB disk) while formatting,
-which exceeded the 52 KiB per-domain EL0 heap — the store OOM'd after the two
-superblock reads and aborted. The heap is now 256 KiB (`HEAP_SIZE = 0x40000`)
-and relocated to `0x300000` (above the services' ELF load segments at `0x20000`,
-below the status page at `0x7f0000`) so the larger arena doesn't collide with
-the image; the sitas self-test's own heap mapping uses the shared constants.
+which exceeded the original 52 KiB per-domain EL0 heap — the store OOM'd after
+the two superblock reads and aborted. The heap was relocated to `0x300000`
+(above the services' ELF load segments at `0x20000`, below the status page at
+`0x7f0000`) and is now 4 MiB (`HEAP_SIZE = 0x400000`). The larger size also
+accommodates the bitmap, directory, and mirrored-directory mount buffer for the
+1 GiB disk used by the VMware appliance; the sitas self-test's own heap mapping
+uses the shared constants.
 With that, the NVMe storage stack and the persistent Raft recovery pass on
 sbsa-ref alongside every other test.
 
@@ -349,7 +351,7 @@ Where the bring-up landed and what happened to the earlier plan:
 - Spurious check (now `1020..=1023`): `crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`.
 - Heap mapping loop: `crates/catten/src/service/loader.rs` (now quiet) over `HEAP_PAGES`.
 - Heap geometry: `crates/charlotte-launch/src/lib.rs`
-  (`HEAP_VADDR = 0x300000`, `HEAP_SIZE = 0x40000`).
+  (`HEAP_VADDR = 0x300000`, `HEAP_SIZE = 0x400000`).
 - Kernel entry / EL2→EL1 descent: `crates/catten/src/main.rs` (`_start`;
   `# Safety` doc added).
 - Self-test annotations: `crates/catten/src/self_test/` module docs

@@ -47,10 +47,15 @@ artifacts from its immutable x86-64 installation bundle. A successful first
 boot includes output like:
 
 ```text
-[store] bootstrap seed complete: retained=0 written=26
+[store] bootstrap seed complete: retained=0 written=27
 [nvme] DMA domain completed the transfer without translation faults
-SELFTEST COMPLETE: passed=7 failed=0 pending=0
+SELFTEST COMPLETE: passed=17 failed=0 pending=0
 ```
+
+The shared 4 MiB userspace heap accommodates the object store's allocation
+bitmap, directory, and mirrored-directory mount buffer for this 1 GiB disk.
+Reducing that arena without also changing the store's metadata representation
+will make the service abort while formatting or mounting larger disks.
 
 Later boots validate every existing artifact against its logical name and
 signature. Valid stored artifacts are retained, including newer versions
@@ -58,7 +63,7 @@ installed through `clusterctl`; only missing or invalid entries are restored
 from the boot bundle. A normal second boot therefore reports:
 
 ```text
-[store] bootstrap seed complete: retained=26 written=0
+[store] bootstrap seed complete: retained=27 written=0
 ```
 
 This replaces the host-side preseeding used by the default QEMU raw disk.
@@ -113,9 +118,11 @@ and the older E1000 model remain unsupported.
 
 ## Qualification evidence
 
-The Fusion qualification exercised a blank first boot, a clean power-off/start
-of the same data VMDK, and the E1000E network smoke test. The network run found
-the adapter behind a multifunction root port, brought link up, transmitted a
-frame, completed protected NVMe DMA, and passed all eight registered tests
-without VT-d translation faults. Two synchronized QEMU E1000E guests also pass
-cluster discovery and the smoltcp TCP exchange.
+The Fusion qualification exercised a blank first boot and a restart using the
+same data VMDK. Both boots passed all 17 registered tests without VT-d
+translation faults. The first boot formatted the 1 GiB store and installed 27
+artifacts; the second retained all 27, remounted persistent metadata, and
+advanced the persisted Raft term. The network run found the adapter behind a
+multifunction root port, brought link up, and completed a hardware transmit.
+Two synchronized QEMU E1000E guests also pass cluster discovery and the smoltcp
+TCP exchange.

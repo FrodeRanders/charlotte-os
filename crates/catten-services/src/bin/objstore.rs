@@ -57,6 +57,25 @@ const EXTENT_SIZE: usize = 16;
 const MAX_EXTENTS: usize = 16;
 const HASH_FNV1A64: u16 = 2;
 
+// Mutable status-page diagnostics consumed by the kernel boot verifier.
+// These survive an EL0 thread exit and let the supervisor distinguish an IPC
+// setup failure from a block-I/O or on-disk-format failure.
+const DIAG_STAGE: usize = 0;
+const DIAG_SENTINEL: usize = 4;
+const DIAG_ERROR: usize = 8;
+const DIAG_BLOCK_OP: usize = 16;
+const DIAG_REPLY_STATUS: usize = 24;
+const DIAG_DETAIL: usize = 28;
+const DIAG_BLOCK_RESULT: usize = 32;
+
+fn diag_stage(stage: u32) {
+    config::write::<u32>(DIAG_STAGE, stage);
+}
+
+fn diag_error(error: u32) {
+    config::write::<u32>(DIAG_ERROR, error);
+}
+
 #[derive(Clone, Copy)]
 struct Layout {
     bitmap_lba: u64,
@@ -146,6 +165,7 @@ struct BlockDev {
 
 impl BlockDev {
     fn connect(ns_conn: u64) -> Option<Self> {
+        diag_stage(10);
         let lookup = ipc_scalar_call_connection(
             ns_conn,
             ns::OP_LOOKUP,
@@ -154,18 +174,34 @@ impl BlockDev {
             IpcRights::SEND | IpcRights::CALL,
         );
         if lookup == 0 {
+            diag_error(0xc1);
             return None;
         }
-        let (generation, conn) = wait_scalar(lookup)?;
+        diag_stage(11);
+        let Some((generation, conn)) = wait_scalar(lookup) else {
+            diag_error(0xc2);
+            return None;
+        };
         if generation < 1 || conn == 0 {
+            diag_error(0xc3);
             return None;
         }
+        diag_stage(12);
         let info = ipc_scalar_call(conn, block::OP_INFO, 0);
-        let (result, _) = wait_scalar(info)?;
+        if info == 0 {
+            diag_error(0xc4);
+            return None;
+        }
+        let Some((result, _)) = wait_scalar(info) else {
+            diag_error(0xc5);
+            return None;
+        };
+        diag_stage(13);
         let (block_size, total_blocks) = charlotte_protocol_block::unpack_info(result);
         if !(512..=PAGE_SIZE as u32).contains(&block_size)
             || Layout::for_device(block_size, total_blocks).is_none()
         {
+            diag_error(0xc6);
             return None;
         }
         Some(Self {
@@ -176,36 +212,62 @@ impl BlockDev {
     }
 
     fn read_blocks_keep(&self, lba: u64, count: u32, memory: u64) -> bool {
+        diag_stage(40);
+        config::write::<u32>(DIAG_BLOCK_OP, block::OP_READ);
         let call = ipc_scalar_call_borrow_write(
             self.conn,
             block::OP_READ,
             charlotte_protocol_block::pack_lba_count(lba, count),
             memory,
         );
-        wait_scalar(call).is_some_and(|(result, _)| result == 0)
+        let result = wait_scalar(call).map(|(result, _)| result);
+        config::write::<i64>(DIAG_BLOCK_RESULT, result.unwrap_or(i64::MIN));
+        let ok = result == Some(0);
+        if !ok {
+            diag_error(0xd1);
+        }
+        ok
     }
 
     fn write_blocks(&self, lba: u64, count: u32, memory: u64) -> bool {
+        diag_stage(41);
+        config::write::<u32>(DIAG_BLOCK_OP, block::OP_WRITE);
         let call = ipc_scalar_call_borrow_read(
             self.conn,
             block::OP_WRITE,
             charlotte_protocol_block::pack_lba_count(lba, count),
             memory,
         );
-        wait_scalar(call).is_some_and(|(result, _)| result == 0)
+        let result = wait_scalar(call).map(|(result, _)| result);
+        config::write::<i64>(DIAG_BLOCK_RESULT, result.unwrap_or(i64::MIN));
+        let ok = result == Some(0);
+        if !ok {
+            diag_error(0xd2);
+        }
+        ok
     }
 
     fn flush(&self) -> bool {
+        diag_stage(42);
+        config::write::<u32>(DIAG_BLOCK_OP, block::OP_FLUSH);
         let call = ipc_scalar_call(self.conn, block::OP_FLUSH, 0);
-        wait_scalar(call).is_some_and(|(result, _)| result == 0)
+        let result = wait_scalar(call).map(|(result, _)| result);
+        config::write::<i64>(DIAG_BLOCK_RESULT, result.unwrap_or(i64::MIN));
+        let ok = result == Some(0);
+        if !ok {
+            diag_error(0xd3);
+        }
+        ok
     }
 }
 
 fn wait_scalar(call: u64) -> Option<(i64, u64)> {
     if call == 0 {
+        config::write::<u32>(DIAG_REPLY_STATUS, u32::MAX);
         return None;
     }
     let (status, result, cap) = ipc_reply_wait(call);
+    config::write::<u32>(DIAG_REPLY_STATUS, status as u32);
     ipc_close(call);
     (status == 0).then_some((result as i64, cap))
 }
@@ -223,8 +285,14 @@ struct ObjStore {
 
 impl ObjStore {
     fn mount(dev: BlockDev) -> Option<Self> {
-        let expected = Layout::for_device(dev.block_size, dev.total_blocks)?;
+        diag_stage(20);
+        let Some(expected) = Layout::for_device(dev.block_size, dev.total_blocks) else {
+            diag_error(0xe1);
+            return None;
+        };
+        diag_stage(21);
         let first = read_superblock(&dev, 0);
+        diag_stage(22);
         let second = read_superblock(&dev, 1);
         let selected = match (first, second) {
             (Some(a), Some(b)) => Some(
@@ -239,6 +307,7 @@ impl ObjStore {
             (None, None) => None,
         };
         let Some(sb) = selected else {
+            diag_stage(23);
             return Self::format(dev);
         };
         if sb.block_size != dev.block_size
@@ -249,6 +318,7 @@ impl ObjStore {
             || sb.layout.directory_blocks != expected.directory_blocks
             || sb.layout.data_lba != expected.data_lba
         {
+            diag_stage(24);
             return Self::format(dev);
         }
 
@@ -270,8 +340,16 @@ impl ObjStore {
     }
 
     fn format(dev: BlockDev) -> Option<Self> {
-        let layout = Layout::for_device(dev.block_size, dev.total_blocks)?;
-        let directory_entries = layout.directory_entries(dev.block_size)? as usize;
+        diag_stage(30);
+        let Some(layout) = Layout::for_device(dev.block_size, dev.total_blocks) else {
+            diag_error(0xf0);
+            return None;
+        };
+        let Some(directory_entries) = layout.directory_entries(dev.block_size) else {
+            diag_error(0xf0);
+            return None;
+        };
+        let directory_entries = directory_entries as usize;
         let mut bitmap = vec![0; bitmap_len_bytes(dev.total_blocks)];
         bitmap_set_range(&mut bitmap, 0, layout.data_lba as u32, true);
         let store = Self {
@@ -285,14 +363,20 @@ impl ObjStore {
             pending_sizes: spin::Mutex::new(BTreeMap::new()),
         };
         if !store.persist_bitmap() {
+            diag_error(0xf1);
             return None;
         }
+        diag_stage(31);
         if !store.write_superblock_slot(0, 1) || !store.write_superblock_slot(1, 1) {
+            diag_error(0xf2);
             return None;
         }
+        diag_stage(32);
         if !store.dev.flush() {
+            diag_error(0xf3);
             return None;
         }
+        diag_stage(33);
         Some(store)
     }
 
@@ -919,6 +1003,7 @@ impl ObjectHeader {
 }
 
 fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
+    config::write::<u32>(DIAG_DETAIL, 50 + slot as u32 * 10);
     let memory = memory_alloc(1);
     if memory == 0 || !dev.read_blocks_keep(slot, 1, memory) {
         if memory != 0 {
@@ -926,16 +1011,22 @@ fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
         }
         return None;
     }
+    config::write::<u32>(DIAG_DETAIL, 51 + slot as u32 * 10);
     let (chunk_vaddr_5_map_status, chunk_vaddr_5) = memory_map_any(memory, false);
     if chunk_vaddr_5_map_status != 0 {
+        config::write::<u32>(DIAG_DETAIL, 0xe50 + slot as u32);
         memory_close(memory);
         return None;
     }
+    config::write::<u32>(DIAG_DETAIL, 52 + slot as u32 * 10);
     let bytes =
         unsafe { core::slice::from_raw_parts(chunk_vaddr_5 as *const u8, dev.block_size as usize) };
     let result = decode_superblock(bytes);
+    config::write::<u32>(DIAG_DETAIL, 53 + slot as u32 * 10);
     memory_unmap(memory);
+    config::write::<u32>(DIAG_DETAIL, 54 + slot as u32 * 10);
     memory_close(memory);
+    config::write::<u32>(DIAG_DETAIL, 55 + slot as u32 * 10);
     result
 }
 
@@ -1172,16 +1263,17 @@ fn put_u64(bytes: &mut [u8], offset: usize, value: u64) {
 
 fn main(ctx: Context) -> ! {
     let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| unsafe { thread_exit() });
-    config::write::<u32>(0, 1);
+    diag_stage(1);
     let dev = BlockDev::connect(ns_connection).unwrap_or_else(|| unsafe { thread_exit() });
-    config::write::<u32>(0, 2);
+    diag_stage(2);
     config::write::<u32>(16, dev.block_size);
     config::write::<u32>(20, dev.total_blocks);
     let mut store = ObjStore::mount(dev).unwrap_or_else(|| unsafe { thread_exit() });
-    config::write::<u32>(0, 3);
+    diag_stage(3);
 
     let endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 64);
     if endpoint == 0 {
+        diag_error(0xb1);
         unsafe { thread_exit() };
     }
     let register = ipc_scalar_call_connection(
@@ -1194,10 +1286,11 @@ fn main(ctx: Context) -> ! {
     if wait_scalar(register).is_none_or(|(generation, _)| generation < 1)
         || ipc_endpoint_bind_cq(endpoint, 0) != 0
     {
+        diag_error(0xb2);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 4);
-    config::write::<u32>(4, 0x900d);
+    diag_stage(4);
+    config::write::<u32>(DIAG_SENTINEL, 0x900d);
 
     loop {
         cq_wait(1, 0);

@@ -165,7 +165,9 @@ Fusion or Workstation. The SATA boot disk is nonpersistent; the NVMe data disk
 is persistent. On first boot the guest formats that disk and installs the
 missing signed x86-64 service artifacts. Later boots retain valid artifacts,
 including deployed upgrades. The builder refuses to overwrite an existing
-appliance unless \texttt{--replace} is supplied.
+appliance unless \texttt{--replace} is supplied. The default 1~GiB data disk
+requires the shared 4~MiB userspace heap so the object store can hold its
+allocation bitmap, directory, and mirrored-directory mount buffer.
 
 The supplied VM attaches VMware's emulated Intel 82574L adapter to NAT. The
 userspace E1000E driver receives delegated MMIO, MSI-X, and protected-DMA

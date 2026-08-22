@@ -7,17 +7,19 @@ pub const CQ_ENTRIES: u32 = 32;
 pub const INPUT_VADDR: usize = 0x0000_0000_0001_2000;
 pub const INPUT_CAPACITY: usize = 4096;
 pub const HEAP_VADDR: usize = 0x0000_0000_0030_0000;
-/// Per-domain heap arena. 256 KiB: the object store's mount allocates a bitmap
-/// (up to ~32 KiB) plus a directory entry vector (up to ~64 KiB for a 128 MiB
-/// disk) while formatting. The arena sits well above the services' ELF load
-/// segments (which start at `0x20000`) and below the status page (`0x7f0000`).
-pub const HEAP_SIZE: usize = 0x40000;
+/// Per-domain heap arena. The object store's in-memory allocation bitmap,
+/// directory, and mirrored-directory mount buffer need more than 2 MiB for the
+/// 1 GiB disk used by the VMware appliance. Four MiB leaves working room for
+/// ordinary service allocations while remaining below the status page.
+pub const HEAP_SIZE: usize = 0x40_0000;
 /// Mutable program status/output page, deliberately separate from launch
 /// configuration so applications cannot overwrite their launch contract.
 // Kept below the per-shard CQ reservation at 0x0080_0000 and well above the
 // linked application image, which begins at 0x0002_0000.
 pub const STATUS_VADDR: usize = 0x0000_0000_007f_0000;
 pub const STATUS_PAGE_SIZE: u32 = 4096;
+
+const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 
 /// Maximum ELF size accepted at the cluster-administration ingress and by the
 /// kernel's deployment-agent launch gate. Keeping one shared bound prevents a
