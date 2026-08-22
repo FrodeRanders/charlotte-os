@@ -275,16 +275,24 @@ pub fn register_boot_suite() {
             register(TestId::Nvme);
         }
     }
-    // x86_64 runs the architecture-neutral userspace, service, storage,
-    // scheduler, and feature-selected network/cluster suites. The hand-written
-    // IPC demos, PL011 UART, and sitas integration remain AArch64-specific, so
-    // register only tests that execute and report on x86. Registering a test
-    // that can never resolve would leave the coordinator permanently in
+    // x86_64 runs the shared raw-syscall, userspace, device, service, storage,
+    // scheduler, and feature-selected network/cluster suites. PL011 UART and
+    // sitas integration remain AArch64-specific. Registering a test that can
+    // never resolve would leave the coordinator permanently in
     // `SELFTEST WAITING`.
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(target_arch = "x86_64")]
     {
         register(TestId::El0);
+        register(TestId::El0Ipc);
+        register(TestId::El0IpcBlocking);
+        register(TestId::El0IpcCrossAs);
+        register(TestId::El0IpcMemory);
+        register(TestId::El0IpcMemoryCancel);
+        register(TestId::El0IpcMemoryCopy);
+        register(TestId::El0CrossLp);
+        register(TestId::PingPong);
         register(TestId::CqWait);
+        register(TestId::Device);
         register(TestId::Service);
         register(TestId::SchedulerLifecycle);
         #[cfg(not(feature = "hvf_compat"))]
@@ -428,7 +436,7 @@ extern "C" fn coordinator() {
             for test in TestId::ALL {
                 if pending & bit(test) != 0 {
                     logln!("SELFTEST PENDING: {}", test.name());
-                    #[cfg(target_arch = "aarch64")]
+                    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
                     if matches!(test, TestId::Device) {
                         let (waiter, driver) = crate::self_test::device::progress();
                         logln!("SELFTEST DEVICE PHASES: waiter={} driver={}", waiter, driver);

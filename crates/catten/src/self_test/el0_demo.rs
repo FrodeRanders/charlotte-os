@@ -2,7 +2,7 @@
 //!
 //! Where [`crate::demo`] drives the completion and shard primitives from
 //! EL1 kernel threads by calling the in-kernel APIs directly, this exercise
-//! drives the *same* async round-trip entirely from EL0 through the `svc` ABI,
+//! drives the *same* async round-trip entirely from EL0 through the raw syscall ABI,
 //! and demonstrates cross-LP work placement via the `SPAWN_THREAD` syscall.
 //!
 //! Two hand-written EL0 stubs run in one user address space:
@@ -22,24 +22,24 @@
 //! Requires at least two LPs (for the cross-LP placement); it is skipped
 //! otherwise.
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use core::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::completion;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::memory::paging::AddressSpace;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::scheduler::spawn_thread;
 use crate::logln;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::{
     ADDRESS_SPACE_TABLE,
     KERNEL_AS,
@@ -51,24 +51,24 @@ use crate::memory::{
 };
 
 /// User virtual addresses in the demo's address space.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const COORD_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const WORKER_CODE_VADDR: usize = 0x0000_0000_0001_1000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const CQ_VADDR: usize = 0x0000_0000_0001_2000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const RESULT_VADDR: usize = 0x0000_0000_0001_3000;
 
 /// The completion result the worker posts and the coordinator reads back.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const EXPECTED_RESULT: u32 = 42;
 
 /// Physical frame of the result page, read by the verifier via HHDM.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut DEMO_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 /// Address-space ID plus one; zero means the demo domain has not been created.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static XLP_ASID: AtomicUsize = AtomicUsize::new(0);
 
 /// Coordinator stub. The kernel derives ASID from the running thread; `x0` is
@@ -118,7 +118,66 @@ const WORKER_CODE: &[u8] = &[
     0x42, 0x05, 0x80, 0xd2, 0x41, 0x00, 0x00, 0xd4, 0x08, 0x01, 0x00, 0xd4,
 ];
 
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_demo_x86_64.asm"));
+
+#[cfg(target_arch = "x86_64")]
+unsafe extern "C" {
+    static __catten_el0_demo_coord_start: u8;
+    static __catten_el0_demo_coord_end: u8;
+    static __catten_el0_demo_worker_start: u8;
+    static __catten_el0_demo_worker_end: u8;
+}
+
 #[cfg(target_arch = "aarch64")]
+fn coordinator_code() -> &'static [u8] {
+    COORD_CODE
+}
+
+#[cfg(target_arch = "aarch64")]
+fn worker_code() -> &'static [u8] {
+    WORKER_CODE
+}
+
+#[cfg(target_arch = "x86_64")]
+fn coordinator_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_demo_coord_start),
+        core::ptr::addr_of!(__catten_el0_demo_coord_end),
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+fn worker_code() -> &'static [u8] {
+    stub_bytes(
+        core::ptr::addr_of!(__catten_el0_demo_worker_start),
+        core::ptr::addr_of!(__catten_el0_demo_worker_end),
+    )
+}
+
+#[cfg(target_arch = "x86_64")]
+fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
+    let start = start as usize;
+    let end = end as usize;
+    assert!(end >= start, "el0_demo: invalid assembled stub bounds");
+    unsafe { core::slice::from_raw_parts(start as *const u8, end - start) }
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn synchronize_instruction_stream() {
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        core::arch::asm!(
+            "dsb ishst",
+            "ic ialluis",
+            "dsb ish",
+            "isb",
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -140,7 +199,7 @@ fn map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn map_data_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -160,7 +219,7 @@ fn map_data_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr {
 }
 
 pub fn test_el0_cross_lp_async() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         let lp_count = crate::cpu::multiprocessor::get_lp_count();
         if lp_count < 2 {
@@ -168,7 +227,7 @@ pub fn test_el0_cross_lp_async() {
             crate::self_test::results::pass(crate::self_test::results::TestId::El0CrossLp);
             return;
         }
-        logln!("Testing EL0 cross-LP async round-trip (via svc ABI)...");
+        logln!("Testing EL0 cross-LP async round-trip (via raw syscall ABI)...");
 
         // --- create the demo's user address space ---
         let user_as = {
@@ -180,18 +239,10 @@ pub fn test_el0_cross_lp_async() {
         logln!("[EL0 xLP] user AS asid={}", asid);
 
         // --- map code (coordinator + worker), CQ ring, and result pages ---
-        map_code_page(asid, VAddr::from(COORD_CODE_VADDR), COORD_CODE);
-        map_code_page(asid, VAddr::from(WORKER_CODE_VADDR), WORKER_CODE);
+        map_code_page(asid, VAddr::from(COORD_CODE_VADDR), coordinator_code());
+        map_code_page(asid, VAddr::from(WORKER_CODE_VADDR), worker_code());
         // Make the freshly written code visible to instruction fetch.
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let cq_frame = map_data_page(asid, VAddr::from(CQ_VADDR));
         let result_frame = map_data_page(asid, VAddr::from(RESULT_VADDR));
@@ -216,15 +267,15 @@ pub fn test_el0_cross_lp_async() {
         );
         logln!("[EL0 xLP] verifier thread tid={}; assertion deferred to scheduler.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 cross-LP async demo (AArch64 only).");
+        logln!("Skipping EL0 cross-LP async demo (unsupported architecture).");
     }
 }
 
 /// Kernel thread that verifies the EL0 demo's result page once the scheduler is
 /// running. Polls cooperatively (no timer/blocking), then asserts.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_demo() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -246,7 +297,7 @@ extern "C" fn verify_el0_demo() {
             );
             logln!(
                 "[EL0 xLP] SUCCESS: EL0 coordinator submitted cap {}, worker completed cross-LP, \
-                 result {} drained from CQ ring \u{2014} all via svc.",
+                 result {} drained from CQ ring \u{2014} all via raw syscall ABI.",
                 cap,
                 value
             );

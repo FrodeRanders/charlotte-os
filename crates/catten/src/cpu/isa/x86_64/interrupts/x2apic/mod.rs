@@ -29,7 +29,7 @@ use crate::{
 };
 
 pub static LAPICS: LazyLock<PerLp<MaybeUninit<X2Apic>>> =
-    LazyLock::new(|| PerLp::new(|| MaybeUninit::uninit()));
+    LazyLock::new(|| PerLp::new(MaybeUninit::uninit));
 
 #[derive(Debug)]
 pub enum Error {

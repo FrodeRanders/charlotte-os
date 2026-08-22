@@ -42,6 +42,10 @@ impl IoRegion {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn is_in_region(&self, reg: IoReg8) -> bool {
         match self {
             IoRegion::IoPort {

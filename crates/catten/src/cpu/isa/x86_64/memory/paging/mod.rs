@@ -154,7 +154,7 @@ impl AddressSpaceInterface for AddressSpace {
             asm!("mov {}, cr3", out(reg) cr3);
         }
         AddressSpace {
-            cr3: cr3,
+            cr3,
             owns_root: false,
         }
     }
@@ -208,8 +208,8 @@ impl AddressSpaceInterface for AddressSpace {
         n_large_pages: usize,
         range: (VAddr, VAddr),
     ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
-        if range.0.is_aligned_to(Self::LARGE_PAGE_SIZE) == false
-            || range.1.is_aligned_to(Self::LARGE_PAGE_SIZE) == false
+        if !range.0.is_aligned_to(Self::LARGE_PAGE_SIZE)
+            || !range.1.is_aligned_to(Self::LARGE_PAGE_SIZE)
         {
             return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotLargePageAligned);
         }
@@ -246,8 +246,8 @@ impl AddressSpaceInterface for AddressSpace {
         n_huge_pages: usize,
         range: (VAddr, VAddr),
     ) -> Result<VAddr, <MemoryInterfaceImpl as MemoryInterface>::Error> {
-        if range.0.is_aligned_to(Self::HUGE_PAGE_SIZE) == false
-            || range.1.is_aligned_to(Self::HUGE_PAGE_SIZE) == false
+        if !range.0.is_aligned_to(Self::HUGE_PAGE_SIZE)
+            || !range.1.is_aligned_to(Self::HUGE_PAGE_SIZE)
         {
             return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotHugePageAligned);
         }

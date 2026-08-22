@@ -689,5 +689,5 @@ pub fn pending_fault_events() -> u32 {
     if base == 0 {
         return 0;
     }
-    ((read32(base, FSTS) >> 1) & 1) as u32
+    (read32(base, FSTS) >> 1) & 1
 }

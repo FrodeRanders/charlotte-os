@@ -120,7 +120,7 @@ impl CpuInfoIfce for CpuInfo {
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {
-        if *IS_CPUID_SUPPORTED == false {
+        if !*IS_CPUID_SUPPORTED {
             panic!(
                 "The current x86-64 processor does not support the CPUID instruction which is \
                  required by the Catten kernel."

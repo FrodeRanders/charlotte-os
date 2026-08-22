@@ -3,9 +3,15 @@
 //! Make sure to check any necessary CPUID features before using these MSRs as not all of them are
 //! architectural.
 
+/// Read an x86-64 model-specific register.
+///
+/// # Safety
+///
+/// The caller must run at the required privilege level and ensure `msr` is
+/// implemented and readable on the current CPU. Otherwise `rdmsr` may raise a
+/// general-protection fault.
 #[inline(always)]
 pub unsafe fn read(msr: u32) -> u64 {
-    //! Read from an x86-64 model specific register
     let low: u32;
     let high: u32;
 
@@ -22,9 +28,15 @@ pub unsafe fn read(msr: u32) -> u64 {
     ((high as u64) << 32) | (low as u64)
 }
 
+/// Write an x86-64 model-specific register.
+///
+/// # Safety
+///
+/// The caller must run at the required privilege level, ensure `msr` is
+/// implemented and writable, and ensure `value` is valid for that register.
+/// Invalid writes may fault or leave the processor in an unusable state.
 #[inline(always)]
 pub unsafe fn write(msr: u32, value: u64) {
-    //! Write to an x86-64 model specific register
     let low = value as u32;
     let high = (value >> 32) as u32;
 
@@ -74,6 +86,11 @@ pub const LSTAR: u32 = 0xc000_0082;
 pub const SFMASK: u32 = 0xc000_0084;
 
 /// Convenience: enable SYSCALL by setting EFER.SCE.
+///
+/// # Safety
+///
+/// The caller must execute in ring 0 on a processor that implements the EFER
+/// MSR and long-mode SYSCALL support.
 pub unsafe fn enable_syscall() {
     unsafe {
         let efer_val = read(EFER);
@@ -83,6 +100,13 @@ pub unsafe fn enable_syscall() {
 
 /// Configure SYSCALL entry point. `handler` must be the address of the
 /// assembly trampoline that saves registers and calls into Rust.
+///
+/// # Safety
+///
+/// `handler_addr` must be a canonical, executable kernel address that remains
+/// valid while SYSCALL is enabled. The active GDT must contain the kernel and
+/// user segments encoded below, and this must run in ring 0 on a processor
+/// with long-mode SYSCALL support.
 pub unsafe fn setup_syscall(handler_addr: u64) {
     unsafe {
         let star_val: u64 = (0x0010u64 << 48) | (0x0008u64 << 32);

@@ -194,8 +194,6 @@ pub(crate) const MAX_ROUTED_INTID: usize = 256;
 // System Interrupts are numbered from 0.
 #[cfg(target_arch = "aarch64")]
 const MIN_ROUTED_INTID: u32 = 32;
-#[cfg(not(target_arch = "aarch64"))]
-const MIN_ROUTED_INTID: u32 = 0;
 /// The first LPI INTID delivered by the GIC ITS. LPIs are always numbered from
 /// 8192 (see `cpu::isa::aarch64::interrupts::gic::lpi`).
 #[cfg(target_arch = "aarch64")]
@@ -450,7 +448,11 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     if owner == 0 || u32::try_from(owner).is_err() {
         return Err(DeviceError::InvalidAddressSpace);
     }
-    if intid < MIN_ROUTED_INTID || route_slot(intid).is_none() {
+    #[cfg(target_arch = "aarch64")]
+    if intid < MIN_ROUTED_INTID {
+        return Err(DeviceError::InvalidInterrupt);
+    }
+    if route_slot(intid).is_none() {
         return Err(DeviceError::InvalidInterrupt);
     }
     if devices.values().any(|caps| {

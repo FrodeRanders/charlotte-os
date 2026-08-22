@@ -125,8 +125,14 @@ global_asm!(
 /// 19-slot register frame laid out as described in the module docs. Reads the
 /// syscall number from `regs[0]` (RAX), dispatches through the shared syscall
 /// table, and writes the return registers back into the frame.
+///
+/// # Safety
+///
+/// `frame_base` must point to the writable 19-word register frame constructed
+/// by `syscall_entry`. It must remain valid and exclusively accessible for the
+/// duration of this call.
 #[unsafe(no_mangle)]
-pub extern "C" fn syscall_entry_handler(frame_base: *mut u64) {
+pub unsafe extern "C" fn syscall_entry_handler(frame_base: *mut u64) {
     let mut frame = TrapFrame {
         regs: [0u64; 19],
         elr_el1: 0,

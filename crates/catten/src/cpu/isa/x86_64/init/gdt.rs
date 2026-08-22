@@ -238,7 +238,7 @@ impl Tss {
     pub fn new(rsp0: u64, double_fault_stack: u64, nmi_stack: u64) -> Self {
         Tss {
             res0: 0,
-            rsp0: rsp0,
+            rsp0,
             rsp1: 0,
             rsp2: 0,
             res1: 0,

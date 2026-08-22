@@ -30,7 +30,7 @@ impl Idt {
         is_present: bool,
     ) {
         let gate = &mut self.gates[index as usize];
-        let isr_addr = isr_ptr as u64;
+        let isr_addr = isr_ptr as usize as u64;
 
         gate.addr0 = u16::try_from(isr_addr & 0xffff).unwrap();
         gate.segment_selector = segment_selector;
@@ -77,6 +77,12 @@ impl Idt {
         }
     }
 }
+
+impl Default for Idt {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 #[derive(Clone, Copy, Debug)]
 #[repr(C, packed(1))]
 pub struct InterruptGate {
@@ -119,6 +125,13 @@ impl Idtr {
 }
 
 #[inline(always)]
+/// Load the interrupt descriptor-table register from `idtr`.
+///
+/// # Safety
+///
+/// `idtr` must point to a readable, correctly laid-out descriptor whose table
+/// remains valid for every interrupt that can occur after this call. The
+/// caller must have permission to execute `lidt`.
 pub unsafe fn asm_load_idt(idtr: *const Idtr) {
     unsafe {
         asm!("lidt [rdi]", in("rdi") idtr);

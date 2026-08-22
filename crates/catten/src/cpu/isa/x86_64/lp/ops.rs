@@ -253,14 +253,12 @@ pub extern "C" fn cond_yield_lp() {
         if lsched.is_ctx_switch_pending() {
             let curr_tid = lsched.get_tid();
             if let Ok(next_tid) = lsched.next() {
-                if curr_tid.is_some() {
-                    if next_tid != curr_tid.unwrap() {
+                if let Some(curr_tid) = curr_tid {
+                    if next_tid != curr_tid {
                         let (curr_rsp0_ptr, next_rsp0_ptr, next_asid, next_stack_top) = {
                             let mut tt_guard = MASTER_THREAD_TABLE.write();
                             let curr_thread = tt_guard
-                                .get_mut(
-                                    curr_tid.expect("Current thread ID not found during yield."),
-                                )
+                                .get_mut(curr_tid)
                                 .expect("Current thread not found during yield.");
                             let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
                             let next_thread = tt_guard
@@ -274,7 +272,7 @@ pub extern "C" fn cond_yield_lp() {
                         #[cfg(feature = "yield_trace")]
                         {
                             trace = YieldTrace::FromThread {
-                                current: curr_tid.unwrap(),
+                                current: curr_tid,
                                 next: next_tid,
                                 lp_id: get_lp_id(),
                             };
@@ -442,6 +440,13 @@ pub extern "C" fn enter_init_thread_ctx(rsp0_ptr: *const u64) {
 
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
+/// Enter a newly scheduled userspace thread through its prepared `iretq` frame.
+///
+/// # Safety
+///
+/// This trampoline may only be reached through the context-switch restore
+/// path with a valid `UserEntryFrames` layout at the top of the kernel stack
+/// and the kernel GS base active.
 pub unsafe extern "C" fn user_trampoline() -> ! {
     // Safety: This function should only be entered by returning from `yield_lp` after having
     // switched to a new user thread. The caller is responsible for ensuring that the stack is
@@ -459,6 +464,13 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
 
 #[unsafe(no_mangle)]
 #[unsafe(naked)]
+/// Invoke a newly scheduled kernel thread and retire it if its entry returns.
+///
+/// # Safety
+///
+/// This trampoline may only be reached through the context-switch restore
+/// path with `r12` containing a valid kernel-thread entry point and a valid,
+/// ABI-aligned kernel stack.
 pub unsafe extern "C" fn kernel_thread_trampoline() -> ! {
     naked_asm!(
         "sti",

@@ -67,7 +67,7 @@ impl I8042 {
             self.wait_input_empty();
             self.data.write(cmd);
             self.wait_output_full();
-            return self.data.read() == CMD_ACK;
+            self.data.read() == CMD_ACK
         }
     }
 
@@ -80,7 +80,7 @@ impl I8042 {
             self.data.write(cmd);
 
             self.wait_output_full();
-            return self.data.read() == CMD_ACK;
+            self.data.read() == CMD_ACK
         }
     }
 
@@ -154,10 +154,10 @@ impl I8042 {
             // Keyboard.
             driver.wait_input_empty();
             driver.status.write(CMD_ENABLE_KBD);
-            if driver.send_keyboard_command(KBD_RESET) {
-                if driver.send_keyboard_command(KBD_ENABLE_SCANNING) {
-                    status.keyboard_ok = true;
-                }
+            if driver.send_keyboard_command(KBD_RESET)
+                && driver.send_keyboard_command(KBD_ENABLE_SCANNING)
+            {
+                status.keyboard_ok = true;
             }
 
             // Mouse.
@@ -186,35 +186,29 @@ impl I8042 {
         }
 
         if status.keyboard_ok && status.mouse_ok {
-            return Ok(driver);
+            Ok(driver)
         } else {
-            return Err(status);
+            Err(status)
         }
     }
 
     /// Enable mouse data reporting.
     pub fn enable_mouse_packets(&self) -> bool {
-        unsafe {
-            return self.send_mouse_command(MOUSE_ENABLE_REPORTING);
-        }
+        unsafe { self.send_mouse_command(MOUSE_ENABLE_REPORTING) }
     }
 
     /// Disable mouse data reporting.
     pub fn disable_mouse_packets(&self) -> bool {
-        unsafe {
-            return self.send_mouse_command(MOUSE_DISABLE_REPORTING);
-        }
+        unsafe { self.send_mouse_command(MOUSE_DISABLE_REPORTING) }
     }
 
     /// Enable keyboard scanning (start sending key scancodes).
     pub fn enable_keyboard(&self) -> bool {
-        unsafe {
-            return self.send_keyboard_command(KBD_ENABLE_SCANNING);
-        }
+        unsafe { self.send_keyboard_command(KBD_ENABLE_SCANNING) }
     }
 
     /// Disable keyboard scanning (stop sending key scancodes).
     pub fn disable_keyboard(&self) -> bool {
-        unsafe { return self.send_keyboard_command(KBD_DISABLE_SCANNING) }
+        unsafe { self.send_keyboard_command(KBD_DISABLE_SCANNING) }
     }
 }

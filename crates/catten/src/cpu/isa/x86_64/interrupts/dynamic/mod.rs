@@ -50,10 +50,10 @@ impl DynInterruptDispatcherIfce for DynInterruptDispatcher {
 
     #[unsafe(no_mangle)]
     extern "C" fn get_dyn_ih(&self, vector: InterruptVectorNum) -> *const InterruptHandler {
-        if let Ok(table) = self.matrix.try_get() {
-            if let Some(ih) = table[vector as usize] {
-                return ih as *const InterruptHandler;
-            }
+        if let Ok(table) = self.matrix.try_get()
+            && let Some(ih) = table[vector as usize]
+        {
+            return ih as *const InterruptHandler;
         }
         core::ptr::null()
     }

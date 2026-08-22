@@ -1,6 +1,6 @@
 //! EL0 endpoint IPC smoke test.
 //!
-//! This exercises the scalar endpoint ABI from real userspace SVC paths:
+//! This exercises the scalar endpoint ABI from real userspace trap paths:
 //! endpoint creation, same-address-space connection minting, cross-AS
 //! connection delegation seeded by the kernel, send, call, receive, reply, and
 //! reply polling. The userspace stubs never receive or pass ASIDs; authority is
@@ -12,7 +12,7 @@
 //! included below run with **no runtime at all** — no crt0, no heap, no panic
 //! handler, no config-page parsing — and drive the kernel purely through raw
 //! `svc` traps and fixed virtual addresses. A failure therefore isolates the
-//! kernel's SVC dispatch and IPC/capability code as the *only* variable under
+//! kernel's syscall dispatch and IPC/capability code as the *only* variable under
 //! test. Loading a Rust ELF would layer the whole `catten-rt` runtime on top,
 //! so a bug in crt0, the panic handler or config-page parsing could mask or
 //! mimic a syscall-ABI bug. The higher-level EL0 tests (`el0_uart`,
@@ -22,16 +22,16 @@
 //! source through `global_asm!(include_str!(...))` so they compile with the
 //! kernel rather than being a build-system artifact.
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::memory::paging::AddressSpace;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::scheduler::spawn_thread;
 use crate::logln;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::{
     ADDRESS_SPACE_TABLE,
     KERNEL_AS,
@@ -42,9 +42,9 @@ use crate::memory::{
     },
 };
 
-#[cfg(target_arch = "aarch64")]
 // Hand-written EL0 syscall-ABI stubs; see the module doc for why these are
 // assembly rather than Rust ELFs (narrow syscall-ABI isolation).
+#[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_block.asm"));
@@ -57,103 +57,116 @@ core::arch::global_asm!(include_str!("el0_ipc_memory_cancel.asm"));
 #[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_ipc_memory_copy.asm"));
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_x86_64.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_block_x86_64.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_cross_as_x86_64.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory_x86_64.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory_cancel_x86_64.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_ipc_memory_copy_x86_64.asm"));
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_RESULT_VADDR: usize = 0x0000_0000_0001_1000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_SENTINEL: u32 = 0x0000_1c50;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_SERVER_VADDR: usize = 0x0000_0000_0001_2000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_CLIENT_VADDR: usize = 0x0000_0000_0001_3000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_RESULT_VADDR: usize = 0x0000_0000_0001_4000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_READY_SENTINEL: u32 = 0x0000_5150;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_SERVER_SENTINEL: u32 = 0x0000_1c51;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_BLOCK_CLIENT_SENTINEL: u32 = 0x0000_c117;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CROSS_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CROSS_RESULT_VADDR: usize = 0x0000_0000_0001_1000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CROSS_READY_SENTINEL: u32 = 0x0000_5e5e;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CROSS_SERVER_SENTINEL: u32 = 0x0000_5e51;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_CROSS_CLIENT_SENTINEL: u32 = 0x0000_c1e1;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CODE_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_RESULT_VADDR: usize = 0x0000_0000_0001_1000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_OBJECT_VADDR: usize = 0x0000_0000_0001_2000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_READY_SENTINEL: u32 = 0x0000_6d5e;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_SERVER_SENTINEL: u32 = 0x0000_6d51;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CLIENT_SENTINEL: u32 = 0x0000_c6d1;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_INITIAL_VALUE: u32 = 0x4d45_4d31;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_RETURNED_VALUE: u32 = 0x4d45_4d32;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_READ_BORROW_VALUE: u32 = 0x4252_5244;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_WRITE_BORROW_INITIAL_VALUE: u32 = 0x4257_5752;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_WRITE_BORROW_RETURNED_VALUE: u32 = 0x4252_5752;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_STATUS_MISSING_RIGHT: u32 = 12;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_READY_SENTINEL: u32 = 0x0000_ca5e;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_SERVER_SENTINEL: u32 = 0x0000_ca51;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_CLIENT_SENTINEL: u32 = 0x0000_cad1;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_BORROW_VALUE: u32 = 0x0000_b001;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_DELIVERED_INITIAL_VALUE: u32 = 0x0000_d001;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_CANCEL_DELIVERED_RETURNED_VALUE: u32 = 0x0000_d002;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_STATUS_NO_MESSAGE: u32 = 2;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_STATUS_UNKNOWN_CAPABILITY: u32 = 4;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_STATUS_UNKNOWN_CAPABILITY: u32 = 1;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_COPY_READY_SENTINEL: u32 = 0x0000_c05e;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_COPY_SERVER_SENTINEL: u32 = 0x0000_c051;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_COPY_CLIENT_SENTINEL: u32 = 0x0000_c0d1;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_COPY_INITIAL_VALUE: u32 = 0x0000_c091;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const IPC_MEMORY_COPY_SERVER_VALUE: u32 = 0x0000_c092;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_BLOCK_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_CROSS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_CROSS_CLIENT_ASID: crate::memory::AddressSpaceId = 0;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_MEMORY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_MEMORY_CANCEL_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut IPC_MEMORY_COPY_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 unsafe extern "C" {
     static __catten_el0_ipc_start: u8;
     static __catten_el0_ipc_end: u8;
@@ -179,7 +192,7 @@ unsafe extern "C" {
     static __catten_el0_ipc_memory_copy_client_end: u8;
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
     let start = start as usize;
     let end = end as usize;
@@ -187,7 +200,7 @@ fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
     unsafe { core::slice::from_raw_parts(start as *const u8, end - start) }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_stub_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_start),
@@ -195,7 +208,7 @@ fn ipc_stub_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_block_server_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_block_server_start),
@@ -203,7 +216,7 @@ fn ipc_block_server_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_block_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_block_client_start),
@@ -211,7 +224,7 @@ fn ipc_block_client_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_cross_server_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_cross_server_start),
@@ -219,7 +232,7 @@ fn ipc_cross_server_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_cross_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_cross_client_start),
@@ -227,7 +240,7 @@ fn ipc_cross_client_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_server_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_server_start),
@@ -235,7 +248,7 @@ fn ipc_memory_server_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_client_start),
@@ -243,7 +256,7 @@ fn ipc_memory_client_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_cancel_server_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_server_start),
@@ -251,7 +264,7 @@ fn ipc_memory_cancel_server_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_cancel_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_cancel_client_start),
@@ -259,7 +272,7 @@ fn ipc_memory_cancel_client_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_copy_server_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_copy_server_start),
@@ -267,7 +280,7 @@ fn ipc_memory_copy_server_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ipc_memory_copy_client_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ipc_memory_copy_client_start),
@@ -275,7 +288,23 @@ fn ipc_memory_copy_client_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn synchronize_instruction_stream() {
+    // x86_64 instruction fetch is coherent with data-side writes. AArch64
+    // requires explicit maintenance after copying a stub into a fresh page.
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        core::arch::asm!(
+            "dsb ishst",
+            "ic ialluis",
+            "dsb ish",
+            "isb",
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -299,7 +328,7 @@ fn map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn map_result_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -323,7 +352,7 @@ fn map_result_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr 
     frame
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn map_existing_data_page(asid: usize, vaddr: VAddr, frame: crate::memory::physical::PAddr) {
     ADDRESS_SPACE_TABLE
         .lock()
@@ -337,7 +366,7 @@ fn map_existing_data_page(asid: usize, vaddr: VAddr, frame: crate::memory::physi
         .expect("EL0 IPC: failed to map existing data page");
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn create_user_address_space(label: &str) -> usize {
     let user_as = {
         let _kas = KERNEL_AS.lock();
@@ -349,7 +378,7 @@ fn create_user_address_space(label: &str) -> usize {
 }
 
 pub fn test_el0_endpoint_ipc() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         logln!("Testing EL0 endpoint IPC...");
 
@@ -361,15 +390,7 @@ pub fn test_el0_endpoint_ipc() {
         logln!("[EL0 IPC] user AS asid={}", asid);
 
         map_code_page(asid, VAddr::from(IPC_CODE_VADDR), ipc_stub_code());
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(asid, VAddr::from(IPC_RESULT_VADDR));
         unsafe {
@@ -387,14 +408,14 @@ pub fn test_el0_endpoint_ipc() {
         );
         logln!("[EL0 IPC] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 endpoint IPC test (AArch64 only).");
+        logln!("Skipping EL0 endpoint IPC test (unsupported architecture).");
     }
 }
 
 pub fn test_el0_endpoint_ipc_blocking_receive() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         logln!("Testing EL0 blocking endpoint receive...");
 
@@ -407,15 +428,7 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
 
         map_code_page(asid, VAddr::from(IPC_BLOCK_SERVER_VADDR), ipc_block_server_code());
         map_code_page(asid, VAddr::from(IPC_BLOCK_CLIENT_VADDR), ipc_block_client_code());
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(asid, VAddr::from(IPC_BLOCK_RESULT_VADDR));
         unsafe {
@@ -436,14 +449,14 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
         );
         logln!("[EL0 IPC block] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 blocking endpoint receive test (AArch64 only).");
+        logln!("Skipping EL0 blocking endpoint receive test (unsupported architecture).");
     }
 }
 
 pub fn test_el0_endpoint_ipc_cross_address_space() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         use crate::ipc::ConnectionRights;
 
@@ -466,15 +479,7 @@ pub fn test_el0_endpoint_ipc_cross_address_space() {
 
         map_code_page(server_asid, VAddr::from(IPC_CROSS_CODE_VADDR), ipc_cross_server_code());
         map_code_page(client_asid, VAddr::from(IPC_CROSS_CODE_VADDR), ipc_cross_client_code());
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(server_asid, VAddr::from(IPC_CROSS_RESULT_VADDR));
         map_existing_data_page(client_asid, VAddr::from(IPC_CROSS_RESULT_VADDR), result_frame);
@@ -501,14 +506,14 @@ pub fn test_el0_endpoint_ipc_cross_address_space() {
         );
         logln!("[EL0 IPC cross-AS] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 cross-address-space endpoint IPC test (AArch64 only).");
+        logln!("Skipping EL0 cross-address-space endpoint IPC test (unsupported architecture).");
     }
 }
 
 pub fn test_el0_endpoint_ipc_memory_move() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         use crate::ipc::ConnectionRights;
 
@@ -531,15 +536,7 @@ pub fn test_el0_endpoint_ipc_memory_move() {
 
         map_code_page(server_asid, VAddr::from(IPC_MEMORY_CODE_VADDR), ipc_memory_server_code());
         map_code_page(client_asid, VAddr::from(IPC_MEMORY_CODE_VADDR), ipc_memory_client_code());
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
         map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
@@ -566,14 +563,14 @@ pub fn test_el0_endpoint_ipc_memory_move() {
         );
         logln!("[EL0 IPC memory] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 memory endpoint IPC test (AArch64 only).");
+        logln!("Skipping EL0 memory endpoint IPC test (unsupported architecture).");
     }
 }
 
 pub fn test_el0_endpoint_ipc_memory_cancel() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         use crate::ipc::ConnectionRights;
 
@@ -604,15 +601,7 @@ pub fn test_el0_endpoint_ipc_memory_cancel() {
             VAddr::from(IPC_MEMORY_CODE_VADDR),
             ipc_memory_cancel_client_code(),
         );
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
         map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
@@ -638,14 +627,14 @@ pub fn test_el0_endpoint_ipc_memory_cancel() {
         );
         logln!("[EL0 IPC memory cancel] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 memory IPC cancellation test (AArch64 only).");
+        logln!("Skipping EL0 memory IPC cancellation test (unsupported architecture).");
     }
 }
 
 pub fn test_el0_endpoint_ipc_memory_copy() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         use crate::ipc::ConnectionRights;
 
@@ -676,15 +665,7 @@ pub fn test_el0_endpoint_ipc_memory_copy() {
             VAddr::from(IPC_MEMORY_CODE_VADDR),
             ipc_memory_copy_client_code(),
         );
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags),
-            );
-        }
+        synchronize_instruction_stream();
 
         let result_frame = map_result_page(server_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR));
         map_existing_data_page(client_asid, VAddr::from(IPC_MEMORY_RESULT_VADDR), result_frame);
@@ -710,13 +691,13 @@ pub fn test_el0_endpoint_ipc_memory_copy() {
         );
         logln!("[EL0 IPC memory copy] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 memory IPC copy test (AArch64 only).");
+        logln!("Skipping EL0 memory IPC copy test (unsupported architecture).");
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -775,7 +756,7 @@ extern "C" fn verify_el0_endpoint_ipc() {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc_blocking() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -831,7 +812,7 @@ extern "C" fn verify_el0_endpoint_ipc_blocking() {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc_cross_as() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -890,7 +871,7 @@ extern "C" fn verify_el0_endpoint_ipc_cross_as() {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc_memory_move() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -1154,7 +1135,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_move() {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -1337,7 +1318,7 @@ extern "C" fn verify_el0_endpoint_ipc_memory_cancel() {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_el0_endpoint_ipc_memory_copy() {
     use crate::cpu::scheduler::yield_lp;
 

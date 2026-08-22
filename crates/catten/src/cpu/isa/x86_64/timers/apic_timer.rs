@@ -152,7 +152,7 @@ impl LpTimerIfce for ApicTimer {
         // `DurationNotSet`. One tick is ~one TSC period, well below any
         // observable timer resolution.
         let ticks = duration.as_picos() / (self.resolution.as_picos())
-            + if duration.as_picos() % self.resolution.as_picos() > 0 {
+            + if !duration.as_picos().is_multiple_of(self.resolution.as_picos()) {
                 1
             } else {
                 0
@@ -180,7 +180,7 @@ impl LpTimerIfce for ApicTimer {
 
     fn start(&mut self) -> Result<(), LpTimerError> {
         if self.reset_value == 0 {
-            return Err(LpTimerError::DurationNotSet);
+            Err(LpTimerError::DurationNotSet)
         } else {
             self.reset()
         }
@@ -188,7 +188,7 @@ impl LpTimerIfce for ApicTimer {
 
     fn stop(&mut self) -> Result<(), LpTimerError> {
         if Self::read_timer_current_count() == 0 {
-            return Err(LpTimerError::TimerNotStarted);
+            Err(LpTimerError::TimerNotStarted)
         } else {
             Self::set_timer_initial_count(0);
             Ok(())

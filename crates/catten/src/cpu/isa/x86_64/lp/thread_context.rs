@@ -1,8 +1,5 @@
 use core::{
-    mem::{
-        offset_of,
-        transmute,
-    },
+    mem::offset_of,
     sync::atomic::{
         AtomicUsize,
         Ordering,
@@ -76,6 +73,7 @@ struct UserEntryFrames {
 
 impl UserEntryFrames {
     fn new(asp: AddressSpaceId, entry_point: u64, iretq_rsp: VAddr, flags: u64) -> Self {
+        let trampoline: unsafe extern "C" fn() -> ! = user_trampoline;
         UserEntryFrames {
             cr3: ADDRESS_SPACE_TABLE
                 .lock()
@@ -89,11 +87,7 @@ impl UserEntryFrames {
             r12: 0,
             rbp: 0,
             rbx: 0,
-            rip: unsafe {
-                transmute::<*const unsafe extern "C" fn() -> !, u64>(
-                    user_trampoline as *const unsafe extern "C" fn() -> !,
-                )
-            },
+            rip: trampoline as usize as u64,
             user_rip: entry_point,
             cs: USER_CODE_SELECTOR as u64,
             user_rflags: flags,
@@ -316,7 +310,7 @@ impl ThreadContext {
                 mapped_pages,
             );
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            for frame in mapped_frames.into_iter().chain(stack_frames.into_iter()).flatten() {
+            for frame in mapped_frames.into_iter().chain(stack_frames).flatten() {
                 let _ = pfa.deallocate_frame(frame);
             }
             return Err(error);
@@ -336,8 +330,12 @@ impl ThreadContext {
         };
         let kernel_stack_top_va = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         let mut kernel_stack_top = kernel_stack_top_va;
-        let isf =
-            UserEntryFrames::new(asid, entry_point as u64, VAddr::from(user_stack_top_va), 0x202);
+        let isf = UserEntryFrames::new(
+            asid,
+            entry_point as usize as u64,
+            VAddr::from(user_stack_top_va),
+            0x202,
+        );
         isf.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             rsp_cpl0: <VAddr as Into<u64>>::into(kernel_stack_top),
@@ -351,7 +349,7 @@ impl ThreadContext {
         let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
         let kernel_stack_top_va = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         let mut kernel_stack_top = kernel_stack_top_va;
-        let ksf = KernelEntryFrame::new(KERNEL_AS.lock().get_cr3(), entry_point as u64);
+        let ksf = KernelEntryFrame::new(KERNEL_AS.lock().get_cr3(), entry_point as usize as u64);
         ksf.push_to_stack(&mut kernel_stack_top);
         Ok(ThreadContext {
             rsp_cpl0: <VAddr as Into<u64>>::into(kernel_stack_top),

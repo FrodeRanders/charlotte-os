@@ -98,11 +98,9 @@ pub fn send_sync_shootdown() {
     let self_id = get_lp_id();
     SYNC_IPI_BARRIER.store((lp_count - 1) as u64, Ordering::SeqCst);
     for lp in 0..lp_count {
-        if lp != self_id {
-            if LocalIntCtlr::send_unicast_ipi(lp, SYNC_IPI_VECTOR).is_err() {
-                SYNC_IPI_BARRIER.fetch_sub(1, Ordering::SeqCst);
-                crate::early_logln!("WARNING: failed to send TLB-shootdown IPI to LP{}", lp);
-            }
+        if lp != self_id && LocalIntCtlr::send_unicast_ipi(lp, SYNC_IPI_VECTOR).is_err() {
+            SYNC_IPI_BARRIER.fetch_sub(1, Ordering::SeqCst);
+            crate::early_logln!("WARNING: failed to send TLB-shootdown IPI to LP{}", lp);
         }
     }
     crate::cpu::isa::x86_64::memory::tlb::flush_current_non_global();

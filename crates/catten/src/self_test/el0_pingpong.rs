@@ -1,4 +1,4 @@
-//! EL0 ping-pong: two user shards communicate cross-LP via the full svc ABI.
+//! EL0 ping-pong: two user shards communicate cross-LP via the raw syscall ABI.
 //!
 //! Exercises THREAD_EXIT, mailbox endpoint capabilities, COMPLETION_WAIT_TIMEOUT,
 //! and SUBMIT Read-with-buffer in one integrated userspace flow:
@@ -19,23 +19,23 @@
 //!
 //! Like [`super::el0_ipc`], this is a narrowly scoped syscall-ABI test: the
 //! two stubs run at EL0 with no runtime (no crt0, heap, panic handler or
-//! config-page parsing), driving the kernel purely through raw `svc` traps and
-//! fixed virtual addresses. A failure isolates the SVC dispatch, mailbox and
+//! config-page parsing), driving the kernel purely through raw syscall traps and
+//! fixed virtual addresses. A failure isolates syscall dispatch, mailbox and
 //! completion-kernel code as the only variable under test. Higher-level EL0
 //! tests load Rust-compiled ELFs via `load_domain`; assembly is deliberately
 //! kept for this syscall-level smoke test, and embedded in Rust source via
 //! `global_asm!(include_str!(...))`.
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::completion;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::memory::paging::AddressSpace;
 use crate::logln;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::memory::{
     ADDRESS_SPACE_TABLE,
     KERNEL_AS,
@@ -46,35 +46,37 @@ use crate::memory::{
     },
 };
 
-#[cfg(target_arch = "aarch64")]
 // Hand-written EL0 syscall-ABI stub; see the module doc for why this is
 // assembly rather than a Rust ELF (narrow syscall-ABI isolation).
+#[cfg(target_arch = "aarch64")]
 core::arch::global_asm!(include_str!("el0_pingpong.asm"));
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(include_str!("el0_pingpong_x86_64.asm"));
 
 /// VADDRs in the demo's user address space.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PING_VADDR: usize = 0x0000_0000_0002_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PONG_VADDR: usize = 0x0000_0000_0001_0000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PP_CQ_VADDR: usize = 0x0000_0000_0001_4000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PP_RESULT_VADDR: usize = 0x0000_0000_0001_5000;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PP_BUF_VADDR: usize = 0x0000_0000_0001_6000;
 
 /// Sentinel Ping writes to result[0] on success.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PING_SENTINEL: u32 = 0x9100_1500;
 /// Sentinel Pong writes to result[0] on success.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const PONG_SENTINEL: u32 = 0x1000_1000;
 
 /// Physical frame of the result page, read by the verifier via HHDM.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut PP_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 unsafe extern "C" {
     static __catten_el0_ping_start: u8;
     static __catten_el0_ping_end: u8;
@@ -82,7 +84,7 @@ unsafe extern "C" {
     static __catten_el0_pong_end: u8;
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
     let start = start as usize;
     let end = end as usize;
@@ -106,7 +108,7 @@ fn stub_bytes(start: *const u8, end: *const u8) -> &'static [u8] {
 ///     result[1]=cap; result[2]=result; dmb ish; result[0]=0x9100_1500
 ///     svc #8
 /// ```
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn ping_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_ping_start),
@@ -132,7 +134,7 @@ fn ping_code() -> &'static [u8] {
 ///     result[4] = sentinel      // last
 ///     svc #8
 /// ```
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn pong_code() -> &'static [u8] {
     stub_bytes(
         core::ptr::addr_of!(__catten_el0_pong_start),
@@ -140,7 +142,21 @@ fn pong_code() -> &'static [u8] {
     )
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn synchronize_instruction_stream() {
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        core::arch::asm!(
+            "dsb ishst",
+            "ic ialluis",
+            "dsb ish",
+            "isb",
+            options(nomem, nostack, preserves_flags),
+        );
+    }
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn pp_map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -162,7 +178,7 @@ fn pp_map_code_page(asid: usize, vaddr: VAddr, code: &[u8]) {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn pp_map_data_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr {
     let frame = PHYSICAL_FRAME_ALLOCATOR
         .lock()
@@ -182,14 +198,15 @@ fn pp_map_data_page(asid: usize, vaddr: VAddr) -> crate::memory::physical::PAddr
 }
 
 pub fn test_el0_ping_pong() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         let lp_count = crate::cpu::multiprocessor::get_lp_count();
         if lp_count < 2 {
             logln!("[PP] single LP, skipping EL0 ping-pong demo");
+            crate::self_test::results::pass(crate::self_test::results::TestId::PingPong);
             return;
         }
-        logln!("Testing EL0 ping-pong (Ping on LP0, Pong on LP1, via svc ABI)...");
+        logln!("Testing EL0 ping-pong (Ping on LP0, Pong on LP1, via raw syscall ABI)...");
 
         // --- create user address space ---
         let user_as = {
@@ -201,15 +218,7 @@ pub fn test_el0_ping_pong() {
 
         pp_map_code_page(asid, VAddr::from(PING_VADDR), ping_code());
         pp_map_code_page(asid, VAddr::from(PONG_VADDR), pong_code());
-        unsafe {
-            core::arch::asm!(
-                "dsb ishst",
-                "ic ialluis",
-                "dsb ish",
-                "isb",
-                options(nomem, nostack, preserves_flags)
-            );
-        }
+        synchronize_instruction_stream();
 
         let cq_frame = pp_map_data_page(asid, VAddr::from(PP_CQ_VADDR));
         let result_frame = pp_map_data_page(asid, VAddr::from(PP_RESULT_VADDR));
@@ -255,13 +264,13 @@ pub fn test_el0_ping_pong() {
         );
         logln!("[PP] verifier tid={}; assertion deferred.", vtid);
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping EL0 ping-pong demo (AArch64 only).");
+        logln!("Skipping EL0 ping-pong demo (unsupported architecture).");
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_ping_pong() {
     use crate::cpu::scheduler::yield_lp;
 
@@ -303,8 +312,8 @@ extern "C" fn verify_ping_pong() {
             );
 
             logln!(
-                "[PP] SUCCESS: Ping completed with result {}; Pong read buffer {:#x}; all via svc \
-                 ABI (EXIT, MAILBOX_CAP, WAIT_TIMEOUT, SUBMIT Read).",
+                "[PP] SUCCESS: Ping completed with result {}; Pong read buffer {:#x}; all via raw \
+                 syscall ABI (EXIT, MAILBOX_CAP, WAIT_TIMEOUT, SUBMIT Read).",
                 ping_result_raw,
                 pong_buf_val
             );

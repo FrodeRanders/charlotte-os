@@ -9,15 +9,15 @@
 //!   then unmapping it;
 //! - interrupt delivery to a completion queue: a thread blocked in a single `wait_on_cq` is
 //!   released both by the deterministic kernel delivery path (`deliver_interrupt`, what the IRQ
-//!   dispatcher calls) and by a **real** GIC software-pended SPI routed through the live interrupt
-//!   path, and the interrupt object tracks pending/ack state across re-arming.
+//!   dispatcher calls) and by the architecture's live routed-interrupt path, and the interrupt
+//!   object tracks pending/ack state across re-arming.
 //!
 //! The waiter and driver run as scheduled kernel threads, mirroring the
 //! `cq_wait` self-test: every release condition is also observed by the
 //! wait's fast path if it is posted before the waiter blocks, so the flow is
 //! robust to scheduling order.
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use core::sync::atomic::{
     AtomicU32,
     AtomicU64,
@@ -28,29 +28,58 @@ use crate::logln;
 
 /// Pseudo address-space id for the kernel-API capability tests (only present
 /// in the device and completion registries, never scheduled).
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 const DEV_ASID: usize = 0x000d_e71c;
 
-/// A spare Shared Peripheral Interrupt id on the QEMU `virt` machine, unused
-/// by the platform devices we drive, so pending it in software is harmless.
+/// A spare routed interrupt unused by the platform devices driven by the boot
+/// suite. AArch64 uses an SPI on QEMU `virt`; x86_64 allocates a synthetic MSI
+/// identifier and vector at runtime so it cannot collide with a wired device.
 #[cfg(target_arch = "aarch64")]
-const TEST_SPI: u32 = 42;
+const TEST_INTERRUPT: u32 = 42;
+#[cfg(target_arch = "x86_64")]
+static TEST_INTERRUPT: AtomicU32 = AtomicU32::new(u32::MAX);
+#[cfg(target_arch = "x86_64")]
+static TEST_INTERRUPT_VECTOR: AtomicU32 = AtomicU32::new(u32::MAX);
 
 #[cfg(target_arch = "aarch64")]
+const INVALID_TEST_INTERRUPT: u32 = 31;
+#[cfg(target_arch = "x86_64")]
+const INVALID_TEST_INTERRUPT: u32 = u32::MAX;
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static IRQ_CAP: AtomicU64 = AtomicU64::new(0);
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static ROUND1_RELEASED: AtomicU32 = AtomicU32::new(0);
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static ROUND2_START: AtomicU32 = AtomicU32::new(0);
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static ROUND2_RELEASED: AtomicU32 = AtomicU32::new(0);
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static WAITER_PHASE: AtomicU32 = AtomicU32::new(0);
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static DRIVER_PHASE: AtomicU32 = AtomicU32::new(0);
 
+#[cfg(target_arch = "aarch64")]
+fn test_interrupt() -> u32 {
+    TEST_INTERRUPT
+}
+
+#[cfg(target_arch = "x86_64")]
+fn test_interrupt() -> u32 {
+    let intid = TEST_INTERRUPT.load(Ordering::Acquire);
+    assert_ne!(intid, u32::MAX, "[device] x86 test MSI was not allocated");
+    intid
+}
+
+#[cfg(target_arch = "x86_64")]
+fn allocate_x86_test_interrupt() {
+    let message = crate::device::allocate_msi(0).expect("[device] test MSI allocation failed");
+    TEST_INTERRUPT.store(message.intid, Ordering::Release);
+    TEST_INTERRUPT_VECTOR.store(message.data, Ordering::Release);
+}
+
 pub fn test_device_capabilities() {
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
     {
         use crate::{
             device::{
@@ -67,18 +96,22 @@ pub fn test_device_capabilities() {
 
         completion_open();
 
+        #[cfg(target_arch = "x86_64")]
+        allocate_x86_test_interrupt();
+        let test_intid = test_interrupt();
+
         // --- Capability-model negative tests -------------------------------
         let mmio =
             device::grant_mmio(DEV_ASID, 0x0900_0000, 1).expect("[device] grant_mmio failed");
         let mut irq =
-            device::grant_interrupt(DEV_ASID, TEST_SPI).expect("[device] grant_interrupt failed");
+            device::grant_interrupt(DEV_ASID, test_intid).expect("[device] grant_interrupt failed");
         assert_eq!(
-            device::grant_interrupt(DEV_ASID, 31),
+            device::grant_interrupt(DEV_ASID, INVALID_TEST_INTERRUPT),
             Err(DeviceError::InvalidInterrupt),
-            "[device] private interrupts must not be delegated"
+            "[device] unroutable interrupts must not be delegated"
         );
         assert_eq!(
-            device::grant_interrupt(0, TEST_SPI + 1),
+            device::grant_interrupt(0, test_intid + 1),
             Err(DeviceError::InvalidAddressSpace),
             "[device] kernel ASID must not be packed as a driver route"
         );
@@ -88,7 +121,7 @@ pub fn test_device_capabilities() {
             "[device] overflowing MMIO grants must be rejected"
         );
         assert_eq!(
-            device::grant_interrupt(DEV_ASID + 1, TEST_SPI),
+            device::grant_interrupt(DEV_ASID + 1, test_intid),
             Err(DeviceError::InterruptInUse),
             "[device] an INTID must have a single capability owner"
         );
@@ -124,8 +157,21 @@ pub fn test_device_capabilities() {
         test_mmio_map_unmap();
         test_failed_dma_map_releases_pin();
         test_stale_address_space_handle();
+        #[cfg(target_arch = "aarch64")]
         crate::cpu::isa::memory::paging::self_test_hw_asid_allocator();
         irq = test_stale_interrupt_wake(irq);
+        // Releasing an x86 MSI capability also releases its dynamic vector.
+        // The stale-route test deliberately closes and re-grants the same
+        // synthetic INTID, so use a fresh MSI for the subsequent live-path
+        // injection.
+        #[cfg(target_arch = "x86_64")]
+        {
+            device::close_cap(DEV_ASID, irq)
+                .expect("[device] close stale-route MSI capability failed");
+            allocate_x86_test_interrupt();
+            irq = device::grant_interrupt(DEV_ASID, test_interrupt())
+                .expect("[device] fresh MSI grant failed");
+        }
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
         // the delivery rounds below.
@@ -133,10 +179,11 @@ pub fn test_device_capabilities() {
 
         // --- Interrupt delivery to a completion queue ----------------------
         device::interrupt_bind_cq(DEV_ASID, irq, 0).expect("[device] interrupt_bind_cq failed");
-        // TEST_SPI has no physical line behind it: round 2 asserts it solely
-        // through GICD_ISPENDR. Model that synthetic source as an edge rather
-        // than relying on a nonexistent device to hold a level asserted.
-        crate::cpu::isa::interrupts::gic::configure_synthetic_spi_edge(TEST_SPI);
+        // The synthetic AArch64 SPI has no physical line behind it. Model it
+        // as an edge rather than relying on a nonexistent device to hold a
+        // level asserted. x86_64 injects its allocated MSI vector by self-IPI.
+        #[cfg(target_arch = "aarch64")]
+        crate::cpu::isa::interrupts::gic::configure_synthetic_spi_edge(test_intid);
         assert_eq!(
             device::interrupt_bind_cq(DEV_ASID, irq, 0),
             Err(DeviceError::AlreadyBound),
@@ -147,15 +194,15 @@ pub fn test_device_capabilities() {
         results::spawn_verifier(TestId::Device, irq_driver);
         logln!("[device] interrupt waiter and driver deferred");
     }
-    #[cfg(not(target_arch = "aarch64"))]
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     {
-        logln!("Skipping device capability test (AArch64 only).");
+        logln!("Skipping device capability test (unsupported architecture).");
     }
 }
 
 /// A delayed teardown handle must not close a new domain that reused the
 /// predecessor's numeric ASID.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn test_stale_address_space_handle() {
     use crate::{
         memory::{
@@ -166,14 +213,17 @@ fn test_stale_address_space_handle() {
     };
 
     let old = loader::create_user_address_space_handle();
+    #[cfg(target_arch = "aarch64")]
     let old_hw_asid = crate::memory::ADDRESS_SPACE_TABLE
         .lock()
         .get(old.id())
         .expect("[device] old address space missing")
         .hw_asid();
+    #[cfg(target_arch = "aarch64")]
     assert_ne!(old_hw_asid, 0, "user address space must have a hardware ASID");
     close_user_address_space_handle(old).expect("[device] initial AS close failed");
     let replacement = loader::create_user_address_space_handle();
+    #[cfg(target_arch = "aarch64")]
     let replacement_hw_asid = crate::memory::ADDRESS_SPACE_TABLE
         .lock()
         .get(replacement.id())
@@ -181,6 +231,7 @@ fn test_stale_address_space_handle() {
         .hw_asid();
     assert_eq!(replacement.id(), old.id(), "address-space test expected slot reuse");
     assert_ne!(replacement.generation(), old.generation());
+    #[cfg(target_arch = "aarch64")]
     assert_eq!(
         replacement_hw_asid, old_hw_asid,
         "address-space test expected invalidated hardware-ASID recycling"
@@ -198,14 +249,15 @@ fn test_stale_address_space_handle() {
 /// A deferred IRQ wake queued for a retired route must not be delivered when
 /// the same INTID, numeric ASID, and CQ are rebound. Only route generation can
 /// distinguish these otherwise-identical tuples.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn test_stale_interrupt_wake(old: u64) -> u64 {
+    let test_interrupt = test_interrupt();
     crate::device::interrupt_bind_cq(DEV_ASID, old, 0)
         .expect("[device] stale-wake initial bind failed");
-    assert!(crate::device::deliver_interrupt(TEST_SPI));
+    assert!(crate::device::deliver_interrupt(test_interrupt));
     crate::device::close_cap(DEV_ASID, old).expect("[device] stale-wake initial close failed");
 
-    let replacement = crate::device::grant_interrupt(DEV_ASID, TEST_SPI)
+    let replacement = crate::device::grant_interrupt(DEV_ASID, test_interrupt)
         .expect("[device] stale-wake replacement interrupt grant failed");
     crate::device::interrupt_bind_cq(DEV_ASID, replacement, 0)
         .expect("[device] stale-wake replacement bind failed");
@@ -217,24 +269,27 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
     crate::device::close_cap(DEV_ASID, replacement)
         .expect("[device] stale-wake replacement close failed");
     logln!("[device] stale deferred interrupt wake rejected after route reuse");
-    crate::device::grant_interrupt(DEV_ASID, TEST_SPI)
+    crate::device::grant_interrupt(DEV_ASID, test_interrupt)
         .expect("[device] stale-wake final interrupt grant failed")
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn completion_open() {
     // A completion-queue address space so interrupt readiness has somewhere
     // to be delivered (queue 0).
     crate::completion::open_address_space_with_cq(DEV_ASID, 8, 8);
 }
 
-/// A DMA map pins the object before acquiring the SMMU registry. Even when the
+/// A DMA map pins the object before acquiring the IOMMU registry. Even when the
 /// domain lookup fails, the pin must be rolled back so the owner can close and
 /// reclaim the object.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn test_failed_dma_map_releases_pin() {
+    #[cfg(target_arch = "x86_64")]
+    use crate::device::iommu as dma;
+    #[cfg(target_arch = "aarch64")]
+    use crate::device::smmu as dma;
     use crate::{
-        device::smmu,
         memory::object,
         self_test::close_test_address_space,
         service::loader,
@@ -242,9 +297,9 @@ fn test_failed_dma_map_releases_pin() {
 
     let asid = loader::create_user_address_space();
     let memory = object::allocate(asid, 1).expect("[device] DMA rollback object allocation failed");
-    let result = smmu::map(u64::MAX, asid, memory, smmu::Direction::DEVICE_READ, false);
+    let result = dma::map(u64::MAX, asid, memory, dma::Direction::DEVICE_READ, false);
     assert!(
-        result == Err(smmu::Error::UnknownDomain) || result == Err(smmu::Error::Unsupported),
+        matches!(result, Err(dma::Error::UnknownDomain | dma::Error::Unsupported)),
         "[device] invalid DMA domain must reject mapping (got {result:?})"
     );
     object::close_cap(asid, memory).expect("[device] failed DMA map leaked its memory pin");
@@ -255,7 +310,7 @@ fn test_failed_dma_map_releases_pin() {
 /// Map an MMIO region capability into a real (non-running) address space as
 /// user device memory, then unmap and reclaim. Uses a spare physical frame as
 /// the stand-in device register block; it is never accessed, only mapped.
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn test_mmio_map_unmap() {
     use crate::{
         device,
@@ -295,7 +350,7 @@ fn test_mmio_map_unmap() {
     logln!("[device] MMIO map/unmap into a real address space passed");
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn irq_waiter() {
     use crate::{
         completion,
@@ -329,8 +384,8 @@ extern "C" fn irq_waiter() {
     ROUND1_RELEASED.store(1, Ordering::Release);
     device_phase(3, u64::from(pending), count);
 
-    // Round 2: released by a real GIC software-pended SPI through the live
-    // interrupt path (dispatcher → deliver_interrupt → CQ wake).
+    // Round 2: released through the architecture's live routed-interrupt path
+    // (dispatcher → deliver_interrupt → CQ wake).
     spin_until(&ROUND2_START, "round 2 start");
     device_phase(4, irq, 0);
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
@@ -349,7 +404,7 @@ extern "C" fn irq_waiter() {
     device_phase(6, u64::from(pending), 0);
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn irq_driver() {
     use crate::{
         cpu::scheduler::spawn_thread,
@@ -366,25 +421,22 @@ extern "C" fn irq_driver() {
     // the pending count are persistent, so the wait fast path must cover an
     // interrupt that arrives first.
     assert!(
-        device::deliver_interrupt(TEST_SPI),
+        device::deliver_interrupt(test_interrupt()),
         "[device] deliver_interrupt must claim the bound INTID"
     );
     device_phase(11, irq, 0);
     spin_until(&ROUND1_RELEASED, "round 1 release");
     device_phase(12, irq, 0);
 
-    // Round 2: pend the SPI in the real GIC and let the hardware path deliver
-    // it. The prior ack re-armed the source.
+    // Round 2: inject the architecture's routed interrupt and let the live
+    // handler path deliver it. The prior ack re-armed the source.
     ROUND2_START.store(1, Ordering::Release);
     let _ = irq; // cap consumed by the waiter; keep symmetry with round 1
-    crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
-    device_phase(13, irq, TEST_SPI as u64);
-    // QEMU/HVF can occasionally lose a distributor software-pend transition.
-    // A real level-triggered device keeps its line asserted until ack, so
-    // faithfully model that property here: while neither the capability's
-    // pending counter nor the waiter reports delivery, reassert the source at
-    // a modest interval. Never re-pend after delivery, since doing so while the
-    // source is masked would create an artificial second interrupt on ack.
+    trigger_live_test_interrupt();
+    device_phase(13, irq, test_interrupt() as u64);
+    // Virtual interrupt controllers can occasionally lose a synthetic
+    // transition. Reassert at a modest interval while the capability still
+    // reports no delivery, but never inject after delivery.
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     let mut next_reassert = crate::cpu::scheduler::monotonic_millis().saturating_add(16);
     while ROUND2_RELEASED.load(Ordering::Acquire) == 0 {
@@ -395,7 +447,7 @@ extern "C" fn irq_driver() {
             let (pending, _) = device::interrupt_status(DEV_ASID, irq)
                 .expect("[device] status while awaiting round 2 failed");
             if pending == 0 {
-                crate::cpu::isa::interrupts::gic::set_spi_pending(TEST_SPI);
+                trigger_live_test_interrupt();
             }
             next_reassert = now.saturating_add(16);
         }
@@ -405,18 +457,36 @@ extern "C" fn irq_driver() {
     // Tear down the interrupt cap: mask and unroute the source.
     device::close_cap(DEV_ASID, IRQ_CAP.load(Ordering::Acquire))
         .expect("[device] close_cap(irq) failed");
-    let recycled = device::grant_interrupt(DEV_ASID + 1, TEST_SPI)
+    let recycled = device::grant_interrupt(DEV_ASID + 1, test_interrupt())
         .expect("[device] closed INTID must become grantable");
     device::close_cap(DEV_ASID + 1, recycled).expect("[device] recycled interrupt close failed");
 
     logln!(
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \
-         a completion queue via both the kernel path and a real GIC SPI all verified."
+         a completion queue via both the kernel path and the live routed-interrupt path verified."
     );
     crate::self_test::results::pass(crate::self_test::results::TestId::Device);
 }
 
 #[cfg(target_arch = "aarch64")]
+fn trigger_live_test_interrupt() {
+    crate::cpu::isa::interrupts::gic::set_spi_pending(test_interrupt());
+}
+
+#[cfg(target_arch = "x86_64")]
+fn trigger_live_test_interrupt() {
+    use crate::cpu::isa::{
+        interface::interrupts::LocalIntCtlrIfce,
+        interrupts::LocalIntCtlr,
+    };
+
+    let vector = TEST_INTERRUPT_VECTOR.load(Ordering::Acquire);
+    assert_ne!(vector, u32::MAX, "[device] x86 test MSI has no vector");
+    LocalIntCtlr::send_unicast_ipi(0, vector as u8)
+        .expect("[device] test MSI self-IPI injection failed");
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn device_phase(phase: u64, a: u64, b: u64) {
     if phase < 10 {
         WAITER_PHASE.store(phase as u32, Ordering::Release);
@@ -426,12 +496,12 @@ fn device_phase(phase: u64, a: u64, b: u64) {
     crate::debug_trace::trace(crate::debug_trace::TAG_DEVICE_PHASE, phase, a, b);
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 pub(crate) fn progress() -> (u32, u32) {
     (WAITER_PHASE.load(Ordering::Acquire), DRIVER_PHASE.load(Ordering::Acquire))
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn spin_until(flag: &AtomicU32, what: &str) {
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     while flag.load(Ordering::Acquire) == 0 {
