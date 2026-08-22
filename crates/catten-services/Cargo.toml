@@ -47,6 +47,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "e1000e"
+path = "src/bin/e1000e.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "nclient"
 path = "src/bin/nclient.rs"
 test = false

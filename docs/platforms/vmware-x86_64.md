@@ -2,7 +2,8 @@
 
 CharlotteOS can be built as a two-disk VMware appliance. It has been qualified
 with VMware Fusion on an Intel macOS host using UEFI, four virtual CPUs, a
-virtual NVMe controller, and VMware's guest-visible VT-d implementation.
+virtual NVMe controller, an E1000E adapter, and VMware's guest-visible VT-d
+implementation.
 
 ## Build and open the appliance
 
@@ -73,7 +74,8 @@ The supplied VMX configures the qualified combination:
 - one SATA boot disk and one NVMe data disk;
 - `vvtd.enable = "TRUE"` for protected userspace DMA;
 - COM1 redirected to `charlotte-serial.log`, appending across boots; and
-- one PCIe root-port group, sufficient for the two storage controllers.
+- an E1000E adapter attached to VMware NAT; and
+- one PCIe root-port group, sufficient for the storage controllers and NIC.
 
 Do not replace the NVMe data controller with SCSI or SATA: the current VMware
 appliance path starts the userspace NVMe driver. Do not disable virtual VT-d:
@@ -84,22 +86,36 @@ open the generated VMX directly. For ESXi, upload/import the disks with the
 normal datastore tooling and reproduce the VMX settings above; that workflow
 has not yet been qualified by this repository.
 
-## Current limitation: VMware networking
+## Networking
 
-Storage and node-local services work in this appliance, but networking does
-not. The x86-64 network service currently drives virtio-net PCI devices, while
-VMware exposes VMXNET3, E1000E, or E1000 adapters. The supplied VMX therefore
-has no virtual NIC.
+The supplied VMX attaches VMware's emulated Intel 82574L (`e1000e`) adapter to
+NAT. CharlotteOS discovers controllers behind every function of VMware's
+multifunction PCIe root ports, delegates the adapter's BAR, MSI-X interrupt,
+and requester-specific VT-d domain to the userspace E1000E driver, waits for
+link negotiation without busy waiting, and then publishes the hardware-neutral
+`net0` service.
 
-Consequently discovery, distributed DNS, smoltcp TCP/IP, HTTP, and multi-node
-cluster operations remain qualified on QEMU but are unavailable inside VMware
-until CharlotteOS gains a VMXNET3 or E1000E userspace driver. Adding a VMware
-NIC in the UI does not make it usable by the current kernel.
+Serial output makes that sequence visible even though CharlotteOS does not
+need console input:
+
+```text
+[e1000e] found Intel 82574L at 04:00.0 (...)
+[net] selected E1000E at BAR0=... (...)
+[net] started E1000E userspace driver ...
+[net] SUCCESS: E1000E is online, link up, MAC ..., hardware TX completions=1.
+```
+
+Discovery, distributed DNS, smoltcp TCP/IP, HTTP, and cluster code consume
+`net0` and therefore require no E1000E-specific changes. Those layers have
+been exercised between two QEMU E1000E guests. Paired VMware guests and
+bridged or host-only VMware networking have not yet been qualified. VMXNET3
+and the older E1000 model remain unsupported.
 
 ## Qualification evidence
 
-The Fusion qualification exercised both a blank first boot and a clean
-power-off/start of the same data VMDK. Both runs passed all seven registered
-x86-64 tests. The second retained all 26 service artifacts, completed the
-NVMe and persistent Raft restart tests, and recorded no VT-d translation
-faults. QEMU's corresponding blank-disk and retained-disk runs also pass.
+The Fusion qualification exercised a blank first boot, a clean power-off/start
+of the same data VMDK, and the E1000E network smoke test. The network run found
+the adapter behind a multifunction root port, brought link up, transmitted a
+frame, completed protected NVMe DMA, and passed all eight registered tests
+without VT-d translation faults. Two synchronized QEMU E1000E guests also pass
+cluster discovery and the smoltcp TCP exchange.

@@ -37,7 +37,7 @@ repository history remain authoritative.
     \texttt{Context}, fixed-width versioned launch header, explicit startup
     input & Done \\
 12 & x86-64 multi-LP ring-3 platform: shared service ABI, synchronous TLB
-    shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net, discovery, and
+    shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net/E1000E, discovery, and
     distributed DNS, smoltcp TCP/IP, HTTP reporting, signed deployment,
     migration, and dynamic membership & Four-LP and two-guest TCG suites \\
 \hline
@@ -84,10 +84,10 @@ repository history remain authoritative.
 
         A two-disk VMware Fusion appliance additionally qualifies UEFI boot,
         guest-visible VT-d, the virtual NVMe controller, blank-store formatting,
-        idempotent installation of 26 signed service artifacts, and persistent
-        restart. VMware networking is not yet supported because the current
-        userspace network driver requires virtio-net; VMware presents VMXNET3
-        or emulated Intel adapters instead.
+        idempotent installation of signed service artifacts, persistent
+        restart, and the userspace E1000E path through link-up and hardware
+        transmit completion. Paired VMware guests and VMXNET3 remain
+        unqualified.
 
     \item \textbf{Completion subsystem:} submit, complete, poll, wait, cancel,
         close, \texttt{submit\_worker} (exit-observer), CQ ring, CQ ring
@@ -103,7 +103,7 @@ repository history remain authoritative.
         and IRQ-to-CQ coalesced delivery (lock-free deferred wake).
 
     \item \textbf{Userspace drivers:} reference UART, NVMe, AHCI, virtio-blk,
-        and virtio-net drivers use delegated MMIO, interrupts, and DMA domains.
+        virtio-net, and E1000E drivers use delegated MMIO, interrupts, and DMA domains.
         The UART path additionally validates crash-test restart with device
         reset and operation reconciliation.
 

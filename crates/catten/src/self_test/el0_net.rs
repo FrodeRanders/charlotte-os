@@ -1,15 +1,15 @@
-//! Self-test: Phase 9 userspace virtio-net driver.
+//! Self-test: Phase 9 userspace Ethernet driver.
 //!
 //! This module is invoked only with the `virtio_net_test` feature. The test
-//! requires a virtio-net PCI function at the BAR and interrupt described
-//! below; starting it in the ordinary disk-only QEMU configuration leaves
+//! requires a supported PCI Ethernet function; starting it in the ordinary
+//! disk-only QEMU configuration leaves
 //! its deferred verifier waiting forever and keeps guest CPUs runnable.
 //!
 //! Uses the node name service; a deferred kernel verifier thread (which runs
 //! after the scheduler and the topology probe
-//! become active) discovers the virtio-net PCI device, grants its BAR0 + IRQ
-//! to the driver domain, spawns a client that queries status, and verifies
-//! the MAC and link state.
+//! become active) discovers a virtio-net or Intel 82574L/E1000E device, grants
+//! its BAR + IRQ to the driver domain, spawns a client that queries status,
+//! and verifies the MAC and link state.
 
 use crate::{
     ipc::ConnectionRights,
@@ -27,8 +27,30 @@ const CLIENT_SENTINEL: u32 = 0xc0de;
 const CLIENT_SENTINEL: u32 = 0xc0de_cafe;
 static mut TEST_STATE: Option<NameServiceHandle> = None;
 
+#[derive(Clone, Copy)]
+enum NetworkDriver {
+    Virtio,
+    E1000e,
+}
+
+impl NetworkDriver {
+    fn artifact(self) -> &'static [u8] {
+        match self {
+            Self::Virtio => b"net",
+            Self::E1000e => b"e1000e",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Virtio => "virtio-net",
+            Self::E1000e => "E1000E",
+        }
+    }
+}
+
 pub fn test_el0_net() {
-    logln!("Testing EL0 userspace virtio-net driver...");
+    logln!("Testing EL0 userspace Ethernet driver...");
 
     let name_service = supervisor::node_name_service();
     let ns_asid = name_service.domain.asid;
@@ -43,18 +65,32 @@ pub fn test_el0_net() {
     logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
 }
 
-fn wait_for_virtio_net() -> (usize, usize, u32, u32, Option<u64>) {
+fn wait_for_network_controller() -> (NetworkDriver, usize, usize, u32, u32, Option<u64>) {
     // Device discovery finishes and publishes the immutable topology before
     // scheduler-driven verifiers run. Absence is therefore a configuration
     // error, not a condition on which this verifier should spin.
     let topology = &crate::device_management::topology::DEVICE_TOPOLOGY;
-    let (bar0, pages, intid, requester_id, msi_address) =
+    let found =
         crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_net(
             &topology.pcie,
         )
-        .expect("[net] no virtio-net controller in the published PCI topology");
-    logln!("[net] PCI topology: BAR0={:#x} intid={} requester={:#x}", bar0, intid, requester_id);
-    (bar0 as usize & !0xfff, pages, intid, requester_id, msi_address)
+        .map(|device| (NetworkDriver::Virtio, device))
+        .or_else(|| {
+            crate::device_management::drivers::busses::pci_express::topology::lookup_first_e1000e(
+                &topology.pcie,
+            )
+            .map(|device| (NetworkDriver::E1000e, device))
+        })
+        .expect("[net] no supported Ethernet controller in the published PCI topology");
+    let (driver, (bar0, pages, intid, requester_id, msi_address)) = found;
+    logln!(
+        "[net] selected {} at BAR0={:#x} (interrupt {}, requester {:#x})",
+        driver.label(),
+        bar0,
+        intid,
+        requester_id
+    );
+    (driver, bar0 as usize & !0xfff, pages, intid, requester_id, msi_address)
 }
 
 extern "C" fn verify_el0_net() {
@@ -63,9 +99,11 @@ extern "C" fn verify_el0_net() {
     let ns = unsafe { TEST_STATE.as_ref() }.expect("[net] test state missing");
 
     logln!("[net] verifier running, waiting for PCI topology...");
-    let (bar0, mmio_pages, intid, requester_id, msi_address) = wait_for_virtio_net();
+    let (network_driver, bar0, mmio_pages, intid, requester_id, msi_address) =
+        wait_for_network_controller();
     let driver = supervisor::spawn_driver_with_name_service(
-        crate::service::store::service_elf(b"net").expect("[el0_net] net.elf"),
+        crate::service::store::service_elf(network_driver.artifact())
+            .expect("[el0_net] network driver ELF"),
         ns,
         ConnectionRights::CALL,
         DriverGrant {
@@ -78,7 +116,11 @@ extern "C" fn verify_el0_net() {
     );
     let driver_config = driver.status_frame;
     let driver_asid = driver.asid;
-    logln!("[net] driver spawned (asid={}) with BAR0 + IRQ grants", driver_asid);
+    logln!(
+        "[net] started {} userspace driver (asid={}) with MMIO, IRQ, and protected-DMA grants",
+        network_driver.label(),
+        driver_asid
+    );
     let _driver = driver;
 
     #[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
@@ -264,6 +306,15 @@ extern "C" fn verify_el0_net() {
                 }
                 #[cfg(not(feature = "relmsg_net_test"))]
                 {
+                    let rx_completed = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(16) as *const u16)
+                    };
+                    let tx_completed = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(18) as *const u16)
+                    };
+                    let driver_error = unsafe {
+                        core::ptr::read_volatile((driver_cfg as *const u8).add(36) as *const u32)
+                    };
                     let rx_unrecycled = unsafe {
                         core::ptr::read_volatile((driver_cfg as *const u8).add(44) as *const u16)
                     };
@@ -271,9 +322,13 @@ extern "C" fn verify_el0_net() {
                         core::ptr::read_volatile((driver_cfg as *const u8).add(46) as *const u16)
                     };
                     logln!(
-                        "[net] waiting: driver stage {} client stage {} rxq={}/{}",
+                        "[net] waiting: driver stage={} error={:#x} client stage={} rx/tx={}/{} \
+                         queued-rx={}/{}",
                         ds,
+                        driver_error,
                         cs,
+                        rx_completed,
+                        tx_completed,
                         rx_unrecycled,
                         rx_qsz
                     );
@@ -305,21 +360,41 @@ extern "C" fn verify_el0_net() {
     assert_ne!([m0, m1, m2, m3, m4, m5], [0; 6], "[net] MAC must be nonzero");
     assert_eq!(link, 1, "[net] link must be up");
 
+    let tx_completed = {
+        let deadline = crate::self_test::results::Deadline::after_millis(2_000);
+        loop {
+            let completed = unsafe {
+                core::ptr::read_volatile((driver_cfg as *const u8).add(18) as *const u16)
+            };
+            if completed != 0 {
+                break completed;
+            }
+            deadline.assert_pending("EL0 Ethernet transmit completion");
+            yield_lp();
+        }
+    };
+
     let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
     assert!(ds >= 6, "[net] driver must reach serving stage (got {})", ds);
 
     #[cfg(feature = "relmsg_net_test")]
-    logln!("[relmsg] SUCCESS: two guests exchanged sequenced, acknowledged Ethernet messages.");
+    logln!(
+        "[relmsg] SUCCESS: two guests exchanged sequenced, acknowledged Ethernet messages; \
+         hardware TX completions={}.",
+        tx_completed
+    );
     #[cfg(not(feature = "relmsg_net_test"))]
     logln!(
-        "[net] SUCCESS: userspace virtio-net driver reached DRIVER_OK, read MAC \
-         {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, and accepted an EL0 transmit request.",
+        "[net] SUCCESS: {} is online, link up, MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, \
+         hardware TX completions={}.",
+        network_driver.label(),
         m0,
         m1,
         m2,
         m3,
         m4,
-        m5
+        m5,
+        tx_completed
     );
     crate::self_test::results::pass(crate::self_test::results::TestId::Net);
 }

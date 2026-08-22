@@ -51,6 +51,8 @@ BUILD_ARGS=(
     --build-only
     --instance vmware
     --blank-storage
+    --net-test
+    --nic e1000e
     --data-size-mib "$DATA_SIZE_MIB"
     --fresh-storage
 )
@@ -83,3 +85,4 @@ echo ">>> VMware appliance complete:"
 echo "    ${APPLIANCE_DIR}/CharlotteOS.vmx"
 echo ">>> Open that VMX in VMware Fusion/Workstation, or import/convert the"
 echo "    VMDKs for ESXi. Serial output will be written beside the VMX."
+echo ">>> The appliance includes an E1000E adapter on VMware NAT."

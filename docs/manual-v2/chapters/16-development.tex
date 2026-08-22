@@ -167,10 +167,13 @@ missing signed x86-64 service artifacts. Later boots retain valid artifacts,
 including deployed upgrades. The builder refuses to overwrite an existing
 appliance unless \texttt{--replace} is supplied.
 
-The supplied VM has no NIC. VMware does not expose the virtio-net device used
-by the current network service, so discovery, DNS, smoltcp, HTTP, and
-multi-node cluster operations remain QEMU-only until a VMXNET3 or E1000E
-driver is added. The complete setup and qualification record is in
+The supplied VM attaches VMware's emulated Intel 82574L adapter to NAT. The
+userspace E1000E driver receives delegated MMIO, MSI-X, and protected-DMA
+authority, waits for link without occupying an LP, and publishes the same
+hardware-neutral \texttt{net0} service as virtio-net. Discovery, DNS, smoltcp,
+HTTP, and cluster code therefore require no VMware-specific branch. The E1000E
+path is qualified under Fusion, while paired VMware guests and VMXNET3 remain
+unqualified. The complete setup and qualification record is in
 \repofiletext|docs/platforms/vmware-x86_64.md|{the VMware x86-64 appliance guide}.
 
 \section{Expected boot output}

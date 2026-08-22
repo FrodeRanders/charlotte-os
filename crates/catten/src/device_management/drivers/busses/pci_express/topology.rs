@@ -567,6 +567,30 @@ impl PcieFunction {
     }
 }
 
+/// Add every secondary bus reachable through this device list to a depth-first
+/// traversal. A PCIe root-port device is commonly multifunction (VMware puts
+/// NVMe behind function 0 and E1000E behind function 1), so inspecting only
+/// the first function silently hides otherwise enumerated endpoints.
+fn push_bridge_buses<'a>(devices: &'a [PcieDevice], stack: &mut Vec<&'a PcieBusSegment>) {
+    for device in devices {
+        match device {
+            PcieDevice::SingleFunc(single) => {
+                if let PcieFunction::Bridge(bus) = &single.function {
+                    stack.push(bus);
+                }
+            }
+            PcieDevice::MultiFunc(multi) => {
+                for function in &multi.functions {
+                    if let PcieFunction::Bridge(bus) = function {
+                        stack.push(bus);
+                    }
+                }
+            }
+            PcieDevice::Empty => {}
+        }
+    }
+}
+
 /// Scan the PCI topology for the first virtio-net device, configure MSI-X
 /// vector zero when possible, and return its delegated-device coordinates.
 pub fn lookup_first_virtio_net(
@@ -693,22 +717,105 @@ pub fn lookup_first_virtio_net(
                     return Some((phys_base, 4, legacy_irq, requester_id, None));
                 }
             }
+            push_bridge_buses(&bus.devices, &mut stack);
+        }
+    }
+    None
+}
+
+/// Scan the PCI topology for an Intel 82574L controller, the device emulated
+/// by VMware's `e1000e` virtual NIC and QEMU's `e1000e` model. Configure MSI-X
+/// vector zero when available and return BAR0 plus the authority needed by the
+/// userspace driver.
+pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, u32, Option<u64>)> {
+    for group in &topology.segments {
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
             for dev in &bus.devices {
-                let child = match dev {
+                let (ep, device, function) = match dev {
                     PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Bridge(b) => Some(b),
-                        _ => None,
+                        PcieFunction::Endpoint(ep) => {
+                            (ep, sfd.number.get_inner(), ep.number.get_inner())
+                        }
+                        _ => continue,
                     },
-                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
-                        Some(PcieFunction::Bridge(b)) => Some(b),
-                        _ => None,
+                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first().and_then(|f| {
+                        if let PcieFunction::Endpoint(ep) = f {
+                            Some((ep, mfd.number.get_inner(), ep.number.get_inner()))
+                        } else {
+                            None
+                        }
+                    }) {
+                        Some(ep) => ep,
+                        None => continue,
                     },
-                    _ => None,
+                    _ => continue,
                 };
-                if let Some(child_bus) = child {
-                    stack.push(child_bus);
+                if ep.identifier.vendor_id != 0x8086
+                    || ep.identifier.device_id != 0x10d3
+                    || (ep.identifier.class_code, ep.identifier.subclass) != (0x02, 0x00)
+                {
+                    continue;
                 }
+
+                let requester_id =
+                    ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+                let cfg = ep.cfg_ptr.lock();
+                let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                let bar0 = header.bar(0) as u64;
+                logln!(
+                    "[e1000e] found Intel 82574L at {:02x}:{:02x}.{} (BAR0={:#x}, IRQ line={})",
+                    bus.number,
+                    device,
+                    function,
+                    bar0,
+                    header.interrupt_line()
+                );
+                if bar0 & 1 != 0 {
+                    continue;
+                }
+                let phys_base = if bar0 & 0x4 != 0 {
+                    (bar0 & 0xffff_fff0) | ((header.bar(1) as u64) << 32)
+                } else {
+                    bar0 & 0xffff_fff0
+                };
+                if phys_base == 0 {
+                    continue;
+                }
+
+                let legacy_irq = header.interrupt_line() as u32;
+                if crate::device::msi_available()
+                    && let Some(message) = crate::device::allocate_msi(requester_id)
+                    && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
+                        cfg.as_ptr(),
+                        message,
+                    )
+                    .is_ok()
+                {
+                    logln!(
+                        "[e1000e] MSI-X vector 0: address={:#x} data={} intid={}",
+                        message.address,
+                        message.data,
+                        message.intid
+                    );
+                    // BAR0 is a 128-KiB register aperture on the 82574L.
+                    return Some((phys_base, 32, message.intid, requester_id, Some(message.address)));
+                }
+
+                // Keep the fallback usable on platforms without an MSI
+                // allocator. MSI-X setup normally enables these command bits.
+                let cfg_bytes = cfg.as_ptr().cast::<u8>();
+                let command =
+                    unsafe { core::ptr::read_volatile(cfg_bytes.add(0x04).cast::<u16>()) };
+                unsafe {
+                    core::ptr::write_volatile(
+                        cfg_bytes.add(0x04).cast::<u16>(),
+                        command | (1 << 1) | (1 << 2),
+                    )
+                };
+                return Some((phys_base, 32, legacy_irq, requester_id, None));
             }
+            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None
@@ -790,22 +897,7 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                     return Some((phys_base, legacy_irq, requester_id, None));
                 }
             }
-            for dev in &bus.devices {
-                let child = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Bridge(b) => Some(b),
-                        _ => None,
-                    },
-                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
-                        Some(PcieFunction::Bridge(b)) => Some(b),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some(child_bus) = child {
-                    stack.push(child_bus);
-                }
-            }
+            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None
@@ -864,22 +956,7 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                     }
                 }
             }
-            for dev in &bus.devices {
-                let child = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Bridge(b) => Some(b),
-                        _ => None,
-                    },
-                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
-                        Some(PcieFunction::Bridge(b)) => Some(b),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some(child_bus) = child {
-                    stack.push(child_bus);
-                }
-            }
+            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None
@@ -979,22 +1056,7 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                     }
                 }
             }
-            for dev in &bus.devices {
-                let child = match dev {
-                    PcieDevice::SingleFunc(sfd) => match &sfd.function {
-                        PcieFunction::Bridge(b) => Some(b),
-                        _ => None,
-                    },
-                    PcieDevice::MultiFunc(mfd) => match mfd.functions.first() {
-                        Some(PcieFunction::Bridge(b)) => Some(b),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some(child_bus) = child {
-                    stack.push(child_bus);
-                }
-            }
+            push_bridge_buses(&bus.devices, &mut stack);
         }
     }
     None

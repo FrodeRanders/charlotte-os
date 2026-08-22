@@ -19,6 +19,7 @@ objstore           bootstrap   1       1        0x0   -
 objstore_client    service     1       1        0x0   -
 fs                 service     1       1        0x0   -
 net                service     1       1        0x0   -
+e1000e             service     1       1        0x0   -
 nclient            service     1       1        0x0   -
 relmsg             service     1       1        0x0   -
 rclient            service     1       1        0x0   -

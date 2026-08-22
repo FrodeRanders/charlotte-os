@@ -9,7 +9,7 @@
 # The x86_64 port boots multi-LP, runs EL0 at ring 3 through the SYSCALL
 # ABI, and passes the kernel-side + ring-3 deferred self-test suite, including
 # the NVMe/AHCI/virtio-blk storage stack (behind VT-d or AMD-Vi) and the
-# virtio-net + cluster-discovery networking path.
+# virtio-net/E1000E + cluster-discovery networking path.
 #
 # Usage:
 #   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT]
@@ -17,7 +17,7 @@
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
 #                         [--tcpip-test|--http-test] [--live-upgrade-test]
-#                         [--mac ADDRESS]
+#                         [--nic virtio|e1000e] [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
 #                         [--fresh-storage|--reuse-storage|--blank-storage]
 #                         [--data-size-mib N] [--build-only]
@@ -32,7 +32,8 @@
 #                  (default: run interactively)
 #   --iommu intel|amd  DMA remapping unit (default: intel)
 #   --block nvme|ahci|virtio  Block device transport (default: nvme)
-#   --net-test     Build and run the virtio-net test
+#   --net-test     Build and run the userspace Ethernet-driver test
+#   --nic MODEL    Select virtio or e1000e for QEMU networking (default: virtio)
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --dns-test     Run the distributed DNS test (implies --disco-test)
 #   --deploy-test  Run cluster deployment, clusterctl, and dynamic join tests
@@ -80,6 +81,7 @@ LIVE_UPGRADE_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
+NET_DEVICE="virtio"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -120,6 +122,9 @@ while [ "$#" -gt 0 ]; do
         --mac)
             [ "$#" -ge 2 ] || { echo "Missing value for --mac" >&2; exit 1; }
             NET_MAC="$2"; shift 2 ;;
+        --nic)
+            [ "$#" -ge 2 ] || { echo "Missing value for --nic" >&2; exit 1; }
+            NET_DEVICE="$2"; shift 2 ;;
         --fresh-storage) FRESH_STORAGE="1"; shift ;;
         --reuse-storage) REUSE_STORAGE="1"; shift ;;
         --blank-storage) BLANK_STORAGE="1"; shift ;;
@@ -163,6 +168,10 @@ if ! [[ "$HTTP_HOST_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_HOST_PORT" -lt 1 ] \
 fi
 if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
     echo "error: socket networking requires a network test option" >&2
+    exit 1
+fi
+if [ "$NET_DEVICE" != "virtio" ] && [ "$NET_DEVICE" != "e1000e" ]; then
+    echo "error: --nic must be 'virtio' or 'e1000e'" >&2
     exit 1
 fi
 if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
@@ -271,7 +280,7 @@ fi
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
 mkdir -p "$SERVICE_BUNDLE"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd fs clusterctl"
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd fs clusterctl"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
         if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then
@@ -286,7 +295,7 @@ else
         --release -Z build-std=core,alloc \
         --bin ns --bin observe --bin nvme --bin objstore --bin nvme_client \
         --bin objstore_client --bin echo --bin raft --bin client --bin servicemgr \
-        --bin ahci --bin virtio_blk --bin net --bin nclient --bin disco --bin frouter \
+        --bin ahci --bin virtio_blk --bin net --bin e1000e --bin nclient --bin disco --bin frouter \
         --bin dns --bin agent --bin greet --bin relmsg --bin rclient --bin tcpip \
         --bin tcpclient --bin httpd --bin fs --bin clusterctl
     for svc in $SERVICE_NAMES; do
@@ -437,9 +446,16 @@ if [ "$NET_TEST" = "1" ]; then
             QEMU_OPTS+=(-netdev "socket,id=net0,connect=${NET_HOST}:${NET_PORT}")
             ;;
     esac
-    QEMU_OPTS+=(
-        -device "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=${NET_MAC}"
-    )
+    case "$NET_DEVICE" in
+        virtio)
+            QEMU_OPTS+=(
+                -device "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=${NET_MAC}"
+            )
+            ;;
+        e1000e)
+            QEMU_OPTS+=(-device "e1000e,netdev=net0,mac=${NET_MAC}")
+            ;;
+    esac
 fi
 
 if [ -n "$GDB" ]; then

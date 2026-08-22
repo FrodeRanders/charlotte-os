@@ -218,9 +218,9 @@ virtio-net, discovery, distributed DNS, smoltcp TCP/IP, HTTP reporting, signed
 deployment, migration, and dynamic membership behind VT-d or AMD-Vi. See
 [`docs/platforms/x86_64.md`](docs/platforms/x86_64.md) for the tested matrix,
 runner commands, and remaining limitations. A generated two-disk
-[VMware appliance](docs/platforms/vmware-x86_64.md) also boots the local
-storage and service stack under Fusion; VMware networking awaits a VMXNET3 or
-E1000E driver.
+[VMware appliance](docs/platforms/vmware-x86_64.md) additionally boots the
+storage and service stack under Fusion and uses a protected userspace E1000E
+driver for VMware's emulated Intel 82574L adapter.
 
 #### AArch64 (ARM64)
 

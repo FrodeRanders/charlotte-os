@@ -49,9 +49,14 @@ serial0.startConnected = "TRUE"
 serial0.yieldOnMsrRead = "TRUE"
 answer.msg.serial.file.open = "Append"
 
-# VMware normally presents VMXNET3 or E1000E. CharlotteOS does not yet have
-# either driver, so avoid attaching an unusable NIC to the initial appliance.
-ethernet0.present = "FALSE"
+# The userspace E1000E driver supports VMware's emulated Intel 82574L. NAT is
+# the least host-specific default; deployments may switch this to bridged or a
+# shared host-only network without changing the guest driver.
+ethernet0.present = "TRUE"
+ethernet0.virtualDev = "e1000e"
+ethernet0.connectionType = "nat"
+ethernet0.startConnected = "TRUE"
+ethernet0.addressType = "generated"
 
 sound.present = "FALSE"
 floppy0.present = "FALSE"
