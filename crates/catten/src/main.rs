@@ -269,16 +269,6 @@ pub extern "C" fn bsp_main() -> ! {
 /// Store-backed service resolution can block cooperatively, so this phase may
 /// be suspended and later resumed just like every other kernel thread.
 extern "C" fn finish_boot() {
-    // The synchronous half of the self-test suite predates kernel preemption
-    // and deliberately ran as one transaction. That mask must NOT be held
-    // across the suite: DAIF is per-LP CPU state and switch_ctx does not save
-    // it, so a masked continuation is restored to masked after every yield and
-    // propagates the mask to every kernel thread it switches to on this LP.
-    // That wedges the LP's timer PPI (pending at the GIC but never taken) and
-    // starves every timeout queued on this LP, including the NVMe driver's CQ
-    // watchdog. Run the suite like any kernel thread, unmasked; explicit
-    // yields still switch to EL0/services as before.
-    self_test::run_deferred_self_tests();
     logln!("System Information:");
     logln!("CPU Vendor: {}", (CpuInfo::get_vendor()));
     logln!("CPU Model: {}", (CpuInfo::get_model()));
@@ -303,6 +293,30 @@ extern "C" fn finish_boot() {
     }
     #[cfg(all(feature = "hvf_compat", not(feature = "live_upgrade_test")))]
     logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
+    unmask_interrupts!();
+    // Reach the operational service composition before admitting tests that
+    // consume it. In particular, AArch64's UART test loads cclient.elf from
+    // the object store, while the NVMe verifier observes the storage handles
+    // published here. Running the deferred tests first creates a cycle: the
+    // tests wait for storage, but storage launch is sequenced after the tests.
+    //
+    // Launch synchronously from this scheduler-owned continuation. It may
+    // yield while store-backed service ELFs are resolved, and it must run with
+    // interrupts enabled so the launcher's EL0 children inherit a usable DAIF
+    // state for timers and device interrupts.
+    #[cfg(not(feature = "hvf_compat"))]
+    crate::service::launch::launch_steady_state();
+
+    // The synchronous half of the self-test suite predates kernel preemption
+    // and deliberately ran as one transaction. The deferred half runs like
+    // ordinary kernel work and may yield while the services launched above
+    // become ready.
+    self_test::run_deferred_self_tests();
+
+    // Keep the remaining admission and boot-time rebalance phase atomic with
+    // respect to this LP, matching the previous boot ordering. Interrupts are
+    // restored once every initial kernel thread has been submitted.
+    mask_interrupts!();
     // Spawn the async-syscall demonstration (submit -> async worker -> complete
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
@@ -336,17 +350,6 @@ extern "C" fn finish_boot() {
     }
     logln!("Submitted all initial kernel threads.");
     unmask_interrupts!();
-    // Launch the steady-state service set (storage, network stack, cluster,
-    // and the network appliance) after interrupts are re-enabled. The launch
-    // thread spawns EL0 service domains, and running it under the boot mask
-    // would propagate the masked DAIF state to every service it starts on its
-    // LP, wedging their timers. The deferred self-tests, admitted earlier,
-    // cooperatively block until the launch thread publishes the set.
-    #[cfg(not(feature = "hvf_compat"))]
-    {
-        let launch_tid = spawn_thread(KERNEL_ASID, crate::service::launch::launch_steady_state);
-        logln!("Steady-state launch thread spawned with ID = {launch_tid}.");
-    }
 }
 
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
