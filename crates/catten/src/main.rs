@@ -303,15 +303,6 @@ extern "C" fn finish_boot() {
     }
     #[cfg(all(feature = "hvf_compat", not(feature = "live_upgrade_test")))]
     logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
-    // Launch the steady-state service set (storage, network stack, cluster,
-    // and the network appliance) as a boot thread. The deferred self-tests,
-    // admitted earlier, verify these services and cooperatively block until
-    // the launch thread publishes them.
-    #[cfg(not(feature = "hvf_compat"))]
-    {
-        let launch_tid = spawn_thread(KERNEL_ASID, crate::service::launch::launch_steady_state);
-        logln!("Steady-state launch thread spawned with ID = {launch_tid}.");
-    }
     // Spawn the async-syscall demonstration (submit -> async worker -> complete
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
@@ -345,6 +336,17 @@ extern "C" fn finish_boot() {
     }
     logln!("Submitted all initial kernel threads.");
     unmask_interrupts!();
+    // Launch the steady-state service set (storage, network stack, cluster,
+    // and the network appliance) after interrupts are re-enabled. The launch
+    // thread spawns EL0 service domains, and running it under the boot mask
+    // would propagate the masked DAIF state to every service it starts on its
+    // LP, wedging their timers. The deferred self-tests, admitted earlier,
+    // cooperatively block until the launch thread publishes the set.
+    #[cfg(not(feature = "hvf_compat"))]
+    {
+        let launch_tid = spawn_thread(KERNEL_ASID, crate::service::launch::launch_steady_state);
+        logln!("Steady-state launch thread spawned with ID = {launch_tid}.");
+    }
 }
 
 /// This is the application processors' entry point into the kernel. The `ap_main` function is
