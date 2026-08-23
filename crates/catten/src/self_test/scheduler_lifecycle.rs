@@ -50,6 +50,7 @@ use crate::{
             threads::{
                 DEAD_THREADS,
                 MASTER_THREAD_TABLE,
+                retirement_in_flight,
             },
         },
     },
@@ -228,9 +229,17 @@ extern "C" fn remote_abort_coordinator() {
         .expect("remote cross-LP abort request failed");
     {
         let table = MASTER_THREAD_TABLE.read();
-        let thread = table.get(target).expect("remote target retired before interrupts released");
-        assert!(thread.abort_requested.load(Ordering::Acquire));
-        assert_eq!(thread.abort_owner_lp.load(Ordering::Acquire), 1);
+        // LP1 keeps interrupts enabled, so its scheduler IPI may complete the
+        // requested retirement before LP0 reacquires this lock. If the same
+        // generation is still published, verify the pending request; absence
+        // (or reuse of the numeric TID by a later generation) is already a
+        // valid completed outcome.
+        if let Ok(thread) = table.get(target)
+            && thread.generation == target_generation
+        {
+            assert!(thread.abort_requested.load(Ordering::Acquire));
+            assert_eq!(thread.abort_owner_lp.load(Ordering::Acquire), 1);
+        }
     }
     assert!(
         SYSTEM_SCHEDULER.read().submit_woken_thread(target, target_generation).is_err(),
@@ -238,13 +247,20 @@ extern "C" fn remote_abort_coordinator() {
     );
 
     loop {
-        let in_master = MASTER_THREAD_TABLE.read().get(target).is_ok();
+        let in_master = MASTER_THREAD_TABLE
+            .read()
+            .get(target)
+            .is_ok_and(|thread| thread.generation == target_generation);
         let in_dead = DEAD_THREADS
             .read()
             .values()
             .flatten()
             .any(|thread| thread.generation == target_generation);
-        if !in_master && !in_dead {
+        // Retirement moves a thread between two separately locked tables.
+        // Do not mistake the remove-before-stage interval for completed
+        // reaping; a recycled TID, conversely, must not keep us waiting for an
+        // unrelated later generation.
+        if !in_master && !in_dead && !retirement_in_flight() {
             break;
         }
         deadline.assert_pending("owner-LP retirement and deferred reaping");
