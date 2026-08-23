@@ -2,7 +2,10 @@ use core::arch::asm;
 
 use super::interrupts::load_ivt;
 use crate::{
-    cpu::isa::interface::init::InitInterface,
+    cpu::isa::{
+        interface::init::InitInterface,
+        lp::ops::get_lp_id,
+    },
     early_logln,
     logln,
 };
@@ -40,30 +43,21 @@ impl InitInterface for IsaInitializer {
 
     #[inline(always)]
     fn init_bsp() -> Result<(), Self::Error> {
-        // Initialization code for the aarch64 architecture
-        early_logln!("Performing Aarch64 ISA specific initialization...");
         let (sctlr_before, sctlr_after) = clear_write_execute_never();
-        early_logln!("SCTLR_EL1 WXN clear: before={:#x} after={:#x}", sctlr_before, sctlr_after);
-        // Setup the interrupt vector table
-        early_logln!("Loading the interrupt vector table on the AP");
+        early_logln!(
+            "BSP: SCTLR_EL1 WXN clear before={:#x} after={:#x}",
+            sctlr_before,
+            sctlr_after
+        );
         load_ivt();
-        early_logln!("Interrupt vector table loaded on the AP");
-
-        early_logln!("Aarch64 ISA specific initialization complete!");
+        early_logln!("BSP: Aarch64 ISA initialization complete.");
         Ok(())
     }
 
     fn init_ap() -> Result<(), Self::Error> {
-        // Initialization code for the aarch64 architecture
-        logln!("Performing Aarch64 ISA specific initialization...");
-        let (sctlr_before, sctlr_after) = clear_write_execute_never();
-        logln!("SCTLR_EL1 WXN clear: before={:#x} after={:#x}", sctlr_before, sctlr_after);
-        // Setup the interrupt vector table
-        logln!("Loading the interrupt vector table on the AP");
+        clear_write_execute_never();
         load_ivt();
-        logln!("Interrupt vector table loaded on the AP");
-
-        logln!("Aarch64 ISA specific initialization complete!");
+        logln!("LP {}: Aarch64 ISA initialization complete.", get_lp_id());
         Ok(())
     }
 
