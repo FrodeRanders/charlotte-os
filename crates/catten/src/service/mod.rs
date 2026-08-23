@@ -13,6 +13,7 @@
 //! - [`supervisor`] spawns, observes, and tears down service domains.
 
 pub mod bootstrap;
+pub mod launch;
 pub mod loader;
 pub mod store;
 pub mod supervisor;

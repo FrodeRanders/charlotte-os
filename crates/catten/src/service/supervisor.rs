@@ -326,6 +326,18 @@ pub fn spawn_with_name_service(
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
 ) -> ServiceDomain {
+    spawn_with_manifest(image, name_service, rights, &[])
+}
+
+/// Like [`spawn_with_name_service`], but writes a typed launch manifest into
+/// the domain's config page before it starts. This is the general spawn entry
+/// point; the manifest-less helpers delegate to it.
+pub fn spawn_with_manifest(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    manifest: &[bootstrap::ManifestEntry<'_>],
+) -> ServiceDomain {
     let loaded = loader::load_domain(image);
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
@@ -335,7 +347,7 @@ pub fn spawn_with_name_service(
     )
     .expect("[supervisor] bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_manifest(loaded.config_frame, &[]);
+    bootstrap::write_manifest(loaded.config_frame, manifest);
     start_domain(loaded)
 }
 

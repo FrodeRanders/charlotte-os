@@ -1,12 +1,13 @@
 //! Self-test: single-node network appliance (DHCP lease + HTTP keyhole).
 //!
-//! Spawns the `tcpip` service in DHCP mode (it acquires its address from the
-//! network's DHCP server) and polls the service's `socket::OP_STATUS` snapshot
-//! until the reported IPv4 address is non-zero. Once the lease lands it also
-//! spawns the `httpd` service, which listens on TCP port 80 through `tcpip`
-//! and serves a hardcoded state keyhole — reachable from the host on QEMU
-//! SLIRP or VMware NAT. Unlike the cross-node `tcpip_net_test`, this runs in a
-//! single guest and only exercises the lease + listen path.
+//! Service *spawning* is delegated to
+//! [`crate::service::launch::launch_network_appliance`], which starts the
+//! DHCP-configured `tcpip` and the `httpd` keyhole as an ordinary launch
+//! operation. This verifier only observes the result: it polls `tcpip`'s
+//! `socket::OP_STATUS` snapshot until the reported IPv4 address is non-zero
+//! and waits for `httpd` to reach its listening stage — reachable from the
+//! host on QEMU SLIRP or VMware NAT. Unlike the cross-node `tcpip_net_test`,
+//! this runs in a single guest and only exercises the lease + listen path.
 //!
 //! Reaching the tcpip serving stage is *not* sufficient: the service enters
 //! its serving loop before the DHCP exchange completes, so the verifier must
@@ -18,25 +19,13 @@ mod inner {
     use alloc::vec::Vec;
 
     use crate::{
-        ipc::{
-            self,
-            ConnectionRights,
-        },
+        ipc,
         logln,
-        service::{
-            bootstrap::{
-                ManifestEntry,
-                ManifestValue,
-            },
-            supervisor::{
-                self,
-                NameServiceHandle,
-                ServiceDomain,
-            },
+        service::supervisor::{
+            self,
+            NameServiceHandle,
         },
     };
-
-    const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
 
     // "tcpip" packed LE (catten_services::socket::NAME); the kernel crate does
     // not link catten_services, so mirror the packed short name here.
@@ -53,39 +42,6 @@ mod inner {
     const STATUS_WORDS: usize = 5;
 
     static mut DHCP_NS: Option<NameServiceHandle> = None;
-
-    fn spawn_binary(
-        image: &[u8],
-        ns: &NameServiceHandle,
-        manifest: &[ManifestEntry<'_>],
-    ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(image);
-        let conn = crate::ipc::connection_delegate(
-            ns.domain.asid,
-            ns.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("dhcp spawn conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("dhcp thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
-    }
 
     fn kernel_ns_connection(ns: &NameServiceHandle) -> u64 {
         crate::ipc::connection_delegate(
@@ -171,16 +127,10 @@ mod inner {
 
         let ns = unsafe { DHCP_NS.as_ref() }.expect("[dhcp] test state missing");
 
-        let tcpip_manifest = [ManifestEntry {
-            key: DHCP_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(b"1"),
-        }];
-        let tcpip = spawn_binary(
-            crate::service::store::service_elf(b"tcpip").expect("[el0_dhcp] tcpip.elf"),
-            ns,
-            &tcpip_manifest,
-        );
+        let appliance = crate::service::launch::steady_state()
+            .appliance
+            .expect("[dhcp] network appliance missing from steady state");
+        let tcpip = appliance.tcpip;
         logln!("[dhcp] tcpip spawned (asid={})", tcpip.asid);
         let tcpip_cfg: *const u32 = {
             let base: *mut u8 = tcpip.status_frame.into();
@@ -247,13 +197,10 @@ mod inner {
             octets[3]
         );
 
-        // Bring up the HTTP keyhole so the host can reach the appliance over
-        // the freshly acquired address.
-        let httpd = spawn_binary(
-            crate::service::store::service_elf(b"httpd").expect("[el0_dhcp] httpd.elf"),
-            ns,
-            &[],
-        );
+        // The httpd keyhole was spawned alongside tcpip and starts listening
+        // as soon as the tcpip service is reachable, so the host can reach the
+        // appliance over the freshly acquired address.
+        let httpd = appliance.httpd;
         logln!("[dhcp] httpd spawned (asid={})", httpd.asid);
         let httpd_cfg: *const u32 = {
             let base: *mut u8 = httpd.status_frame.into();

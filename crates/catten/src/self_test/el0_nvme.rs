@@ -43,7 +43,6 @@ use crate::{
     logln,
     service::supervisor::{
         self,
-        DriverGrant,
         NameServiceHandle,
     },
 };
@@ -72,139 +71,28 @@ pub fn test_el0_nvme() {
     logln!("[nvme] verifier deferred");
 }
 
-struct BlockDevice {
-    driver: &'static [u8],
-    mmio_base: usize,
-    mmio_pages: usize,
-    intid: u32,
-    requester_id: u32,
-    msi_address: Option<u64>,
-}
-
-fn wait_for_block_device() -> BlockDevice {
-    #[cfg(not(feature = "hvf_compat"))]
-    {
-        // Normal boot publishes the immutable topology before the scheduler
-        // starts, so absence here is a real discovery failure rather than a
-        // reason to guess platform addresses.
-        let topo = &crate::device_management::topology::DEVICE_TOPOLOGY;
-        if let Some((bar0, irq, requester_id, msi_address)) =
-            crate::device_management::drivers::busses::pci_express::topology::lookup_first_nvme(
-                &topo.pcie,
-            )
-        {
-            logln!("[nvme] PCI topology: BAR0={:#x} intid={}", bar0, irq);
-            return BlockDevice {
-                driver: b"nvme",
-                mmio_base: bar0 as usize,
-                mmio_pages: 2,
-                intid: irq,
-                requester_id,
-                msi_address,
-            };
-        }
-        if let Some((abar, irq, requester_id, msi_address)) =
-            crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_blk(
-                &topo.pcie,
-            )
-        {
-            logln!("[virtio-blk] PCI topology: BAR4={:#x} intid={}", abar, irq);
-            return BlockDevice {
-                driver: b"virtio_blk",
-                mmio_base: abar as usize,
-                mmio_pages: 4,
-                intid: irq,
-                requester_id,
-                msi_address,
-            };
-        }
-        if let Some((abar, irq, requester_id, msi_address)) =
-            crate::device_management::drivers::busses::pci_express::topology::lookup_first_ahci(
-                &topo.pcie,
-            )
-        {
-            logln!("[ahci] PCI topology: ABAR={:#x} intid={}", abar, irq);
-            return BlockDevice {
-                driver: b"ahci",
-                mmio_base: abar as usize,
-                mmio_pages: 2,
-                intid: irq,
-                requester_id,
-                msi_address,
-            };
-        }
-        panic!("[block] no NVMe, AHCI, or virtio-blk controller in the published PCI topology");
-    }
-    #[cfg(feature = "hvf_compat")]
-    {
-        // HVF cannot safely map the QEMU ECAM window, so this development mode
-        // retains the known fixed test-device placement.
-        let bar0: usize = 0x1000_0000;
-        let intid: u32 = 44;
-        logln!("[nvme] HVF fallback: BAR0={:#x} intid={}", bar0, intid);
-        BlockDevice {
-            driver: b"nvme",
-            mmio_base: bar0,
-            mmio_pages: 2,
-            intid,
-            requester_id: 0x10,
-            msi_address: None,
-        }
-    }
-}
-
 extern "C" fn verify_el0_nvme() {
     let ns = TEST_STATE.lock().as_ref().copied().expect("[nvme] test state missing");
     logln!("[nvme] verifier running, discovering NVMe...");
 
-    // MSI(-X) setup relies on the kernel's MSI allocator, which requires an
-    // available mechanism (the GICv2m/ITS on AArch64, the LAPIC on x86_64).
-    if !crate::device::msi_available() {
-        logln!("[nvme] SKIP: no supported MSI mechanism; NVMe test not run.");
+    // The storage stack was launched by the steady-state boot; this verifier
+    // only observes it. `None` means the platform could not back a driver.
+    let Some(storage) = crate::service::launch::steady_state().storage else {
+        logln!("[nvme] SKIP: storage unsupported on this platform.");
         crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
         return;
-    }
-
-    let device = wait_for_block_device();
-
-    // Protected DMA requires an IOMMU to exist and to map this requester to a
-    // stream. On platforms without one, the driver cannot be granted a DMA
-    // domain. Report the test as unsupported rather than panicking inside the
-    // driver spawn, which would abort the verifier before it reports.
-    if crate::device::stream_id(device.requester_id).is_err() {
-        logln!("[nvme] SKIP: protected DMA unavailable; NVMe test not run.");
-        crate::self_test::results::fail(crate::self_test::results::TestId::Nvme);
-        return;
-    }
-
-    // --- Spawn the block driver (NVMe or AHCI) ---
-    let driver = supervisor::spawn_driver_with_name_service(
-        crate::service::store::service_elf(device.driver).expect("[el0_nvme] block driver elf"),
-        &ns,
-        ConnectionRights::CALL,
-        DriverGrant {
-            mmio_phys_base: device.mmio_base,
-            mmio_pages: device.mmio_pages,
-            intid: device.intid,
-            dma_requester_id: Some(device.requester_id),
-            dma_msi_address: device.msi_address,
-        },
-    );
+    };
+    let driver = storage.driver;
+    let driver_elf = storage.driver_elf;
+    let objstore = storage.objstore;
     let driver_cfg: *const u32 = {
         let base: *mut u8 = driver.status_frame.into();
         base as *const u32
     };
     logln!("[nvme] driver spawned (asid={})", driver.asid);
 
-    // The object store is embedded and must be up before any store-sourced
-    // service is fetched (the client and object-client ELFs now come from
-    // the store).
-    // --- Spawn object store via name service (deferred lookup) ---
-    let objstore = supervisor::spawn_with_name_service(
-        crate::service::store::service_elf(b"objstore").expect("[el0_nvme] objstore.elf"),
-        &ns,
-        ConnectionRights::CALL,
-    );
+    // The object store must be up before any store-sourced service is fetched
+    // (the client and object-client ELFs now come from the store).
     let objstore_cfg: *const u32 = {
         let base: *mut u8 = objstore.status_frame.into();
         base as *const u32
@@ -327,7 +215,7 @@ extern "C" fn verify_el0_nvme() {
     // The NVMe driver completes through MSI-X; the AHCI driver polls its
     // command slot instead, so an interrupt counter is only meaningful for
     // NVMe.
-    if device.driver == b"nvme" {
+    if driver_elf == b"nvme" {
         assert!(irq_count > 0, "[nvme] MSI-X completion interrupt was not delivered");
         logln!("[nvme] MSI-X delivered {} completion interrupt(s)", irq_count);
     } else {

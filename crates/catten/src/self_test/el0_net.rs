@@ -16,7 +16,6 @@ use crate::{
     logln,
     service::supervisor::{
         self,
-        DriverGrant,
         NameServiceHandle,
     },
 };
@@ -26,28 +25,6 @@ const CLIENT_SENTINEL: u32 = 0xc0de;
 #[cfg(feature = "relmsg_net_test")]
 const CLIENT_SENTINEL: u32 = 0xc0de_cafe;
 static mut TEST_STATE: Option<NameServiceHandle> = None;
-
-#[derive(Clone, Copy)]
-enum NetworkDriver {
-    Virtio,
-    E1000e,
-}
-
-impl NetworkDriver {
-    fn artifact(self) -> &'static [u8] {
-        match self {
-            Self::Virtio => b"net",
-            Self::E1000e => b"e1000e",
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Virtio => "virtio-net",
-            Self::E1000e => "E1000E",
-        }
-    }
-}
 
 pub fn test_el0_net() {
     logln!("Testing EL0 userspace Ethernet driver...");
@@ -65,60 +42,20 @@ pub fn test_el0_net() {
     logln!("[net] verifier deferred (waits for PCI topology + driver + client)");
 }
 
-fn wait_for_network_controller() -> (NetworkDriver, usize, usize, u32, u32, Option<u64>) {
-    // Device discovery finishes and publishes the immutable topology before
-    // scheduler-driven verifiers run. Absence is therefore a configuration
-    // error, not a condition on which this verifier should spin.
-    let topology = &crate::device_management::topology::DEVICE_TOPOLOGY;
-    let found =
-        crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_net(
-            &topology.pcie,
-        )
-        .map(|device| (NetworkDriver::Virtio, device))
-        .or_else(|| {
-            crate::device_management::drivers::busses::pci_express::topology::lookup_first_e1000e(
-                &topology.pcie,
-            )
-            .map(|device| (NetworkDriver::E1000e, device))
-        })
-        .expect("[net] no supported Ethernet controller in the published PCI topology");
-    let (driver, (bar0, pages, intid, requester_id, msi_address)) = found;
-    logln!(
-        "[net] selected {} at BAR0={:#x} (interrupt {}, requester {:#x})",
-        driver.label(),
-        bar0,
-        intid,
-        requester_id
-    );
-    (driver, bar0 as usize & !0xfff, pages, intid, requester_id, msi_address)
-}
-
 extern "C" fn verify_el0_net() {
     use crate::cpu::scheduler::yield_lp;
 
     let ns = unsafe { TEST_STATE.as_ref() }.expect("[net] test state missing");
 
     logln!("[net] verifier running, waiting for PCI topology...");
-    let (network_driver, bar0, mmio_pages, intid, requester_id, msi_address) =
-        wait_for_network_controller();
-    let driver = supervisor::spawn_driver_with_name_service(
-        crate::service::store::service_elf(network_driver.artifact())
-            .expect("[el0_net] network driver ELF"),
-        ns,
-        ConnectionRights::CALL,
-        DriverGrant {
-            mmio_phys_base: bar0,
-            mmio_pages,
-            intid,
-            dma_requester_id: Some(requester_id),
-            dma_msi_address: msi_address,
-        },
-    );
+    let net_stack = crate::service::launch::steady_state()
+        .network
+        .expect("[net] network stack missing from steady state");
+    let driver = net_stack.driver;
     let driver_config = driver.status_frame;
     let driver_asid = driver.asid;
     logln!(
-        "[net] started {} userspace driver (asid={}) with MMIO, IRQ, and protected-DMA grants",
-        network_driver.label(),
+        "[net] started userspace driver (asid={}) with MMIO, IRQ, and protected-DMA grants",
         driver_asid
     );
     let _driver = driver;
@@ -135,32 +72,16 @@ extern "C" fn verify_el0_net() {
     };
     #[cfg(all(feature = "dns_net_test", not(feature = "relmsg_net_test")))]
     let _ = relmsg_config;
-    #[cfg(any(
-        feature = "relmsg_net_test",
-        feature = "disco_net_test",
-        feature = "tcpip_net_test",
-        feature = "http_net_test",
-        feature = "dhcp_test"
-    ))]
-    let frouter_config = {
-        let frouter = supervisor::spawn_with_name_service(
-            crate::service::store::service_elf(b"frouter").expect("[el0_net] frouter.elf"),
-            ns,
-            ConnectionRights::CALL,
-        );
-        logln!("[frouter] frame demux spawned (asid={}, tid={})", frouter.asid, frouter.tid);
-        let base: *mut u8 = frouter.status_frame.into();
-        crate::self_test::FROUTER_STATUS_FRAME
-            .store(base as usize, core::sync::atomic::Ordering::Release);
-        frouter.status_frame
-    };
-    #[cfg(any(
-        feature = "relmsg_net_test",
-        feature = "disco_net_test",
-        feature = "tcpip_net_test",
-        feature = "http_net_test",
-        feature = "dhcp_test"
-    ))]
+
+    logln!(
+        "[frouter] frame demux spawned (asid={}, tid={})",
+        net_stack.frouter.asid,
+        net_stack.frouter.tid
+    );
+    let frouter_config = net_stack.frouter.status_frame;
+    let frouter_base: *mut u8 = frouter_config.into();
+    crate::self_test::FROUTER_STATUS_FRAME
+        .store(frouter_base as usize, core::sync::atomic::Ordering::Release);
     {
         let frouter_status: *const u32 = {
             let base: *mut u8 = frouter_config.into();
@@ -179,16 +100,6 @@ extern "C" fn verify_el0_net() {
         }
         logln!("[frouter] reached serving stage.");
     }
-    #[cfg(all(
-        any(
-            feature = "disco_net_test",
-            feature = "tcpip_net_test",
-            feature = "http_net_test",
-            feature = "dhcp_test"
-        ),
-        not(feature = "relmsg_net_test")
-    ))]
-    let _ = frouter_config;
 
     let client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"nclient").expect("[el0_net] nclient.elf"),
@@ -392,9 +303,8 @@ extern "C" fn verify_el0_net() {
     );
     #[cfg(not(feature = "relmsg_net_test"))]
     logln!(
-        "[net] SUCCESS: {} is online, link up, MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, \
+        "[net] SUCCESS: NIC is online, link up, MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, \
          hardware TX completions={}.",
-        network_driver.label(),
         m0,
         m1,
         m2,

@@ -11,26 +11,12 @@
 //! under `virtio_net_test` with the frouter enabled).
 mod inner {
     use crate::{
-        ipc::ConnectionRights,
         logln,
-        service::{
-            bootstrap::{
-                ManifestEntry,
-                ManifestValue,
-            },
-            supervisor::{
-                self,
-                NameServiceHandle,
-                ServiceDomain,
-            },
+        service::supervisor::{
+            self,
+            NameServiceHandle,
         },
     };
-
-    const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
-    const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const NODE_ID_KEY: u64 = charlotte_launch::manifest_key(b"node-id");
-    const PEERS_KEY: u64 = charlotte_launch::manifest_key(b"peers");
-    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
 
     // "dns" packed LE; the dns service registers under this name.
     const DNS_NAME: u64 = 0x0073_6e64;
@@ -41,39 +27,6 @@ mod inner {
     const NS_OP_LOOKUP: u32 = 2;
 
     static mut HTTP_NS: Option<NameServiceHandle> = None;
-
-    fn spawn_binary(
-        image: &[u8],
-        ns: &NameServiceHandle,
-        manifest: &[ManifestEntry<'_>],
-    ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(image);
-        let conn = crate::ipc::connection_delegate(
-            ns.domain.asid,
-            ns.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("http spawn conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("http thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
-    }
 
     /// Poll a service status word until it reaches `min`, bounded by
     /// `timeout_ms`. Returns `false` (without failing the test) on timeout so
@@ -156,16 +109,10 @@ mod inner {
 
         let ns = unsafe { HTTP_NS.as_ref() }.expect("[http] test state missing");
 
-        let tcpip_manifest = [ManifestEntry {
-            key: DHCP_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(b"1"),
-        }];
-        let tcpip = spawn_binary(
-            crate::service::store::service_elf(b"tcpip").expect("[el0_http] tcpip.elf"),
-            ns,
-            &tcpip_manifest,
-        );
+        let appliance = crate::service::launch::steady_state()
+            .appliance
+            .expect("[http] network appliance missing from steady state");
+        let tcpip = appliance.tcpip;
         logln!("[http] tcpip spawned (asid={})", tcpip.asid);
         let tcpip_cfg: *const u32 = {
             let base: *mut u8 = tcpip.status_frame.into();
@@ -179,24 +126,14 @@ mod inner {
         }
         logln!("[http] tcpip service reached serving stage.");
 
-        // Stand up a single-node cluster (disco + dns) so the report can show
-        // the distributed name service's catalog as the cluster view.
-        let disco = spawn_binary(
-            crate::service::store::service_elf(b"disco").expect("[el0_http] disco.elf"),
-            ns,
-            &[
-                ManifestEntry {
-                    key: NODE_ID_KEY,
-                    flags: 0,
-                    value: ManifestValue::Bytes(b"http-node"),
-                },
-                ManifestEntry {
-                    key: CLUSTER_KEY,
-                    flags: 0,
-                    value: ManifestValue::Bytes(b"test-cluster"),
-                },
-            ],
-        );
+        // The single-node cluster (disco + relmsg + dns) is launched by the
+        // steady-state boot; verify it reaches serving and elects itself.
+        let cluster = crate::service::launch::steady_state()
+            .cluster
+            .expect("[http] cluster missing from steady state");
+        let disco = cluster.disco;
+        let relmsg = cluster.relmsg;
+        let dns = cluster.dns;
         logln!("[http] disco spawned (asid={})", disco.asid);
         let disco_cfg: *const u32 = {
             let base: *mut u8 = disco.status_frame.into();
@@ -209,12 +146,6 @@ mod inner {
 
             // The dns needs the reliable-message transport registered even
             // with a single-node cluster (it is the Raft transport).
-            let relmsg = spawn_binary(
-                crate::service::store::service_elf(b"relmsg").expect("[el0_http] relmsg.elf"),
-                ns,
-                &[],
-            );
-            logln!("[http] relmsg spawned (asid={})", relmsg.asid);
             let relmsg_cfg: *const u32 = {
                 let base: *mut u8 = relmsg.status_frame.into();
                 base as *const u32
@@ -224,28 +155,6 @@ mod inner {
             } else {
                 logln!("[http] relmsg registered.");
 
-                let dns = spawn_binary(
-                    crate::service::store::service_elf(b"dns").expect("[el0_http] dns.elf"),
-                    ns,
-                    &[
-                        ManifestEntry {
-                            key: CLUSTER_KEY,
-                            flags: 0,
-                            value: ManifestValue::Bytes(b"test-cluster"),
-                        },
-                        ManifestEntry {
-                            key: PEERS_KEY,
-                            flags: 0,
-                            value: ManifestValue::Unsigned(1),
-                        },
-                        ManifestEntry {
-                            key: ELECTION_KEY,
-                            flags: 0,
-                            value: ManifestValue::Unsigned(300),
-                        },
-                    ],
-                );
-                logln!("[http] dns spawned (asid={})", dns.asid);
                 let dns_cfg: *const u32 = {
                     let base: *mut u8 = dns.status_frame.into();
                     base as *const u32
@@ -274,11 +183,7 @@ mod inner {
             }
         }
 
-        let httpd = spawn_binary(
-            crate::service::store::service_elf(b"httpd").expect("[el0_http] httpd.elf"),
-            ns,
-            &[],
-        );
+        let httpd = appliance.httpd;
         let httpd_cfg: *const u32 = {
             let base: *mut u8 = httpd.status_frame.into();
             base as *const u32
