@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use crate::logln;
-
 #[derive(Debug)]
 pub enum Error {
     IdNotActive,
@@ -31,7 +29,6 @@ impl<T> IdTable<T> {
             self.list[id] = Some(element);
             id
         } else {
-            logln!("ID Table: extending list (new size={})", self.list.len() + 1);
             let id = self.list.len();
             self.list.push(Some(element));
             // Generation zero is reserved for handles that were never

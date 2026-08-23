@@ -251,7 +251,13 @@ pub fn abort() -> ! {
     // otherwise `abort_thread` (which re-locks the LP scheduler) would deadlock.
     let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
     if let Some(tid) = tid {
-        logln!("Thread {} is aborting execution.", tid);
+        let lp = crate::cpu::isa::lp::ops::get_lp_id();
+        let asid = MASTER_THREAD_TABLE
+            .read()
+            .get(tid)
+            .map(|thread| thread.asid)
+            .unwrap_or(crate::memory::KERNEL_ASID);
+        logln!("[thread] abort tid={} lp={} asid={}", tid, lp, asid);
         match SYSTEM_SCHEDULER.read().abort_thread(tid) {
             Ok(_) | Err(system_scheduler::Error::InvalidThread) => {}
             Err(error) => panic!("Error aborting thread: {:?}", error),

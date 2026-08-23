@@ -22,7 +22,6 @@ use crate::{
         kibibytes,
         mebibytes,
     },
-    logln,
     memory::{
         KERNEL_ASID,
         PAddr,
@@ -175,7 +174,6 @@ impl AddressSpaceInterface for AddressSpace {
         <MemoryInterfaceImpl as MemoryInterface>::VAddr,
         <MemoryInterfaceImpl as MemoryInterface>::Error,
     > {
-        logln!("Finding free region of {} pages in range {:?}...", n_pages, range);
         let mut page_iter = (range.0..range.1).step_by(PAGE_SIZE);
         while let Some(base) = page_iter.next() {
             //logln!("Checking base address: {:?}", base);
@@ -195,7 +193,6 @@ impl AddressSpaceInterface for AddressSpace {
                     }
                 }
                 if nth_page == n_pages - 1 {
-                    logln!("Found free region starting at: {:?}", base);
                     return Ok(base);
                 }
             }
@@ -213,7 +210,6 @@ impl AddressSpaceInterface for AddressSpace {
         {
             return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotLargePageAligned);
         }
-        logln!("Finding free region of {} large pages in range {:?}...", n_large_pages, range);
         let mut page_iter = (range.0..range.1).step_by(Self::LARGE_PAGE_SIZE);
         while let Some(base) = page_iter.next() {
             //logln!("Checking base address: {:?}", base);
@@ -233,7 +229,6 @@ impl AddressSpaceInterface for AddressSpace {
                     }
                 }
                 if nth_page == n_large_pages - 1 {
-                    logln!("Found free region starting at: {:?}", base);
                     return Ok(base);
                 }
             }
@@ -251,7 +246,6 @@ impl AddressSpaceInterface for AddressSpace {
         {
             return Err(<MemoryInterfaceImpl as MemoryInterface>::Error::VAddrNotHugePageAligned);
         }
-        logln!("Finding free region of {} huge pages in range {:?}...", n_huge_pages, range);
         let mut page_iter = (range.0..range.1).step_by(Self::HUGE_PAGE_SIZE);
         while let Some(base) = page_iter.next() {
             //logln!("Checking base address: {:?}", base);
@@ -271,7 +265,6 @@ impl AddressSpaceInterface for AddressSpace {
                     }
                 }
                 if nth_page == n_huge_pages - 1 {
-                    logln!("Found free region starting at: {:?}", base);
                     return Ok(base);
                 }
             }

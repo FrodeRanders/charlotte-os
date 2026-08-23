@@ -287,14 +287,6 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
             }
         }
         early_logln!("Initializing PhysicalFrameAllocator bitmap...");
-        for entry in response.entries().iter() {
-            early_logln!(
-                "[HEAPDBG] mmap base={:#x} len={:#x} type={}",
-                (entry.base),
-                (entry.length),
-                (entry.type_)
-            );
-        }
         init_bitmap_from_mmap(pfa.bitmap_ptr, response);
         //address zero is not accessible
         unsafe {

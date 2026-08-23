@@ -402,6 +402,8 @@ pub fn finalize_and_start_coordinator() {
 
 extern "C" fn coordinator() {
     let mut next_report = 0u64;
+    // Force the first WAITING summary even though nothing has resolved yet.
+    let mut last_pending = u64::MAX;
     loop {
         let expected = EXPECTED.load(Ordering::Acquire);
         let passed = PASSED.load(Ordering::Acquire);
@@ -428,9 +430,11 @@ extern "C" fn coordinator() {
             );
             return;
         }
+        let pending = expected & !passed;
         let now = monotonic_millis();
-        if now >= next_report {
-            let pending = expected & !passed;
+        // Report only when a test resolves (the pending set shrinks) or on a
+        // slow heartbeat, so the log stays quiet while a long test runs.
+        if pending != last_pending || now >= next_report {
             logln!(
                 "SELFTEST WAITING: passed={} pending={} passed_bitmap={:#x} pending_bitmap={:#x}",
                 passed.count_ones(),
@@ -448,7 +452,8 @@ extern "C" fn coordinator() {
                     }
                 }
             }
-            next_report = now.saturating_add(1_000);
+            last_pending = pending;
+            next_report = now.saturating_add(10_000);
         }
         // Park on the results observable with a 1s watchdog for the periodic
         // report: the LP idles (and the timer/device wake paths stay live)
