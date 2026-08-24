@@ -94,11 +94,11 @@ use catten_syscall::{
     submit_detached_timer,
     thread_exit,
 };
+use charlotte_launch::raft_status as status;
 use charlotte_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
-use charlotte_launch::raft_status as status;
 
 const LOOP_TICK_MS: u64 = 25;
 /// Scratch for inbound relmsg frames (distinct from the RPC memory scratch).
@@ -1228,10 +1228,7 @@ fn main(ctx: Context) -> ! {
         for (index, count) in raft_tag_counts.iter().copied().enumerate() {
             config::write::<u32>(status::TAG_COUNTS + index * status::TAG_COUNT_STRIDE, count);
         }
-        config::write::<u32>(
-            status::COMMIT_INDEX,
-            node.commit_index.min(u32::MAX as u64) as u32,
-        );
+        config::write::<u32>(status::COMMIT_INDEX, node.commit_index.min(u32::MAX as u64) as u32);
         config::write::<u32>(
             status::LAST_LOG_INDEX,
             node.log_store.last_index().min(u32::MAX as u64) as u32,

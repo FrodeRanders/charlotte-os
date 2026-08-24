@@ -35,11 +35,11 @@ use catten_services::{
     wait_reply,
 };
 use catten_syscall::*;
+use charlotte_launch::clusterctl_status as status;
 use charlotte_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
-use charlotte_launch::clusterctl_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_SERVING: u32 = 6;

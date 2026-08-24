@@ -62,6 +62,32 @@ static DOMAIN_AUTHORITIES: LazyLock<
     Mutex<alloc::collections::BTreeMap<AddressSpaceId, DomainAuthority>>,
 > = LazyLock::new(|| Mutex::new(alloc::collections::BTreeMap::new()));
 
+/// Resource limits inherited by every thread in one userspace domain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainLimits {
+    pub user_stack_pages: usize,
+}
+
+impl Default for DomainLimits {
+    fn default() -> Self {
+        Self {
+            user_stack_pages: charlotte_launch::DEFAULT_USER_STACK_PAGES,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainLimitError {
+    StaleAddressSpace,
+    InvalidUserStackPages,
+}
+
+/// Limits are keyed by a generation-bearing handle so ASID reuse cannot
+/// accidentally transfer one application's policy to its successor.
+static DOMAIN_LIMITS: LazyLock<
+    Mutex<alloc::collections::BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainLimits)>>,
+> = LazyLock::new(|| Mutex::new(alloc::collections::BTreeMap::new()));
+
 impl AddressSpaceHandle {
     pub const fn id(self) -> AddressSpaceId {
         self.id
@@ -178,10 +204,40 @@ pub fn register_user_address_space(
     let id = table.add_element(address_space);
     debug_assert_ne!(id, KERNEL_ASID);
     let generation = table.generation(id).expect("new address space missing generation");
-    Ok(AddressSpaceHandle {
+    let handle = AddressSpaceHandle {
         id,
         generation,
-    })
+    };
+    let previous = DOMAIN_LIMITS.lock().insert(id, (handle, DomainLimits::default()));
+    debug_assert!(previous.is_none(), "domain limits survived ASID teardown");
+    Ok(handle)
+}
+
+/// Replace the launch limits for one not-yet-running userspace domain.
+pub fn set_domain_limits(
+    handle: AddressSpaceHandle,
+    limits: DomainLimits,
+) -> Result<(), DomainLimitError> {
+    if !(1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&limits.user_stack_pages) {
+        return Err(DomainLimitError::InvalidUserStackPages);
+    }
+    if !address_space_handle_is_current(handle) {
+        return Err(DomainLimitError::StaleAddressSpace);
+    }
+    let mut configured = DOMAIN_LIMITS.lock();
+    let Some((current, stored)) = configured.get_mut(&handle.id()) else {
+        return Err(DomainLimitError::StaleAddressSpace);
+    };
+    if *current != handle {
+        return Err(DomainLimitError::StaleAddressSpace);
+    }
+    *stored = limits;
+    Ok(())
+}
+
+/// Resolve the stack limit inherited by a new thread in `asid`.
+pub fn domain_limits(asid: AddressSpaceId) -> DomainLimits {
+    DOMAIN_LIMITS.lock().get(&asid).map(|(_, limits)| *limits).unwrap_or_default()
 }
 
 /// Return the identity currently occupying `asid`.
@@ -247,6 +303,8 @@ fn close_user_address_space_locked(
     if let Some(authority) = removed_authority {
         debug_assert_eq!(authority.address_space, handle);
     }
+
+    DOMAIN_LIMITS.lock().remove(&asid);
 
     ADDRESS_SPACE_TABLE
         .lock()

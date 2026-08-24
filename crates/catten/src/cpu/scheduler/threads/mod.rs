@@ -354,8 +354,13 @@ impl Thread {
         Thread {
             context: Box::new(
                 if asid != KERNEL_ASID {
-                    ThreadContext::create_user_thread_context(asid, entry_point)
-                        .expect("Error creating user thread context")
+                    let limits = crate::memory::domain_limits(asid);
+                    ThreadContext::create_user_thread_context(
+                        asid,
+                        entry_point,
+                        limits.user_stack_pages,
+                    )
+                    .expect("Error creating user thread context")
                 } else {
                     ThreadContext::create_kernel_thread_context(entry_point)
                         .expect("Error creating kernel thread context")

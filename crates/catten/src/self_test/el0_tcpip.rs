@@ -31,32 +31,7 @@ mod inner {
         ns: &NameServiceHandle,
         manifest: &[crate::service::bootstrap::ManifestEntry<'_>],
     ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(image);
-        let conn = crate::ipc::connection_delegate(
-            ns.domain.asid,
-            ns.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("tcpip spawn conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("tcpip thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
+        supervisor::spawn_with_manifest(image, ns, ConnectionRights::CALL, manifest)
     }
 
     pub fn test_el0_tcpip() {

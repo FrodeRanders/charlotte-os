@@ -14,10 +14,11 @@ use catten_rt::{
 };
 use catten_services::{
     net,
-    ns,
+    scalar_call_with_backpressure,
     sleep_ms,
     socket,
     wait_for_local_ready,
+    wait_for_registered_name,
     wait_reply,
 };
 use catten_syscall::{
@@ -30,8 +31,8 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_protocol_net::decode_status;
 use charlotte_launch::tcpclient_status as status;
+use charlotte_protocol_net::decode_status;
 
 const SENTINEL: u32 = 0x5345_4e54;
 const PAYLOAD: &[u8] = b"CharlotteOS tcpip cross-node";
@@ -94,34 +95,19 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, 0) };
-    if generation < 1 || net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, net_conn) =
+        wait_for_registered_name(ns_conn, net::NAME).unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 2);
 
-    let status = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status == 0 {
-        fail(0xe001);
-    }
+    let status = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
     let (status, _) = unsafe { wait_reply(status, 0) };
     let (_link, mac) = decode_status(status);
     let (local_octet, peer_octet) = ip_from_mac(&mac);
     let is_server = local_octet % 2 == 0;
     config::write::<u32>(status::STAGE, 3);
 
-    let tcp_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, socket::NAME);
-    if tcp_lookup == 0 {
-        fail(0xe002);
-    }
-    let (generation, tcp_conn) = unsafe { wait_reply(tcp_lookup, 0) };
-    if generation < 1 || tcp_conn == 0 {
-        fail(0xe003);
-    }
+    let (_, tcp_conn) =
+        wait_for_registered_name(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     config::write::<u32>(status::STAGE, 4);
 
     if !wait_for_local_ready(ns_conn) {
@@ -277,10 +263,7 @@ fn main(ctx: Context) -> ! {
         let _ = unsafe { wait_reply(close, 0) };
     }
 
-    config::write::<u32>(
-        status::LOCAL_IP,
-        u32::from_be_bytes([10, 0, 0, local_octet]),
-    );
+    config::write::<u32>(status::LOCAL_IP, u32::from_be_bytes([10, 0, 0, local_octet]));
     config::write::<u32>(status::STAGE, SENTINEL);
     unsafe { thread_exit() };
 }

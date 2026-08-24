@@ -19,6 +19,15 @@ pub const HEAP_SIZE: usize = 0x40_0000;
 pub const STATUS_VADDR: usize = 0x0000_0000_007f_0000;
 pub const STATUS_PAGE_SIZE: u32 = 4096;
 
+/// Default and hard upper bound for an EL0 thread's launch-time stack limit.
+///
+/// The supervisor may select any page-aligned value in this range for a
+/// domain. Threads subsequently spawned inside that domain inherit the same
+/// limit. The upper bound reserves virtual-address slots; physical pages are
+/// allocated only for the selected limit.
+pub const DEFAULT_USER_STACK_PAGES: usize = 4;
+pub const MAX_USER_STACK_PAGES: usize = 64;
+
 const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 
 /// Maximum ELF size accepted at the cluster-administration ingress and by the
@@ -253,6 +262,10 @@ pub mod tcpip_status {
     pub const RX_TOTAL: usize = 4;
     pub const TX_OK: usize = 8;
     pub const SOCKETS: usize = 12;
+    /// Non-zero when startup terminates before the serving stage.
+    pub const ERROR: usize = 16;
+    /// Last completed startup operation, for supervisor diagnostics.
+    pub const DETAIL: usize = 20;
 }
 
 pub mod tcpclient_status {

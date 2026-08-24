@@ -118,12 +118,28 @@ mod inner {
             let base: *mut u8 = tcpip.status_frame.into();
             base
         };
+        logln!(
+            "[http] tcpip initial status: stage={} error={:#x} detail={}",
+            unsafe {
+                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+            },
+            unsafe {
+                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::ERROR)
+            },
+            unsafe {
+                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::DETAIL)
+            }
+        );
 
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while unsafe {
             crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
         } < 6
         {
+            let error = unsafe {
+                crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::ERROR)
+            };
+            assert_eq!(error, 0, "EL0 http tcpip startup failed with error {error:#x}");
             deadline.assert_pending("EL0 http tcpip service startup");
             yield_lp();
         }

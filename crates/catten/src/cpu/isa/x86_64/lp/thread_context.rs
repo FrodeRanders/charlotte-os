@@ -7,7 +7,6 @@ use core::{
 };
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
-const USER_STACK_PAGES: usize = 4;
 
 use crate::{
     cpu::isa::{
@@ -140,11 +139,12 @@ impl KernelEntryFrame {
 struct UserStack {
     asid: AddressSpaceId,
     base: VAddr,
+    pages: usize,
 }
 
 fn deallocate_user_stack(stack: UserStack) -> bool {
     let mut ok = true;
-    let mut frames = [None; USER_STACK_PAGES];
+    let mut frames = alloc::vec![None; stack.pages];
     {
         let mut as_table = ADDRESS_SPACE_TABLE.lock();
         let Ok(user_as) = as_table.get_mut(stack.asid) else {
@@ -158,7 +158,7 @@ fn deallocate_user_stack(stack: UserStack) -> bool {
             }
         }
     }
-    crate::cpu::isa::memory::tlb::inval_range_user(stack.asid, stack.base, USER_STACK_PAGES);
+    crate::cpu::isa::memory::tlb::inval_range_user(stack.asid, stack.base, stack.pages);
     let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
     for frame in frames.into_iter().flatten() {
         if allocator.deallocate_frame(frame).is_err() {
@@ -230,25 +230,30 @@ impl ThreadContext {
     pub fn create_user_thread_context(
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
+        user_stack_pages: usize,
     ) -> Result<Self, Error> {
+        assert!(
+            (1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&user_stack_pages),
+            "invalid userspace stack limit"
+        );
         // Allocate and map a dedicated EL0 stack into the user address space.
         // The kernel stack allocator returns higher-half VAs that are not
         // accessible from ring 3, so — mirroring the AArch64 port — physical
         // frames are mapped into the user address space at a fixed per-thread
         // region.
         const USER_STACK_VADDR_BASE: usize = 0x0000_0000_0100_0000;
-        const USER_STACK_STRIDE: usize = USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
+        const USER_STACK_STRIDE: usize =
+            charlotte_launch::MAX_USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
         static NEXT_STACK_INDEX: AtomicUsize = AtomicUsize::new(0);
         let stack_index = NEXT_STACK_INDEX.fetch_add(1, Ordering::Relaxed);
         let stack_base = USER_STACK_VADDR_BASE + stack_index * USER_STACK_STRIDE;
-        let user_stack_top_va = stack_base + USER_STACK_PAGES * PAGE_SIZE;
+        let user_stack_top_va = stack_base + user_stack_pages * PAGE_SIZE;
 
         // Pre-allocate all frames first, then map them.
-        let mut stack_frames: [Option<crate::memory::physical::PAddr>; USER_STACK_PAGES] =
-            [None; USER_STACK_PAGES];
+        let mut stack_frames = alloc::vec![None; user_stack_pages];
         {
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            for index in 0..USER_STACK_PAGES {
+            for index in 0..user_stack_pages {
                 match pfa.allocate_frame() {
                     Ok(allocated) => stack_frames[index] = Some(allocated),
                     Err(_) => {
@@ -294,7 +299,7 @@ impl ThreadContext {
             }
         };
         if let Err(error) = map_result {
-            let mut mapped_frames = [None; USER_STACK_PAGES];
+            let mut mapped_frames = alloc::vec![None; user_stack_pages];
             if mapped_pages != 0 {
                 let mut as_table = ADDRESS_SPACE_TABLE.lock();
                 if let Ok(user_as) = as_table.get_mut(asid) {
@@ -319,6 +324,7 @@ impl ThreadContext {
         let user_stack = UserStack {
             asid,
             base: VAddr::from(stack_base),
+            pages: user_stack_pages,
         };
 
         let kernel_stack_buf = match allocate_stack(INIT_KERNEL_STACK_PAGES) {

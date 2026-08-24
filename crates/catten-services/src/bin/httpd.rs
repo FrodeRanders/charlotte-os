@@ -40,9 +40,11 @@ use catten_services::{
     ns,
     observability,
     relmsg,
+    scalar_call_with_backpressure,
     sleep_ms,
     socket,
     wait_for_local_ready,
+    wait_for_registered_name,
     wait_reply,
 };
 use catten_syscall::{
@@ -59,14 +61,12 @@ use catten_syscall::{
     memory_map_any,
     memory_unmap,
     thread_exit,
-};
-use catten_syscall::{
     thread_statistics_header as thread_header,
     thread_statistics_record as thread_record,
 };
+use charlotte_launch::httpd_status as status;
 use charlotte_protocol_msg::unpack_address_and_len;
 use charlotte_protocol_net::decode_status;
-use charlotte_launch::httpd_status as status;
 
 const HTTP_PORT: u16 = 80;
 const ACCEPT_POLL_MS: u64 = 50;
@@ -645,32 +645,17 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, 0) };
-    if generation < 1 || net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, net_conn) =
+        wait_for_registered_name(ns_conn, net::NAME).unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 2);
 
-    let status = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status == 0 {
-        fail(0xe001);
-    }
+    let status = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
     let (status, _) = unsafe { wait_reply(status, 0) };
     let (link, mac) = decode_status(status);
     config::write::<u32>(status::STAGE, 3);
 
-    let tcp_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, socket::NAME);
-    if tcp_lookup == 0 {
-        fail(0xe002);
-    }
-    let (generation, tcp_conn) = unsafe { wait_reply(tcp_lookup, 0) };
-    if generation < 1 || tcp_conn == 0 {
-        fail(0xe003);
-    }
+    let (_, tcp_conn) =
+        wait_for_registered_name(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     config::write::<u32>(status::STAGE, 4);
 
     // Optional report sources; absent services render as null.

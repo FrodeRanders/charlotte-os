@@ -372,6 +372,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             65 => asm!("svc #65", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             68 => asm!("svc #68", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             69 => asm!("svc #69", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            74 => asm!("svc #74", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }

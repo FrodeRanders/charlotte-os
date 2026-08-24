@@ -66,6 +66,7 @@ DNS_TEST="0"
 DEPLOY_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
+HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
@@ -125,6 +126,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
+catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 catten_boot_validate_instance "$INSTANCE"
 catten_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
@@ -453,10 +455,10 @@ if [ "$NET_TEST" = "1" ]; then
     case "$NET_BACKEND" in
         user)
             if [ "$HTTP_TEST" = "1" ]; then
-                # Host-side keyhole: forward host:8080 to the guest's httpd
-                # (port 80) so `curl localhost:8080` reaches the JSON state
-                # page through the SLIRP user network.
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::8080-:80")
+                # Host-side keyhole: forward the configurable host port to
+                # guest port 80 so parallel/local runs need not contend for a
+                # hard-coded listener.
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80")
             else
                 QEMU_OPTS+=(-netdev user,id=charlotte-net)
             fi
@@ -529,9 +531,9 @@ if [ -n "$TIMEOUT" ]; then
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
-            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:8080/ ..."
+            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:${HTTP_HOST_PORT}/ ..."
             for _ in 1 2 3 4 5 6 7 8; do
-                HTTP_BODY="$(curl -fsS --max-time 5 http://127.0.0.1:8080/ 2>&1 || true)"
+                HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/" 2>&1 || true)"
                 if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":'; then
                     HTTP_PROBE_OK=1
                     break

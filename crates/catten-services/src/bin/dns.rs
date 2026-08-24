@@ -383,9 +383,8 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
                     NodeState::Candidate => 2,
                     NodeState::Leader => 3,
                 };
-                let result = state
-                    | ((node.current_term as i64) << 8)
-                    | ((node.commit_index as i64) << 32);
+                let result =
+                    state | ((node.current_term as i64) << 8) | ((node.commit_index as i64) << 32);
                 if message.reply != 0 {
                     ipc_reply(message.reply, result);
                 }
@@ -422,11 +421,13 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
                     if id.is_empty() {
                         return None;
                     }
-                    Some(if learner {
-                        Peer::learner(id, service_name)
-                    } else {
-                        Peer::voter(id, service_name)
-                    })
+                    Some(
+                        if learner {
+                            Peer::learner(id, service_name)
+                        } else {
+                            Peer::voter(id, service_name)
+                        },
+                    )
                 });
                 let result = match peer {
                     Some(peer) => node

@@ -22,7 +22,6 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use charlotte_launch::frouter_status as status;
 
 use catten_rt::{
     Context,
@@ -58,6 +57,7 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::frouter_status as status;
 use charlotte_protocol_disco::DISCO_ETHERTYPE;
 use charlotte_protocol_msg::MSG_ETHERTYPE;
 

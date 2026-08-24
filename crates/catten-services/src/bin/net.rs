@@ -16,7 +16,6 @@ use alloc::{
 };
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
-use charlotte_launch::net_status as status;
 
 use catten_rt::{
     Context,
@@ -50,6 +49,7 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::net_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 // The kernel-assigned base of the delegated virtio BAR, set once at map

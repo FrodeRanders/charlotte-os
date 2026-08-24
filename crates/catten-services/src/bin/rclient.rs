@@ -24,11 +24,11 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::relmsg_client_status as status;
 use charlotte_protocol_msg::{
     pack_address_and_len,
     unpack_address_and_len,
 };
-use charlotte_launch::relmsg_client_status as status;
 
 const SENTINEL: u32 = 0xc0de_cafe;
 /// Large enough to span multiple relmsg frames (~1468 each), exercising the

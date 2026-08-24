@@ -42,6 +42,7 @@ use catten_syscall::{
     submit_detached_timer,
     thread_exit,
 };
+use charlotte_launch::relmsg_status as status;
 use charlotte_protocol_msg::{
     ETHERNET_HEADER_SIZE,
     FLAG_ACK,
@@ -61,7 +62,6 @@ use charlotte_protocol_msg::{
     wire_session_is_newer,
 };
 use charlotte_protocol_net::decode_status;
-use charlotte_launch::relmsg_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const MAX_RECEIVED_MESSAGES: usize = 32;

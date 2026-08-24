@@ -1004,8 +1004,8 @@ pub mod clusterctl {
     /// Join the cluster on the local network segment. The service asks the
     /// local discovery service for the cluster's leader (or a follower that
     /// redirects towards it), then asks that leader's DNS-owned Raft
-    /// administration endpoint to admit this node. The reply is the committed JOIN log index, or a negative
-    /// error (`ERR_NO_CLUSTER` when no peer on the segment reports a
+    /// administration endpoint to admit this node. The reply is the committed JOIN log index, or a
+    /// negative error (`ERR_NO_CLUSTER` when no peer on the segment reports a
     /// cluster).
     pub const OP_JOIN: u32 = 7;
 
@@ -1220,6 +1220,29 @@ pub unsafe fn wait_reply(call: u64, _max_spins: u64) -> (i64, u64) {
     }
 }
 
+/// Wait for a short name to be registered in the node-local name service.
+///
+/// A successful `OP_LOOKUP` remains pending in the name service until the
+/// publisher registers `name`, and [`wait_reply`] parks the caller on that
+/// pending call. The only retry here is admission of the lookup itself: a
+/// burst of boot-time registrations and lookups can temporarily fill the name
+/// service's endpoint queue. Sleeping between attempts keeps that
+/// backpressure path scheduler-friendly instead of turning it into a spin
+/// loop or making service startup depend on queue timing.
+pub fn wait_for_registered_name(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
+    let call = scalar_call_with_backpressure(ns_conn, ns::OP_LOOKUP, name);
+
+    let (generation, connection) = unsafe { wait_reply(call, 0) };
+    if generation >= 1 && connection != 0 {
+        Some((generation, connection))
+    } else {
+        if connection != 0 {
+            catten_syscall::ipc_close(connection);
+        }
+        None
+    }
+}
+
 /// Block until a pending call completes.
 pub fn spin_reply(call: u64) -> (i64, u64) {
     let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
@@ -1241,6 +1264,24 @@ pub fn sleep_ms(milliseconds: u64) {
     catten_syscall::close(timer);
 }
 
+/// Submit a scalar call without making transient endpoint backpressure fatal.
+///
+/// The syscall's compact ABI reports a zero call capability for a full target
+/// queue. Callers use this helper only with a connection whose validity is
+/// already part of their launch contract. A timer-backed sleep lets the
+/// receiver drain its queue before another admission attempt; once submitted,
+/// the returned pending-call capability should be consumed with
+/// [`wait_reply`] or the corresponding memory-aware wait operation.
+pub fn scalar_call_with_backpressure(connection: u64, opcode: u32, arg0: u64) -> u64 {
+    loop {
+        let call = catten_syscall::ipc_scalar_call(connection, opcode, arg0);
+        if call != 0 {
+            return call;
+        }
+        sleep_ms(1);
+    }
+}
+
 /// Block until the kernel has registered [`charlotte_launch::LOCAL_READY_NAME`]
 /// in the name service, signalling that the *local* node is ready — its disk
 /// stack is serving and the boot storm has settled — before it starts any
@@ -1252,13 +1293,13 @@ pub fn sleep_ms(milliseconds: u64) {
 /// reliable-message/Raft membership clients) must call this before starting
 /// to communicate with other nodes.
 pub fn wait_for_local_ready(ns_conn: u64) -> bool {
-    let call =
-        catten_syscall::ipc_scalar_call(ns_conn, ns::OP_LOOKUP, charlotte_launch::LOCAL_READY_NAME);
-    if call == 0 {
+    let Some((_, connection)) =
+        wait_for_registered_name(ns_conn, charlotte_launch::LOCAL_READY_NAME)
+    else {
         return false;
-    }
-    let (generation, _) = unsafe { wait_reply(call, 0) };
-    generation >= 1
+    };
+    catten_syscall::ipc_close(connection);
+    true
 }
 
 /// Generation-fenced automatic service retraction sent by a publication's

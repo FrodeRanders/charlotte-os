@@ -68,6 +68,7 @@ use catten_syscall::{
     submit_detached_timer,
     thread_exit,
 };
+use charlotte_launch::disco_status as status;
 use charlotte_protocol_disco::{
     BROADCAST_MAC,
     CLUSTER_ID_LEN,
@@ -88,7 +89,6 @@ use charlotte_protocol_disco::{
     parse_extended_payload,
 };
 use charlotte_protocol_net::decode_status;
-use charlotte_launch::disco_status as status;
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;

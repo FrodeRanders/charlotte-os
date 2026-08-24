@@ -49,12 +49,12 @@ use crate::{
 };
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
-const USER_STACK_PAGES: usize = 4;
 
 #[derive(Debug, Clone, Copy)]
 struct UserStack {
     asid: AddressSpaceId,
     base: VAddr,
+    pages: usize,
 }
 
 fn deallocate_user_stack(stack: UserStack) -> bool {
@@ -64,7 +64,7 @@ fn deallocate_user_stack(stack: UserStack) -> bool {
         return false;
     };
 
-    for page_idx in 0..USER_STACK_PAGES {
+    for page_idx in 0..stack.pages {
         let vaddr = stack.base + page_idx * PAGE_SIZE;
         match user_as.unmap_page(vaddr) {
             Ok(frame) => {
@@ -227,7 +227,12 @@ impl ThreadContext {
     pub fn create_user_thread_context(
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
+        user_stack_pages: usize,
     ) -> Result<Self, Error> {
+        assert!(
+            (1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&user_stack_pages),
+            "invalid userspace stack limit"
+        );
         // Allocate user stack pages from physical frames and map them into the
         // user address space.  The kernel stack allocator returns higher-half
         // VAs that have no TTBR0 mapping; EL0 can only use TTBR0.  Because
@@ -241,18 +246,18 @@ impl ThreadContext {
         // reservation, not a dynamically managed one; it is far beyond any
         // practical thread count today but is deliberately not a guarantee.
         const USER_STACK_VADDR_BASE: usize = 0x0000_0000_0100_0000;
-        const USER_STACK_STRIDE: usize = USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
+        const USER_STACK_STRIDE: usize =
+            charlotte_launch::MAX_USER_STACK_PAGES * PAGE_SIZE + PAGE_SIZE; // + guard
         static NEXT_STACK_INDEX: AtomicUsize = AtomicUsize::new(0);
         let stack_index = NEXT_STACK_INDEX.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         let stack_base = USER_STACK_VADDR_BASE + stack_index * USER_STACK_STRIDE;
-        let user_stack_top_va = stack_base + USER_STACK_PAGES * PAGE_SIZE;
+        let user_stack_top_va = stack_base + user_stack_pages * PAGE_SIZE;
         // Pre-allocate all frames first (under the frame allocator lock), then
         // map them (inside the AS table lock).  Order matches el0.rs.
-        let mut stack_frames: [Option<crate::memory::physical::PAddr>; USER_STACK_PAGES] =
-            [None; USER_STACK_PAGES];
+        let mut stack_frames = alloc::vec![None; user_stack_pages];
         {
             let mut pfa = PHYSICAL_FRAME_ALLOCATOR.lock();
-            for index in 0..USER_STACK_PAGES {
+            for index in 0..user_stack_pages {
                 let frame = match pfa.allocate_frame() {
                     Ok(frame) => frame,
                     Err(_) => {
@@ -313,6 +318,7 @@ impl ThreadContext {
         let user_stack = UserStack {
             asid,
             base: VAddr::from(stack_base),
+            pages: user_stack_pages,
         };
         let kernel_stack_buf = match allocate_stack(INIT_KERNEL_STACK_PAGES) {
             Ok(stack) => stack,

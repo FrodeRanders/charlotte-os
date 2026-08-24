@@ -43,8 +43,10 @@ use catten_rt::{
 use catten_services::{
     net,
     ns,
+    scalar_call_with_backpressure,
     socket,
     wait_for_local_ready,
+    wait_for_registered_name,
     wait_reply,
 };
 use catten_syscall::{
@@ -55,7 +57,6 @@ use catten_syscall::{
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
-    ipc_scalar_call,
     ipc_scalar_call_connection,
     ipc_status,
     memory_alloc,
@@ -64,8 +65,8 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
-use charlotte_protocol_net::decode_status;
 use charlotte_launch::tcpip_status as status;
+use charlotte_protocol_net::decode_status;
 use charlotte_smoltcp::CharlotteEthDevice;
 use smoltcp::{
     iface::{
@@ -143,29 +144,33 @@ fn read_port(memory: u64) -> u16 {
     port
 }
 
+fn fail(code: u32) -> ! {
+    config::write::<u32>(status::ERROR, code);
+    catten_syscall::el0_log(0x5443_5049, code as u64); // "TCPI"
+    unsafe { thread_exit() }
+}
+
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
     let ns_connection = match ctx.bootstrap_cap() {
         Some(c) => c,
-        None => unsafe { thread_exit() },
+        None => fail(0xe001),
     };
     config::write::<u32>(status::STAGE, 2);
 
-    let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    config::write::<u32>(status::DETAIL, 1);
+    let (_, net_conn) =
+        wait_for_registered_name(ns_connection, net::NAME).unwrap_or_else(|| fail(0xe002));
+    config::write::<u32>(status::DETAIL, 2);
 
-    let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status_call == 0 {
-        unsafe { thread_exit() };
+    let status_call = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
+    config::write::<u32>(status::DETAIL, 3);
+    let (nic_status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    config::write::<u32>(status::DETAIL, 4);
+    if nic_status < 0 {
+        fail(0xe003);
     }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
-    let (_link, mac) = decode_status(status);
+    let (_link, mac) = decode_status(nic_status);
     let mtu: usize = 1500;
 
     catten_rt::logln!(
@@ -205,30 +210,37 @@ fn main(ctx: Context) -> ! {
 
     let ep = ipc_endpoint_create(socket::INTERFACE, socket::VERSION, 8);
     if ep == 0 {
-        unsafe { thread_exit() };
+        fail(0xe004);
     }
-    let reg = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_REGISTER,
-        socket::NAME,
-        ep,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if reg == 0 {
-        unsafe { thread_exit() };
-    }
+    let reg = loop {
+        let call = ipc_scalar_call_connection(
+            ns_connection,
+            ns::OP_REGISTER,
+            socket::NAME,
+            ep,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        );
+        if call != 0 {
+            break call;
+        }
+        // The name-service queue is shared by the booting service set. Yield
+        // through a timer when it is temporarily full; the endpoint and
+        // delegated connection remain owned by this process and are safe to
+        // submit again.
+        catten_services::sleep_ms(1);
+    };
     let (generation, _) = unsafe { wait_reply(reg, REPLY_SPINS) };
     if generation < 1 {
-        unsafe { thread_exit() };
+        fail(0xe005);
     }
     if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        unsafe { thread_exit() };
+        fail(0xe006);
     }
     config::write::<u32>(status::STAGE, 4);
 
     // Let the NIC and the link settle before ARP/IP traffic starts flowing.
     if !wait_for_local_ready(ns_connection) {
-        unsafe { thread_exit() };
+        fail(0xe007);
     }
     config::write::<u32>(status::STAGE, 5);
 

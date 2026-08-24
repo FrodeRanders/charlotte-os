@@ -251,10 +251,7 @@ fn supervise(
                         charlotte_launch::agent_status::SERVED_GENERATION,
                         generation,
                     );
-                    config::write_u32_release(
-                        charlotte_launch::agent_status::STAGE,
-                        STAGE_SERVING,
-                    );
+                    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SERVING);
                 } else {
                     fail(STAGE_FAIL);
                 }
@@ -282,10 +279,7 @@ fn supervise(
                             _ => fail(STAGE_FAIL),
                         };
                     }
-                    config::write_u32_release(
-                        charlotte_launch::agent_status::STAGE,
-                        STAGE_RETIRED,
-                    );
+                    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_RETIRED);
                     unsafe { thread_exit() }
                 }
                 deploy_query = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, deploy::NAME);

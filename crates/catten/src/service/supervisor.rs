@@ -53,6 +53,30 @@ pub struct ServiceDomain {
     pub status_frame: PAddr,
 }
 
+/// Per-domain resource limits selected by the trusted launch path.
+///
+/// These are kernel-enforced limits, not mutable manifest data. Every thread
+/// subsequently created inside the domain inherits the selected stack size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServiceLimits {
+    pub user_stack_size: usize,
+}
+
+impl ServiceLimits {
+    pub const fn with_user_stack_size(mut self, bytes: usize) -> Self {
+        self.user_stack_size = bytes;
+        self
+    }
+}
+
+impl Default for ServiceLimits {
+    fn default() -> Self {
+        Self {
+            user_stack_size: charlotte_launch::DEFAULT_USER_STACK_PAGES * loader::PAGE_SIZE,
+        }
+    }
+}
+
 /// A running name-service domain plus the supervisor's handle to its
 /// registry endpoint, used to delegate bootstrap connections to other
 /// domains.
@@ -126,7 +150,23 @@ const NS_OP_REGISTER: u32 = 1;
 /// settle before declaring the node ready for cluster communication.
 const BOOT_SETTLE_MS: u64 = 3_000;
 
-pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
+pub(crate) fn start_domain_with_limits(
+    loaded: loader::LoadedDomain,
+    limits: ServiceLimits,
+) -> ServiceDomain {
+    assert!(
+        limits.user_stack_size != 0 && limits.user_stack_size.is_multiple_of(loader::PAGE_SIZE),
+        "[supervisor] user stack limit must be a non-zero whole number of pages"
+    );
+    let user_stack_pages = limits.user_stack_size / loader::PAGE_SIZE;
+    crate::memory::set_domain_limits(
+        loaded.address_space,
+        crate::memory::DomainLimits {
+            user_stack_pages,
+        },
+    )
+    .unwrap_or_else(|error| panic!("[supervisor] invalid service limits: {error:?}"));
+
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
     // Bootstrap on the caller's active LP. Admission to an idle remote LP
@@ -152,6 +192,10 @@ pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
         config_frame: loaded.config_frame,
         status_frame: loaded.status_frame,
     }
+}
+
+pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
+    start_domain_with_limits(loaded, ServiceLimits::default())
 }
 
 /// Load and start the name service.
@@ -325,6 +369,17 @@ pub fn spawn_with_manifest(
     rights: ConnectionRights,
     manifest: &[bootstrap::ManifestEntry<'_>],
 ) -> ServiceDomain {
+    spawn_with_manifest_and_limits(image, name_service, rights, manifest, ServiceLimits::default())
+}
+
+/// Spawn a service with an explicit kernel-enforced resource policy.
+pub fn spawn_with_manifest_and_limits(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    manifest: &[bootstrap::ManifestEntry<'_>],
+    limits: ServiceLimits,
+) -> ServiceDomain {
     let loaded = loader::load_domain(image);
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
@@ -335,7 +390,7 @@ pub fn spawn_with_manifest(
     .expect("[supervisor] bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_manifest(loaded.config_frame, manifest);
-    start_domain(loaded)
+    start_domain_with_limits(loaded, limits)
 }
 
 /// Start the node observability service and delegate the unique
