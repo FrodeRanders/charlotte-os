@@ -173,16 +173,37 @@ pub static FROUTER_STATUS_FRAME: core::sync::atomic::AtomicUsize =
     core::sync::atomic::AtomicUsize::new(0);
 
 #[inline]
+/// Read a volatile `u32` field from a service status page.
+///
+/// # Safety
+///
+/// `base.add(offset)` must be aligned for `u32` and point to at least four
+/// readable bytes in a status frame that remains mapped for the duration of
+/// the read.
 pub unsafe fn status_u32(base: *const u8, offset: usize) -> u32 {
     unsafe { core::ptr::read_volatile(base.add(offset).cast::<u32>()) }
 }
 
 #[inline]
+/// Read a volatile `u16` field from a service status page.
+///
+/// # Safety
+///
+/// `base.add(offset)` must be aligned for `u16` and point to at least two
+/// readable bytes in a status frame that remains mapped for the duration of
+/// the read.
 pub unsafe fn status_u16(base: *const u8, offset: usize) -> u16 {
     unsafe { core::ptr::read_volatile(base.add(offset).cast::<u16>()) }
 }
 
 #[inline]
+/// Read a volatile `i64` field from a service status page.
+///
+/// # Safety
+///
+/// `base.add(offset)` must be aligned for `i64` and point to at least eight
+/// readable bytes in a status frame that remains mapped for the duration of
+/// the read.
 pub unsafe fn status_i64(base: *const u8, offset: usize) -> i64 {
     unsafe { core::ptr::read_volatile(base.add(offset).cast::<i64>()) }
 }
