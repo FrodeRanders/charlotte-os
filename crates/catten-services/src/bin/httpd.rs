@@ -92,9 +92,10 @@ use charlotte_protocol_net::decode_status;
 const HTTP_PORT: u16 = 80;
 const ACCEPT_POLL_MS: u64 = 50;
 const SENTINEL: u32 = 0x4854_5450; // "HTTP"
-/// Cap on rendered thread rows so the report fits comfortably in a single
-/// TCP segment; the full detail is available from observe directly.
-const THREAD_SAMPLE_ROWS: usize = 8;
+/// Cap on rendered thread rows. Set above the steady-state thread count so
+/// every scheduler-visible thread (including this service) is represented; the
+/// response is already multi-segment, so a single TCP segment is no bound.
+const THREAD_SAMPLE_ROWS: usize = 64;
 
 /// Extract the request target from a `GET <path> HTTP/1.1` request line.
 /// Returns `/` when the line is unparsable, so a malformed request still
@@ -156,7 +157,7 @@ pre{margin:0;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 <main id="root"></main>
 <div id="wide"></div>
 <script>
-const CARDS=[["tcpip","TCP/IP"],["frouter","Frame Router"],["dns","Distributed Names"],["disco","Discovery"],["relmsg","Reliable Messages"]];
+const CARDS=[["tcpip","TCP/IP"],["frouter","Frame Router"],["dns","Distributed Names"],["disco","Discovery"],["relmsg","Reliable Messages"],["http","HTTP"]];
 const WIDE=[["ns","Name Service"],["threads","Threads"]];
 function byId(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":c===">"?"&gt;":"&quot;"})}
@@ -358,6 +359,16 @@ struct Prev {
     tx_sends: u32,
     frouter_rx: u32,
     forwarded: u32,
+}
+
+/// This service's own request counters, reported under the `http` key so the
+/// dashboard surfaces the keyhole's traffic alongside the other services.
+struct HttpCounters {
+    requests: u32,
+    bytes_sent: u64,
+    root: u32,
+    metrics: u32,
+    other: u32,
 }
 
 struct ThreadRow {
@@ -849,7 +860,7 @@ fn build_json(
     mac: &[u8; 6],
     link: u8,
     services: &ServiceSet,
-    requests: u32,
+    counters: &HttpCounters,
     prev: &mut Prev,
 ) -> String {
     let mut s = String::new();
@@ -980,11 +991,15 @@ fn build_json(
 
     let _ = write!(
         &mut s,
-        "\"http\":{{\"requests\":{},\"uptime_ms\":{},\"interval_ms\":{},\"requests_rate\":{}}}}}",
-        requests,
+        "\"http\":{{\"requests\":{},\"bytes_sent\":{},\"uptime_ms\":{},\"interval_ms\":{},\"requests_rate\":{},\"paths\":{{\"root\":{},\"metrics\":{},\"other\":{}}}}}}}",
+        counters.requests,
+        counters.bytes_sent,
         uptime_ms,
         interval_ms,
-        rate(1, interval_ms)
+        rate(1, interval_ms),
+        counters.root,
+        counters.metrics,
+        counters.other
     );
 
     prev.initialized = true;
@@ -1030,7 +1045,13 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(status::STAGE, 6);
 
-    let mut requests: u32 = 0;
+    let mut counters = HttpCounters {
+        requests: 0,
+        bytes_sent: 0,
+        root: 0,
+        metrics: 0,
+        other: 0,
+    };
     let mut prev = Prev {
         initialized: false,
         mono_ticks: 0,
@@ -1115,17 +1136,23 @@ fn main(ctx: Context) -> ! {
         memory_close(memory);
 
         // Route on the request target: HTML dashboard at `/`, JSON at
-        // `/metrics` (alias `/metric`), 404 otherwise.
+        // `/metrics` (alias `/metric`), 404 otherwise. Account for the request
+        // up front so the `http` section reports the request being served,
+        // including the per-path breakdown.
+        counters.requests = counters.requests.wrapping_add(1);
         let path = request_path(&req[..req_len]);
         let (status_line, content_type, body) = if path == b"/" || path == b"/index.html" {
+            counters.root = counters.root.wrapping_add(1);
             ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(DASHBOARD))
         } else if path == b"/metrics" || path == b"/metric" {
+            counters.metrics = counters.metrics.wrapping_add(1);
             (
                 "HTTP/1.1 200 OK",
                 "application/json",
-                build_json(&mac, link, &services, requests, &mut prev),
+                build_json(&mac, link, &services, &counters, &mut prev),
             )
         } else {
+            counters.other = counters.other.wrapping_add(1);
             ("HTTP/1.1 404 Not Found", "text/plain; charset=utf-8", String::from("not found"))
         };
         catten_syscall::el0_log(0x4854_5444, 1);
@@ -1140,14 +1167,14 @@ fn main(ctx: Context) -> ! {
         if !send_all(tcp_conn, sock_id as u64, response.as_bytes()) {
             fail(0xe010);
         }
+        counters.bytes_sent = counters.bytes_sent.wrapping_add(response.len() as u64);
 
         let close = ipc_scalar_call(tcp_conn, socket::OP_CLOSE, sock_id as u64);
         if close != 0 {
             let _ = unsafe { wait_reply(close, 0) };
         }
 
-        requests = requests.wrapping_add(1);
-        config::write::<u32>(status::REQUESTS, requests);
+        config::write::<u32>(status::REQUESTS, counters.requests);
         config::write::<u32>(status::STAGE, SENTINEL);
     }
 }
