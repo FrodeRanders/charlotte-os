@@ -272,8 +272,6 @@ pub fn test_el0_ping_pong() {
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 extern "C" fn verify_ping_pong() {
-    use crate::cpu::scheduler::yield_lp;
-
     let frame = unsafe { PP_RESULT_FRAME }.expect("PP: result frame not initialized");
     let base: *mut u8 = frame.into();
     let result = base as *const u32;
@@ -321,6 +319,10 @@ extern "C" fn verify_ping_pong() {
             return;
         }
         deadline.assert_pending("EL0 ping-pong completion");
-        yield_lp();
+        // This verifier can legitimately remain pending for 65 seconds when
+        // Ping or Pong fails. A cooperative yield leaves it permanently
+        // runnable and lets it consume most of LP0 between every real task.
+        // Poll at a modest cadence while actually blocking the verifier.
+        crate::cpu::scheduler::sleep_millis(10);
     }
 }

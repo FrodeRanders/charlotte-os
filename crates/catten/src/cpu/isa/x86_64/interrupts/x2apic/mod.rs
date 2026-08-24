@@ -113,6 +113,41 @@ impl X2Apic {
             | ((dest_shorthand as u32) << DEST_SHORTHAND_SHIFT)
     }
 
+    fn send_unicast(
+        target_lp: LpId,
+        vector: InterruptVectorNum,
+        delivery_mode: IcrDeliveryMode,
+    ) -> Result<(), Error> {
+        let apic_id = Self::translate_lp_id(target_lp).ok_or(Error::InvalidLpId)?;
+        let icr_low = Self::make_icr_low(
+            vector,
+            delivery_mode,
+            false,
+            true,
+            false,
+            IcrDestShorthand::NoShorthand,
+        );
+        unsafe {
+            asm! {
+                "wrmsr",
+                in("ecx") msrs::x2apic::INTERRUPT_COMMAND_REGISTER,
+                in("eax") icr_low,
+                in("edx") apic_id.physical,
+                options(nomem, nostack, preserves_flags),
+            }
+        }
+        Ok(())
+    }
+
+    /// Send a non-maskable interrupt to one logical processor.
+    ///
+    /// The vector field is ignored for NMI delivery. This is intentionally a
+    /// separate API from fixed-vector IPIs so callers cannot accidentally
+    /// mistake a maskable scheduler IPI for a diagnostic NMI.
+    pub fn send_unicast_nmi(target_lp: LpId) -> Result<(), Error> {
+        Self::send_unicast(target_lp, 0, IcrDeliveryMode::Nmi)
+    }
+
     pub fn set_timer_lvt_entry(
         interrupt_vector: <ApicTimer as LpTimerIfce>::IntDispatchNum,
         periodic: bool,
@@ -152,33 +187,7 @@ impl LocalIntCtlrIfce for X2Apic {
     ///
     /// Ref: Intel SDM Vol.3 12.12.10.1
     fn send_unicast_ipi(target_lp: LpId, target_vector: InterruptVectorNum) -> Result<(), Error> {
-        if let Some(apic_id) = Self::translate_lp_id(target_lp) {
-            // Get the physical APIC ID for the target LP
-            let dest = apic_id.physical;
-            // Construct the ICR low dword
-            let icr_low = Self::make_icr_low(
-                target_vector,
-                IcrDeliveryMode::Fixed,
-                false,
-                true,
-                false,
-                IcrDestShorthand::NoShorthand,
-            );
-            // Write to the Interrupt Command Register MSR to send the IPI
-            unsafe {
-                asm!{
-                    "wrmsr",
-                    in("ecx") msrs::x2apic::INTERRUPT_COMMAND_REGISTER,
-                    in("eax") icr_low,
-                    in("edx") dest,
-                    options(nomem, nostack, preserves_flags),
-                }
-            }
-            // Success
-            Ok(())
-        } else {
-            Err(Error::InvalidLpId)
-        }
+        Self::send_unicast(target_lp, target_vector, IcrDeliveryMode::Fixed)
     }
 
     fn signal_eoi() {

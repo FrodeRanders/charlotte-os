@@ -152,6 +152,14 @@ isr_debug:
 .global isr_non_maskable_interrupt
 isr_non_maskable_interrupt:
 	EX_PROLOGUE_NO_ERROR_CODE
+	// r12 points below the ten registers saved by EX_SAVE_REGISTERS. The
+	// hardware NMI frame begins immediately above them; vector 2 uses IST, so
+	// the interrupted stack pointer is present even for a ring-0 interruption.
+	mov rdi, [r12 + 8 * 10] // RIP
+	mov rsi, [r12 + 8 * 11] // CS
+	mov rdx, [r12 + 8 * 12] // RFLAGS
+	mov rcx, [r12 + 8 * 13] // interrupted RSP
+	mov r8, rbp             // interrupted frame pointer
 	call ih_non_maskable_interrupt
 	EX_EPILOGUE_NO_ERROR_CODE
 	iretq

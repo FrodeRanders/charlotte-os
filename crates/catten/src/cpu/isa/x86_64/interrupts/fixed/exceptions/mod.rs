@@ -96,7 +96,13 @@ extern "C" fn ih_debug() {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_non_maskable_interrupt() {
+extern "C" fn ih_non_maskable_interrupt(rip: u64, cs: u64, rflags: u64, rsp: u64, rbp: u64) {
+    // The scheduler watchdog uses a requested NMI to snapshot an LP that may
+    // be spinning with maskable interrupts disabled. The NMI itself must not
+    // log, allocate, or take a lock: the interrupted LP may own that lock.
+    if crate::debug_trace::record_requested_nmi(rip, cs, rflags, rsp, rbp) {
+        return;
+    }
     logln!("Non-maskable interrupt occurred!");
     panic!("Non-maskable interrupt");
 }

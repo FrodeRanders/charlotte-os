@@ -15,9 +15,13 @@
 
 use alloc::{
     collections::vec_deque::VecDeque,
-    sync::Weak,
+    sync::{
+        Arc,
+        Weak,
+    },
 };
 use core::sync::atomic::{
+    AtomicBool,
     AtomicU64,
     Ordering,
 };
@@ -55,11 +59,13 @@ pub static TIMER_QUEUES: LazyLock<PerLp<TimerQueue>> =
 const MAX_DIAGNOSTIC_LPS: usize = 256;
 
 /// Low-perturbation timer lifecycle counters, readable from an external
-/// debugger even when scheduler tracing is disabled.
+/// debugger even when scheduler tracing is disabled. For anonymous events,
+/// `added == fired + cancelled + queued` once the sampled queue is quiescent.
 #[repr(C)]
 pub struct TimerDiagnostic {
     pub anonymous_added: AtomicU64,
     pub anonymous_fired: AtomicU64,
+    pub anonymous_cancelled: AtomicU64,
     pub keyed_added: AtomicU64,
     pub keyed_fired: AtomicU64,
     pub queue_len: AtomicU64,
@@ -73,6 +79,7 @@ impl TimerDiagnostic {
         Self {
             anonymous_added: AtomicU64::new(0),
             anonymous_fired: AtomicU64::new(0),
+            anonymous_cancelled: AtomicU64::new(0),
             keyed_added: AtomicU64::new(0),
             keyed_fired: AtomicU64::new(0),
             queue_len: AtomicU64::new(0),
@@ -86,6 +93,20 @@ impl TimerDiagnostic {
 #[unsafe(no_mangle)]
 pub static TIMER_DIAGNOSTICS: [TimerDiagnostic; MAX_DIAGNOSTIC_LPS] =
     [const { TimerDiagnostic::new() }; MAX_DIAGNOSTIC_LPS];
+
+static NEXT_TIMER_EVENT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// A capability to cancel one anonymous timer event.
+///
+/// Timer queues are LP-local because their head programs LP-local hardware.
+/// The shared flag prevents notification even if a future scheduler change
+/// resumes the waiter on a different LP; the owner removes the event eagerly
+/// whenever cancellation happens on its original LP.
+pub(crate) struct TimerEventCancelHandle {
+    owner_lp: crate::cpu::isa::lp::LpId,
+    id: u64,
+    cancelled: Arc<AtomicBool>,
+}
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
@@ -102,6 +123,31 @@ pub fn enqueue_event(event: TimerEvent) {
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
+}
+
+/// Cancel a previously enqueued cancellable event.
+///
+/// Returns whether this call removed the event from its owning queue. A false
+/// result means it already fired, or that the caller migrated away from the
+/// LP whose hardware timer owns it. In the latter case the shared cancellation
+/// flag still suppresses notification and the owner purges it on its next
+/// queue operation.
+pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
+    handle.cancelled.store(true, Ordering::Release);
+    if crate::cpu::isa::lp::ops::get_lp_id() != handle.owner_lp {
+        return false;
+    }
+
+    let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
+    mask_interrupts!();
+    let removed = TIMER_QUEUES
+        .try_get_mut()
+        .expect("local timer queue is already borrowed")
+        .remove_cancellable_event(handle.id);
+    if interrupts_were_enabled {
+        unmask_interrupts!();
+    }
+    removed
 }
 
 /// Reconcile due events and the hardware comparator from thread context.
@@ -136,7 +182,14 @@ pub(crate) enum TimerEventKey {
 pub struct TimerEvent {
     deadline: Timestamp,
     key: Option<TimerEventKey>,
+    cancellation: Option<TimerEventCancellation>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
+}
+
+#[derive(Debug)]
+struct TimerEventCancellation {
+    id: u64,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl TimerEvent {
@@ -151,6 +204,26 @@ impl TimerEvent {
         event
     }
 
+    pub(crate) fn cancellable(duration: ExtDuration) -> (Self, TimerEventCancelHandle) {
+        let id = NEXT_TIMER_EVENT_ID.fetch_add(1, Ordering::Relaxed);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let handle = TimerEventCancelHandle {
+            owner_lp: crate::cpu::isa::lp::ops::get_lp_id(),
+            id,
+            cancelled: cancelled.clone(),
+        };
+        let event = Self {
+            deadline: deadline_after(duration),
+            key: None,
+            cancellation: Some(TimerEventCancellation {
+                id,
+                cancelled,
+            }),
+            observers: ConcurrentQueue::unbounded(),
+        };
+        (event, handle)
+    }
+
     /// Rebase a relative event after its observer and blocked state have been
     /// installed. This is used by scheduler sleep, whose contract is to block
     /// for at least the requested duration; computing the deadline before
@@ -161,6 +234,9 @@ impl TimerEvent {
     }
 
     fn signal(&self) {
+        if self.cancellation.as_ref().is_some_and(|state| state.cancelled.load(Ordering::Acquire)) {
+            return;
+        }
         while let Ok(observer) = self.observers.pop() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();
@@ -174,6 +250,7 @@ impl From<Timestamp> for TimerEvent {
         Self {
             deadline,
             key: None,
+            cancellation: None,
             observers: ConcurrentQueue::unbounded(),
         }
     }
@@ -184,6 +261,7 @@ impl From<ExtDuration> for TimerEvent {
         Self {
             deadline: deadline_after(duration),
             key: None,
+            cancellation: None,
             observers: ConcurrentQueue::unbounded(),
         }
     }
@@ -206,6 +284,27 @@ pub struct TimerQueue {
 }
 
 impl TimerQueue {
+    fn record_cancelled(&self, count: usize) {
+        if count != 0 {
+            TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize]
+                .anonymous_cancelled
+                .fetch_add(count as u64, Ordering::Relaxed);
+        }
+    }
+
+    fn purge_cancelled(&mut self) -> usize {
+        let before = self.events.len();
+        self.events.retain(|event| {
+            !event
+                .cancellation
+                .as_ref()
+                .is_some_and(|state| state.cancelled.load(Ordering::Acquire))
+        });
+        let removed = before - self.events.len();
+        self.record_cancelled(removed);
+        removed
+    }
+
     fn record_state(&self) {
         let lp = crate::cpu::isa::lp::ops::get_lp_id() as usize;
         if let Some(diag) = TIMER_DIAGNOSTICS.get(lp) {
@@ -224,6 +323,7 @@ impl TimerQueue {
     /// present. The queue is the source of truth, while an existing quantum's
     /// deadline is deliberately preserved across voluntary yields.
     pub(crate) fn ensure_event(&mut self, event: TimerEvent) {
+        self.purge_cancelled();
         let key = event.key.expect("ensure_event requires a keyed event");
         if self.events.iter().any(|queued| queued.key == Some(key)) {
             // Software presence does not prove that the LP comparator is
@@ -233,18 +333,39 @@ impl TimerQueue {
             // existing deadline; a past deadline becomes the minimal prompt
             // timeout in `rearm_front`.
             self.rearm_front();
+            self.record_state();
             return;
         }
         self.add_event(event);
     }
 
     pub(crate) fn remove_event(&mut self, key: TimerEventKey) {
+        self.purge_cancelled();
         self.events.retain(|queued| queued.key != Some(key));
         self.rearm_front();
         self.record_state();
     }
 
+    fn remove_cancellable_event(&mut self, id: u64) -> bool {
+        let before = self.events.len();
+        self.events.retain(|event| event.cancellation.as_ref().is_none_or(|state| state.id != id));
+        let removed = before != self.events.len();
+        self.record_cancelled(
+            if removed {
+                1
+            } else {
+                0
+            },
+        );
+        if removed {
+            self.rearm_front();
+            self.record_state();
+        }
+        removed
+    }
+
     pub fn add_event(&mut self, event: TimerEvent) {
+        self.purge_cancelled();
         let is_anonymous = event.key.is_none();
         let mut insertion_idx: Option<usize> = None;
         for (i, event_node) in self.events.iter().enumerate() {
@@ -287,6 +408,7 @@ impl TimerQueue {
     }
 
     pub fn process_events(&mut self) {
+        self.purge_cancelled();
         while let Some(event) = self.events.front() {
             if event.get_deadline() <= LpTimer::now() {
                 let is_anonymous = event.key.is_none();

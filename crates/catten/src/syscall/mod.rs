@@ -1518,7 +1518,8 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         tid,
         generation,
     });
-    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    let (timer_event, timeout_handle) =
+        TimerEvent::cancellable(ExtDuration::from_millis(timeout_ms as u128));
     timer_event.register_observer(
         Arc::downgrade(&timeout_obs) as Weak<dyn crate::klib::observer::Observer>
     );
@@ -1536,6 +1537,10 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     }
 
     yield_lp();
+
+    // Completion may have won before the deadline. Cancel the watchdog so it
+    // cannot occupy the local timer queue or request a redundant reschedule.
+    let _ = crate::timers::cancel_event(timeout_handle);
 
     // Woke up: check whether the completion or the timeout won.
     match crate::completion::poll(asid, cap) {

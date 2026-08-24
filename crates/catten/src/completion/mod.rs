@@ -1341,7 +1341,8 @@ pub fn wait_on_cq_timeout(
         tid,
         generation,
     });
-    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
+    let (timer_event, timeout_handle) =
+        TimerEvent::cancellable(ExtDuration::from_millis(timeout_ms as u128));
     crate::klib::observer::Observable::register_observer(
         &timer_event,
         Arc::downgrade(&timeout_obs) as Weak<dyn Observer>,
@@ -1358,6 +1359,11 @@ pub fn wait_on_cq_timeout(
     }
 
     yield_lp();
+
+    // A CQ notification may win before the deadline. Remove its now-useless
+    // watchdog rather than leaving an anonymous event to churn through the
+    // timer queue later. Cancellation is harmless if the timer already fired.
+    let _ = crate::timers::cancel_event(timeout_handle);
 
     // If the timer won, block_thread's CQ registration was not consumed by a
     // CQ signal. Its strong Waker was dropped when the thread became Ready;

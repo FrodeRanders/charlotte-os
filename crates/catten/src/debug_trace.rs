@@ -3,6 +3,8 @@
 //! Hot paths only write atomic words into memory. Serial output is deferred
 //! until after the failure window so tracing does not serialize the scheduler.
 
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+use core::sync::atomic::AtomicBool;
 #[cfg(feature = "scheduler_trace")]
 use core::sync::atomic::{
     AtomicU64,
@@ -196,6 +198,105 @@ pub const TAG_DEVICE_PHASE: u64 = 0xc0_0060;
 #[cfg(feature = "scheduler_trace")]
 pub static LP0_HEARTBEAT: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_REQUESTED: AtomicBool = AtomicBool::new(false);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_CAPTURED: AtomicBool = AtomicBool::new(false);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_REPORTED: AtomicBool = AtomicBool::new(false);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_RIP: AtomicU64 = AtomicU64::new(0);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_CS: AtomicU64 = AtomicU64::new(0);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_RFLAGS: AtomicU64 = AtomicU64::new(0);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_RSP: AtomicU64 = AtomicU64::new(0);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_RBP: AtomicU64 = AtomicU64::new(0);
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+static LP0_NMI_ASID: AtomicU64 = AtomicU64::new(0);
+
+/// Record a watchdog-requested NMI without logging or acquiring locks.
+///
+/// Returns `true` only when this was the expected LP-0 diagnostic NMI. The
+/// release store to `LP0_NMI_CAPTURED` publishes the complete snapshot to the
+/// watchdog running on LP 1.
+#[cfg(target_arch = "x86_64")]
+pub fn record_requested_nmi(rip: u64, cs: u64, rflags: u64, rsp: u64, rbp: u64) -> bool {
+    #[cfg(feature = "scheduler_trace")]
+    {
+        if crate::cpu::isa::lp::ops::get_lp_id() != 0
+            || !LP0_NMI_REQUESTED.swap(false, Ordering::AcqRel)
+        {
+            return false;
+        }
+        let asid =
+            crate::cpu::isa::memory::paging::CURRENT_LOGICAL_ASID[0].load(Ordering::Relaxed) as u64;
+        LP0_NMI_RIP.store(rip, Ordering::Relaxed);
+        LP0_NMI_CS.store(cs, Ordering::Relaxed);
+        LP0_NMI_RFLAGS.store(rflags, Ordering::Relaxed);
+        LP0_NMI_RSP.store(rsp, Ordering::Relaxed);
+        LP0_NMI_RBP.store(rbp, Ordering::Relaxed);
+        LP0_NMI_ASID.store(asid, Ordering::Relaxed);
+        LP0_NMI_CAPTURED.store(true, Ordering::Release);
+        true
+    }
+    #[cfg(not(feature = "scheduler_trace"))]
+    {
+        let _ = (rip, cs, rflags, rsp, rbp);
+        false
+    }
+}
+
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+fn log_lp0_nmi_snapshot() -> bool {
+    if !LP0_NMI_CAPTURED.load(Ordering::Acquire) {
+        return false;
+    }
+    if !LP0_NMI_REPORTED.swap(true, Ordering::AcqRel) {
+        crate::logln!(
+            "[watchdog] LP0 NMI rip={:#018x} cs={:#x} rflags={:#018x} rsp={:#018x} rbp={:#018x} \
+             asid={} if={}",
+            LP0_NMI_RIP.load(Ordering::Relaxed),
+            LP0_NMI_CS.load(Ordering::Relaxed),
+            LP0_NMI_RFLAGS.load(Ordering::Relaxed),
+            LP0_NMI_RSP.load(Ordering::Relaxed),
+            LP0_NMI_RBP.load(Ordering::Relaxed),
+            LP0_NMI_ASID.load(Ordering::Relaxed),
+            (LP0_NMI_RFLAGS.load(Ordering::Relaxed) >> 9) & 1
+        );
+    }
+    true
+}
+
+#[cfg(all(feature = "scheduler_trace", target_arch = "x86_64"))]
+fn request_lp0_nmi_snapshot() {
+    LP0_NMI_CAPTURED.store(false, Ordering::Relaxed);
+    LP0_NMI_REPORTED.store(false, Ordering::Relaxed);
+    LP0_NMI_REQUESTED.store(true, Ordering::Release);
+    if crate::cpu::isa::interrupts::x2apic::X2Apic::send_unicast_nmi(0).is_err() {
+        LP0_NMI_REQUESTED.store(false, Ordering::Release);
+        crate::logln!("[watchdog] failed to send NMI to LP0");
+        return;
+    }
+
+    // NMI delivery is asynchronous. Wait only for a bounded interval and do
+    // not involve the scheduler: the snapshot normally arrives within a few
+    // iterations, and the watchdog must remain able to dump the trace if the
+    // hypervisor does not implement guest-directed NMI delivery.
+    for _ in 0..1_000_000 {
+        if log_lp0_nmi_snapshot() {
+            return;
+        }
+        core::hint::spin_loop();
+    }
+    // Do not revoke the request after the ICR write: a delayed NMI must still
+    // be recognized as diagnostic instead of falling into the unexpected-NMI
+    // panic path. Later watchdog iterations will print a late snapshot.
+    crate::logln!("[watchdog] LP0 has not yet acknowledged diagnostic NMI");
+}
+
 /// Record one LP-0 liveness tick. No-op without `scheduler_trace`.
 #[inline]
 pub fn lp0_heartbeat() {
@@ -218,9 +319,19 @@ pub fn start_watchdog() {
                 if now == last {
                     stalled_ms += 500;
                     if stalled_ms == 2000 {
-                        crate::logln!("[watchdog] LP0 heartbeat stalled {}ms; dumping trace", stalled_ms);
+                        crate::logln!(
+                            "[watchdog] LP0 heartbeat stalled {}ms; capturing NMI",
+                            stalled_ms
+                        );
+                        #[cfg(target_arch = "x86_64")]
+                        request_lp0_nmi_snapshot();
+                        crate::logln!("[watchdog] dumping scheduler trace");
                         dump();
+                        #[cfg(target_arch = "x86_64")]
+                        let _ = log_lp0_nmi_snapshot();
                     } else if stalled_ms > 2000 && stalled_ms.is_multiple_of(10_000) {
+                        #[cfg(target_arch = "x86_64")]
+                        let _ = log_lp0_nmi_snapshot();
                         crate::logln!("[watchdog] LP0 still stalled {}ms", stalled_ms);
                     }
                 } else {

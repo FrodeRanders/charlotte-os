@@ -402,7 +402,8 @@ pub fn block_until(
             generation,
         });
         let remaining = deadline.saturating_sub(now).max(1);
-        let timer_event = TimerEvent::from(ExtDuration::from_millis(remaining as u128));
+        let (timer_event, timeout_handle) =
+            TimerEvent::cancellable(ExtDuration::from_millis(remaining as u128));
         timer_event
             .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
         crate::timers::enqueue_event(timer_event);
@@ -413,6 +414,9 @@ pub fn block_until(
             let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
         }
         yield_lp();
+        // Observable notification may have won. Do not retain the unused
+        // watchdog until the original absolute deadline.
+        let _ = crate::timers::cancel_event(timeout_handle);
     }
 }
 

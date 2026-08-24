@@ -6,12 +6,12 @@
 
 use alloc::collections::BTreeMap;
 
-use spin::{
-    LazyLock,
-    Mutex,
-};
+use spin::LazyLock;
 
-use crate::memory::AddressSpaceId;
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    memory::AddressSpaceId,
+};
 
 pub type ObjectCapability = u64;
 
@@ -42,6 +42,12 @@ impl AddressSpaceCapabilities {
     }
 }
 
+// Timer completions and thread-exit observers resolve capabilities from timer
+// interrupt/tail context. This must therefore be the kernel's IRQ-safe mutex
+// rather than `spin::Mutex`: a timer can otherwise preempt a table owner and
+// leave an interrupt-context caller spinning for a thread that is no longer
+// running. The IRQ-safe mutex masks local interrupts for the complete
+// ownership interval and restores their prior state on unlock.
 static CAPABILITIES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AddressSpaceCapabilities>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
