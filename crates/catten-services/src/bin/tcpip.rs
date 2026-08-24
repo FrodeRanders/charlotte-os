@@ -613,6 +613,18 @@ fn main(ctx: Context) -> ! {
                             if len > 0 {
                                 tx_ok = tx_ok.wrapping_add(1);
                                 config::write::<u32>(status::TX_OK, tx_ok);
+                            } else {
+                                // A 16 KiB socket buffer should never be full for
+                                // the small HTTP reports; `Ok(0)` means the peer
+                                // has stopped ACKing — the transmit stall. Log the
+                                // first occurrence and then every 100th.
+                                tx_err = tx_err.wrapping_add(1);
+                                if tx_err == 1 || tx_err.is_multiple_of(100) {
+                                    catten_rt::logln!(
+                                        "[tcpip] socket TX buffer full (0 octets enqueued); tx_err={}",
+                                        tx_err
+                                    );
+                                }
                             }
                             len as i64
                         }

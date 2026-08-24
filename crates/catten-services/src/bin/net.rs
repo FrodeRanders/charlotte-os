@@ -56,6 +56,11 @@ const REPLY_SPINS: u64 = 50_000_000;
 // time. The device-config/ISR/doorbell helpers must read it: the old fixed
 // 0x400000 vaddr was not the mapped base and dereferenced stale addresses.
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+/// One-shot latch: the TX descriptor ring became fully occupied (no free
+/// descriptor for an incoming `OP_SEND`). Cleared when `drain_tx` frees one.
+static TX_SATURATED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+/// Monotonic reactor-tick counter used to emit periodic TX-ring diagnostics.
+static LOOP_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 // Keep transient mappings clear of the loader's per-shard CQ region at
 // 0x0080_0000 and the userspace stack arena at 0x0100_0000.
 const PAGE_SIZE: usize = 4096;
@@ -307,6 +312,7 @@ unsafe fn drain_tx(
     let used = tx_desc_vaddr + used_offset(queue_size);
     let device_idx = unsafe { r16(used + virtio::USED_IDX) };
     dma_read_barrier();
+    let before = *used_seen;
     while *used_seen != device_idx {
         let slot = *used_seen as usize % queue_size as usize;
         let desc_id = unsafe { r32(used + virtio::USED_RING + slot * 8) } as usize;
@@ -314,6 +320,13 @@ unsafe fn drain_tx(
             *state = false;
         }
         *used_seen = used_seen.wrapping_add(1);
+    }
+    if *used_seen != before && TX_SATURATED.swap(false, core::sync::atomic::Ordering::Relaxed) {
+        catten_rt::logln!(
+            "[net] TX ring recovered: device used_idx advanced to {} ({} freed)",
+            device_idx,
+            used_seen.wrapping_sub(before)
+        );
     }
 }
 
@@ -521,6 +534,16 @@ fn main(ctx: Context) -> ! {
         config::write::<u16>(status::TX_USED_SEEN, tx_used_seen);
         config::write::<u8>(status::DEVICE_STATUS, unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) });
         config::write::<u16>(status::TX_AVAILABLE, tx_avail_idx);
+        // Periodic TX-ring telemetry (every ~1024 iterations) so a run shows
+        // whether descriptors accumulate (device not keeping up) or stay
+        // healthy. Emitted only while at least one descriptor is outstanding.
+        let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if loop_tick & 0x3ff == 0 {
+            let busy = tx_in_use.iter().filter(|u| **u).count();
+            if busy > 0 {
+                catten_rt::logln!("[net] TX ring: {} of {} descriptors in use", busy, tx_qsz);
+            }
+        }
         // RX-ring diagnostic: descriptors the device has filled but the driver
         // has not yet recycled. When this reaches `rx_qsz` the available ring
         // is empty, so virtio-net has no RX buffer and queues incoming frames
@@ -572,6 +595,14 @@ fn main(ctx: Context) -> ! {
                     let frame_len = m.arg0 as usize;
                     let Some(desc_id) = tx_in_use.iter().position(|used| !*used) else {
                         config::write::<u32>(status::TX_PROGRESS, 1);
+                        if !TX_SATURATED.swap(true, core::sync::atomic::Ordering::Relaxed) {
+                            let busy = tx_in_use.iter().filter(|u| **u).count();
+                            catten_rt::logln!(
+                                "[net] TX ring saturated: {} of {} descriptors in use",
+                                busy,
+                                tx_qsz
+                            );
+                        }
                         if m.memory != 0 {
                             memory_close(m.memory);
                         }
