@@ -763,6 +763,42 @@ fn main(ctx: Context) -> ! {
                     let count = peers.len() as u64;
                     ipc_reply(message.reply, ((running) | (count << 8)) as i64);
                 }
+                disco::OP_DIAG => {
+                    // Move a page with the packed DiscoDiag snapshot so the
+                    // httpd keyhole can render live probe-traffic counters.
+                    let cap = memory_alloc(1);
+                    if cap == 0 {
+                        ipc_reply(message.reply, -1);
+                        continue;
+                    }
+                    let (diag_map_status, diag_vaddr) = memory_map_any(cap, true);
+                    if diag_map_status != 0 {
+                        memory_close(cap);
+                        ipc_reply(message.reply, -1);
+                        continue;
+                    }
+                    let words = [
+                        disco::DIAG_MAGIC,
+                        1,
+                        peers.len() as u32,
+                        cluster.info.role as u32,
+                        DIAG_RX_RAW.load(Ordering::Relaxed),
+                        DIAG_SENT_OK.load(Ordering::Relaxed),
+                        DIAG_SENT_FAIL.load(Ordering::Relaxed),
+                        DIAG_DECODED.load(Ordering::Relaxed),
+                        DIAG_CALLED.load(Ordering::Relaxed),
+                        heart,
+                    ];
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            words.as_ptr(),
+                            diag_vaddr as *mut u32,
+                            words.len(),
+                        );
+                    }
+                    memory_unmap(cap);
+                    ipc_reply_move(message.reply, cap, (words.len() * 4) as i64);
+                }
                 disco::OP_SHUTDOWN => {
                     ipc_reply(message.reply, 0);
                     unsafe { thread_exit() };

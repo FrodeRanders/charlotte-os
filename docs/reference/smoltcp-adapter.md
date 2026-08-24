@@ -118,18 +118,33 @@ handshake, transfers a payload, and verifies the echoed bytes.
 server on port 80 that answers every request with a JSON report of observable
 state aggregated across the node:
 
+- `meta` — wall-clock derived from the observe snapshot's monotonic counter:
+  `uptime_ms`, `interval_ms` (time since the previous request), `counter_hz`
 - `node` — NIC MAC + link (`net::OP_STATUS`)
 - `ns` — the node-local name-service registry: registered-service catalog
   and pending lookups (`ns::OP_STATUS`, via the bootstrap connection)
-- `tcpip` — ip, rx frames, tx sends, open sockets (`socket::OP_STATUS`)
+- `tcpip` — ip, rx/tx frames, open sockets, send errors, DHCP mode, gateway,
+  MTU (`socket::OP_STATUS`)
 - `frouter` — rx/forwarded/dropped/unknown/routes (`frouter::OP_STATUS`)
-- `dns` — Raft state/term plus the replicated `name -> node` cluster
-  catalog (`dns::OP_STATUS` + `dns::OP_CATALOG`), when running
-- `disco` / `relmsg` — peers / transport, when running
+- `dns` — Raft state/term plus the replicated `name -> node` cluster catalog
+  (`dns::OP_STATUS` + `dns::OP_CATALOG`), plus the cluster posture
+  (`raft::OP_CLUSTER_STATUS`: commit index, member count, leader id, self id),
+  when running
+- `disco` — probe-traffic counters (`disco::OP_DIAG`) and the live peer table
+  (`disco::OP_LIST_PEERS`), when running
+- `relmsg` — transport counters: peers, handled, retransmits, send failures,
+  received, in-flight (`relmsg::OP_DIAG`), when running
 - `threads` — system-wide thread statistics from the observe service's
   `OP_THREAD_SNAPSHOT`, backed by the kernel's unique SystemObserver
-  capability (count, per-state histogram, sampled rows)
-- `http` — this server's own request/uptime counters
+  capability (count, per-state histogram, sampled rows with per-thread
+  `runtime_ms`/`cpu_pct`/affinity/pinning/`min`/`max` ticks)
+- `http` — this server's own request counter, uptime, and request rate
+
+Cumulative counters are paired with `*_delta` (count since the previous
+request) and `*_rate` (per second) fields on `tcpip` and `frouter`, so the
+report reflects activity between polls rather than lifetime totals. Rates are
+integer per-second values computed from the observe snapshot's monotonic
+counter and frequency — httpd never depends on a wall clock or floating point.
 
 The `ns` and `dns` sections together are the node's picture of the cluster:
 `ns` is the local registry (what is registered on *this* node), while `dns`
@@ -141,12 +156,22 @@ renders as `null` rather than stalling a request. It consumes the same socket
 API as the smoke client — one connection at a time, no keep-alive,
 deliberately not a web server.
 
-From the host, run the guest on the SLIRP user network with a hostfwd and
-curl the page:
+Two request targets are served, selected by the path of the `GET` request:
+
+- `GET /` (or `/index.html`) returns a self-refreshing HTML dashboard; its
+  embedded script polls `GET /metrics` every five seconds and renders the
+  report as cards, which is handy on VMware where there is no framebuffer.
+- `GET /metrics` (alias `/metric`) returns the JSON report described above.
+
+Anything else is a `404`.
+
+From the host, run the guest on the SLIRP user network with a hostfwd and open
+the dashboard in a browser (or curl the JSON endpoint directly):
 
 ```
 scripts/run-aarch64.sh release --http-test --instance http --smp 2 --timeout 90
-curl -s http://127.0.0.1:8080/
+# browser: open http://127.0.0.1:8080/
+curl -s http://127.0.0.1:8080/metrics
 ```
 
 The guest self-test (`http_net_test`) verifies the httpd reaches its

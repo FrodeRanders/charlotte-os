@@ -531,9 +531,9 @@ if [ -n "$TIMEOUT" ]; then
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
-            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:${HTTP_HOST_PORT}/ ..."
+            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:${HTTP_HOST_PORT}/metrics ..."
             for _ in 1 2 3 4 5 6 7 8; do
-                HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/" 2>&1 || true)"
+                HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
                 if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":'; then
                     HTTP_PROBE_OK=1
                     break

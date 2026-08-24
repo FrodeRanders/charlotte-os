@@ -12,6 +12,11 @@ use alloc::{
     vec::Vec,
 };
 
+use core::sync::atomic::{
+    AtomicU32,
+    Ordering,
+};
+
 use catten_rt::{
     Context,
     config,
@@ -67,6 +72,11 @@ const REPLY_SPINS: u64 = 50_000_000;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const RETRANSMIT_TIMER_COOKIE: u64 = 0x5245_4c4d_5347_544d;
+
+static DIAG_HANDLED: AtomicU32 = AtomicU32::new(0);
+static DIAG_RETRANSMITS: AtomicU32 = AtomicU32::new(0);
+static DIAG_SEND_FAILURES: AtomicU32 = AtomicU32::new(0);
+static DIAG_RECEIVED: AtomicU32 = AtomicU32::new(0);
 
 struct ReceivedMessage {
     source: [u8; 6],
@@ -179,14 +189,17 @@ fn peer_index(peers: &mut Vec<Peer>, mac: [u8; 6], local_session: u64) -> Option
 
 fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     if frame.len() > 4096 {
+        DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
         return false;
     }
     let cap = memory_alloc(1);
     if cap == 0 {
+        DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
         return false;
     }
     let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
     if tx_scratch_map_status != 0 {
+        DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
         memory_close(cap);
         return false;
     }
@@ -197,11 +210,15 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
     if call == 0 {
         config::write::<u32>(status::LAST_SEND_RESULT, 1);
+        DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
         memory_close(cap);
         return false;
     }
     let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
     config::write::<i64>(status::LAST_SEND_RESULT, result);
+    if result != 0 {
+        DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
+    }
     result == 0
 }
 
@@ -261,6 +278,7 @@ fn retransmit_pending(net_conn: u64, peers: &mut [Peer]) {
         pending.retries += 1;
         for frame in &pending.frames {
             let _ = send_frame(net_conn, frame);
+            DIAG_RETRANSMITS.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -337,6 +355,7 @@ fn process_frame(
                     cap,
                     len: payload_len,
                 });
+                DIAG_RECEIVED.fetch_add(1, Ordering::Relaxed);
                 peers[index].next_rx_seq = peers[index].next_rx_seq.wrapping_add(1).max(1);
             } else if cap != 0 {
                 memory_close(cap);
@@ -398,6 +417,7 @@ fn process_frame(
                         cap,
                         len: total,
                     });
+                    DIAG_RECEIVED.fetch_add(1, Ordering::Relaxed);
                     peer.next_rx_seq = peer.next_rx_seq.wrapping_add(1).max(1);
                 } else if cap != 0 {
                     memory_close(cap);
@@ -526,8 +546,8 @@ fn main(ctx: Context) -> ! {
             continue;
         }
         config::write::<u32>(status::LAST_OPCODE, message.opcode);
-        let handled = unsafe { config::read::<u32>(8) };
-        config::write::<u32>(status::HANDLED, handled.wrapping_add(1));
+        let handled = DIAG_HANDLED.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        config::write::<u32>(status::HANDLED, handled);
 
         match message.opcode {
             relmsg::OP_SEND => {
@@ -644,6 +664,40 @@ fn main(ctx: Context) -> ! {
             relmsg::OP_STATUS => {
                 config::write::<u32>(status::STAGE, 8);
                 ipc_reply(message.reply, pack_address_and_len(local_mac, 0) as i64);
+            }
+            relmsg::OP_DIAG => {
+                // Move a page with the packed RelmsgDiag snapshot so the
+                // httpd keyhole can render live transport counters.
+                let cap = memory_alloc(1);
+                if cap == 0 {
+                    ipc_reply(message.reply, relmsg::ERR_BAD_OPCODE);
+                    continue;
+                }
+                let (diag_map_status, diag_vaddr) = memory_map_any(cap, true);
+                if diag_map_status != 0 {
+                    memory_close(cap);
+                    ipc_reply(message.reply, relmsg::ERR_BAD_OPCODE);
+                    continue;
+                }
+                let in_flight = peers.iter().filter(|peer| peer.pending.is_some()).count() as u32;
+                let words = [
+                    relmsg::DIAG_MAGIC,
+                    peers.len() as u32,
+                    DIAG_HANDLED.load(Ordering::Relaxed),
+                    DIAG_RETRANSMITS.load(Ordering::Relaxed),
+                    DIAG_SEND_FAILURES.load(Ordering::Relaxed),
+                    DIAG_RECEIVED.load(Ordering::Relaxed),
+                    in_flight,
+                ];
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        words.as_ptr(),
+                        diag_vaddr as *mut u32,
+                        words.len(),
+                    );
+                }
+                memory_unmap(cap);
+                ipc_reply_move(message.reply, cap, (words.len() * 4) as i64);
             }
             relmsg::OP_FRAME => {
                 let frame_len = message.arg0 as usize;

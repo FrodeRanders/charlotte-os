@@ -114,6 +114,19 @@ printable registry names as JSON strings and represents internal binary keys as
 `hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,
 not unnamed threads or malformed text.
 
+The report is time-aware, not just a point-in-time dump. It reuses the
+observe snapshot's monotonic counter and frequency (`mono_ticks` and
+`counter_hz`) as a wall-clock source, so it reports uptime, the interval
+between consecutive requests, and per-counter `*_delta`/`*_rate` fields for
+`tcpip` and `frouter` — all with integer arithmetic, no floating point and no
+dependency on a real-time clock. Services publish richer diagnostics through
+the protocol as well: `socket::OP_STATUS` carries send errors, DHCP mode,
+gateway, and MTU; `relmsg::OP_DIAG` and `disco::OP_DIAG` move a page of live
+transport/probe counters (peers, retransmits, send failures, received,
+in-flight, decoded frames); `disco::OP_LIST_PEERS` supplies the peer table;
+and `dns` also serves `raft::OP_CLUSTER_STATUS` for commit index, member
+count, and leader identity.
+
 The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the
 sole holder of the system-observer capability; the httpd holds neither and

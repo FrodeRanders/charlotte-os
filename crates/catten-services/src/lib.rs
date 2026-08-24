@@ -621,12 +621,23 @@ pub mod socket {
     pub const OP_STATUS: u32 = 10;
 
     /// `TcpipStatus` snapshot layout (all little-endian u32 words in a moved
-    /// page). Offsets are in u32 words from the base of the reply page.
+    /// page). Offsets are in u32 words from the base of the reply page. Words
+    /// 0..=4 are the original v1 layout; the remaining words extend it without
+    /// disturbing existing readers, which only consume the leading words.
     pub const STATUS_OFFSET_IP: u32 = 0;
     pub const STATUS_OFFSET_RX_FRAMES: u32 = 1;
     pub const STATUS_OFFSET_TX_SENDS: u32 = 2;
     pub const STATUS_OFFSET_SOCKETS: u32 = 3;
     pub const STATUS_OFFSET_MAGIC: u32 = 4;
+    /// Transmit calls that failed (send buffer full or socket error).
+    pub const STATUS_OFFSET_TX_SEND_ERRORS: u32 = 5;
+    /// Address-acquisition mode: 0 = static, 1 = DHCP.
+    pub const STATUS_OFFSET_DHCP_MODE: u32 = 6;
+    /// Default-route gateway in network order, 0 when none is configured.
+    pub const STATUS_OFFSET_GATEWAY: u32 = 7;
+    /// Interface MTU in bytes.
+    pub const STATUS_OFFSET_MTU: u32 = 8;
+    pub const STATUS_WORDS: usize = 9;
     pub const STATUS_MAGIC: u32 = 0x5443_5053;
 
     pub const ERR_TOO_MANY_SOCKETS: i64 = -1;
@@ -752,6 +763,24 @@ pub mod relmsg {
     /// Internal ingress used by the isolated NIC-receive pump.
     pub const OP_FRAME: u32 = 4;
     pub const OP_SHUTDOWN: u32 = 5;
+    /// Richer transport diagnostics. Reply moves a page holding the packed
+    /// `RelmsgDiag` snapshot (`crate::relmsg::DIAG_*` layout). Unlike
+    /// [`OP_STATUS`] (a scalar carrying only the local MAC), this reports the
+    /// live counters the transport maintains for retransmits, send failures,
+    /// deliveries, and peer load.
+    pub const OP_DIAG: u32 = 6;
+
+    /// `RelmsgDiag` snapshot layout (little-endian u32 words in a moved page).
+    pub const DIAG_OFFSET_MAGIC: u32 = 0;
+    pub const DIAG_OFFSET_PEERS: u32 = 1;
+    pub const DIAG_OFFSET_HANDLED: u32 = 2;
+    pub const DIAG_OFFSET_RETRANSMITS: u32 = 3;
+    pub const DIAG_OFFSET_SEND_FAILURES: u32 = 4;
+    pub const DIAG_OFFSET_RECEIVED: u32 = 5;
+    pub const DIAG_OFFSET_IN_FLIGHT: u32 = 6;
+    pub const DIAG_WORDS: usize = 7;
+    /// `"RMLD"` LE.
+    pub const DIAG_MAGIC: u32 = 0x444c_4d52;
 
     pub const ERR_PEER_UNREACHABLE: i64 = -1;
     pub const ERR_BAD_OPCODE: i64 = -2;
@@ -798,6 +827,27 @@ pub mod disco {
     /// attaches a **moved** memory object holding the frame; the service
     /// processes it and replies 0.
     pub const OP_FRAME: u32 = 5;
+
+    /// Richer discovery diagnostics. Reply moves a page holding the packed
+    /// `DiscoDiag` snapshot (`crate::disco::DIAG_*` layout): the live probe
+    /// traffic counters, cluster posture, and heartbeat, which are not
+    /// carried by the scalar [`OP_STATUS`].
+    pub const OP_DIAG: u32 = 7;
+
+    /// `DiscoDiag` snapshot layout (little-endian u32 words in a moved page).
+    pub const DIAG_OFFSET_MAGIC: u32 = 0;
+    pub const DIAG_OFFSET_RUNNING: u32 = 1;
+    pub const DIAG_OFFSET_PEERS: u32 = 2;
+    pub const DIAG_OFFSET_CLUSTER_ROLE: u32 = 3;
+    pub const DIAG_OFFSET_RX_RAW: u32 = 4;
+    pub const DIAG_OFFSET_SENT_OK: u32 = 5;
+    pub const DIAG_OFFSET_SENT_FAIL: u32 = 6;
+    pub const DIAG_OFFSET_DECODED: u32 = 7;
+    pub const DIAG_OFFSET_CALLED: u32 = 8;
+    pub const DIAG_OFFSET_HEARTBEAT: u32 = 9;
+    pub const DIAG_WORDS: usize = 10;
+    /// `"DCOD"` LE.
+    pub const DIAG_MAGIC: u32 = 0x444f_4344;
 
     pub const PROBE_COUNT: usize = 3;
     pub const PROBE_INTERVAL_MS: u64 = 200;

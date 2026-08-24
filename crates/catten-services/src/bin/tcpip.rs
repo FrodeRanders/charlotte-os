@@ -51,6 +51,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_read,
     cq_wait_timeout,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -63,6 +64,7 @@ use catten_syscall::{
     memory_close,
     memory_map_any,
     memory_unmap,
+    submit_detached_timer,
     thread_exit,
 };
 use charlotte_launch::tcpip_status as status;
@@ -93,8 +95,16 @@ use smoltcp::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const POLL_MS: u64 = 50;
 const FRAME_MAX: usize = 4096;
+/// Detached-timer cadence for the smoltcp clock. A continuously IPC-woken
+/// reactor must not collapse the timebase to a fixed 1 ms per iteration; the
+/// timer fires independently of endpoint traffic and re-arms each cycle.
+const CLOCK_TICK_MS: u64 = 10;
+const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
+/// Per-socket buffer size. The httpd report exceeds one 4096-byte page, so a
+/// single-page buffer forces the sender to stall mid-stream while the peer
+/// drains it; a larger buffer lets a full report be accepted without blocking.
+const SOCKET_BUF: usize = 16 * 1024;
 
 struct SocketEntry {
     handle: smoltcp::iface::SocketHandle,
@@ -273,7 +283,19 @@ fn main(ctx: Context) -> ! {
     let mut elapsed_ms: u64 = 1;
     let mut rx_total: u32 = 0;
     let mut tx_ok: u32 = 0;
+    let mut tx_err: u32 = 0;
+    let dhcp_mode: u32 = if dhcp { 1 } else { 0 };
+    let gateway_ip: u32 = gateway.map_or(0, |gw| {
+        let octets = gw.octets();
+        u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
+    });
     config::write::<u32>(status::STAGE, 6);
+
+    // Arm a detached timer as the smoltcp timebase. Reading its cookie from
+    // the completion queue gives a real elapsed time that is independent of
+    // how often endpoint traffic wakes the bounded CQ wait.
+    let cq = ctx.completion_queue_layout();
+    let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
 
     loop {
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
@@ -428,8 +450,8 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_TOO_MANY_SOCKETS);
                         continue;
                     }
-                    let rx = TcpSocketBuffer::new(alloc::vec![0u8; 4096]);
-                    let tx = TcpSocketBuffer::new(alloc::vec![0u8; 4096]);
+                    let rx = TcpSocketBuffer::new(alloc::vec![0u8; SOCKET_BUF]);
+                    let tx = TcpSocketBuffer::new(alloc::vec![0u8; SOCKET_BUF]);
                     let tcp = TcpSocket::new(rx, tx);
                     let handle = sockets.add(tcp);
                     let id = state.alloc_sock_id();
@@ -594,7 +616,10 @@ fn main(ctx: Context) -> ! {
                             }
                             len as i64
                         }
-                        Err(_) => socket::ERR_WOULD_BLOCK,
+                        Err(_) => {
+                            tx_err = tx_err.wrapping_add(1);
+                            socket::ERR_WOULD_BLOCK
+                        }
                     };
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
@@ -680,6 +705,10 @@ fn main(ctx: Context) -> ! {
                         tx_ok,
                         state.sockets.len() as u32,
                         socket::STATUS_MAGIC,
+                        tx_err,
+                        dhcp_mode,
+                        gateway_ip,
+                        mtu as u32,
                     ];
                     unsafe {
                         core::ptr::copy_nonoverlapping(
@@ -698,12 +727,26 @@ fn main(ctx: Context) -> ! {
             }
         }
 
-        let (_, timed_out) = cq_wait_timeout(1, POLL_MS, 0);
-        elapsed_ms = if timed_out != 0 {
-            POLL_MS
+        let (_, timed_out) = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
+        let mut clock_fired = false;
+        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
+            if completion.cookie == CLOCK_TIMER_COOKIE {
+                clock_fired = true;
+                clock_armed = false;
+            }
+        }
+        // The detached timer advances the clock independently of IPC traffic;
+        // a continuously-woken cq_wait must not collapse smoltcp's timebase
+        // to a fixed 1 ms and stall retransmit/ACK timers under load.
+        if clock_fired || timed_out != 0 {
+            if !clock_armed {
+                clock_armed =
+                    submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
+            }
+            elapsed_ms = CLOCK_TICK_MS;
         } else {
-            1
-        };
+            elapsed_ms = 0;
+        }
     }
 }
 
