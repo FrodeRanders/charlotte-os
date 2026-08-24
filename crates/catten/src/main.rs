@@ -193,7 +193,6 @@ pub extern "C" fn bsp_main() -> ! {
     spin::LazyLock::force(&crate::cpu::multiprocessor::ipi::IPI_CMD_QUEUES);
     spin::LazyLock::force(&crate::deferred_work_manager::DWM);
     logln!("System initialized.");
-    logln!("Starting secondary LPs...");
     start_secondary_lps().expect("Failed to start secondary LPs");
     INIT_BARRIER.wait();
     // Deferred verifiers and EL0 bootstrap services may begin running while

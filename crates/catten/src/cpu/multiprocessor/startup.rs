@@ -28,7 +28,7 @@ pub enum MpError {
 }
 
 pub fn start_secondary_lps() -> Result<(), MpError> {
-    logln!("Starting Secondary LPs...");
+    logln!("Starting secondary LPs...");
     if let Some(res) = MP_REQUEST.response() {
         logln!("Obtained multiprocessor response from Limine");
         #[cfg(target_arch = "x86_64")]
