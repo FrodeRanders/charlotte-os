@@ -61,6 +61,9 @@ const RING_SIZE: usize = 128;
 const BUFFER_SIZE: usize = 2048;
 const MAX_FRAME_SIZE: usize = 1514;
 
+/// Monotonic reactor-tick counter for periodic heartbeat logging.
+static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
 // 82574L register offsets.
 const CTRL: usize = 0x0000;
 const STATUS: usize = 0x0008;
@@ -515,6 +518,20 @@ fn main(ctx: Context) -> ! {
         config::write::<u16>(status::RX_ACCEPTED, rx_accepted);
         config::write::<u16>(status::RX_DELIVERED, rx_delivered);
         config::write::<u32>(status::RX_DELIVERY_ERROR, rx_delivery_error);
+        // Periodic heartbeat (~every 1024 iterations): the interrupt-cause
+        // register plus ring health, to expose an interrupt storm or a wedged
+        // descriptor ring while the rest of the stack is frozen.
+        let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if tick & 0x3ff == 0 {
+            let tx_busy = tx_in_use.iter().filter(|u| **u).count();
+            catten_rt::logln!(
+                "[e1000e] hb rx_pending={} tx_busy={}/{} icr={:#x}",
+                received.len(),
+                tx_busy,
+                RING_SIZE,
+                cause
+            );
+        }
         deliver_received(
             &mut received,
             &mut pending_recv,
