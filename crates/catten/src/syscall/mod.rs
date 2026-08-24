@@ -348,6 +348,8 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
         THREAD_STATISTICS_MAGIC,
         THREAD_STATISTICS_RECORD_U64S,
         THREAD_STATISTICS_VERSION,
+        thread_statistics_header as header,
+        thread_statistics_record as record,
     };
 
     let asid = caller_asid(frame);
@@ -376,30 +378,41 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
     };
 
     let mut bytes = alloc::vec::Vec::with_capacity(exact_len);
-    push_u64(&mut bytes, THREAD_STATISTICS_MAGIC);
-    push_u64(&mut bytes, THREAD_STATISTICS_VERSION);
-    push_u64(&mut bytes, (THREAD_STATISTICS_RECORD_U64S * 8) as u64);
-    push_u64(&mut bytes, snapshots.len() as u64);
-    push_u64(&mut bytes, crate::cpu::scheduler::counter_frequency_hz());
-    push_u64(&mut bytes, crate::cpu::scheduler::monotonic_ticks());
+    let mut header_words = [0; THREAD_STATISTICS_HEADER_U64S];
+    header_words[header::MAGIC] = THREAD_STATISTICS_MAGIC;
+    header_words[header::VERSION] = THREAD_STATISTICS_VERSION;
+    header_words[header::RECORD_BYTES] =
+        (THREAD_STATISTICS_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
+    header_words[header::RECORD_COUNT] = snapshots.len() as u64;
+    header_words[header::COUNTER_FREQUENCY_HZ] = crate::cpu::scheduler::counter_frequency_hz();
+    header_words[header::MONOTONIC_TICKS] = crate::cpu::scheduler::monotonic_ticks();
+    for value in header_words {
+        push_u64(&mut bytes, value);
+    }
     for snapshot in snapshots {
         let statistics = snapshot.runtime_ticks;
-        push_u64(&mut bytes, snapshot.tid as u64);
-        push_u64(&mut bytes, snapshot.generation);
-        push_u64(&mut bytes, snapshot.asid as u64);
-        push_u64(&mut bytes, snapshot.state as u64);
-        push_u64(&mut bytes, snapshot.affinity_lp.map_or(OBSERVABILITY_NONE, u64::from));
-        push_u64(&mut bytes, snapshot.pinned_lp.map_or(OBSERVABILITY_NONE, u64::from));
-        push_u64(&mut bytes, snapshot.dispatch_count);
-        push_u64(&mut bytes, statistics.count);
-        push_u64(&mut bytes, statistics.min.unwrap_or(OBSERVABILITY_NONE));
-        push_u64(&mut bytes, statistics.max.unwrap_or(OBSERVABILITY_NONE));
-        push_u64(&mut bytes, statistics.total as u64);
-        push_u64(&mut bytes, (statistics.total >> 64) as u64);
-        push_u64(&mut bytes, statistics.sum_of_squares as u64);
-        push_u64(&mut bytes, (statistics.sum_of_squares >> 64) as u64);
-        push_u64(&mut bytes, u64::from(statistics.saturated));
-        push_u64(&mut bytes, snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE));
+        let mut record_words = [0; THREAD_STATISTICS_RECORD_U64S];
+        record_words[record::TID] = snapshot.tid as u64;
+        record_words[record::GENERATION] = snapshot.generation;
+        record_words[record::ASID] = snapshot.asid as u64;
+        record_words[record::STATE] = snapshot.state as u64;
+        record_words[record::AFFINITY_LP] =
+            snapshot.affinity_lp.map_or(OBSERVABILITY_NONE, u64::from);
+        record_words[record::PINNED_LP] = snapshot.pinned_lp.map_or(OBSERVABILITY_NONE, u64::from);
+        record_words[record::DISPATCH_COUNT] = snapshot.dispatch_count;
+        record_words[record::SAMPLE_COUNT] = statistics.count;
+        record_words[record::MIN_TICKS] = statistics.min.unwrap_or(OBSERVABILITY_NONE);
+        record_words[record::MAX_TICKS] = statistics.max.unwrap_or(OBSERVABILITY_NONE);
+        record_words[record::TOTAL_TICKS_LOW] = statistics.total as u64;
+        record_words[record::TOTAL_TICKS_HIGH] = (statistics.total >> 64) as u64;
+        record_words[record::SUM_OF_SQUARES_LOW] = statistics.sum_of_squares as u64;
+        record_words[record::SUM_OF_SQUARES_HIGH] = (statistics.sum_of_squares >> 64) as u64;
+        record_words[record::SATURATED] = u64::from(statistics.saturated);
+        record_words[record::CURRENT_SLICE_STARTED_AT] =
+            snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE);
+        for value in record_words {
+            push_u64(&mut bytes, value);
+        }
     }
     if object::write_bytes(asid, cap, &bytes).is_err() {
         let _ = object::close_cap(asid, cap);

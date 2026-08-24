@@ -28,6 +28,7 @@ use charlotte_protocol_msg::{
     pack_address_and_len,
     unpack_address_and_len,
 };
+use charlotte_launch::relmsg_client_status as status;
 
 const SENTINEL: u32 = 0xc0de_cafe;
 /// Large enough to span multiple relmsg frames (~1468 each), exercising the
@@ -43,7 +44,7 @@ fn build_payload() -> alloc::vec::Vec<u8> {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let payload = build_payload();
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -57,16 +58,16 @@ fn main(ctx: Context) -> ! {
     if generation < 1 || relmsg_conn == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let status = ipc_scalar_call(relmsg_conn, relmsg::OP_STATUS, 0);
     if status == 0 {
-        config::write::<u32>(0, 0xe001);
+        config::write::<u32>(status::STAGE, 0xe001);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 10);
+    config::write::<u32>(status::STAGE, 10);
     let (packed, _) = unsafe { wait_reply(status, 0) };
-    config::write::<u32>(0, 11);
+    config::write::<u32>(status::STAGE, 11);
     let (local_mac, _) = unpack_address_and_len(packed as u64);
     let mut peer_mac = local_mac;
     peer_mac[5] = match local_mac[5] {
@@ -74,21 +75,21 @@ fn main(ctx: Context) -> ! {
         2 => 1,
         _ => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 12);
+    config::write::<u32>(status::STAGE, 12);
 
     // Do not initiate cluster communication until this node has finished
     // booting: messages sent during the boot storm are silently lost.
     if !catten_services::wait_for_local_ready(ns_conn) {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 13);
+    config::write::<u32>(status::STAGE, 13);
 
     let receive = ipc_scalar_call(relmsg_conn, relmsg::OP_RECV, 0);
     if receive == 0 {
-        config::write::<u32>(0, 0xe002);
+        config::write::<u32>(status::STAGE, 0xe002);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 13);
+    config::write::<u32>(status::STAGE, 13);
     let cap = memory_alloc(1);
     let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(cap, true);
     if cap == 0 || scratch_2_map_status != 0 {
@@ -97,27 +98,27 @@ fn main(ctx: Context) -> ! {
         }
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 14);
+    config::write::<u32>(status::STAGE, 14);
     unsafe {
         core::ptr::copy_nonoverlapping(payload.as_ptr(), scratch_2_vaddr as *mut u8, payload.len());
     }
     memory_unmap(cap);
-    config::write::<u32>(0, 15);
+    config::write::<u32>(status::STAGE, 15);
     let destination = pack_address_and_len(peer_mac, payload.len() as u16);
     let send = ipc_scalar_call_move(relmsg_conn, relmsg::OP_SEND, destination, cap);
     if send == 0 {
-        config::write::<u32>(0, 0xe003);
+        config::write::<u32>(status::STAGE, 0xe003);
         memory_close(cap);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 16);
+    config::write::<u32>(status::STAGE, 16);
     let (send_result, _) = unsafe { wait_reply(send, 0) };
     if send_result != payload.len() as i64 {
-        config::write::<i64>(8, send_result);
-        config::write::<u32>(0, 0xe004);
+        config::write::<i64>(status::SEND_RESULT, send_result);
+        config::write::<u32>(status::STAGE, 0xe004);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let (status, source_and_len, _connection, received) = ipc_reply_wait_with_memory(receive);
     ipc_close(receive);
@@ -146,10 +147,10 @@ fn main(ctx: Context) -> ! {
         let _ = unsafe { wait_reply(shutdown, 0) };
     }
     config::write::<u32>(
-        4,
+        status::PEER_ADDRESS,
         u32::from_be_bytes([peer_mac[2], peer_mac[3], peer_mac[4], peer_mac[5]]),
     );
-    config::write::<u32>(0, SENTINEL);
+    config::write::<u32>(status::STAGE, SENTINEL);
     unsafe { thread_exit() };
 }
 

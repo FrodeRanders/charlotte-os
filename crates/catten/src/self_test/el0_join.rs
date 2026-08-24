@@ -1,19 +1,16 @@
-//! Self-test: dynamic raft membership admission, bridged through discovery.
+//! Self-test: dynamic membership in the DNS-owned Raft cluster.
 //!
-//! Boots a single-node raft domain *without* an explicit `node-id`: the raft
-//! derives its id from the node identity, which is the same name discovery
-//! advertises, so the local discovery service can report this node's raft
-//! role and id. The test then drives the real join path end to end:
+//! Observes DNS, which owns the operational Raft node and its sole durable
+//! cluster log, then drives the real join path end to end:
 //!
 //! 1. Ask the local discovery service where the cluster is (`OP_CLUSTER_STATUS`): it answers with
 //!    this node's raft id/role and every discovered peer's role and raft id — including the honest
 //!    "not in a cluster" answer before the raft is serving.
-//! 2. Deterministically pick the joiner: the node with the lexicographically *larger* raft id asks
-//!    the cluster administration service to join (`clusterctl OP_JOIN`), which locates the leader
-//!    through discovery and asks the leader's raft service to admit this node (`OP_ADD_SERVER`).
-//!    The smaller-id node is the anchor and simply waits.
-//! 3. Verify convergence: this node's raft reports a two-member configuration (the leader commits
-//!    JOIN, promotes the joiner into a joint configuration once it catches up, and auto-finalizes).
+//! 2. DNS deterministically picks the joiner: the node with the lexicographically *larger* identity
+//!    applies to the smaller-id anchor. The anchor commits JOIN, promotes the caught-up joiner into
+//!    a joint configuration, and auto-finalizes it.
+//! 3. Verify convergence through a membership event committed by DNS after the stable two-member
+//!    configuration. Membership and the event necessarily occur in the same log.
 //!
 //! The single-joiner rule keeps the test deterministic on the two-guest
 //! deployment: both nodes start as leaders of their own single-node cluster
@@ -28,24 +25,11 @@ pub mod inner {
     use crate::{
         ipc,
         ipc::ConnectionRights,
-        service::{
-            bootstrap::{
-                ManifestEntry,
-                ManifestValue,
-            },
-            supervisor::{
-                self,
-                NameServiceHandle,
-                ServiceDomain,
-            },
+        service::supervisor::{
+            self,
+            NameServiceHandle,
         },
     };
-
-    const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
-    const NETWORK_KEY: u64 = charlotte_launch::manifest_key(b"network");
-    const STORAGE_KEY: u64 = charlotte_launch::manifest_key(b"storage");
-    const STORAGE_REQUIRED: u64 = 2;
 
     const NS_OP_LOOKUP: u32 = 2;
     const DISCO_NAME: u64 = u64::from_le_bytes(*b"disco\0\0\0");
@@ -53,40 +37,6 @@ pub mod inner {
     const DISCO_CLUSTER_STATUS_WAIT_READY: u64 = 1;
 
     static mut JOIN_NS: Option<NameServiceHandle> = None;
-
-    fn spawn_raft_node(
-        manifest: &[ManifestEntry<'_>],
-        ns_handle: &NameServiceHandle,
-    ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(
-            crate::service::store::service_elf(b"raft").expect("[el0_join] raft.elf"),
-        );
-        let conn = crate::ipc::connection_delegate(
-            ns_handle.domain.asid,
-            ns_handle.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("join raft conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("join raft thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
-    }
 
     fn kernel_ns_connection(ns: &NameServiceHandle) -> u64 {
         ipc::connection_delegate(
@@ -225,56 +175,30 @@ pub mod inner {
         let ns = unsafe { JOIN_NS.as_ref() }.expect("[join] test state missing");
         let kernel_ns = kernel_ns_connection(ns);
 
-        let manifest = [
-            ManifestEntry {
-                key: CLUSTER_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(b"test-cluster"),
-            },
-            ManifestEntry {
-                key: ELECTION_KEY,
-                flags: 0,
-                // This is a real cross-QEMU cluster, not the in-process Raft
-                // unit test. Match the DNS test's transport budget: 150 ms
-                // lets both voters repeatedly time out while vote RPCs are
-                // still queued behind boot traffic, producing split-vote
-                // livelock on a slow emulator.
-                value: ManifestValue::Unsigned(2_000),
-            },
-            ManifestEntry {
-                key: NETWORK_KEY,
-                flags: 0,
-                value: ManifestValue::Unsigned(1),
-            },
-            // Dynamic admission is restart-safe only with a durable join
-            // fence. The deferred boot suite has already brought up the
-            // object store before this verifier runs.
-            ManifestEntry {
-                key: STORAGE_KEY,
-                flags: 0,
-                value: ManifestValue::Unsigned(STORAGE_REQUIRED),
-            },
-        ];
-        let raft_domain = spawn_raft_node(&manifest, ns);
-        crate::logln!("[join] raft domain spawned (asid={})", raft_domain.asid);
+        let dns_domain = crate::service::launch::steady_state()
+            .cluster
+            .expect("[join] operational cluster services missing")
+            .dns;
+        crate::logln!("[join] observing DNS-owned cluster Raft (dns asid={})", dns_domain.asid);
 
-        // The raft derives its id from the node identity and registers
-        // `raft-{id}`; wait until it is serving (state != 0).
-        let raft_status: *const u32 = {
-            let base: *mut u8 = raft_domain.status_frame.into();
-            base as *const u32
+        let dns_status: *const u8 = {
+            let base: *mut u8 = dns_domain.status_frame.into();
+            base as *const u8
+        };
+        let status_word = |offset: usize| unsafe {
+            core::ptr::read_volatile(dns_status.add(offset) as *const u32)
         };
         let serving_deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe { core::ptr::read_volatile(raft_status.add(2)) } == 0 {
-            serving_deadline.assert_pending("EL0 join raft serving");
+        while status_word(charlotte_launch::dns_status::RAFT_STATE) == 0 {
+            serving_deadline.assert_pending("EL0 join DNS-owned Raft serving");
             // This is a verifier observing a shared status page, not service
             // synchronization. Yielding keeps the deadline live even on a
             // boot path where a timer PPI is delayed on an otherwise-idle LP.
             yield_lp();
         }
-        crate::logln!("[join] local raft serving.");
+        crate::logln!("[join] DNS-owned Raft serving.");
 
-        // The raft service handles the whole admission itself: it locates
+        // DNS handles the whole admission itself: it locates
         // the cluster through discovery (MAC-level, no local lookups), the
         // lexicographically larger single-node leader applies to the smaller
         // one with a MAC-addressed join request, and the anchor's consensus
@@ -314,47 +238,45 @@ pub mod inner {
         // node. No polling, no assumed sequence.
         let generation = wait_cluster_event(kernel_ns, &membership_event);
         if generation.is_none() {
-            let word = |offset: usize| unsafe { core::ptr::read_volatile(raft_status.add(offset)) };
             let frouter = crate::self_test::FROUTER_STATUS_FRAME
-                .load(core::sync::atomic::Ordering::Acquire)
-                as *const u32;
+                .load(core::sync::atomic::Ordering::Acquire) as *const u8;
             let (frouter_rx, frouter_forwarded, frouter_dropped, frouter_routes) =
                 if frouter.is_null() {
                     (0, 0, 0, 0)
                 } else {
                     unsafe {
                         (
-                            core::ptr::read_volatile(frouter.add(1)),
-                            core::ptr::read_volatile(frouter.add(2)),
-                            core::ptr::read_volatile(frouter.add(3)),
-                            core::ptr::read_volatile(frouter.add(5)),
+                            crate::self_test::status_u32(
+                                frouter,
+                                charlotte_launch::frouter_status::RX_TOTAL,
+                            ),
+                            crate::self_test::status_u32(
+                                frouter,
+                                charlotte_launch::frouter_status::FORWARDED,
+                            ),
+                            crate::self_test::status_u32(
+                                frouter,
+                                charlotte_launch::frouter_status::DROPPED,
+                            ),
+                            crate::self_test::status_u32(
+                                frouter,
+                                charlotte_launch::frouter_status::ROUTES,
+                            ),
                         )
                     }
                 };
             crate::logln!(
-                "[join] timeout diagnostics: state={} members={} flags={:#x} attempts={} \
-                 requests={} replies={} millis={} routes={} pending={} queued={} term={} \
-                 tags={}/{}/{}/{}/{}/{} log={}/{}/{} frouter={}/{}/{}/{}",
-                word(7),
-                word(8),
-                word(9),
-                word(10),
-                word(11),
-                word(12),
-                word(13),
-                word(14),
-                word(15),
-                word(16),
-                word(5),
-                word(17),
-                word(18),
-                word(19),
-                word(20),
-                word(21),
-                word(22),
-                word(23),
-                word(24),
-                word(25),
+                "[join] timeout diagnostics: stage={} state={} members={} term={} catalog={} \
+                 transport={} ipc={} calls={} queries={} frouter={}/{}/{}/{}",
+                status_word(charlotte_launch::dns_status::STAGE),
+                status_word(charlotte_launch::dns_status::RAFT_STATE),
+                status_word(charlotte_launch::dns_status::PEER_COUNT),
+                status_word(charlotte_launch::dns_status::CURRENT_TERM),
+                status_word(charlotte_launch::dns_status::CATALOG_ENTRIES),
+                status_word(charlotte_launch::dns_status::TRANSPORT_COMPLETIONS),
+                status_word(charlotte_launch::dns_status::IPC_REQUESTS_SERVED),
+                status_word(charlotte_launch::dns_status::REMOTE_CALLS_SERVED),
+                status_word(charlotte_launch::dns_status::REMOTE_QUERIES_SERVED),
                 frouter_rx,
                 frouter_forwarded,
                 frouter_dropped,
@@ -370,7 +292,7 @@ pub mod inner {
             generation.unwrap()
         );
 
-        crate::logln!("[join] SUCCESS: node admitted to the cluster via discovery-bridged join.");
+        crate::logln!("[join] SUCCESS: DNS admitted the node through its single cluster log.");
         let _ = ipc::close_cap(crate::memory::KERNEL_ASID, kernel_ns);
         crate::self_test::results::pass(crate::self_test::results::TestId::Join);
     }

@@ -62,12 +62,11 @@ extern "C" fn verify_el0_net() {
 
     #[cfg(any(feature = "relmsg_net_test", feature = "dns_net_test"))]
     let relmsg_config = {
-        let relmsg = supervisor::spawn_with_name_service(
-            crate::service::store::service_elf(b"relmsg").expect("[el0_net] relmsg.elf"),
-            ns,
-            ConnectionRights::CALL,
-        );
-        logln!("[relmsg] service spawned (asid={})", relmsg.asid);
+        let relmsg = crate::service::launch::steady_state()
+            .cluster
+            .expect("[net] operational cluster services missing")
+            .relmsg;
+        logln!("[relmsg] observing operational service (asid={})", relmsg.asid);
         relmsg.status_frame
     };
     #[cfg(all(feature = "dns_net_test", not(feature = "relmsg_net_test")))]
@@ -83,14 +82,22 @@ extern "C" fn verify_el0_net() {
     crate::self_test::FROUTER_STATUS_FRAME
         .store(frouter_base as usize, core::sync::atomic::Ordering::Release);
     {
-        let frouter_status: *const u32 = {
+        let frouter_status: *const u8 = {
             let base: *mut u8 = frouter_config.into();
-            base.cast_const().cast()
+            base.cast_const()
         };
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         let mut last_stage = u32::MAX;
-        while unsafe { core::ptr::read_volatile(frouter_status) } < 4 {
-            let stage = unsafe { core::ptr::read_volatile(frouter_status) };
+        while unsafe {
+            crate::self_test::status_u32(frouter_status, charlotte_launch::frouter_status::STAGE)
+        } < 4
+        {
+            let stage = unsafe {
+                crate::self_test::status_u32(
+                    frouter_status,
+                    charlotte_launch::frouter_status::STAGE,
+                )
+            };
             if stage != last_stage {
                 logln!("[frouter] waiting for serving stage (current={stage})");
                 last_stage = stage;
@@ -111,13 +118,13 @@ extern "C" fn verify_el0_net() {
     logln!("[net] client spawned (asid={})", client_asid);
     let _client = client;
 
-    let client_cfg: *const u32 = {
+    let client_cfg: *const u8 = {
         let base: *mut u8 = client_config.into();
-        base as *const u32
+        base
     };
-    let driver_cfg: *const u32 = {
+    let driver_cfg: *const u8 = {
         let base: *mut u8 = driver_config.into();
-        base as *const u32
+        base
     };
 
     // --- wait for client sentinel ---
@@ -127,68 +134,159 @@ extern "C" fn verify_el0_net() {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
         #[cfg(feature = "relmsg_net_test")]
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-        while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
+        while unsafe {
+            crate::self_test::status_u32(client_cfg, charlotte_launch::net_client_status::SENTINEL)
+        } != CLIENT_SENTINEL
+        {
             spins += 1;
             if spins.is_multiple_of(100_000) {
-                let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
+                let ds = unsafe {
+                    crate::self_test::status_u32(driver_cfg, charlotte_launch::net_status::STAGE)
+                };
                 #[cfg(not(feature = "relmsg_net_test"))]
-                let cs = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
+                let cs = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::net_client_status::STAGE,
+                    )
+                };
                 #[cfg(feature = "relmsg_net_test")]
-                let cs = unsafe { core::ptr::read_volatile(client_cfg) };
+                let cs = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::relmsg_client_status::STAGE,
+                    )
+                };
                 #[cfg(feature = "relmsg_net_test")]
                 {
                     let relmsg_base: *mut u8 = relmsg_config.into();
-                    let rs = unsafe { core::ptr::read_volatile(relmsg_base as *const u32) };
-                    let opcode =
-                        unsafe { core::ptr::read_volatile(relmsg_base.add(4) as *const u32) };
-                    let handled =
-                        unsafe { core::ptr::read_volatile(relmsg_base.add(8) as *const u32) };
-                    let relmsg_send =
-                        unsafe { core::ptr::read_volatile(relmsg_base.add(12) as *const u32) };
-                    let net_result =
-                        unsafe { core::ptr::read_volatile(relmsg_base.add(16) as *const i64) };
-                    let receiver_base: *mut u8 = frouter_config.into();
-                    let receiver_stage =
-                        unsafe { core::ptr::read_volatile(receiver_base as *const u32) };
-                    let forwarded = unsafe {
-                        core::ptr::read_volatile((receiver_base as *const u8).add(8) as *const u32)
+                    let rs = unsafe {
+                        crate::self_test::status_u32(
+                            relmsg_base,
+                            charlotte_launch::relmsg_status::STAGE,
+                        )
                     };
-                    let rx_seen =
-                        unsafe { core::ptr::read_volatile(driver_cfg.add(4) as *const u16) };
-                    let tx_seen =
-                        unsafe { core::ptr::read_volatile(driver_cfg.add(4).add(2) as *const u16) };
-                    let device_status =
-                        unsafe { core::ptr::read_volatile(driver_cfg.add(5) as *const u8) };
+                    let opcode = unsafe {
+                        crate::self_test::status_u32(
+                            relmsg_base,
+                            charlotte_launch::relmsg_status::LAST_OPCODE,
+                        )
+                    };
+                    let handled = unsafe {
+                        crate::self_test::status_u32(
+                            relmsg_base,
+                            charlotte_launch::relmsg_status::HANDLED,
+                        )
+                    };
+                    let relmsg_send = unsafe {
+                        crate::self_test::status_u32(
+                            relmsg_base,
+                            charlotte_launch::relmsg_status::RECEIVER_STAGE,
+                        )
+                    };
+                    let net_result = unsafe {
+                        crate::self_test::status_i64(
+                            relmsg_base,
+                            charlotte_launch::relmsg_status::LAST_SEND_RESULT,
+                        )
+                    };
+                    let receiver_base: *mut u8 = frouter_config.into();
+                    let receiver_stage = unsafe {
+                        crate::self_test::status_u32(
+                            receiver_base,
+                            charlotte_launch::frouter_status::STAGE,
+                        )
+                    };
+                    let forwarded = unsafe {
+                        crate::self_test::status_u32(
+                            receiver_base,
+                            charlotte_launch::frouter_status::FORWARDED,
+                        )
+                    };
+                    let rx_seen = unsafe {
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_USED_SEEN,
+                        )
+                    };
+                    let tx_seen = unsafe {
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_USED_SEEN,
+                        )
+                    };
+                    let device_status = unsafe {
+                        core::ptr::read_volatile(
+                            driver_cfg.add(charlotte_launch::net_status::DEVICE_STATUS),
+                        )
+                    };
                     let tx_avail = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(22) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_AVAILABLE,
+                        )
                     };
                     let rx_unrecycled = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(44) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_UNRECYCLED,
+                        )
                     };
                     let rx_qsz = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(46) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_QUEUE_SIZE,
+                        )
                     };
-                    let rx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(6)) };
-                    let tx_pfn = unsafe { core::ptr::read_volatile(driver_cfg.add(7)) };
+                    let rx_pfn = unsafe {
+                        crate::self_test::status_u32(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_RING_PFN,
+                        )
+                    };
+                    let tx_pfn = unsafe {
+                        crate::self_test::status_u32(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_RING_PFN,
+                        )
+                    };
                     let dma_faults = crate::device::fault_count();
                     let pending_faults = crate::device::pending_fault_events();
                     let driver_send = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(36) as *const u32)
+                        crate::self_test::status_u32(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_PROGRESS,
+                        )
                     };
                     let rx_notify = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(32) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_NOTIFY,
+                        )
                     };
                     let tx_notify = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(34) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_NOTIFY,
+                        )
                     };
                     let rx_enabled = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(40) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_QUEUE_ENABLED,
+                        )
                     };
                     let tx_enabled = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(42) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_QUEUE_ENABLED,
+                        )
                     };
                     let client_error = unsafe {
-                        core::ptr::read_volatile((client_cfg as *const u8).add(8) as *const i64)
+                        crate::self_test::status_i64(
+                            client_cfg,
+                            charlotte_launch::relmsg_client_status::SEND_RESULT,
+                        )
                     };
                     logln!(
                         "[net] waiting: driver {} rx/tx {}/{} send={} relmsg {} opcode {} handled \
@@ -225,19 +323,34 @@ extern "C" fn verify_el0_net() {
                 #[cfg(not(feature = "relmsg_net_test"))]
                 {
                     let rx_completed = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(16) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_USED_SEEN,
+                        )
                     };
                     let tx_completed = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(18) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_USED_SEEN,
+                        )
                     };
                     let driver_error = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(36) as *const u32)
+                        crate::self_test::status_u32(
+                            driver_cfg,
+                            charlotte_launch::net_status::TX_PROGRESS,
+                        )
                     };
                     let rx_unrecycled = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(44) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_UNRECYCLED,
+                        )
                     };
                     let rx_qsz = unsafe {
-                        core::ptr::read_volatile((driver_cfg as *const u8).add(46) as *const u16)
+                        crate::self_test::status_u16(
+                            driver_cfg,
+                            charlotte_launch::net_status::RX_QUEUE_SIZE,
+                        )
                     };
                     logln!(
                         "[net] waiting: driver stage={} error={:#x} client stage={} rx/tx={}/{} \
@@ -258,13 +371,16 @@ extern "C" fn verify_el0_net() {
     }
 
     let driver_bytes: *const u8 = driver_config.into();
-    let link = unsafe { core::ptr::read_volatile(driver_bytes.add(12) as *const u16) } as u64;
-    let m0 = unsafe { core::ptr::read_volatile(driver_bytes.add(4)) };
-    let m1 = unsafe { core::ptr::read_volatile(driver_bytes.add(5)) };
-    let m2 = unsafe { core::ptr::read_volatile(driver_bytes.add(6)) };
-    let m3 = unsafe { core::ptr::read_volatile(driver_bytes.add(7)) };
-    let m4 = unsafe { core::ptr::read_volatile(driver_bytes.add(8)) };
-    let m5 = unsafe { core::ptr::read_volatile(driver_bytes.add(9)) };
+    let link =
+        unsafe { crate::self_test::status_u16(driver_bytes, charlotte_launch::net_status::LINK) }
+            as u64;
+    let mut mac = [0; 6];
+    for (index, octet) in mac.iter_mut().enumerate() {
+        *octet = unsafe {
+            core::ptr::read_volatile(driver_bytes.add(charlotte_launch::net_status::MAC + index))
+        };
+    }
+    let [m0, m1, m2, m3, m4, m5] = mac;
     logln!(
         "[net] client status link={} MAC={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         link,
@@ -282,7 +398,7 @@ extern "C" fn verify_el0_net() {
         let deadline = crate::self_test::results::Deadline::after_millis(2_000);
         loop {
             let completed = unsafe {
-                core::ptr::read_volatile((driver_cfg as *const u8).add(18) as *const u16)
+                crate::self_test::status_u16(driver_cfg, charlotte_launch::net_status::TX_USED_SEEN)
             };
             if completed != 0 {
                 break completed;
@@ -292,7 +408,8 @@ extern "C" fn verify_el0_net() {
         }
     };
 
-    let ds = unsafe { core::ptr::read_volatile(driver_cfg) };
+    let ds =
+        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::net_status::STAGE) };
     assert!(ds >= 6, "[net] driver must reach serving stage (got {})", ds);
 
     #[cfg(feature = "relmsg_net_test")]

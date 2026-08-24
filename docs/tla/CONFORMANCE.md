@@ -311,10 +311,11 @@ outside this abstraction. Pre-membership join admission is checked separately.
 | `UnsafeReplicateToJoiner` | pre-fix arbitrary non-voter leader acceptance | Negative model only; violates `JoiningAcceptsOnlySelectedAnchor`. |
 | `UnsafeRestartForgetsAdmission` | pre-fix reconstruction with `joining = false` | Negative model only; violates `RestartPreservesAdmission` and captures the singleton-election regression. |
 
-Dynamic admission is enabled only when the standalone Raft service opened its
-disk-backed log and persistent-state stores. Memory mode remains useful for
-local tests, but it refuses auto-join because a process restart cannot preserve
-the admission fence.
+Dynamic admission runs in the DNS-owned Raft node, whose disk-backed log and
+persistent-state store also hold the catalog and cluster events. The generic
+network-disabled Raft process remains only as a storage-recovery fixture.
+Volatile nodes must still refuse auto-join because a process restart cannot
+preserve the admission fence.
 
 ## Raft snapshot installation and recovery
 

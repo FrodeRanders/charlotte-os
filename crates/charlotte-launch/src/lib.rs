@@ -99,6 +99,248 @@ pub mod agent_status {
     pub const STAGE: usize = 0;
     /// The replicated deployment generation this agent is serving.
     pub const SERVED_GENERATION: usize = 8;
+    /// Stable 64-bit key of the node hosting this agent.
+    pub const NODE_KEY: usize = 16;
+}
+
+/// Frame-router diagnostic status-page byte offsets.
+pub mod frouter_status {
+    pub const STAGE: usize = 0;
+    pub const RX_TOTAL: usize = 4;
+    pub const FORWARDED: usize = 8;
+    pub const DROPPED: usize = 12;
+    pub const UNKNOWN: usize = 16;
+    pub const ROUTES: usize = 20;
+}
+
+/// Discovery-service diagnostic status-page byte offsets.
+pub mod disco_status {
+    pub const STAGE: usize = 0;
+    pub const LAST_PROBE_PEERS: usize = 4;
+    pub const PEER_COUNT: usize = 8;
+    pub const RX_RAW: usize = 12;
+    pub const SENT_OK: usize = 16;
+    pub const SENT_FAIL: usize = 20;
+    pub const DECODED: usize = 24;
+    pub const CALLED: usize = 28;
+    pub const HEARTBEAT: usize = 36;
+    pub const SEND_PROGRESS: usize = 40;
+    pub const CLUSTER_ROLE: usize = 44;
+}
+
+/// Reliable-message diagnostic status-page byte offsets.
+pub mod relmsg_status {
+    pub const STAGE: usize = 0;
+    pub const LAST_OPCODE: usize = 4;
+    pub const HANDLED: usize = 8;
+    pub const RECEIVER_STAGE: usize = 12;
+    pub const LAST_SEND_RESULT: usize = 16;
+}
+
+/// Virtio-net diagnostic status-page byte offsets.
+pub mod net_status {
+    pub const STAGE: usize = 0;
+    pub const MAC: usize = 4;
+    pub const LINK: usize = 12;
+    pub const RX_USED_SEEN: usize = 16;
+    pub const TX_USED_SEEN: usize = 18;
+    pub const DEVICE_STATUS: usize = 20;
+    pub const TX_AVAILABLE: usize = 22;
+    pub const RX_RING_PFN: usize = 24;
+    pub const TX_RING_PFN: usize = 28;
+    pub const RX_NOTIFY: usize = 32;
+    pub const TX_NOTIFY: usize = 34;
+    pub const TX_PROGRESS: usize = 36;
+    pub const RX_QUEUE_ENABLED: usize = 40;
+    pub const TX_QUEUE_ENABLED: usize = 42;
+    pub const RX_UNRECYCLED: usize = 44;
+    pub const RX_QUEUE_SIZE: usize = 46;
+    pub const INTERRUPT_CAUSE: usize = 48;
+    pub const RX_ACCEPTED: usize = 52;
+    pub const RX_DELIVERED: usize = 54;
+    pub const RX_DELIVERY_ERROR: usize = 56;
+    pub const LAST_RX_DESCRIPTOR_STATUS: usize = 60;
+    pub const LAST_RX_DESCRIPTOR_ERRORS: usize = 61;
+    pub const LAST_RX_DESCRIPTOR_LENGTH: usize = 62;
+}
+
+/// Generic Raft fixture status-page byte offsets.
+pub mod raft_status {
+    pub const STAGE: usize = 0;
+    pub const REGISTRATION_GENERATION: usize = 4;
+    pub const STATE: usize = 8;
+    pub const IPC_SERVED: usize = 12;
+    pub const TRANSPORT_COMPLETIONS: usize = 16;
+    pub const CURRENT_TERM: usize = 20;
+    pub const DURABLE: usize = 24;
+    pub const CLUSTER_MEMBERS: usize = 32;
+    pub const JOIN_FLAGS: usize = 36;
+    pub const JOIN_ATTEMPTS: usize = 40;
+    pub const JOIN_REQUESTS: usize = 44;
+    pub const JOIN_REPLIES: usize = 48;
+    pub const MILLIS: usize = 52;
+    pub const ROUTES: usize = 56;
+    pub const PENDING_SENDS: usize = 60;
+    pub const QUEUED_SENDS: usize = 64;
+    pub const TAG_COUNTS: usize = 68;
+    pub const TAG_COUNT_STRIDE: usize = core::mem::size_of::<u32>();
+    pub const COMMIT_INDEX: usize = 92;
+    pub const LAST_LOG_INDEX: usize = 96;
+    pub const LAST_LOG_TERM: usize = 100;
+    pub const JOIN_ADMISSION_DURABLE: usize = 104;
+}
+
+/// NVMe-driver diagnostic status-page byte offsets.
+pub mod nvme_status {
+    pub const STAGE: usize = 0;
+    pub const DETAIL: usize = 4;
+    pub const CREATE_CQ_RESULT: usize = 12;
+    pub const CREATE_SQ_RESULT: usize = 16;
+    pub const CAP_LOW: usize = 20;
+    pub const CAP_HIGH: usize = 24;
+    pub const DOORBELL_STRIDE: usize = 28;
+    pub const NAMESPACE_SIZE: usize = 32;
+    pub const LOGICAL_BLOCK_SIZE: usize = 40;
+    pub const ADMIN_CQE_DW3: usize = 44;
+    pub const TEST_FEATURE_RESULT: usize = 48;
+    pub const READ_CQE_DW0: usize = 52;
+    pub const READ_CQE_DW3: usize = 56;
+    pub const READ_CQE_DW5_LOW: usize = 64;
+    pub const READ_CQE_DW5_HIGH: usize = 68;
+    pub const NUM_QUEUES_RESULT: usize = 72;
+    pub const OPTIONAL_ADMIN_SUPPORT: usize = 76;
+    pub const IRQ_COUNT: usize = 80;
+    pub const IO_CQE_DW3: usize = 84;
+    pub const IO_STATUS: usize = 88;
+    pub const IO_COMMAND_ID: usize = 92;
+    pub const OUTSTANDING: usize = 96;
+    pub const LAST_OPCODE: usize = 100;
+    pub const LAST_SLOT: usize = 104;
+    pub const LAST_BLOCK_COUNT: usize = 108;
+    pub const LAST_INFO_OPCODE: usize = 112;
+}
+
+/// Object-store diagnostic status-page byte offsets.
+pub mod objstore_status {
+    pub const STAGE: usize = 0;
+    pub const SENTINEL: usize = 4;
+    pub const ERROR: usize = 8;
+    pub const BLOCK_SIZE: usize = 16;
+    pub const BLOCK_OP: usize = 16;
+    pub const TOTAL_BLOCKS: usize = 20;
+    pub const REPLY_STATUS: usize = 24;
+    pub const DETAIL: usize = 28;
+    pub const BLOCK_RESULT: usize = 32;
+}
+
+pub mod uart_status {
+    pub const STAGE: usize = 0;
+    pub const READ_ARMED: usize = 4;
+    pub const IRQ_COUNT: usize = 8;
+    pub const SERVED: usize = 12;
+}
+
+pub mod uart_client_status {
+    pub const SENTINEL: usize = 0;
+    pub const WRITE_STATUS: usize = 4;
+    pub const IRQ_COUNT: usize = 8;
+    pub const STAGE: usize = 12;
+    pub const READ_RESULT: usize = 40;
+}
+
+pub mod tcpip_status {
+    pub const STAGE: usize = 0;
+    pub const RX_TOTAL: usize = 4;
+    pub const TX_OK: usize = 8;
+    pub const SOCKETS: usize = 12;
+}
+
+pub mod tcpclient_status {
+    pub const STAGE: usize = 0;
+    pub const LOCAL_IP: usize = 4;
+    pub const ERROR: usize = 8;
+}
+
+pub mod httpd_status {
+    pub const STAGE: usize = 0;
+    pub const REQUESTS: usize = 4;
+    pub const ERROR: usize = 8;
+}
+
+pub mod clusterctl_status {
+    pub const STAGE: usize = 0;
+}
+
+pub mod ns_status {
+    pub const STAGE: usize = 0;
+    pub const HANDLED: usize = 4;
+    pub const LAST_OPCODE: usize = 8;
+    pub const WAITERS: usize = 12;
+}
+
+pub mod echo_status {
+    pub const STAGE: usize = 0;
+    pub const GENERATION: usize = 4;
+    pub const SERVED: usize = 8;
+    pub const NAMED_GENERATION: usize = 12;
+}
+
+pub mod client_status {
+    pub const SENTINEL: usize = 0;
+    pub const ECHOED: usize = 4;
+    pub const GENERATION: usize = 8;
+    pub const STAGE: usize = 12;
+}
+
+pub mod net_client_status {
+    pub const SENTINEL: usize = 0;
+    pub const TX_RESULT: usize = 4;
+    pub const STAGE: usize = 12;
+}
+
+pub mod relmsg_client_status {
+    pub const STAGE: usize = 0;
+    pub const PEER_ADDRESS: usize = 4;
+    pub const SEND_RESULT: usize = 8;
+}
+
+pub mod nvme_client_status {
+    pub const STAGE: usize = 0;
+    pub const BLOCK_SIZE: usize = 4;
+    pub const TOTAL_BLOCKS: usize = 8;
+    pub const MISMATCH_INDEX: usize = 12;
+}
+
+pub mod objstore_client_status {
+    pub const STAGE: usize = 0;
+    pub const ROUND_TRIP_BYTES: usize = 4;
+    pub const ELF_SIZE: usize = 8;
+}
+
+pub mod service_manager_status {
+    pub const STAGE: usize = 0;
+    pub const LAST_GENERATION: usize = 4;
+    pub const ERROR: usize = 8;
+    pub const STATE_CAPABILITY: usize = 16;
+    pub const ENDPOINT_CAPABILITY: usize = 24;
+}
+
+pub mod block_driver_status {
+    pub const STAGE: usize = 0;
+    pub const DETAIL: usize = 4;
+    pub const SENTINEL: usize = 20;
+    pub const TOTAL_BLOCKS: usize = 32;
+    pub const BLOCK_SIZE: usize = 40;
+    pub const IRQ_COUNT: usize = 80;
+}
+
+pub mod greet_status {
+    pub const STAGE: usize = 0;
+    pub const GENERATION: usize = 4;
+}
+
+pub mod smoke_status {
+    pub const MARKER: usize = 0;
 }
 
 pub const LAUNCH_HEADER_OFFSET: usize = 2112;

@@ -1,0 +1,7 @@
+# Checked-in Limine binary release provenance. This file is consumed by
+# scripts/verify-limine.sh; keep the values shell-compatible.
+LIMINE_VERSION=12.6.0
+LIMINE_ARCHIVE=limine-binary.tar.xz
+LIMINE_ARCHIVE_SHA256=44fb480294463c15823bba5378c955b46d15d08fc7b5a74de49fef2953d1878d
+LIMINE_RELEASE_URL=https://github.com/Limine-Bootloader/Limine/releases/download/v12.6.0/limine-binary.tar.xz
+LIMINE_SIGNING_KEY=05D29860D0A0668AAEFB9D691F3C021BECA23821

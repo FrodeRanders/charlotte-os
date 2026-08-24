@@ -63,11 +63,13 @@ addresses), the first instruction after enabling E2H faults with an
 **address-size fault**. The VBAR recovery path also lands in unmapped kernel
 region addresses, producing a fault loop before the kernel is ever entered.
 
-This is a **latent** bug: no open Limine issue covers it, and the code is
-unchanged in current Limine trunk. It only manifests when (a) the firmware hands
-off the bootloader at EL2, and (b) the platform loads the bootloader/kernel at
-addresses beyond the firmware's EL1-bank VA range. `virt` (firmware at EL1) never
-takes the path.
+This was a **latent bug in the Limine 12.2.0 path used during the original
+investigation**. Limine 12.6.0 subsequently reordered and hardened the
+AArch64 page-table transition, including its EL2/VHE continuation, and added
+instruction-stream synchronisation after executable loading. That is a
+material upstream change in the implicated code, but this repository has not
+validated the EL2 path on KVM or real hardware. `virt` and the current
+`sbsa-ref` firmware enter Limine at EL1 and therefore do not exercise it.
 
 ### The QEMU TCG limitation
 
@@ -377,5 +379,7 @@ Where the bring-up landed and what happened to the earlier plan:
   Front Page -> Boot Manager -> UEFI Shell -> `fs0:` -> `\EFI\BOOT\BOOTAA64.EFI`.
 - `sbsa-ref` uses `-pflash` for the two flash images; `-cpu neoverse-n1`
   (or `max`); RAM at 1 TiB (`0x10000000000`).
-- Limine source: `git clone --depth 1 https://github.com/limine-bootloader/limine`
-  then `./bootstrap`.
+- Limine: the checked-in EFI executables are pinned to 12.6.0. Their official
+  release digest and per-file checksums are recorded under `limine-binary/`;
+  `scripts/verify-limine.sh --release` verifies them against a fresh upstream
+  download. See `docs/guides/limine.md` for the update and boot-security policy.

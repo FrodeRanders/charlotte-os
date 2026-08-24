@@ -172,13 +172,13 @@ pub fn test_el0_uart() {
 extern "C" fn verify_el0_uart() {
     let state = unsafe { TEST_STATE.as_ref() }.expect("[uart] test state missing");
 
-    let client_cfg: *const u32 = {
+    let client_cfg: *const u8 = {
         let base: *mut u8 = state.client_config.into();
-        base as *const u32
+        base
     };
-    let driver_cfg: *const u32 = {
+    let driver_cfg: *const u8 = {
         let base: *mut u8 = state.driver_config.into();
-        base as *const u32
+        base
     };
 
     // --- Phase A: the console client completes lookup → writes → issues a
@@ -186,12 +186,24 @@ extern "C" fn verify_el0_uart() {
     {
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        while unsafe { core::ptr::read_volatile(client_cfg.add(3)) } < 5 {
+        while unsafe {
+            crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::STAGE)
+        } < 5
+        {
             spins += 1;
             if spins.is_multiple_of(2_000_000) {
-                let driver_stage = unsafe { core::ptr::read_volatile(driver_cfg) };
-                let served = unsafe { core::ptr::read_volatile(driver_cfg.add(3)) };
-                let client_stage = unsafe { core::ptr::read_volatile(client_cfg.add(3)) };
+                let driver_stage = unsafe {
+                    crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::STAGE)
+                };
+                let served = unsafe {
+                    crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::SERVED)
+                };
+                let client_stage = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::uart_client_status::STAGE,
+                    )
+                };
                 logln!(
                     "[uart] waiting: driver stage {} served {}, client stage {}",
                     driver_stage,
@@ -203,9 +215,12 @@ extern "C" fn verify_el0_uart() {
             crate::cpu::scheduler::yield_lp();
         }
     }
-    let write_status = unsafe { core::ptr::read_volatile(client_cfg.add(1)) };
+    let write_status = unsafe {
+        crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::WRITE_STATUS)
+    };
     assert_eq!(write_status, 0, "[uart] console write must reply 0");
-    let driver_served = unsafe { core::ptr::read_volatile(driver_cfg.add(3)) };
+    let driver_served =
+        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::SERVED) };
     assert!(driver_served >= 1, "[uart] driver must have served console writes");
     logln!(
         "[uart] console client wrote through the EL0 driver ({} bytes served via PL011 MMIO)",
@@ -222,7 +237,10 @@ extern "C" fn verify_el0_uart() {
     // deferred CQ wake, EL0 acknowledgement, and retained IPC reply. ---
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
+        while unsafe {
+            crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::READ_ARMED)
+        } != 1
+        {
             deadline.assert_pending("UART driver deferred-read arm");
             crate::cpu::scheduler::yield_lp();
         }
@@ -233,17 +251,24 @@ extern "C" fn verify_el0_uart() {
     );
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
+        while unsafe {
+            crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::SENTINEL)
+        } != CLIENT_SENTINEL
+        {
             deadline.assert_pending("UART interrupt-driven deferred read");
             crate::cpu::scheduler::yield_lp();
         }
     }
 
-    let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(2)) };
+    let irq_count = unsafe {
+        crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::IRQ_COUNT)
+    };
     assert!(irq_count >= 1, "[uart] driver must have acknowledged a device interrupt");
     // The deferred read result encodes the driver's interrupt count in bits
     // 8.., so a nonzero high half proves the reply was interrupt-driven.
-    let read_result = unsafe { core::ptr::read_volatile(client_cfg.add(10)) };
+    let read_result = unsafe {
+        crate::self_test::status_u32(client_cfg, charlotte_launch::uart_client_status::READ_RESULT)
+    };
     assert!(
         read_result >> 8 >= 1,
         "[uart] deferred read must have been completed by a device interrupt (got {:#x})",
@@ -282,7 +307,10 @@ extern "C" fn verify_el0_uart() {
         .expect("[uart] verifier deferred-read call failed");
     {
         let deadline = crate::self_test::results::Deadline::after_millis(10_000);
-        while unsafe { core::ptr::read_volatile(driver_cfg.add(1)) } != 1 {
+        while unsafe {
+            crate::self_test::status_u32(driver_cfg, charlotte_launch::uart_status::READ_ARMED)
+        } != 1
+        {
             deadline.assert_pending("UART verifier deferred-read arm");
             crate::cpu::scheduler::yield_lp();
         }

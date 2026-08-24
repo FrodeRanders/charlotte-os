@@ -39,22 +39,23 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::echo_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1); // stage: started
+    config::write::<u32>(status::STAGE, 1); // stage: started
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2); // stage: bootstrap connection received
+    config::write::<u32>(status::STAGE, 2); // stage: bootstrap connection received
 
     let endpoint = ipc_endpoint_create(echo::INTERFACE, echo::VERSION, 8);
     if endpoint == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 3); // stage: endpoint created
+    config::write::<u32>(status::STAGE, 3); // stage: endpoint created
 
     // Register under the short (scalar) name.
     let register = ipc_scalar_call_connection(
@@ -67,12 +68,12 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 4); // stage: short register call sent
+    config::write::<u32>(status::STAGE, 4); // stage: short register call sent
     let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
     if generation < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, generation as u32);
+    config::write::<u32>(status::GENERATION, generation as u32);
 
     // Register the same endpoint under the long (memory-carried) name.
     let name_cap = match unsafe { stage_name(echo::LONG_NAME) } {
@@ -90,14 +91,14 @@ fn main(ctx: Context) -> ! {
     if register_named == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 5); // stage: long register call sent
+    config::write::<u32>(status::STAGE, 5); // stage: long register call sent
     let (named_generation, _) = unsafe { wait_reply(register_named, REPLY_SPINS) };
     memory_close(name_cap);
 
     if named_generation < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(12, named_generation as u32);
+    config::write::<u32>(status::NAMED_GENERATION, named_generation as u32);
 
     // Unified shard wait (§7): bind the endpoint's readiness to the default
     // completion queue, then block on one CQ_WAIT and drain every ready
@@ -105,7 +106,7 @@ fn main(ctx: Context) -> ! {
     if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 6); // stage: registered and event-driven, serving
+    config::write::<u32>(status::STAGE, 6); // stage: registered and event-driven, serving
 
     let mut served: u32 = 0;
     let handoff_state = ctx.handoff_state_cap();
@@ -117,7 +118,7 @@ fn main(ctx: Context) -> ! {
         served = unsafe { core::ptr::read_volatile(state_vaddr as *const u32) };
         memory_unmap(handoff_state);
         memory_close(handoff_state);
-        config::write::<u32>(8, served);
+        config::write::<u32>(status::SERVED, served);
     }
 
     loop {
@@ -142,7 +143,7 @@ fn main(ctx: Context) -> ! {
             match message.opcode {
                 echo::OP_ECHO => {
                     served += 1;
-                    config::write::<u32>(8, served);
+                    config::write::<u32>(status::SERVED, served);
                     if message.reply != 0 {
                         ipc_reply(message.reply, message.arg0 as i64);
                     }

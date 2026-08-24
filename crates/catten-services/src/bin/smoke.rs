@@ -16,9 +16,10 @@ use catten_syscall::{
     el0_log,
     thread_exit,
 };
+use charlotte_launch::smoke_status as status;
 
 fn main(_ctx: Context) -> ! {
-    config::write::<u32>(0, 0xdead_beef);
+    config::write::<u32>(status::MARKER, 0xdead_beef);
     el0_log(0xbeef, 0x1234);
     unsafe { thread_exit() };
 }

@@ -44,6 +44,7 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::block_driver_status as status;
 
 const PAGE_SIZE: usize = 4096;
 const QUEUE_SIZE: u16 = 8;
@@ -164,7 +165,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     MMIO_BASE.store(bar4 as u64, Ordering::Release);
-    config::write::<u32>(4, 10);
+    config::write::<u32>(status::DETAIL, 10);
 
     // --- Device init (modern transport) ---
     let common = bar4 + virtio::MODERN_COMMON;
@@ -176,7 +177,7 @@ fn main(ctx: Context) -> ! {
     }
     let required_features = virtio::FEATURE_VERSION_1 | virtio::FEATURE_ACCESS_PLATFORM;
     if unsafe { r32(common + virtio::M_DEVICE_FEATURE) } & required_features != required_features {
-        config::write::<u32>(4, 0xe0);
+        config::write::<u32>(status::DETAIL, 0xe0);
         unsafe { thread_exit() };
     }
     unsafe {
@@ -189,10 +190,10 @@ fn main(ctx: Context) -> ! {
         );
     }
     if unsafe { r8(common + virtio::M_DEVICE_STATUS) & virtio::STATUS_FEATURES_OK == 0 } {
-        config::write::<u32>(4, 0xe1);
+        config::write::<u32>(status::DETAIL, 0xe1);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, 11);
+    config::write::<u32>(status::DETAIL, 11);
 
     // --- Capacity from device config ---
     let device = bar4 + virtio::MODERN_DEVICE;
@@ -200,10 +201,10 @@ fn main(ctx: Context) -> ! {
     let block_size: u32 = 512;
     let total_blocks = capacity.min(u32::MAX as u64) as u32;
     if capacity == 0 || total_blocks == 0 {
-        config::write::<u32>(4, 0xe3);
+        config::write::<u32>(status::DETAIL, 0xe3);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, 12);
+    config::write::<u32>(status::DETAIL, 12);
 
     // --- Single virtqueue + request/status scratch buffers ---
     let Some(ring) = alloc_dma(vring_pages(QUEUE_SIZE)) else {
@@ -217,7 +218,7 @@ fn main(ctx: Context) -> ! {
         w16(common + virtio::M_QUEUE_SELECT, 0);
         let maximum_queue_size = r16(common + virtio::M_QUEUE_SIZE);
         if maximum_queue_size < QUEUE_SIZE {
-            config::write::<u32>(4, 0xe4);
+            config::write::<u32>(status::DETAIL, 0xe4);
             thread_exit();
         }
         w16(common + virtio::M_QUEUE_VECTOR, 0);
@@ -237,7 +238,7 @@ fn main(ctx: Context) -> ! {
     let notify_offset = unsafe { r16(common + virtio::M_QUEUE_NOTIFY_OFF) };
     let notify =
         bar4 + virtio::MODERN_NOTIFY + notify_offset as usize * virtio::MODERN_NOTIFY_MULTIPLIER;
-    config::write::<u32>(4, 13);
+    config::write::<u32>(status::DETAIL, 13);
 
     // Pre-build the descriptor chain (header@0 → data@1 → status@2). Only the
     // data descriptor's address/length/flags change per request.
@@ -283,8 +284,8 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     ipc_endpoint_bind_cq(endpoint, 0);
-    config::write::<u32>(4, 14);
-    config::write::<u32>(20, 0x900d);
+    config::write::<u32>(status::DETAIL, 14);
+    config::write::<u32>(status::SENTINEL, 0x900d);
 
     // Build a request in the shared chain and return its completion status.
     let submit =

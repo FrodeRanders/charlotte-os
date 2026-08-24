@@ -13,19 +13,16 @@
 //! neither. Each absent route owns one deferred name-service lookup; route
 //! discovery therefore never blocks the NIC receive loop.
 //!
-//! Status page layout:
-//! - word 0: stage
-//! - word 1: rx_total (frames received from the NIC driver)
-//! - word 2: forwarded (frames delivered to a consumer)
-//! - word 3: dropped (delivery failed)
-//! - word 4: unknown (no route for the EtherType)
-//! - word 5: routes (installed consumer routes)
+//! Status-page diagnostics use the fields in
+//! [`charlotte_launch::frouter_status`]: lifecycle stage, received, forwarded,
+//! dropped and unrouted frame counters, plus the installed-route count.
 #![no_std]
 #![no_main]
 
 extern crate alloc;
 
 use alloc::vec::Vec;
+use charlotte_launch::frouter_status as status;
 
 use catten_rt::{
     Context,
@@ -36,7 +33,6 @@ use catten_services::{
     frouter,
     net,
     ns,
-    raft,
     relmsg,
     sleep_ms,
     socket,
@@ -67,13 +63,6 @@ use charlotte_protocol_msg::MSG_ETHERTYPE;
 
 const IPV4_ETHERTYPE: u16 = 0x0800;
 const ARP_ETHERTYPE: u16 = 0x0806;
-
-const STAGE_OFFSET: usize = 0;
-const RX_TOTAL_OFFSET: usize = 4;
-const FORWARDED_OFFSET: usize = 8;
-const DROPPED_OFFSET: usize = 12;
-const UNKNOWN_OFFSET: usize = 16;
-const ROUTES_OFFSET: usize = 20;
 
 const FRAME_MAX: usize = 4096;
 const ETHERTYPE_OFFSET: usize = 12;
@@ -174,7 +163,7 @@ fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -185,7 +174,7 @@ fn main(ctx: Context) -> ! {
     if net_conn == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     // Register so other services (notably the httpd report aggregator) can
     // look us up and query our live counters.
@@ -213,7 +202,7 @@ fn main(ctx: Context) -> ! {
     if ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let mut routes: Vec<Route> = Vec::new();
     let mut route_lookups = [
@@ -227,12 +216,6 @@ fn main(ctx: Context) -> ! {
             ethertype: DISCO_ETHERTYPE,
             name: disco::NAME,
             opcode: disco::OP_FRAME,
-            call: 0,
-        },
-        RouteLookup {
-            ethertype: raft::ETHERTYPE,
-            name: raft::FRAME_NAME,
-            opcode: raft::OP_FRAME,
             call: 0,
         },
         RouteLookup {
@@ -250,14 +233,14 @@ fn main(ctx: Context) -> ! {
     ];
     let mut pending_forwards: Vec<PendingForward> = Vec::new();
     refresh_routes(&mut routes, &mut route_lookups, ns_conn);
-    config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);
+    config::write::<u32>(status::ROUTES, routes.len() as u32);
 
     let mut rx_total: u32 = 0;
     let mut forwarded: u32 = 0;
     let mut dropped: u32 = 0;
     let mut unknown: u32 = 0;
     let stage: u32 = 4;
-    config::write::<u32>(STAGE_OFFSET, stage);
+    config::write::<u32>(status::STAGE, stage);
 
     loop {
         let receive = ipc_scalar_call(net_conn, net::OP_RECV, 0);
@@ -319,11 +302,11 @@ fn main(ctx: Context) -> ! {
             // registered consumer becomes routable without ever parking this
             // single-owner NIC reactor.
             refresh_routes(&mut routes, &mut route_lookups, ns_conn);
-            config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
-            config::write::<u32>(FORWARDED_OFFSET, forwarded);
-            config::write::<u32>(DROPPED_OFFSET, dropped);
-            config::write::<u32>(UNKNOWN_OFFSET, unknown);
-            config::write::<u32>(ROUTES_OFFSET, routes.len() as u32);
+            config::write::<u32>(status::RX_TOTAL, rx_total);
+            config::write::<u32>(status::FORWARDED, forwarded);
+            config::write::<u32>(status::DROPPED, dropped);
+            config::write::<u32>(status::UNKNOWN, unknown);
+            config::write::<u32>(status::ROUTES, routes.len() as u32);
 
             // Forward calls are asynchronous: one slow protocol consumer must
             // not stop the NIC owner from serving every other EtherType.

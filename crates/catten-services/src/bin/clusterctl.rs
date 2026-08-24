@@ -39,12 +39,13 @@ use charlotte_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
+use charlotte_launch::clusterctl_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_SERVING: u32 = 6;
 
 fn fail(stage: u32) -> ! {
-    config::write::<u32>(0, stage);
+    config::write::<u32>(status::STAGE, stage);
     unsafe { thread_exit() }
 }
 
@@ -233,7 +234,7 @@ fn main(ctx: Context) -> ! {
     if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
         fail(0xdea4);
     }
-    config::write::<u32>(0, STAGE_SERVING);
+    config::write::<u32>(status::STAGE, STAGE_SERVING);
 
     loop {
         cq_wait(1, 0);

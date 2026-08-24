@@ -36,7 +36,7 @@ const IDENTITY_BASE: u64 = 0x9000_0000_0000_0000;
 
 /// The node's stable, cluster-scoped identity.
 pub struct NodeIdentity {
-    /// User-chosen cluster identifier ("charlotte", "test-cluster", ...).
+    /// User-chosen cluster identifier (for example, "charlotte").
     pub mnemonic: Vec<u8>,
     /// The node's name: `{mnemonic}:{token}`.
     pub name: Vec<u8>,

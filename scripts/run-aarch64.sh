@@ -48,6 +48,11 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=lib/boot-common.sh
+source "${SCRIPT_DIR}/lib/boot-common.sh"
+
 ARCH="aarch64"
 PROFILE="debug"
 GDB=""
@@ -119,13 +124,14 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if ! [[ "$GDB_PORT" =~ ^[0-9]+$ ]] || [ "$GDB_PORT" -lt 1 ] || [ "$GDB_PORT" -gt 65535 ]; then
-    echo "error: --gdb-port must be an integer from 1 through 65535" >&2
-    exit 1
+catten_boot_validate_port "--gdb-port" "$GDB_PORT"
+catten_boot_validate_instance "$INSTANCE"
+catten_boot_validate_positive_integer "--smp" "$SMP"
+if [ -n "$TIMEOUT" ]; then
+    catten_boot_validate_positive_integer "--timeout" "$TIMEOUT"
 fi
-
-if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
+if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
+    echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
     exit 1
 fi
 if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
@@ -170,8 +176,10 @@ if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
     exit 1
 fi
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+catten_boot_init "$ROOT_DIR"
+catten_boot_require_commands mformat mmd mcopy
+LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
 TARGET_DIR="${ARCH}-unknown-none-catten"
@@ -304,44 +312,21 @@ else
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
-if command -v sha256sum >/dev/null 2>&1; then
-    KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
-else
-    KERNEL_SHA256="$(shasum -a 256 "$KERNEL" | awk '{print $1}')"
-fi
-echo ">>> Kernel payload: ${KERNEL}"
-echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
+catten_boot_report_kernel "$KERNEL"
 
 # --- Build a FAT32 EFI System Partition image with mtools. ---
-echo ">>> Creating boot image ${IMAGE}..."
-mkdir -p "$IMAGE_DIR"
-dd if=/dev/zero of="$IMAGE" bs=1048576 count=128 status=none
-mformat -i "$IMAGE" -F ::
-mmd -i "$IMAGE" ::/EFI
-mmd -i "$IMAGE" ::/EFI/BOOT
-mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FILE}"
-mcopy -i "$IMAGE" "$KERNEL" "::/catten"
-mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
+catten_boot_create_uefi_image \
+    "$IMAGE" \
+    128 \
+    "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
+    "$KERNEL" \
+    "$LIMINE_CONFIG"
 
 # --- NVMe persistent disk image (virt only; sbsa-ref boots the image itself) ---
 if [ "$SBSA_REF" != "1" ]; then
     NVME_IMAGE="${IMAGE_DIR}/nvme-disk${INSTANCE_SUFFIX}.img"
     NVME_BUNDLE_HASH="${NVME_IMAGE}.bundle-sha256"
-    BUNDLE_DIGESTS=""
-    for service_elf in "$CATTEN_AARCH64_SERVICE_BUNDLE"/*.elf; do
-        if command -v sha256sum >/dev/null 2>&1; then
-            service_digest="$(sha256sum "$service_elf" | awk '{print $1}')"
-        else
-            service_digest="$(shasum -a 256 "$service_elf" | awk '{print $1}')"
-        fi
-        BUNDLE_DIGESTS="${BUNDLE_DIGESTS}$(basename "$service_elf"):${service_digest}
-"
-    done
-    if command -v sha256sum >/dev/null 2>&1; then
-        CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | sha256sum | awk '{print $1}')"
-    else
-        CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | shasum -a 256 | awk '{print $1}')"
-    fi
+    CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$CATTEN_AARCH64_SERVICE_BUNDLE")"
     STORED_BUNDLE_HASH="$(test -f "$NVME_BUNDLE_HASH" && tr -d '[:space:]' < "$NVME_BUNDLE_HASH" || true)"
     if [ "$REUSE_STORAGE" = "1" ] && [ -f "$NVME_IMAGE" ]; then
         echo ">>> Reusing NVMe disk image ${NVME_IMAGE} by explicit request."
@@ -656,19 +641,7 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    if grep -Fq "Kernel panic:" "$LOG"; then
-        echo "error: kernel panic observed during the test window" >&2
-        exit 1
-    fi
-    if ! grep -Eq \
-        'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0 passed_bitmap=0x[0-9a-f]+ failed_bitmap=0x0 pending_bitmap=0x0' \
-        "$LOG"
-    then
-        echo "error: malformed or unsuccessful authoritative self-test result" >&2
-        grep -E 'SELFTEST (FAILED|PENDING):' "$LOG" >&2 || true
-        exit 1
-    fi
-    echo ">>> All registered deferred self-tests passed."
+    catten_boot_validate_selftest_log "$LOG"
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then

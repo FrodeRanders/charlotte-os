@@ -81,8 +81,9 @@
 //! - [`el0_service`] — the name service + service manager (Phase 3); outcome: services
 //!   register/lookup by name and restart semantics (teardown, stale-connection rejection,
 //!   generation bump) hold.
-//! - [`el0_raft`] — two-node Raft leader election and NVMe-backed persistent recovery; outcome:
-//!   exactly one leader is elected and a restarted node recovers and advances its durable term.
+//! - [`el0_raft`] — NVMe-backed persistent Raft recovery; outcome: a restarted domain recovers and
+//!   advances its durable term. Network cluster formation is exercised by the multi-guest cluster
+//!   tests, not by constructing multiple Raft peers inside one kernel.
 //!
 //! Device model:
 //! - [`device`] — device capabilities (MMIO regions, interrupt objects); outcome: grants/unmaps and
@@ -105,16 +106,16 @@
 //! ## Results and expected outcome
 //!
 //! [`results`] is the authoritative completion tracker. The boot suite
-//! registers 18 tests; each network feature adds one more. A deferred
+//! registers 17 tests; each network feature adds one more. A deferred
 //! coordinator thread prints periodic `SELFTEST WAITING` summaries and, when
 //! every registered test has either passed or failed, a single final line:
 //!
 //! ```text
-//! SELFTEST COMPLETE: passed=18 failed=0 pending=0 passed_bitmap=0x3ffff ...
+//! SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff ...
 //! ```
 //!
-//! **Expected outcome on both virt/TCG and sbsa-ref: `passed=18 failed=0
-//! pending=0`** (the bitmap `0x3ffff` covers the 18 registered boot tests).
+//! **Expected outcome on both virt/TCG and sbsa-ref: `passed=17 failed=0
+//! pending=0`** (the bitmap `0x1ffff` covers the 17 registered boot tests).
 //! `run_self_tests` itself returns after the synchronous tests; the final
 //! authoritative verdict is produced by the coordinator thread and observed
 //! by `scripts/run-aarch64.sh` under `--timeout`.
@@ -170,6 +171,21 @@ use crate::logln;
 /// the frouter has been spawned.
 pub static FROUTER_STATUS_FRAME: core::sync::atomic::AtomicUsize =
     core::sync::atomic::AtomicUsize::new(0);
+
+#[inline]
+pub unsafe fn status_u32(base: *const u8, offset: usize) -> u32 {
+    unsafe { core::ptr::read_volatile(base.add(offset).cast::<u32>()) }
+}
+
+#[inline]
+pub unsafe fn status_u16(base: *const u8, offset: usize) -> u16 {
+    unsafe { core::ptr::read_volatile(base.add(offset).cast::<u16>()) }
+}
+
+#[inline]
+pub unsafe fn status_i64(base: *const u8, offset: usize) -> i64 {
+    unsafe { core::ptr::read_volatile(base.add(offset).cast::<i64>()) }
+}
 
 /// Synchronous self-tests that construct address spaces directly sometimes
 /// retain only their numeric id. Confine that downgrade here; production
@@ -247,8 +263,6 @@ pub fn run_deferred_self_tests() {
     el0_uart::test_el0_uart();
     #[cfg(target_arch = "aarch64")]
     el0_sitas::test_el0_sitas();
-    #[cfg(not(feature = "hvf_compat"))]
-    el0_raft::test_el0_raft();
     el0_ipc::test_el0_endpoint_ipc();
     el0_ipc::test_el0_endpoint_ipc_blocking_receive();
     el0_ipc::test_el0_endpoint_ipc_cross_address_space();

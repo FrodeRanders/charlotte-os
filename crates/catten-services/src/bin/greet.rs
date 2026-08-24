@@ -33,22 +33,23 @@ use catten_syscall::{
     ipc_status,
     thread_exit,
 };
+use charlotte_launch::greet_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1); // stage: started
+    config::write::<u32>(status::STAGE, 1); // stage: started
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2); // stage: bootstrap connection received
+    config::write::<u32>(status::STAGE, 2); // stage: bootstrap connection received
 
     let endpoint = ipc_endpoint_create(deploy::INTERFACE, deploy::VERSION, 8);
     if endpoint == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 3); // stage: endpoint created
+    config::write::<u32>(status::STAGE, 3); // stage: endpoint created
 
     let register = ipc_scalar_call_connection(
         ns_connection,
@@ -60,13 +61,13 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 4); // stage: short register call sent
+    config::write::<u32>(status::STAGE, 4); // stage: short register call sent
     let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
     if generation < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, generation as u32);
-    config::write::<u32>(0, 6); // stage: serving
+    config::write::<u32>(status::GENERATION, generation as u32);
+    config::write::<u32>(status::STAGE, 6); // stage: serving
 
     loop {
         // This service owns no completion queue work other than endpoint

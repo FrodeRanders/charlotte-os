@@ -43,12 +43,7 @@ use catten_syscall::{
     spawn_upgrade,
     thread_exit,
 };
-
-const STAGE_OFFSET: usize = 0;
-const LAST_GEN_OFFSET: usize = 4;
-const ERROR_OFFSET: usize = 8;
-const STATE_CAP_OFFSET: usize = 16;
-const ENDPOINT_CAP_OFFSET: usize = 24;
+use charlotte_launch::service_manager_status as status;
 
 /// Pack 6 ASCII bytes into a u64 name.
 const fn name(s: &[u8]) -> u64 {
@@ -150,12 +145,12 @@ fn verify_authorized_lookup(ns_conn: u64) -> bool {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let ep = ipc_endpoint_create(0x5356434d, 1, 8); // "SVCM"
     if ep == 0 {
@@ -177,14 +172,14 @@ fn main(ctx: Context) -> ! {
     }
 
     if !verify_authorized_lookup(ns_connection) {
-        config::write::<u32>(ERROR_OFFSET, 8);
+        config::write::<u32>(status::ERROR, 8);
         unsafe { thread_exit() };
     }
 
     if ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     loop {
         cq_wait(1, 0);
@@ -201,9 +196,9 @@ fn main(ctx: Context) -> ! {
             }
 
             if m.opcode == 1 && m.reply != 0 {
-                config::write::<u32>(STAGE_OFFSET, 10);
+                config::write::<u32>(status::STAGE, 10);
                 let result = do_upgrade(ns_connection, m.arg0);
-                config::write::<u32>(LAST_GEN_OFFSET, result as u32);
+                config::write::<u32>(status::LAST_GENERATION, result as u32);
                 ipc_reply(m.reply, result);
             } else if m.reply != 0 {
                 ipc_reply(m.reply, -1);
@@ -217,30 +212,30 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     let (old_generation, target_conn) = match lookup(ns_conn, target_name) {
         Some(found) => found,
         None => {
-            config::write::<u32>(ERROR_OFFSET, 1);
+            config::write::<u32>(status::ERROR, 1);
             return -1;
         }
     };
-    config::write::<u32>(STAGE_OFFSET, 11);
+    config::write::<u32>(status::STAGE, 11);
 
     // OP_HANDOFF: the target serialises state, returns (state_cap, ep_cap),
     // and exits. The wait returns the moved memory cap without polling.
     let call = ipc_scalar_call(target_conn, echo::OP_HANDOFF, 0);
     if call == 0 {
-        config::write::<u32>(ERROR_OFFSET, 2);
+        config::write::<u32>(status::ERROR, 2);
         return -2;
     }
 
     let (status, _handoff_result, _conn, state_cap) = ipc_reply_wait_with_memory(call);
     catten_syscall::ipc_close(call);
     if status != 0 {
-        config::write::<u32>(ERROR_OFFSET, 3);
+        config::write::<u32>(status::ERROR, 3);
         return -3;
     }
-    config::write::<u32>(STAGE_OFFSET, 12);
+    config::write::<u32>(status::STAGE, 12);
 
     if state_cap == 0 {
-        config::write::<u32>(ERROR_OFFSET, 4);
+        config::write::<u32>(status::ERROR, 4);
         return -4;
     }
 
@@ -250,28 +245,28 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     // completion path is needed for the upgrade transaction.
     let unregister = ipc_scalar_call(ns_conn, ns::OP_UNREGISTER, target_name);
     if unregister == 0 {
-        config::write::<u32>(ERROR_OFFSET, 6);
+        config::write::<u32>(status::ERROR, 6);
         return -6;
     }
     let (unregister_status, unpublished_generation, _) = ipc_reply_wait(unregister);
     ipc_close(unregister);
     if unregister_status != 0 || unpublished_generation != old_generation {
-        config::write::<u32>(ERROR_OFFSET, 6);
+        config::write::<u32>(status::ERROR, 6);
         return -6;
     }
 
     // Record the handoff state for diagnostics, then ask the kernel
     // supervisor to move it into and start the replacement echo image.
-    config::write::<u64>(STATE_CAP_OFFSET, state_cap);
-    config::write::<u64>(ENDPOINT_CAP_OFFSET, target_conn);
-    config::write::<u32>(STAGE_OFFSET, 4);
+    config::write::<u64>(status::STATE_CAPABILITY, state_cap);
+    config::write::<u64>(status::ENDPOINT_CAPABILITY, target_conn);
+    config::write::<u32>(status::STAGE, 4);
     let (elf_cap, elf_size) = persistent_replacement(ns_conn);
     let replacement_asid = unsafe { spawn_upgrade(elf_cap, elf_size, state_cap, target_conn) };
     if replacement_asid == 0 {
-        config::write::<u32>(ERROR_OFFSET, 5);
+        config::write::<u32>(status::ERROR, 5);
         return -5;
     }
-    config::write::<u32>(STAGE_OFFSET, 13);
+    config::write::<u32>(status::STAGE, 13);
 
     // OP_UNREGISTER left a tombstone, so this ordinary lookup is either
     // satisfied immediately by generation N+1 or retained by the name
@@ -280,17 +275,17 @@ fn do_upgrade(ns_conn: u64, target_name: u64) -> i64 {
     let (new_generation, replacement_connection) = match lookup(ns_conn, target_name) {
         Some(found) => found,
         None => {
-            config::write::<u32>(ERROR_OFFSET, 7);
+            config::write::<u32>(status::ERROR, 7);
             return -7;
         }
     };
     if new_generation <= old_generation {
         ipc_close(replacement_connection);
-        config::write::<u32>(ERROR_OFFSET, 7);
+        config::write::<u32>(status::ERROR, 7);
         return -7;
     }
     ipc_close(replacement_connection);
-    config::write::<u32>(STAGE_OFFSET, 5);
+    config::write::<u32>(status::STAGE, 5);
     replacement_asid as i64
 }
 

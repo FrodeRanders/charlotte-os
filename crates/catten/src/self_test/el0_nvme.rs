@@ -85,24 +85,31 @@ extern "C" fn verify_el0_nvme() {
     let driver = storage.driver;
     let driver_elf = storage.driver_elf;
     let objstore = storage.objstore;
-    let driver_cfg: *const u32 = {
+    let driver_cfg: *const u8 = {
         let base: *mut u8 = driver.status_frame.into();
-        base as *const u32
+        base
     };
     logln!("[nvme] driver spawned (asid={})", driver.asid);
 
     // The object store must be up before any store-sourced service is fetched
     // (the client and object-client ELFs now come from the store).
-    let objstore_cfg: *const u32 = {
+    let objstore_cfg: *const u8 = {
         let base: *mut u8 = objstore.status_frame.into();
-        base as *const u32
+        base
     };
     logln!("[nvme] objstore spawned (asid={})", objstore.asid);
     logln!(
         "[nvme] driver stage={} raw_dw3={:#x} irq_count={}",
-        unsafe { core::ptr::read_volatile(driver_cfg.add(1)) },
-        unsafe { core::ptr::read_volatile(driver_cfg.add(17)) },
-        unsafe { core::ptr::read_volatile(driver_cfg.add(20)) }
+        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL) },
+        unsafe {
+            crate::self_test::status_u32(
+                driver_cfg,
+                charlotte_launch::nvme_status::READ_CQE_DW5_HIGH,
+            )
+        },
+        unsafe {
+            crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+        }
     );
 
     // The object store registers with the name service under its interface
@@ -127,25 +134,73 @@ extern "C" fn verify_el0_nvme() {
         logln!(
             "[nvme] timeout diagnostics: driver main={} init={} io_dw3={:#x} io_status={} \
              io_cid={} outstanding={} opcode={:#x} slot={} nblocks={}",
-            unsafe { core::ptr::read_volatile(driver_cfg) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(1)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(21)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(22)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(23)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(24)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(25)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(26)) },
-            unsafe { core::ptr::read_volatile(driver_cfg.add(27)) }
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::STAGE)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_CQE_DW3)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_STATUS)
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    driver_cfg,
+                    charlotte_launch::nvme_status::IO_COMMAND_ID,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::OUTSTANDING)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_OPCODE)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_SLOT)
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    driver_cfg,
+                    charlotte_launch::nvme_status::LAST_BLOCK_COUNT,
+                )
+            }
         );
         logln!(
             "[nvme] timeout diagnostics: objstore stage={} error={:#x} block_result={:#x} \
              block_op={:#x} reply_status={:#x} detail={:#x}",
-            unsafe { core::ptr::read_volatile(objstore_cfg) },
-            unsafe { core::ptr::read_volatile(objstore_cfg.add(2)) },
-            unsafe { core::ptr::read_volatile(objstore_cfg.cast::<u64>().add(4)) },
-            unsafe { core::ptr::read_volatile(objstore_cfg.add(4)) },
-            unsafe { core::ptr::read_volatile(objstore_cfg.add(6)) },
-            unsafe { core::ptr::read_volatile(objstore_cfg.add(7)) }
+            unsafe {
+                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
+            },
+            unsafe {
+                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::ERROR)
+            },
+            unsafe {
+                crate::self_test::status_i64(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::BLOCK_RESULT,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::BLOCK_OP,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::REPLY_STATUS,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::DETAIL,
+                )
+            }
         );
         logln!(
             "[nvme] timeout diagnostics: driver_threads={:?} objstore_threads={:?}",
@@ -186,9 +241,9 @@ extern "C" fn verify_el0_nvme() {
         &ns,
         ConnectionRights::CALL,
     );
-    let client_cfg: *const u32 = {
+    let client_cfg: *const u8 = {
         let base: *mut u8 = client.status_frame.into();
-        base as *const u32
+        base
     };
     // The client writes its completion sentinel and then exits; its thread
     // exit is the completion event, so block on that instead of polling the
@@ -202,16 +257,19 @@ extern "C" fn verify_el0_nvme() {
     let exited = crate::completion::wait_timeout(client.asid, client_exit, 30_000)
         .expect("[nvme] client exit wait error");
     assert!(exited, "[nvme] I/O client did not exit within deadline");
-    let state = unsafe { core::ptr::read_volatile(client_cfg) };
+    let state = unsafe {
+        crate::self_test::status_u32(client_cfg, charlotte_launch::nvme_client_status::STAGE)
+    };
     assert_eq!(state, 0x900d, "[nvme] I/O verifier failed: {:#x}", state);
-    let sentinel_ptr: *const u32 = unsafe { driver_cfg.add(5) };
     assert_eq!(
-        unsafe { core::ptr::read_volatile(sentinel_ptr) },
+        unsafe { crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::CAP_LOW) },
         0x900d,
         "[nvme] client completed before driver registration"
     );
     logln!("[nvme] 12 KiB PRP-list write/flush/read round trip verified");
-    let irq_count = unsafe { core::ptr::read_volatile(driver_cfg.add(20)) };
+    let irq_count = unsafe {
+        crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+    };
     // The NVMe driver completes through MSI-X; the AHCI driver polls its
     // command slot instead, so an interrupt counter is only meaningful for
     // NVMe.
@@ -245,9 +303,9 @@ extern "C" fn verify_el0_nvme() {
         crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf"),
         ELF_SIZE_KEY,
     );
-    let object_cfg: *const u32 = {
+    let object_cfg: *const u8 = {
         let base: *mut u8 = object_client.status_frame.into();
-        base as *const u32
+        base
     };
     let ready =
         crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, completion_lookup, 60_000)
@@ -265,17 +323,37 @@ extern "C" fn verify_el0_nvme() {
         .expect("[nvme] close object-client completion lookup");
     crate::ipc::close_cap(crate::memory::KERNEL_ASID, completion_ns)
         .expect("[nvme] close completion name-service connection");
-    let state = unsafe { core::ptr::read_volatile(object_cfg) };
+    let state = unsafe {
+        crate::self_test::status_u32(object_cfg, charlotte_launch::objstore_client_status::STAGE)
+    };
     assert_eq!(
         state,
         0x900d,
         "[nvme] large-object verifier failed: {:#x}, detail={:#x}",
         state,
-        unsafe { core::ptr::read_volatile(object_cfg.add(1)) }
+        unsafe {
+            crate::self_test::status_u32(
+                object_cfg,
+                charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+            )
+        }
     );
-    assert_eq!(unsafe { core::ptr::read_volatile(object_cfg.add(1)) }, 2 * 1024 * 1024 + 4096);
     assert_eq!(
-        unsafe { core::ptr::read_volatile(object_cfg.add(2)) },
+        unsafe {
+            crate::self_test::status_u32(
+                object_cfg,
+                charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+            )
+        },
+        2 * 1024 * 1024 + 4096
+    );
+    assert_eq!(
+        unsafe {
+            crate::self_test::status_u32(
+                object_cfg,
+                charlotte_launch::objstore_client_status::ELF_SIZE,
+            )
+        },
         crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf").len() as u32
     );
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");

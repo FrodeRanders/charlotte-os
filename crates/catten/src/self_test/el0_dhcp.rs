@@ -132,16 +132,19 @@ mod inner {
             .expect("[dhcp] network appliance missing from steady state");
         let tcpip = appliance.tcpip;
         logln!("[dhcp] tcpip spawned (asid={})", tcpip.asid);
-        let tcpip_cfg: *const u32 = {
+        let tcpip_cfg: *const u8 = {
             let base: *mut u8 = tcpip.status_frame.into();
-            base as *const u32
+            base
         };
 
         // The service enters its serving loop (stage 6) before the DHCP
         // exchange completes, so first wait for it to answer OP_STATUS, then
         // poll the reported address until the lease lands.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe { core::ptr::read_volatile(tcpip_cfg) } < 6 {
+        while unsafe {
+            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+        } < 6
+        {
             deadline.assert_pending("EL0 dhcp tcpip service startup");
             yield_lp();
         }
@@ -202,17 +205,24 @@ mod inner {
         // appliance over the freshly acquired address.
         let httpd = appliance.httpd;
         logln!("[dhcp] httpd spawned (asid={})", httpd.asid);
-        let httpd_cfg: *const u32 = {
+        let httpd_cfg: *const u8 = {
             let base: *mut u8 = httpd.status_frame.into();
-            base as *const u32
+            base
         };
         let deadline = crate::self_test::results::Deadline::after_millis(30_000);
         let mut spins: u64 = 0;
-        while unsafe { core::ptr::read_volatile(httpd_cfg) } < 6 {
+        while unsafe {
+            crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
+        } < 6
+        {
             spins += 1;
             if spins.is_multiple_of(200_000) {
-                let stage = unsafe { core::ptr::read_volatile(httpd_cfg) };
-                let error = unsafe { core::ptr::read_volatile(httpd_cfg.add(2)) };
+                let stage = unsafe {
+                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::STAGE)
+                };
+                let error = unsafe {
+                    crate::self_test::status_u32(httpd_cfg, charlotte_launch::httpd_status::ERROR)
+                };
                 logln!("[dhcp] waiting: httpd stage={} error={:#x}", stage, error);
             }
             deadline.assert_pending("EL0 dhcp httpd listening");

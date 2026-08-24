@@ -366,11 +366,10 @@ image whose contents may be replaced.
 4. Boot-validate durable term recovery across teardown and restart of one
    Raft process.
 
-This test is deliberately separate from the local two-node election test. The
-generic Raft service can be exercised on a multicore local machine without
-NVMe. A name service replicated among several physical or virtual machines is
-a later consumer of that generic service and still requires a cross-machine
-transport and multi-node validation.
+This recovery test is deliberately separate from network cluster admission.
+The operational node-level Raft member requires the object store and uses the
+discovery/reliable-message path for admission between physical or virtual
+machines. DNS currently runs a distinct Raft group for its replicated catalog.
 
 ### Phase 4 — Filesystem service (future)
 

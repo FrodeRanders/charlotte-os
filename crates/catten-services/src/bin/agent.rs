@@ -53,7 +53,7 @@ struct DeploymentInfo {
 }
 
 fn fail(stage: u32) -> ! {
-    config::write_u32_release(0, stage);
+    config::write_u32_release(charlotte_launch::agent_status::STAGE, stage);
     unsafe { thread_exit() }
 }
 
@@ -247,8 +247,14 @@ fn supervise(
                 ipc_close(publish);
                 if result >= 1 {
                     published = true;
-                    config::write::<u64>(8, generation);
-                    config::write_u32_release(0, STAGE_SERVING);
+                    config::write::<u64>(
+                        charlotte_launch::agent_status::SERVED_GENERATION,
+                        generation,
+                    );
+                    config::write_u32_release(
+                        charlotte_launch::agent_status::STAGE,
+                        STAGE_SERVING,
+                    );
                 } else {
                     fail(STAGE_FAIL);
                 }
@@ -276,7 +282,10 @@ fn supervise(
                             _ => fail(STAGE_FAIL),
                         };
                     }
-                    config::write_u32_release(0, STAGE_RETIRED);
+                    config::write_u32_release(
+                        charlotte_launch::agent_status::STAGE,
+                        STAGE_RETIRED,
+                    );
                     unsafe { thread_exit() }
                 }
                 deploy_query = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, deploy::NAME);
@@ -335,8 +344,8 @@ fn main(ctx: Context) -> ! {
         Some(key) => key,
         None => fail(STAGE_FAIL),
     };
-    config::write::<u64>(16, my_node_key);
-    config::write_u32_release(0, STAGE_IDENTITY);
+    config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
+    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
 
     // The cluster's public key: prefer the key committed by the ceremony
     // (obtained from the cluster), else the build-time copy the kernel

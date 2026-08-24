@@ -21,11 +21,10 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::net_client_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
 const SENTINEL: u32 = 0xc0de;
-const STAGE_OFFSET: usize = 12;
-const TX_SUCCESS_OFFSET: usize = 4;
 
 /// A minimal Ethernet frame (broadcast, EtherType 0x0800 = IPv4, payload
 /// all zeros).  It's ~64 bytes so SLIRP won't drop the short frame.
@@ -39,12 +38,12 @@ const TEST_FRAME: [u8; 64] = [
 ];
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(c) => c,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
     if lookup == 0 {
@@ -54,7 +53,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 || net_conn == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     // Allocate a page for the frame, write the test payload.
     let frame_cap = memory_alloc(1);
@@ -80,14 +79,14 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     let (status, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-    config::write::<u32>(TX_SUCCESS_OFFSET, status as u32);
-    config::write::<u32>(STAGE_OFFSET, 4); // TX attempted
+    config::write::<u32>(status::TX_RESULT, status as u32);
+    config::write::<u32>(status::STAGE, 4); // TX attempted
 
     // The NIC driver is deliberately left running: cluster discovery, the
     // frame demultiplexer, and the reliable-message layer all keep using it
     // after this smoke client finishes. Tearing it down here would strand
     // their in-flight OP_SEND and OP_RECV calls.
-    config::write::<u32>(0, SENTINEL);
+    config::write::<u32>(status::SENTINEL, SENTINEL);
     unsafe { thread_exit() };
 }
 

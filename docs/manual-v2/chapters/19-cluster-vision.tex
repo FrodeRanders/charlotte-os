@@ -253,12 +253,12 @@ coordination pieces, all of which sit on top of mechanisms that already
 exist:
 
 \begin{itemize}
-    \item Dynamic membership integration --- the generic Raft service
-        now performs discovery-bridged admission through replicated
-        \texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. Wiring that
-        protocol into the durable DNS voter set, provisioning the joining
-        node's durable cluster identity, and validating partition/restart and
-        three-voter behavior remain to be built.
+    \item Dynamic membership hardening --- the DNS-owned Raft node now
+        performs discovery-bridged admission through replicated \texttt{JOIN},
+        joint consensus, and \texttt{FINALIZE}; membership, names,
+        deployments, and cluster events share its durable log. Partition,
+        restart within a live quorum, and three-voter behavior remain to be
+        validated.
 
     \item Key injection into cluster state --- the current ceremony
         commits only the build-time anchor and is set-once and idempotent.

@@ -45,6 +45,7 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::block_driver_status as status;
 
 const PAGE_SIZE: usize = 4096;
 
@@ -312,8 +313,8 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     HBA_BASE.store(hba_vaddr as u64, Ordering::Release);
-    config::write::<u32>(0, 1);
-    config::write::<u32>(4, 10);
+    config::write::<u32>(status::STAGE, 1);
+    config::write::<u32>(status::DETAIL, 10);
 
     // Enable the HBA, then locate an implemented port with a device attached.
     write_mmio32(HBA_GHC, GHC_AE);
@@ -331,12 +332,12 @@ fn main(ctx: Context) -> ! {
         }
     }
     let Some(port) = port else {
-        config::write::<u32>(4, 0xe2);
+        config::write::<u32>(status::DETAIL, 0xe2);
         unsafe { thread_exit() };
     };
     let pb = port_base(port);
-    config::write::<u32>(0, 2);
-    config::write::<u32>(4, 12);
+    config::write::<u32>(status::STAGE, 2);
+    config::write::<u32>(status::DETAIL, 12);
 
     // Stop command issue before FIS receive, waiting for each engine to go
     // idle as required by AHCI before replacing CLB/FB.
@@ -352,7 +353,7 @@ fn main(ctx: Context) -> ! {
         core::hint::spin_loop();
     }
     if !command_stopped {
-        config::write::<u32>(4, 0xe4);
+        config::write::<u32>(status::DETAIL, 0xe4);
         unsafe { thread_exit() };
     }
     cmd &= !PXCMD_FRE;
@@ -366,7 +367,7 @@ fn main(ctx: Context) -> ! {
         core::hint::spin_loop();
     }
     if !fis_stopped {
-        config::write::<u32>(4, 0xe5);
+        config::write::<u32>(status::DETAIL, 0xe5);
         unsafe { thread_exit() };
     }
     let Some(cmd_list) = alloc_dma_buffer(1024) else {
@@ -403,24 +404,24 @@ fn main(ctx: Context) -> ! {
         core::hint::spin_loop();
     }
     if !engines_started {
-        config::write::<u32>(4, 0xe6);
+        config::write::<u32>(status::DETAIL, 0xe6);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, 14);
+    config::write::<u32>(status::DETAIL, 14);
 
     let Some((block_size, total_blocks)) = identify(port, &cmd_list, &cmd_table, &identify_buf)
     else {
-        config::write::<u32>(4, 0xe1);
+        config::write::<u32>(status::DETAIL, 0xe1);
         unsafe { thread_exit() };
     };
     if block_size == 0 || block_size > 4096 || total_blocks == 0 {
-        config::write::<u32>(4, 0xe3);
+        config::write::<u32>(status::DETAIL, 0xe3);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(4, 15);
-    config::write::<u32>(40, block_size);
-    config::write::<u64>(32, total_blocks as u64);
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::DETAIL, 15);
+    config::write::<u32>(status::BLOCK_SIZE, block_size);
+    config::write::<u64>(status::TOTAL_BLOCKS, total_blocks as u64);
+    config::write::<u32>(status::STAGE, 3);
 
     let endpoint = ipc_endpoint_create(block::INTERFACE, block::VERSION, 64);
     if endpoint == 0 {
@@ -441,8 +442,8 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     ipc_endpoint_bind_cq(endpoint, 0);
-    config::write::<u32>(0, 4);
-    config::write::<u32>(20, 0x900d);
+    config::write::<u32>(status::STAGE, 4);
+    config::write::<u32>(status::SENTINEL, 0x900d);
 
     loop {
         let message = ipc_recv(endpoint);

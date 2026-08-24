@@ -168,8 +168,39 @@ pub struct DomainIdentityInfo {
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
 pub const THREAD_STATISTICS_VERSION: u64 = 1;
-pub const THREAD_STATISTICS_HEADER_U64S: usize = 6;
-pub const THREAD_STATISTICS_RECORD_U64S: usize = 16;
+
+pub mod thread_statistics_header {
+    pub const MAGIC: usize = 0;
+    pub const VERSION: usize = 1;
+    pub const RECORD_BYTES: usize = 2;
+    pub const RECORD_COUNT: usize = 3;
+    pub const COUNTER_FREQUENCY_HZ: usize = 4;
+    pub const MONOTONIC_TICKS: usize = 5;
+    pub const WORDS: usize = 6;
+}
+
+pub mod thread_statistics_record {
+    pub const TID: usize = 0;
+    pub const GENERATION: usize = 1;
+    pub const ASID: usize = 2;
+    pub const STATE: usize = 3;
+    pub const AFFINITY_LP: usize = 4;
+    pub const PINNED_LP: usize = 5;
+    pub const DISPATCH_COUNT: usize = 6;
+    pub const SAMPLE_COUNT: usize = 7;
+    pub const MIN_TICKS: usize = 8;
+    pub const MAX_TICKS: usize = 9;
+    pub const TOTAL_TICKS_LOW: usize = 10;
+    pub const TOTAL_TICKS_HIGH: usize = 11;
+    pub const SUM_OF_SQUARES_LOW: usize = 12;
+    pub const SUM_OF_SQUARES_HIGH: usize = 13;
+    pub const SATURATED: usize = 14;
+    pub const CURRENT_SLICE_STARTED_AT: usize = 15;
+    pub const WORDS: usize = 16;
+}
+
+pub const THREAD_STATISTICS_HEADER_U64S: usize = thread_statistics_header::WORDS;
+pub const THREAD_STATISTICS_RECORD_U64S: usize = thread_statistics_record::WORDS;
 pub const OBSERVABILITY_NONE: u64 = u64::MAX;
 
 // ---- op codes --------------------------------------------------------------

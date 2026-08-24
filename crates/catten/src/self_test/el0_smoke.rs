@@ -43,9 +43,10 @@ pub fn test_el0_smoke() {
     // a blocking timer wait so it does not add a waiter to the boot path.
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     let status_ptr: *mut u8 = loaded.status_frame.into();
-    let status = status_ptr as *const u32;
     loop {
-        let sentinel = unsafe { core::ptr::read_volatile(status) };
+        let sentinel = unsafe {
+            crate::self_test::status_u32(status_ptr, charlotte_launch::smoke_status::MARKER)
+        };
         if sentinel == SMOKE_SENTINEL {
             logln!("[el0 smoke] SUCCESS: x86_64 Rust ELF ran at ring 3 and wrote the sentinel.");
             let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER

@@ -47,13 +47,9 @@ use catten_syscall::{
     ipc_status,
     thread_exit,
 };
+use charlotte_launch::uart_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
-
-const STAGE_OFFSET: usize = 0; // u32 progress marker
-const READ_ARMED_OFFSET: usize = 4; // u32 set to 1 while a deferred read is retained
-const IRQ_COUNT_OFFSET: usize = 8; // u32 interrupts acknowledged
-const SERVED_OFFSET: usize = 12; // u32 write requests served
 
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
@@ -86,7 +82,7 @@ unsafe fn uart_get() -> Option<u8> {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1); // started
+    config::write::<u32>(status::STAGE, 1); // started
 
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -100,7 +96,7 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(STAGE_OFFSET, 2); // grants received
+    config::write::<u32>(status::STAGE, 2); // grants received
 
     // Map the delegated device register window as EL0 device memory.
     let (mmio_map_status, uart_mmio_vaddr) = device_mmio_map_any(mmio_cap, true);
@@ -108,7 +104,7 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     MMIO_BASE.store(uart_mmio_vaddr, core::sync::atomic::Ordering::Relaxed);
-    config::write::<u32>(STAGE_OFFSET, 3); // MMIO mapped
+    config::write::<u32>(status::STAGE, 3); // MMIO mapped
 
     // Register the console endpoint by name.
     let endpoint = ipc_endpoint_create(console::INTERFACE, console::VERSION, 8);
@@ -129,7 +125,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 4); // registered
+    config::write::<u32>(status::STAGE, 4); // registered
 
     // Unified shard wait: route both endpoint readiness and the device
     // interrupt to the default completion queue.
@@ -145,7 +141,7 @@ fn main(ctx: Context) -> ! {
         let base = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed);
         core::ptr::write_volatile((base + pl011::IMSC) as *mut u32, pl011::IMSC_RXIM);
     }
-    config::write::<u32>(STAGE_OFFSET, 5); // serving
+    config::write::<u32>(status::STAGE, 5); // serving
 
     let mut irq_count: u32 = 0;
     let mut served: u32 = 0;
@@ -171,7 +167,7 @@ fn main(ctx: Context) -> ! {
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
-            config::write::<u32>(IRQ_COUNT_OFFSET, irq_count);
+            config::write::<u32>(status::IRQ_COUNT, irq_count);
 
             // A device interrupt completes any retained deferred read: read
             // the receive register (real EL0 MMIO) and reply. Encoding: byte
@@ -182,7 +178,7 @@ fn main(ctx: Context) -> ! {
                 let result = byte | ((irq_count as i64) << 8);
                 ipc_reply(pending_read, result);
                 pending_read = 0;
-                config::write::<u32>(READ_ARMED_OFFSET, 0);
+                config::write::<u32>(status::READ_ARMED, 0);
             }
         }
 
@@ -205,7 +201,7 @@ fn main(ctx: Context) -> ! {
                         uart_put((message.arg0 & 0xff) as u8);
                     }
                     served = served.saturating_add(1);
-                    config::write::<u32>(SERVED_OFFSET, served);
+                    config::write::<u32>(status::SERVED, served);
                     if message.reply != 0 {
                         ipc_reply(message.reply, 0);
                     }
@@ -226,7 +222,7 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(message.reply, -1);
                     } else {
                         pending_read = message.reply;
-                        config::write::<u32>(READ_ARMED_OFFSET, 1);
+                        config::write::<u32>(status::READ_ARMED, 1);
                     }
                 }
                 console::OP_SHUTDOWN => {

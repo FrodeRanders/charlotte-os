@@ -3,44 +3,42 @@
 CharlotteOS exposes distributed consensus as a capability service: a replicated
 state machine reached through the same endpoint IPC used by local services.
 
-The test suite covers local two-node election, single-voter term recovery from
-NVMe, and cross-machine catalog replication and invocation through \texttt{dns}.
-A separate persistent-storage boot test exercises discovery-led admission through
-\texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The production DNS voter
-set remains statically launched, and power-loss behavior and generic
-\texttt{raft}-service client commands are not validated end to end.
+The test suite covers single-voter term recovery from NVMe and cross-machine
+catalog replication and invocation through \texttt{dns}. Each operational node
+runs exactly one durable Raft member inside \texttt{dns}; membership, names,
+deployments, keys, and cluster events share that member's ordered log. The
+multi-guest admission test observes it through discovery and exercises
+\texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The separate
+\texttt{raft.elf} process is network-disabled and retained only by the NVMe
+term-recovery fixture. Power-loss behavior within a live quorum is not yet
+validated end to end.
 
 The core follows the shared Graft model for
 normalized peer identity, voters and learners, joint-consensus quorums,
 replicated \texttt{JOIN}/\texttt{JOINT}/\texttt{FINALIZE} commands, leader
 no-op entries, current-term commit rules, linearizable-read contact quorums,
 and membership-bearing snapshots. These paths have focused regression tests. The
-\texttt{dns} service exposes client commands end to end
-through a concrete state machine; membership administration through the
-generic \texttt{raft} service is not yet exposed.
+\texttt{dns} service exposes both client commands and membership
+administration end to end through one concrete state machine and log.
 
 \section{Raft as a capability service}
 
 The Raft consensus protocol provides a replicated, fault-tolerant state machine
-across a cluster of nodes. In CharlotteOS, each Raft node is an EL0 service
-process that:
+across a cluster of nodes. In CharlotteOS, the operational Raft node is owned
+by the per-node DNS EL0 process, which:
 
 \begin{itemize}
-    \item Registers with the name service as \texttt{"raft-<id>"}.
-    \item Obtains connection capabilities to its peers through the name
-        service (or through seed configuration at bootstrap).
-    \item Communicates with peers through endpoint IPC --- shared
-        \texttt{raft.proto} VoteRequest, AppendEntries, and InstallSnapshot
-        payloads travel in moved memory capabilities. The scalar argument
-        carries the exact protobuf length.
+    \item Registers the DNS endpoint and a \texttt{"raft-<id>"}
+        administration/status endpoint backed by the same in-process node.
+    \item Learns transient peer MAC routes through discovery; voter authority
+        changes only through committed membership commands.
+    \item Carries VoteRequest, AppendEntries, InstallSnapshot, and admission
+        messages through the reliable-message service.
     \item Uses completion-queue waits for time --- a bounded
         \texttt{CQ\_WAIT} drives election and heartbeat checks without a
         detached timer completion or a busy polling loop.
-    \item Reserves a client-command endpoint operation ---
-        \texttt{OP\_CLIENT\_COMMAND} is defined and the core can submit,
-        commit, and apply opaque commands. The \texttt{dns} service realizes
-        that path with a concrete state machine; the generic EL0 service
-        still does not.
+    \item Applies membership commands and DNS catalog commands to the same
+        durable log and state-machine snapshot.
 \end{itemize}
 
 The Raft core (\texttt{catten-graft}) is a generic, transport-agnostic library.
@@ -56,9 +54,8 @@ trait RaftTransport {
 }
 \end{verbatim}
 
-The CharlotteOS implementation of this trait uses endpoint IPC for
-same-machine peers and the reliable message layer for cross-machine peers
-(the \texttt{dns} transport); the consensus core does not change.
+The operational CharlotteOS implementation uses the reliable message layer
+between DNS replicas; the consensus core does not change.
 
 \section{Intended properties relative to socket-based Raft}
 
@@ -115,53 +112,39 @@ propose commands.''
 
 \subsection{Failure isolation}
 
-Each Raft node runs in a separate protection domain. A crash in one node does
-not affect the others. The storage integration test demonstrates recovery of
-term/vote state across explicit process teardown and restart. Automatic
-supervisor restart, recovery of a replicated log within a live quorum, and
-rejoining a remote cluster remain future integration work. The generic
-service lifecycle separately demonstrates that stale connections fail and
-clients can re-lookup a replacement generation.
+Each DNS/Raft replica runs in a separate protection domain. A crash in one node
+does not affect the others. The isolated storage fixture demonstrates recovery
+of term/vote state across explicit process teardown and restart; restarting a
+DNS replica and recovering its catalog inside a live quorum remains future
+integration work. The generic service lifecycle separately demonstrates that
+stale connections fail and clients can re-lookup a replacement generation.
 
 \section{Persistence and launch configuration}
 
-The service supports three launch policies: in-memory storage, optional
-persistent storage with an explicit fallback, and required persistent storage.
-Required mode performs a waitable lookup of the object-store service rather
-than spinning during boot. Stable object identifiers derived from cluster and
-node identity hold term/vote state, log entries, and snapshot data; mutations
-are followed by an NVMe flush.
+The operational DNS node requires persistent storage. Stable object identifiers
+derived from cluster and node identity hold term/vote state, log entries, and
+snapshot data; mutations are followed by an NVMe flush.
 
-The node identity, initial seed list, election timeout, and storage policy
-remain in the launch manifest. They are deployment configuration owned by the
-supervisor. Active membership is replicated through the Raft log and stored in
-the snapshot envelope; after recovery, it supersedes an obsolete seed list.
-Peer discovery follows that active membership through waitable name-service
-lookups. The ordinary two-node local
-test remains in-memory so the generic Raft service is testable on a multicore
-machine without storage hardware. The distinct durability test verifies one
-node across process restart. The \texttt{dns} test separately replicates a
-name-service catalog across two computers.
+The cluster mnemonic and election timeout remain in the launch manifest. A
+fresh identity bootstraps as a durable singleton. Discovery supplies MAC routes,
+the lexicographically larger singleton applies to the smaller anchor, and
+active membership changes only through the Raft log and snapshot envelope.
+The distinct storage fixture verifies one generic node across process restart;
+the two-guest DNS test verifies the operational cluster.
 
 \section{Cluster bootstrap --- the seed problem}
 
 A new node must contact at least one existing cluster member. CharlotteOS
 expresses the seed as a service name or capability rather than an IP address.
 
-\subsection{Static seeds (current, simplest)}
+\subsection{Ethernet discovery and deterministic admission (current)}
 
-Launch-manifest records carry the node and seed-peer service names:
-
-\begin{verbatim}
-node-id = "r4"
-peer-id = "r1"
-peer-id = "r2"
-peer-id = "r3"
-\end{verbatim}
-
-The node calls \texttt{OP\_LOOKUP("raft-r1")} to obtain a connection cap. If
-the seed is on the same machine, the name service returns the cap directly. If
-remote, the distributed name service resolves it.
+Nodes broadcast their durable identity on the local Ethernet segment. DNS
+records every discovered identity-to-MAC route in its relmsg transport. Among
+fresh singletons, only the lexicographically larger identity applies to the
+smaller anchor. Before sending the request it durably enters a non-voting
+joining posture; the anchor then commits \texttt{JOIN}, catches the node up,
+commits the joint configuration, and finalizes it.
 
 \subsection{Pre-shared cluster capability (small kernel change)}
 

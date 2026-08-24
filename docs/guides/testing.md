@@ -42,6 +42,13 @@ execution environment. Their target declarations therefore retain
 `test = false`; kernel and service integration behavior is exercised by
 `scripts/run-aarch64.sh` and the boot-time self-test registry.
 
+Both architecture runners source `scripts/lib/boot-common.sh` for dependency
+validation, Limine configuration resolution, payload hashing, atomic FAT image
+construction, and authoritative self-test verdict validation. To create only a
+mount-free UEFI boot image from an already-built kernel, use
+`scripts/create-boot-image.sh`; the Justfile's `create-image` recipe delegates
+to the same implementation.
+
 `catten-rt`, `catten-syscall`, and `charlotte-launch` also retain disabled
 standalone harnesses. They contain target runtime/ABI support and currently
 contain no dormant `#[test]` functions. Their host-compatible portions are

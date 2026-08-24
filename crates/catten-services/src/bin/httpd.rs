@@ -47,7 +47,9 @@ use catten_services::{
 };
 use catten_syscall::{
     THREAD_STATISTICS_HEADER_U64S,
+    THREAD_STATISTICS_MAGIC,
     THREAD_STATISTICS_RECORD_U64S,
+    THREAD_STATISTICS_VERSION,
     ipc_close,
     ipc_reply_wait_with_memory,
     ipc_scalar_call,
@@ -58,8 +60,13 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use catten_syscall::{
+    thread_statistics_header as thread_header,
+    thread_statistics_record as thread_record,
+};
 use charlotte_protocol_msg::unpack_address_and_len;
 use charlotte_protocol_net::decode_status;
+use charlotte_launch::httpd_status as status;
 
 const HTTP_PORT: u16 = 80;
 const ACCEPT_POLL_MS: u64 = 50;
@@ -79,7 +86,7 @@ struct ServiceSet {
 }
 
 fn fail(code: u32) -> ! {
-    config::write::<u32>(8, code);
+    config::write::<u32>(status::ERROR, code);
     catten_syscall::el0_log(0x4854_5444, 0xfa00_0000 | code as u64);
     unsafe { thread_exit() };
 }
@@ -221,12 +228,13 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
         return None;
     }
     let header_words = THREAD_STATISTICS_HEADER_U64S;
-    if len < header_words * 8 {
+    let word_bytes = core::mem::size_of::<u64>();
+    if len < header_words * word_bytes {
         memory_unmap(memory);
         memory_close(memory);
         return None;
     }
-    let mut header = [0u64; 6];
+    let mut header = [0u64; THREAD_STATISTICS_HEADER_U64S];
     unsafe {
         core::ptr::copy_nonoverlapping(
             scratch_5_vaddr as *const u64,
@@ -234,11 +242,23 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
             header_words,
         );
     }
-    let max_by_len = (len.saturating_sub(header_words * 8)) / (THREAD_STATISTICS_RECORD_U64S * 8);
-    let count = (header[3] as usize).min(max_by_len);
+    if header[thread_header::MAGIC] != THREAD_STATISTICS_MAGIC
+        || header[thread_header::VERSION] != THREAD_STATISTICS_VERSION
+        || header[thread_header::RECORD_BYTES]
+            != (THREAD_STATISTICS_RECORD_U64S * word_bytes) as u64
+    {
+        memory_unmap(memory);
+        memory_close(memory);
+        return None;
+    }
+    let max_by_len = (len.saturating_sub(header_words * word_bytes))
+        / (THREAD_STATISTICS_RECORD_U64S * word_bytes);
+    let count = (header[thread_header::RECORD_COUNT] as usize).min(max_by_len);
     let mut rows = alloc::vec::Vec::with_capacity(count);
     for i in 0..count {
-        let base = scratch_5_vaddr + header_words * 8 + i * THREAD_STATISTICS_RECORD_U64S * 8;
+        let base = scratch_5_vaddr
+            + header_words * word_bytes
+            + i * THREAD_STATISTICS_RECORD_U64S * word_bytes;
         let mut rec: [u64; THREAD_STATISTICS_RECORD_U64S] = [0; THREAD_STATISTICS_RECORD_U64S];
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -248,18 +268,19 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
             );
         }
         rows.push(ThreadRow {
-            tid: rec[0],
-            asid: rec[2],
-            state: rec[3],
-            dispatch: rec[6],
-            runtime_ticks: ((rec[11] as u128) << 64) | rec[10] as u128,
+            tid: rec[thread_record::TID],
+            asid: rec[thread_record::ASID],
+            state: rec[thread_record::STATE],
+            dispatch: rec[thread_record::DISPATCH_COUNT],
+            runtime_ticks: ((rec[thread_record::TOTAL_TICKS_HIGH] as u128) << 64)
+                | rec[thread_record::TOTAL_TICKS_LOW] as u128,
         });
     }
     memory_unmap(memory);
     memory_close(memory);
     Some(ThreadReport {
-        freq_hz: header[4],
-        mono_ticks: header[5],
+        freq_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
+        mono_ticks: header[thread_header::MONOTONIC_TICKS],
         rows,
     })
 }
@@ -305,7 +326,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
                     let _ = write!(s, "{{\"count\":{},\"entries\":{{", unsafe {
                         core::ptr::read_volatile(scratch_4_vaddr as *const u32)
                     });
-                    let mut offset = 4usize;
+                    let mut offset = dns::CATALOG_HEADER_BYTES;
                     let mut emitted = 0u32;
                     let count = unsafe { core::ptr::read_volatile(scratch_4_vaddr as *const u32) };
                     while emitted < count && offset + 2 < len.min(4096) {
@@ -463,7 +484,7 @@ fn render_ns(s: &mut String, ns_conn: u64) {
             "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[",
             registered, pending
         );
-        let mut offset = 12usize;
+        let mut offset = ns::STATUS_HEADER_BYTES;
         let mut emitted = 0u32;
         while emitted < registered && offset + 1 < len.min(4096) {
             let name_len =
@@ -619,7 +640,7 @@ fn build_json(
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -632,7 +653,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 || net_conn == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let status = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
     if status == 0 {
@@ -640,7 +661,7 @@ fn main(ctx: Context) -> ! {
     }
     let (status, _) = unsafe { wait_reply(status, 0) };
     let (link, mac) = decode_status(status);
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let tcp_lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, socket::NAME);
     if tcp_lookup == 0 {
@@ -650,7 +671,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 || tcp_conn == 0 {
         fail(0xe003);
     }
-    config::write::<u32>(0, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     // Optional report sources; absent services render as null.
     let services = ServiceSet {
@@ -662,12 +683,12 @@ fn main(ctx: Context) -> ! {
         relmsg_conn: try_lookup(ns_conn, relmsg::NAME).unwrap_or(0),
         observe_conn: try_lookup(ns_conn, observability::NAME).unwrap_or(0),
     };
-    config::write::<u32>(0, 5);
+    config::write::<u32>(status::STAGE, 5);
 
     if !wait_for_local_ready(ns_conn) {
         fail(0xe004);
     }
-    config::write::<u32>(0, 6);
+    config::write::<u32>(status::STAGE, 6);
 
     let mut requests: u32 = 0;
     let mut uptime: u32 = 0;
@@ -759,8 +780,8 @@ fn main(ctx: Context) -> ! {
 
         requests = requests.wrapping_add(1);
         uptime = uptime.wrapping_add(1);
-        config::write::<u32>(4, requests);
-        config::write::<u32>(0, SENTINEL);
+        config::write::<u32>(status::REQUESTS, requests);
+        config::write::<u32>(status::STAGE, SENTINEL);
     }
 }
 

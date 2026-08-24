@@ -13,6 +13,7 @@ use catten_services::{
     objstore,
 };
 use catten_syscall::*;
+use charlotte_launch::objstore_client_status as status;
 
 const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
 const BYTES: usize = 2 * 1024 * 1024 + 4096;
@@ -20,7 +21,7 @@ const PAGES: usize = BYTES / 4096;
 const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 
 fn fail(code: u32) -> ! {
-    config::write::<u32>(0, code);
+    config::write::<u32>(status::STAGE, code);
     unsafe { thread_exit() }
 }
 
@@ -42,7 +43,7 @@ fn main(ctx: Context) -> ! {
     }
 
     let create = ipc_scalar_call(connection, objstore::OP_CREATE_AT, OBJECT_ID);
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     if create == 0 {
         fail(0xdea3);
     }
@@ -62,7 +63,7 @@ fn main(ctx: Context) -> ! {
     memory_unmap(size_cap);
     let set_size =
         ipc_scalar_call_borrow_read(connection, objstore::OP_SET_SIZE, OBJECT_ID, size_cap);
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
     if set_size == 0 || catten_services::spin_reply(set_size).0 != objstore::ERR_OK {
         fail(0xdea6);
     }
@@ -75,7 +76,7 @@ fn main(ctx: Context) -> ! {
     let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(data, true);
     let map_status = data_vaddr_2_map_status;
     if map_status != 0 {
-        config::write::<u32>(4, map_status as u32);
+        config::write::<u32>(status::ROUND_TRIP_BYTES, map_status as u32);
         fail(0xdea8);
     }
     for offset in 0..BYTES {
@@ -86,23 +87,23 @@ fn main(ctx: Context) -> ! {
     }
     memory_unmap(data);
     let write = ipc_scalar_call_move(connection, objstore::OP_WRITE, OBJECT_ID, data);
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
     if write == 0 {
         fail(0xdea9);
     }
     let write_result = catten_services::spin_reply(write).0;
     if write_result != objstore::ERR_OK {
-        config::write::<u32>(4, write_result as u32);
+        config::write::<u32>(status::ROUND_TRIP_BYTES, write_result as u32);
         fail(0xdea9);
     }
     let flush = ipc_scalar_call(connection, objstore::OP_FLUSH, 0);
-    config::write::<u32>(0, 4);
+    config::write::<u32>(status::STAGE, 4);
     if flush == 0 || catten_services::spin_reply(flush).0 != objstore::ERR_OK {
         fail(0xdeaa);
     }
 
     let read = ipc_scalar_call(connection, objstore::OP_READ, OBJECT_ID);
-    config::write::<u32>(0, 5);
+    config::write::<u32>(status::STAGE, 5);
     if read == 0 {
         fail(0xdeab);
     }
@@ -118,7 +119,7 @@ fn main(ctx: Context) -> ! {
     if data_vaddr_map_status != 0 {
         fail(0xdead);
     }
-    config::write::<u32>(0, 6);
+    config::write::<u32>(status::STAGE, 6);
     for offset in 0..BYTES {
         let actual = unsafe { ((data_vaddr_vaddr + offset) as *const u8).read_volatile() };
         let expected = (offset as u8).wrapping_mul(29) ^ 0x6d;
@@ -176,10 +177,10 @@ fn main(ctx: Context) -> ! {
         if flush == 0 || catten_services::spin_reply(flush).0 != objstore::ERR_OK {
             fail(0xdeb5);
         }
-        config::write::<u32>(8, elf_size as u32);
+        config::write::<u32>(status::ELF_SIZE, elf_size as u32);
     }
-    config::write::<u32>(4, BYTES as u32);
-    config::write::<u32>(0, 0x900d);
+    config::write::<u32>(status::ROUND_TRIP_BYTES, BYTES as u32);
+    config::write::<u32>(status::STAGE, 0x900d);
     let done_endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 1);
     if done_endpoint == 0 {
         fail(0xdeb6);

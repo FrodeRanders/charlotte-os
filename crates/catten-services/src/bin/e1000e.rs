@@ -49,6 +49,7 @@ use catten_syscall::{
     memory_unmap,
     thread_exit,
 };
+use charlotte_launch::net_status as status;
 
 const LINK_WAIT_ATTEMPTS: usize = 500;
 const LINK_WAIT_MILLIS: u64 = 10;
@@ -285,9 +286,9 @@ unsafe fn drain_rx(
         dma_read_barrier();
         let errors = unsafe { desc_read_u8(rx_ring, *next, 13) };
         let len = unsafe { desc_read_u16(rx_ring, *next, 8) } as usize;
-        config::write::<u8>(60, status);
-        config::write::<u8>(61, errors);
-        config::write::<u16>(62, len as u16);
+        config::write::<u8>(status::LAST_RX_DESCRIPTOR_STATUS, status);
+        config::write::<u8>(status::LAST_RX_DESCRIPTOR_ERRORS, errors);
+        config::write::<u16>(status::LAST_RX_DESCRIPTOR_LENGTH, len as u16);
         if status & RXD_STAT_EOP != 0
             && errors == 0
             && (14..=MAX_FRAME_SIZE).contains(&len)
@@ -328,7 +329,7 @@ unsafe fn drain_rx(
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -345,28 +346,28 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let (map_status, mmio_base) = device_mmio_map_any(mmio_cap, true);
     if map_status != 0 {
         unsafe { thread_exit() };
     }
     MMIO_BASE.store(mmio_base, core::sync::atomic::Ordering::Relaxed);
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     if !unsafe { reset_controller() } {
-        config::write::<u32>(36, 0xe001);
+        config::write::<u32>(status::TX_PROGRESS, 0xe001);
         unsafe { thread_exit() };
     }
     let mac = unsafe { read_mac() };
     if mac == [0; 6] {
-        config::write::<u32>(36, 0xe002);
+        config::write::<u32>(status::TX_PROGRESS, 0xe002);
         unsafe { thread_exit() };
     }
     for (index, byte) in mac.iter().enumerate() {
-        config::write::<u8>(4 + index, *byte);
+        config::write::<u8>(status::MAC + index, *byte);
     }
-    config::write::<u32>(0, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     let ring_pages = (RING_SIZE * DESCRIPTOR_SIZE).div_ceil(PAGE_SIZE);
     let buffer_pages = (RING_SIZE * BUFFER_SIZE).div_ceil(PAGE_SIZE);
@@ -379,7 +380,7 @@ fn main(ctx: Context) -> ! {
     let (tx_buffer_cap, tx_buffer_iova, tx_buffers) =
         unsafe { alloc_dma(dma_domain, buffer_pages, DmaDirection::DeviceRead) };
     if rx_ring_cap == 0 || tx_ring_cap == 0 || rx_buffer_cap == 0 || tx_buffer_cap == 0 {
-        config::write::<u32>(36, 0xe003);
+        config::write::<u32>(status::TX_PROGRESS, 0xe003);
         unsafe { thread_exit() };
     }
     unsafe {
@@ -420,12 +421,12 @@ fn main(ctx: Context) -> ! {
         mmio_write(TCTL, TCTL_EN | TCTL_PSP | (15 << 4) | (64 << 12));
         mmio_write(RCTL, RCTL_EN | RCTL_BAM | RCTL_SECRC);
     }
-    config::write::<u32>(24, (rx_ring_iova >> 12) as u32);
-    config::write::<u32>(28, (tx_ring_iova >> 12) as u32);
-    config::write::<u16>(40, 1);
-    config::write::<u16>(42, 1);
-    config::write::<u16>(46, RING_SIZE as u16);
-    config::write::<u32>(0, 6);
+    config::write::<u32>(status::RX_RING_PFN, (rx_ring_iova >> 12) as u32);
+    config::write::<u32>(status::TX_RING_PFN, (tx_ring_iova >> 12) as u32);
+    config::write::<u16>(status::RX_QUEUE_ENABLED, 1);
+    config::write::<u16>(status::TX_QUEUE_ENABLED, 1);
+    config::write::<u16>(status::RX_QUEUE_SIZE, RING_SIZE as u16);
+    config::write::<u32>(status::STAGE, 6);
 
     // The 82574 reports link down for a short period while its emulated PHY
     // negotiates. Do not publish net0 until that transition has completed:
@@ -433,7 +434,7 @@ fn main(ctx: Context) -> ! {
     // the device interrupt first so the wait yields instead of monopolising
     // the boot LP, while bounded polling still covers a missed link interrupt.
     if device_irq_bind_cq(irq_cap, 0) != 0 {
-        config::write::<u32>(36, 0xe004);
+        config::write::<u32>(status::TX_PROGRESS, 0xe004);
         unsafe { thread_exit() };
     }
     unsafe {
@@ -452,14 +453,14 @@ fn main(ctx: Context) -> ! {
         let _ = cq_wait_timeout(1, LINK_WAIT_MILLIS, 0);
         let cause = unsafe { mmio_read(ICR) };
         let _ = device_irq_ack(irq_cap);
-        config::write::<u32>(48, cause);
+        config::write::<u32>(status::INTERRUPT_CAUSE, cause);
     }
     if !link_up {
-        config::write::<u32>(36, 0xe005);
+        config::write::<u32>(status::TX_PROGRESS, 0xe005);
         unsafe { thread_exit() };
     }
-    config::write::<u16>(12, 1);
-    config::write::<u32>(0, 7);
+    config::write::<u16>(status::LINK, 1);
+    config::write::<u32>(status::STAGE, 7);
 
     let ep = ipc_endpoint_create(net::INTERFACE, net::VERSION, 8);
     if ep == 0 {
@@ -479,7 +480,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 || ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 8);
+    config::write::<u32>(status::STAGE, 8);
 
     let mut tx_next = 0usize;
     let mut rx_next = 0usize;
@@ -496,7 +497,7 @@ fn main(ctx: Context) -> ! {
         let _ = cq_wait_timeout(1, 10, 0);
         let cause = unsafe { mmio_read(ICR) };
         let (_status, _count) = device_irq_ack(irq_cap);
-        config::write::<u32>(48, cause);
+        config::write::<u32>(status::INTERRUPT_CAUSE, cause);
         unsafe {
             drain_tx(tx_ring, &mut tx_in_use, &mut tx_completed);
             drain_rx(
@@ -508,12 +509,12 @@ fn main(ctx: Context) -> ! {
                 &mut received,
             );
         }
-        config::write::<u16>(16, rx_completed);
-        config::write::<u16>(18, tx_completed);
-        config::write::<u16>(44, received.len().min(u16::MAX as usize) as u16);
-        config::write::<u16>(52, rx_accepted);
-        config::write::<u16>(54, rx_delivered);
-        config::write::<u32>(56, rx_delivery_error);
+        config::write::<u16>(status::RX_USED_SEEN, rx_completed);
+        config::write::<u16>(status::TX_USED_SEEN, tx_completed);
+        config::write::<u16>(status::RX_UNRECYCLED, received.len().min(u16::MAX as usize) as u16);
+        config::write::<u16>(status::RX_ACCEPTED, rx_accepted);
+        config::write::<u16>(status::RX_DELIVERED, rx_delivered);
+        config::write::<u32>(status::RX_DELIVERY_ERROR, rx_delivery_error);
         deliver_received(
             &mut received,
             &mut pending_recv,
@@ -543,7 +544,7 @@ fn main(ctx: Context) -> ! {
                             | ((mac[3] as u64) << 32)
                             | ((mac[4] as u64) << 40)
                             | ((mac[5] as u64) << 48);
-                        config::write::<u16>(12, link as u16);
+                        config::write::<u16>(status::LINK, link as u16);
                         ipc_reply(message.reply, result as i64);
                     }
                 }
@@ -594,7 +595,7 @@ fn main(ctx: Context) -> ! {
                     dma_write_barrier();
                     tx_next = (tx_next + 1) % RING_SIZE;
                     unsafe { mmio_write(TDT, tx_next as u32) };
-                    config::write::<u32>(36, 4);
+                    config::write::<u32>(status::TX_PROGRESS, 4);
                     if message.reply != 0 {
                         ipc_reply(message.reply, 0);
                     }

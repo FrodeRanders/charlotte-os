@@ -12,7 +12,7 @@
 # virtio-net/E1000E + cluster-discovery networking path.
 #
 # Usage:
-#   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT]
+#   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT] [--kvm]
 #                         [--instance NAME] [--smp N] [--timeout S]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
@@ -26,6 +26,7 @@
 #   --clean        Remove all cached x86_64 target artifacts before building
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)
+#   --kvm          Use Linux KVM with the host x86-64 CPU
 #   --instance NAME  Use separate boot/log files for this VM
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output
@@ -56,10 +57,16 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=lib/boot-common.sh
+source "${SCRIPT_DIR}/lib/boot-common.sh"
+
 ARCH="x86_64"
 PROFILE="debug"
 GDB=""
 GDB_PORT="1234"
+USE_KVM="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -90,6 +97,7 @@ while [ "$#" -gt 0 ]; do
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --gdb)         GDB="-S"; shift ;;
+        --kvm)         USE_KVM="1"; shift ;;
         --gdb-port)
             [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
             GDB_PORT="$2"; shift 2 ;;
@@ -140,21 +148,11 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if ! [[ "$GDB_PORT" =~ ^[0-9]+$ ]] || [ "$GDB_PORT" -lt 1 ] || [ "$GDB_PORT" -gt 65535 ]; then
-    echo "error: --gdb-port must be an integer from 1 through 65535" >&2
-    exit 1
-fi
-if [ -n "$INSTANCE" ] && [[ ! "$INSTANCE" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "error: --instance may contain only letters, digits, '.', '_' and '-'" >&2
-    exit 1
-fi
-if ! [[ "$SMP" =~ ^[0-9]+$ ]] || [ "$SMP" -lt 1 ]; then
-    echo "error: --smp must be a positive integer" >&2
-    exit 1
-fi
-if [ -n "$TIMEOUT" ] && { ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || [ "$TIMEOUT" -lt 1 ]; }; then
-    echo "error: --timeout must be a positive integer" >&2
-    exit 1
+catten_boot_validate_port "--gdb-port" "$GDB_PORT"
+catten_boot_validate_instance "$INSTANCE"
+catten_boot_validate_positive_integer "--smp" "$SMP"
+if [ -n "$TIMEOUT" ]; then
+    catten_boot_validate_positive_integer "--timeout" "$TIMEOUT"
 fi
 if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
@@ -164,11 +162,7 @@ if ! [[ "$DATA_SIZE_MIB" =~ ^[0-9]+$ ]] || [ "$DATA_SIZE_MIB" -lt 16 ]; then
     echo "error: --data-size-mib must be an integer of at least 16" >&2
     exit 1
 fi
-if ! [[ "$HTTP_HOST_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_HOST_PORT" -lt 1 ] \
-    || [ "$HTTP_HOST_PORT" -gt 65535 ]; then
-    echo "error: CATTEN_HTTP_HOST_PORT must be an integer from 1 through 65535" >&2
-    exit 1
-fi
+catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
     echo "error: socket networking requires a network test option" >&2
     exit 1
@@ -185,9 +179,15 @@ if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
     echo "error: --http-test requires the default user network (hostfwd)" >&2
     exit 1
 fi
+if [ "$USE_KVM" = "1" ] && { [ "$(uname -s)" != "Linux" ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; }; then
+    echo "error: --kvm requires a Linux host with accessible /dev/kvm" >&2
+    exit 1
+fi
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+catten_boot_init "$ROOT_DIR"
+catten_boot_require_commands mformat mmd mcopy
+LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
 TARGET_DIR="${ARCH}-unknown-none-catten"
@@ -233,13 +233,6 @@ if [ "$BUILD_ONLY" != "1" ]; then
         exit 1
     fi
 fi
-for tool in mformat mmd mcopy; do
-    if ! command -v "$tool" >/dev/null 2>&1; then
-        echo "error: $tool not found; install mtools (brew install mtools)" >&2
-        exit 1
-    fi
-done
-
 RELEASE_FLAG=""
 if [ "$PROFILE" = "release" ]; then
     RELEASE_FLAG="--release"
@@ -323,42 +316,20 @@ else
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
-if command -v sha256sum >/dev/null 2>&1; then
-    KERNEL_SHA256="$(sha256sum "$KERNEL" | awk '{print $1}')"
-else
-    KERNEL_SHA256="$(shasum -a 256 "$KERNEL" | awk '{print $1}')"
-fi
-echo ">>> Kernel payload: ${KERNEL}"
-echo ">>> Kernel SHA-256: ${KERNEL_SHA256}"
+catten_boot_report_kernel "$KERNEL"
 
 # --- Build a disposable FAT32 EFI System Partition image with mtools. ---
 # It is deliberately separate from the block device delegated to userspace:
 # formatting or object-store writes can no longer corrupt the next boot.
-echo ">>> Creating boot image ${IMAGE}..."
-mkdir -p "$IMAGE_DIR"
-dd if=/dev/zero of="$IMAGE" bs=1048576 count=64 status=none
-mformat -i "$IMAGE" -F -v CATOS ::
-mmd -i "$IMAGE" ::/EFI
-mmd -i "$IMAGE" ::/EFI/BOOT
-mcopy -i "$IMAGE" "./limine-binary/${EFI_BOOT_FILE}" "::/EFI/BOOT/${EFI_BOOT_FILE}"
-mcopy -i "$IMAGE" "$KERNEL" "::/catten"
-mcopy -i "$IMAGE" "./limine.conf" "::/limine.conf"
+catten_boot_create_uefi_image \
+    "$IMAGE" \
+    64 \
+    "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
+    "$KERNEL" \
+    "$LIMINE_CONFIG" \
+    CATOS
 
-BUNDLE_DIGESTS=""
-for service_elf in "$SERVICE_BUNDLE"/*.elf; do
-    if command -v sha256sum >/dev/null 2>&1; then
-        service_digest="$(sha256sum "$service_elf" | awk '{print $1}')"
-    else
-        service_digest="$(shasum -a 256 "$service_elf" | awk '{print $1}')"
-    fi
-    BUNDLE_DIGESTS="${BUNDLE_DIGESTS}$(basename "$service_elf"):${service_digest}
-"
-done
-if command -v sha256sum >/dev/null 2>&1; then
-    CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | sha256sum | awk '{print $1}')"
-else
-    CURRENT_BUNDLE_HASH="$(printf '%s' "$BUNDLE_DIGESTS" | shasum -a 256 | awk '{print $1}')"
-fi
+CURRENT_BUNDLE_HASH="$(catten_boot_bundle_sha256 "$SERVICE_BUNDLE")"
 STORED_BUNDLE_HASH="$(test -f "$DATA_BUNDLE_HASH" && tr -d '[:space:]' < "$DATA_BUNDLE_HASH" || true)"
 BLANK_LAYOUT="blank:${DATA_SIZE_MIB}MiB"
 if [ "$BLANK_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ] && [ -f "$DATA_IMAGE" ]; then
@@ -401,9 +372,14 @@ case "$BLOCK" in
     *) echo "error: --block must be 'nvme', 'ahci', or 'virtio'" >&2; exit 1 ;;
 esac
 
+CPU_OPTS=(-cpu max)
+if [ "$USE_KVM" = "1" ]; then
+    CPU_OPTS=(-accel kvm -cpu host,+invtsc)
+fi
+
 QEMU_OPTS=(
     -M q35
-    -cpu max
+    "${CPU_OPTS[@]}"
     -smp "$SMP"
     -m 512M
     -drive "if=pflash,format=raw,unit=0,file=${FW},readonly=on"
@@ -525,16 +501,7 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    if grep -Fq "Kernel panic:" "$LOG"; then
-        echo "error: kernel panic observed during the test window" >&2
-        exit 1
-    fi
-    if grep -Eq 'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0' "$LOG"; then
-        echo ">>> All registered deferred self-tests passed."
-    else
-        echo "error: no successful authoritative self-test result was produced" >&2
-        exit 1
-    fi
+    catten_boot_validate_selftest_log "$LOG"
 else
     QEMU_OPTS+=(-serial stdio)
     echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."

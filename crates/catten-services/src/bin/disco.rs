@@ -88,6 +88,7 @@ use charlotte_protocol_disco::{
     parse_extended_payload,
 };
 use charlotte_protocol_net::decode_status;
+use charlotte_launch::disco_status as status;
 
 const RAPID_PROBE_COUNT: usize = 3;
 const RAPID_PROBE_INTERVAL_MS: u64 = 200;
@@ -275,15 +276,15 @@ static DIAG_DECODED: AtomicU32 = AtomicU32::new(0);
 static DIAG_CALLED: AtomicU32 = AtomicU32::new(0);
 
 fn publish_diag() {
-    config::write::<u32>(12, DIAG_RX_RAW.load(Ordering::Relaxed));
-    config::write::<u32>(16, DIAG_SENT_OK.load(Ordering::Relaxed));
-    config::write::<u32>(20, DIAG_SENT_FAIL.load(Ordering::Relaxed));
-    config::write::<u32>(24, DIAG_DECODED.load(Ordering::Relaxed));
-    config::write::<u32>(28, DIAG_CALLED.load(Ordering::Relaxed));
+    config::write::<u32>(status::RX_RAW, DIAG_RX_RAW.load(Ordering::Relaxed));
+    config::write::<u32>(status::SENT_OK, DIAG_SENT_OK.load(Ordering::Relaxed));
+    config::write::<u32>(status::SENT_FAIL, DIAG_SENT_FAIL.load(Ordering::Relaxed));
+    config::write::<u32>(status::DECODED, DIAG_DECODED.load(Ordering::Relaxed));
+    config::write::<u32>(status::CALLED, DIAG_CALLED.load(Ordering::Relaxed));
 }
 
 fn heartbeat(beat: u32) {
-    config::write::<u32>(36, beat);
+    config::write::<u32>(status::HEARTBEAT, beat);
 }
 
 fn cluster_posture_ready(cluster: &ClusterInfo, peers: &BTreeMap<[u8; 6], DiscoveredPeer>) -> bool {
@@ -342,18 +343,18 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
     if frame.len() > 4096 {
         return false;
     }
-    config::write::<u32>(40, 1);
+    config::write::<u32>(status::SEND_PROGRESS, 1);
     let cap = memory_alloc(1);
     if cap == 0 {
         return false;
     }
-    config::write::<u32>(40, 2);
+    config::write::<u32>(status::SEND_PROGRESS, 2);
     let (tx_scratch_map_status, tx_scratch_vaddr) = memory_map_any(cap, true);
     if tx_scratch_map_status != 0 {
         memory_close(cap);
         return false;
     }
-    config::write::<u32>(40, 3);
+    config::write::<u32>(status::SEND_PROGRESS, 3);
     unsafe {
         core::ptr::copy_nonoverlapping(frame.as_ptr(), tx_scratch_vaddr as *mut u8, frame.len());
     }
@@ -362,16 +363,16 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
     if call == 0 {
         memory_close(cap);
         DIAG_SENT_FAIL.fetch_add(1, Ordering::Relaxed);
-        config::write::<u32>(40, 0xff);
+        config::write::<u32>(status::SEND_PROGRESS, 0xff);
         return false;
     }
     DIAG_CALLED.fetch_add(1, Ordering::Relaxed);
-    config::write::<u32>(40, 4);
+    config::write::<u32>(status::SEND_PROGRESS, 4);
     let (result, returned_cap) = unsafe { wait_reply(call, 0) };
     if returned_cap != 0 {
         ipc_close(returned_cap);
     }
-    config::write::<u32>(40, 5);
+    config::write::<u32>(status::SEND_PROGRESS, 5);
     if result == 0 {
         DIAG_SENT_OK.fetch_add(1, Ordering::Relaxed);
         true
@@ -462,7 +463,7 @@ fn learn_peer(
             leader_id: leader_id.to_vec(),
         },
     );
-    config::write::<u32>(8, peers.len() as u32);
+    config::write::<u32>(status::PEER_COUNT, peers.len() as u32);
 }
 
 fn evict_expired(peers: &mut BTreeMap<[u8; 6], DiscoveredPeer>, tick_ms: u64) {
@@ -472,7 +473,7 @@ fn evict_expired(peers: &mut BTreeMap<[u8; 6], DiscoveredPeer>, tick_ms: u64) {
         for mac in expired {
             peers.remove(&mac);
         }
-        config::write::<u32>(8, peers.len() as u32);
+        config::write::<u32>(status::PEER_COUNT, peers.len() as u32);
     }
 }
 
@@ -523,12 +524,12 @@ fn handle_frame(
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
     if lookup == 0 {
@@ -554,7 +555,7 @@ fn main(ctx: Context) -> ! {
     if link == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let cluster_raw = ctx.manifest_value(charlotte_launch::manifest_key(b"cluster"));
     let mnemonic: Vec<u8> = match &cluster_raw {
@@ -578,11 +579,11 @@ fn main(ctx: Context) -> ! {
     ) {
         Some(identity) => identity.name,
         None => {
-            config::write::<u32>(0, 0xff03);
+            config::write::<u32>(status::STAGE, 0xff03);
             unsafe { thread_exit() };
         }
     };
-    config::write::<u32>(0, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     let ep = ipc_endpoint_create(disco::INTERFACE, disco::VERSION, 8);
     if ep == 0 {
@@ -608,7 +609,7 @@ fn main(ctx: Context) -> ! {
     if reg_gen < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 5);
+    config::write::<u32>(status::STAGE, 5);
     publish_diag();
 
     let own_service_name = disco::NAME;
@@ -620,10 +621,10 @@ fn main(ctx: Context) -> ! {
     // NIC and the two-node socket transport have settled. Probes sent during
     // the boot storm are silently lost and never retried.
     if !wait_for_local_ready(ns_conn) {
-        config::write::<u32>(0, 0xff10);
+        config::write::<u32>(status::STAGE, 0xff10);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 6);
+    config::write::<u32>(status::STAGE, 6);
 
     // Send rapid bootstrap probes before entering the reactor. Subsequent
     // background probes are paced inside the loop so a blocked receive can
@@ -649,7 +650,7 @@ fn main(ctx: Context) -> ! {
         // reported by OP_CLUSTER_STATUS.
         cluster.maybe_start(ns_conn, &node_id, tick_ms);
         cluster.poll();
-        config::write::<u32>(44, cluster.info.role as u32);
+        config::write::<u32>(status::CLUSTER_ROLE, cluster.info.role as u32);
 
         // Process endpoint messages (non-blocking drain): control ops and
         // OP_FRAME ingress from the frouter.
@@ -711,7 +712,7 @@ fn main(ctx: Context) -> ! {
                 }
                 disco::OP_LIST_PEERS => {
                     let count = peers.len() as u32;
-                    config::write::<u32>(4, count);
+                    config::write::<u32>(status::LAST_PROBE_PEERS, count);
                     // Reply with the packed peer list: count:u32, then per
                     // peer { mac:[u8;6], node_id_len:u8, node_id }.
                     let mut buf = alloc::vec![0u8; 4];

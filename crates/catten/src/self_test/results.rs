@@ -15,12 +15,12 @@
 //! coordinator deliberately avoids timer-based sleeps so the authoritative
 //! result is never itself dependent on the timer-wake path under test.
 //!
-//! Expected outcome: `register_boot_suite` registers the 18 boot tests (plus
+//! Expected outcome: `register_boot_suite` registers the 17 boot tests (plus
 //! any feature-gated network tests), every verifier reports exactly once via
 //! [`pass`]/[`fail`] (asserting it was registered and has not already
 //! resolved), and the coordinator terminates with `failed=0 pending=0` — on
-//! virt/TCG and sbsa-ref this is `passed=18 failed=0 pending=0`. The HVF
-//! compatibility suite omits NVMe and the two persistent-Raft results because
+//! virt/TCG and sbsa-ref this is `passed=17 failed=0 pending=0`. The HVF
+//! compatibility suite omits the NVMe and persistent-Raft results because
 //! protected DMA is unavailable there, and expects 15 passes.
 //!
 //! A panic in a verifier is routed through [`fail_verifier_thread`] (installed
@@ -84,37 +84,35 @@ impl Deadline {
 #[derive(Clone, Copy)]
 pub enum TestId {
     El0 = 0,
-    Raft = 1,
-    RaftStorage = 2,
-    El0Ipc = 3,
-    El0IpcBlocking = 4,
-    El0IpcCrossAs = 5,
-    El0IpcMemory = 6,
-    El0IpcMemoryCancel = 7,
-    El0IpcMemoryCopy = 8,
-    El0CrossLp = 9,
-    PingPong = 10,
-    Sitas = 11,
-    Service = 12,
-    CqWait = 13,
-    Device = 14,
-    Uart = 15,
-    SchedulerLifecycle = 16,
-    Nvme = 17,
-    Net = 18,
-    Disco = 19,
-    Dns = 20,
-    Tcpip = 21,
-    Http = 22,
-    Clusterctl = 23,
-    Join = 24,
-    Dhcp = 25,
+    RaftStorage = 1,
+    El0Ipc = 2,
+    El0IpcBlocking = 3,
+    El0IpcCrossAs = 4,
+    El0IpcMemory = 5,
+    El0IpcMemoryCancel = 6,
+    El0IpcMemoryCopy = 7,
+    El0CrossLp = 8,
+    PingPong = 9,
+    Sitas = 10,
+    Service = 11,
+    CqWait = 12,
+    Device = 13,
+    Uart = 14,
+    SchedulerLifecycle = 15,
+    Nvme = 16,
+    Net = 17,
+    Disco = 18,
+    Dns = 19,
+    Tcpip = 20,
+    Http = 21,
+    Clusterctl = 22,
+    Join = 23,
+    Dhcp = 24,
 }
 
 impl TestId {
-    const ALL: [Self; 26] = [
+    const ALL: [Self; 25] = [
         Self::El0,
-        Self::Raft,
         Self::RaftStorage,
         Self::El0Ipc,
         Self::El0IpcBlocking,
@@ -144,7 +142,6 @@ impl TestId {
     const fn name(self) -> &'static str {
         match self {
             Self::El0 => "el0",
-            Self::Raft => "raft",
             Self::RaftStorage => "raft-storage",
             Self::El0Ipc => "el0-ipc",
             Self::El0IpcBlocking => "el0-ipc-blocking",
@@ -273,7 +270,6 @@ pub fn register_boot_suite() {
         }
         #[cfg(not(feature = "hvf_compat"))]
         {
-            register(TestId::Raft);
             register(TestId::RaftStorage);
             register(TestId::Nvme);
         }
@@ -300,7 +296,6 @@ pub fn register_boot_suite() {
         register(TestId::SchedulerLifecycle);
         #[cfg(not(feature = "hvf_compat"))]
         {
-            register(TestId::Raft);
             register(TestId::RaftStorage);
             register(TestId::Nvme);
         }

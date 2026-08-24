@@ -30,10 +30,11 @@ The main additions and extensions currently maintained here are:
   arbitrary boot-time spin ranges. A distributed name service (`dns`)
   replicates a `name → node` catalog across two QEMU guests over the
   reliable-message layer.
-- **Generic Raft service:** a transport-independent Raft core and EL0 service,
-  with a local two-node election test that can run on a multicore development
-  machine. The distributed name service uses the same Graft core to replicate
-  the catalog across several virtual machines.
+- **Generic Raft service:** a transport-independent Raft core and one durable,
+  network-enabled EL0 member per CharlotteOS node. Discovery supplies peer
+  routes and the service performs restart-safe dynamic admission between
+  machines. The distributed name service currently uses a separate instance
+  of the same Graft core to replicate its catalog.
 - **TCP/IP as a userspace service:** the smoltcp stack runs through a frame
   demultiplexer (IPv4/ARP routed to the `tcpip` service) and exposes a
   socket-API protocol for clients; an `httpd` keyhole serves a full-node JSON

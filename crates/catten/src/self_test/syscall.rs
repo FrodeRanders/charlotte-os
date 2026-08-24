@@ -648,6 +648,7 @@ pub fn test_syscall_dispatch() {
             THREAD_STATISTICS_HEADER_U64S,
             THREAD_STATISTICS_MAGIC,
             THREAD_STATISTICS_VERSION,
+            thread_statistics_header as header,
         };
 
         let mut f = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
@@ -668,16 +669,20 @@ pub fn test_syscall_dispatch() {
                     .expect("statistics field should contain one u64"),
             )
         };
-        assert_eq!(field(0), THREAD_STATISTICS_MAGIC);
-        assert_eq!(field(1), THREAD_STATISTICS_VERSION);
+        assert_eq!(field(header::MAGIC), THREAD_STATISTICS_MAGIC);
+        assert_eq!(field(header::VERSION), THREAD_STATISTICS_VERSION);
         assert_eq!(
-            usize::try_from(field(3)).expect("record count exceeds usize")
-                * usize::try_from(field(2)).expect("record size exceeds usize")
+            usize::try_from(field(header::RECORD_COUNT)).expect("record count exceeds usize")
+                * usize::try_from(field(header::RECORD_BYTES)).expect("record size exceeds usize")
                 + THREAD_STATISTICS_HEADER_U64S * size_of::<u64>(),
             length,
             "THREAD_STATISTICS exact length should match its header"
         );
-        assert_ne!(field(4), 0, "statistics counter frequency should be reported");
+        assert_ne!(
+            field(header::COUNTER_FREQUENCY_HZ),
+            0,
+            "statistics counter frequency should be reported"
+        );
         crate::memory::object::close_cap(memory_owner, statistics_cap)
             .expect("statistics memory object should close");
 

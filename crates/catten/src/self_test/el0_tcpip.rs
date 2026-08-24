@@ -21,7 +21,7 @@ mod inner {
         },
     };
 
-    // "SENT" packed LE; written to config word 0 by tcpclient on success.
+    // "SENT" packed LE; written to tcpclient's named stage field on success.
     const CLIENT_SENTINEL: u32 = 0x5345_4e54;
 
     static mut TCPIP_NS: Option<NameServiceHandle> = None;
@@ -86,14 +86,17 @@ mod inner {
             &[],
         );
         logln!("[tcpip] service spawned (asid={})", tcpip.asid);
-        let tcpip_cfg: *const u32 = {
+        let tcpip_cfg: *const u8 = {
             let base: *mut u8 = tcpip.status_frame.into();
-            base as *const u32
+            base
         };
 
         // Wait for the tcpip service to enter its serving stage (6).
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-        while unsafe { core::ptr::read_volatile(tcpip_cfg) } < 6 {
+        while unsafe {
+            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::STAGE)
+        } < 6
+        {
             deadline.assert_pending("EL0 tcpip service startup");
             yield_lp();
         }
@@ -106,35 +109,72 @@ mod inner {
             ns,
             &[],
         );
-        let client_cfg: *const u32 = {
+        let client_cfg: *const u8 = {
             let base: *mut u8 = client.status_frame.into();
-            base as *const u32
+            base
         };
         logln!("[tcpip] client spawned (asid={})", client.asid);
 
         let mut spins: u64 = 0;
         let deadline = crate::self_test::results::Deadline::after_millis(90_000);
-        while unsafe { core::ptr::read_volatile(client_cfg) } != CLIENT_SENTINEL {
+        while unsafe {
+            crate::self_test::status_u32(client_cfg, charlotte_launch::tcpclient_status::STAGE)
+        } != CLIENT_SENTINEL
+        {
             spins += 1;
             if spins.is_multiple_of(200_000) {
-                let stage = unsafe { core::ptr::read_volatile(client_cfg) };
-                let local_ip = unsafe { core::ptr::read_volatile(client_cfg.add(1)) };
-                let error = unsafe { core::ptr::read_volatile(client_cfg.add(2)) };
-                let rx_total = unsafe { core::ptr::read_volatile(tcpip_cfg.add(1)) };
-                let tx_ok = unsafe { core::ptr::read_volatile(tcpip_cfg.add(2)) };
-                let sock_count = unsafe { core::ptr::read_volatile(tcpip_cfg.add(3)) };
+                let stage = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::tcpclient_status::STAGE,
+                    )
+                };
+                let local_ip = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::tcpclient_status::LOCAL_IP,
+                    )
+                };
+                let error = unsafe {
+                    crate::self_test::status_u32(
+                        client_cfg,
+                        charlotte_launch::tcpclient_status::ERROR,
+                    )
+                };
+                let rx_total = unsafe {
+                    crate::self_test::status_u32(
+                        tcpip_cfg,
+                        charlotte_launch::tcpip_status::RX_TOTAL,
+                    )
+                };
+                let tx_ok = unsafe {
+                    crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::TX_OK)
+                };
+                let sock_count = unsafe {
+                    crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::SOCKETS)
+                };
                 let frouter_base = crate::self_test::FROUTER_STATUS_FRAME
                     .load(core::sync::atomic::Ordering::Acquire)
-                    as *const u32;
+                    as *const u8;
                 let frouter_rx = if frouter_base.is_null() {
                     0
                 } else {
-                    unsafe { core::ptr::read_volatile(frouter_base.add(1)) }
+                    unsafe {
+                        crate::self_test::status_u32(
+                            frouter_base,
+                            charlotte_launch::frouter_status::RX_TOTAL,
+                        )
+                    }
                 };
                 let frouter_fwd = if frouter_base.is_null() {
                     0
                 } else {
-                    unsafe { core::ptr::read_volatile(frouter_base.add(2)) }
+                    unsafe {
+                        crate::self_test::status_u32(
+                            frouter_base,
+                            charlotte_launch::frouter_status::FORWARDED,
+                        )
+                    }
                 };
                 logln!(
                     "[tcpip] waiting: client stage={:#x} ip={:#x} error={:#x} tcpip rx={} tx={} \
@@ -153,9 +193,15 @@ mod inner {
             yield_lp();
         }
 
-        let local_ip = unsafe { core::ptr::read_volatile(client_cfg.add(1)) };
-        let rx_total = unsafe { core::ptr::read_volatile(tcpip_cfg.add(1)) };
-        let tx_ok = unsafe { core::ptr::read_volatile(tcpip_cfg.add(2)) };
+        let local_ip = unsafe {
+            crate::self_test::status_u32(client_cfg, charlotte_launch::tcpclient_status::LOCAL_IP)
+        };
+        let rx_total = unsafe {
+            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::RX_TOTAL)
+        };
+        let tx_ok = unsafe {
+            crate::self_test::status_u32(tcpip_cfg, charlotte_launch::tcpip_status::TX_OK)
+        };
         logln!(
             "[tcpip] client succeeded (local ip {}.{}.{}.{}) tcpip rx={} tx={}",
             (local_ip >> 24) & 0xff,

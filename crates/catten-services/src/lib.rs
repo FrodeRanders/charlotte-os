@@ -30,7 +30,9 @@ pub mod relmsg_transport;
 /// This interim scalar encoding is limited to 8 bytes; longer names travel
 /// in a copied memory object (see [`ns::OP_REGISTER_NAMED`] and
 /// [`ns::OP_LOOKUP_NAMED`]).
-/// The registry name of a node's raft service: FNV-1a over `raft-{id}`.
+/// The registry name of a node's Raft administration endpoint: FNV-1a over
+/// `raft-{id}`. Operationally this endpoint is owned by DNS and controls the
+/// same node and log as the distributed catalog.
 /// Unlike [`name`] this is not truncated, so identity-derived node ids
 /// (e.g. `cluster:abcd1234`) cannot collide in the name service.
 pub fn raft_name(id: &[u8]) -> u64 {
@@ -150,6 +152,7 @@ pub mod ns {
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
     pub const STATUS_OFFSET_PENDING: u32 = 2;
+    pub const STATUS_HEADER_BYTES: usize = 3 * core::mem::size_of::<u32>();
     /// `"NSST"` LE.
     pub const STATUS_MAGIC: u32 = 0x5453_534e;
     /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
@@ -431,9 +434,9 @@ pub mod raft {
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;
 
-    /// The raft service's own network EtherType: the reliable-message layer
-    /// is single-consumer (owned by the dns), so the raft service receives
-    /// its MAC-addressed frames through the frame demultiplexer instead.
+    /// Direct-network EtherType retained for the isolated generic Raft
+    /// fixture. The operational DNS-owned node uses relmsg and does not
+    /// install this route in the frame demultiplexer.
     pub const ETHERTYPE: u16 = 0x88b7;
     /// Well-known name the frame demultiplexer routes `ETHERTYPE` frames to.
     pub const FRAME_NAME: u64 = super::name(b"raft-f");
@@ -833,6 +836,7 @@ pub mod dns {
     /// `[name_len:u8][name][node_len:u8][node][generation:u64 LE]`. The
     /// scalar result is the snapshot byte length.
     pub const OP_CATALOG: u32 = 6;
+    pub const CATALOG_HEADER_BYTES: usize = core::mem::size_of::<u32>();
     /// Replicate an exact-generation tombstone for a locally hosted service.
     /// `arg0` is the packed name and the first eight bytes of the attached
     /// memory object contain the expected distributed generation. The reply
@@ -862,14 +866,12 @@ pub mod dns {
     pub const OP_EVENT_WAIT: u32 = 10;
     /// Like `OP_REGISTER`, but the name travels in the moved memory object
     /// (`arg0` = byte length): the packed scalar encoding is limited to 8
-    /// bytes, while event names (and long service names) exceed it. Used by
-    /// the event-firing side (e.g. the raft service publishing
-    /// `event:membership.{id}` after a JOIN finalizes).
+    /// bytes, while event names (and long service names) exceed it.
     pub const OP_REGISTER_NAMED: u32 = 11;
     /// Fire a cluster event: commit `event:{name}` to the replicated
     /// catalog (catalog-only — no local name-service publication). `arg0` is
     /// the event-name byte length carried in the moved memory object. Only
-    /// the dns leader may commit; the firing side retries on
+    /// the dns leader may commit; an external firing side retries on
     /// `ERR_NOT_LEADER`. The reply is the committed generation (deferred
     /// until replicated).
     pub const OP_EVENT_FIRE: u32 = 12;
@@ -1001,8 +1003,8 @@ pub mod clusterctl {
     pub const OP_KEY: u32 = 5;
     /// Join the cluster on the local network segment. The service asks the
     /// local discovery service for the cluster's leader (or a follower that
-    /// redirects towards it), then asks that leader's raft service to admit
-    /// this node. The reply is the committed JOIN log index, or a negative
+    /// redirects towards it), then asks that leader's DNS-owned Raft
+    /// administration endpoint to admit this node. The reply is the committed JOIN log index, or a negative
     /// error (`ERR_NO_CLUSTER` when no peer on the segment reports a
     /// cluster).
     pub const OP_JOIN: u32 = 7;
@@ -1012,7 +1014,7 @@ pub mod clusterctl {
     pub const ERR_TOO_LARGE: i64 = -3;
     pub const ERR_UPLOAD_FAILED: i64 = -10;
     /// No node on the local segment reported membership in a cluster (or the
-    /// local discovery/raft services are unavailable): the honest "nothing
+    /// local discovery/DNS Raft endpoint is unavailable): the honest "nothing
     /// to join" answer.
     pub const ERR_NO_CLUSTER: i64 = -8;
     /// The ELF is unsigned, signed by another key, or blessed for a

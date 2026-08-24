@@ -46,8 +46,8 @@ pub struct NetworkStack {
     pub frouter: ServiceDomain,
 }
 
-/// A single-node cluster: discovery, the reliable-message Raft transport, and
-/// the distributed name service built on them.
+/// The node's cluster services: discovery, reliable messages, and DNS, which
+/// owns the cluster's single durable Raft log.
 #[derive(Copy, Clone)]
 pub struct Cluster {
     pub disco: ServiceDomain,
@@ -145,14 +145,13 @@ pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
     })
 }
 
-/// Spawn a single-node cluster: `disco` (Ethernet-broadcast discovery),
-/// `relmsg` (the reliable-message Raft transport), and `dns` (the distributed
-/// name service that runs a one-peer Raft group). Node identity is derived by
-/// `disco`/`dns` from the persisted node identity; only the cluster mnemonic
-/// is supplied.
-pub fn launch_single_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
+/// Spawn this node's cluster services: `disco` (Ethernet-broadcast
+/// discovery), `relmsg` (reliable messages), and `dns`.
+///
+/// DNS owns the node's one durable Raft member. Membership, names, deployment
+/// state, and cluster events therefore share one ordered log.
+pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const PEERS_KEY: u64 = charlotte_launch::manifest_key(b"peers");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
 
     let disco = crate::service::supervisor::spawn_with_manifest(
@@ -182,16 +181,17 @@ pub fn launch_single_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Clu
                 value: ManifestValue::Bytes(cluster),
             },
             ManifestEntry {
-                key: PEERS_KEY,
-                flags: 0,
-                value: ManifestValue::Unsigned(1),
-            },
-            ManifestEntry {
                 key: ELECTION_KEY,
                 flags: 0,
-                value: ManifestValue::Unsigned(300),
+                value: ManifestValue::Unsigned(2_000),
             },
         ],
+    );
+    logln!(
+        "[launch] cluster services spawned: disco={} relmsg={} dns={} (single Raft owner)",
+        disco.asid,
+        relmsg.asid,
+        dns.asid
     );
     Cluster {
         disco,
@@ -237,7 +237,7 @@ pub extern "C" fn launch_steady_state() {
     let network = launch_network_stack(&ns);
     let (cluster, appliance) = match network {
         Some(_) => {
-            (Some(launch_single_node_cluster(&ns, b"default")), Some(launch_network_appliance(&ns)))
+            (Some(launch_node_cluster(&ns, b"charlotte")), Some(launch_network_appliance(&ns)))
         }
         None => (None, None),
     };

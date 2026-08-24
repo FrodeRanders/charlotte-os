@@ -52,6 +52,7 @@ use catten_syscall::{
     ipc_status,
     *,
 };
+use charlotte_launch::nvme_status as status;
 
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
@@ -427,10 +428,10 @@ unsafe fn admin_submit_and_wait(
     let rdw3 = unsafe { core::ptr::read_volatile((sqe_off + 24) as *const u64) };
     let rdw5_lo = unsafe { core::ptr::read_volatile((sqe_off + 40) as *const u32) };
     let rdw5_hi = unsafe { core::ptr::read_volatile((sqe_off + 44) as *const u32) };
-    config::write::<u32>(52, rdw0);
-    config::write::<u64>(56, rdw3);
-    config::write::<u32>(64, rdw5_lo);
-    config::write::<u32>(68, rdw5_hi);
+    config::write::<u32>(status::READ_CQE_DW0, rdw0);
+    config::write::<u64>(status::READ_CQE_DW3, rdw3);
+    config::write::<u32>(status::READ_CQE_DW5_LOW, rdw5_lo);
+    config::write::<u32>(status::READ_CQE_DW5_HIGH, rdw5_hi);
     aq.sq_tail = (slot + 1) % ADMIN_QUEUE_SIZE;
     // Release barrier: ensure SQE stores are visible to DMA before doorbell
     core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
@@ -445,7 +446,7 @@ unsafe fn admin_submit_and_wait(
                 let raw_dw3 = core::ptr::read_volatile(
                     (aq.cq_base + (aq.cq_head as usize) * 16 + 12) as *const u32,
                 );
-                config::write::<u32>(44, raw_dw3);
+                config::write::<u32>(status::ADMIN_CQE_DW3, raw_dw3);
                 aq.cq_head = (aq.cq_head + 1) % ADMIN_QUEUE_SIZE;
                 if aq.cq_head == 0 {
                     aq.cq_phase ^= 1;
@@ -455,7 +456,7 @@ unsafe fn admin_submit_and_wait(
             }
         }
     }
-    config::write::<u32>(4, 0xe0);
+    config::write::<u32>(status::DETAIL, 0xe0);
     ADMIN_STATUS_TIMEOUT
 }
 
@@ -464,7 +465,7 @@ unsafe fn admin_submit_and_wait(
 // ---------------------------------------------------------------------------
 
 unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
-    config::write::<u32>(4, 10); // entering nvme_init
+    config::write::<u32>(status::DETAIL, 10); // entering nvme_init
     // 1. Reset controller: disable, wait for RDY=0 with a generous bound.
     unsafe {
         write32(reg::CC, 0);
@@ -477,29 +478,29 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
             core::hint::spin_loop();
         }
         if !ready_zero {
-            config::write::<u32>(4, 0xe1);
+            config::write::<u32>(status::DETAIL, 0xe1);
             return None;
         }
     }
-    config::write::<u32>(4, 11); // controller reset
+    config::write::<u32>(status::DETAIL, 11); // controller reset
 
     // Read CAP with two 32-bit reads, set doorbell stride from DSTRD (bits 35:32)
     let cap_lo = unsafe { read32(0x0000) };
     let cap_hi = unsafe { read32(0x0004) };
     let dstrd = ((cap_hi as u64) & 0xf) as usize;
     let dbl_stride = 4usize << dstrd;
-    config::write::<u32>(20, cap_lo);
-    config::write::<u32>(24, cap_hi);
-    config::write::<u32>(28, dbl_stride as u32);
+    config::write::<u32>(status::CAP_LOW, cap_lo);
+    config::write::<u32>(status::CAP_HIGH, cap_hi);
+    config::write::<u32>(status::DOORBELL_STRIDE, dbl_stride as u32);
     unsafe {
         DOORBELL_STRIDE = dbl_stride;
     }
 
     // 2. Allocate admin queues
     let asq_mem = alloc_queue_memory(ADMIN_QUEUE_SIZE as usize, 64)?;
-    config::write::<u32>(4, 12); // ASQ allocated
+    config::write::<u32>(status::DETAIL, 12); // ASQ allocated
     let acq_mem = alloc_queue_memory(ADMIN_QUEUE_SIZE as usize, 16)?;
-    config::write::<u32>(4, 13); // ACQ allocated
+    config::write::<u32>(status::DETAIL, 13); // ACQ allocated
 
     unsafe {
         write32(reg::AQA, (ADMIN_QUEUE_SIZE - 1) | ((ADMIN_QUEUE_SIZE - 1) << 16));
@@ -515,11 +516,11 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
             core::hint::spin_loop();
         }
         if !ready_one {
-            config::write::<u32>(4, 0xe2);
+            config::write::<u32>(status::DETAIL, 0xe2);
             return None;
         }
     }
-    config::write::<u32>(4, 14); // controller enabled
+    config::write::<u32>(status::DETAIL, 14); // controller enabled
 
     let mut aq = AdminQueues {
         sq_base: asq_mem.vaddr,
@@ -536,24 +537,24 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
 
     // 3. Identify controller (CNS=1) — allocate memory for the 4096-byte data structure
     let id_ctrl_mem = alloc_queue_memory(1, PAGE_SIZE)?;
-    config::write::<u32>(4, 19); // id-ctrl buffer allocated
+    config::write::<u32>(status::DETAIL, 19); // id-ctrl buffer allocated
     let sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_IDENTIFY, 0, 1, 0, id_ctrl_mem.phys) };
-    config::write::<u32>(4, 20); // admin_submit_and_wait returned
+    config::write::<u32>(status::DETAIL, 20); // admin_submit_and_wait returned
     if sf != 0 {
         return None;
     }
-    config::write::<u32>(4, 15); // identify-ctrl ok
+    config::write::<u32>(status::DETAIL, 15); // identify-ctrl ok
     let oacs: u16 = unsafe { core::ptr::read_volatile((id_ctrl_mem.vaddr + 256) as *const u16) };
-    config::write::<u32>(76, oacs as u32);
+    config::write::<u32>(status::OPTIONAL_ADMIN_SUPPORT, oacs as u32);
 
     let oacs: u16 = unsafe { core::ptr::read_volatile((id_ctrl_mem.vaddr + 256) as *const u16) };
-    config::write::<u32>(76, oacs as u32);
+    config::write::<u32>(status::OPTIONAL_ADMIN_SUPPORT, oacs as u32);
 
     // Verify admin queue still works: Get Features (Arbitration, FID=1)
     let test_mem = alloc_queue_memory(1, PAGE_SIZE)?;
     let test_sf =
         unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.phys) };
-    config::write::<u32>(48, test_sf);
+    config::write::<u32>(status::TEST_FEATURE_RESULT, test_sf);
     if test_sf != 0 {
         return None;
     }
@@ -564,7 +565,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let nq_cdw11: u32 = (1u32 << 16) | 1; // NCQR=1, NSQR=1
     let nq_sf =
         unsafe { admin_submit_and_wait(&mut aq, ADMIN_SET_FEATURES, 0, nq_cdw10, nq_cdw11, 0) };
-    config::write::<u32>(72, nq_sf);
+    config::write::<u32>(status::NUM_QUEUES_RESULT, nq_sf);
     if nq_sf != 0 {
         return None;
     }
@@ -575,7 +576,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     if sf != 0 {
         return None;
     }
-    config::write::<u32>(4, 16); // identify-ns ok
+    config::write::<u32>(status::DETAIL, 16); // identify-ns ok
 
     let nsze = unsafe { core::ptr::read_volatile(id_ns_mem.vaddr as *const u64) };
     let flbas = unsafe { core::ptr::read_volatile((id_ns_mem.vaddr + 26) as *const u8) };
@@ -589,8 +590,8 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
         return None;
     }
     let lbs = 1u32 << lbads;
-    config::write::<u64>(32, nsze);
-    config::write::<u32>(40, lbs);
+    config::write::<u64>(status::NAMESPACE_SIZE, nsze);
+    config::write::<u32>(status::LOGICAL_BLOCK_SIZE, lbs);
 
     // 5. Create I/O CQ first. Zero CQ memory before queue creation.
     let io_cq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
@@ -602,11 +603,11 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let cq_sf = unsafe {
         admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys)
     };
-    config::write::<u32>(12, cq_sf);
+    config::write::<u32>(status::CREATE_CQ_RESULT, cq_sf);
     if cq_sf != 0 {
         return None;
     }
-    config::write::<u32>(4, 17);
+    config::write::<u32>(status::DETAIL, 17);
     // 6. Create I/O SQ
     let io_sq_mem = alloc_queue_memory(1, PAGE_SIZE)?;
     unsafe {
@@ -617,11 +618,11 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let sq_sf = unsafe {
         admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys)
     };
-    config::write::<u32>(16, sq_sf);
+    config::write::<u32>(status::CREATE_SQ_RESULT, sq_sf);
     if sq_sf != 0 {
         return None;
     }
-    config::write::<u32>(4, 18);
+    config::write::<u32>(status::DETAIL, 18);
     Some((io_sq_mem.vaddr, io_cq_mem.vaddr, nsze, lbs, 0))
 }
 
@@ -651,15 +652,15 @@ impl IoState {
         prp1: u64,
         prp2: u64,
     ) -> Option<u32> {
-        config::write::<u32>(100, opcode as u32);
-        config::write::<u32>(108, nblocks as u32);
+        config::write::<u32>(status::LAST_OPCODE, opcode as u32);
+        config::write::<u32>(status::LAST_BLOCK_COUNT, nblocks as u32);
         // A circular SQ must always leave one entry unused so full and empty
         // remain distinguishable.
         if self.outstanding >= IO_QUEUE_SIZE - 1 {
             return None;
         }
         let slot = self.sq_tail;
-        config::write::<u32>(104, slot);
+        config::write::<u32>(status::LAST_SLOT, slot);
         unsafe {
             nvm_sqe(
                 self.sq_vaddr,
@@ -688,7 +689,7 @@ impl IoState {
         unsafe {
             let cqe_ptr = (self.cq_vaddr + (self.cq_head as usize) * 16) as *const u32;
             let dw3 = core::ptr::read_volatile(cqe_ptr.add(3));
-            config::write::<u32>(84, dw3);
+            config::write::<u32>(status::IO_CQE_DW3, dw3);
             let phase = ((dw3 >> 16) & 1) as u8;
             if phase != self.cq_phase {
                 return None;
@@ -696,14 +697,14 @@ impl IoState {
             core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
             let cid = (dw3 & 0xffff) as u16;
             let status = ((dw3 >> 17) & 0x7fff) as u16;
-            config::write::<u32>(88, status as u32);
-            config::write::<u32>(92, cid as u32);
+            config::write::<u32>(status::IO_STATUS, status as u32);
+            config::write::<u32>(status::IO_COMMAND_ID, cid as u32);
             self.cq_head = (self.cq_head + 1) % IO_QUEUE_SIZE;
             if self.cq_head == 0 {
                 self.cq_phase ^= 1;
             }
             self.outstanding = self.outstanding.saturating_sub(1);
-            config::write::<u32>(96, self.outstanding);
+            config::write::<u32>(status::OUTSTANDING, self.outstanding);
             core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
             doorbell_write(cq1_hdbl(), self.cq_head as u16);
             Some((cid, status))
@@ -739,13 +740,13 @@ fn main(ctx: Context) -> ! {
         unsafe { thread_exit() };
     }
     MMIO_BASE.store(nvme_vaddr, core::sync::atomic::Ordering::Relaxed);
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
 
     let (io_sq_vaddr, io_cq_vaddr, nsze, lbs, _) = match unsafe { nvme_init() } {
         Some(v) => v,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let total_blocks = nsze as u32;
     BLOCK_SIZE.store(lbs, Ordering::Release);
@@ -753,10 +754,10 @@ fn main(ctx: Context) -> ! {
 
     let endpoint = ipc_endpoint_create(block::INTERFACE, block::VERSION, 64);
     if endpoint == 0 {
-        config::write::<u32>(0, 0xe3);
+        config::write::<u32>(status::STAGE, 0xe3);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 21);
+    config::write::<u32>(status::STAGE, 21);
 
     let register = ipc_scalar_call_connection(
         ns_connection,
@@ -766,21 +767,21 @@ fn main(ctx: Context) -> ! {
         IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
     );
     if register == 0 {
-        config::write::<u32>(0, 0xe4);
+        config::write::<u32>(status::STAGE, 0xe4);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 22);
+    config::write::<u32>(status::STAGE, 22);
     let (generation, _) = spin_reply(register);
     if generation < 1 {
-        config::write::<u32>(0, 0xe5);
+        config::write::<u32>(status::STAGE, 0xe5);
         unsafe { thread_exit() };
     }
-    config::write::<u32>(0, 23);
+    config::write::<u32>(status::STAGE, 23);
 
     ipc_endpoint_bind_cq(endpoint, 0);
     let irq_delivery = device_irq_bind_cq(irq_cap, 0) == 0;
-    config::write::<u32>(0, 3); // registered, serving
-    config::write::<u32>(20, 0x900d); // sentinel for verifier
+    config::write::<u32>(status::STAGE, 3); // registered, serving
+    config::write::<u32>(status::CAP_LOW, 0x900d); // sentinel for verifier
 
     let mut io = IoState {
         sq_vaddr: io_sq_vaddr,
@@ -837,7 +838,7 @@ fn main(ctx: Context) -> ! {
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
-            config::write::<u32>(80, irq_count);
+            config::write::<u32>(status::IRQ_COUNT, irq_count);
         }
         while let Some((cid, status)) = io.poll_completions() {
             let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
@@ -871,7 +872,7 @@ fn main(ctx: Context) -> ! {
 
             match message.opcode {
                 block::OP_INFO => {
-                    config::write::<u32>(112, block::OP_INFO);
+                    config::write::<u32>(status::LAST_INFO_OPCODE, block::OP_INFO);
                     if message.reply != 0 {
                         ipc_reply(message.reply, ((blk as u64) | ((tot as u64) << 32)) as i64);
                     }

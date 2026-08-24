@@ -98,6 +98,7 @@ use charlotte_protocol_disco::{
     ROLE_LEADER,
     parse_cluster_answer,
 };
+use charlotte_launch::raft_status as status;
 
 const LOOP_TICK_MS: u64 = 25;
 /// Scratch for inbound relmsg frames (distinct from the RPC memory scratch).
@@ -370,7 +371,7 @@ fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 150,
@@ -398,7 +399,7 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => fatal(1),
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     // The node id is the raft identity other nodes use to reach this node
     // (service name `raft-{node_id}`). Without an explicit manifest override
@@ -440,7 +441,7 @@ fn main(ctx: Context) -> ! {
     if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
         fatal(5);
     }
-    config::write::<u32>(0, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let name_u64 = catten_services::raft_name(node_id.as_bytes());
     let register = ipc_scalar_call_connection(
@@ -453,13 +454,13 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         fatal(3);
     }
-    config::write::<u32>(0, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     let (generation, _) = unsafe { wait_reply_2(register).unwrap_or((-1, 0)) };
     if generation < 1 {
         fatal(4);
     }
-    config::write::<u32>(4, generation as u32);
+    config::write::<u32>(status::REGISTRATION_GENERATION, generation as u32);
 
     // Register the well-known frame name so the frame demultiplexer routes
     // this service's EtherType to its endpoint (the OP_FRAME ingress). The
@@ -485,10 +486,10 @@ fn main(ctx: Context) -> ! {
         }
     }
 
-    // Storage is launch policy. The ordinary local Raft service test uses
-    // memory and remains independent of NVMe. A durability deployment can
-    // require the object store and wait for its name-service registration;
-    // optional mode may fall back, but never does so silently.
+    // Storage is launch policy. A disposable or specialized Raft group may
+    // use memory, while the node-cluster service requires the object store and
+    // waits for its registration. Optional mode may fall back, but never does
+    // so silently.
     let namespace = persistent_namespace(cluster_id, node_id.as_bytes());
     let disk_stores = if storage_policy == STORAGE_MEMORY {
         None
@@ -515,7 +516,7 @@ fn main(ctx: Context) -> ! {
             false,
         ),
     };
-    config::write::<u32>(24, durable as u32);
+    config::write::<u32>(status::DURABLE, durable as u32);
     let ns_transport = Arc::new(CharlotteTransport::new());
     let mac_transport = Arc::new(RelmsgRaftTransport::new(0));
     let transport: Arc<dyn RaftTransport> = Arc::new(ServiceRaftTransport {
@@ -542,7 +543,7 @@ fn main(ctx: Context) -> ! {
         peer_specs.push((peer_id.to_string(), peer_name, 0));
     }
 
-    config::write::<u32>(0, 5);
+    config::write::<u32>(status::STAGE, 5);
 
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me,
@@ -556,8 +557,8 @@ fn main(ctx: Context) -> ! {
         snapshot_min_entries: 64,
         snapshot_chunk_bytes: 3000,
     });
-    config::write::<u32>(20, node.current_term as u32);
-    config::write::<u32>(0, 6);
+    config::write::<u32>(status::CURRENT_TERM, node.current_term as u32);
+    config::write::<u32>(status::STAGE, 6);
 
     let mut served: u32 = 0;
     // Heartbeats must be frequent enough to preserve leadership but must not
@@ -620,7 +621,7 @@ fn main(ctx: Context) -> ! {
 
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
-            config::write::<u32>(16, completed as u32);
+            config::write::<u32>(status::TRANSPORT_COMPLETIONS, completed as u32);
         }
 
         // Keep one deferred name-service lookup outstanding for each missing
@@ -864,7 +865,7 @@ fn main(ctx: Context) -> ! {
             }
 
             served += 1;
-            config::write::<u32>(12, served);
+            config::write::<u32>(status::IPC_SERVED, served);
 
             match message.opcode {
                 raft::OP_VOTE_REQUEST => {
@@ -1186,18 +1187,21 @@ fn main(ctx: Context) -> ! {
         // Publish one coherent observation after all state transitions in
         // this reactor iteration. Write the term first so a verifier that
         // observes Leader cannot still see the preceding election term.
-        config::write::<u32>(20, node.current_term as u32);
+        config::write::<u32>(status::CURRENT_TERM, node.current_term as u32);
         config::write::<u32>(
-            28,
+            status::STATE,
             match node.state {
                 NodeState::Follower => 1,
                 NodeState::Candidate => 2,
                 NodeState::Leader => 3,
             },
         );
-        config::write::<u32>(32, node.cluster_configuration.all_members().len() as u32);
         config::write::<u32>(
-            36,
+            status::CLUSTER_MEMBERS,
+            node.cluster_configuration.all_members().len() as u32,
+        );
+        config::write::<u32>(
+            status::JOIN_FLAGS,
             (u32::from(net_conn != 0))
                 | (u32::from(frouter_conn != 0) << 1)
                 | (u32::from(disco_conn != 0) << 2)
@@ -1205,21 +1209,39 @@ fn main(ctx: Context) -> ! {
                 | (u32::from(join_accepted) << 4)
                 | (u32::from(node.joining) << 5),
         );
-        config::write::<u32>(40, join_attempts);
-        config::write::<u32>(44, join_requests_received);
-        config::write::<u32>(48, join_replies_received);
-        config::write::<u32>(52, node.millis().min(u32::MAX as u64) as u32);
-        config::write::<u32>(56, mac_transport.peer_count().min(u32::MAX as usize) as u32);
-        config::write::<u32>(60, mac_transport.pending_send_count().min(u32::MAX as usize) as u32);
-        config::write::<u32>(64, mac_transport.outbound_count().min(u32::MAX as usize) as u32);
-        for (index, count) in raft_tag_counts.iter().copied().enumerate() {
-            config::write::<u32>(68 + index * 4, count);
-        }
-        config::write::<u32>(92, node.commit_index.min(u32::MAX as u64) as u32);
-        config::write::<u32>(96, node.log_store.last_index().min(u32::MAX as u64) as u32);
-        config::write::<u32>(100, node.log_store.last_term().min(u32::MAX as u64) as u32);
+        config::write::<u32>(status::JOIN_ATTEMPTS, join_attempts);
+        config::write::<u32>(status::JOIN_REQUESTS, join_requests_received);
+        config::write::<u32>(status::JOIN_REPLIES, join_replies_received);
+        config::write::<u32>(status::MILLIS, node.millis().min(u32::MAX as u64) as u32);
         config::write::<u32>(
-            8,
+            status::ROUTES,
+            mac_transport.peer_count().min(u32::MAX as usize) as u32,
+        );
+        config::write::<u32>(
+            status::PENDING_SENDS,
+            mac_transport.pending_send_count().min(u32::MAX as usize) as u32,
+        );
+        config::write::<u32>(
+            status::QUEUED_SENDS,
+            mac_transport.outbound_count().min(u32::MAX as usize) as u32,
+        );
+        for (index, count) in raft_tag_counts.iter().copied().enumerate() {
+            config::write::<u32>(status::TAG_COUNTS + index * status::TAG_COUNT_STRIDE, count);
+        }
+        config::write::<u32>(
+            status::COMMIT_INDEX,
+            node.commit_index.min(u32::MAX as u64) as u32,
+        );
+        config::write::<u32>(
+            status::LAST_LOG_INDEX,
+            node.log_store.last_index().min(u32::MAX as u64) as u32,
+        );
+        config::write::<u32>(
+            status::LAST_LOG_TERM,
+            node.log_store.last_term().min(u32::MAX as u64) as u32,
+        );
+        config::write::<u32>(
+            status::STATE,
             match node.state {
                 NodeState::Candidate => 2,
                 NodeState::Leader => 3,

@@ -60,6 +60,7 @@ use charlotte_authorization::{
     Roles,
     wire,
 };
+use charlotte_launch::ns_status as status;
 
 const STATUS_SNAPSHOT_MAX: usize = 4096;
 
@@ -533,12 +534,12 @@ fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(0, 1);
+    config::write::<u32>(status::STAGE, 1);
     let endpoint = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(0, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let mut registry: Registry = BTreeMap::new();
     let mut waitlist: Waitlist = catten_services::broker::KeyedWaitlist::new();
@@ -567,9 +568,9 @@ fn main(ctx: Context) -> ! {
             continue;
         }
         handled += 1;
-        config::write::<u32>(4, handled);
-        config::write::<u32>(8, message.opcode);
-        config::write::<u32>(12, waitlist.len() as u32);
+        config::write::<u32>(status::HANDLED, handled);
+        config::write::<u32>(status::LAST_OPCODE, message.opcode);
+        config::write::<u32>(status::WAITERS, waitlist.len() as u32);
 
         match message.opcode {
             ns::OP_REGISTER => {

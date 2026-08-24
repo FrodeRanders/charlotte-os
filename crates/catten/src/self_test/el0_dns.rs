@@ -1,6 +1,6 @@
 //! Self-test: distributed name service over Raft + discovery.
 //!
-//! Spawns the cluster discovery service and a `dns` replica, waits for the
+//! Observes the operational discovery and `dns` services, waits for the
 //! two-node Raft group to elect a leader over the network, registers a name
 //! through the leader, and verifies the name replicates to every replica's
 //! catalog (cross-node). Both QEMU guests must run this test.
@@ -28,11 +28,6 @@ mod inner {
         },
     };
 
-    const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
-    const PEERS_KEY: u64 = charlotte_launch::manifest_key(b"peers");
-    const MEMBER_KEY: u64 = charlotte_launch::manifest_key(b"member");
-    const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
-
     // "dns" packed LE; the dns service registers under this name.
     const DNS_NAME: u64 = 0x0073_6e64;
     // catten_services::dns opcodes.
@@ -57,6 +52,7 @@ mod inner {
 
     /// FNV-1a (the same hash the node-identity scheme uses to derive member
     /// names from NIC MACs).
+    #[cfg(feature = "deploy_net_test")]
     fn fnv1a(bytes: &[u8]) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
         for byte in bytes {
@@ -291,11 +287,11 @@ mod inner {
             base
         };
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(agent_cfg, 0) < AGENT_STAGE_IDENTITY {
+        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) < AGENT_STAGE_IDENTITY {
             deadline.assert_pending("EL0 deploy agent identity");
             yield_lp();
         }
-        let my_key = status_word(agent_cfg, 16) as u64;
+        let my_key = status_word(agent_cfg, charlotte_launch::agent_status::NODE_KEY) as u64;
         let key_a = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff;
         let key_b = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff;
         let peer_key = if my_key == key_a {
@@ -344,7 +340,7 @@ mod inner {
         while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) < 2 {
             gate_spins += 1;
             if gate_spins.is_multiple_of(2_000_000) {
-                let stage = status_word(agent_cfg, 0);
+                let stage = status_word(agent_cfg, charlotte_launch::agent_status::STAGE);
                 let catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
                 logln!(
                     "[deploy] waiting for remote registration: catalog={catalog} \
@@ -419,12 +415,15 @@ mod inner {
         } else {
             AGENT_STAGE_RETIRED
         };
-        while status_word(agent_cfg, 0) != expected_stage {
+        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) != expected_stage {
             deadline.assert_pending("EL0 deploy migration handover");
             crate::cpu::scheduler::sleep_millis(10);
             yield_lp();
         }
-        logln!("[deploy] local agent stage {} after migration.", status_word(agent_cfg, 0));
+        logln!(
+            "[deploy] local agent stage {} after migration.",
+            status_word(agent_cfg, charlotte_launch::agent_status::STAGE)
+        );
 
         // The deployed service must still be reachable after the handover.
         // The old host retires before the new host registers, so a call can
@@ -493,57 +492,11 @@ mod inner {
         let ns = unsafe { TEST_STATE.as_ref() }.expect("[dns] test state missing");
         let kernel_ns = kernel_ns_connection(ns);
 
-        // The cluster discovery service is spawned by the disco self-test
-        // (disco_net_test is implied by dns_net_test); the dns service waits on
-        // its registration for the peer set.
-        let member_a = alloc::format!(
-            "test-cluster:{:08x}",
-            fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff
-        )
-        .into_bytes();
-        let member_b = alloc::format!(
-            "test-cluster:{:08x}",
-            fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff
-        )
-        .into_bytes();
-        let dns_manifest = [
-            ManifestEntry {
-                key: CLUSTER_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(b"test-cluster"),
-            },
-            ManifestEntry {
-                key: PEERS_KEY,
-                flags: 0,
-                value: ManifestValue::Unsigned(2),
-            },
-            ManifestEntry {
-                key: ELECTION_KEY,
-                flags: 0,
-                // Generous for the debug kernel behind the QEMU socketpair:
-                // the network RTT is milliseconds-to-tens-of-milliseconds
-                // under boot load, and an election timeout this short makes
-                // leader elections race the transport.
-                value: ManifestValue::Unsigned(2_000),
-            },
-            ManifestEntry {
-                key: MEMBER_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&member_a),
-            },
-            ManifestEntry {
-                key: MEMBER_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&member_b),
-            },
-        ];
-
-        let dns = spawn_with_manifest(
-            crate::service::store::service_elf(b"dns").expect("[el0_dns] dns.elf"),
-            ns,
-            &dns_manifest,
-        );
-        logln!("[dns] dns spawned (asid={})", dns.asid);
+        let dns = crate::service::launch::steady_state()
+            .cluster
+            .expect("[dns] operational cluster services missing")
+            .dns;
+        logln!("[dns] observing operational replica (asid={})", dns.asid);
 
         // Give each startup phase its own budget. In particular, do not spend
         // the Raft-initialisation budget while discovery is still waiting for
@@ -569,12 +522,18 @@ mod inner {
         }
         logln!("[dns] replica reached serving stage.");
 
-        // The Raft membership must include the peer discovered through the
-        // cluster discovery service; a single-node cluster would silently pass
-        // the register step without proving network replication.
-        let peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
+        // Serving begins from the durable singleton configuration. Wait for
+        // discovery-driven admission to commit and stabilize before testing
+        // catalog replication; a singleton registration would not prove the
+        // networked cluster path.
+        let membership_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let mut peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
+        while peers < 2 {
+            membership_deadline.assert_pending("EL0 DNS cluster membership");
+            yield_lp();
+            peers = status_word(dns_cfg, charlotte_launch::dns_status::PEER_COUNT);
+        }
         logln!("[dns] Raft membership peers = {peers}");
-        assert!(peers >= 2, "[dns] expected 2-node membership, discovered {peers}");
 
         // Resolve the dns endpoint. Either this replica becomes the Raft
         // leader (and registers a name) or the leader's registration
@@ -680,11 +639,14 @@ mod inner {
             // the authoritative proof that it has replaced that entry; a
             // mere successful lookup could still return the stale generation.
             let deadline = crate::self_test::results::Deadline::after_millis(30_000);
-            let echo_status: *const u32 = {
+            let echo_status: *const u8 = {
                 let base: *mut u8 = echo.status_frame.into();
-                base as *const u32
+                base
             };
-            while unsafe { core::ptr::read_volatile(echo_status) } < 6 {
+            while unsafe {
+                crate::self_test::status_u32(echo_status, charlotte_launch::echo_status::STAGE)
+            } < 6
+            {
                 deadline.assert_pending("EL0 dns new echo serving stage");
                 yield_lp();
             }
@@ -762,7 +724,11 @@ mod inner {
                 1,
                 "[dns] local endpoint-close watch must be installed before teardown"
             );
-            assert_eq!(status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES), 2);
+            assert_eq!(
+                status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES),
+                3,
+                "[dns] catalog must contain alpha, echo, and the committed membership event"
+            );
             crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                 .read()
                 .abort_thread_generation(echo.tid, echo.generation)
@@ -777,7 +743,9 @@ mod inner {
         // quorum while the leader is committing the unregister operation.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         let mut unregister_spins = 0u64;
-        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) != 1 {
+        // The membership event is cluster history and remains after the
+        // hosted echo service is removed, alongside alpha.
+        while status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES) != 2 {
             unregister_spins = unregister_spins.wrapping_add(1);
             if unregister_spins.is_multiple_of(2_000_000) {
                 let lifecycle =

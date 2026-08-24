@@ -65,6 +65,7 @@ use catten_syscall::{
     thread_exit,
 };
 use charlotte_protocol_net::decode_status;
+use charlotte_launch::tcpip_status as status;
 use charlotte_smoltcp::CharlotteEthDevice;
 use smoltcp::{
     iface::{
@@ -91,10 +92,6 @@ use smoltcp::{
 };
 
 const REPLY_SPINS: u64 = 50_000_000;
-const STAGE_OFFSET: usize = 0;
-const RX_TOTAL_OFFSET: usize = 4;
-const TX_OK_OFFSET: usize = 8;
-const SOCKETS_OFFSET: usize = 12;
 const POLL_MS: u64 = 50;
 const FRAME_MAX: usize = 4096;
 
@@ -147,12 +144,12 @@ fn read_port(memory: u64) -> u16 {
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_connection = match ctx.bootstrap_cap() {
         Some(c) => c,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
 
     let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
     if lookup == 0 {
@@ -204,7 +201,7 @@ fn main(ctx: Context) -> ! {
         }
         _ => None,
     };
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let ep = ipc_endpoint_create(socket::INTERFACE, socket::VERSION, 8);
     if ep == 0 {
@@ -227,13 +224,13 @@ fn main(ctx: Context) -> ! {
     if ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     // Let the NIC and the link settle before ARP/IP traffic starts flowing.
     if !wait_for_local_ready(ns_connection) {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 5);
+    config::write::<u32>(status::STAGE, 5);
 
     let mut device = CharlotteEthDevice::new(net_conn, mtu);
     let hw = HardwareAddress::Ethernet(smoltcp::wire::EthernetAddress(mac));
@@ -264,7 +261,7 @@ fn main(ctx: Context) -> ! {
     let mut elapsed_ms: u64 = 1;
     let mut rx_total: u32 = 0;
     let mut tx_ok: u32 = 0;
-    config::write::<u32>(STAGE_OFFSET, 6);
+    config::write::<u32>(status::STAGE, 6);
 
     loop {
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
@@ -341,7 +338,7 @@ fn main(ctx: Context) -> ! {
                 sockets.remove(entry.handle);
             }
         }
-        config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
+        config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
 
         // Complete any ready recv operations.
         let mut completed: [u64; 8] = [0; 8];
@@ -432,7 +429,7 @@ fn main(ctx: Context) -> ! {
                             closing: false,
                         },
                     );
-                    config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
+                    config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
                     ipc_reply(msg.reply, id as i64);
                 }
 
@@ -581,7 +578,7 @@ fn main(ctx: Context) -> ! {
                         Ok(len) => {
                             if len > 0 {
                                 tx_ok = tx_ok.wrapping_add(1);
-                                config::write::<u32>(TX_OK_OFFSET, tx_ok);
+                                config::write::<u32>(status::TX_OK, tx_ok);
                             }
                             len as i64
                         }
@@ -619,7 +616,7 @@ fn main(ctx: Context) -> ! {
                         let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                         sock.close();
                     }
-                    config::write::<u32>(SOCKETS_OFFSET, state.sockets.len() as u32);
+                    config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
                     ipc_reply(msg.reply, 0);
                 }
 
@@ -646,7 +643,7 @@ fn main(ctx: Context) -> ! {
                     }
                     memory_close(msg.memory);
                     rx_total = rx_total.wrapping_add(1);
-                    config::write::<u32>(RX_TOTAL_OFFSET, rx_total);
+                    config::write::<u32>(status::RX_TOTAL, rx_total);
                     ipc_reply(msg.reply, 0);
                 }
 

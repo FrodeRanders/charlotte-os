@@ -106,8 +106,9 @@ cornerstone of Catten's async-first model:
 - **PL011 UART serial console** (`log/serial.rs`) as the AArch64 log backend,
   mapped as Device memory via the HHDM; `early_log`/`log`/`logln` routed to it.
 - `scripts/run-aarch64.sh`: macOS-friendly image build + QEMU run.
-- `Justfile`: arch-correct EFI file (`BOOTAA64.EFI`) in `create-image`;
-  `gic-version=3` in the aarch64 recipe. `limine.conf`: serial enabled.
+- `Justfile`: `create-image` delegates to the shared, mount-free boot-image
+  builder and selects the architecture-correct EFI file (`BOOTAA64.EFI`);
+  the AArch64 runner selects `gic-version=3`. `limine.conf`: serial enabled.
 
 ### 6. Display / framebuffer (flanterm)
 The `display` feature draws log output to a linear framebuffer via the C

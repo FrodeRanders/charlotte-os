@@ -139,17 +139,17 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     let manager = manager_reply.cap.expect("persistent manager connection");
     let upgrade =
         ipc::scalar_call(client_asid, manager, 1, NAME_ECHO).expect("persistent manager upgrade");
-    let ns_status: *const u32 = {
+    let ns_status: *const u8 = {
         let base: *mut u8 = name_service.domain.status_frame.into();
-        base as *const u32
+        base
     };
     let ready = ipc::wait_reply_timeout(client_asid, upgrade, 30_000)
         .expect("[service] persistent upgrade reply failed");
     assert!(ready, "persistent upgrade completion deadline expired");
     logln!(
         "[service] persistent upgrade completed: ns_waiters={}, ns_handled={}",
-        unsafe { core::ptr::read_volatile(ns_status.add(12)) },
-        unsafe { core::ptr::read_volatile(ns_status.add(4)) }
+        unsafe { crate::self_test::status_u32(ns_status, charlotte_launch::ns_status::WAITERS) },
+        unsafe { crate::self_test::status_u32(ns_status, charlotte_launch::ns_status::HANDLED) }
     );
     let upgraded = ipc::poll_reply(client_asid, upgrade)
         .expect("[service] persistent upgrade poll failed")
@@ -234,9 +234,9 @@ extern "C" fn verify_el0_service() {
     let state = unsafe { TEST_STATE.as_mut() }.expect("[service] test state missing");
 
     // --- Phase A: the EL0 client completes bootstrap → lookup → call. ---
-    let config: *const u32 = {
+    let config: *const u8 = {
         let base: *mut u8 = state.client_config.into();
-        base as *const u32
+        base
     };
     {
         // The client writes its completion sentinel and then exits; its
@@ -253,12 +253,15 @@ extern "C" fn verify_el0_service() {
         assert!(exited, "[service] EL0 service client did not exit within deadline");
     }
     assert_eq!(
-        unsafe { core::ptr::read_volatile(config) },
+        unsafe { crate::self_test::status_u32(config, charlotte_launch::client_status::SENTINEL) },
         CLIENT_SENTINEL,
         "[service] client did not reach completion sentinel"
     );
-    let echoed = unsafe { core::ptr::read_volatile(config.add(1)) };
-    let generation = unsafe { core::ptr::read_volatile(config.add(2)) };
+    let echoed =
+        unsafe { crate::self_test::status_u32(config, charlotte_launch::client_status::ECHOED) };
+    let generation = unsafe {
+        crate::self_test::status_u32(config, charlotte_launch::client_status::GENERATION)
+    };
     assert_eq!(echoed, ECHO_VALUE as u32, "[service] client echoed value mismatch: {:#x}", echoed);
     assert_eq!(generation, 1, "[service] first echo instance must be generation 1");
     logln!("[service] EL0 client completed name lookup and echo call (generation 1)");
@@ -355,17 +358,27 @@ extern "C" fn verify_el0_service() {
     // authorized SpawnUpgrade syscall itself.
     let upgrade = ipc::scalar_call(kclient2_asid, mgr_conn, 1, NAME_ECHO)
         .expect("[service] manager upgrade call failed");
-    let mgr_status: *const u32 = {
+    let mgr_status: *const u8 = {
         let base: *mut u8 = service_manager.status_frame.into();
-        base as *const u32
+        base
     };
     let upgrade_ready = ipc::wait_reply_timeout(kclient2_asid, upgrade, 30_000)
         .expect("[service] manager upgrade reply failed");
     assert!(upgrade_ready, "[service] manager upgrade reply deadline expired");
     logln!(
         "[service] manager upgrade replied: stage={}, error={}",
-        unsafe { core::ptr::read_volatile(mgr_status) },
-        unsafe { core::ptr::read_volatile(mgr_status.add(2)) }
+        unsafe {
+            crate::self_test::status_u32(
+                mgr_status,
+                charlotte_launch::service_manager_status::STAGE,
+            )
+        },
+        unsafe {
+            crate::self_test::status_u32(
+                mgr_status,
+                charlotte_launch::service_manager_status::ERROR,
+            )
+        }
     );
     let upgrade_reply = ipc::poll_reply(kclient2_asid, upgrade)
         .expect("[service] manager upgrade poll failed")

@@ -46,7 +46,7 @@ core:
 ## Current status
 
 - `scripts/run-aarch64.sh` boots `virt` (default) and `--sbsa-ref`; both
-  complete `SELFTEST COMPLETE: passed=18 failed=0 pending=0`.
+  complete `SELFTEST COMPLETE: passed=17 failed=0 pending=0`.
 - The kernel is entered at EL1 and contains an **EL2 → EL1 descent** in `_start`
   (`crates/catten/src/main.rs`: reads `CurrentEL`, clears `HCR_EL2.E2H`, erets
   to EL1h), so it tolerates a bootloader that enters at EL2 — it just does not
@@ -91,7 +91,7 @@ EL2-resident features.
 ## Roadmap
 
 ### Phase 0 — keep the emulated baselines green (ongoing)
-- Maintain `SELFTEST COMPLETE: passed=18 failed=0 pending=0` on `virt` and
+- Maintain `SELFTEST COMPLETE: passed=17 failed=0 pending=0` on `virt` and
   `--sbsa-ref` after every change (this is the merge gate used during the
   bring-up).
 
@@ -174,7 +174,7 @@ the emulated targets, which remain the dev baseline.
 
 ## Validation criteria
 
-- **Gate (all phases)**: `SELFTEST COMPLETE: passed=18 failed=0 pending=0` on
+- **Gate (all phases)**: `SELFTEST COMPLETE: passed=17 failed=0 pending=0` on
   the target, matching the emulated baseline.
 - **Phase 1**: the kernel boots when the bootloader enters at EL2 with no
   firmware EL1-handoff patch.

@@ -789,27 +789,23 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 | Capability | Status |
 |---|---|
-| Raft core (leader election, log replication, commit/apply) | Two-node local election boot-validated; shared Graft quorum, learner, joint-consensus, read-barrier, and snapshot semantics implemented; broader fault injection remains incomplete |
-| Charlotte IPC transport (`CharlotteTransport`) | Local peer-connection table and endpoint transport boot-validated |
+| Raft core (leader election, log replication, commit/apply) | DNS-owned two-node cluster boot-validated; shared Graft quorum, learner, joint-consensus, read-barrier, and snapshot semantics implemented; broader fault injection remains incomplete |
+| Operational transport | DNS carries Raft and admission frames over relmsg using discovery-provided MAC routes |
 | Election/heartbeat clock | Detached timer completion plus an independent bounded completion-queue wait watchdog; no spin-polling loop |
 | Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
 | RPC batching | relmsg now fragments messages to 64 KiB, so a single Raft RPC can carry well beyond one frame; the dns still chunks snapshots at 1200 bytes |
 | Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
 | Cross-machine Raft (NIC driver + reliable message layer) | Implemented: two guests exchange relmsg frames over the frouter and replicate the dns catalog (`--dns-test`) |
-| Distributed name service (on top of Raft) | Implemented: `dns` runs the `CatalogMachine` state machine on the Graft core over the relmsg transport; leader-committed registrations replicate and a remote invocation (`OP_CALL`) routes through the catalog |
+| Distributed name service and membership | Implemented as one owner: `dns` runs the Graft node and `CatalogMachine` over relmsg; membership, registrations, deployments, keys, and cluster events share its durable log |
 
 ```
 ┌──────────────────────────────────────────────┐
-│          Distributed Name Service            │  ← replicated service metadata
-│  (a StateMachine on top of the Raft service) │
+│               DNS EL0 process               │
+│  one durable RaftNode + CatalogMachine       │
+│  DNS endpoint + raft-{id} admin/status face  │
+│  membership, names, deployments, events      │
 └──────────────────┬───────────────────────────┘
-                   │ IPC (OP_CLIENT_COMMAND)
-┌──────────────────▼───────────────────────────┐
-│          Raft Consensus Service              │  ← one EL0 service per node
-│  endpoint: "RAFT"  opcodes: 1=Vote 2=Append  │
-│           3=Snapshot  4=Command  8=Status    │
-└──────────────────┬───────────────────────────┘
-                   │ IPC / memory objects
+                   │ tagged Raft/DNS messages
 ┌──────────────────▼───────────────────────────┐
 │     Reliable Message Layer / NIC driver      │
 └──────────────────────────────────────────────┘
@@ -819,12 +815,11 @@ machine exported as a native CharlotteOS IPC endpoint.
 
 | Raft concern | CharlotteOS primitive | Status |
 |---|---|---|
-| Peer discovery (single-instance) | Name service (`OP_LOOKUP`) | Works: nodes register as `raft-{id}`, look up local peers |
-| Peer discovery (cross-machine) | Ethernet discovery service | Implemented for route/posture discovery; authoritative voter sets still come from durable launch policy or replicated join, never discovery alone |
+| Peer discovery and admission | Ethernet discovery service + replicated join | Implemented: discovery supplies identity/MAC routes; only `JOIN`/joint/finalize commands grant voter authority |
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
 | Election/heartbeat clock | Detached timer + bounded `CQ_WAIT` timeout | Implemented as two wake paths: the CQ timeout remains an independent watchdog if the detached completion is delayed or lost |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
-| Client command submission | Capability-based endpoint call | The `dns` service submits registrations through the leader; lookup and call-routing queries are forwarded to the leader; the generic `raft` service's `OP_CLIENT_COMMAND` endpoint remains unwired |
+| Client command submission | Capability-based endpoint call | DNS submits catalog, deployment, key, event, and membership commands through its own Raft node; lookup and call-routing queries are forwarded to the leader |
 | Linearizable reads | Reply tokens + read barrier | Implemented for DNS lookup and call routing: followers forward correlated queries and the leader requires recent quorum contact; two-guest follower access is boot-validated |
 | Membership changes | Replicated internal commands + discovery-bridged admission | `JOIN`, `JOINT`, and `FINALIZE` semantics and the clusterctl/discovery admission path are implemented and two-guest boot-validated; loss, partition, restart, and three-voter fault testing remain incomplete |
 
@@ -858,27 +853,26 @@ copying bytes. The wire format supports this; the current transport
 uses scalar IPC with inline payloads. Moving to memory-object RPCs
 is a transport-layer change that does not affect the consensus core.
 
-**Capability-based security.** A client invokes the Raft service only if
-it possesses a connection cap. The service manager attenuates rights:
-`CALL` for `OP_CLIENT_COMMAND` but not `OP_ADD_SERVER`. No ambient
-authority, no IP-based ACLs.
+**Capability-based security.** A client invokes DNS or its per-node Raft
+administration face only if it possesses a connection cap. No ambient
+authority or IP-based ACL grants membership administration.
 
-**Failure isolation (partly implemented).** Each local Raft node runs in a
-separate protection domain, and generic service/UART lifecycle tests validate
-generation changes and stale-connection failure. A separate storage test
-validates Raft term recovery across explicit process teardown and restart.
+**Failure isolation (partly implemented).** Each local DNS/Raft owner runs in
+its own protection domain, and generic service/UART lifecycle tests validate
+generation changes and stale-connection failure. A separate, network-disabled
+Raft storage fixture validates term recovery across explicit process teardown and restart.
 Automatic supervisor restart, durable recovery inside a live quorum, and
 continued operation after a remote-node crash have not yet been validated.
 
 ## 18.3 Distributed name service (design)
 
-> **Status: implemented.** The `dns` service runs the `CatalogMachine` state
-> machine on the Graft core over the relmsg transport. Two guests on a stream
+> **Status: implemented.** The `dns` service owns the Graft node and runs the
+> `CatalogMachine` on it over the relmsg transport. Two guests on a stream
 > Ethernet segment elect a leader, replicate leader-committed
 > `name -> {node, generation}`
 > registrations, and serve remote invocation (`dns::OP_CALL`) through the
-> catalog. The design below describes the model it realizes; the general
-> `raft` service binary and per-node `ns.rs` refactor remain future work.
+> catalog. Membership and catalog operations use this same durable log; the
+> generic `raft.elf` is retained only as a network-disabled storage fixture.
 
 Remote invocation does not synchronously enter an arbitrary local service
 from the DNS/Raft reactor. Local lookup and the eventual service call are
@@ -937,11 +931,11 @@ mistakes; possession is validated against the table and remains machine-local. A
 remote proxy capability must therefore name a local proxy object in this same
 table rather than treating a remote integer as authority.
 
-The Raft service itself remains **generic**: it replicates opaque
-commands against a pluggable `StateMachine` trait. A distributed name
-service, a distributed lock service, and a cluster configuration store
-are different state machines on the same Raft substrate — none of them
-know about sockets, IP addresses, or TCP.
+The Raft core remains **generic**, but CharlotteOS deliberately chooses one
+operational state-machine owner: DNS. Its catalog and cluster membership are
+not separate Raft groups. Other future replicated facilities should extend or
+compose with this cluster state rather than silently creating another
+CharlotteOS membership log.
 
 ## 18.4 Cluster bootstrap and seed discovery
 
@@ -951,10 +945,18 @@ one existing cluster member. The difference is that the seed is
 expressed in terms the OS already understands — service names and
 transport-layer identifiers — rather than IP addresses.
 
-### Static seeds (launch-time configuration)
+### Ethernet discovery and deterministic admission (current)
 
-The simplest mechanism, already implemented in the Raft service
-binary: named launch-manifest records carry the node and seed-peer service names.
+The operational DNS node starts as a durable singleton. Discovery supplies
+identity-to-MAC routes, and only the lexicographically larger fresh singleton
+applies to the smaller identity. The joiner persists its selected anchor before
+it stops campaigning; the anchor admits it through replicated `JOIN`, joint
+consensus, and finalize commands in the DNS-owned log.
+
+### Static seeds (generic fixture / future provisioning)
+
+The generic Raft binary can still accept named launch-manifest peers, but this
+is not the operational CharlotteOS cluster bootstrap path.
 
 ```
 node-id = "r4"

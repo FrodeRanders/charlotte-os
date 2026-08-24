@@ -364,9 +364,9 @@ This ordering covers both crash edges:
         evidence and safely clears the stale admission record.
 \end{itemize}
 
-Auto-join is disabled when the generic Raft service falls back to volatile
-storage. That is an explicit safety-over-availability decision: without stable
-state, a process restart cannot prove which cluster has authority. The safe
+Operational auto-join belongs to the durable DNS-owned Raft node. Volatile
+Raft nodes must not auto-join: without stable state, a process restart cannot
+prove which cluster has authority. The safe
 TLA+ specification includes crash and restart; an unsafe restart that forgets
 admission must violate \texttt{RestartPreservesAdmission}.
 

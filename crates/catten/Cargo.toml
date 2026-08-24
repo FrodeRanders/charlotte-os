@@ -71,7 +71,10 @@ catten-syscall = { path = "../catten-syscall" }
 charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
-limine = { version = ">=0.3.0" }
+# Keep the protocol bindings aligned with the vendored, boot-tested Limine
+# loader. 0.x releases are not API-compatible with one another, so a lower
+# bound would allow an unreviewed protocol/API migration on `cargo update`.
+limine = { version = "=0.6.5" }
 lock_api = { version = ">=0.4.14", features = ["nightly"] }
 concurrent-queue = { version = "2.5.0", default-features = false }
 hashbrown = { version = ">=0.16.0", features = ["nightly"] }

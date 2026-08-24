@@ -245,19 +245,6 @@ extern "C" fn local_ready_publisher() {
         "local disk stack failed before node readiness"
     );
 
-    // The boot raft test is a *local-node* test: two raft domains on two
-    // local LPs form a test-only cluster and must be torn down before the
-    // node declares itself ready, so no stale membership or transport state
-    // from that local "cluster" survives into the network cluster the node
-    // joins after this marker.
-    assert!(
-        crate::self_test::results::wait_until_resolved(
-            crate::self_test::results::TestId::Raft,
-            120_000,
-        ) && crate::self_test::results::has_passed(crate::self_test::results::TestId::Raft),
-        "local Raft test failed before node readiness"
-    );
-
     #[cfg(feature = "virtio_net_test")]
     assert!(
         crate::self_test::results::wait_until_resolved(

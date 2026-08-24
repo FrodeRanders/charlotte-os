@@ -16,6 +16,7 @@ use alloc::{
 };
 #[cfg(target_arch = "aarch64")]
 use core::arch::asm;
+use charlotte_launch::net_status as status;
 
 use catten_rt::{
     Context,
@@ -57,7 +58,6 @@ const REPLY_SPINS: u64 = 50_000_000;
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 // Keep transient mappings clear of the loader's per-shard CQ region at
 // 0x0080_0000 and the userspace stack arena at 0x0100_0000.
-const STAGE_OFFSET: usize = 0;
 const PAGE_SIZE: usize = 4096;
 const BUFFER_SIZE: usize = 2048;
 // The modern QEMU transport uses the v1 header including the trailing
@@ -318,7 +318,7 @@ unsafe fn drain_tx(
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(c) => c,
         None => unsafe { thread_exit() },
@@ -335,14 +335,14 @@ fn main(ctx: Context) -> ! {
         Some(c) => c,
         None => unsafe { thread_exit() },
     };
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
     let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
     if mmio_map_status != 0 {
         catten_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
         unsafe { thread_exit() };
     }
     MMIO_BASE.store(vaddr_bar0, core::sync::atomic::Ordering::Relaxed);
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
     let bar0 = vaddr_bar0 + virtio::MODERN_COMMON;
 
     // --- virtio PCI modern initialization ---
@@ -383,10 +383,10 @@ fn main(ctx: Context) -> ! {
     // Read MAC.
     let dc = MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_DEVICE;
     for i in 0..6 {
-        config::write::<u8>(4 + i, unsafe { r8(dc + virtio::NET_MAC + i) });
+        config::write::<u8>(status::MAC + i, unsafe { r8(dc + virtio::NET_MAC + i) });
     }
-    config::write::<u16>(12, unsafe { r16(dc + virtio::NET_STATUS) });
-    config::write::<u32>(STAGE_OFFSET, 4);
+    config::write::<u16>(status::LINK, unsafe { r16(dc + virtio::NET_STATUS) });
+    config::write::<u32>(status::STAGE, 4);
 
     // --- virtqueues ---------------------------------------------------------
     unsafe { w16(bar0 + virtio::M_CONFIG_VECTOR, 0) };
@@ -433,15 +433,15 @@ fn main(ctx: Context) -> ! {
     unsafe { w16(rx_avail + virtio::AVAIL_IDX, rx_qsz) };
     let rx_notify = unsafe { cfg_vq(bar0, virtio::VIRTQ_RX, rx_ring_iova, rx_qsz) };
     let tx_notify = unsafe { cfg_vq(bar0, virtio::VIRTQ_TX, tx_ring_iova, tx_qsz) };
-    config::write::<u16>(32, rx_notify);
-    config::write::<u16>(34, tx_notify);
+    config::write::<u16>(status::RX_NOTIFY, rx_notify);
+    config::write::<u16>(status::TX_NOTIFY, tx_notify);
     unsafe { w16(bar0 + virtio::M_QUEUE_SELECT, virtio::VIRTQ_RX) };
-    config::write::<u16>(40, unsafe { r16(bar0 + virtio::M_QUEUE_ENABLE) });
+    config::write::<u16>(status::RX_QUEUE_ENABLED, unsafe { r16(bar0 + virtio::M_QUEUE_ENABLE) });
     unsafe { w16(bar0 + virtio::M_QUEUE_SELECT, virtio::VIRTQ_TX) };
-    config::write::<u16>(42, unsafe { r16(bar0 + virtio::M_QUEUE_ENABLE) });
-    config::write::<u32>(24, (rx_ring_iova >> 12) as u32);
-    config::write::<u32>(28, (tx_ring_iova >> 12) as u32);
-    config::write::<u32>(STAGE_OFFSET, 5); // virtqueues set up
+    config::write::<u16>(status::TX_QUEUE_ENABLED, unsafe { r16(bar0 + virtio::M_QUEUE_ENABLE) });
+    config::write::<u32>(status::RX_RING_PFN, (rx_ring_iova >> 12) as u32);
+    config::write::<u32>(status::TX_RING_PFN, (tx_ring_iova >> 12) as u32);
+    config::write::<u32>(status::STAGE, 5); // virtqueues set up
 
     // DRIVER_OK
     unsafe {
@@ -457,7 +457,7 @@ fn main(ctx: Context) -> ! {
     // inspect it until the driver explicitly kicks queue 0.
     dma_write_barrier();
     unsafe { notify(virtio::VIRTQ_RX, rx_notify) };
-    config::write::<u32>(STAGE_OFFSET, 6);
+    config::write::<u32>(status::STAGE, 6);
 
     // --- Register endpoint --------------------------------------------------
     let ep = ipc_endpoint_create(net::INTERFACE, net::VERSION, 8);
@@ -478,7 +478,7 @@ fn main(ctx: Context) -> ! {
     if generation < 1 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 7);
+    config::write::<u32>(status::STAGE, 7);
 
     if ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
@@ -486,7 +486,7 @@ fn main(ctx: Context) -> ! {
     if device_irq_bind_cq(irq_cap, 0) != 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 8);
+    config::write::<u32>(status::STAGE, 8);
 
     // --- State ---------------------------------------------------------------
     let mut tx_avail_idx: u16 = 0;
@@ -517,10 +517,10 @@ fn main(ctx: Context) -> ! {
                 &mut received,
             );
         }
-        config::write::<u16>(16, rx_used_seen);
-        config::write::<u16>(18, tx_used_seen);
-        config::write::<u8>(20, unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) });
-        config::write::<u16>(22, tx_avail_idx);
+        config::write::<u16>(status::RX_USED_SEEN, rx_used_seen);
+        config::write::<u16>(status::TX_USED_SEEN, tx_used_seen);
+        config::write::<u8>(status::DEVICE_STATUS, unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) });
+        config::write::<u16>(status::TX_AVAILABLE, tx_avail_idx);
         // RX-ring diagnostic: descriptors the device has filled but the driver
         // has not yet recycled. When this reaches `rx_qsz` the available ring
         // is empty, so virtio-net has no RX buffer and queues incoming frames
@@ -528,8 +528,8 @@ fn main(ctx: Context) -> ! {
         let device_used_idx =
             unsafe { r16(rx_desc_vaddr + used_offset(rx_qsz) + virtio::USED_IDX) };
         let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
-        config::write::<u16>(44, rx_unrecycled);
-        config::write::<u16>(46, rx_qsz);
+        config::write::<u16>(status::RX_UNRECYCLED, rx_unrecycled);
+        config::write::<u16>(status::RX_QUEUE_SIZE, rx_qsz);
         deliver_received(&mut received, &mut pending_recv);
 
         // --- endpoint messages ---------------------------------------------
@@ -571,7 +571,7 @@ fn main(ctx: Context) -> ! {
                 net::OP_SEND => {
                     let frame_len = m.arg0 as usize;
                     let Some(desc_id) = tx_in_use.iter().position(|used| !*used) else {
-                        config::write::<u32>(36, 1);
+                        config::write::<u32>(status::TX_PROGRESS, 1);
                         if m.memory != 0 {
                             memory_close(m.memory);
                         }
@@ -581,7 +581,7 @@ fn main(ctx: Context) -> ! {
                         continue;
                     };
                     if m.memory == 0 || !(14..=MAX_FRAME_SIZE).contains(&frame_len) {
-                        config::write::<u32>(36, 2);
+                        config::write::<u32>(status::TX_PROGRESS, 2);
                         if m.memory != 0 {
                             memory_close(m.memory);
                         }
@@ -592,7 +592,7 @@ fn main(ctx: Context) -> ! {
                     }
                     let (v_input_map_status, v_input_vaddr) = memory_map_any(m.memory, false);
                     if v_input_map_status != 0 {
-                        config::write::<u32>(36, 3);
+                        config::write::<u32>(status::TX_PROGRESS, 3);
                         memory_close(m.memory);
                         if m.reply != 0 {
                             ipc_reply(m.reply, -1);
@@ -639,14 +639,14 @@ fn main(ctx: Context) -> ! {
                     tx_in_use[desc_id] = true;
                     dma_write_barrier();
                     tx_avail_idx = tx_avail_idx.wrapping_add(1);
-                    config::write::<u16>(22, tx_avail_idx);
+                    config::write::<u16>(status::TX_AVAILABLE, tx_avail_idx);
                     unsafe {
                         w16(tx_avail + virtio::AVAIL_IDX, tx_avail_idx);
                         dma_write_barrier();
                         notify(virtio::VIRTQ_TX, tx_notify);
                     }
                     if m.reply != 0 {
-                        config::write::<u32>(36, 4);
+                        config::write::<u32>(status::TX_PROGRESS, 4);
                         ipc_reply(m.reply, 0);
                     }
                 }

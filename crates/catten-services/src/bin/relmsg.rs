@@ -61,9 +61,9 @@ use charlotte_protocol_msg::{
     wire_session_is_newer,
 };
 use charlotte_protocol_net::decode_status;
+use charlotte_launch::relmsg_status as status;
 
 const REPLY_SPINS: u64 = 50_000_000;
-const STAGE_OFFSET: usize = 0;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const RETRANSMIT_TIMER_COOKIE: u64 = 0x5245_4c4d_5347_544d;
@@ -196,12 +196,12 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
     memory_unmap(cap);
     let call = ipc_scalar_call_move(net_conn, net::OP_SEND, frame.len() as u64, cap);
     if call == 0 {
-        config::write::<u32>(16, 1);
+        config::write::<u32>(status::LAST_SEND_RESULT, 1);
         memory_close(cap);
         return false;
     }
     let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-    config::write::<i64>(16, result);
+    config::write::<i64>(status::LAST_SEND_RESULT, result);
     result == 0
 }
 
@@ -416,7 +416,7 @@ fn process_frame(
 }
 
 fn main(ctx: Context) -> ! {
-    config::write::<u32>(STAGE_OFFSET, 1);
+    config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -439,7 +439,7 @@ fn main(ctx: Context) -> ! {
     if link == 0 {
         unsafe { thread_exit() };
     }
-    config::write::<u32>(STAGE_OFFSET, 2);
+    config::write::<u32>(status::STAGE, 2);
     let ep = ipc_endpoint_create(relmsg::INTERFACE, relmsg::VERSION, 16);
     if ep == 0 {
         unsafe { thread_exit() };
@@ -467,7 +467,7 @@ fn main(ctx: Context) -> ! {
     let Some(local_session) = initial_wire_session(generation as u64) else {
         unsafe { thread_exit() };
     };
-    config::write::<u32>(STAGE_OFFSET, 3);
+    config::write::<u32>(status::STAGE, 3);
 
     let mut peers: Vec<Peer> = Vec::new();
     let mut received = VecDeque::new();
@@ -475,7 +475,7 @@ fn main(ctx: Context) -> ! {
     let cq = ctx.completion_queue_layout();
     let mut retransmit_timer_armed =
         submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE) != u64::MAX;
-    config::write::<u32>(STAGE_OFFSET, 4);
+    config::write::<u32>(status::STAGE, 4);
 
     loop {
         // Retransmission cadence must be independent of endpoint traffic.
@@ -500,12 +500,12 @@ fn main(ctx: Context) -> ! {
                     != u64::MAX;
         }
 
-        config::write::<u32>(STAGE_OFFSET, 5);
+        config::write::<u32>(status::STAGE, 5);
         deliver_received(&mut received, &mut pending_recv);
 
-        config::write::<u32>(STAGE_OFFSET, 6);
+        config::write::<u32>(status::STAGE, 6);
         let message = ipc_recv(ep);
-        config::write::<u32>(STAGE_OFFSET, 7);
+        config::write::<u32>(status::STAGE, 7);
         if message.status == ipc_status::NO_MESSAGE {
             let (_, timed_out) = cq_wait_timeout(1, relmsg::RETRANSMIT_MS, 0);
             if timed_out != 0 {
@@ -525,9 +525,9 @@ fn main(ctx: Context) -> ! {
             }
             continue;
         }
-        config::write::<u32>(4, message.opcode);
+        config::write::<u32>(status::LAST_OPCODE, message.opcode);
         let handled = unsafe { config::read::<u32>(8) };
-        config::write::<u32>(8, handled.wrapping_add(1));
+        config::write::<u32>(status::HANDLED, handled.wrapping_add(1));
 
         match message.opcode {
             relmsg::OP_SEND => {
@@ -619,11 +619,11 @@ fn main(ctx: Context) -> ! {
                     }
                 }
                 if !send_ok {
-                    config::write::<u32>(12, 0xe001);
+                    config::write::<u32>(status::RECEIVER_STAGE, 0xe001);
                     ipc_reply(message.reply, relmsg::ERR_PEER_UNREACHABLE);
                     continue;
                 }
-                config::write::<u32>(12, 2);
+                config::write::<u32>(status::RECEIVER_STAGE, 2);
                 peers[index].next_tx_seq = seq.wrapping_add(1).max(1);
                 peers[index].pending = Some(Outbound {
                     seq,
@@ -642,7 +642,7 @@ fn main(ctx: Context) -> ! {
                 }
             }
             relmsg::OP_STATUS => {
-                config::write::<u32>(STAGE_OFFSET, 8);
+                config::write::<u32>(status::STAGE, 8);
                 ipc_reply(message.reply, pack_address_and_len(local_mac, 0) as i64);
             }
             relmsg::OP_FRAME => {

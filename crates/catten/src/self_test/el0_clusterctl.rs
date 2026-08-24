@@ -196,7 +196,7 @@ mod inner {
             base
         };
         let bootstrap_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        while status_word(ctl_cfg, 0) < CTL_STAGE_SERVING {
+        while status_word(ctl_cfg, charlotte_launch::clusterctl_status::STAGE) < CTL_STAGE_SERVING {
             bootstrap_deadline.assert_pending("EL0 clusterctl local bootstrap");
             yield_lp();
         }
