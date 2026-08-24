@@ -202,6 +202,7 @@ pub extern "C" fn bsp_main() -> ! {
     mask_interrupts!();
     LocalIntCtlr::init_lp();
     INTERRUPT_INIT_BARRIER.wait();
+    crate::debug_trace::start_watchdog();
     {
         let name_service = crate::service::supervisor::start_node_name_service();
         logln!(

@@ -293,6 +293,9 @@ impl LpScheduler for RoundRobin {
             next_tid as u64,
             ((self.run_queue.len() as u64) << 1) | became_idle as u64,
         );
+        if self.lp_id == 0 {
+            crate::debug_trace::lp0_heartbeat();
+        }
         self.publish_load();
 
         Ok(next_tid)

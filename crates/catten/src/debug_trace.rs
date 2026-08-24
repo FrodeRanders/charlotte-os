@@ -188,3 +188,52 @@ pub const TAG_STACK_ARENA_WAIT: u64 = 0xc0_0050;
 pub const TAG_STACK_ARENA_ACQUIRED: u64 = 0xc0_0051;
 pub const TAG_STACK_ARENA_RELEASED: u64 = 0xc0_0052;
 pub const TAG_DEVICE_PHASE: u64 = 0xc0_0060;
+
+/// LP 0's scheduler-liveness heartbeat. Incremented on every LP-0 dispatch and
+/// idle-loop iteration; a stall means LP 0 is stuck in a non-scheduler spin
+/// (interrupt handler or a spinlock with IRQs masked) and the watchdog dumps
+/// the trace ring to reveal the looping path.
+#[cfg(feature = "scheduler_trace")]
+pub static LP0_HEARTBEAT: AtomicU64 = AtomicU64::new(0);
+
+/// Record one LP-0 liveness tick. No-op without `scheduler_trace`.
+#[inline]
+pub fn lp0_heartbeat() {
+    #[cfg(feature = "scheduler_trace")]
+    LP0_HEARTBEAT.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Spawn a watchdog on LP 1 that dumps the scheduler trace if LP 0's heartbeat
+/// stalls. LP 0 owns every boot and service thread, so the watchdog must live
+/// on a different LP to survive an LP-0 freeze.
+pub fn start_watchdog() {
+    #[cfg(feature = "scheduler_trace")]
+    {
+        extern "C" fn watchdog_thread() {
+            let mut last = LP0_HEARTBEAT.load(Ordering::Acquire);
+            let mut stalled_ms = 0u32;
+            loop {
+                crate::cpu::scheduler::sleep_millis(500);
+                let now = LP0_HEARTBEAT.load(Ordering::Acquire);
+                if now == last {
+                    stalled_ms += 500;
+                    if stalled_ms == 2000 {
+                        crate::logln!("[watchdog] LP0 heartbeat stalled {}ms; dumping trace", stalled_ms);
+                        dump();
+                    } else if stalled_ms > 2000 && stalled_ms.is_multiple_of(10_000) {
+                        crate::logln!("[watchdog] LP0 still stalled {}ms", stalled_ms);
+                        dump();
+                    }
+                } else {
+                    stalled_ms = 0;
+                }
+                last = now;
+            }
+        }
+        let _ = crate::cpu::scheduler::spawn_thread_on_lp(
+            crate::memory::KERNEL_ASID,
+            watchdog_thread,
+            1,
+        );
+    }
+}

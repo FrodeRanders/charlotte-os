@@ -521,6 +521,9 @@ pub unsafe extern "C" fn user_trampoline() -> ! {
 /// each iteration so the quantum timer and IPIs can wake the LP.
 pub extern "C" fn lp_idle_loop() {
     loop {
+        if crate::cpu::isa::lp::ops::get_lp_id() == 0 {
+            crate::debug_trace::lp0_heartbeat();
+        }
         // Drain deferred device-interrupt wakes (see `yield_lp`) so a driver
         // shard blocked in `CQ_WAIT` is released even when its LP has nothing
         // else to run. A resulting wake makes the driver runnable and marks a

@@ -272,6 +272,9 @@ fi
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
 fi
+if [ "${CATTEN_SCHEDULER_TRACE:-0}" = "1" ]; then
+    FEATURES="${FEATURES},scheduler_trace"
+fi
 
 # Build and sign the x86_64 service bundle. The bootstrap set is embedded at
 # compile time and the same signed artifacts seed the persistent object-store
