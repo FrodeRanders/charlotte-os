@@ -534,16 +534,6 @@ fn main(ctx: Context) -> ! {
         config::write::<u16>(status::TX_USED_SEEN, tx_used_seen);
         config::write::<u8>(status::DEVICE_STATUS, unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) });
         config::write::<u16>(status::TX_AVAILABLE, tx_avail_idx);
-        // Periodic TX-ring telemetry (every ~1024 iterations) so a run shows
-        // whether descriptors accumulate (device not keeping up) or stay
-        // healthy. Emitted only while at least one descriptor is outstanding.
-        let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-        if loop_tick & 0x3ff == 0 {
-            let busy = tx_in_use.iter().filter(|u| **u).count();
-            if busy > 0 {
-                catten_rt::logln!("[net] TX ring: {} of {} descriptors in use", busy, tx_qsz);
-            }
-        }
         // RX-ring diagnostic: descriptors the device has filled but the driver
         // has not yet recycled. When this reaches `rx_qsz` the available ring
         // is empty, so virtio-net has no RX buffer and queues incoming frames
@@ -553,6 +543,21 @@ fn main(ctx: Context) -> ! {
         let rx_unrecycled = device_used_idx.wrapping_sub(rx_used_seen);
         config::write::<u16>(status::RX_UNRECYCLED, rx_unrecycled);
         config::write::<u16>(status::RX_QUEUE_SIZE, rx_qsz);
+        // Heartbeat + ring health every ~1024 iterations (~10 s), emitted
+        // unconditionally so a stuck consumer above can be told apart from a
+        // stalled driver: `rx_unrecycled == rx_qsz` means the device has no
+        // RX buffer left and is dropping/queueing incoming frames (e.g. ACKs).
+        let loop_tick = LOOP_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if loop_tick & 0x3ff == 0 {
+            let tx_busy = tx_in_use.iter().filter(|u| **u).count();
+            catten_rt::logln!(
+                "[net] hb rx_unrecycled={}/{} tx_busy={}/{}",
+                rx_unrecycled,
+                rx_qsz,
+                tx_busy,
+                tx_qsz
+            );
+        }
         deliver_received(&mut received, &mut pending_recv);
 
         // --- endpoint messages ---------------------------------------------

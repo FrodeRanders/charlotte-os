@@ -73,6 +73,9 @@ const ETHERNET_HEADER_MIN: usize = 14;
 const ROUTE_RETRY_MS: u64 = 50;
 const MAX_PENDING_PER_ROUTE: usize = 8;
 
+/// Monotonic reactor-tick counter for periodic heartbeat logging.
+static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
 struct Route {
     ethertype: u16,
     conn: u64,
@@ -248,6 +251,20 @@ fn main(ctx: Context) -> ! {
             unsafe { thread_exit() };
         }
         loop {
+            // Periodic heartbeat (~every 256 reactor iterations) so a stall can
+            // be localized: if rx stops advancing here, frames are not reaching
+            // the demultiplexer from the NIC driver.
+            let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            if tick & 0xff == 0 {
+                catten_rt::logln!(
+                    "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={}",
+                    rx_total,
+                    forwarded,
+                    dropped,
+                    unknown,
+                    routes.len()
+                );
+            }
             // Drain our own endpoint so status queries are served even while
             // no frames are flowing (non-blocking).
             loop {

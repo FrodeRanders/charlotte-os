@@ -106,6 +106,9 @@ const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// drains it; a larger buffer lets a full report be accepted without blocking.
 const SOCKET_BUF: usize = 16 * 1024;
 
+/// Monotonic reactor-tick counter for periodic heartbeat logging.
+static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
 struct SocketEntry {
     handle: smoltcp::iface::SocketHandle,
     recv_pending: Option<u64>,
@@ -299,6 +302,20 @@ fn main(ctx: Context) -> ! {
 
     loop {
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
+
+        // Periodic heartbeat (~every 1024 reactor iterations) so a stall can be
+        // localized: if rx_total stops advancing here, forwarded frames (e.g.
+        // ACKs) are not reaching the stack from the frouter.
+        let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        if tick & 0x3ff == 0 {
+            catten_rt::logln!(
+                "[tcpip] hb rx={} tx_ok={} tx_err={} sockets={}",
+                rx_total,
+                tx_ok,
+                tx_err,
+                state.sockets.len()
+            );
+        }
 
         // Apply DHCP configuration changes to the interface. The DHCP socket
         // reports `Configured` on a fresh/renewed lease and `Deconfigured` on
