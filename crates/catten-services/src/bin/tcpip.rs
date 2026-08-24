@@ -99,7 +99,10 @@ const FRAME_MAX: usize = 4096;
 /// Detached-timer cadence for the smoltcp clock. A continuously IPC-woken
 /// reactor must not collapse the timebase to a fixed 1 ms per iteration; the
 /// timer fires independently of endpoint traffic and re-arms each cycle.
-const CLOCK_TICK_MS: u64 = 10;
+/// Kept at 100 ms (matching the discovery service) rather than 10 ms: smoltcp's
+/// timers (delayed ACK, RTO) tolerate the coarser granularity, and the lower
+/// re-arm rate avoids interacting with the 10 ms scheduler quantum on LP 0.
+const CLOCK_TICK_MS: u64 = 100;
 const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// Per-socket buffer size. The httpd report exceeds one 4096-byte page, so a
 /// single-page buffer forces the sender to stall mid-stream while the peer
