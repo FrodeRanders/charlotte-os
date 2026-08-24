@@ -222,7 +222,6 @@ pub fn start_watchdog() {
                         dump();
                     } else if stalled_ms > 2000 && stalled_ms.is_multiple_of(10_000) {
                         crate::logln!("[watchdog] LP0 still stalled {}ms", stalled_ms);
-                        dump();
                     }
                 } else {
                     stalled_ms = 0;
