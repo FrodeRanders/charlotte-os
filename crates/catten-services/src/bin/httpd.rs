@@ -899,6 +899,8 @@ fn build_json(
         0
     };
 
+    // rustfmt mishandles the escaped quote after this line continuation.
+    #[rustfmt::skip]
     let _ = write!(
         &mut s,
         "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{}}},\"node\":{{\"mac\":\
