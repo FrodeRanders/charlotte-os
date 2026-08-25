@@ -42,9 +42,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   named constants, or `concat!` for long protocol/HTML literals that otherwise
   depend on line-continuation whitespace.
 - Build bundled AArch64 services with `scripts/build-catten-services.sh`.
-- Run `cargo fmt --all -- --check` and
-  `cargo fmt --manifest-path crates/catten-services/Cargo.toml -- --check` after
-  Rust edits because `catten-services` is outside the root workspace.
+- Run `cargo fmt --all -- --check` after Rust edits. All Rust packages belong
+  to the root workspace even when they use separate build targets.
 - For ownership changes, test success, submission failure, mapping failure,
   cancellation/drop, and returned-capability cleanup where practical.
 

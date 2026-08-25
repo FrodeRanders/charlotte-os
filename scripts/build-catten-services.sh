@@ -31,12 +31,14 @@ SERVICES=(ns echo client uart cclient servicemgr raft nvme nvme_client objstore 
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."
-    cargo clean --manifest-path "$MANIFEST" --target "$TARGET" 2>/dev/null || true
+    cargo clean --manifest-path "$MANIFEST" --target "$TARGET" \
+        --target-dir crates/catten-services/target 2>/dev/null || true
     rm -rf "$BUNDLE"
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
 cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
+    --target-dir crates/catten-services/target \
     --release -Z build-std=core,alloc
 
 if [ "$MODE" = "embed" ]; then

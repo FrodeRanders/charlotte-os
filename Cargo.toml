@@ -1,11 +1,25 @@
 [workspace]
-members = ["crates/*"]
-# catten-user is a no_std/no_main EL0 test program built for its own custom
-# target, and it currently depends on the in-progress ../../gautelis/sitas
-# crates which do not yet build. Exclude it from the workspace so root-level
-# `cargo build`/`check` and rust-analyzer do not attempt it. Build it directly
-# with `--manifest-path crates/catten-user/Cargo.toml` once sitas compiles.
-exclude = ["crates/catten-user", "crates/catten-services"]
+members = ["crates/*", "tools/cluster-sign"]
+# EL0 bundles and host tools need different targets and build workflows. Keep
+# them as workspace members so repository-wide tooling (notably rustfmt) sees
+# every package, but do not include them in an unqualified root build.
+default-members = [
+    "crates/catten",
+    "crates/catten-graft",
+    "crates/catten-rt",
+    "crates/catten-syscall",
+    "crates/charlotte-authorization",
+    "crates/charlotte-launch",
+    "crates/charlotte-lifecycle",
+    "crates/charlotte-protocol-block",
+    "crates/charlotte-protocol-disco",
+    "crates/charlotte-protocol-fs",
+    "crates/charlotte-protocol-msg",
+    "crates/charlotte-protocol-net",
+    "crates/charlotte-protocol-objstore",
+    "crates/charlotte-protocol-time",
+    "crates/charlotte-smoltcp",
+]
 resolver = "3"
 
 [profile.dev]
@@ -21,9 +35,21 @@ opt-level = 3
 [profile.dev.package.ed25519-compact]
 overflow-checks = false
 
+[profile.dev.package.catten-services]
+opt-level = "s"
+
+[profile.dev.package.catten-user]
+opt-level = "s"
+
 [profile.release]
 debug = "none"
 debug-assertions = false
 panic = "abort"
 lto = true
 opt-level = 3
+
+[profile.release.package.catten-services]
+opt-level = "s"
+
+[profile.release.package.catten-user]
+opt-level = "s"

@@ -7,7 +7,7 @@
   "linker": "rust-lld",
   "linker-flavor": "gnu-lld",
   "pre-link-args": {
-    "gnu-lld": ["-Tlink.x"]
+    "gnu-lld": ["-Tcrates/catten-services/link.x"]
   },
   "llvm-target": "x86_64-unknown-none",
   "max-atomic-width": 64,

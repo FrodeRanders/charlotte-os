@@ -1,6 +1,12 @@
 # CharlotteOS userspace development
 
 CharlotteOS Rust programs use `catten-rt` as their small userspace runtime.
+Run `cargo fmt --all` from the repository root to format every package,
+including the separately targeted service and application crates and host
+tools. Use `cargo fmt --all -- --check` for a non-mutating CI-style check.
+Because `catten-user` is part of that workspace, its sibling
+`../../gautelis/sitas` path dependency must be checked out; CI provisions the
+pinned revision before running workspace tooling.
 The source-level entry contract is:
 
 ```rust

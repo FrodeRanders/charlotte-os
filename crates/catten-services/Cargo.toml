@@ -123,17 +123,6 @@ path = "src/bin/time.rs"
 test = false
 bench = false
 
-[profile.dev]
-panic = "abort"
-opt-level = "s"
-lto = true
-
-[profile.release]
-panic = "abort"
-opt-level = "s"
-lto = true
-
-
 [[bin]]
 name = "nvme"
 path = "src/bin/nvme.rs"

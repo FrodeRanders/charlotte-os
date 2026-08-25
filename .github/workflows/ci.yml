@@ -24,12 +24,13 @@ jobs:
           toolchain: nightly-2026-07-27
           components: rustfmt
 
-      - name: Check workspace and standalone EL0 crates
+      - name: Check all Rust packages
         run: |
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+          mkdir -p "$(dirname "$SITAS_DIR")"
+          git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
+          git -C "$SITAS_DIR" checkout "$SITAS_REV"
           cargo fmt --all -- --check
-          cargo fmt --manifest-path crates/catten-services/Cargo.toml -- --check
-          cargo fmt --manifest-path crates/catten-user/Cargo.toml -- --check
-          cargo fmt --manifest-path tools/cluster-sign/Cargo.toml -- --check
 
   clippy:
     name: Clippy
@@ -47,17 +48,20 @@ jobs:
       - name: Lint workspace
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+          mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout "$SITAS_REV"
           scripts/build-catten-services.sh --embed
           scripts/build-catten-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
           cargo clippy --workspace \
+            --exclude catten-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
           scripts/build-catten-services-x86_64.sh
           export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           cargo clippy --workspace \
+            --exclude catten-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi \
             -- -D warnings
@@ -95,7 +99,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"

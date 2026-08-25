@@ -309,6 +309,7 @@ if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
     cargo build --manifest-path crates/catten-services/Cargo.toml \
         --target crates/catten-services/x86_64-unknown-none.json \
+        --target-dir crates/catten-services/target \
         --release -Z build-std=core,alloc --bin smoke
     cp crates/catten-services/target/x86_64-unknown-none/release/smoke \
         "$SERVICE_BUNDLE/smoke.elf"

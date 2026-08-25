@@ -34,6 +34,7 @@ done
 echo ">>> Building $BIN_NAME ..."
 cargo build --manifest-path "$MANIFEST" \
     --target "$TARGET_JSON" \
+    --target-dir crates/catten-user/target \
     -Z build-std=core,alloc 2>&1 | tail -3
 
 echo ">>> Stripping ELF for embedding ..."

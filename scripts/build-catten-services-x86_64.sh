@@ -29,7 +29,8 @@ SERVICES=(
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning x86_64 service target artifacts..."
-    cargo clean --manifest-path "$MANIFEST" --target "$TARGET"
+    cargo clean --manifest-path "$MANIFEST" --target "$TARGET" \
+        --target-dir crates/catten-services/target
     rm -rf "$BUNDLE"
 fi
 
@@ -40,6 +41,7 @@ done
 
 echo ">>> Building x86_64 EL0 services..."
 cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
+    --target-dir crates/catten-services/target \
     --release -Z build-std=core,alloc "${build_bins[@]}"
 
 mkdir -p "$BUNDLE_PARENT"

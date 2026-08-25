@@ -286,14 +286,13 @@ fn read_monotonic(observe_conn: ConnectionRef<'_>) -> Option<MonoClock> {
     let header = unsafe {
         core::slice::from_raw_parts(mapping.as_ptr().cast::<u64>(), THREAD_STATISTICS_HEADER_U64S)
     };
-    let clock = (header[thread_header::MAGIC] == THREAD_STATISTICS_MAGIC
+    (header[thread_header::MAGIC] == THREAD_STATISTICS_MAGIC
         && header[thread_header::VERSION] == THREAD_STATISTICS_VERSION
         && header[thread_header::COUNTER_FREQUENCY_HZ] > 0)
         .then_some(MonoClock {
             ticks: header[thread_header::MONOTONIC_TICKS],
             frequency_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
-        });
-    clock
+        })
 }
 
 fn ticks_to_ns(ticks: u64, frequency_hz: u64) -> u64 {
