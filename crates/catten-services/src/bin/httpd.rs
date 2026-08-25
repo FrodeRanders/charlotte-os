@@ -5,18 +5,18 @@
 //! observable state across the node:
 //!
 //! - `node`    — NIC MAC + link state (`net::OP_STATUS`)
-//! - `meta`    — wall-clock derived from the observe snapshot's monotonic
-//!   counter (uptime, inter-request interval, counter frequency)
+//! - `meta`    — wall-clock derived from the observe snapshot's monotonic counter (uptime,
+//!   inter-request interval, counter frequency)
 //! - `ns`      — name-service registry catalog + pending lookups (`ns::OP_STATUS`, via the
 //!   bootstrap connection)
 //! - `tcpip`   — tcpip service counters (`socket::OP_STATUS`)
 //! - `frouter` — frame demultiplexer counters (`frouter::OP_STATUS`)
-//! - `dns`     — Raft leader/term/catalog (`dns::OP_STATUS`) plus the replicated
-//!   cluster posture (`raft::OP_CLUSTER_STATUS`)
-//! - `disco`   — discovered peers (`disco::OP_STATUS`) plus probe-traffic
-//!   counters (`disco::OP_DIAG`) and the live peer list (`disco::OP_LIST_PEERS`)
-//! - `relmsg`  — reliable-message transport (`relmsg::OP_STATUS`) plus live
-//!   delivery/retransmit counters (`relmsg::OP_DIAG`)
+//! - `dns`     — Raft leader/term/catalog (`dns::OP_STATUS`) plus the replicated cluster posture
+//!   (`raft::OP_CLUSTER_STATUS`)
+//! - `disco`   — discovered peers (`disco::OP_STATUS`) plus probe-traffic counters
+//!   (`disco::OP_DIAG`) and the live peer list (`disco::OP_LIST_PEERS`)
+//! - `relmsg`  — reliable-message transport (`relmsg::OP_STATUS`) plus live delivery/retransmit
+//!   counters (`relmsg::OP_DIAG`)
 //! - `threads` — system-wide thread statistics via the observe service's `OP_THREAD_SNAPSHOT`
 //!   (backed by the kernel SystemObserver capability)
 //! - `http`    — this server's own counters and request rate
@@ -32,8 +32,8 @@
 //!
 //! Two request targets are served, chosen by the path of the `GET` request:
 //!
-//! - `GET /` (or `/index.html`) returns a self-refreshing HTML dashboard whose
-//!   embedded script polls `GET /metrics` every five seconds; and
+//! - `GET /` (or `/index.html`) returns a self-refreshing HTML dashboard whose embedded script
+//!   polls `GET /metrics` every five seconds; and
 //! - `GET /metrics` (alias `/metric`) returns the JSON report described above.
 //!
 //! Anything else is a `404`.
@@ -101,10 +101,7 @@ const THREAD_SAMPLE_ROWS: usize = 64;
 /// Returns `/` when the line is unparsable, so a malformed request still
 /// reaches the dashboard rather than an error page.
 fn request_path(request: &[u8]) -> &[u8] {
-    let line = request
-        .split(|&b| b == b'\r' || b == b'\n')
-        .next()
-        .unwrap_or(b"");
+    let line = request.split(|&b| b == b'\r' || b == b'\n').next().unwrap_or(b"");
     let Some(rest) = line.strip_prefix(b"GET ") else {
         return b"/";
     };
@@ -593,11 +590,7 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             && let Some((_state, _term, commit_index, members, leader, self_id)) =
                 raft::parse_cluster_status(&bytes)
         {
-            let _ = write!(
-                s,
-                ",\"commit_index\":{},\"members\":{}",
-                commit_index, members
-            );
+            let _ = write!(s, ",\"commit_index\":{},\"members\":{}", commit_index, members);
             s.push_str(",\"leader\":");
             push_json_string(s, leader);
             s.push_str(",\"self_id\":");
@@ -668,7 +661,8 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
         write_lp(s, "pinned_lp", row.pinned_lp);
         let _ = write!(
             s,
-            ",\"generation\":{},\"dispatch\":{},\"samples\":{},\"runtime_ticks\":{},\"runtime_ms\":{},\"cpu_pct\":{},\"min_ticks\":{},\"max_ticks\":{},\"saturated\":{}}}",
+            ",\"generation\":{},\"dispatch\":{},\"samples\":{},\"runtime_ticks\":{},\"runtime_ms\"\
+             :{},\"cpu_pct\":{},\"min_ticks\":{},\"max_ticks\":{},\"saturated\":{}}}",
             row.generation,
             row.dispatch,
             row.sample_count,
@@ -793,7 +787,8 @@ fn render_disco(s: &mut String, disco_conn: u64) {
     if let Some(d) = &diag {
         let _ = write!(
             s,
-            "\"disco\":{{\"running\":{},\"peers\":{},\"cluster_role\":\"{}\",\"rx_raw\":{},\"sent_ok\":{},\"sent_fail\":{},\"decoded\":{},\"called\":{},\"heartbeat\":{}",
+            "\"disco\":{{\"running\":{},\"peers\":{},\"cluster_role\":\"{}\",\"rx_raw\":{},\"\
+             sent_ok\":{},\"sent_fail\":{},\"decoded\":{},\"called\":{},\"heartbeat\":{}",
             d[disco::DIAG_OFFSET_RUNNING as usize],
             d[disco::DIAG_OFFSET_PEERS as usize],
             disco_role_name(d[disco::DIAG_OFFSET_CLUSTER_ROLE as usize]),
@@ -841,7 +836,8 @@ fn render_relmsg(s: &mut String, relmsg_conn: u64) {
         {
             let _ = write!(
                 s,
-                ",\"peers\":{},\"handled\":{},\"retransmits\":{},\"send_failures\":{},\"received\":{},\"in_flight\":{}",
+                ",\"peers\":{},\"handled\":{},\"retransmits\":{},\"send_failures\":{},\"received\"\
+                 :{},\"in_flight\":{}",
                 d[relmsg::DIAG_OFFSET_PEERS as usize],
                 d[relmsg::DIAG_OFFSET_HANDLED as usize],
                 d[relmsg::DIAG_OFFSET_RETRANSMITS as usize],
@@ -892,17 +888,29 @@ fn build_json(
     let gateway = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_GATEWAY as usize]);
     let mtu = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_MTU as usize]);
 
-    let rx_delta = if prev.initialized { rx.saturating_sub(prev.rx_frames) } else { 0 };
-    let tx_delta = if prev.initialized { tx.saturating_sub(prev.tx_sends) } else { 0 };
+    let rx_delta = if prev.initialized {
+        rx.saturating_sub(prev.rx_frames)
+    } else {
+        0
+    };
+    let tx_delta = if prev.initialized {
+        tx.saturating_sub(prev.tx_sends)
+    } else {
+        0
+    };
 
     let _ = write!(
         &mut s,
-        "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{}}},\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},",
+        "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{}}},\"node\":{{\"mac\":\
+         \"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},",
         uptime_ms, interval_ms, freq_hz, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], link
     );
     let _ = write!(
         &mut s,
-        "\"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{},\"listen_port\":{},\"tx_send_errors\":{},\"dhcp\":{},\"gateway\":\"{}.{}.{}.{}\",\"mtu\":{},\"rx_frames_delta\":{},\"tx_sends_delta\":{},\"rx_frames_rate\":{},\"tx_sends_rate\":{}}},",
+        "\"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{},\"\
+         listen_port\":{},\"tx_send_errors\":{},\"dhcp\":{},\"gateway\":\"{}.{}.{}.{}\",\"mtu\":\
+         {},\"rx_frames_delta\":{},\"tx_sends_delta\":{},\"rx_frames_rate\":{},\"tx_sends_rate\":\
+         {}}},",
         (ip >> 24) & 0xff,
         (ip >> 16) & 0xff,
         (ip >> 8) & 0xff,
@@ -933,12 +941,21 @@ fn build_json(
         if let Some(w) = read_words(services.frouter_conn, frouter::OP_STATUS, 0, 7) {
             let frouter_rx = w[frouter::STATUS_OFFSET_RX as usize];
             let forwarded = w[frouter::STATUS_OFFSET_FORWARDED as usize];
-            let rx_delta = if prev.initialized { frouter_rx.saturating_sub(prev.frouter_rx) } else { 0 };
-            let forwarded_delta =
-                if prev.initialized { forwarded.saturating_sub(prev.forwarded) } else { 0 };
+            let rx_delta = if prev.initialized {
+                frouter_rx.saturating_sub(prev.frouter_rx)
+            } else {
+                0
+            };
+            let forwarded_delta = if prev.initialized {
+                forwarded.saturating_sub(prev.forwarded)
+            } else {
+                0
+            };
             let _ = write!(
                 &mut s,
-                "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\"unknown\":{},\"routes\":{},\"rx_delta\":{},\"forwarded_delta\":{},\"rx_rate\":{},\"forwarded_rate\":{}}},",
+                "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\"unknown\":\
+                 {},\"routes\":{},\"rx_delta\":{},\"forwarded_delta\":{},\"rx_rate\":{},\"\
+                 forwarded_rate\":{}}},",
                 w[frouter::STATUS_OFFSET_STAGE as usize],
                 frouter_rx,
                 forwarded,
@@ -991,7 +1008,8 @@ fn build_json(
 
     let _ = write!(
         &mut s,
-        "\"http\":{{\"requests\":{},\"bytes_sent\":{},\"uptime_ms\":{},\"interval_ms\":{},\"requests_rate\":{},\"paths\":{{\"root\":{},\"metrics\":{},\"other\":{}}}}}}}",
+        "\"http\":{{\"requests\":{},\"bytes_sent\":{},\"uptime_ms\":{},\"interval_ms\":{},\"\
+         requests_rate\":{},\"paths\":{{\"root\":{},\"metrics\":{},\"other\":{}}}}}}}",
         counters.requests,
         counters.bytes_sent,
         uptime_ms,

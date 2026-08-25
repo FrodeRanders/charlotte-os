@@ -290,7 +290,11 @@ fn main(ctx: Context) -> ! {
     let mut rx_total: u32 = 0;
     let mut tx_ok: u32 = 0;
     let mut tx_err: u32 = 0;
-    let dhcp_mode: u32 = if dhcp { 1 } else { 0 };
+    let dhcp_mode: u32 = if dhcp {
+        1
+    } else {
+        0
+    };
     let gateway_ip: u32 = gateway.map_or(0, |gw| {
         let octets = gw.octets();
         u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]])
@@ -641,7 +645,8 @@ fn main(ctx: Context) -> ! {
                                 tx_err = tx_err.wrapping_add(1);
                                 if tx_err == 1 || tx_err.is_multiple_of(100) {
                                     catten_rt::logln!(
-                                        "[tcpip] socket TX buffer full (0 octets enqueued); tx_err={}",
+                                        "[tcpip] socket TX buffer full (0 octets enqueued); \
+                                         tx_err={}",
                                         tx_err
                                     );
                                 }
