@@ -45,7 +45,8 @@ core:
 
 ## Current status
 
-- `scripts/run-aarch64.sh` boots `virt` (default) and `--sbsa-ref`; both
+- `scripts/run-aarch64.sh` boots networked `virt` by default and boots
+  `--sbsa-ref --no-network`; both
   complete `SELFTEST COMPLETE: passed=17 failed=0 pending=0`.
 - The kernel is entered at EL1 and contains an **EL2 → EL1 descent** in `_start`
   (`crates/catten/src/main.rs`: reads `CurrentEL`, clears `HCR_EL2.E2H`, erets

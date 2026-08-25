@@ -17,25 +17,18 @@ use catten_rt::{
 use catten_services::{
     echo,
     ns,
-    stage_name,
-    wait_reply,
+    stage_name_owned,
 };
-use catten_syscall::{
-    ipc_scalar_call,
-    ipc_scalar_call_copy,
-    memory_close,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::client_status as status;
 
-const REPLY_SPINS: u64 = 50_000_000;
 const ECHO_VALUE: u64 = 0x1234_5678;
 const SENTINEL: u32 = 0xc0de;
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1); // stage: started
-    let ns_connection = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let ns_connection = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
     config::write::<u32>(status::STAGE, 2); // stage: bootstrap connection received
@@ -44,34 +37,28 @@ fn main(ctx: Context) -> ! {
     // is staged once; copy transfer preserves the client's ownership, so the
     // same memory object remains owned by this client. The name service
     // retains the reply token until the echo service registers.
-    let name_cap = match unsafe { stage_name(echo::LONG_NAME) } {
-        Some(cap) => cap,
+    let name = match stage_name_owned(echo::LONG_NAME) {
+        Some(memory) => memory,
         None => unsafe { thread_exit() },
     };
-    let lookup = ipc_scalar_call_copy(
-        ns_connection,
-        ns::OP_LOOKUP_NAMED,
-        echo::LONG_NAME.len() as u64,
-        name_cap,
-    );
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
+    let lookup = ns_connection
+        .call_copy(ns::OP_LOOKUP_NAMED, echo::LONG_NAME.len() as u64, &name)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 3); // stage: lookup pending
-    let (generation, echo_connection) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || echo_connection == 0 {
+    let lookup = lookup.wait().unwrap_or_else(|_| unsafe { thread_exit() });
+    let generation = lookup.result;
+    if generation < 1 {
         unsafe { thread_exit() };
     }
-    memory_close(name_cap);
+    let echo_connection = lookup.connection.unwrap_or_else(|| unsafe { thread_exit() });
 
     config::write::<u32>(status::STAGE, 4); // stage: connection obtained
 
-    let call = ipc_scalar_call(echo_connection, echo::OP_ECHO, ECHO_VALUE);
-    if call == 0 {
-        unsafe { thread_exit() };
-    }
+    let call = echo_connection
+        .call(echo::OP_ECHO, ECHO_VALUE)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 5); // stage: echo call sent
-    let (echoed, _) = unsafe { wait_reply(call, REPLY_SPINS) };
+    let echoed = call.wait().unwrap_or_else(|_| unsafe { thread_exit() }).result;
     if echoed as u64 != ECHO_VALUE {
         unsafe { thread_exit() };
     }

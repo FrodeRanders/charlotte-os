@@ -40,6 +40,9 @@ repository history remain authoritative.
     shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net/E1000E, discovery, and
     distributed DNS, smoltcp TCP/IP, HTTP reporting, signed deployment,
     migration, and dynamic membership & Four-LP and two-guest TCG suites \\
+13 & UTC time service: internal endpoint API, ISO 8601 formatting, connected
+    UDP/NTP client, drift and uncertainty estimation, monotonic holdover, and
+    object-store calibration persistence & Default boot-validated on both targets \\
 \hline
 \end{longtable}
 
@@ -133,7 +136,7 @@ repository history remain authoritative.
     \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net},
         \texttt{charlotte-protocol-msg}.
 
-    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service runtime-validated over the frame demultiplexer; reliable-message fragmentation to 64 KiB.
+    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service runtime-validated over the frame demultiplexer; reliable-message fragmentation to 64 KiB. Network capability, DHCP, discovery, cluster formation, HTTP, and time synchronization launch by default when a supported NIC is discovered; test features only add verifiers.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a
@@ -176,10 +179,13 @@ repository history remain authoritative.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are
-        connected and validated (\texttt{--dns-test}).
+        connected during ordinary networked boots; \texttt{--dns-test} adds
+        the cross-node validation workload and pass/fail result.
     \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
         \texttt{observe} snapshot and per-service status into a JSON report
-        served over the TCP/IP service (\texttt{--http-test}).
+        served over the TCP/IP service during ordinary boots.
+        \texttt{--http-test} adds QEMU host forwarding and validates the
+        response; it does not enable the service.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via
         ACPI IORT, Intel VT-d via DMAR, and AMD-Vi via IVRS provide
         per-requester DMA-domain capabilities, memory pinning, IOVA map/unmap,

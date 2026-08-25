@@ -12,8 +12,10 @@ This chapter gives the current build, boot, test, and code-reading workflow.
         from this manual.
     \item \textbf{QEMU} for AArch64 (\texttt{qemu-system-aarch64}) or x86-64
         (\texttt{qemu-system-x86\_64}). On macOS, TCG is the default and HVF
-        is opt-in. The virtio-net smoke test runs under TCG; HVF is unsuitable
-        for its direct EL0 device-MMIO path. KVM is an optional Linux
+        is opt-in. Networking and network-backed services are enabled by
+        default under TCG; the virtio-net smoke-test switch adds verification.
+        HVF is unsuitable for the driver's direct EL0 device-MMIO path and
+        therefore requires \texttt{--no-network}. KVM is an optional Linux
         accelerator, not a networking requirement.
         \textbf{HVF also does not honor hardware ASIDs} --- see the
         \repofiletext|docs/platforms/aarch64.md|{\emph{AArch64 Port Status}}
@@ -43,8 +45,8 @@ AArch64 custom target & Original development target; all
     features and self-tests pass \\
 x86-64 custom target & Four-LP ring-3 service, storage, IOMMU,
     discovery, distributed DNS, smoltcp TCP/IP, HTTP, deployment, migration,
-    and dynamic-membership paths pass under QEMU TCG; UEFI, VT-d, NVMe, and
-    node-local services also pass under VMware Fusion \\
+    UTC time, and dynamic-membership paths pass under QEMU TCG; UEFI, VT-d,
+    NVMe, and node-local services also pass under VMware Fusion \\
 RISC-V custom target & Planned, not actively
     maintained \\
 \hline
@@ -104,6 +106,11 @@ cargo +nightly build --package catten-user \
 The boot entry points are \repofile|scripts/boot-smp1.sh|,
 \repofile|scripts/boot-smp2.sh|, and \repofile|scripts/run-aarch64.sh|.
 
+Both architecture runners attach a NIC by default. Charlotte acquires a DHCP
+lease and launches discovery, cluster, TCP/IP, HTTP, and time services without
+a test option. The \texttt{*-test} switches only register additional verifiers;
+\texttt{--no-network} is the explicit opt-out for an isolated boot.
+
 \begin{verbatim}
 # Single-LP self-test boot:
 ./scripts/boot-smp1.sh
@@ -115,7 +122,7 @@ The boot entry points are \repofile|scripts/boot-smp1.sh|,
 ./scripts/run-aarch64.sh debug --smp 4 --timeout 180
 
 # Apple Silicon: accelerated 15-test non-storage compatibility suite:
-./scripts/run-aarch64.sh debug --hvf --smp 4 --timeout 180
+./scripts/run-aarch64.sh debug --hvf --no-network --smp 4 --timeout 180
 \end{verbatim}
 
 \subsection{x86-64}

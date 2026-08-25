@@ -165,6 +165,12 @@ Two request targets are served, selected by the path of the `GET` request:
 
 Anything else is a `404`.
 
+The NIC, DHCP-configured TCP/IP service, and `httpd` are launched by default.
+The `--http-test` option below is a validation mode: it adds the QEMU host-port
+forward and checks the response. It is not required for guest applications to
+use HTTP or the socket service internally. Use `--no-network` only when an
+isolated boot is intended.
+
 From the host, run the guest on the SLIRP user network with a hostfwd and open
 the dashboard in a browser (or curl the JSON endpoint directly):
 

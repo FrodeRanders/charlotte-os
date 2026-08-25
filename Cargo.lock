@@ -181,6 +181,10 @@ name = "charlotte-protocol-objstore"
 version = "0.1.0"
 
 [[package]]
+name = "charlotte-protocol-time"
+version = "0.1.0"
+
+[[package]]
 name = "charlotte-smoltcp"
 version = "0.1.0"
 dependencies = [

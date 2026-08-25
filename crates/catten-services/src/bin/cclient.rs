@@ -18,17 +18,11 @@ use catten_rt::{
 };
 use catten_services::{
     console,
-    ns,
-    wait_reply,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    ipc_scalar_call,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::uart_client_status as status;
 
-const REPLY_SPINS: u64 = 50_000_000;
-const READ_SPINS: u64 = 400_000_000;
 const SENTINEL: u32 = 0xc0de;
 
 /// The message the client writes through the console driver.
@@ -36,47 +30,39 @@ const MESSAGE: &[u8] = b"UART-OK\n";
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
-    let ns_connection = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let ns_connection = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
     config::write::<u32>(status::STAGE, 2);
 
-    let lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, console::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (result, console_connection) = catten_services::spin_reply(lookup);
-    if result < 1 || console_connection == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, console_connection) = wait_for_registered_name_owned(ns_connection, console::NAME)
+        .unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 3);
 
     let mut last_status: i64 = 0;
     for &byte in MESSAGE {
-        let call = ipc_scalar_call(console_connection, console::OP_WRITE, byte as u64);
-        if call == 0 {
-            unsafe { thread_exit() };
-        }
-        let (status, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-        last_status = status;
+        last_status = console_connection
+            .call(console::OP_WRITE, byte as u64)
+            .and_then(|call| call.wait())
+            .unwrap_or_else(|_| unsafe { thread_exit() })
+            .result;
     }
     config::write::<u32>(status::WRITE_STATUS, last_status as u32);
     config::write::<u32>(status::STAGE, 4);
 
-    let status_call = ipc_scalar_call(console_connection, console::OP_STATUS, 0);
-    if status_call == 0 {
-        unsafe { thread_exit() };
-    }
-    let (irq_count, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    let irq_count = console_connection
+        .call(console::OP_STATUS, 0)
+        .and_then(|call| call.wait())
+        .unwrap_or_else(|_| unsafe { thread_exit() })
+        .result;
     config::write::<u32>(status::IRQ_COUNT, irq_count as u32);
 
-    let read_call = ipc_scalar_call(console_connection, console::OP_READ_DEFERRED, 0);
-    if read_call == 0 {
-        unsafe { thread_exit() };
-    }
+    let read_call = console_connection
+        .call(console::OP_READ_DEFERRED, 0)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 5);
-    let (read_result, _) = unsafe { wait_reply(read_call, READ_SPINS) };
+    let read_result = read_call.wait().unwrap_or_else(|_| unsafe { thread_exit() }).result;
     config::write::<u32>(status::READ_RESULT, read_result as u32);
 
     config::write::<u32>(status::SENTINEL, SENTINEL);

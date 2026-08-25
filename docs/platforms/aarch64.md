@@ -26,7 +26,8 @@
   sink on macOS. GIC and UART MMIO base addresses are QEMU-`virt` hardcoded
   pending device-tree support. EL0 userspace, cross-domain IPC, service restart,
   delegated device access, and a two-node Raft election are exercised by the
-  deferred QEMU TCG boot tests. The opt-in virtio-net test also runs under TCG,
+  deferred QEMU TCG boot tests. Networking is present in an ordinary TCG boot;
+  the opt-in virtio-net verifier also runs under TCG,
   including PCI discovery, MSI-X, SMMU DMA mapping, feature negotiation,
   `DRIVER_OK`, MAC/link reads, and an EL0 transmit request.
 
@@ -37,7 +38,7 @@ brew install qemu mtools          # one-time
 rustup component add rust-src     # one-time (build-std)
 rustup component add llvm-tools   # one-time (only needed for --display)
 ./scripts/run-aarch64.sh          # headless: builds kernel, image, boots QEMU (TCG)
-./scripts/run-aarch64.sh --hvf    # Apple Silicon: accelerated non-storage suite
+./scripts/run-aarch64.sh --hvf --no-network  # accelerated compatibility suite
 ./scripts/run-aarch64.sh --display  # framebuffer window + serial
 # serial console is on stdio; press Ctrl-A X to quit
 ```
@@ -45,7 +46,11 @@ rustup component add llvm-tools   # one-time (only needed for --display)
 The default (headless) build uses `--no-default-features --features acpi`, so the
 PL011 serial console is the log sink and the flanterm C dependency is avoided; it
 creates a FAT EFI image with `mtools` (no sudo / loopback mounts) and launches
-`qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a710`.
+`qemu-system-aarch64 -M virt,gic-version=3 -cpu cortex-a710`. The runner attaches
+a virtio NIC on QEMU user networking by default. Charlotte then starts its
+network stack, obtains a DHCP lease, launches discovery and cluster services,
+and starts the NTP-backed time service. Pass `--no-network` only for an isolated
+boot.
 
 The `--display` build additionally enables the `display,virtio_gpu` features
 (the flanterm framebuffer console) and boots with a ramfb display window. See
@@ -223,7 +228,8 @@ default.
 - **EL0 / userspace.** The EL0 drop, syscall path, isolated service domains,
   memory IPC, service restart, Raft election, and virtio-net smoke path are
   TCG-tested. The virtio-net EL0 MMIO path remains incompatible with HVF;
-  use `--net-test` without `--hvf`. Two TCG guests can share a QEMU socket LAN
+  ordinary networking therefore uses TCG, while `--net-test` additionally
+  enables its verifier. Two TCG guests can share a QEMU socket LAN
   as described in the
   [AArch64 network development guide](../guides/aarch64-network-development.md).
 - **SPI / external interrupt routing.** Only PPIs (timer) and SGIs (IPIs) are

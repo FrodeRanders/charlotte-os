@@ -35,11 +35,18 @@ The main additions and extensions currently maintained here are:
   routes and the service performs restart-safe dynamic admission between
   machines. The distributed name service currently uses a separate instance
   of the same Graft core to replicate its catalog.
-- **TCP/IP as a userspace service:** the smoltcp stack runs through a frame
+- **TCP/IP and UTC as userspace services:** the smoltcp stack runs through a frame
   demultiplexer (IPv4/ARP routed to the `tcpip` service) and exposes a
-  socket-API protocol for clients; an `httpd` keyhole serves a full-node JSON
-  report over it, reachable from the host via SLIRP `hostfwd`
+  TCP/connected-UDP socket API. The `time` service uses it to sample NTP,
+  calibrates the observe service's monotonic counter, persists holdover state
+  in the object store, and publishes Unix, calendar, and ISO 8601 UTC over
+  endpoint IPC. An `httpd` keyhole serves a full-node JSON report over TCP,
+  reachable from the host via SLIRP `hostfwd`
   (`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
+  Both QEMU runners attach a NIC by default: ordinary boots acquire a DHCP
+  lease, start discovery and cluster formation, and synchronize UTC. The
+  `*-test` options only add verifiers; use `--no-network` for an intentionally
+  isolated boot.
 - **Reliable-message fragmentation:** messages up to 64 KiB are split across
   Ethernet frames and reassembled at the receiver, carrying the distributed
   name service / Raft across two guests.
@@ -243,7 +250,9 @@ frame exchange, reliable messages, the distributed name service, and a
 two-node Raft election are boot-tested under QEMU TCG. See
 [`docs/guides/aarch64-network-development.md`](docs/guides/aarch64-network-development.md)
 for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
-`--disco-test`, `--dns-test`, `--tcpip-test`, `--http-test`).
+`--disco-test`, `--dns-test`, `--tcpip-test`, `--http-test`). Those switches
+add validation workloads; the underlying network, discovery, cluster, TCP/IP,
+HTTP, and time services are part of an ordinary boot.
 
 > **HVF caveat:** Apple's Hypervisor.framework does not preserve the hardware
 > ASID bits of `TTBR0_EL1`, so ASID-based TLB isolation and `mrs ttbr0_el1`
@@ -252,7 +261,8 @@ for the macOS TCG and two-VM stream-LAN workflow (`--relmsg-test`,
 > tracked caller ASID). See the "HVF and hardware ASIDs" section of
 > [`docs/platforms/aarch64.md`](docs/platforms/aarch64.md) before debugging
 > under HVF. HVF also provides no SMMU to the guest, so its compatibility boot
-> runs the 15-test non-storage suite; use the default TCG path for protected
+> requires `--no-network` and runs the 15-test non-storage suite; use the
+> default TCG path for protected
 > NVMe DMA, the object store, and persistent Raft tests.
 
 #### *Other architectures may be supported in the future depending on contributor support and demand for their development.*

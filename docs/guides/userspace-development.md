@@ -10,7 +10,7 @@ The source-level entry contract is:
 use catten_rt::Context;
 
 fn main(ctx: Context) -> ! {
-    let bootstrap = ctx.bootstrap_cap();
+    let bootstrap = ctx.bootstrap_connection();
     let mode = ctx.manifest_value(catten_rt::manifest_key(b"mode"));
 
     // Program or service loop.
@@ -68,20 +68,29 @@ results rather than treating the status page as general IPC.
 
 ## Ownership-aware resources
 
-Application code should prefer `catten_rt::owned` over raw capability syscalls.
+Application and service code must use `catten_rt::owned` rather than raw
+resource-owning capability syscalls. See the dedicated
+[userspace resource ownership guide](resource-ownership.md) for the complete
+rules and examples.
 `OwnedMemory` is a linear capability, `MappedMemory<ReadOnly>` and
 `MappedMemory<Writable>` tie slices to the mapping lifetime, and `DmaTransfer`
 can only consume an unmapped object. `Completion` and `ReadOperation<'a>` keep
 asynchronous resources alive through terminal completion, including the
-cancel-and-wait path. `Endpoint`, `Connection`, `PendingCall`, and
-`CapabilityVector` make close, move, copy, and borrow behavior explicit;
+cancel-and-wait path. `Endpoint`, `Connection`, `ConnectionRef`, `PendingCall`,
+`IncomingMessage`, `ReplyToken`, and `CapabilityVector` make close, receive,
+reply, move, copy, and borrow behavior explicit;
 vector loans remain borrowed until their pending call terminates. `MmioRegion`,
 `MappedMmio`, and `Interrupt` provide single-close device ownership while
 leaving register access unsafe. `ThreadHandle` retains the spawn-time thread
 generation so a delayed join cannot observe a recycled TID.
 
-The raw `catten-syscall` functions remain available for runtime and driver
-protocols. Coherent `dma_map` is explicitly unsafe because the driver must
+Protocol-specific scalar resources also need owners;
+`catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
+best-effort `Drop` fallback for TCP/IP socket IDs.
+
+The raw `catten-syscall` functions remain available at runtime and narrowly
+documented driver boundaries, not as a service-development convenience.
+Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Once a raw capability is
 adopted with `OwnedMemory::from_raw`, it must not be used independently or
 adopted a second time.
@@ -124,7 +133,7 @@ runner:
 ```sh
 scripts/build-catten-services.sh --embed
 scripts/build-catten-user.sh --embed
-scripts/run-aarch64.sh debug --hvf --timeout 10
+scripts/run-aarch64.sh debug --hvf --no-network --timeout 10
 ```
 
 These build scripts use Charlotte's AArch64 target specification and linker

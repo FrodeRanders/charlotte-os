@@ -676,7 +676,8 @@ Native software does not.
 > reliable-message layer, it sits directly on the Ethernet frame transport
 > as one more frouter consumer — consistent with "TCP/IP is an
 > interoperability service", not the native model. The `httpd` keyhole
-> serves observable state over it (`--http-test`).
+> serves observable state over it. Both are ordinary boot services;
+> `--http-test` only adds host forwarding and response validation.
 
 ---
 

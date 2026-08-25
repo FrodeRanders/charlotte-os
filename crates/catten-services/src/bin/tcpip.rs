@@ -33,7 +33,10 @@
 
 extern crate alloc;
 
-use alloc::collections::BTreeMap;
+use alloc::{
+    collections::BTreeMap,
+    vec,
+};
 
 use catten_rt::{
     Context,
@@ -82,6 +85,11 @@ use smoltcp::{
             Socket as TcpSocket,
             SocketBuffer as TcpSocketBuffer,
         },
+        udp::{
+            PacketBuffer as UdpPacketBuffer,
+            PacketMetadata as UdpPacketMetadata,
+            Socket as UdpSocket,
+        },
     },
     time::Instant,
     wire::{
@@ -114,10 +122,20 @@ static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 
 struct SocketEntry {
     handle: smoltcp::iface::SocketHandle,
+    kind: SocketKind,
+    /// UDP has no connected state in smoltcp. The service remembers the peer
+    /// selected by `OP_CONNECT` and filters received datagrams to it.
+    udp_remote: Option<IpEndpoint>,
     recv_pending: Option<u64>,
     /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
     /// from the set once it reaches a final state.
     closing: bool,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum SocketKind {
+    Tcp,
+    Udp,
 }
 
 struct TcpipState {
@@ -386,7 +404,11 @@ fn main(ctx: Context) -> ! {
         let mut closing: [u64; 8] = [0; 8];
         let mut closing_n: usize = 0;
         for (id, entry) in state.sockets.iter() {
-            if entry.closing && !sockets.get::<TcpSocket>(entry.handle).is_open() && closing_n < 8 {
+            let closed = match entry.kind {
+                SocketKind::Tcp => !sockets.get::<TcpSocket>(entry.handle).is_open(),
+                SocketKind::Udp => !sockets.get::<UdpSocket>(entry.handle).is_open(),
+            };
+            if entry.closing && closed && closing_n < 8 {
                 closing[closing_n] = *id;
                 closing_n += 1;
             }
@@ -403,8 +425,11 @@ fn main(ctx: Context) -> ! {
         let mut completed_n: usize = 0;
         for (id, entry) in state.sockets.iter() {
             if let Some(reply_token) = entry.recv_pending {
-                let sock = sockets.get_mut::<TcpSocket>(entry.handle);
-                if sock.can_recv() {
+                let can_recv = match entry.kind {
+                    SocketKind::Tcp => sockets.get::<TcpSocket>(entry.handle).can_recv(),
+                    SocketKind::Udp => sockets.get::<UdpSocket>(entry.handle).can_recv(),
+                };
+                if can_recv {
                     let cap = memory_alloc(1);
                     if cap == 0 {
                         continue;
@@ -418,12 +443,22 @@ fn main(ctx: Context) -> ! {
                     let buf = unsafe {
                         core::slice::from_raw_parts_mut(scratch_vaddr_5_vaddr as *mut u8, 4096)
                     };
-                    match sock.recv_slice(buf) {
-                        Ok(0) => {
-                            memory_unmap(cap);
-                            memory_close(cap);
+                    let received = match entry.kind {
+                        SocketKind::Tcp => sockets
+                            .get_mut::<TcpSocket>(entry.handle)
+                            .recv_slice(buf)
+                            .ok()
+                            .map(|len| (len, true)),
+                        SocketKind::Udp => {
+                            sockets.get_mut::<UdpSocket>(entry.handle).recv_slice(buf).ok().map(
+                                |(len, metadata)| {
+                                    (len, entry.udp_remote == Some(metadata.endpoint))
+                                },
+                            )
                         }
-                        Ok(len) => {
+                    };
+                    match received {
+                        Some((len, true)) if len > 0 => {
                             memory_unmap(cap);
                             ipc_reply_move(reply_token, cap, len as i64);
                             if completed_n < 8 {
@@ -431,7 +466,7 @@ fn main(ctx: Context) -> ! {
                                 completed_n += 1;
                             }
                         }
-                        Err(_) => {
+                        _ => {
                             memory_unmap(cap);
                             memory_close(cap);
                         }
@@ -466,7 +501,7 @@ fn main(ctx: Context) -> ! {
 
             match msg.opcode {
                 socket::OP_SOCKET => {
-                    if msg.arg0 != socket::DOMAIN_TCP {
+                    if msg.arg0 != socket::DOMAIN_TCP && msg.arg0 != socket::DOMAIN_UDP {
                         ipc_reply(msg.reply, socket::ERR_BAD_DOMAIN);
                         continue;
                     }
@@ -474,15 +509,28 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_TOO_MANY_SOCKETS);
                         continue;
                     }
-                    let rx = TcpSocketBuffer::new(alloc::vec![0u8; SOCKET_BUF]);
-                    let tx = TcpSocketBuffer::new(alloc::vec![0u8; SOCKET_BUF]);
-                    let tcp = TcpSocket::new(rx, tx);
-                    let handle = sockets.add(tcp);
+                    let (handle, kind) = if msg.arg0 == socket::DOMAIN_TCP {
+                        let rx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
+                        let tx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
+                        (sockets.add(TcpSocket::new(rx, tx)), SocketKind::Tcp)
+                    } else {
+                        let rx = UdpPacketBuffer::new(
+                            vec![UdpPacketMetadata::EMPTY; 4],
+                            vec![0u8; 4096],
+                        );
+                        let tx = UdpPacketBuffer::new(
+                            vec![UdpPacketMetadata::EMPTY; 4],
+                            vec![0u8; 4096],
+                        );
+                        (sockets.add(UdpSocket::new(rx, tx)), SocketKind::Udp)
+                    };
                     let id = state.alloc_sock_id();
                     state.sockets.insert(
                         id,
                         SocketEntry {
                             handle,
+                            kind,
+                            udp_remote: None,
                             recv_pending: None,
                             closing: false,
                         },
@@ -496,8 +544,13 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-                    let (_scratch_vaddr_4_map_status, scratch_vaddr_4_vaddr) =
+                    let (scratch_vaddr_4_map_status, scratch_vaddr_4_vaddr) =
                         memory_map_any(msg.memory, false);
+                    if scratch_vaddr_4_map_status != 0 {
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                        continue;
+                    }
                     let a = unsafe { core::ptr::read_volatile(scratch_vaddr_4_vaddr as *const u8) };
                     let b = unsafe {
                         core::ptr::read_volatile((scratch_vaddr_4_vaddr + 1) as *const u8)
@@ -527,10 +580,24 @@ fn main(ctx: Context) -> ! {
                         addr: None,
                         port: local_port,
                     };
-                    let sock = sockets.get_mut::<TcpSocket>(entry.handle);
-                    match sock.connect(iface.context(), remote, local) {
-                        Ok(()) => ipc_reply(msg.reply, 0),
-                        Err(_) => ipc_reply(msg.reply, socket::ERR_CONNECTION_REFUSED),
+                    let connected = match entry.kind {
+                        SocketKind::Tcp => sockets
+                            .get_mut::<TcpSocket>(entry.handle)
+                            .connect(iface.context(), remote, local)
+                            .is_ok(),
+                        SocketKind::Udp => {
+                            let sock = sockets.get_mut::<UdpSocket>(entry.handle);
+                            let bound = sock.is_open() || sock.bind(local).is_ok();
+                            if bound {
+                                entry.udp_remote = Some(remote);
+                            }
+                            bound
+                        }
+                    };
+                    if connected {
+                        ipc_reply(msg.reply, 0);
+                    } else {
+                        ipc_reply(msg.reply, socket::ERR_CONNECTION_REFUSED);
                     };
                 }
 
@@ -552,10 +619,18 @@ fn main(ctx: Context) -> ! {
                         addr: None,
                         port,
                     };
-                    let sock = sockets.get_mut::<TcpSocket>(entry.handle);
-                    match sock.listen(listen) {
-                        Ok(()) => ipc_reply(msg.reply, 0),
-                        Err(_) => ipc_reply(msg.reply, socket::ERR_BAD_SOCKET),
+                    let bound = match entry.kind {
+                        SocketKind::Tcp => {
+                            sockets.get_mut::<TcpSocket>(entry.handle).listen(listen).is_ok()
+                        }
+                        SocketKind::Udp => {
+                            sockets.get_mut::<UdpSocket>(entry.handle).bind(listen).is_ok()
+                        }
+                    };
+                    if bound {
+                        ipc_reply(msg.reply, 0);
+                    } else {
+                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                     };
                 }
 
@@ -567,6 +642,13 @@ fn main(ctx: Context) -> ! {
                             continue;
                         }
                     };
+                    if entry.kind != SocketKind::Tcp {
+                        if msg.memory != 0 {
+                            memory_close(msg.memory);
+                        }
+                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                        continue;
+                    }
                     if msg.memory == 0 {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
@@ -592,6 +674,10 @@ fn main(ctx: Context) -> ! {
                             continue;
                         }
                     };
+                    if entry.kind != SocketKind::Tcp {
+                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                        continue;
+                    }
                     // smoltcp 0.13 transitions the listening socket itself
                     // into the established connection, so "accept" succeeds
                     // once the listener is no longer listening.
@@ -626,38 +712,39 @@ fn main(ctx: Context) -> ! {
                         ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                         continue;
                     }
-                    let (_scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) =
+                    let (scratch_vaddr_3_map_status, scratch_vaddr_3_vaddr) =
                         memory_map_any(msg.memory, false);
+                    if scratch_vaddr_3_map_status != 0 {
+                        memory_close(msg.memory);
+                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                        continue;
+                    }
                     let data = unsafe {
                         core::slice::from_raw_parts(scratch_vaddr_3_vaddr as *const u8, payload_len)
                     };
-                    let sock = sockets.get_mut::<TcpSocket>(entry.handle);
-                    let result = match sock.send_slice(data) {
-                        Ok(len) => {
-                            if len > 0 {
-                                tx_ok = tx_ok.wrapping_add(1);
-                                config::write::<u32>(status::TX_OK, tx_ok);
-                            } else {
-                                // A 16 KiB socket buffer should never be full for
-                                // the small HTTP reports; `Ok(0)` means the peer
-                                // has stopped ACKing — the transmit stall. Log the
-                                // first occurrence and then every 100th.
-                                tx_err = tx_err.wrapping_add(1);
-                                if tx_err == 1 || tx_err.is_multiple_of(100) {
-                                    catten_rt::logln!(
-                                        "[tcpip] socket TX buffer full (0 octets enqueued); \
-                                         tx_err={}",
-                                        tx_err
-                                    );
-                                }
-                            }
-                            len as i64
-                        }
-                        Err(_) => {
-                            tx_err = tx_err.wrapping_add(1);
-                            socket::ERR_WOULD_BLOCK
-                        }
+                    let result = match entry.kind {
+                        SocketKind::Tcp => sockets
+                            .get_mut::<TcpSocket>(entry.handle)
+                            .send_slice(data)
+                            .map(|len| len as i64)
+                            .unwrap_or(socket::ERR_WOULD_BLOCK),
+                        SocketKind::Udp => entry
+                            .udp_remote
+                            .and_then(|remote| {
+                                sockets
+                                    .get_mut::<UdpSocket>(entry.handle)
+                                    .send_slice(data, remote)
+                                    .ok()
+                            })
+                            .map(|()| payload_len as i64)
+                            .unwrap_or(socket::ERR_NOT_CONNECTED),
                     };
+                    if result > 0 {
+                        tx_ok = tx_ok.wrapping_add(1);
+                        config::write::<u32>(status::TX_OK, tx_ok);
+                    } else {
+                        tx_err = tx_err.wrapping_add(1);
+                    }
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
                     ipc_reply(msg.reply, result);
@@ -687,8 +774,14 @@ fn main(ctx: Context) -> ! {
                             ipc_reply(token, 0);
                         }
                         entry.closing = true;
-                        let sock = sockets.get_mut::<TcpSocket>(entry.handle);
-                        sock.close();
+                        match entry.kind {
+                            SocketKind::Tcp => {
+                                sockets.get_mut::<TcpSocket>(entry.handle).close();
+                            }
+                            SocketKind::Udp => {
+                                sockets.get_mut::<UdpSocket>(entry.handle).close();
+                            }
+                        }
                     }
                     config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
                     ipc_reply(msg.reply, 0);

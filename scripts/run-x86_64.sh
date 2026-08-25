@@ -15,6 +15,7 @@
 #   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT] [--kvm]
 #                         [--instance NAME] [--smp N] [--timeout S]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
+#                         [--no-network]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
 #                         [--tcpip-test|--http-test|--dhcp-test] [--live-upgrade-test]
 #                         [--nic virtio|e1000e] [--mac ADDRESS]
@@ -33,7 +34,8 @@
 #                  (default: run interactively)
 #   --iommu intel|amd  DMA remapping unit (default: intel)
 #   --block nvme|ahci|virtio  Block device transport (default: nvme)
-#   --net-test     Build and run the userspace Ethernet-driver test
+#   --no-network   Do not attach a NIC or launch network-backed services
+#   --net-test     Verify the default userspace Ethernet-driver capability
 #   --nic MODEL    Select virtio or e1000e for QEMU networking (default: virtio)
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --dns-test     Run the distributed DNS test (implies --disco-test)
@@ -79,6 +81,7 @@ BUILD_ONLY="0"
 EL0_SMOKE="0"
 IOMMU="intel"
 BLOCK="nvme"
+NETWORK="1"
 NET_TEST="0"
 DISCO_TEST="0"
 DNS_TEST="0"
@@ -116,6 +119,7 @@ while [ "$#" -gt 0 ]; do
         --block)
             [ "$#" -ge 2 ] || { echo "Missing value for --block" >&2; exit 1; }
             BLOCK="$2"; shift 2 ;;
+        --no-network) NETWORK="0"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
         --dns-test)    NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; shift ;; # implies --disco-test
@@ -163,8 +167,14 @@ if ! [[ "$DATA_SIZE_MIB" =~ ^[0-9]+$ ]] || [ "$DATA_SIZE_MIB" -lt 16 ]; then
     exit 1
 fi
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
-if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
-    echo "error: socket networking requires a network test option" >&2
+if [ "$NET_BACKEND" != "user" ] && [ "$NETWORK" != "1" ]; then
+    echo "error: socket networking is incompatible with --no-network" >&2
+    exit 1
+fi
+if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$DISCO_TEST" = "1" ] \
+    || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] || [ "$TCPIP_TEST" = "1" ] \
+    || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ]; }; then
+    echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
 if [ "$NET_DEVICE" != "virtio" ] && [ "$NET_DEVICE" != "e1000e" ]; then
@@ -281,7 +291,7 @@ fi
 # image, so the bundle must exist before the kernel build.
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd fs clusterctl"
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd time fs clusterctl"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
         if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then
@@ -394,9 +404,10 @@ QEMU_OPTS=(
     -device "$IOMMU_DEVICE"
     -display none
     -no-reboot
+    -nic none
 )
 
-if [ "$NET_TEST" = "1" ]; then
+if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
             if [ "$HTTP_TEST" = "1" ]; then

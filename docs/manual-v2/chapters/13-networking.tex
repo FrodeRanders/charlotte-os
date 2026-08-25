@@ -205,6 +205,29 @@ socket-API protocol (\texttt{OP\_SOCKET}, \texttt{OP\_CONNECT},
 \texttt{OP\_RECV}, \texttt{OP\_CLOSE}). Legacy software that requires TCP/IP
 connects to this service.
 
+The architecture runners attach a NIC by default. Hardware discovery starts
+the driver and frame router, followed by discovery, cluster services, and the
+DHCP-configured TCP/IP service. The \texttt{--no-network} runner option is the
+explicit isolated-boot configuration. Options ending in \texttt{-test} add
+verification workloads and result reporting; they do not enable the runtime
+services.
+
+\section{UTC time as an internal service}
+
+The userspace \texttt{time} service is a client of the TCP/IP socket API. It
+waits for local boot readiness and a nonzero DHCP address, then samples an NTPv4
+server over connected UDP. It calibrates the monotonic counter, estimates drift
+and uncertainty across samples, prevents time from moving backwards within a
+service lifetime, and persists calibration in the object store for holdover.
+
+Applications do not speak NTP. They resolve \texttt{"time"} through the local
+name service and call its endpoint protocol for a full snapshot, scalar Unix
+seconds, or a fixed-width UTC ISO 8601 value. Synchronization state and
+uncertainty are explicit so callers can reject unsynchronized or weak holdover
+time. This service starts during an ordinary networked boot; no test option is
+required. The detailed wire contract and security limitations are recorded in
+\repofile|docs/reference/time-service.md|.
+
 \section{Transport independence}
 
 The reliable-message interface is designed to be transport-agnostic. Candidate

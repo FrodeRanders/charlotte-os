@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--net-test|--relmsg-test|--disco-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -21,7 +21,8 @@
 #   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
-#   --net-test     Build and run the virtio-net test under TCG/KVM
+#   --no-network   Do not attach a NIC or launch network-backed services
+#   --net-test     Verify the default virtio-net capability under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --deploy-test  Run the cluster-deployment test (implies --dns-test):
@@ -34,8 +35,8 @@
 #               run it, implies --net-test)
 #   --http-test   Run the HTTP keyhole test: a hardcoded HTTP server on the
 #               guest's tcpip stack serving observable state, reached from
-#               the host via SLIRP hostfwd (single guest, user network;
-#               implies --net-test)
+#               the host via SLIRP hostfwd (single guest, user network)
+#   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -59,6 +60,7 @@ GDB=""
 GDB_PORT="1234"
 DISPLAY_MODE="0"
 USE_HVF="0"
+NETWORK="1"
 NET_TEST="0"
 RELMSG_TEST="0"
 DISCO_TEST="0"
@@ -66,6 +68,7 @@ DNS_TEST="0"
 DEPLOY_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
+DHCP_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
@@ -93,6 +96,7 @@ while [ "$#" -gt 0 ]; do
         --debug-snapshot) DEBUG_SNAPSHOT="1"; shift ;;
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
+        --no-network)  NETWORK="0"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
@@ -100,6 +104,7 @@ while [ "$#" -gt 0 ]; do
         --deploy-test)  NET_TEST="1"; DISCO_TEST="1"; DNS_TEST="1"; DEPLOY_TEST="1"; shift ;; # implies --dns-test
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
+        --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -136,8 +141,14 @@ if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
     exit 1
 fi
-if [ "$NET_BACKEND" != "user" ] && [ "$NET_TEST" != "1" ]; then
-    echo "error: socket networking requires --net-test" >&2
+if [ "$NET_BACKEND" != "user" ] && [ "$NETWORK" != "1" ]; then
+    echo "error: socket networking is incompatible with --no-network" >&2
+    exit 1
+fi
+if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
+    || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
+    || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ]; }; then
+    echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
 if [ "$NET_BACKEND" != "user" ] && [ "${CODEX_SANDBOX_NETWORK_DISABLED:-0}" = "1" ] \
@@ -169,8 +180,12 @@ if [ "$LIVE_UPGRADE_TEST" = "1" ] && [ "$USE_HVF" = "1" ]; then
     echo "error: --live-upgrade-test requires the protected-DMA object store and is incompatible with --hvf" >&2
     exit 1
 fi
-if [ "$SBSA_REF" = "1" ] && [ "$NET_TEST" = "1" ]; then
-    echo "error: network tests are virt-only; --sbsa-ref has no --net-test" >&2
+if [ "$NETWORK" = "1" ] && [ "$USE_HVF" = "1" ]; then
+    echo "error: default networking is incompatible with --hvf (EL0 MMIO is unsupported); pass --no-network" >&2
+    exit 1
+fi
+if [ "$SBSA_REF" = "1" ] && [ "$NETWORK" = "1" ]; then
+    echo "error: --sbsa-ref does not yet support the default network device; pass --no-network" >&2
     exit 1
 fi
 if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
@@ -246,10 +261,6 @@ if [ "$USE_HVF" = "1" ]; then
 fi
 
 if [ "$NET_TEST" = "1" ]; then
-    if [ "$USE_HVF" = "1" ]; then
-        echo "error: --net-test is incompatible with --hvf (EL0 MMIO is unsupported)" >&2
-        exit 1
-    fi
     FEATURES="${FEATURES},virtio_net_test"
 fi
 if [ "$RELMSG_TEST" = "1" ]; then
@@ -274,6 +285,9 @@ if [ "$TCPIP_TEST" = "1" ]; then
 fi
 if [ "$HTTP_TEST" = "1" ]; then
     FEATURES="${FEATURES},http_net_test"
+fi
+if [ "$DHCP_TEST" = "1" ]; then
+    FEATURES="${FEATURES},dhcp_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
@@ -450,8 +464,8 @@ if [ "$SBSA_REF" != "1" ]; then
     )
 fi
 
-if [ "$NET_TEST" = "1" ]; then
-    QEMU_OPTS+=(-nic none)
+QEMU_OPTS+=(-nic none)
+if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
             if [ "$HTTP_TEST" = "1" ]; then

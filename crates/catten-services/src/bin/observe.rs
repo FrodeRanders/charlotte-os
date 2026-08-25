@@ -9,7 +9,14 @@
 
 catten_rt::entry!(main);
 
-use catten_rt::Context;
+use catten_rt::{
+    Context,
+    owned::{
+        Endpoint,
+        OwnedMemory,
+        ReceiveError,
+    },
+};
 use catten_services::{
     ns,
     observability,
@@ -17,66 +24,61 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     cq_wait,
-    ipc_close,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
-    ipc_recv,
-    ipc_reply,
-    ipc_reply_move,
-    ipc_reply_wait,
-    ipc_scalar_call_connection,
-    ipc_status,
     thread_exit,
     thread_statistics_snapshot,
 };
 
 fn main(ctx: Context) -> ! {
-    let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| unsafe { thread_exit() });
+    let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| unsafe { thread_exit() });
     let system_observer = ctx.system_observer_cap().unwrap_or_else(|| unsafe { thread_exit() });
-    let endpoint = ipc_endpoint_create(observability::INTERFACE, observability::VERSION, 16);
-    if endpoint == 0 {
-        unsafe { thread_exit() };
-    }
-    let registration = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_REGISTER,
-        observability::NAME,
-        endpoint,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if registration == 0 {
-        unsafe { thread_exit() };
-    }
-    let (status, generation, _) = ipc_reply_wait(registration);
-    ipc_close(registration);
-    if status != 0 || generation < 1 || ipc_endpoint_bind_cq(endpoint, 0) != 0 {
+    let endpoint = Endpoint::create(observability::INTERFACE, observability::VERSION, 16)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
+    let generation = ns_connection
+        .call_connection(
+            ns::OP_REGISTER,
+            observability::NAME,
+            &endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        )
+        .and_then(|call| call.wait())
+        .unwrap_or_else(|_| unsafe { thread_exit() })
+        .result;
+    if generation < 1 || endpoint.bind_completion_queue(0).is_err() {
         unsafe { thread_exit() };
     }
 
     loop {
         cq_wait(1, 0);
         loop {
-            let message = ipc_recv(endpoint);
-            if message.status == ipc_status::NO_MESSAGE {
-                break;
-            }
-            if message.status == ipc_status::ENDPOINT_CLOSED {
-                unsafe { thread_exit() };
-            }
-            if !message.is_ok() || message.reply == 0 {
+            let message = match endpoint.try_receive() {
+                Ok(Some(message)) => message,
+                Ok(None) => break,
+                Err(ReceiveError::EndpointClosed) => unsafe { thread_exit() },
+                Err(_) => continue,
+            };
+            let Some(reply) = message.reply else {
                 continue;
-            }
+            };
             match message.opcode {
                 observability::OP_THREAD_SNAPSHOT => {
                     let (memory, length) = thread_statistics_snapshot(system_observer);
                     if memory == 0 || length == 0 {
-                        ipc_reply(message.reply, observability::ERR_UNAVAILABLE);
+                        let _ = reply.reply(observability::ERR_UNAVAILABLE);
                     } else {
-                        ipc_reply_move(message.reply, memory, length as i64);
+                        // thread_statistics_snapshot creates a new owned
+                        // memory capability for this caller.
+                        match unsafe { OwnedMemory::from_raw(memory) } {
+                            Ok(memory) => {
+                                let _ = reply.reply_move(memory, length as i64);
+                            }
+                            Err(_) => {
+                                let _ = reply.reply(observability::ERR_UNAVAILABLE);
+                            }
+                        }
                     }
                 }
                 _ => {
-                    ipc_reply(message.reply, observability::ERR_BAD_OPCODE);
+                    let _ = reply.reply(observability::ERR_BAD_OPCODE);
                 }
             }
         }

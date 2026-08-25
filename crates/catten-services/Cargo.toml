@@ -115,6 +115,13 @@ charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
 charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
+charlotte-protocol-time = { path = "../charlotte-protocol-time" }
+
+[[bin]]
+name = "time"
+path = "src/bin/time.rs"
+test = false
+bench = false
 
 [profile.dev]
 panic = "abort"

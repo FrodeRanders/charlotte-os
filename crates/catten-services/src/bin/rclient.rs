@@ -7,23 +7,14 @@ extern crate alloc;
 use catten_rt::{
     Context,
     config,
+    owned::OwnedMemory,
 };
 use catten_services::{
-    ns,
     relmsg,
-    wait_reply,
+    wait_for_local_ready_owned,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    ipc_close,
-    ipc_reply_wait_with_memory,
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_unmap,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::relmsg_client_status as status;
 use charlotte_protocol_msg::{
     pack_address_and_len,
@@ -46,27 +37,20 @@ fn build_payload() -> alloc::vec::Vec<u8> {
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
     let payload = build_payload();
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let ns_conn = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, relmsg::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, relmsg_conn) = unsafe { wait_reply(lookup, 0) };
-    if generation < 1 || relmsg_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, relmsg_conn) = wait_for_registered_name_owned(ns_conn, relmsg::NAME)
+        .unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 2);
 
-    let status = ipc_scalar_call(relmsg_conn, relmsg::OP_STATUS, 0);
-    if status == 0 {
+    let status_call = relmsg_conn.call(relmsg::OP_STATUS, 0).unwrap_or_else(|_| {
         config::write::<u32>(status::STAGE, 0xe001);
-        unsafe { thread_exit() };
-    }
+        unsafe { thread_exit() }
+    });
     config::write::<u32>(status::STAGE, 10);
-    let (packed, _) = unsafe { wait_reply(status, 0) };
+    let packed = status_call.wait().unwrap_or_else(|_| unsafe { thread_exit() }).result;
     config::write::<u32>(status::STAGE, 11);
     let (local_mac, _) = unpack_address_and_len(packed as u64);
     let mut peer_mac = local_mac;
@@ -79,40 +63,29 @@ fn main(ctx: Context) -> ! {
 
     // Do not initiate cluster communication until this node has finished
     // booting: messages sent during the boot storm are silently lost.
-    if !catten_services::wait_for_local_ready(ns_conn) {
+    if !wait_for_local_ready_owned(ns_conn) {
         unsafe { thread_exit() };
     }
     config::write::<u32>(status::STAGE, 13);
 
-    let receive = ipc_scalar_call(relmsg_conn, relmsg::OP_RECV, 0);
-    if receive == 0 {
+    let receive = relmsg_conn.call(relmsg::OP_RECV, 0).unwrap_or_else(|_| {
         config::write::<u32>(status::STAGE, 0xe002);
-        unsafe { thread_exit() };
-    }
+        unsafe { thread_exit() }
+    });
     config::write::<u32>(status::STAGE, 13);
-    let cap = memory_alloc(1);
-    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(cap, true);
-    if cap == 0 || scratch_2_map_status != 0 {
-        if cap != 0 {
-            memory_close(cap);
-        }
-        unsafe { thread_exit() };
-    }
+    let memory = OwnedMemory::allocate(1).unwrap_or_else(|_| unsafe { thread_exit() });
+    let mut mapping = memory.map_writable().unwrap_or_else(|_| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 14);
-    unsafe {
-        core::ptr::copy_nonoverlapping(payload.as_ptr(), scratch_2_vaddr as *mut u8, payload.len());
-    }
-    memory_unmap(cap);
+    mapping.as_mut_slice()[..payload.len()].copy_from_slice(&payload);
+    let memory = mapping.unmap().unwrap_or_else(|_| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 15);
     let destination = pack_address_and_len(peer_mac, payload.len() as u16);
-    let send = ipc_scalar_call_move(relmsg_conn, relmsg::OP_SEND, destination, cap);
-    if send == 0 {
+    let send = relmsg_conn.call_move(relmsg::OP_SEND, destination, memory).unwrap_or_else(|_| {
         config::write::<u32>(status::STAGE, 0xe003);
-        memory_close(cap);
-        unsafe { thread_exit() };
-    }
+        unsafe { thread_exit() }
+    });
     config::write::<u32>(status::STAGE, 16);
-    let (send_result, _) = unsafe { wait_reply(send, 0) };
+    let send_result = send.wait().unwrap_or_else(|_| unsafe { thread_exit() }).result;
     if send_result != payload.len() as i64 {
         config::write::<i64>(status::SEND_RESULT, send_result);
         config::write::<u32>(status::STAGE, 0xe004);
@@ -120,31 +93,20 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(status::STAGE, 3);
 
-    let (status, source_and_len, _connection, received) = ipc_reply_wait_with_memory(receive);
-    ipc_close(receive);
-    let (source, len) = unpack_address_and_len(source_and_len);
-    if status != 0 || received == 0 || source != peer_mac || len as usize != payload.len() {
-        if received != 0 {
-            memory_close(received);
-        }
+    let received = receive.wait().unwrap_or_else(|_| unsafe { thread_exit() });
+    let (source, len) = unpack_address_and_len(received.result as u64);
+    if source != peer_mac || len as usize != payload.len() {
         unsafe { thread_exit() };
     }
-    let (scratch_map_status, scratch_vaddr) = memory_map_any(received, false);
-    if scratch_map_status != 0 {
-        memory_close(received);
-        unsafe { thread_exit() };
-    }
-    let bytes = unsafe { core::slice::from_raw_parts(scratch_vaddr as *const u8, len as usize) };
-    let matches = bytes == payload.as_slice();
-    memory_unmap(received);
-    memory_close(received);
+    let memory = received.memory.unwrap_or_else(|| unsafe { thread_exit() });
+    let mapping = memory.map_read_only().unwrap_or_else(|_| unsafe { thread_exit() });
+    let matches = &mapping.as_slice()[..len as usize] == payload.as_slice();
     if !matches {
         unsafe { thread_exit() };
     }
 
-    let shutdown = ipc_scalar_call(relmsg_conn, relmsg::OP_SHUTDOWN, 0);
-    if shutdown != 0 {
-        let _ = unsafe { wait_reply(shutdown, 0) };
+    if let Ok(shutdown) = relmsg_conn.call(relmsg::OP_SHUTDOWN, 0) {
+        let _ = shutdown.wait();
     }
     config::write::<u32>(
         status::PEER_ADDRESS,

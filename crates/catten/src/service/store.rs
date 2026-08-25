@@ -109,6 +109,7 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"tcpip", "tcpip"),
     bootstrap_elf!(b"tcpclient", "tcpclient"),
     bootstrap_elf!(b"httpd", "httpd"),
+    bootstrap_elf!(b"time", "time"),
     bootstrap_elf!(b"fs", "fs"),
     bootstrap_elf!(b"clusterctl", "clusterctl"),
 ];

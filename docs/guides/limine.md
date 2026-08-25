@@ -58,8 +58,9 @@ Treat a loader update as a platform change, not routine dependency churn:
    Regenerate `limine-binary/SHA256SUMS` from those bytes.
 4. Run `scripts/verify-limine.sh --release`.
 5. Build both target kernels and boot the complete self-test suite on x86-64,
-   AArch64 `virt`, and AArch64 `--sbsa-ref`. The last target is required because
-   it exercises Limine's server-shaped AArch64/UEFI path.
+   AArch64 `virt`, and AArch64 `--sbsa-ref --no-network`. The last target is
+   required because it exercises Limine's server-shaped AArch64/UEFI path; its
+   current QEMU machine does not expose the default virt networking path.
 6. Update the known-good version recorded in the platform documentation only
    after those boots pass.
 

@@ -26,6 +26,7 @@ rclient            service     1       1        0x0   -
 tcpip              service     1       1        0x0   -
 tcpclient          service     1       1        0x0   -
 httpd              service     1       1        0x0   -
+time               service     1       1        0x0   -
 observe            bootstrap   1       1        0x0   -
 disco              service     1       1        0x0   -
 frouter            service     1       1        0x0   -

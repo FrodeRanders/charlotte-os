@@ -280,6 +280,17 @@ pub mod httpd_status {
     pub const ERROR: usize = 8;
 }
 
+/// UTC time-service diagnostic status-page offsets.
+pub mod time_status {
+    pub const STAGE: usize = 0;
+    pub const SYNC_STATE: usize = 4;
+    pub const SAMPLES: usize = 8;
+    pub const NTP_FAILURES: usize = 12;
+    pub const DRIFT_PPB: usize = 16;
+    pub const PERSIST_ERROR: usize = 24;
+    pub const ERROR: usize = 28;
+}
+
 pub mod clusterctl_status {
     pub const STAGE: usize = 0;
 }

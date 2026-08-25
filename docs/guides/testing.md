@@ -42,6 +42,14 @@ execution environment. Their target declarations therefore retain
 `test = false`; kernel and service integration behavior is exercised by
 `scripts/run-aarch64.sh` and the boot-time self-test registry.
 
+The runners' ordinary runtime configuration is intentionally separate from
+their verifier selection. They attach a NIC by default, so DHCP, discovery,
+cluster, TCP/IP, HTTP, and time services run even when no network-test feature
+is compiled. `--net-test`, `--dhcp-test`, `--disco-test`, and related options
+register additional target verifiers; `--no-network` is the explicit runtime
+opt-out. Tests should never be the mechanism that enables a production
+capability.
+
 Both architecture runners source `scripts/lib/boot-common.sh` for dependency
 validation, Limine configuration resolution, payload hashing, atomic FAT image
 construction, and authoritative self-test verdict validation. To create only a

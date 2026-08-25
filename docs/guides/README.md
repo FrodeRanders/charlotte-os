@@ -7,5 +7,8 @@ These documents contain repeatable workflows rather than architectural claims.
   provenance, update validation, and measured/Secure Boot boundaries.
 - [Userspace development](userspace-development.md) — `catten-rt`, entry
   points, launch manifests, capabilities, and service packaging.
+- [Userspace resource ownership](resource-ownership.md) — RAII, typed mappings,
+  IPC transfer/borrowing, server replies, cancellation, and raw boundaries.
 - [AArch64 network development](aarch64-network-development.md) — macOS TCG,
-  two-guest stream LANs, and network test commands.
+  default network services, two-guest stream LANs, and optional verifier
+  commands.

@@ -559,6 +559,13 @@ pub enum IpcError {
     TooManyVectorEntries,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReceiveError {
+    EndpointClosed,
+    InvalidReturnedMemory,
+    Status(u64),
+}
+
 /// An owned IPC endpoint capability.
 #[must_use = "dropping an endpoint closes it"]
 #[derive(Debug)]
@@ -593,6 +600,21 @@ impl Endpoint {
 
     fn raw_handle(&self) -> u64 {
         self.cap.expect("endpoint capability already consumed")
+    }
+
+    /// Receive one queued request without blocking.
+    ///
+    /// Every capability attached to a successful message is immediately
+    /// adopted by an owning Rust value. Dropping the returned message therefore
+    /// releases attachments and cancels an unused reply token.
+    pub fn try_receive(&self) -> Result<Option<IncomingMessage>, ReceiveError> {
+        IncomingMessage::from_kernel(kernel::ipc_recv(self.raw_handle()))
+    }
+
+    /// Wait for and receive one request.
+    pub fn receive(&self) -> Result<IncomingMessage, ReceiveError> {
+        IncomingMessage::from_kernel(kernel::ipc_recv_block(self.raw_handle()))?
+            .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
     }
 
     pub fn connect(&self, rights: IpcRights) -> Result<Connection, IpcError> {
@@ -766,6 +788,141 @@ pub struct Connection {
     cap: Option<u64>,
 }
 
+/// A non-owning view of an IPC connection.
+///
+/// This is used for launch-provided connections whose lifetime is controlled
+/// by the process environment. It is `Copy`, but cannot close or transfer the
+/// underlying connection capability.
+#[derive(Clone, Copy, Debug)]
+pub struct ConnectionRef<'connection> {
+    cap: u64,
+    _connection: PhantomData<&'connection Connection>,
+}
+
+impl<'connection> ConnectionRef<'connection> {
+    /// Borrow a valid connection capability for `lifetime`.
+    ///
+    /// # Safety
+    /// The capability must remain live for the returned value's lifetime and
+    /// must not be closed through the raw syscall API during that time.
+    pub const unsafe fn from_raw(cap: u64) -> Result<Self, IpcError> {
+        if cap == 0 {
+            return Err(IpcError::CreationFailed);
+        }
+        Ok(Self {
+            cap,
+            _connection: PhantomData,
+        })
+    }
+
+    pub const fn as_raw(self) -> u64 {
+        self.cap
+    }
+
+    pub fn send(self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
+        let status = kernel::ipc_scalar_send(self.cap, opcode, arg0);
+        if status == catten_syscall::ipc_status::OK {
+            Ok(())
+        } else {
+            Err(IpcError::Status(status))
+        }
+    }
+
+    pub fn call(self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call(self.cap, opcode, arg0))
+    }
+
+    pub fn call_move(
+        self,
+        opcode: u32,
+        arg0: u64,
+        mut memory: OwnedMemory,
+    ) -> Result<PendingCall<'static>, (OwnedMemory, IpcError)> {
+        let call = kernel::ipc_scalar_call_move(self.cap, opcode, arg0, memory.raw_handle());
+        if call == 0 {
+            return Err((memory, IpcError::CreationFailed));
+        }
+        let _ = memory.cap.take().expect("owned memory capability already consumed");
+        Ok(PendingCall::from_valid_cap(call))
+    }
+
+    pub fn call_borrow_read<'memory>(
+        self,
+        opcode: u32,
+        arg0: u64,
+        memory: &'memory OwnedMemory,
+    ) -> Result<PendingCall<'memory>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_borrow_read(
+            self.cap,
+            opcode,
+            arg0,
+            memory.raw_handle(),
+        ))
+    }
+
+    pub fn call_borrow_write<'memory>(
+        self,
+        opcode: u32,
+        arg0: u64,
+        memory: &'memory mut OwnedMemory,
+    ) -> Result<PendingCall<'memory>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_borrow_write(
+            self.cap,
+            opcode,
+            arg0,
+            memory.raw_handle(),
+        ))
+    }
+
+    pub fn call_copy(
+        self,
+        opcode: u32,
+        arg0: u64,
+        memory: &OwnedMemory,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_copy(
+            self.cap,
+            opcode,
+            arg0,
+            memory.raw_handle(),
+        ))
+    }
+
+    pub fn call_connection(
+        self,
+        opcode: u32,
+        arg0: u64,
+        endpoint: &Endpoint,
+        rights: IpcRights,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_connection(
+            self.cap,
+            opcode,
+            arg0,
+            endpoint.raw_handle(),
+            rights,
+        ))
+    }
+
+    pub fn call_connection_copy(
+        self,
+        opcode: u32,
+        arg0: u64,
+        endpoint: &Endpoint,
+        rights: IpcRights,
+        memory: &OwnedMemory,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_connection_copy(
+            self.cap,
+            opcode,
+            arg0,
+            endpoint.raw_handle(),
+            rights,
+            memory.raw_handle(),
+        ))
+    }
+}
+
 impl Connection {
     /// Adopt a uniquely owned connection capability.
     ///
@@ -782,13 +939,31 @@ impl Connection {
     }
 
     fn from_kernel(cap: u64) -> Option<Self> {
-        (cap != 0).then_some(Self {
-            cap: Some(cap),
-        })
+        if cap == 0 {
+            None
+        } else {
+            Some(Self {
+                cap: Some(cap),
+            })
+        }
     }
 
     fn raw_handle(&self) -> u64 {
         self.cap.expect("connection capability already consumed")
+    }
+
+    /// Temporarily expose the handle for a low-level API that does not take
+    /// ownership. Application code should prefer the typed methods on this
+    /// value. The returned integer must never be closed or adopted.
+    pub const fn as_raw(&self) -> u64 {
+        self.cap.expect("connection capability already consumed")
+    }
+
+    pub fn as_ref(&self) -> ConnectionRef<'_> {
+        ConnectionRef {
+            cap: self.raw_handle(),
+            _connection: PhantomData,
+        }
     }
 
     pub fn send(&self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
@@ -876,6 +1051,44 @@ impl Connection {
         ))
     }
 
+    /// Call while delegating a connection minted from `endpoint`.
+    ///
+    /// Neither `endpoint` nor this connection is transferred by the call.
+    pub fn call_connection(
+        &self,
+        opcode: u32,
+        arg0: u64,
+        endpoint: &Endpoint,
+        rights: IpcRights,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_connection(
+            self.raw_handle(),
+            opcode,
+            arg0,
+            endpoint.raw_handle(),
+            rights,
+        ))
+    }
+
+    /// Call while delegating a connection and copying a memory object.
+    pub fn call_connection_copy(
+        &self,
+        opcode: u32,
+        arg0: u64,
+        endpoint: &Endpoint,
+        rights: IpcRights,
+        memory: &OwnedMemory,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_connection_copy(
+            self.raw_handle(),
+            opcode,
+            arg0,
+            endpoint.raw_handle(),
+            rights,
+            memory.raw_handle(),
+        ))
+    }
+
     pub fn send_vector<'memory>(
         &self,
         opcode: u32,
@@ -933,6 +1146,158 @@ impl Drop for Connection {
         if let Some(cap) = self.cap.take() {
             let _ = kernel::ipc_close(cap);
         }
+    }
+}
+
+/// A received call's reply authority.
+///
+/// Reply operations consume this value, so a request cannot be replied to
+/// twice. Dropping an unused token closes it and wakes/cancels the caller
+/// according to the IPC contract.
+#[must_use = "a reply token must be consumed by a reply or explicitly dropped"]
+#[derive(Debug)]
+pub struct ReplyToken {
+    cap: Option<u64>,
+}
+
+impl ReplyToken {
+    fn from_kernel(cap: u64) -> Option<Self> {
+        if cap == 0 {
+            None
+        } else {
+            Some(Self {
+                cap: Some(cap),
+            })
+        }
+    }
+
+    pub fn reply(mut self, result: i64) -> Result<(), IpcError> {
+        let cap = self.cap.take().expect("reply token already consumed");
+        let status = kernel::ipc_reply(cap, result);
+        if status == catten_syscall::ipc_status::OK {
+            Ok(())
+        } else {
+            let _ = kernel::ipc_close(cap);
+            Err(IpcError::Status(status))
+        }
+    }
+
+    pub fn reply_move(
+        mut self,
+        mut memory: OwnedMemory,
+        result: i64,
+    ) -> Result<(), (OwnedMemory, IpcError)> {
+        let reply = self.cap.take().expect("reply token already consumed");
+        let status = kernel::ipc_reply_move(reply, memory.raw_handle(), result);
+        if status == catten_syscall::ipc_status::OK {
+            let _ = memory.cap.take().expect("owned memory capability already consumed");
+            Ok(())
+        } else {
+            let _ = kernel::ipc_close(reply);
+            Err((memory, IpcError::Status(status)))
+        }
+    }
+
+    pub fn reply_connection(
+        mut self,
+        endpoint: &Endpoint,
+        rights: IpcRights,
+        result: i64,
+    ) -> Result<(), IpcError> {
+        let reply = self.cap.take().expect("reply token already consumed");
+        let status = kernel::ipc_reply_connection(reply, endpoint.raw_handle(), rights, result);
+        if status == catten_syscall::ipc_status::OK {
+            Ok(())
+        } else {
+            let _ = kernel::ipc_close(reply);
+            Err(IpcError::Status(status))
+        }
+    }
+}
+
+impl Drop for ReplyToken {
+    fn drop(&mut self) {
+        if let Some(cap) = self.cap.take() {
+            let _ = kernel::ipc_close(cap);
+        }
+    }
+}
+
+/// A received IPC message whose attached capabilities have unique owners.
+///
+/// Moving fields out of this value transfers their ownership. Any fields left
+/// behind are closed automatically.
+#[must_use = "dropping an incoming message releases all attached capabilities"]
+#[derive(Debug)]
+pub struct IncomingMessage {
+    pub opcode: u32,
+    pub arg0: u64,
+    pub sender: u64,
+    pub sender_generation: u64,
+    pub sender_principal: u64,
+    pub sender_roles: u32,
+    pub interface: u64,
+    pub version: u32,
+    pub reply: Option<ReplyToken>,
+    pub memory: Option<OwnedMemory>,
+    pub connection: Option<Connection>,
+}
+
+impl IncomingMessage {
+    fn from_kernel(message: catten_syscall::IpcMessage) -> Result<Option<Self>, ReceiveError> {
+        if message.status == catten_syscall::ipc_status::NO_MESSAGE {
+            return Ok(None);
+        }
+        if message.status == catten_syscall::ipc_status::ENDPOINT_CLOSED {
+            return Err(ReceiveError::EndpointClosed);
+        }
+        if message.status != catten_syscall::ipc_status::OK {
+            close_raw_message_capabilities(message);
+            return Err(ReceiveError::Status(message.status));
+        }
+
+        let memory = if message.memory == 0 {
+            None
+        } else {
+            match OwnedMemory::from_kernel(message.memory) {
+                Ok(memory) => Some(memory),
+                Err(_) => {
+                    if message.connection != 0 {
+                        let _ = kernel::ipc_close(message.connection);
+                    }
+                    if message.reply != 0 {
+                        let _ = kernel::ipc_close(message.reply);
+                    }
+                    return Err(ReceiveError::InvalidReturnedMemory);
+                }
+            }
+        };
+
+        Ok(Some(Self {
+            opcode: message.opcode,
+            arg0: message.arg0,
+            sender: message.sender,
+            sender_generation: message.sender_generation,
+            sender_principal: message.sender_principal,
+            sender_roles: message.sender_roles,
+            interface: message.interface,
+            version: message.version,
+            reply: ReplyToken::from_kernel(message.reply),
+            memory,
+            connection: Connection::from_kernel(message.connection),
+        }))
+    }
+}
+
+fn close_raw_message_capabilities(message: catten_syscall::IpcMessage) {
+    if message.memory != 0 {
+        let _ = kernel::memory_close(message.memory);
+    }
+    if message.connection != 0 {
+        let _ = kernel::ipc_close(message.connection);
+    }
+    if message.reply != 0 {
+        let _ = kernel::ipc_close(message.reply);
     }
 }
 
@@ -1171,6 +1536,14 @@ mod kernel {
         catten_syscall::ipc_endpoint_bind_cq(endpoint, cq)
     }
 
+    pub fn ipc_recv(endpoint: u64) -> catten_syscall::IpcMessage {
+        catten_syscall::ipc_recv(endpoint)
+    }
+
+    pub fn ipc_recv_block(endpoint: u64) -> catten_syscall::IpcMessage {
+        catten_syscall::ipc_recv_block(endpoint)
+    }
+
     pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
         catten_syscall::ipc_scalar_call(connection, opcode, arg0)
     }
@@ -1205,6 +1578,29 @@ mod kernel {
         catten_syscall::ipc_scalar_call_copy(connection, opcode, arg0, memory)
     }
 
+    pub fn ipc_scalar_call_connection(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        endpoint: u64,
+        rights: IpcRights,
+    ) -> u64 {
+        catten_syscall::ipc_scalar_call_connection(connection, opcode, arg0, endpoint, rights)
+    }
+
+    pub fn ipc_scalar_call_connection_copy(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        endpoint: u64,
+        rights: IpcRights,
+        memory: u64,
+    ) -> u64 {
+        catten_syscall::ipc_scalar_call_connection_copy(
+            connection, opcode, arg0, endpoint, rights, memory,
+        )
+    }
+
     pub fn ipc_vector_send(connection: u64, opcode: u32, arg0: u64, descriptor: u64) -> u64 {
         catten_syscall::ipc_vector_send(connection, opcode, arg0, descriptor)
     }
@@ -1223,6 +1619,18 @@ mod kernel {
 
     pub fn ipc_reply_wait_with_memory(call: u64) -> (u64, u64, u64, u64) {
         catten_syscall::ipc_reply_wait_with_memory(call)
+    }
+
+    pub fn ipc_reply(reply: u64, result: i64) -> u64 {
+        catten_syscall::ipc_reply(reply, result)
+    }
+
+    pub fn ipc_reply_move(reply: u64, memory: u64, result: i64) -> u64 {
+        catten_syscall::ipc_reply_move(reply, memory, result)
+    }
+
+    pub fn ipc_reply_connection(reply: u64, endpoint: u64, rights: IpcRights, result: i64) -> u64 {
+        catten_syscall::ipc_reply_connection(reply, endpoint, rights, result)
     }
 
     pub fn ipc_close(cap: u64) -> u64 {
@@ -1283,11 +1691,13 @@ mod kernel {
         pub ipc_endpoint: u64,
         pub ipc_connection: u64,
         pub ipc_bind: u64,
+        pub ipc_receive: VecDeque<catten_syscall::IpcMessage>,
         pub ipc_send_move: u64,
         pub ipc_call_move: u64,
         pub ipc_vector_send: u64,
         pub ipc_vector_call: u64,
         pub ipc_reply: VecDeque<(u64, u64, u64, u64)>,
+        pub ipc_reply_status: u64,
         pub connection_watch: u64,
         pub events: Vec<Event>,
     }
@@ -1314,11 +1724,13 @@ mod kernel {
                 ipc_endpoint: 40,
                 ipc_connection: 41,
                 ipc_bind: catten_syscall::ipc_status::OK,
+                ipc_receive: VecDeque::new(),
                 ipc_send_move: catten_syscall::ipc_status::OK,
                 ipc_call_move: 30,
                 ipc_vector_send: catten_syscall::ipc_status::OK,
                 ipc_vector_call: 30,
                 ipc_reply: VecDeque::new(),
+                ipc_reply_status: catten_syscall::ipc_status::OK,
                 connection_watch: 20,
                 events: Vec::new(),
             }
@@ -1478,6 +1890,29 @@ mod kernel {
         with_state(|state| state.ipc_bind)
     }
 
+    pub fn ipc_recv(_endpoint: u64) -> catten_syscall::IpcMessage {
+        with_state(|state| {
+            state.ipc_receive.pop_front().unwrap_or(catten_syscall::IpcMessage {
+                status: catten_syscall::ipc_status::NO_MESSAGE,
+                opcode: 0,
+                arg0: 0,
+                reply: 0,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 0,
+                version: 0,
+                memory: 0,
+                connection: 0,
+            })
+        })
+    }
+
+    pub fn ipc_recv_block(endpoint: u64) -> catten_syscall::IpcMessage {
+        ipc_recv(endpoint)
+    }
+
     pub fn ipc_scalar_call(_connection: u64, _opcode: u32, _arg0: u64) -> u64 {
         with_state(|state| state.ipc_call)
     }
@@ -1512,6 +1947,27 @@ mod kernel {
         with_state(|state| state.ipc_call)
     }
 
+    pub fn ipc_scalar_call_connection(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+    ) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
+    pub fn ipc_scalar_call_connection_copy(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+        _memory: u64,
+    ) -> u64 {
+        with_state(|state| state.ipc_call)
+    }
+
     pub fn ipc_vector_send(_connection: u64, _opcode: u32, _arg0: u64, _descriptor: u64) -> u64 {
         with_state(|state| state.ipc_vector_send)
     }
@@ -1532,6 +1988,23 @@ mod kernel {
         with_state(|state| {
             state.ipc_reply.pop_front().unwrap_or((catten_syscall::ipc_status::OK, 0, 0, 0))
         })
+    }
+
+    pub fn ipc_reply(_reply: u64, _result: i64) -> u64 {
+        with_state(|state| state.ipc_reply_status)
+    }
+
+    pub fn ipc_reply_move(_reply: u64, _memory: u64, _result: i64) -> u64 {
+        with_state(|state| state.ipc_reply_status)
+    }
+
+    pub fn ipc_reply_connection(
+        _reply: u64,
+        _endpoint: u64,
+        _rights: IpcRights,
+        _result: i64,
+    ) -> u64 {
+        with_state(|state| state.ipc_reply_status)
     }
 
     pub fn ipc_close(cap: u64) -> u64 {
@@ -1559,6 +2032,7 @@ mod tests {
         Connection,
         DmaDomain,
         Endpoint,
+        IncomingMessage,
         MmioRegion,
         OwnedMemory,
         ReadOperation,
@@ -1718,6 +2192,79 @@ mod tests {
         drop(connection);
         drop(endpoint);
         assert_eq!(kernel::events(), [kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn incoming_message_owns_every_attachment() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(catten_syscall::IpcMessage {
+                status: catten_syscall::ipc_status::OK,
+                opcode: 7,
+                arg0: 9,
+                reply: 43,
+                sender: 1,
+                sender_generation: 2,
+                sender_principal: 3,
+                sender_roles: 4,
+                interface: 5,
+                version: 6,
+                memory: 10,
+                connection: 42,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message: IncomingMessage =
+            endpoint.try_receive().expect("receive status").expect("queued message");
+        assert_eq!(message.opcode, 7);
+        drop(message);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcClose(43),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::IpcClose(42),
+                kernel::Event::IpcClose(40),
+            ]
+        );
+    }
+
+    #[test]
+    fn failed_reply_move_returns_memory_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_reply_status = catten_syscall::ipc_status::QUEUE_FULL;
+            state.ipc_receive.push_back(catten_syscall::IpcMessage {
+                status: catten_syscall::ipc_status::OK,
+                opcode: 1,
+                arg0: 0,
+                reply: 43,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 1,
+                version: 1,
+                memory: 0,
+                connection: 0,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message = endpoint.try_receive().expect("receive status").expect("queued message");
+        let reply = message.reply.expect("reply token");
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let (memory, _) = reply.reply_move(memory, 4).expect_err("reply must fail");
+        drop(memory);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcClose(43),
+                kernel::Event::MemoryClose(10),
+                kernel::Event::IpcClose(40),
+            ]
+        );
     }
 
     #[test]

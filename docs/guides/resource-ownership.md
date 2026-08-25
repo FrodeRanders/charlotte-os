@@ -1,0 +1,125 @@
+# Userspace resource ownership
+
+CharlotteOS application code uses Rust ownership to mirror kernel capability
+ownership. Every closeable resource has exactly one owning Rust value. Normal
+error propagation then performs cleanup automatically.
+
+The raw functions in `catten-syscall` describe the register ABI. They are not
+the normal service-development API. Use `catten_rt::owned` in services and
+applications.
+
+## Resource types
+
+| Resource | Owner | Drop behavior |
+|---|---|---|
+| Memory object | `OwnedMemory` | Closes the capability |
+| CPU mapping | `MappedMemory<ReadOnly>` or `MappedMemory<Writable>` | Unmaps, then closes the memory |
+| Endpoint | `Endpoint` | Closes the endpoint |
+| Owned connection | `Connection` | Closes the connection |
+| Launch-owned connection | `ConnectionRef` | Does not close the launch grant |
+| Pending IPC call | `PendingCall` | Cancels/closes the call and revokes loans |
+| Received request | `IncomingMessage` | Releases every unconsumed attachment |
+| Reply authority | `ReplyToken` | Closes an unused reply token |
+| Completion | `Completion` | Cancels, waits for terminal state, then closes |
+| Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
+| Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
+| MMIO/interrupt/DMA | `MmioRegion`, `Interrupt`, `DmaTransfer` | Reverses the exclusive device operation |
+
+All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
+ownership. Dropping it releases ownership.
+
+## Memory and IPC example
+
+```rust
+let memory = OwnedMemory::allocate(1)?;
+let mut mapping = memory.map_writable().map_err(|(_, error)| error)?;
+mapping.as_mut_slice()[..payload.len()].copy_from_slice(payload);
+let memory = mapping.unmap().map_err(|(_, error)| error)?;
+
+// Success transfers memory. Submission failure returns the still-owned value.
+let reply = connection
+    .call_move(OP_SEND, payload.len() as u64, memory)
+    .map_err(|(_, error)| error)?;
+let result = reply.wait()?;
+```
+
+There is no `memory_close` branch. A mapping owns its memory object, and the
+compiler prevents moving the memory until `unmap` consumes the mapping.
+
+For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
+`call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
+is observed or the call is dropped, preventing concurrent CPU access.
+
+## Server example
+
+```rust
+match endpoint.try_receive()? {
+    None => {} // queue drained
+    Some(message) => {
+        if let Some(reply) = message.reply {
+            match message.opcode {
+                OP_STATUS => reply.reply(status)?,
+                _ => reply.reply(ERR_BAD_OPCODE)?,
+            }
+        }
+    }
+}
+```
+
+`IncomingMessage` owns its received memory, connection, and reply token.
+Ignoring an attachment is safe: it is released when the message is dropped.
+Reply methods consume `ReplyToken`, making double replies impossible.
+
+## Multi-step and remote operations
+
+An operation spanning reactor iterations must own its resources:
+
+```rust
+struct RequestAttempt<'connection> {
+    receive: PendingCall<'static>,
+    socket: socket::OwnedSocket<'connection>,
+    deadline_ticks: u64,
+}
+```
+
+Store the operation in `Option<RequestAttempt>`. Taking or replacing the value
+cancels the pending call and closes the socket on every exit path. Declare or
+explicitly drop dependent fields in the required shutdown order.
+
+A remote ID is not a kernel capability. Releasing it requires a protocol call,
+which can block or fail. Its owner therefore provides `close(self)` for normal
+operation and uses `Drop` only as a leak-prevention fallback. Errors from
+`Drop` cannot be reported.
+
+## Raw boundary rules
+
+Raw adoption is occasionally necessary at a launch or hardware ABI boundary:
+
+```rust
+// SAFETY: this field transfers the capability once; raw_memory is not reused.
+let memory = unsafe { OwnedMemory::from_raw(raw_memory) }?;
+```
+
+Every `from_raw` needs an ownership comment. Do not adopt borrowed grants.
+Launch-owned connections should use `Context::bootstrap_connection()`, which
+returns `ConnectionRef`.
+
+Drivers may retain small raw regions for contracts not represented by the
+owned layer. Wrap their outward-facing resources and explain why the operation
+cannot use `MmioRegion`, `Interrupt`, `DmaTransfer`, or another owned type. A
+raw handle must never be managed simultaneously by an owned wrapper.
+
+## Review checklist
+
+- Does every allocated, returned, or received capability immediately acquire
+  one owner?
+- Can every `return`, `?`, timeout, and cancellation path rely on `Drop`?
+- Does a move consume its owner only after successful submission?
+- Does a borrow remain live through the terminal reply?
+- Are mappings represented by typed slices rather than persistent addresses?
+- Does each reply token have at most one consuming reply?
+- Does a long-lived operation aggregate every resource it must cancel?
+- Is every `from_raw`, `into_raw`, or direct close confined to a documented
+  boundary?
+- Are aborts safe because the kernel reclaims the protection domain, without
+  relying on destructors running under `panic = abort`?

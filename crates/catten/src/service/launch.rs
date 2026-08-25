@@ -55,11 +55,12 @@ pub struct Cluster {
     pub dns: ServiceDomain,
 }
 
-/// The single-node network appliance: a DHCP-configured `tcpip` service plus
-/// the `httpd` keyhole that serves node state over it.
+/// The single-node network appliance: DHCP-configured TCP/IP, UTC time, and
+/// the HTTP keyhole that serves node state.
 #[derive(Copy, Clone)]
 pub struct NetworkAppliance {
     pub tcpip: ServiceDomain,
+    pub time: ServiceDomain,
     pub httpd: ServiceDomain,
 }
 
@@ -200,8 +201,8 @@ pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
     }
 }
 
-/// Spawn `tcpip` in DHCP mode and `httpd` on top of it.
-pub fn launch_network_appliance(ns: &NameServiceHandle) -> NetworkAppliance {
+/// Spawn `tcpip` in DHCP mode, the NTP-backed time service, and `httpd`.
+pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> NetworkAppliance {
     const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
     let tcpip = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"tcpip").expect("[launch] tcpip.elf"),
@@ -219,8 +220,33 @@ pub fn launch_network_appliance(ns: &NameServiceHandle) -> NetworkAppliance {
         ConnectionRights::CALL,
         &[],
     );
+    const NTP_IP_KEY: u64 = charlotte_launch::manifest_key(b"ntp_ip");
+    const PERSIST_KEY: u64 = charlotte_launch::manifest_key(b"persist");
+    let time_manifest = [
+        ManifestEntry {
+            key: NTP_IP_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&[162, 159, 200, 1]),
+        },
+        ManifestEntry {
+            key: PERSIST_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(b"1"),
+        },
+    ];
+    let time = crate::service::supervisor::spawn_with_manifest(
+        crate::service::store::service_elf(b"time").expect("[launch] time.elf"),
+        ns,
+        ConnectionRights::CALL,
+        if persist_time {
+            &time_manifest
+        } else {
+            &time_manifest[..1]
+        },
+    );
     NetworkAppliance {
         tcpip,
+        time,
         httpd,
     }
 }
@@ -236,9 +262,10 @@ pub extern "C" fn launch_steady_state() {
     let storage = launch_storage(&ns);
     let network = launch_network_stack(&ns);
     let (cluster, appliance) = match network {
-        Some(_) => {
-            (Some(launch_node_cluster(&ns, b"charlotte")), Some(launch_network_appliance(&ns)))
-        }
+        Some(_) => (
+            Some(launch_node_cluster(&ns, b"charlotte")),
+            Some(launch_network_appliance(&ns, storage.is_some())),
+        ),
         None => (None, None),
     };
     *STEADY_STATE.lock() = Some(SteadyState {

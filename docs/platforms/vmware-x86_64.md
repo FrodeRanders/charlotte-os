@@ -82,6 +82,12 @@ The supplied VMX configures the qualified combination:
 - an E1000E adapter attached to VMware NAT; and
 - one PCIe root-port group, sufficient for the storage controllers and NIC.
 
+The appliance kernel is built with the ordinary service configuration, not
+the DHCP test feature. On boot, hardware discovery finds the E1000E adapter and
+Charlotte automatically starts DHCP, discovery and cluster services, TCP/IP,
+HTTP, and NTP-backed time synchronization. Test features are reserved for QEMU
+validation runs and are not required in an appliance intended for use.
+
 Do not replace the NVMe data controller with SCSI or SATA: the current VMware
 appliance path starts the userspace NVMe driver. Do not disable virtual VT-d:
 CharlotteOS refuses to delegate unrestricted DMA when no usable IOMMU exists.

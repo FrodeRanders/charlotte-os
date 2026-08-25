@@ -365,12 +365,13 @@ Where the bring-up landed and what happened to the earlier plan:
 
 ## Tooling notes
 
-- `scripts/run-aarch64.sh release --sbsa-ref --timeout 40` boots sbsa-ref with
+- `scripts/run-aarch64.sh release --sbsa-ref --no-network --timeout 40` boots sbsa-ref with
   the firmware built by `scripts/build-sbsa-firmware.sh`. It locates
   `SBSA_FLASH0.fd`/`SBSA_FLASH1.fd` under `target/firmware/` (or
   `target/firmware-src/out/`, or `CATTEN_SBSA_FLASH0`/`CATTEN_SBSA_FLASH1`) and
   prints a pointer to the build script if they are missing. `--sbsa-ref` is
-  TCG-only (no `--hvf`) and virt-only network tests are not available.
+  TCG-only (no `--hvf`); its current model requires the explicit
+  `--no-network` opt-out because the virt-machine network device is unavailable.
 - Firmware: prebuilt SbsaQemu UEFI (`SBSA_FLASH0.fd`/`SBSA_FLASH1.fd`, truncated
   to 256 MiB) from the `r1mikey/edk2-qemu-sbsa-bins` repo.
 - Boot image: FAT32 ESP with `EFI/BOOT/BOOTAA64.EFI` (Limine), `/catten`

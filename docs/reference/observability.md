@@ -109,7 +109,9 @@ and end-to-end NIC operation is validated. `httpd` aggregates the `observe`
 snapshot plus the `net`/`tcpip`/`frouter`/`ns`/`dns`/`disco`/`relmsg` status
 ops into one JSON page, reachable from the host via SLIRP `hostfwd`
 (`scripts/run-aarch64.sh --http-test` or
-`scripts/run-x86_64.sh --http-test`). The name-service section preserves
+`scripts/run-x86_64.sh --http-test`). The `httpd` service itself starts during
+an ordinary networked boot; `--http-test` adds host forwarding and validates
+the response rather than enabling the service. The name-service section preserves
 printable registry names as JSON strings and represents internal binary keys as
 `hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,
 not unnamed threads or malformed text.

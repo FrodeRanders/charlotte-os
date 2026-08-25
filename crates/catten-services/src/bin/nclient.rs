@@ -7,23 +7,15 @@ extern crate alloc;
 use catten_rt::{
     Context,
     config,
+    owned::OwnedMemory,
 };
 use catten_services::{
     net,
-    ns,
-    wait_reply,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    memory_alloc,
-    memory_map_any,
-    memory_unmap,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::net_client_status as status;
 
-const REPLY_SPINS: u64 = 50_000_000;
 const SENTINEL: u32 = 0xc0de;
 
 /// A minimal Ethernet frame (broadcast, EtherType 0x0800 = IPv4, payload
@@ -39,47 +31,28 @@ const TEST_FRAME: [u8; 64] = [
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(c) => c,
+    let ns_conn = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
     config::write::<u32>(status::STAGE, 2);
 
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, net_conn) = wait_for_registered_name_owned(ns_conn, net::NAME)
+        .unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 3);
 
     // Allocate a page for the frame, write the test payload.
-    let frame_cap = memory_alloc(1);
-    if frame_cap == 0 {
-        unsafe { thread_exit() };
-    }
-    let (frame_map_status, frame_vaddr) = memory_map_any(frame_cap, true);
-    if frame_map_status != 0 {
-        unsafe { thread_exit() };
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            TEST_FRAME.as_ptr(),
-            frame_vaddr as *mut u8,
-            TEST_FRAME.len(),
-        );
-        memory_unmap(frame_cap);
-    }
+    let frame = OwnedMemory::allocate(1).unwrap_or_else(|_| unsafe { thread_exit() });
+    let mut mapping = frame.map_writable().unwrap_or_else(|_| unsafe { thread_exit() });
+    mapping.as_mut_slice()[..TEST_FRAME.len()].copy_from_slice(&TEST_FRAME);
+    let frame = mapping.unmap().unwrap_or_else(|_| unsafe { thread_exit() });
 
     // Transfer the frame object to the NIC without copying its payload.
-    let call = ipc_scalar_call_move(net_conn, net::OP_SEND, TEST_FRAME.len() as u64, frame_cap);
-    if call == 0 {
-        unsafe { thread_exit() };
-    }
-    let (status, _) = unsafe { wait_reply(call, REPLY_SPINS) };
-    config::write::<u32>(status::TX_RESULT, status as u32);
+    let call = net_conn
+        .call_move(net::OP_SEND, TEST_FRAME.len() as u64, frame)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
+    let result = call.wait().unwrap_or_else(|_| unsafe { thread_exit() }).result;
+    config::write::<u32>(status::TX_RESULT, result as u32);
     config::write::<u32>(status::STAGE, 4); // TX attempted
 
     // The NIC driver is deliberately left running: cluster discovery, the

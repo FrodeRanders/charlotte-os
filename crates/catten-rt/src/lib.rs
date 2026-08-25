@@ -130,6 +130,18 @@ impl Context {
         config::bootstrap_cap()
     }
 
+    /// Borrow the launch-provided bootstrap connection.
+    ///
+    /// Prefer this typed view over [`bootstrap_cap`](Self::bootstrap_cap) in
+    /// services and applications. The launch environment owns the capability,
+    /// so dropping the view does not close it.
+    pub fn bootstrap_connection(&self) -> Option<owned::ConnectionRef<'_>> {
+        let cap = config::bootstrap_cap()?;
+        // The launch contract keeps initial capabilities live for the process
+        // lifetime. The borrow is deliberately limited to this Context.
+        unsafe { owned::ConnectionRef::from_raw(cap).ok() }
+    }
+
     pub fn mmio_cap(&self) -> Option<u64> {
         config::mmio_cap()
     }

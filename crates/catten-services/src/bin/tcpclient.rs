@@ -11,26 +11,20 @@
 use catten_rt::{
     Context,
     config,
+    owned::{
+        ConnectionRef,
+        OwnedMemory,
+    },
 };
 use catten_services::{
     net,
-    scalar_call_with_backpressure,
+    owned_call_with_backpressure,
     sleep_ms,
     socket,
-    wait_for_local_ready,
-    wait_for_registered_name,
-    wait_reply,
+    wait_for_local_ready_owned,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    ipc_reply_wait_with_memory,
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_unmap,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::tcpclient_status as status;
 use charlotte_protocol_net::decode_status;
 
@@ -53,31 +47,29 @@ fn ip_from_mac(mac: &[u8; 6]) -> (u8, u8) {
 
 /// Send a payload, retrying while the tcpip service reports `ERR_WOULD_BLOCK`
 /// (the connection is not established yet or the transmit buffer is full).
-fn send_payload(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
+fn send_payload(
+    tcp_conn: ConnectionRef<'_>,
+    socket: &socket::OwnedSocket<'_>,
+    data: &[u8],
+) -> bool {
     for _ in 0..300 {
-        let cap = memory_alloc(1);
-        let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(cap, true);
-        if cap == 0 || scratch_5_map_status != 0 {
-            if cap != 0 {
-                memory_close(cap);
-            }
+        let Ok(memory) = OwnedMemory::allocate(1) else {
             return false;
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), scratch_5_vaddr as *mut u8, data.len());
-        }
-        memory_unmap(cap);
-        let send = ipc_scalar_call_move(
-            tcp_conn,
-            socket::OP_SEND,
-            ((data.len() as u64) << 32) | (sock_id & 0xffff_ffff),
-            cap,
-        );
-        if send == 0 {
-            memory_close(cap);
+        };
+        let Ok(mut mapping) = memory.map_writable() else {
             return false;
-        }
-        let (sent, _) = unsafe { wait_reply(send, 0) };
+        };
+        mapping.as_mut_slice()[..data.len()].copy_from_slice(data);
+        let Ok(memory) = mapping.unmap() else {
+            return false;
+        };
+        let packed = ((data.len() as u64) << 32) | (socket.id() & 0xffff_ffff);
+        let Ok(send) = tcp_conn.call_move(socket::OP_SEND, packed, memory) else {
+            return false;
+        };
+        let Ok(sent) = send.wait().map(|result| result.result) else {
+            return false;
+        };
         if sent == data.len() as i64 {
             return true;
         }
@@ -91,58 +83,48 @@ fn send_payload(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let ns_conn = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
-    let (_, net_conn) =
-        wait_for_registered_name(ns_conn, net::NAME).unwrap_or_else(|| unsafe { thread_exit() });
+    let (_, net_conn) = wait_for_registered_name_owned(ns_conn, net::NAME)
+        .unwrap_or_else(|| unsafe { thread_exit() });
     config::write::<u32>(status::STAGE, 2);
 
-    let status = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
-    let (status, _) = unsafe { wait_reply(status, 0) };
-    let (_link, mac) = decode_status(status);
+    let net_status = owned_call_with_backpressure(net_conn.as_ref(), net::OP_STATUS, 0)
+        .wait()
+        .unwrap_or_else(|_| unsafe { thread_exit() })
+        .result;
+    let (_link, mac) = decode_status(net_status);
     let (local_octet, peer_octet) = ip_from_mac(&mac);
     let is_server = local_octet % 2 == 0;
     config::write::<u32>(status::STAGE, 3);
 
     let (_, tcp_conn) =
-        wait_for_registered_name(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
+        wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     config::write::<u32>(status::STAGE, 4);
 
-    if !wait_for_local_ready(ns_conn) {
+    if !wait_for_local_ready_owned(ns_conn) {
         fail(0xe004);
     }
     config::write::<u32>(status::STAGE, 5);
 
-    let sock_call = ipc_scalar_call(tcp_conn, socket::OP_SOCKET, socket::DOMAIN_TCP);
-    if sock_call == 0 {
-        fail(0xe005);
-    }
-    let (sock_id, _) = unsafe { wait_reply(sock_call, 0) };
-    if sock_id < 1 {
-        fail(0xe006);
-    }
+    let socket = socket::OwnedSocket::open(tcp_conn.as_ref(), socket::DOMAIN_TCP)
+        .unwrap_or_else(|_| fail(0xe005));
     config::write::<u32>(status::STAGE, 6);
 
     if is_server {
         // ---- Server: listen, accept, receive, echo. ----
-        let port_cap = memory_alloc(1);
-        let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(port_cap, true);
-        if port_cap == 0 || scratch_4_map_status != 0 {
-            if port_cap != 0 {
-                memory_close(port_cap);
-            }
-            fail(0xe007);
-        }
-        unsafe { core::ptr::write_unaligned(scratch_4_vaddr as *mut u16, PORT.to_le()) }
-        memory_unmap(port_cap);
-        let listen = ipc_scalar_call_move(tcp_conn, socket::OP_LISTEN, sock_id as u64, port_cap);
-        if listen == 0 {
-            memory_close(port_cap);
-            fail(0xe008);
-        }
-        let (result, _) = unsafe { wait_reply(listen, 0) };
+        let port_memory = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe007));
+        let mut port_mapping = port_memory.map_writable().unwrap_or_else(|_| fail(0xe007));
+        port_mapping.as_mut_slice()[..2].copy_from_slice(&PORT.to_le_bytes());
+        let port_memory = port_mapping.unmap().unwrap_or_else(|_| fail(0xe007));
+        let result = tcp_conn
+            .call_move(socket::OP_LISTEN, socket.id(), port_memory)
+            .unwrap_or_else(|_| fail(0xe008))
+            .wait()
+            .unwrap_or_else(|_| fail(0xe008))
+            .result;
         if result != 0 {
             fail(0xe009);
         }
@@ -150,11 +132,12 @@ fn main(ctx: Context) -> ! {
 
         let mut accepted = false;
         for _ in 0..600 {
-            let accept = ipc_scalar_call(tcp_conn, socket::OP_ACCEPT, sock_id as u64);
-            if accept == 0 {
-                fail(0xe00a);
-            }
-            let (result, _) = unsafe { wait_reply(accept, 0) };
+            let result = socket
+                .call(socket::OP_ACCEPT, socket.id())
+                .unwrap_or_else(|_| fail(0xe00a))
+                .wait()
+                .unwrap_or_else(|_| fail(0xe00a))
+                .result;
             if result != 0 && result != socket::ERR_WOULD_BLOCK {
                 fail(0xe00b);
             }
@@ -169,99 +152,68 @@ fn main(ctx: Context) -> ! {
         }
         config::write::<u32>(status::STAGE, 8);
 
-        let recv = ipc_scalar_call(tcp_conn, socket::OP_RECV, sock_id as u64);
-        if recv == 0 {
-            fail(0xe00d);
-        }
-        let (status, len, _connection, memory) = ipc_reply_wait_with_memory(recv);
-        if status != 0 || memory == 0 || len as usize != PAYLOAD.len() {
-            if memory != 0 {
-                memory_close(memory);
-            }
+        let recv = socket
+            .call(socket::OP_RECV, socket.id())
+            .unwrap_or_else(|_| fail(0xe00d))
+            .wait()
+            .unwrap_or_else(|_| fail(0xe00e));
+        if recv.result as usize != PAYLOAD.len() {
             fail(0xe00e);
         }
-        let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
-        if scratch_3_map_status != 0 {
-            memory_close(memory);
-            fail(0xe00f);
-        }
-        let received =
-            unsafe { core::slice::from_raw_parts(scratch_3_vaddr as *const u8, PAYLOAD.len()) };
-        let matches = received == PAYLOAD;
-        memory_unmap(memory);
-        memory_close(memory);
+        let memory = recv.memory.unwrap_or_else(|| fail(0xe00e));
+        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe00f));
+        let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
         if !matches {
             fail(0xe010);
         }
         config::write::<u32>(status::STAGE, 9);
 
-        if !send_payload(tcp_conn, sock_id as u64, PAYLOAD) {
+        if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
             fail(0xe013);
         }
         config::write::<u32>(status::STAGE, 10);
     } else {
         // ---- Client: connect, send, receive echo. ----
-        let addr_cap = memory_alloc(1);
-        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(addr_cap, true);
-        if addr_cap == 0 || scratch_2_map_status != 0 {
-            if addr_cap != 0 {
-                memory_close(addr_cap);
-            }
-            fail(0xe014);
-        }
+        let address_memory = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe014));
+        let mut address_mapping = address_memory.map_writable().unwrap_or_else(|_| fail(0xe014));
         let peer_ip = [10, 0, 0, peer_octet];
-        unsafe {
-            core::ptr::copy_nonoverlapping(peer_ip.as_ptr(), scratch_2_vaddr as *mut u8, 4);
-            core::ptr::write_unaligned((scratch_2_vaddr + 4) as *mut u16, PORT.to_le());
-        }
-        memory_unmap(addr_cap);
-        let connect = ipc_scalar_call_move(tcp_conn, socket::OP_CONNECT, sock_id as u64, addr_cap);
-        if connect == 0 {
-            memory_close(addr_cap);
-            fail(0xe015);
-        }
-        let (result, _) = unsafe { wait_reply(connect, 0) };
+        address_mapping.as_mut_slice()[..4].copy_from_slice(&peer_ip);
+        address_mapping.as_mut_slice()[4..6].copy_from_slice(&PORT.to_le_bytes());
+        let address_memory = address_mapping.unmap().unwrap_or_else(|_| fail(0xe014));
+        let result = tcp_conn
+            .call_move(socket::OP_CONNECT, socket.id(), address_memory)
+            .unwrap_or_else(|_| fail(0xe015))
+            .wait()
+            .unwrap_or_else(|_| fail(0xe015))
+            .result;
         if result != 0 {
             fail(0xe016);
         }
         config::write::<u32>(status::STAGE, 7);
 
-        if !send_payload(tcp_conn, sock_id as u64, PAYLOAD) {
+        if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
             fail(0xe018);
         }
         config::write::<u32>(status::STAGE, 8);
 
-        let recv = ipc_scalar_call(tcp_conn, socket::OP_RECV, sock_id as u64);
-        if recv == 0 {
-            fail(0xe01a);
-        }
-        let (status, len, _connection, memory) = ipc_reply_wait_with_memory(recv);
-        if status != 0 || memory == 0 || len as usize != PAYLOAD.len() {
-            if memory != 0 {
-                memory_close(memory);
-            }
+        let recv = socket
+            .call(socket::OP_RECV, socket.id())
+            .unwrap_or_else(|_| fail(0xe01a))
+            .wait()
+            .unwrap_or_else(|_| fail(0xe01b));
+        if recv.result as usize != PAYLOAD.len() {
             fail(0xe01b);
         }
-        let (scratch_map_status, scratch_vaddr) = memory_map_any(memory, false);
-        if scratch_map_status != 0 {
-            memory_close(memory);
-            fail(0xe01c);
-        }
-        let echoed =
-            unsafe { core::slice::from_raw_parts(scratch_vaddr as *const u8, PAYLOAD.len()) };
-        let matches = echoed == PAYLOAD;
-        memory_unmap(memory);
-        memory_close(memory);
+        let memory = recv.memory.unwrap_or_else(|| fail(0xe01b));
+        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe01c));
+        let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
         if !matches {
             fail(0xe01d);
         }
         config::write::<u32>(status::STAGE, 9);
     }
 
-    let close = ipc_scalar_call(tcp_conn, socket::OP_CLOSE, sock_id as u64);
-    if close != 0 {
-        let _ = unsafe { wait_reply(close, 0) };
-    }
+    let _ = socket.close();
 
     config::write::<u32>(status::LOCAL_IP, u32::from_be_bytes([10, 0, 0, local_octet]));
     config::write::<u32>(status::STAGE, SENTINEL);

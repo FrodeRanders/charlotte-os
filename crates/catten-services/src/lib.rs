@@ -10,6 +10,8 @@ extern crate alloc;
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
 pub use charlotte_authorization as authorization;
+/// UTC time-service protocol shared with applications.
+pub use charlotte_protocol_time as time;
 
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;
@@ -425,6 +427,19 @@ pub unsafe fn stage_name(name: &[u8]) -> Option<u64> {
     Some(cap)
 }
 
+/// Stage a memory-carried service name using the ownership-aware runtime API.
+/// The returned object is unmapped and can be copied or moved into an IPC
+/// operation without any manual cleanup path.
+pub fn stage_name_owned(name: &[u8]) -> Option<catten_rt::owned::OwnedMemory> {
+    if name.is_empty() || name.len() > MAX_NAME_LEN {
+        return None;
+    }
+    let memory = catten_rt::owned::OwnedMemory::allocate(1).ok()?;
+    let mut mapping = memory.map_writable().ok()?;
+    mapping.as_mut_slice()[..name.len()].copy_from_slice(name);
+    mapping.unmap().ok()
+}
+
 /// Raft consensus protocol (`charlotte-protocol-raft` v1).
 ///
 /// The opcodes are deliberately aligned with the `graft` crate's message
@@ -600,15 +615,26 @@ pub mod block {
 ///
 /// The TCP/IP service exposes this interface. A client looks up "tcpip"
 /// from the name service and calls socket operations on the returned
-/// connection capability. Data payloads use memory-object transfer
-/// (`Move` for send, `Move` on reply for recv).
+/// connection capability. TCP and connected UDP sockets share the same
+/// operations. Data payloads use memory-object transfer (`Move` for send,
+/// `Move` on reply for recv).
 pub mod socket {
+    use catten_rt::owned::{
+        ConnectionRef,
+        IpcError,
+        PendingCall,
+    };
+
     pub const INTERFACE: u64 = super::name(b"SKT");
     pub const VERSION: u32 = 1;
     pub const NAME: u64 = super::name(b"tcpip");
 
     pub const OP_SOCKET: u32 = 1;
+    /// Select a remote IPv4/port from a six-byte moved memory object. TCP
+    /// begins its handshake; UDP binds an ephemeral local port and retains
+    /// the remote endpoint for subsequent send/receive filtering.
     pub const OP_CONNECT: u32 = 2;
+    /// Bind TCP or UDP to the little-endian port in a moved memory object.
     pub const OP_BIND: u32 = 3;
     pub const OP_LISTEN: u32 = 4;
     pub const OP_ACCEPT: u32 = 5;
@@ -652,6 +678,70 @@ pub mod socket {
     pub const DOMAIN_UDP: u64 = 2;
 
     pub const MAX_SOCKETS: usize = 16;
+
+    /// A socket ID owned by a connection to the TCP/IP service.
+    ///
+    /// Remote socket IDs are protocol resources rather than kernel
+    /// capabilities, so their teardown can fail. [`close`](Self::close)
+    /// reports that failure; `Drop` provides a best-effort fallback for early
+    /// returns and cancellation paths.
+    #[must_use = "dropping a socket asks the TCP/IP service to close it"]
+    pub struct OwnedSocket<'connection> {
+        service: ConnectionRef<'connection>,
+        id: Option<u64>,
+    }
+
+    impl<'connection> OwnedSocket<'connection> {
+        pub fn open(service: ConnectionRef<'connection>, domain: u64) -> Result<Self, IpcError> {
+            let result = service.call(OP_SOCKET, domain)?.wait()?;
+            if result.result < 1 {
+                return Err(IpcError::Status(result.result as u64));
+            }
+            Ok(Self {
+                service,
+                id: Some(result.result as u64),
+            })
+        }
+
+        pub fn id(&self) -> u64 {
+            self.id.expect("socket already closed")
+        }
+
+        pub fn call(&self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
+            self.service.call(opcode, arg0)
+        }
+
+        pub fn close(mut self) -> Result<(), IpcError> {
+            self.close_inner()
+        }
+
+        fn close_inner(&mut self) -> Result<(), IpcError> {
+            let Some(id) = self.id.take() else {
+                return Ok(());
+            };
+            let call = match self.service.call(OP_CLOSE, id) {
+                Ok(call) => call,
+                Err(error) => {
+                    // Submission did not transfer the request. Retain the ID
+                    // so the consuming close's Drop fallback can retry once.
+                    self.id = Some(id);
+                    return Err(error);
+                }
+            };
+            let result = call.wait()?;
+            if result.result == 0 {
+                Ok(())
+            } else {
+                Err(IpcError::Status(result.result as u64))
+            }
+        }
+    }
+
+    impl Drop for OwnedSocket<'_> {
+        fn drop(&mut self) {
+            let _ = self.close_inner();
+        }
+    }
 }
 
 /// The initial service exports scheduler statistics for its own protection
@@ -1306,12 +1396,44 @@ pub fn spin_reply(call: u64) -> (i64, u64) {
 
 /// Block the calling userspace thread between low-frequency reply polls.
 pub fn sleep_ms(milliseconds: u64) {
-    let timer = catten_syscall::submit_timer(milliseconds);
-    if timer == u64::MAX {
-        return;
+    if let Ok(timer) = catten_rt::owned::Completion::timer(milliseconds) {
+        let _ = timer.wait();
     }
-    catten_syscall::wait(timer);
-    catten_syscall::close(timer);
+}
+
+/// Submit a scalar call while retaining ownership of its pending-call
+/// capability. Transient endpoint backpressure is retried with a timer-backed
+/// pause, matching [`scalar_call_with_backpressure`] without exposing handles.
+pub fn owned_call_with_backpressure(
+    connection: catten_rt::owned::ConnectionRef<'_>,
+    opcode: u32,
+    arg0: u64,
+) -> catten_rt::owned::PendingCall<'static> {
+    loop {
+        if let Ok(call) = connection.call(opcode, arg0) {
+            return call;
+        }
+        sleep_ms(1);
+    }
+}
+
+/// Wait for a service and return a uniquely owned connection to it.
+pub fn wait_for_registered_name_owned(
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    name: u64,
+) -> Option<(i64, catten_rt::owned::Connection)> {
+    let result = owned_call_with_backpressure(ns_connection, ns::OP_LOOKUP, name).wait().ok()?;
+    let connection = result.connection?;
+    if result.result >= 1 {
+        Some((result.result, connection))
+    } else {
+        None
+    }
+}
+
+/// Wait for the local boot-ready marker using ownership-aware IPC.
+pub fn wait_for_local_ready_owned(ns_connection: catten_rt::owned::ConnectionRef<'_>) -> bool {
+    wait_for_registered_name_owned(ns_connection, charlotte_launch::LOCAL_READY_NAME).is_some()
 }
 
 /// Submit a scalar call without making transient endpoint backpressure fatal.

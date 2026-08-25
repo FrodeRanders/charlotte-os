@@ -14,3 +14,5 @@ should be updated with the implementation when those contracts change.
   and snapshot interfaces.
 - [smoltcp adapter](smoltcp-adapter.md) — frame routing, adapter behavior, and
   the userspace TCP/IP service.
+- [UTC time service](time-service.md) — default launch behavior, internal IPC
+  operations, NTP synchronization, drift, uncertainty, and persisted holdover.
