@@ -28,7 +28,7 @@ is evidence about one revision and configuration, not a standing guarantee.
 
 | Area | Use it for |
 |---|---|
-| [`manual-v2/`](manual-v2/) | Integrated architecture, programming model, implementation status, and cluster vision |
+| [`manual-v2`](manual-v2/charlotte.pdf) | Integrated architecture, programming model, implementation status, and cluster vision |
 | [`architecture/`](architecture/README.md) | Living designs, security boundaries, protocols, and future direction |
 | [`reference/`](reference/README.md) | Code-facing invariants, conformance rules, and subsystem mechanics |
 | [`guides/`](guides/README.md) | Repeatable contributor workflows: testing, userspace development, and networking |
