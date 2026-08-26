@@ -146,6 +146,7 @@ define_syscall_numbers!(
     (IpcRecvBlockAuthenticated, 72),
     (IpcRecvVecAuthenticated, 73),
     (LogStr, 74),
+    (RandomU64, 75),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -892,7 +893,8 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
              47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
-             59 => asm!("svc #59", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            59 => asm!("svc #59", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            75 => asm!("svc #75", lateout("x0") ret, lateout("x1") x1_out, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x1 emitter", imm),
         }
     }
@@ -2179,4 +2181,14 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 #[inline]
 pub fn thread_statistics_snapshot(system_observer: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::ThreadStatistics, system_observer, 0, 0) }
+}
+
+/// Return one cryptographically random word from a kernel-provided source.
+///
+/// This is intentionally fallible: cryptographic callers must fail closed
+/// rather than silently substituting a low-entropy source.
+#[inline]
+pub fn random_u64() -> Option<u64> {
+    let (ok, value) = unsafe { svc3_x1(SyscallNumber::RandomU64, 0, 0, 0) };
+    (ok == 1).then_some(value)
 }

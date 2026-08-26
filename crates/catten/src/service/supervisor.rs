@@ -486,6 +486,14 @@ pub struct DriverGrant {
     pub dma_msi_address: Option<u64>,
 }
 
+/// Device authority for a polling driver that needs MMIO and protected DMA
+/// but deliberately has no interrupt capability.
+pub struct PollingDriverGrant {
+    pub mmio_phys_base: usize,
+    pub mmio_pages: usize,
+    pub dma_requester_id: u32,
+}
+
 /// The state and authority a supervisor passes from an old service instance
 /// to its replacement during a live upgrade (live-service-upgrade design
 /// doc). The old service serialised its state into memory objects and
@@ -542,6 +550,32 @@ pub fn spawn_driver_with_name_service(
             .expect("[supervisor] DMA-domain grant failed");
         bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
     }
+    start_domain(loaded)
+}
+
+/// Launch a polling device adapter with only MMIO and DMA authority.
+pub fn spawn_polling_driver_with_name_service(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    grant: PollingDriverGrant,
+) -> ServiceDomain {
+    let loaded = loader::load_domain(image);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        rights,
+    )
+    .expect("[supervisor] polling-driver bootstrap delegation failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    bootstrap::write_manifest(loaded.config_frame, &[]);
+    let mmio = crate::device::grant_mmio(loaded.asid, grant.mmio_phys_base, grant.mmio_pages)
+        .expect("[supervisor] polling-driver MMIO grant failed");
+    bootstrap::write_mmio_cap(loaded.config_frame, mmio);
+    let dma = crate::device::grant_dma_domain(loaded.asid, grant.dma_requester_id, None)
+        .expect("[supervisor] polling-driver DMA-domain grant failed");
+    bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
     start_domain(loaded)
 }
 

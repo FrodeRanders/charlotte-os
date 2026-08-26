@@ -291,7 +291,7 @@ fi
 # image, so the bundle must exist before the kernel build.
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd time fs clusterctl"
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd time s3 rng fs clusterctl"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
         if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then

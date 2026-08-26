@@ -145,6 +145,8 @@ pub mod el0_net;
 pub mod el0_nvme;
 pub mod el0_pingpong;
 pub mod el0_raft;
+#[cfg(feature = "s3_test")]
+pub mod el0_s3;
 pub mod el0_service;
 pub mod el0_sitas;
 #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
@@ -335,6 +337,10 @@ pub fn run_deferred_self_tests() {
     el0_dhcp::test_el0_dhcp();
     #[cfg(not(feature = "dhcp_test"))]
     logln!("Skipping EL0 dhcp test (enable dhcp_test with matching PCI hardware).");
+    #[cfg(feature = "s3_test")]
+    el0_s3::test_el0_s3();
+    #[cfg(not(feature = "s3_test"))]
+    logln!("Skipping EL0 S3 test (enable s3_test with the RustFS fixture).");
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }
 

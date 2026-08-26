@@ -233,6 +233,10 @@ pub mod call_no {
     /// Block until pending-call x1 has a reply, then return the same register
     /// shape as IPC_REPLY_POLL.
     pub const IPC_REPLY_WAIT: u16 = SyscallNumber::IpcReplyWait as u16;
+    /// Return a kernel-provided cryptographically random word in x1 and one
+    /// in x0 on success. Returns zero in x0 when no trusted source is
+    /// available.
+    pub const RANDOM_U64: u16 = SyscallNumber::RandomU64 as u16;
 }
 
 /// The upper bound on the SVC immediate we will try to dispatch.
@@ -332,6 +336,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcRecvVec => sys_ipc_recv_vec(frame),
         SyscallNumber::IpcRecvVecAuthenticated => sys_ipc_recv_vec_authenticated(frame),
         SyscallNumber::CompletionSubmitDetachedTimer => sys_completion_submit_detached_timer(frame),
+        SyscallNumber::RandomU64 => sys_random_u64(frame),
     }
 }
 
@@ -339,6 +344,84 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 
 fn push_u64(bytes: &mut alloc::vec::Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn sys_random_u64(frame: &mut TrapFrame) {
+    if let Some(value) = random_u64() {
+        frame.regs[0] = 1;
+        frame.regs[1] = value;
+    } else {
+        frame.regs[0] = 0;
+        frame.regs[1] = 0;
+    }
+}
+
+fn random_u64() -> Option<u64> {
+    hardware_random_u64()
+}
+
+#[cfg(target_arch = "x86_64")]
+fn hardware_random_u64() -> Option<u64> {
+    // CPUID.01H:ECX.RDRAND[bit 30] gates the instruction. Intel recommends
+    // retrying a bounded number of times when RDRAND clears CF.
+    if core::arch::x86_64::__cpuid(1).ecx & (1 << 30) == 0 {
+        return None;
+    }
+    for _ in 0..10 {
+        let value: u64;
+        let success: u8;
+        unsafe {
+            core::arch::asm!(
+                "rdrand {value}",
+                "setc {success}",
+                value = out(reg) value,
+                success = out(reg_byte) success,
+                options(nostack, nomem),
+            );
+        }
+        if success != 0 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+#[cfg(target_arch = "aarch64")]
+fn hardware_random_u64() -> Option<u64> {
+    let features: u64;
+    unsafe {
+        core::arch::asm!(
+            "mrs {features}, ID_AA64ISAR0_EL1",
+            features = out(reg) features,
+            options(nostack, nomem, preserves_flags),
+        );
+    }
+    if features >> 60 & 0xf == 0 {
+        return None;
+    }
+    for _ in 0..10 {
+        let value: u64;
+        let success: u32;
+        unsafe {
+            // RNDR is S3_3_C2_C4_0. It sets PSTATE.Z on failure.
+            core::arch::asm!(
+                "mrs {value}, S3_3_C2_C4_0",
+                "cset {success:w}, ne",
+                value = out(reg) value,
+                success = out(reg) success,
+                options(nostack, nomem),
+            );
+        }
+        if success != 0 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+fn hardware_random_u64() -> Option<u64> {
+    None
 }
 
 fn sys_thread_statistics(frame: &mut TrapFrame) {

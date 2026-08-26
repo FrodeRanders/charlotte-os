@@ -1,0 +1,61 @@
+name: charlotte-rustfs-test
+
+services:
+  rustfs:
+    image: ${CATTEN_RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    ports:
+      - "127.0.0.1:${CATTEN_RUSTFS_PORT:-19000}:9000"
+    environment:
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_REGION: us-east-1
+      RUSTFS_ACCESS_KEY: charlotte-test-access
+      RUSTFS_SECRET_KEY: charlotte-test-secret-2026
+      RUSTFS_TLS_PATH: /opt/tls
+      RUSTFS_HEALTHCHECK_HOST: rustfs.test
+      RUSTFS_HEALTHCHECK_CA: /opt/tls/ca.crt
+    volumes:
+      - rustfs-data:/data
+      - ${CATTEN_RUSTFS_CERT_DIR:?set CATTEN_RUSTFS_CERT_DIR}:/opt/tls:ro
+    networks:
+      default:
+        aliases:
+          - rustfs.test
+    healthcheck:
+      test:
+        - CMD
+        - sh
+        - -ec
+        - >-
+          curl -fsS --cacert /opt/tls/ca.crt
+          --resolve rustfs.test:9000:127.0.0.1
+          https://rustfs.test:9000/health
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  init:
+    image: ${CATTEN_RUSTFS_CLI_IMAGE:-rustfs/rc:latest}
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -ec
+    environment:
+      SSL_CERT_FILE: /opt/test-ca/ca.crt
+    volumes:
+      - ${CATTEN_RUSTFS_CERT_DIR:?set CATTEN_RUSTFS_CERT_DIR}:/opt/test-ca:ro
+    command:
+      - >-
+        rc alias set local https://rustfs.test:9000
+        charlotte-test-access charlotte-test-secret-2026
+        && (rc bucket create local/charlotte-test
+        || rc bucket stat local/charlotte-test)
+    networks:
+      - default
+
+volumes:
+  rustfs-data:

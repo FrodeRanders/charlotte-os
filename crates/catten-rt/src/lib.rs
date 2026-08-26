@@ -30,6 +30,7 @@
 #![no_std]
 
 pub mod config;
+pub mod entropy;
 pub mod log;
 pub mod owned;
 pub use charlotte_launch::manifest_key;

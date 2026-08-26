@@ -631,9 +631,14 @@ fn handle_requests(
 
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
+
+    // Local name service
     let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
+
+    // The 'observe' service is used as local timepiece
     let (_, observe_conn) = wait_for_registered_name_owned(ns_conn, observability::NAME)
         .unwrap_or_else(|| fail(0xe002));
+
     let (_, tcp_conn) =
         wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     let persistence_requested =
@@ -664,6 +669,7 @@ fn main(ctx: Context) -> ! {
         model.as_ref().map_or(time::STATE_UNSYNCHRONIZED, |clock| clock.state) as u32,
     );
 
+    // Publish 'time' service (through its endpoint) with the 'name' service
     let endpoint =
         Endpoint::create(time::INTERFACE, time::VERSION, 32).unwrap_or_else(|_| fail(0xe006));
     let registration = ns_conn
@@ -691,7 +697,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 2);
 
     // Avoid firing the first packet into the boot storm. Failure still leaves
-    // the endpoint available in unsynchronized/holdover state.
+    // the 'time' endpoint available in unsynchronized/holdover state.
     let network_ready = wait_for_local_ready_owned(ns_conn);
     let mut next_sync_ticks = initial_mono.ticks;
     if !network_ready {
@@ -740,9 +746,20 @@ fn main(ctx: Context) -> ! {
                     config::write::<u32>(status::SYNC_STATE, clock.state as u32);
                     config::write::<u32>(status::SAMPLES, clock.sample_count);
                     config::write::<i64>(status::DRIFT_PPB, clock.drift_ppb);
+                    let unix_seconds = clock.anchor_utc_ns / 1_000_000_000;
+                    let utc = time::utc_from_unix(unix_seconds as i64);
                     catten_rt::logln!(
-                        "[time] synchronized unix_s={} stratum={} uncertainty_ms={} drift_ppb={}",
-                        clock.anchor_utc_ns / 1_000_000_000,
+                        "[time] synchronized unix_s={} \
+                         utc={:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z stratum={} \
+                         uncertainty_ms={} drift_ppb={}",
+                        unix_seconds,
+                        utc.year,
+                        utc.month,
+                        utc.day,
+                        utc.hour,
+                        utc.minute,
+                        utc.second,
+                        clock.anchor_utc_ns % 1_000_000_000,
                         clock.stratum,
                         clock.uncertainty_ns.div_ceil(1_000_000),
                         clock.drift_ppb

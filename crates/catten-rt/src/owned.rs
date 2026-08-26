@@ -135,6 +135,41 @@ impl OwnedMemory {
         })
     }
 
+    /// Map coherent memory for simultaneous CPU and device access.
+    ///
+    /// This is intended for hardware rings and buffers whose protocol defines
+    /// ownership through volatile fields and explicit memory fences. It does
+    /// not expose Rust references: callers must use the volatile accessors on
+    /// [`SharedDmaMemory`].
+    pub fn map_shared_dma(
+        self,
+        domain: &DmaDomain,
+        direction: DmaDirection,
+    ) -> Result<SharedDmaMemory<'_>, SharedDmaMapError> {
+        let mut mapping =
+            self.map_writable().map_err(|(memory, error)| SharedDmaMapError::Unmapped {
+                memory,
+                error,
+            })?;
+        let memory = mapping.memory.as_ref().expect("mapped memory already consumed");
+        let iova = kernel::dma_map(domain.raw_handle(), memory.raw_handle(), direction);
+        if iova == 0 {
+            return Err(SharedDmaMapError::Mapped {
+                mapping,
+                error: MemoryError::DmaMapFailed,
+            });
+        }
+        let base = mapping.base;
+        let memory = mapping.memory.take().expect("mapped memory already consumed");
+        Ok(SharedDmaMemory {
+            domain,
+            memory: Some(memory),
+            base,
+            iova,
+            dma_active: true,
+        })
+    }
+
     fn map<Access>(self, writable: bool) -> Result<MappedMemory<Access>, (Self, MemoryError)> {
         let (status, base) = kernel::memory_map_any(self.raw_handle(), writable);
         if status != catten_syscall::memory_status::OK {
@@ -145,6 +180,35 @@ impl OwnedMemory {
             base,
             _access: PhantomData,
         })
+    }
+}
+
+/// A shared-DMA setup failure that preserves the memory's exact ownership
+/// state, including a still-live CPU mapping when DMA admission failed.
+#[derive(Debug)]
+pub enum SharedDmaMapError {
+    Unmapped {
+        memory: OwnedMemory,
+        error: MemoryError,
+    },
+    Mapped {
+        mapping: MappedMemory<Writable>,
+        error: MemoryError,
+    },
+}
+
+impl SharedDmaMapError {
+    pub const fn error(&self) -> MemoryError {
+        match self {
+            Self::Unmapped {
+                error,
+                ..
+            }
+            | Self::Mapped {
+                error,
+                ..
+            } => *error,
+        }
     }
 }
 
@@ -263,6 +327,99 @@ impl Drop for DmaTransfer<'_> {
     fn drop(&mut self) {
         if self.memory.is_some() {
             let _ = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
+        }
+    }
+}
+
+/// Coherent memory shared by a device and the CPU under a device protocol.
+///
+/// Unlike [`MappedMemory`], this type deliberately exposes no slices because
+/// a device may mutate the bytes asynchronously. Access is volatile and must
+/// be ordered with the fences required by the relevant hardware protocol.
+#[must_use = "shared DMA memory must remain owned while the device can access it"]
+#[derive(Debug)]
+pub struct SharedDmaMemory<'domain> {
+    domain: &'domain DmaDomain,
+    memory: Option<OwnedMemory>,
+    base: usize,
+    iova: u64,
+    dma_active: bool,
+}
+
+impl SharedDmaMemory<'_> {
+    pub fn len(&self) -> usize {
+        self.memory.as_ref().expect("shared DMA memory already consumed").len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn iova(&self) -> u64 {
+        self.iova
+    }
+
+    pub fn read_volatile(&self, offset: usize) -> Option<u8> {
+        (offset < self.len())
+            .then(|| unsafe { core::ptr::read_volatile((self.base as *const u8).add(offset)) })
+    }
+
+    pub fn write_volatile(&mut self, offset: usize, value: u8) -> Result<(), MemoryError> {
+        if offset >= self.len() {
+            return Err(MemoryError::InvalidCapability);
+        }
+        unsafe { core::ptr::write_volatile((self.base as *mut u8).add(offset), value) };
+        Ok(())
+    }
+
+    pub fn read_volatile_into(&self, offset: usize, output: &mut [u8]) -> Result<(), MemoryError> {
+        let end = offset.checked_add(output.len()).ok_or(MemoryError::InvalidCapability)?;
+        if end > self.len() {
+            return Err(MemoryError::InvalidCapability);
+        }
+        for (index, byte) in output.iter_mut().enumerate() {
+            *byte =
+                unsafe { core::ptr::read_volatile((self.base as *const u8).add(offset + index)) };
+        }
+        Ok(())
+    }
+
+    pub fn write_volatile_from(&mut self, offset: usize, input: &[u8]) -> Result<(), MemoryError> {
+        let end = offset.checked_add(input.len()).ok_or(MemoryError::InvalidCapability)?;
+        if end > self.len() {
+            return Err(MemoryError::InvalidCapability);
+        }
+        for (index, byte) in input.iter().copied().enumerate() {
+            unsafe { core::ptr::write_volatile((self.base as *mut u8).add(offset + index), byte) };
+        }
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<OwnedMemory, (Self, MemoryError)> {
+        if self.dma_active {
+            let status = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
+            if status != catten_syscall::device_status::OK {
+                return Err((self, MemoryError::DmaStatus(status)));
+            }
+            self.dma_active = false;
+        }
+        let memory = self.memory.as_ref().expect("shared DMA memory already consumed");
+        let status = kernel::memory_unmap(memory.raw_handle());
+        if status != catten_syscall::memory_status::OK {
+            return Err((self, MemoryError::MemoryStatus(status)));
+        }
+        Ok(self.memory.take().expect("shared DMA memory already consumed"))
+    }
+}
+
+impl Drop for SharedDmaMemory<'_> {
+    fn drop(&mut self) {
+        if let Some(memory) = self.memory.take() {
+            if self.dma_active {
+                let _ = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
+            }
+            let _ = kernel::memory_unmap(memory.raw_handle());
+            drop(memory);
         }
     }
 }
@@ -1464,6 +1621,12 @@ mod kernel {
         catten_syscall::dma_map_exclusive(domain, memory, direction)
     }
 
+    pub fn dma_map(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
+        // SAFETY: the owning caller keeps both capabilities live and pairs a
+        // successful mapping with `dma_unmap` before releasing either one.
+        unsafe { catten_syscall::dma_map(domain, memory, direction) }
+    }
+
     pub fn dma_unmap(domain: u64, iova: u64) -> u64 {
         catten_syscall::dma_unmap(domain, iova)
     }
@@ -1804,6 +1967,10 @@ mod kernel {
         with_state(|state| state.dma_map)
     }
 
+    pub fn dma_map(_domain: u64, _memory: u64, _direction: DmaDirection) -> u64 {
+        with_state(|state| state.dma_map)
+    }
+
     pub fn dma_unmap(domain: u64, iova: u64) -> u64 {
         with_state(|state| {
             state.events.push(Event::DmaUnmap(domain, iova));
@@ -2033,6 +2200,7 @@ mod tests {
         DmaDomain,
         Endpoint,
         IncomingMessage,
+        MemoryError,
         MmioRegion,
         OwnedMemory,
         ReadOperation,
@@ -2093,6 +2261,71 @@ mod tests {
             [
                 kernel::Event::DmaUnmap(7, 0x2000),
                 kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_dma_drop_unmaps_device_before_cpu_and_close() {
+        let _guard = setup();
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = memory
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .expect("shared DMA mapping");
+        drop(shared);
+
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10),
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_dma_mapping_failure_restores_memory_owner() {
+        let _guard = setup();
+        kernel::update(|state| state.dma_map = 0);
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let error = memory
+            .map_shared_dma(&domain, DmaDirection::DeviceWrite)
+            .expect_err("DMA mapping must fail");
+        assert_eq!(error.error(), MemoryError::DmaMapFailed);
+        drop(error);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::MemoryUnmap(10), kernel::Event::MemoryClose(10)]
+        );
+    }
+
+    #[test]
+    fn shared_dma_cpu_unmap_failure_does_not_repeat_dma_unmap() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.memory_unmap = VecDeque::from([
+                catten_syscall::memory_status::UNMAP_FAILED,
+                catten_syscall::memory_status::OK,
+            ]);
+        });
+        let memory = OwnedMemory::allocate(1).expect("memory allocation");
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = memory
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .expect("shared DMA mapping");
+        let (shared, _) = shared.finish().expect_err("first CPU unmap must fail");
+        let memory = shared.finish().expect("retry must preserve ownership");
+        drop(memory);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryUnmap(10),
                 kernel::Event::MemoryClose(10),
             ]
         );

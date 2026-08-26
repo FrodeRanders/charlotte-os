@@ -1,0 +1,4 @@
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyAgreement
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:rustfs.test

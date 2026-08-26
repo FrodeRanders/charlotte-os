@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -37,6 +37,8 @@
 #               guest's tcpip stack serving observable state, reached from
 #               the host via SLIRP hostfwd (single guest, user network)
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
+#   --s3-test     Start a TLS RustFS Docker fixture and verify S3
+#                 PUT/HEAD/GET/DELETE from a CharlotteOS application
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -69,6 +71,7 @@ DEPLOY_TEST="0"
 TCPIP_TEST="0"
 HTTP_TEST="0"
 DHCP_TEST="0"
+S3_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
@@ -105,6 +108,7 @@ while [ "$#" -gt 0 ]; do
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
+        --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -147,7 +151,8 @@ if [ "$NET_BACKEND" != "user" ] && [ "$NETWORK" != "1" ]; then
 fi
 if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
-    || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ]; }; then
+    || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
+    || [ "$S3_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
@@ -192,11 +197,65 @@ if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
     echo "error: --http-test requires the default user network (hostfwd)" >&2
     exit 1
 fi
+if [ "$S3_TEST" = "1" ] && { [ "$NET_BACKEND" != "user" ] || [ -z "$TIMEOUT" ]; }; then
+    echo "error: --s3-test requires the default user network and --timeout" >&2
+    exit 1
+fi
 
 cd "$ROOT_DIR"
 catten_boot_init "$ROOT_DIR"
 catten_boot_require_commands mformat mmd mcopy
 LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
+
+RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
+RUSTFS_RUNNING="0"
+cleanup_rustfs() {
+    if [ "$RUSTFS_RUNNING" = "1" ]; then
+        docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_rustfs EXIT
+
+if [ "$S3_TEST" = "1" ]; then
+    catten_boot_require_commands docker openssl
+    RUSTFS_TEST_DIR="${ROOT_DIR}/target/rustfs-s3-test"
+    export CATTEN_RUSTFS_CERT_DIR="${RUSTFS_TEST_DIR}/certs"
+    export CATTEN_RUSTFS_PORT="19000"
+    mkdir -p "$CATTEN_RUSTFS_CERT_DIR"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
+    openssl req -x509 -new -sha256 -days 2 \
+        -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -subj "/CN=CharlotteOS RustFS test CA" \
+        -addext "basicConstraints=critical,CA:TRUE" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
+    openssl req -new -sha256 \
+        -key "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem" \
+        -subj "/CN=rustfs.test" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr"
+    openssl x509 -req -sha256 -days 2 \
+        -in "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr" \
+        -CA "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
+        -CAkey "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -CAcreateserial \
+        -extfile "${ROOT_DIR}/docker/rustfs-s3-test/server-ext.cnf" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem"
+    openssl x509 -in "$CATTEN_RUSTFS_CERT_DIR/ca.crt" -outform DER \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.der"
+    chmod 0644 "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
+        "$CATTEN_RUSTFS_CERT_DIR/ca.der" \
+        "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem" \
+        "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
+    export CATTEN_S3_TEST_CA_DER="$CATTEN_RUSTFS_CERT_DIR/ca.der"
+    echo ">>> Starting ephemeral TLS RustFS fixture on host port 19000..."
+    docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    RUSTFS_RUNNING="1"
+    docker compose -f "$RUSTFS_COMPOSE" up -d --wait rustfs
+    docker compose -f "$RUSTFS_COMPOSE" run --rm init
+fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
 TARGET_DIR="${ARCH}-unknown-none-catten"
@@ -288,6 +347,9 @@ if [ "$HTTP_TEST" = "1" ]; then
 fi
 if [ "$DHCP_TEST" = "1" ]; then
     FEATURES="${FEATURES},dhcp_test"
+fi
+if [ "$S3_TEST" = "1" ]; then
+    FEATURES="${FEATURES},s3_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
@@ -432,6 +494,12 @@ if [ "$USE_HVF" = "1" ]; then
     QEMU_OPTS+=(-accel hvf -cpu host)
 elif [ "$SBSA_REF" != "1" ]; then
     QEMU_OPTS+=(-cpu cortex-a710)
+    # The named Cortex model has no RNDR instruction. Expose the host CSPRNG
+    # through protected DMA to the ordinary VirtIO RNG service.
+    QEMU_OPTS+=(
+        -object "rng-random,filename=/dev/urandom,id=charlotte-rng"
+        -device "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4"
+    )
 fi
 
 QEMU_OPTS+=(-smp "$SMP")

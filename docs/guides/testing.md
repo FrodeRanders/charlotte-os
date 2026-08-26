@@ -50,6 +50,15 @@ register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
 
+`--s3-test --timeout 240` is an explicitly test-only integration fixture. It
+adds a local TLS RustFS Docker container, a provisioned S3 service profile, and
+an in-guest PUT/HEAD/GET/DELETE verifier. Network, DHCP, time synchronization,
+and the S3 client itself are ordinary services; the switch supplies the
+ephemeral external server, test credentials/CA, and pass/fail observer. The
+VirtIO RNG device and entropy service are part of ordinary QEMU operation, not
+test-only support. See
+[S3 client service](../reference/s3-client.md#rustfs-integration-test).
+
 Both architecture runners source `scripts/lib/boot-common.sh` for dependency
 validation, Limine configuration resolution, payload hashing, atomic FAT image
 construction, and authoritative self-test verdict validation. To create only a

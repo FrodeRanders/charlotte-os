@@ -16,3 +16,7 @@ should be updated with the implementation when those contracts change.
   the userspace TCP/IP service.
 - [UTC time service](time-service.md) — default launch behavior, internal IPC
   operations, NTP synchronization, drift, uncertainty, and persisted holdover.
+- [S3 client service](s3-client.md) — SigV4 object streaming, capability
+  profiles, RustFS/ECS compatibility, and the TLS boundary.
+- [Cryptographic entropy](entropy.md) — architectural randomness, the
+  capability-scoped VirtIO RNG service, and QEMU provisioning.

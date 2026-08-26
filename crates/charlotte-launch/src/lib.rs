@@ -291,6 +291,24 @@ pub mod time_status {
     pub const ERROR: usize = 28;
 }
 
+/// S3 client-service diagnostic status-page offsets.
+pub mod s3_status {
+    pub const STAGE: usize = 0;
+    pub const REQUESTS: usize = 4;
+    pub const FAILURES: usize = 8;
+    pub const ACTIVE_GETS: usize = 12;
+    pub const ACTIVE_PUTS: usize = 16;
+    pub const ERROR: usize = 20;
+}
+
+/// S3 end-to-end smoke-client diagnostic status-page offsets.
+pub mod s3_smoke_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const BYTES: usize = 8;
+    pub const SUCCESS: u32 = 0x5333_4f4b; // "S3OK"
+}
+
 pub mod clusterctl_status {
     pub const STAGE: usize = 0;
 }
@@ -365,6 +383,12 @@ pub mod greet_status {
 
 pub mod smoke_status {
     pub const MARKER: usize = 0;
+}
+
+pub mod rng_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const BYTES: usize = 8;
 }
 
 pub const LAUNCH_HEADER_OFFSET: usize = 2112;

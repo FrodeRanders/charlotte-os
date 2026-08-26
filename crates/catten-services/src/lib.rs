@@ -10,8 +10,13 @@ extern crate alloc;
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
 pub use charlotte_authorization as authorization;
+/// Capability-oriented S3 data-plane service protocol.
+pub use charlotte_protocol_s3 as s3;
 /// UTC time-service protocol shared with applications.
 pub use charlotte_protocol_time as time;
+
+/// Owned application-side wrappers for the S3 service protocol.
+pub mod s3_client;
 
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;
@@ -399,6 +404,23 @@ pub mod virtio {
     pub const FEATURE_ACCESS_PLATFORM: u32 = 1 << 1;
 }
 
+/// Cryptographic entropy service backed by a delegated VirtIO RNG device.
+pub mod entropy {
+    pub const INTERFACE: u64 = super::name(b"RNG");
+    pub const VERSION: u32 = 1;
+    pub const NAME: u64 = super::name(b"rng");
+
+    /// Return up to `arg0` random bytes in a moved memory object. The scalar
+    /// result is the exact initialized byte count.
+    pub const OP_FILL: u32 = 1;
+    pub const MAX_REQUEST: usize = 4_096;
+
+    pub const ERR_INVALID: i64 = -1;
+    pub const ERR_DEVICE: i64 = -2;
+    pub const ERR_MEMORY: i64 = -3;
+    pub const ERR_BAD_OPCODE: i64 = -4;
+}
+
 /// Stage a memory-carried name: allocate a one-page memory object, write
 /// `name` at offset 0, and return the memory cap (unmapped, ready to attach
 /// to a copied-memory call).
@@ -620,8 +642,11 @@ pub mod block {
 /// `Move` on reply for recv).
 pub mod socket {
     use catten_rt::owned::{
+        CallResult,
         ConnectionRef,
         IpcError,
+        MemoryError,
+        OwnedMemory,
         PendingCall,
     };
 
@@ -679,6 +704,47 @@ pub mod socket {
 
     pub const MAX_SOCKETS: usize = 16;
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum SocketError {
+        Ipc(IpcError),
+        Memory(MemoryError),
+        Service(i64),
+        InvalidReply,
+        RetryExhausted,
+    }
+
+    impl From<IpcError> for SocketError {
+        fn from(value: IpcError) -> Self {
+            Self::Ipc(value)
+        }
+    }
+
+    /// A receive result whose memory remains owned until explicitly moved or
+    /// dropped. Only `len` bytes at the start of the page are initialized.
+    #[must_use = "dropping a received socket chunk releases its memory"]
+    pub struct ReceivedChunk {
+        memory: OwnedMemory,
+        len: usize,
+    }
+
+    impl ReceivedChunk {
+        pub const fn len(&self) -> usize {
+            self.len
+        }
+
+        pub const fn is_empty(&self) -> bool {
+            self.len == 0
+        }
+
+        pub fn memory(&self) -> &OwnedMemory {
+            &self.memory
+        }
+
+        pub fn into_parts(self) -> (OwnedMemory, usize) {
+            (self.memory, self.len)
+        }
+    }
+
     /// A socket ID owned by a connection to the TCP/IP service.
     ///
     /// Remote socket IDs are protocol resources rather than kernel
@@ -711,6 +777,118 @@ pub mod socket {
             self.service.call(opcode, arg0)
         }
 
+        /// Select an IPv4 peer and begin connecting. TCP handshaking proceeds
+        /// in the tcpip reactor; [`send_all`](Self::send_all) handles its
+        /// transient `ERR_WOULD_BLOCK` result.
+        pub fn connect_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {
+            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+            let mut mapping =
+                memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+            mapping.as_mut_slice()[..4].copy_from_slice(&address);
+            mapping.as_mut_slice()[4..6].copy_from_slice(&port.to_le_bytes());
+            let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
+            let result = self
+                .service
+                .call_move(OP_CONNECT, self.id(), memory)
+                .map_err(|(_, error)| SocketError::Ipc(error))?
+                .wait()
+                .map_err(SocketError::Ipc)?
+                .result;
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(SocketError::Service(result))
+            }
+        }
+
+        /// Send the entire byte slice as one or more moved pages, handling
+        /// partial acceptance and tcpip backpressure without exposing socket
+        /// IDs or cleanup work to the caller.
+        pub fn send_all(
+            &self,
+            bytes: &[u8],
+            attempts: usize,
+            retry_ms: u64,
+        ) -> Result<(), SocketError> {
+            let mut offset = 0usize;
+            for _ in 0..attempts {
+                if offset == bytes.len() {
+                    return Ok(());
+                }
+                let chunk_len = (bytes.len() - offset).min(4096);
+                let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+                let mut mapping =
+                    memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+                mapping.as_mut_slice()[..chunk_len]
+                    .copy_from_slice(&bytes[offset..offset + chunk_len]);
+                let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
+                let packed = ((chunk_len as u64) << 32) | (self.id() & 0xffff_ffff);
+                let result = self
+                    .service
+                    .call_move(OP_SEND, packed, memory)
+                    .map_err(|(_, error)| SocketError::Ipc(error))?
+                    .wait()
+                    .map_err(SocketError::Ipc)?
+                    .result;
+                if result > 0 && result as usize <= chunk_len {
+                    offset += result as usize;
+                } else if result == ERR_WOULD_BLOCK || result == 0 {
+                    super::sleep_ms(retry_ms);
+                } else if result > chunk_len as i64 {
+                    return Err(SocketError::InvalidReply);
+                } else {
+                    return Err(SocketError::Service(result));
+                }
+            }
+            Err(SocketError::RetryExhausted)
+        }
+
+        /// Wait for and own one receive page from tcpip.
+        pub fn receive(&self) -> Result<Option<ReceivedChunk>, SocketError> {
+            let result = self.service.call(OP_RECV, self.id())?.wait().map_err(SocketError::Ipc)?;
+            Self::decode_receive(result)
+        }
+
+        /// Poll for one receive page, returning `RetryExhausted` after a
+        /// bounded wait. Dropping the pending call cancels it; dropping or
+        /// closing this socket then releases tcpip's retained receive slot.
+        pub fn receive_timeout(
+            &self,
+            attempts: usize,
+            retry_ms: u64,
+        ) -> Result<Option<ReceivedChunk>, SocketError> {
+            let mut pending = self.service.call(OP_RECV, self.id())?;
+            for _ in 0..attempts {
+                if let Some(result) = pending.poll().map_err(SocketError::Ipc)? {
+                    return Self::decode_receive(result);
+                }
+                super::sleep_ms(retry_ms);
+            }
+            Err(SocketError::RetryExhausted)
+        }
+
+        fn decode_receive(result: CallResult) -> Result<Option<ReceivedChunk>, SocketError> {
+            if result.result < 0 {
+                return Err(SocketError::Service(result.result));
+            }
+            if result.result == 0 {
+                return if result.memory.is_none() {
+                    Ok(None)
+                } else {
+                    Err(SocketError::InvalidReply)
+                };
+            }
+            let memory = result.memory.ok_or(SocketError::InvalidReply)?;
+            let len = result.result as usize;
+            if len > memory.len() {
+                return Err(SocketError::InvalidReply);
+            }
+            Ok(Some(ReceivedChunk {
+                memory,
+                len,
+            }))
+        }
+
         pub fn close(mut self) -> Result<(), IpcError> {
             self.close_inner()
         }
@@ -728,10 +906,17 @@ pub mod socket {
                     return Err(error);
                 }
             };
-            let result = call.wait()?;
+            let result = match call.wait() {
+                Ok(result) => result,
+                Err(error) => {
+                    self.id = Some(id);
+                    return Err(error);
+                }
+            };
             if result.result == 0 {
                 Ok(())
             } else {
+                self.id = Some(id);
                 Err(IpcError::Status(result.result as u64))
             }
         }
@@ -1423,6 +1608,21 @@ pub fn wait_for_registered_name_owned(
     name: u64,
 ) -> Option<(i64, catten_rt::owned::Connection)> {
     let result = owned_call_with_backpressure(ns_connection, ns::OP_LOOKUP, name).wait().ok()?;
+    let connection = result.connection?;
+    if result.result >= 1 {
+        Some((result.result, connection))
+    } else {
+        None
+    }
+}
+
+/// Resolve an optional service without waiting for a future registration.
+pub fn try_registered_name_owned(
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    name: u64,
+) -> Option<(i64, catten_rt::owned::Connection)> {
+    let result =
+        owned_call_with_backpressure(ns_connection, ns::OP_TRY_LOOKUP, name).wait().ok()?;
     let connection = result.connection?;
     if result.result >= 1 {
         Some((result.result, connection))

@@ -110,6 +110,10 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"tcpclient", "tcpclient"),
     bootstrap_elf!(b"httpd", "httpd"),
     bootstrap_elf!(b"time", "time"),
+    bootstrap_elf!(b"s3", "s3"),
+    bootstrap_elf!(b"rng", "rng"),
+    #[cfg(feature = "s3_test")]
+    bootstrap_elf!(b"s3_smoke", "s3_smoke"),
     bootstrap_elf!(b"fs", "fs"),
     bootstrap_elf!(b"clusterctl", "clusterctl"),
 ];

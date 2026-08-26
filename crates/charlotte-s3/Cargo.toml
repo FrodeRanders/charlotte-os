@@ -1,0 +1,8 @@
+[package]
+name = "charlotte-s3"
+version = "0.1.0"
+edition = "2024"
+description = "no_std S3 data-plane protocol core for CharlotteOS"
+
+[dependencies]
+charlotte-launch = { path = "../charlotte-launch" }

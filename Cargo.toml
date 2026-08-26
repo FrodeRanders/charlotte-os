@@ -17,7 +17,9 @@ default-members = [
     "crates/charlotte-protocol-msg",
     "crates/charlotte-protocol-net",
     "crates/charlotte-protocol-objstore",
+    "crates/charlotte-protocol-s3",
     "crates/charlotte-protocol-time",
+    "crates/charlotte-s3",
     "crates/charlotte-smoltcp",
 ]
 resolver = "3"

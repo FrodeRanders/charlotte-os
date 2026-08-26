@@ -1061,3 +1061,105 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
     }
     None
 }
+
+/// Find a modern VirtIO entropy device and return its transport BAR, legacy
+/// interrupt line, and requester id. The driver polls its used ring, so no
+/// MSI/MSI-X vector is configured.
+pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32, Option<u64>)> {
+    for group in &topology.segments {
+        let mut stack = alloc::vec![&*group.root_bus];
+        while let Some(bus) = stack.pop() {
+            for dev in &bus.devices {
+                let functions: alloc::vec::Vec<(&PcieEndpoint, u8, u8)> = match dev {
+                    PcieDevice::SingleFunc(single) => match &single.function {
+                        PcieFunction::Endpoint(endpoint) => alloc::vec![(
+                            endpoint.as_ref(),
+                            single.number.get_inner(),
+                            endpoint.number.get_inner()
+                        ),],
+                        _ => alloc::vec::Vec::new(),
+                    },
+                    PcieDevice::MultiFunc(multi) => multi
+                        .functions
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(function, entry)| match entry {
+                            PcieFunction::Endpoint(endpoint) => {
+                                Some((endpoint.as_ref(), multi.number.get_inner(), function as u8))
+                            }
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => alloc::vec::Vec::new(),
+                };
+                for (endpoint, device, function) in functions {
+                    if endpoint.identifier.vendor_id != 0x1af4
+                        || !matches!(endpoint.identifier.device_id, 0x1005 | 0x1044)
+                    {
+                        continue;
+                    }
+                    let requester_id =
+                        ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
+                    let cfg = endpoint.cfg_ptr.lock();
+                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    let cfg_bytes = cfg.as_ptr().cast::<u8>();
+                    let mut capability =
+                        header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
+                    let mut modern_bar = None;
+                    for _ in 0..48 {
+                        if capability < 0x40 || capability + 16 > 0x100 {
+                            break;
+                        }
+                        let id = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability)) };
+                        let next =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 1)) }
+                                as usize;
+                        let len = unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 2)) }
+                            as usize;
+                        let cfg_type =
+                            unsafe { core::ptr::read_volatile(cfg_bytes.add(capability + 3)) };
+                        if id == 0x09 && len >= 16 && cfg_type == 1 {
+                            modern_bar = Some(unsafe {
+                                core::ptr::read_volatile(cfg_bytes.add(capability + 4))
+                            });
+                        }
+                        if next == 0 || next == capability {
+                            break;
+                        }
+                        capability = next;
+                    }
+                    let Some(bar_index) = modern_bar else {
+                        continue;
+                    };
+                    let bar_index = bar_index as usize;
+                    if bar_index >= 6 {
+                        continue;
+                    }
+                    let bar = header.bar(bar_index) as u64;
+                    if bar & 1 != 0 {
+                        continue;
+                    }
+                    let physical = if bar & 0x4 != 0 {
+                        if bar_index + 1 >= 6 {
+                            continue;
+                        }
+                        (bar & 0xffff_fff0)
+                            | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                    } else {
+                        bar & 0xffff_fff0
+                    };
+                    if physical != 0 {
+                        return Some((
+                            physical,
+                            header.interrupt_line() as u32,
+                            requester_id,
+                            None,
+                        ));
+                    }
+                }
+            }
+            push_bridge_buses(&bus.devices, &mut stack);
+        }
+    }
+    None
+}

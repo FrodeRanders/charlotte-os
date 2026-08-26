@@ -642,6 +642,15 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 0, "owner MEMORY_CLOSE should close original copy source");
     }
 
+    {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::RANDOM_U64);
+        assert!(f.regs[0] <= 1, "RANDOM_U64 status must be boolean");
+        if f.regs[0] == 0 {
+            assert_eq!(f.regs[1], 0, "failed RANDOM_U64 must clear its value");
+        }
+    }
+
     #[cfg(target_arch = "aarch64")]
     {
         use catten_syscall::{

@@ -25,7 +25,9 @@ use crate::{
         supervisor::{
             DriverGrant,
             NameServiceHandle,
+            PollingDriverGrant,
             ServiceDomain,
+            ServiceLimits,
         },
     },
 };
@@ -64,14 +66,60 @@ pub struct NetworkAppliance {
     pub httpd: ServiceDomain,
 }
 
+/// A capability profile for one S3 client-service instance. The service never
+/// publishes these credentials; callers receive only its restricted endpoint.
+pub struct S3Profile<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+    pub tls: bool,
+    /// DER-encoded X.509 trust anchor. Required when `tls` is true and omitted
+    /// from plaintext profiles.
+    pub ca_certificate_der: Option<&'a [u8]>,
+    pub region: &'a [u8],
+    pub bucket: &'a [u8],
+    pub prefix: &'a [u8],
+    pub access_key: &'a [u8],
+    pub secret_key: &'a [u8],
+    pub namespace: Option<&'a [u8]>,
+    pub rights: u64,
+}
+
 /// The full steady-state service set, with each optional group present only
 /// when the hardware that backs it was discovered.
 #[derive(Copy, Clone)]
 pub struct SteadyState {
     pub storage: Option<StorageStack>,
+    pub entropy: Option<ServiceDomain>,
     pub network: Option<NetworkStack>,
     pub cluster: Option<Cluster>,
     pub appliance: Option<NetworkAppliance>,
+}
+
+/// Launch a VirtIO RNG adapter when the platform exposes one with protected
+/// DMA. Architectures with RNDR/RDRAND can still serve cryptographic callers
+/// through the kernel syscall when no paravirtualized device is present.
+pub fn launch_entropy(ns: &NameServiceHandle) -> Option<ServiceDomain> {
+    let topology = &crate::device_management::topology::DEVICE_TOPOLOGY;
+    let (bar, _irq, requester_id, _) =
+        crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_rng(
+            &topology.pcie,
+        )?;
+    if crate::device::stream_id(requester_id).is_err() {
+        logln!("[launch] SKIP virtio-rng: protected DMA unavailable.");
+        return None;
+    }
+    logln!("[launch] virtio-rng at BAR4={:#x} requester={:#x}", bar, requester_id);
+    Some(crate::service::supervisor::spawn_polling_driver_with_name_service(
+        crate::service::store::service_elf(b"rng").expect("[launch] rng.elf"),
+        ns,
+        ConnectionRights::CALL,
+        PollingDriverGrant {
+            mmio_phys_base: bar as usize,
+            mmio_pages: 4,
+            dma_requester_id: requester_id,
+        },
+    ))
 }
 
 static STEADY_STATE: LazyLock<crate::cpu::multiprocessor::spin::mutex::Mutex<Option<SteadyState>>> =
@@ -251,6 +299,93 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
     }
 }
 
+/// Spawn a separately configured S3 data-plane service.
+///
+/// This is intentionally not part of unconditional steady-state launch:
+/// credentials and bucket policy must come from the machine's trusted
+/// provisioning path. Multiple instances may eventually publish distinct
+/// policy-selected names; the current protocol name supports one instance.
+pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> ServiceDomain {
+    use charlotte_protocol_s3::manifest;
+
+    let mut entries = alloc::vec::Vec::with_capacity(12);
+    entries.extend_from_slice(&[
+        ManifestEntry {
+            key: manifest::IP,
+            flags: 0,
+            value: ManifestValue::Bytes(&profile.endpoint_ipv4),
+        },
+        ManifestEntry {
+            key: manifest::HOST,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.host),
+        },
+        ManifestEntry {
+            key: manifest::PORT,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.port as u64),
+        },
+        ManifestEntry {
+            key: manifest::TLS,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.tls as u64),
+        },
+        ManifestEntry {
+            key: manifest::REGION,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.region),
+        },
+        ManifestEntry {
+            key: manifest::BUCKET,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.bucket),
+        },
+        ManifestEntry {
+            key: manifest::PREFIX,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.prefix),
+        },
+        ManifestEntry {
+            key: manifest::ACCESS_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.access_key),
+        },
+        ManifestEntry {
+            key: manifest::SECRET_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.secret_key),
+        },
+        ManifestEntry {
+            key: manifest::RIGHTS,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.rights),
+        },
+    ]);
+    if let Some(namespace) = profile.namespace {
+        entries.push(ManifestEntry {
+            key: manifest::NAMESPACE,
+            flags: 0,
+            value: ManifestValue::Bytes(namespace),
+        });
+    }
+    if let Some(ca_der) = profile.ca_certificate_der {
+        entries.push(ManifestEntry {
+            key: manifest::CA_DER,
+            flags: 0,
+            value: ManifestValue::Bytes(ca_der),
+        });
+    }
+    crate::service::supervisor::spawn_with_manifest_and_limits(
+        crate::service::store::service_elf(b"s3").expect("[launch] s3.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &entries,
+        // TLS certificate parsing and record processing need more than the
+        // normal 16 KiB EL0 stack. Record buffers themselves live on the heap.
+        ServiceLimits::default().with_user_stack_size(128 * 1024),
+    )
+}
+
 /// Launch the complete steady-state service set and publish it for observers.
 ///
 /// Runs as a boot thread: storage launches whenever a supported controller is
@@ -260,6 +395,7 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
 pub extern "C" fn launch_steady_state() {
     let ns = crate::service::supervisor::node_name_service();
     let storage = launch_storage(&ns);
+    let entropy = launch_entropy(&ns);
     let network = launch_network_stack(&ns);
     let (cluster, appliance) = match network {
         Some(_) => (
@@ -270,6 +406,7 @@ pub extern "C" fn launch_steady_state() {
     };
     *STEADY_STATE.lock() = Some(SteadyState {
         storage,
+        entropy,
         network,
         cluster,
         appliance,
