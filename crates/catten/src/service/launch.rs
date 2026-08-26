@@ -85,6 +85,25 @@ pub struct S3Profile<'a> {
     pub rights: u64,
 }
 
+/// A capability profile for one Kafka data-plane service. The endpoint grants
+/// access only to this broker, topic, partition, consumer group, and
+/// transactional identity.
+pub struct KafkaProfile<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+    pub tls: bool,
+    /// Reserved for the TLS transport profile. The initial service supports
+    /// plaintext Kafka only and rejects profiles with `tls` set.
+    pub ca_certificate_der: Option<&'a [u8]>,
+    pub topic: &'a [u8],
+    pub partition: u32,
+    pub group: &'a [u8],
+    pub transactional_id: &'a [u8],
+    pub rights: u64,
+    pub transaction_timeout_ms: u32,
+}
+
 /// The full steady-state service set, with each optional group present only
 /// when the hardware that backs it was discovered.
 #[derive(Copy, Clone)]
@@ -382,6 +401,84 @@ pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> Ser
         &entries,
         // TLS certificate parsing and record processing need more than the
         // normal 16 KiB EL0 stack. Record buffers themselves live on the heap.
+        ServiceLimits::default().with_user_stack_size(128 * 1024),
+    )
+}
+
+/// Spawn a separately provisioned Kafka producer/consumer service.
+///
+/// Broker topology and authority stay behind the returned endpoint. The
+/// current implementation deliberately fixes one partition per profile so
+/// applications cannot escape their launch-time grant or accidentally create
+/// an unbounded fetch assignment.
+pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) -> ServiceDomain {
+    use charlotte_protocol_kafka::manifest;
+
+    let mut entries = alloc::vec::Vec::with_capacity(11);
+    entries.extend_from_slice(&[
+        ManifestEntry {
+            key: manifest::IP,
+            flags: 0,
+            value: ManifestValue::Bytes(&profile.endpoint_ipv4),
+        },
+        ManifestEntry {
+            key: manifest::HOST,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.host),
+        },
+        ManifestEntry {
+            key: manifest::PORT,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.port as u64),
+        },
+        ManifestEntry {
+            key: manifest::TLS,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.tls as u64),
+        },
+        ManifestEntry {
+            key: manifest::TOPIC,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.topic),
+        },
+        ManifestEntry {
+            key: manifest::PARTITION,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.partition as u64),
+        },
+        ManifestEntry {
+            key: manifest::GROUP,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.group),
+        },
+        ManifestEntry {
+            key: manifest::TRANSACTIONAL_ID,
+            flags: 0,
+            value: ManifestValue::Bytes(profile.transactional_id),
+        },
+        ManifestEntry {
+            key: manifest::RIGHTS,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.rights),
+        },
+        ManifestEntry {
+            key: manifest::TRANSACTION_TIMEOUT_MS,
+            flags: 0,
+            value: ManifestValue::Unsigned(profile.transaction_timeout_ms as u64),
+        },
+    ]);
+    if let Some(ca_der) = profile.ca_certificate_der {
+        entries.push(ManifestEntry {
+            key: manifest::CA_DER,
+            flags: 0,
+            value: ManifestValue::Bytes(ca_der),
+        });
+    }
+    crate::service::supervisor::spawn_with_manifest_and_limits(
+        crate::service::store::service_elf(b"kafka").expect("[launch] kafka.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &entries,
         ServiceLimits::default().with_user_stack_size(128 * 1024),
     )
 }

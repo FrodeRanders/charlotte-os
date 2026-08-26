@@ -141,6 +141,8 @@ pub mod el0_http;
 pub mod el0_ipc;
 #[cfg(feature = "clusterctl_test")]
 pub mod el0_join;
+#[cfg(feature = "kafka_test")]
+pub mod el0_kafka;
 pub mod el0_net;
 pub mod el0_nvme;
 pub mod el0_pingpong;
@@ -341,6 +343,10 @@ pub fn run_deferred_self_tests() {
     el0_s3::test_el0_s3();
     #[cfg(not(feature = "s3_test"))]
     logln!("Skipping EL0 S3 test (enable s3_test with the RustFS fixture).");
+    #[cfg(feature = "kafka_test")]
+    el0_kafka::test_el0_kafka();
+    #[cfg(not(feature = "kafka_test"))]
+    logln!("Skipping EL0 Kafka test (enable kafka_test with the Kafka fixture).");
     logln!("Synchronous self-tests passed; deferred scheduler/EL0 verifiers are still pending.");
 }
 

@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -39,6 +39,8 @@
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
+#   --kafka-test  Start an Apache Kafka Docker fixture and verify idempotent
+#                 produce, read-committed consume, and transactions
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -72,6 +74,7 @@ TCPIP_TEST="0"
 HTTP_TEST="0"
 DHCP_TEST="0"
 S3_TEST="0"
+KAFKA_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
@@ -109,6 +112,7 @@ while [ "$#" -gt 0 ]; do
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
+        --kafka-test)  NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -152,7 +156,7 @@ fi
 if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
     || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
-    || [ "$S3_TEST" = "1" ]; }; then
+    || [ "$S3_TEST" = "1" ] || [ "$KAFKA_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
@@ -201,6 +205,10 @@ if [ "$S3_TEST" = "1" ] && { [ "$NET_BACKEND" != "user" ] || [ -z "$TIMEOUT" ]; 
     echo "error: --s3-test requires the default user network and --timeout" >&2
     exit 1
 fi
+if [ "$KAFKA_TEST" = "1" ] && { [ "$NET_BACKEND" != "user" ] || [ -z "$TIMEOUT" ]; }; then
+    echo "error: --kafka-test requires the default user network and --timeout" >&2
+    exit 1
+fi
 
 cd "$ROOT_DIR"
 catten_boot_init "$ROOT_DIR"
@@ -209,12 +217,17 @@ LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
-cleanup_rustfs() {
+KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
+KAFKA_RUNNING="0"
+cleanup_fixtures() {
     if [ "$RUSTFS_RUNNING" = "1" ]; then
         docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     fi
+    if [ "$KAFKA_RUNNING" = "1" ]; then
+        docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    fi
 }
-trap cleanup_rustfs EXIT
+trap cleanup_fixtures EXIT
 
 if [ "$S3_TEST" = "1" ]; then
     catten_boot_require_commands docker openssl
@@ -255,6 +268,20 @@ if [ "$S3_TEST" = "1" ]; then
     RUSTFS_RUNNING="1"
     docker compose -f "$RUSTFS_COMPOSE" up -d --wait rustfs
     docker compose -f "$RUSTFS_COMPOSE" run --rm init
+fi
+
+if [ "$KAFKA_TEST" = "1" ]; then
+    catten_boot_require_commands docker
+    export CATTEN_KAFKA_PORT="19092"
+    echo ">>> Starting ephemeral Apache Kafka fixture on host port 19092..."
+    docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    KAFKA_RUNNING="1"
+    docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka
+    docker compose -f "$KAFKA_COMPOSE" exec -T kafka \
+        /opt/kafka/bin/kafka-topics.sh \
+        --bootstrap-server localhost:29092 \
+        --create --if-not-exists \
+        --topic charlotte-events --partitions 1 --replication-factor 1
 fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
@@ -350,6 +377,9 @@ if [ "$DHCP_TEST" = "1" ]; then
 fi
 if [ "$S3_TEST" = "1" ]; then
     FEATURES="${FEATURES},s3_test"
+fi
+if [ "$KAFKA_TEST" = "1" ]; then
+    FEATURES="${FEATURES},kafka_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then

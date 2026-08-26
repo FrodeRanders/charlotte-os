@@ -59,6 +59,14 @@ VirtIO RNG device and entropy service are part of ordinary QEMU operation, not
 test-only support. See
 [S3 client service](../reference/s3-client.md#rustfs-integration-test).
 
+`--kafka-test --timeout 300` similarly adds a disposable Apache Kafka KRaft
+container and an in-guest verifier. The verifier covers idempotent production,
+bounded read-committed consumption, aborted-record filtering, and an atomic
+consume-transform-produce transaction with the consumer offset included. The
+runner creates a fresh single-partition `charlotte-events` topic and removes
+the fixture and its volumes on exit. See
+[Kafka client service](../reference/kafka-client.md#docker-integration-test).
+
 Both architecture runners source `scripts/lib/boot-common.sh` for dependency
 validation, Limine configuration resolution, payload hashing, atomic FAT image
 construction, and authoritative self-test verdict validation. To create only a

@@ -18,5 +18,7 @@ should be updated with the implementation when those contracts change.
   operations, NTP synchronization, drift, uncertainty, and persisted holdover.
 - [S3 client service](s3-client.md) — SigV4 object streaming, capability
   profiles, RustFS/ECS compatibility, and the TLS boundary.
+- [Kafka client service](kafka-client.md) — idempotent production,
+  read-committed consumption, transactional offsets, and owned backpressure.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the
   capability-scoped VirtIO RNG service, and QEMU provisioning.

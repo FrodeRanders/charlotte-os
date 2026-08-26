@@ -10,11 +10,15 @@ extern crate alloc;
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
 pub use charlotte_authorization as authorization;
+/// Capability-oriented Kafka client-service protocol.
+pub use charlotte_protocol_kafka as kafka;
 /// Capability-oriented S3 data-plane service protocol.
 pub use charlotte_protocol_s3 as s3;
 /// UTC time-service protocol shared with applications.
 pub use charlotte_protocol_time as time;
 
+/// Owned application-side wrappers for the Kafka service protocol.
+pub mod kafka_client;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
 

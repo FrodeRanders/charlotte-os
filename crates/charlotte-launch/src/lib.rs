@@ -309,6 +309,26 @@ pub mod s3_smoke_status {
     pub const SUCCESS: u32 = 0x5333_4f4b; // "S3OK"
 }
 
+/// Kafka client-service diagnostic status-page offsets.
+pub mod kafka_status {
+    pub const STAGE: usize = 0;
+    pub const REQUESTS: usize = 4;
+    pub const PRODUCED: usize = 8;
+    pub const CONSUMED: usize = 12;
+    pub const COMMITS: usize = 16;
+    pub const ABORTS: usize = 20;
+    pub const BACKPRESSURE: usize = 24;
+    pub const ERROR: usize = 28;
+}
+
+/// Kafka end-to-end smoke-client diagnostic status-page offsets.
+pub mod kafka_smoke_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const OFFSET: usize = 8;
+    pub const SUCCESS: u32 = 0x4b46_4f4b; // "KFOK"
+}
+
 pub mod clusterctl_status {
     pub const STAGE: usize = 0;
 }

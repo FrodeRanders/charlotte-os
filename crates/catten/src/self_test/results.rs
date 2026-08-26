@@ -109,10 +109,11 @@ pub enum TestId {
     Join = 23,
     Dhcp = 24,
     S3 = 25,
+    Kafka = 26,
 }
 
 impl TestId {
-    const ALL: [Self; 26] = [
+    const ALL: [Self; 27] = [
         Self::El0,
         Self::RaftStorage,
         Self::El0Ipc,
@@ -139,6 +140,7 @@ impl TestId {
         Self::Join,
         Self::Dhcp,
         Self::S3,
+        Self::Kafka,
     ];
 
     const fn name(self) -> &'static str {
@@ -169,6 +171,7 @@ impl TestId {
             Self::Join => "join",
             Self::Dhcp => "dhcp",
             Self::S3 => "s3-tls",
+            Self::Kafka => "kafka",
         }
     }
 }
@@ -317,6 +320,8 @@ pub fn register_boot_suite() {
     register(TestId::Dhcp);
     #[cfg(feature = "s3_test")]
     register(TestId::S3);
+    #[cfg(feature = "kafka_test")]
+    register(TestId::Kafka);
     #[cfg(feature = "clusterctl_test")]
     {
         register(TestId::Clusterctl);

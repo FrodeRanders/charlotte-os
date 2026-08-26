@@ -29,6 +29,8 @@ httpd              service     1       1        0x0   -
 time               service     1       1        0x0   -
 s3                 service     1       1        0x0   -
 s3_smoke           service     1       1        0x0   -
+kafka              service     1       1        0x0   -
+kafka_smoke        service     1       1        0x0   -
 rng                service     1       1        0x0   -
 observe            bootstrap   1       1        0x0   -
 disco              service     1       1        0x0   -

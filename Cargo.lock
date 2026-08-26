@@ -149,6 +149,7 @@ dependencies = [
  "charlotte-launch",
  "charlotte-lifecycle",
  "charlotte-protocol-disco",
+ "charlotte-protocol-kafka",
  "charlotte-protocol-s3",
  "concurrent-queue",
  "flanterm_bindings",
@@ -189,10 +190,12 @@ dependencies = [
  "catten-rt",
  "catten-syscall",
  "charlotte-authorization",
+ "charlotte-kafka",
  "charlotte-launch",
  "charlotte-protocol-block",
  "charlotte-protocol-disco",
  "charlotte-protocol-fs",
+ "charlotte-protocol-kafka",
  "charlotte-protocol-msg",
  "charlotte-protocol-net",
  "charlotte-protocol-objstore",
@@ -251,6 +254,10 @@ name = "charlotte-authorization"
 version = "0.1.0"
 
 [[package]]
+name = "charlotte-kafka"
+version = "0.1.0"
+
+[[package]]
 name = "charlotte-launch"
 version = "0.1.0"
 dependencies = [
@@ -271,6 +278,10 @@ version = "0.1.0"
 
 [[package]]
 name = "charlotte-protocol-fs"
+version = "0.1.0"
+
+[[package]]
+name = "charlotte-protocol-kafka"
 version = "0.1.0"
 
 [[package]]

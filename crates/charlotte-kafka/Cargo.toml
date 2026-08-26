@@ -1,0 +1,9 @@
+[package]
+name = "charlotte-kafka"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded no_std Kafka wire protocol core for CharlotteOS"
+
+[lib]
+test = true
+bench = false

@@ -50,6 +50,12 @@ The main additions and extensions currently maintained here are:
 - **Reliable-message fragmentation:** messages up to 64 KiB are split across
   Ethernet frames and reassembled at the receiver, carrying the distributed
   name service / Raft across two guests.
+- **Capability-scoped data-plane clients:** the S3 service confines a managed
+  object-store endpoint, bucket/prefix, credentials, and operations behind one
+  endpoint capability. The Kafka service similarly confines a broker,
+  topic/partition, group, and transactional identity while providing
+  idempotent production, bounded read-committed consumption, and transactional
+  offset commits through linear Rust owners.
 - **Userspace persistent-storage prototype:** an NVMe block driver using DMA
   and MSI-X, a block protocol, an object store, and namespaced Raft
   term/vote/log/snapshot storage. Process-restart recovery is boot-tested;

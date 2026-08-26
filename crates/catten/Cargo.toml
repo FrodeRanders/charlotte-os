@@ -61,6 +61,9 @@ dhcp_test = ["virtio_net_test"]
 # Start an ephemeral, TLS-enabled S3 profile and run a complete object
 # round-trip against the run script's Docker RustFS fixture.
 s3_test = ["dhcp_test"]
+# Start an ephemeral Kafka KRaft profile and validate idempotent production,
+# read-committed consumption, abort filtering, and transactional offset commit.
+kafka_test = ["dhcp_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []
@@ -74,6 +77,7 @@ catten-syscall = { path = "../catten-syscall" }
 charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
+charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
 # Keep the protocol bindings aligned with the vendored, boot-tested Limine
 # loader. 0.x releases are not API-compatible with one another, so a lower

@@ -114,10 +114,12 @@ spin = ">=0.10.0"
 charlotte-protocol-block = { path = "../charlotte-protocol-block" }
 charlotte-protocol-objstore = { path = "../charlotte-protocol-objstore" }
 charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
+charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 charlotte-protocol-time = { path = "../charlotte-protocol-time" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
 charlotte-s3 = { path = "../charlotte-s3" }
+charlotte-kafka = { path = "../charlotte-kafka" }
 embedded-io = { version = "0.7", default-features = false }
 embedded-tls = { version = "0.19", default-features = false, features = ["alloc", "rustpki", "rsa", "p384", "ed25519"] }
 rand_core = { version = "0.6", default-features = false }
@@ -143,6 +145,18 @@ bench = false
 [[bin]]
 name = "rng"
 path = "src/bin/rng.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka"
+path = "src/bin/kafka.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_smoke"
+path = "src/bin/kafka_smoke.rs"
 test = false
 bench = false
 
