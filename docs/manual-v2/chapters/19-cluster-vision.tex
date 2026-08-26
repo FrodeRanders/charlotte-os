@@ -1,561 +1,934 @@
 \chapter{Server-Class Cluster Vision}
 
-This chapter separates the implemented cluster mechanisms from the larger
-server-class target. The implemented boundary is a
-two-node QEMU cluster with replicated naming and deployment state, signed
-ELF artifacts, per-node NVMe object stores, deployment agents, remote
-invocation, and a stateless assignment handoff. Discovery-bridged membership
-admission is now demonstrated for a generic Raft group, but the production
-DNS voter set is still statically launched. Integrating that admission with
-the durable shared-name-service identity remains future work, as do shared
-artifact storage, stateful cross-node migration, and automatic placement.
+CharlotteOS is exploring an operating-system boundary at which the cluster,
+rather than an individual machine, is the primary administrative and
+computational unit. An operator should not install a program on a chosen
+server. The operator should assign a signed workload to a cluster, declare
+the resources, authority, multiplicity, and placement constraints it needs,
+and let the cluster decide where the workload runs. Nodes should be
+replaceable providers of processors, memory, devices, and failure domains,
+not long-lived machines whose local software configuration is operationally
+interesting.
 
-\section{The vision: interchangeable compute}
+This is an architectural vision, but we are taking steps in this direction.
+What we can demonstrate now is a two-node QEMU cluster with
+replicated naming and deployment state, signed ELF artifacts, per-node NVMe
+object stores, deployment agents, remote invocation, and a demonstrated
+stateless assignment handoff. Discovery-bridged admission has also been
+demonstrated for a generic Raft group, but the production DNS voter set is
+still launched statically. Automatic placement, shared artifact storage,
+replica-aware routing, stateful cross-node migration, and a production
+administration plane remain future work.
 
-The target treats servers as replaceable compute units over shared storage. As
-nodes boot, they join a cluster; deployment and routing address the cluster rather
-than a particular machine.
+The purpose of this chapter is therefore twofold. It first states the
+cluster-level model CharlotteOS is trying to reach. It then uses Linux
+containers and Kubernetes/OpenShift as a counterpoint for identifying which
+parts of a modern cluster platform are intrinsic consequences of distributed
+computation and which parts arise from adapting general-purpose,
+machine-centred operating systems to isolated, reproducible, movable
+workloads. The comparison is a research question, not a claim that the
+prototype already replaces a production container platform.
 
-This inverts the familiar software deployment model. Instead of deploying software
-to one or more named servers, software is deployed to a named cluster, and the
-cluster selects an optimal placement of load among its nodes based on how
-the deployed components interoperate. Components that interoperate heavily
-should land on the same cluster node; components that barely talk may be
-spread arbitrarily. Placement is not a one-component/one-node map. A
-component explicitly blessed as safe for parallel execution may have several
-instances, and an affinity group may place instances beside tightly dependent
-components. Replica anti-affinity and minimum failure-domain rules remain
-independent: co-location for latency must not accidentally defeat
-availability. The placement decision is made in and by the cluster
-itself, from rules it holds in its shared state, not by an operator
-manually mapping software to machines.
+\section{The cluster is the computer}
 
-The same idea appears one level down: the shard-per-core model
-(Chapter~9) treats the cores of one machine as interchangeable executors
-over owned state, and the scheduler (Chapter~10) moves work between them.
-This chapter scales that notion to a cluster of machines. A cluster node
-plays the role of a core; the shared object store plays the role of owned
-state; and the cluster as a whole is the shared-nothing machine.
+\subsection{Nodes are resources, not deployment targets}
+
+The central proposition is simple:
+
+\begin{quote}
+    A Charlotte node is not an administrative unit. The Charlotte cluster is
+    the administrative unit.
+\end{quote}
+
+A node boots, discovers or is directed to a cluster, establishes its
+identity, joins shared state, advertises resources, and receives work. Its
+useful description is not a list of packages and locally installed
+applications, but properties such as processor architecture, memory,
+accelerators, attached devices, trust domain, and failure domain. If a node
+fails, the operator should replace the resource and let the cluster
+reconstruct the intended placement. If a workload moves, clients should
+continue to address its cluster name rather than learn the identity of its
+new host.
+
+This makes individual nodes deliberately uninteresting. They still have
+identities where consensus membership, failure detection, routing, and
+ownership fencing require them, but those identities are mechanisms, not the
+operator's application-deployment model. The distinction is important:
+interchangeable nodes need not be physically identical, and failure domains
+cannot be ignored. Differences are expressed as schedulable properties and
+constraints rather than as hand-maintained machine personalities.
+
+The same idea already appears one level down in CharlotteOS. The
+shard-per-core model of Chapter~9 treats cores as executors over explicitly
+owned state, while the scheduler in Chapter~10 moves work between them. The
+cluster vision scales this relationship outward: a cluster node is analogous
+to a core, cluster-visible storage is analogous to owned persistent state,
+and the cluster becomes the unit within which execution is placed.
+
+\subsection{Workloads are signed execution objects}
+
+In the target model, cluster software is not a miniature general-purpose
+machine encoded as a filesystem. It is a signed execution object with a
+logical identity and a deliberately small execution environment. Its signed
+metadata can bind, among other things, its name, class, release, rollback
+counter, permission to run concurrent instances, and a digest linking to
+retained provenance.
+
+Signature validity answers only whether the cluster accepts the artifact's
+identity and origin. It does not grant the workload arbitrary authority.
+Once loaded, a workload executes in its own address space and receives only
+the capabilities needed for its purpose. Authority is delegated positively:
+a component may receive a service endpoint, a storage object, a device, or
+an administration capability. It does not begin with a complete Unix machine
+view that must subsequently be hidden from it.
+
+Signing and capability confinement solve different problems and both are
+required. A correctly signed but over-authorised program can still cause
+damage; a tightly confined but unauthenticated program is not acceptable
+cluster software. CharlotteOS combines an immutable, name-bound artifact
+identity at the loading boundary with explicit authority at the execution
+boundary.
+
+This clean boundary also changes what installing software means. Nodes need
+not resolve packages, execute installation scripts, or accumulate
+machine-local dependency state. Third-party code can still enter during the
+build, but the cluster receives a self-contained, blessed artifact and its
+associated evidence. Reproducible builds, vulnerability policy, SBOMs,
+source attestation, and signing-key custody remain essential supply-chain
+responsibilities; they are not replaced by the operating system.
+
+\subsection{Assignment is declarative and cluster-wide}
+
+The desired operation is not to install version 71 of a claims engine on
+servers A, B, and C. It is to make that version active in the cluster with a
+desired number of instances and declared resource, authority, affinity,
+anti-affinity, and failure-domain constraints.
+
+That declaration becomes replicated desired state. A cluster controller
+compares it with observed state and chooses assignments. An assigned node
+obtains the immutable artifact, verifies its identity and signature, creates
+an isolated execution domain, and supplies its delegated capabilities.
+Rollback is another desired-state change to an earlier accepted artifact,
+not a sequence of machine-repair commands.
+
+Placement is not a fixed one-component/one-node map. A component explicitly
+blessed as safe for parallel execution may have several instances. Closely
+interacting components may be co-located to reduce communication cost, while
+replica anti-affinity and minimum failure-domain rules keep latency
+optimisation from defeating availability. Node capacity, architecture,
+devices, policy domains, and actual load all constrain the decision.
+
+Routing must follow the same abstraction. Clients address a logical service
+through the cluster name service; they do not bind application configuration
+to a host address. The runtime may choose local delivery when caller and
+callee are co-located and network delivery when they are not. If placement
+changes, the name's generation changes, stale endpoints are invalidated, and
+clients resolve again.
+
+Migration is consequently a cluster operation, not an administrator logging
+into two machines. Stateless reassignment starts an equivalent instance at
+the new location and retires the old one under generation fencing. Stateful
+migration additionally requires an explicit transfer of owned mutable state
+and a single, fenced change of ownership. CharlotteOS has demonstrated only
+the stateless cross-node case; the stateful protocol remains a target.
+
+\section{Kubernetes and OpenShift as a counterpoint}
+
+\subsection{What the container stack constructs}
+
+A Linux container is not a new kernel object equivalent to a virtual
+machine. It is a group of ordinary Linux processes made into a deployable
+unit by combining several facilities: namespaces determine which resources
+and identifiers are visible, cgroups account for and limit resource use,
+Linux capabilities divide some root privileges, seccomp restricts the system
+call surface, an LSM such as SELinux constrains object access, and a prepared
+filesystem and network configuration provide the process's apparent
+environment. An OCI image and runtime turn those facilities into a
+repeatable execution contract. Kubernetes adds scheduling, desired-state
+reconciliation, service naming, failure recovery, rolling change, and many
+other cluster functions. OpenShift adds an integrated security, policy,
+build, registry, identity, networking, and operations environment around
+that model.
+
+This machinery exists for good reasons. Linux is a general-purpose,
+machine-centred operating system with a vast compatibility surface.
+Conventional applications expect filesystems, shared libraries, package
+contents, users, process APIs, network interfaces, and often a distribution
+userspace. Container platforms must package enough of that environment to
+make a program reproducible, then construct boundaries that let mutually
+distrustful workloads share a kernel. OCI images need not contain a complete
+distribution, but they commonly carry a substantial userspace precisely
+because existing software was written as if it ran inside a machine.
+
+Kubernetes can therefore be understood partly as a distributed
+operating-system layer over machines whose native abstractions stop at the
+node. It translates from the operator's model of workloads in a cluster to
+Linux processes on machines. That observation is not a criticism of
+Kubernetes. Its great practical advantage is that it orchestrates the
+software and operating systems that already exist.
+
+CharlotteOS asks a different question: what becomes possible when the
+controlled distributed execution environment is the operating system,
+rather than something assembled above a set of general-purpose hosts?
+
+\subsection{Two sources of complexity}
+
+The comparison is useful only if it separates two kinds of complexity.
+
+\paragraph{Distributed-systems complexity is intrinsic.}
+CharlotteOS does not abolish scheduling, consensus, placement, replication,
+health management, service discovery, upgrades, resource accounting,
+storage, networking, observability, failure detection, load balancing, or
+recovery from partial failure. Network partitions still occur. Replicas
+still need consistency rules. Persistent state still needs ownership,
+durability, repair, and backup. Placement still needs capacity and policy
+constraints. Rolling change still needs compatibility and rollback.
+Secrets still need secure creation and delegation. An operating system that
+absorbs orchestration must implement these responsibilities; moving them
+downward does not make them disappear.
+
+\paragraph{Compatibility and boundary-construction complexity may change.}
+Some machinery exists because a cluster platform must turn a
+general-purpose Unix/Linux environment into a constrained, reproducible,
+movable unit. A clean-break system with signed, self-contained artifacts,
+separate address spaces, explicit capabilities, cluster-native names, and no
+per-node application installation may eliminate or radically simplify:
+
+\begin{itemize}
+    \item OCI filesystem images as the normal application-delivery unit;
+    \item CRI/OCI container-runtime and low-level container-launch layers;
+    \item per-workload namespace construction and much container-specific
+        seccomp, Linux-capability, and LSM policy scaffolding;
+    \item the attempt to remove ambient machine authority from a process that
+        began in a conventional Unix environment;
+    \item per-node application package management, configuration drift, and
+        machine-centred deployment procedures; and
+    \item host-oriented workload mobility assembled from process, filesystem,
+        and network emulation.
+\end{itemize}
+
+These are hypotheses about the target architecture, not blanket claims that
+each mechanism is unnecessary in every CharlotteOS implementation.
+Resource accounting, for example, survives even if cgroups do not; memory
+protection survives even if Linux namespaces do not; policy enforcement
+survives even if it is expressed by capability possession rather than
+SELinux labels. The responsibility remains while its mechanism and location
+change.
+
+\subsection{The control plane may survive the execution stack}
+
+The likely result is not that CharlotteOS eliminates Kubernetes. It is that
+CharlotteOS explores absorbing cluster orchestration into the operating
+system while removing much of the machinery required to manufacture a
+controlled execution environment above Linux.
+
+Kubernetes's strongest control-plane ideas may survive remarkably well:
+declarative desired state, reconciliation, scheduling from constraints,
+generation-aware updates, health-driven replacement, replicated control
+state, and separation between specification and observation. A CharlotteOS
+cluster executive may therefore look recognisably Kubernetes-like at the
+level of intent and convergence.
+
+The execution path beneath that controller could, however, be much shorter.
+Instead of a desired workload becoming a Pod, an OCI image, a container
+runtime request, a low-level runtime invocation, a namespace/cgroup/LSM
+configuration, and finally Linux processes, a cluster assignment can become
+a verified Charlotte execution object loaded directly into a
+capability-constrained address space. Discovering that reconciliation and
+scheduling survive while Pods, OCI, CRI, and much container security
+scaffolding do not would identify which platform ideas are consequences of
+distributed computation and which are consequences of the substrate.
+
+The price of the clean break is equally important: existing Linux software
+does not simply run. CharlotteOS exchanges compatibility for a smaller and
+more explicit execution contract. Kubernetes asks how to orchestrate today's
+applications. CharlotteOS asks what applications and operating systems could
+look like if cluster execution, artifact trust, and explicit authority were
+native from the beginning.
+
+\section{Target architecture}
+
+\subsection{The minimal node}
+
+The production target is an appliance-like node with no shell, no per-node
+application package manager, and no manually curated repository of installed
+software. Its stable local environment is just enough to boot, establish
+trust and identity, reach storage and the network, join cluster state,
+observe resources, and load assigned artifacts. Application differences
+belong in signed workload objects and replicated cluster policy rather than
+in mutable node configuration.
+
+A target node lifecycle is:
+
+\begin{enumerate}
+    \item boot a known CharlotteOS image and establish the node's execution
+        and hardware trust boundary;
+    \item discover a cluster or contact a configured seed;
+    \item authenticate, learn cluster identity and policy, and join the
+        relevant replicated state;
+    \item advertise resources and failure-domain properties;
+    \item receive assignments, fetch immutable artifacts, validate them, and
+        instantiate only their delegated authority; and
+    \item on failure or retirement, surrender ownership under fencing while
+        the cluster reconciles desired state elsewhere.
+\end{enumerate}
+
+Secure Boot, measured boot, or remote attestation can strengthen the
+hardware-to-cluster trust chain, but they are complementary future concerns;
+artifact signing by itself does not attest the node.
+
+\subsection{The cluster executive}
+
+The target cluster executive holds desired software state and observes
+actual execution state. It knows accepted artifact identities, placement
+policies, node resources, assignments, active service generations, and
+enough health and communication data to converge the two. Its responsibilities
+include:
+
+\begin{itemize}
+    \item admitting nodes and maintaining consensus membership;
+    \item accepting authorised, generation-fenced desired-state changes;
+    \item ensuring that referenced artifacts are available and valid;
+    \item choosing placements from resource, trust, affinity,
+        anti-affinity, and failure-domain constraints;
+    \item realising replica counts and routing among active owners;
+    \item observing failure and load and initiating replacement or movement;
+    \item coordinating upgrades, rollback, and mutable-state ownership; and
+    \item exposing cluster-wide status, accounting, logs, metrics, and
+        administrative audit.
+\end{itemize}
+
+This is substantial orchestration work. The simplification sought by
+CharlotteOS is not a control plane with no hard problems, but a control plane
+that acts directly on native execution objects rather than indirectly on
+machine-shaped compatibility environments.
+
+\subsection{Placement, routing, and migration as native operations}
+
+The first placement controller can begin with declared rules. Desired
+replicas, maximum instances per node, minimum distinct nodes, every eligible
+node, affinity groups, anti-affinity groups, required resources, and policy
+domains form a constraint problem over advertised node capacity. Admission
+must reject combinations the artifact did not authorise: in particular,
+concurrent replicas are invalid unless signed metadata blesses parallel
+instances.
+
+Declared affinity is only an initial estimate. The runtime should aggregate
+actual message counts, byte flow, queue pressure, and executor load across
+the cluster. Sustained evidence can then influence placement, just as the
+per-node scheduler's sustained-window rebalancing replaces a static
+assignment with a load-observed one. Communication-aware placement remains
+subordinate to correctness constraints: co-location must not collapse
+required failure diversity, violate trust boundaries, or create ambiguous
+state ownership.
+
+Routing is the indirection that makes placement change tolerable. A logical
+name resolves to an active generation and one or more owners. A local owner
+may be reached through a local endpoint and a remote owner through cluster
+transport without changing the caller's authority. When an owner is
+replaced, generation fencing prevents the retiring instance from deleting or
+overwriting its successor's registration.
+
+Stateful migration must be explicit. The old instance exports only the
+mutable state it owns; the target accepts that state under a transfer
+protocol; ownership changes exactly once; the new endpoint becomes active;
+and stale clients are forced to re-resolve. Transparent movement must never
+mean copying mutable state without a consistency and fencing model.
 
 \section{Implemented foundation}
 
-The following implemented and verified mechanisms form the foundation:
+The architectural target above is supported by the following implemented and
+verified mechanisms. Their existence makes the cluster vision concrete, but
+does not by itself constitute a complete cluster executive.
 
 \begin{itemize}
-    \item Cross-machine consensus --- the Graft core replicates the
-        \texttt{dns} catalog state machine across two QEMU guests on a
-        stream Ethernet segment, serving remote invocation through
-        \texttt{dns::OP\_CALL} (Chapter~14). The same replicated catalog now
+    \item \textbf{Cross-machine consensus.} The Graft core replicates the
+        \texttt{dns} catalog state machine across two QEMU guests on a stream
+        Ethernet segment and serves remote invocation through
+        \texttt{dns::OP\_CALL} (Chapter~14). The same replicated catalog
         carries the set-once cluster signing key and deployment assignments.
-        Placement rules are not yet part of that state machine.
+        Placement rules are not yet stored in that state machine.
 
-    \item Reliable cluster messaging --- messages up to 64~KiB are
+    \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
         fragmented across Ethernet frames and reassembled at the receiver
-        (Chapter~13). Remote name-service calls, deployment coordination, and
-        the demonstrated assignment handoff run over this transport.
+        (Chapter~13). Remote name-service calls, deployment coordination,
+        and the demonstrated assignment handoff use this transport.
 
-    \item Persistent per-node object stores --- the NVMe-backed
-        object store with generation-selected directory records and
-        copy-on-write replacement (Chapter~15) stores service artifacts and
-        persistent Raft state. The current image producer places the same
-        signed bundle on each node; a networked, interchangeable artifact
-        store is not yet implemented.
+    \item \textbf{Persistent per-node object stores.} The NVMe-backed object
+        store uses generation-selected directory records and copy-on-write
+        replacement (Chapter~15) for service artifacts and persistent Raft
+        state. The current image producer places the same signed bundle on
+        each node; network fetch, repair, and cluster-wide artifact
+        replication are not implemented.
 
-    \item Local stateful replacement --- live service upgrade transfers a
-        service's state as a memory object, tracks generations, invalidates
-        stale connections, and re-registers the new instance through the
-        name service (Chapter~16). The two-node cluster test reassigns and
-        restarts a stateless service while preserving its name; transferring
-        mutable service state over the network remains future work.
+    \item \textbf{Local stateful replacement.} Live service upgrade
+        transfers a service's state as a memory object, tracks generations,
+        invalidates stale connections, and re-registers the replacement
+        through the name service (Chapter~16). This has not yet been
+        extended to mutable state crossing the network.
 
-    \item Service isolation and routing --- services live in separate
-        address spaces with delegated capabilities (Chapter~11), and the
-        name service --- replicated across nodes --- is the routing table
-        for ``somewhere in the cluster''.
+    \item \textbf{Service isolation and routing.} Services execute in
+        separate address spaces with delegated capabilities (Chapter~11).
+        The name service is replicated across nodes and provides the routing
+        indirection for a service somewhere in the cluster.
 
-    \item Certified work migration --- the scheduler migrates threads
+    \item \textbf{Certified work migration.} The scheduler migrates threads
         between LPs with generation-validated handoff and sustained-window
-        load rebalancing (Chapter~10). The per-node precedent for the
-        cluster rebalancer.
+        load rebalancing (Chapter~10). This is a per-node precedent for,
+        rather than an implementation of, cluster rebalancing.
 
-    \item Observation substrate --- the sitas executor exposes task
+    \item \textbf{Observation substrate.} The sitas executor exposes task
         counts, poll counts, queue depth, and shard snapshots (Chapter~9).
-        Shard-to-shard message flow can be measured; aggregating those
-        measurements across nodes is the runtime input to placement.
+        Shard-to-shard message flow can be measured. Cluster-wide collection
+        and use of those measurements by a placement controller remain
+        future work.
 
-    \item Signed binaries at the boundary --- the EL0 loader validates
-        ELF structure, rejects writable-executable segments, maps images with
-        page-level permissions, and now requires a valid Ed25519 CLS2 note
+    \item \textbf{Signed binaries at the loading boundary.} The EL0 loader
+        validates ELF structure, rejects writable-executable segments, maps
+        images with page-level permissions, and requires an Ed25519 CLS2 note
         bound to the requested service name (Chapters~15 and~16). Store
         lookup, administration ingress, and deployment recheck that identity.
 \end{itemize}
 
-\section{Target node model and current bootstrap}
+\section{Current bootstrap and node model}
 
-The implemented kernel embeds only five signed bootstrap services:
+The implemented kernel embeds five signed bootstrap services:
 \texttt{ns}, \texttt{nvme}, \texttt{objstore}, \texttt{uart}, and
-\texttt{observe}. They are sufficient to establish naming, reach persistent
-storage, and expose the early console and observation paths. All other staged
-services are loaded on first use from the signed bundle in the initial NVMe
-object-store image and cached in kernel memory. Thus service binaries no
-longer generally have to be linked into the kernel image.
+\texttt{observe}. They establish naming, reach persistent storage, and
+provide the early console and observation paths. Other staged services are
+loaded on first use from the signed bundle in the initial NVMe object-store
+image and cached in kernel memory. Service binaries therefore no longer
+generally need to be linked into the kernel image.
 
-The production target remains a node with no shell, no per-node package
-manager, and no manually curated software repository. The current
+This is a concrete step toward the minimal node, but the current
 \texttt{--deploy-test} serial command loop is a kernel-side test and
-administration shim, not that production management plane.
+administration shim, not a production management plane.
 
-The current two-node DNS test starts a statically described pair of voters. A
-separate boot test now drives a discovery-bridged admission into a generic
+\subsection{Discovery and membership}
+
+The current two-node DNS test starts a statically described pair of voters.
+A separate boot test demonstrates discovery-bridged admission to a generic
 Raft group through replicated \texttt{JOIN}, joint consensus, and
-\texttt{FINALIZE}. A production node joining the DNS/shared-state group must
-connect that demonstrated mechanism to durable node identity and complete
-three steps:
+\texttt{FINALIZE}. Integrating that admission path with the durable
+DNS/shared-name-service identity remains future work.
+
+A production node joining shared cluster state must complete three distinct
+operations:
 
 \begin{enumerate}
-    \item Auto-discovery --- the node contacts the cluster through
-        broadcast discovery or a configured seed, following the discovery
-        mechanisms discussed for Raft peers (Chapter~14). Discovery exists as
-        a service, supplies MAC routes and cluster posture, and the generic
-        Raft admission test uses it to locate the anchor. Discovery does not
-        itself grant voting authority.
+    \item \textbf{Discover the cluster.} The node uses broadcast discovery
+        or a configured seed as discussed for Raft peers in Chapter~14.
+        Discovery exists as a service, supplies MAC routes and cluster
+        posture, and locates the anchor in the generic admission test.
+        Discovery alone does not grant voting authority.
 
-    \item Receiving cluster identity --- the replicated catalog can
-        distribute the set-once public signing key. Today that key must equal
-        the build-time bootstrap anchor; blank-start establishment and key
-        rotation are not implemented.
+    \item \textbf{Receive cluster identity.} The replicated catalog can
+        distribute the set-once public signing key. Today that key must
+        equal the build-time bootstrap anchor. Establishing trust from a
+        genuinely blank start and rotating keys are not implemented.
 
-    \item Joining the shared state --- the node becomes a member of
-        the replicated state machine and begins to receive deployment
-        assignments. The test agents already consume assignments, but no
-        automatic placement controller currently produces them.
+    \item \textbf{Join shared state.} The node becomes a member of the
+        replicated state machine and begins receiving assignments. Test
+        agents consume explicit assignments now, but no automatic placement
+        controller produces them.
 \end{enumerate}
 
-The production target may begin without cluster key material. Discovery,
-elections, and replication can proceed, but executable artifacts cannot yet be
-validated. An explicit administrative operation would establish the key through
-the leader and replicate it as cluster state. The current prototype instead uses
-a build-time bootstrap anchor; blank-start enrollment and rotation are not
-implemented.
+The target may allow a node to discover peers and participate in a restricted
+bootstrap before cluster key material is established, but it cannot validate
+executable artifacts without an accepted public key. An authorised
+administrative operation would establish or rotate that trust through
+replicated state. The current prototype instead uses a build-time anchor and
+a set-once, idempotent key ceremony.
 
-\section{Implemented deployment pipeline and production target}
+\section{Software ingress and deployment}
 
-Software is an artifact in the object store, and deployment is the act of
-assigning artifacts to cluster nodes. The demonstrated pipeline implements
-three stages, with the storage and trust-bootstrap limitations stated below:
+\subsection{The target pipeline}
+
+CharlotteOS does not remove the software supply chain; it narrows and makes
+explicit the object that crosses into the cluster. The intended pipeline is:
 
 \begin{enumerate}
-    \item Blessing and signing --- a version-controlled policy admits
-        the artifact and it is signed centrally with the cluster key. Signed
-        metadata binds its logical name, class, release and rollback counter,
-        parallel-instance permission, and an optional SHA-256 link to retained
-        SBOM/build-provenance evidence. The host-side build and
-        \texttt{cluster-sign} tooling implement this step; nodes never receive
-        the private key.
+    \item build a self-contained workload from reviewed source and
+        dependencies;
+    \item evaluate policy and retain provenance, SBOM, test, and attestation
+        evidence;
+    \item bless and sign the immutable workload identity off-cluster;
+    \item make the signed artifact available to the cluster; and
+    \item change replicated desired state so the cluster validates, places,
+        and runs the accepted version.
+\end{enumerate}
 
-    \item Validation --- each node validates every loaded ELF against
+Nodes never receive the signing private key and do not fetch executable
+dependencies from the Internet during placement. Software distribution and
+machine configuration are therefore separated: the same immutable object can
+be placed on any eligible node without reconstructing a userspace installation
+there.
+
+\subsection{The implemented pipeline}
+
+The demonstrated deployment pipeline implements a narrower three-stage path:
+
+\begin{enumerate}
+    \item \textbf{Blessing and signing.} Version-controlled policy admits an
+        artifact and the host-side build and \texttt{cluster-sign} tooling
+        sign it with the cluster key. CLS2 metadata binds the logical name,
+        class, release, rollback counter, parallel-instance permission, and
+        an optional SHA-256 link to retained SBOM/build-provenance evidence.
+        Nodes receive only the public key.
+
+    \item \textbf{Validation.} Each node validates every loaded ELF against
         the public bootstrap anchor and, in the deployment path, the matching
         replicated key. The loader, object-store resolver, administration
         ingress, and agent enforce signature, logical-name, and digest checks.
-        The current set-once ceremony distributes the build-time anchor; it
-        is not yet a general key-enrolment protocol.
+        The present ceremony can distribute only the build-time anchor; it is
+        not a general enrolment or rotation protocol.
 
-    \item Assignment --- a Raft-committed record instructs a named node
-        to load a specific object id and immutable ELF digest. Its agent
-        fetches, validates, and runs the artifact. At present the object is
-        fetched from that node's locally staged NVMe store, not through a
-        cluster-wide artifact-fetch protocol.
+    \item \textbf{Assignment.} A Raft-committed record directs a named node
+        to load a particular object id and immutable ELF digest. The node's
+        agent fetches, validates, and runs that exact artifact. The bytes are
+        currently fetched from a locally staged NVMe store, not through a
+        cluster artifact protocol.
 \end{enumerate}
 
-Deployment targets the cluster, and the cluster's routing table --- the
-replicated name service --- determines how a deployed program is reached.
-The implemented catalog has one active owner and one explicit node assignment
-per artifact. The policy contract can express ``somewhere'', replicas, and
-``every eligible node'', but realizing those choices and routing among
-multiple owners remain placement-controller work.
+The replicated catalog currently records one active owner and one explicit
+node assignment per artifact. The policy contract can express
+\emph{somewhere}, replicas, and \emph{every eligible node}, but a controller
+does not yet realise those choices and the name service does not yet route
+among multiple active owners.
 
-This does not make third-party dependencies disappear. It moves the trust
-boundary to controlled ingress. A build may contain third-party code, but the
-resulting self-contained ELF, policy, and provenance reference are blessed
-once. Nodes trade that immutable artifact inside the cluster; they do not run
-package managers or fetch executable dependencies from the Internet during
-placement. Reproducible builds, vulnerability policy, SBOM production, and
-source attestation remain supply-chain responsibilities outside the kernel.
-
-\section{Placement: affinity, observation, migration}
-
-Placement is the cluster's answer to ``which node runs this component?''
-One part is implemented as a shared validation contract; the controller and
-runtime feedback loop remain vision.
+\section{Placement: contract, observation, and movement}
 
 \subsection{Declared policy: implemented contract}
 
-The intended first controller will use declared interoperation: components
-that communicate heavily should share an affinity group and be co-located
-when availability constraints permit. This mirrors shard placement that
-keeps heavily communicating tasks on the same core.
+The shared \texttt{PlacementPolicy} type expresses desired replicas, maximum
+instances per node, minimum distinct nodes, \emph{every eligible node}, an
+affinity group, and an anti-affinity group. A request for concurrent
+replicas is invalid unless the artifact's signed CLS2 metadata contains
+\texttt{PARALLEL\_INSTANCES}. The type and its validation are implemented
+and host-tested.
 
-The shared \texttt{PlacementPolicy} contract makes the declaration precise:
-desired replicas, maximum instances per node, minimum distinct nodes,
-``every eligible node'', affinity group, and anti-affinity group. A policy
-requesting concurrent replicas is invalid unless the artifact's signed CLS2
-metadata includes \texttt{PARALLEL\_INSTANCES}. This type and its validation
-are implemented and host-tested. The policy is not yet stored in the
-replicated manifest or consumed by a controller: the present state machine
-still commits one explicit assignment per artifact.
+This is a validation contract, not a scheduler. The policy is not yet stored
+in the replicated deployment manifest or consumed by a controller. The
+current state machine commits one explicit node assignment for each artifact.
 
-\subsection{Observation}
+\subsection{Runtime observation: local substrate only}
 
-Declared affinity is a guess. The cluster should observe actual
-inter-dependency at runtime: shard-to-shard message counts and byte flows
-are already visible at the executor level (Chapter~9), and the distributed
-name service can aggregate which components actually call which. Observed
-behaviour overrides the declared guess as evidence accumulates, in the
-same way the scheduler's sustained-window rebalancing replaces a static
-per-LP assignment with a load-observed one (Chapter~10).
+Declared relationships are guesses. Shard-level message counts, byte flow,
+queue depth, and task snapshots are already observable inside a node
+(Chapter~9), and the distributed name service can identify which components
+call which. The target controller should aggregate these signals across
+nodes and use sustained behaviour, not transient noise, to refine placement.
 
-\subsection{Demonstrated assignment handoff and future state transfer}
+No cluster-wide metrics aggregation or feedback-driven placement loop is
+implemented today. The existing executor measurements are inputs from which
+that controller can later be built.
 
-The two-node test already demonstrates a stateless assignment handoff: it
-starts the signed \texttt{greet} artifact on one node, invokes it remotely,
-reassigns it to the other node, retires the old instance, and verifies that
-the name remains reachable. Generation fencing prevents the retiring owner
-from unregistering its replacement.
+\subsection{Demonstrated stateless handoff}
 
-A stateful cross-node migration will have to extend that protocol with the
-live-upgrade state handoff from Chapter~16:
+The two-node test starts the signed \texttt{greet} artifact on one node,
+invokes it remotely, reassigns it to the other node, retires the old instance,
+and verifies that the logical name remains reachable. Generation fencing
+prevents the retiring owner from unregistering its replacement. This proves
+assignment handoff and routing continuity for fresh service state; it does
+not prove general load-driven migration.
+
+\subsection{Future stateful cross-node migration}
+
+Stateful migration must extend the local live-upgrade protocol from
+Chapter~16:
 
 \begin{enumerate}
-    \item The cluster instructs the target node to fetch, validate, and
-        prepare the component in its own address space.
-    \item The old instance exports explicitly owned mutable state and that
-        state is transferred to and accepted by the prepared instance.
-    \item The new instance registers in the distributed name service, which
-        increments the generation for that name.
-    \item Clients that resolve the name now reach the new instance;
-        clients holding the old connection observe \texttt{EndpointClosed}
-        and re-resolve.
-    \item Once the name service points at the new instance, the cluster
-        closes the component down on the previous node, reclaiming its
-        resources.
+    \item the cluster instructs the target node to obtain, validate, and
+        prepare the component in a new address space;
+    \item the old instance exports explicitly owned mutable state and the
+        cluster transfers that state to the prepared instance;
+    \item the target accepts ownership under a fencing protocol;
+    \item the new instance registers through the distributed name service,
+        advancing the name generation;
+    \item clients resolving the name reach the new owner, while clients with
+        stale connections observe \texttt{EndpointClosed} and re-resolve; and
+    \item after the new owner is committed and reachable, the old instance is
+        retired and its resources reclaimed.
 \end{enumerate}
 
 Generation tracking, endpoint invalidation, name-service re-registration,
 and local memory-object state transfer are verified primitives. Network
-transport and ownership fencing for mutable state are not yet implemented;
-the existing cluster handoff starts the same immutable artifact with fresh
-service state.
+transport and ownership fencing for mutable service state are not
+implemented. The demonstrated cluster handoff starts the same immutable
+artifact with fresh state.
 
-\section{Remaining implementation boundary}
+\section{The demonstrated two-node deployment slice}
 
-The gap between the vision and the current implementation is a set of
-coordination pieces, all of which sit on top of mechanisms that already
-exist:
+The deployment-test QEMU flow boot-tests a first end-to-end slice on two
+guests. A signed artifact is assigned to a named node through replicated
+state; the remote agent obtains and verifies it; the service is invoked across
+the network; and the assignment moves to the other node without losing the
+logical name. Both guests complete with zero failed or pending self-tests.
+The slice is important evidence for the architecture, but its simulated
+administration, pre-staged artifacts, explicit assignments, and static DNS
+voter set keep it well short of the production target.
 
-\begin{itemize}
-    \item Dynamic membership hardening --- the DNS-owned Raft node now
-        performs discovery-bridged admission through replicated \texttt{JOIN},
-        joint consensus, and \texttt{FINALIZE}; membership, names,
-        deployments, and cluster events share its durable log. Partition,
-        restart within a live quorum, and three-voter behavior remain to be
-        validated.
+\subsection{Replicated deployment manifest}
 
-    \item Key injection into cluster state --- the current ceremony
-        commits only the build-time anchor and is set-once and idempotent.
-        A genuinely blank start and authenticated key rotation remain.
+The distributed name service's Raft catalog (Chapter~14) also holds a
+\textbf{deployment manifest}:
 
-    \item Shared artifact availability --- the manifest is replicated,
-        but artifact bytes are currently pre-staged independently on each
-        node. Network fetch, repair, and replication policy remain.
+\begin{quote}
+\texttt{artifact -> \{object\_id, artifact\_sha256, node\_key, generation\}}.
+\end{quote}
 
-    \item Cluster-wide metrics aggregation --- collecting the
-        shard-level observation data from every node into the cluster
-        state, so placement decisions are made from cluster-wide evidence.
+The map is committed through the same log as name registrations. Deployment
+is therefore ordered, replicated, generation-fenced cluster state rather than
+per-node configuration. \texttt{OP\_DEPLOY} submits a record and
+\texttt{OP\_DEPLOY\_QUERY} reads a replica's applied state.
 
-    \item The placement controller --- the component that turns
-        declared affinity, observed interoperation, and node capacity into
-        assignments, and that initiates cross-node migration when the
-        observed behaviour justifies it.
+Raft agreement on a deployment record is not caller authorisation and the
+record carries no independent artifact signature. The production mutation
+path still needs a separately delegated cluster-administrator capability.
 
-    \item Replica-set realisation and routing --- multiple placements,
-        failure-domain enforcement, and selection among several active owners
-        must be added before the parallel-instance policy has runtime effect.
+\subsection{Cross-node hosting and generation fencing}
 
-    \item Stateful cross-node migration --- the current handoff proves
-        reassignment, retirement, and name continuity for a stateless service;
-        transferring mutable state with explicit ownership remains.
-
-    \item Production administration authority --- the userspace
-        \texttt{clusterctl} protocol exists, but its raw mutation endpoint and
-        kernel serial shim do not yet enforce the intended separately
-        delegated cluster-administrator capability.
-\end{itemize}
-
-Most remaining pieces are userspace coordination. The implemented slice adds
-one narrow kernel mechanism: only the supervisor-designated deployment agent
-may start or retire a verified, name-bound ELF memory object. Future work must
-preserve the same discipline as the current path: explicit ownership, bounded
-communication, and replicated decisions rather than per-machine
-configuration.
-
-\section{Demonstrated two-node deployment slice}
-
-A first end-to-end slice is boot-tested on a two-guest cluster through the
-deployment-test QEMU flow: a signed artifact
-is deployed to a named node through the replicated manifest, the remote
-agent picks it up, verifies it, serves it across the network, and the
-artifact assignment is handed to the other node without losing its name. Both
-guests finish with zero failed or pending self-tests. This section distinguishes
-implemented behavior from the simulated administration path.
-
-\subsection{The replicated deployment manifest}
-
-The distributed name service's Raft catalog (Chapter~14) now also carries the
-\textbf{deployment manifest}: an \texttt{artifact $\rightarrow$
-\{object\_id, artifact\_sha256, node\_key, generation\}} map committed through the same
-log as name registrations. A deployment is therefore ordered and replicated
-cluster state rather than per-node configuration, and it is generation-fenced
-like the name catalog. The record carries no separate artifact signature:
-Raft provides agreement on the record, not caller authorization. The raw
-mutation endpoint still needs a separately delegated cluster-administrator
-capability before it is a production plane.
-\texttt{OP\_DEPLOY} submits a record; \texttt{OP\_DEPLOY\_QUERY} reads
-the local replica's applied state.
-
-\subsection{Cross-node hosting}
-
-Hosting a service on a node other than the Raft leader required one new
-piece: the \textbf{remote-register relay}. A service hosted on the follower
-is registered through the leader (the only node allowed to commit catalog
-entries), and the leader relays the committed generation back. The two-phase
-register/activate and the generation-fenced endpoint-death unregister are
-preserved across the relay, so a retiring host can never clobber a
+A service hosted on the follower registers through a
+\textbf{remote-register relay}, because only the leader may commit catalog
+entries. The leader returns the committed generation. The two-phase
+register/activate sequence and generation-fenced endpoint-death unregister
+are preserved across the relay, so a retiring host cannot clobber a
 replacement's registration.
 
-\subsection{The agent}
+Cross-node invocation uses the existing \texttt{OP\_CALL} relay. A client on
+either node reaches the service at its current owner through the replicated
+name service rather than through a node-specific application address.
 
-Each node runs an \texttt{agent}: it polls the manifest for assignments
-addressed to its node key, fetches the artifact from the object store,
-verifies that it is exactly the assigned artifact (SHA-256 identity) and
-that its signature note validates both the bytes and requested logical name,
-then invokes a deployment-authority syscall. The kernel snapshots,
-revalidates, maps, and starts that exact ELF in a fresh address space. The ELF
-registers its own local endpoint; the agent only publishes it in the
-distributed catalog and supervises the assignment. When
-the cluster re-assigns the artifact elsewhere, the agent retires and exits;
-its endpoint close is observed by the dns, which generation-fences the
-unregister. Cross-node invocation of the deployed service rides the existing
-\texttt{OP\_CALL} relay, so a client on either node reaches the artifact
-wherever it currently lives.
+\subsection{The deployment agent}
 
-\subsection{clusterctl and the admin console}
+Each node runs an \texttt{agent}. It polls the manifest for assignments to
+its node key, reads the artifact from the object store, verifies the assigned
+SHA-256 identity, and checks that the signature note covers both the bytes
+and the requested logical name. It then invokes a deployment-authority
+syscall.
 
-\texttt{clusterctl} is the ``outside'' administration interface. It wraps
-the dns manifest ops and the object store behind three operations:
-\texttt{upload} (store a note-signed artifact as-is under the artifact's
-derived cluster-wide id after checking that CLS2 blesses the requested name),
-\texttt{deploy} (hash the stored bytes and submit the pinned assignment), and \texttt{status}
-(query the committed record). A kernel serial console ---
-\texttt{--deploy-test} run interactively, without a runner timeout --- lets
-an operator type \texttt{upload}, \texttt{deploy}, and \texttt{status}
-commands at the QEMU terminal and watch them execute against the live
-cluster.
+The kernel snapshots and revalidates the exact ELF, maps it into a fresh
+address space, and starts it. The ELF registers its local endpoint; the
+agent publishes that endpoint in the distributed catalog and supervises the
+assignment. When the manifest assigns the artifact elsewhere, the agent
+retires the service and causes its address space to exit. Endpoint closure is
+observed by \texttt{dns}, whose generation check prevents a stale unregister.
 
-\subsection{Naming}
+The supervisor-designated agent authority is the one narrow kernel mechanism
+added for this slice: only that agent may start or retire a verified,
+name-bound ELF memory object. The desired placement and administration
+logic remains a userspace coordination concern.
 
-Artifact names are bare cluster-global names (``\texttt{greet}''); the
-object-store id is \emph{derived} from the name (a \texttt{0xfffe...} tag
-over FNV-1a), so every node stores the same artifact under the same id, and
-the node dimension appears only in the deployment record. This naming
-scheme may be replaced later. 
+\subsection{\texttt{clusterctl} and the test console}
 
-The host image producer detects and refuses collisions in the complete 
-bundle; production should move from a truncated 48-bit name hash to 
-a collision-resolving or fully content-addressed namespace.
-
-\subsection{Cryptography: real signatures, honest boundaries}
-
-Artifact validation uses real Ed25519 signatures embedded in the ELF
-itself. The cluster's \emph{private} key never enters the cluster: it is
-held off-cluster (the \repodir|tools/cluster-sign| host tool), and the
-deployed binary is signed with it before upload. The signature lives in a
-standard ELF \texttt{SHT\_NOTE} section (\path{.note.charlotte-sig},
-note type \texttt{"CLS2"}). Its descriptor contains the logical name,
-artifact class and flags, release, rollback counter, signing-key id, optional
-provenance digest, and the 64-byte Ed25519 signature. The signature covers the
-SHA-256 of the whole file with only the signature field treated as zeros --- a signature cannot cover itself, the same trick PE
-Authenticode uses --- so the signed bytes are deterministic. The matching
-\emph{public} key is injected into the cluster two ways: it is embedded in
-the kernel image at build time (the bootstrap trust anchor, handed to
-services through the launch manifest), and it is committed to the replicated
-state by the key ceremony (\texttt{OP\_KEYCEREMONY} $\rightarrow$
-\texttt{OP\_SET\_KEY}). This demonstrates the replicated distribution path
-that a dynamically joining node can use. The generic Raft admission test is
-dynamic, while the DNS test voter set remains static and the replicated key
-must equal the build-time anchor.
-
-The kernel's EL0 loader verifies the note before mapping any domain, and
-signing is \emph{mandatory}: an image that is unsigned or invalidly signed
-is refused outright (the live-upgrade syscall fails gracefully; every other
-load path panics). The build pipeline signs every staged service ELF with
-the cluster's private key --- by default the version-controlled
-\emph{development} keypair in
-\repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
-\texttt{CLUSTER\_PUBLIC\_KEY}; a live key can be substituted at build time
-via \texttt{CLUSTER\_SIGN\_PRIVATE\_KEY} (rebuilding the kernel with its
-public half embedded). Store resolution and deployment additionally verify
-the signed name, and the manifest pins the complete ELF SHA-256. The deployed artifact is
-a real binary --- the \texttt{greet} service ELF, signed by the build
-pipeline and staged into the object store --- fetched, verified, executed, served
-across the network, and reassigned through the demonstrated stateless handoff. The deployment
-record is agreed by Raft, but that agreement is not an authorization proof;
-the production mutation path still requires the administrator authority
-described above.
-
-The slice still simulates the hard parts of the vision, and the
-simulations are the next work items:
+\texttt{clusterctl} is the prototype outside administration interface. It
+wraps the DNS manifest operations and object store behind:
 
 \begin{itemize}
-    \item Per-node object store --- storage is still per-node: the
-        host image producer stages the blessed bundle on each initial NVMe volume
-        rather than fetched from a cluster-wide store. A networked
-        artifact-fetch path is not implemented.
-
-    \item Bootstrap-key rotation is absent --- establishment now
-        accepts only the build-time anchor and replicated state is set-once.
-        Blank-start trust establishment and authenticated overlapping key
-        rotation are not implemented.
-
-    \item The development key is version-controlled --- every
-        staged ELF is signed with the dev keypair in the repository; the
-        real production key lives at the IT department and would be
-        substituted at build time. The NVMe-ELF upgrade path remains
-        identity- and signature-constrained (Chapter~16).
-
-    \item The admin is kernel-side --- the console is a kernel
-        thread, not a real out-of-band management plane. Its raw mutation path
-        also lacks the intended separately delegated cluster-administrator
-        capability.
-
-    \item Replica placement is a contract, not a controller --- the
-        policy representation and signed parallel-safety gate exist, but the
-        current manifest has one node assignment per artifact and name routing
-        has one active owner. Multiple placements and load-balanced routing
-        remain to be implemented.
+    \item \texttt{upload}, which stores a note-signed artifact under its
+        derived cluster-wide id after checking that CLS2 blesses the requested
+        name;
+    \item \texttt{deploy}, which hashes the stored bytes and submits the
+        pinned assignment; and
+    \item \texttt{status}, which queries the committed record.
 \end{itemize}
+
+An interactive kernel serial console in the \texttt{--deploy-test} flow lets
+an operator issue these commands against the live cluster. The console is a
+kernel test thread, not an out-of-band production management plane, and the
+raw mutation endpoint does not yet enforce the intended separately delegated
+administrator capability.
+
+\subsection{Artifact naming}
+
+Artifact names are currently bare cluster-global names such as
+\texttt{greet}. The object-store id is derived from the name using a
+\texttt{0xfffe...} tag over FNV-1a, so each staged node stores an artifact
+under the same id and the node dimension occurs only in the deployment
+record.
+
+The host image producer detects and rejects collisions in the complete
+bundle. Production should replace the truncated 48-bit name hash with a
+collision-resolving or fully content-addressed namespace.
+
+\subsection{Cryptographic boundary}
+
+Artifact validation uses Ed25519 signatures embedded in the ELF. The private
+cluster key remains off-cluster in the
+\repodir|tools/cluster-sign| host tool. The signature is stored in a standard
+ELF \texttt{SHT\_NOTE} section named
+\path{.note.charlotte-sig}, with note type \texttt{"CLS2"}. Its descriptor
+contains the logical name, artifact class and flags, release, rollback
+counter, signing-key id, optional provenance digest, and the 64-byte
+signature.
+
+The signature covers the SHA-256 digest of the complete file with only the
+signature field treated as zero, making the signed representation
+deterministic. The matching public key enters the prototype in two ways: it
+is embedded in the kernel at build time as the bootstrap trust anchor and
+passed to services in the launch manifest; and the key ceremony commits it
+to replicated state through
+\texttt{OP\_KEYCEREMONY} and \texttt{OP\_SET\_KEY}. This demonstrates a
+distribution path that a future dynamically joining node can use. It does
+not demonstrate blank-start trust: the replicated value must equal the
+build-time anchor.
+
+The EL0 loader verifies the note before mapping a domain. Signing is
+mandatory: unsigned or invalidly signed images are rejected. The
+live-upgrade syscall reports failure gracefully; other current load paths
+panic. By default the build signs staged services using the
+version-controlled development keypair at
+\repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
+\texttt{CLUSTER\_PUBLIC\_KEY}. A different key can be supplied through
+\texttt{CLUSTER\_SIGN\_PRIVATE\_KEY}, with a kernel rebuilt to embed its
+public half. A production key would be held outside the repository under
+organisational key-management procedures.
+
+Store resolution and deployment additionally check the signed logical name,
+and the manifest pins the full ELF SHA-256. The demonstrated
+\texttt{greet} service is therefore a real, signed binary fetched from the
+local object store, mapped, executed, served across the network, and
+reassigned. Raft orders the assignment, but consensus is not an
+authorisation proof for the administrator who requested it.
 
 \subsection{What the slice proves}
 
-Within these limits, the slice shows the main pieces working together: an
-explicit node assignment is replicated cluster state;
-services are hosted cross-node and stay reachable through the distributed
-name service; generation fencing makes a stateless assignment handoff safe;
-and deployment and administration exist as protocols. It does not yet prove
-automatic placement, stateful migration, dynamic reconfiguration of the
-durable DNS/shared-state group, or production authorisation. It does prove
-the narrower generic-Raft admission path.
+Within its stated limits, the slice proves that:
+
+\begin{itemize}
+    \item an explicit node assignment can be represented as replicated,
+        generation-fenced cluster state;
+    \item a signed, name-bound ELF can be obtained, independently revalidated,
+        and launched by a node agent;
+    \item a service can be hosted away from the Raft leader and remain
+        reachable through the distributed name service;
+    \item generation fencing protects a stateless reassignment from a stale
+        owner's unregister; and
+    \item deployment and administration have protocol shapes rather than
+        requiring direct machine configuration.
+\end{itemize}
+
+It does not prove automatic placement, multi-owner routing, stateful
+cross-node migration, shared artifact availability, dynamic reconfiguration
+of the durable DNS group, production key establishment or rotation, or
+production administrative authorisation. The narrower generic-Raft
+admission path is separately demonstrated.
+
+\section{Remaining implementation boundary}
+
+The gap between the demonstrated slice and the target cluster operating
+system is not a small amount of polish. It contains the following
+substantial coordination and trust work:
+
+\begin{itemize}
+    \item \textbf{Dynamic membership hardening and integration.} Generic
+        discovery-bridged admission performs replicated \texttt{JOIN}, joint
+        consensus, and \texttt{FINALIZE}. It must be integrated with the
+        durable DNS/shared-state identity. Partition behaviour, restart
+        within a live quorum, and three-voter operation still need
+        validation.
+
+    \item \textbf{Trust establishment and key rotation.} The present key
+        ceremony is set-once, idempotent, and limited to the build-time
+        anchor. Authenticated blank-start establishment, overlapping
+        rotation, revocation, and recovery remain.
+
+    \item \textbf{Shared artifact availability.} Manifest records are
+        replicated, but artifact bytes are pre-staged independently on each
+        NVMe volume. Network fetch, integrity-checked repair, retention,
+        garbage collection, and replication policy remain.
+
+    \item \textbf{Cluster-wide observation.} Per-executor metrics must be
+        collected and interpreted across nodes without turning transient
+        telemetry into unstable placement decisions.
+
+    \item \textbf{The placement controller.} No component yet converts
+        desired replica policy, node capacity, trust boundaries, affinity,
+        anti-affinity, failure domains, health, and observed communication
+        into assignments or migration decisions.
+
+    \item \textbf{Replica-set realisation and routing.} The runtime needs
+        multiple active placements, failure-domain enforcement, health-aware
+        selection among owners, and convergence when replica count changes.
+
+    \item \textbf{Stateful cross-node migration.} The stateless handoff must
+        be extended with network state transfer, explicit ownership
+        acceptance, fencing, failure recovery, and a consistency model.
+
+    \item \textbf{Production administration authority.} The userspace
+        \texttt{clusterctl} protocol exists, but the raw mutation endpoint
+        and kernel serial shim do not enforce the intended separately
+        delegated cluster-administrator capability. Authentication,
+        authorisation, audit, and safe concurrent administration remain.
+
+    \item \textbf{Operational cluster services.} Production health
+        management, upgrades, resource accounting, persistent storage
+        policy, networking policy, secrets, logging, metrics, tracing,
+        backup, and disaster recovery remain necessary even where their
+        mechanisms differ from Kubernetes/OpenShift.
+\end{itemize}
+
+Most of this belongs in userspace coordination over the existing capability,
+messaging, storage, and consensus primitives. Future work must retain the
+discipline of the current mechanisms: explicit ownership, bounded
+communication, immutable artifact identity, generation fencing, and
+replicated decisions instead of per-machine mutation.
 
 \section{Related work}
 
-The vision draws on historical distributed operating systems, cluster managers,
-and artifact-trust systems. The comparisons below identify relevant ideas; they
-are not claims of equivalent guarantees or implementation maturity.
+The vision combines ideas from distributed operating systems, capability
+systems, cluster schedulers, immutable software stores, and artifact-trust
+systems. The comparisons below identify intellectual neighbours; they are
+not claims of equivalent guarantees or implementation maturity.
 
 \subsection{Historical distributed operating systems}
 
 \begin{itemize}
-    \item Amoeba (Vrije Universiteit Amsterdam) is the closest
-        ancestor for the ``pool of processors'' model: terminals submit
-        work that runs on any processor in the pool, dedicated machines act
-        as file and directory servers, and threads communicate by
-        network-wide RPC with capability-based access. Amoeba deliberately
-        did not migrate processes; cross-node migration is this vision's
-        extension of that model.
+    \item \textbf{Amoeba} (Vrije Universiteit Amsterdam) is a close ancestor
+        of the processor-pool model. Work can run on processors in a pool,
+        dedicated machines provide file and directory services, and
+        network-wide RPC uses capability-based access. Amoeba deliberately
+        did not migrate processes; explicit cross-node migration is an
+        extension in the CharlotteOS target.
 
-    \item Plan 9 (Bell Labs) splits the machine into terminals, CPU
-        servers, and file servers, and centralizes authentication and key
-        management in a dedicated daemon (\texttt{factotum}) --- an early
-        instance of ``the cluster holds the keys, not the node.''
+    \item \textbf{Plan 9} (Bell Labs) separates terminals, CPU servers, and
+        file servers, and centralises authentication and key handling in
+        \texttt{factotum}. Its machine roles and network-transparent names
+        challenge the assumption that every node is an independent Unix
+        installation.
 
-    \item Inferno (Bell Labs) continues Plan 9's model with a
-        portable virtual machine and code distributed as data over the
-        network.
+    \item \textbf{Inferno} continues the Plan~9 line with a portable virtual
+        machine and code distributed as data over the network.
 
-    \item Jini / JavaSpaces (Sun, later Apache River) contribute
-        the discovery pattern: services find a lookup service by multicast,
-        register, and hand clients a proxy; \texttt{JavaSpaces} is a tuple
-        space in which objects are written, taken, and picked up --- close
-        to ``software uploaded to the object store and picked up by
-        whichever node it is assigned to.''
+    \item \textbf{Jini and JavaSpaces} contribute a discovery pattern in
+        which services locate a lookup service, register, and provide clients
+        with a proxy. JavaSpaces' tuple-space model resembles work or
+        software being placed in shared space for an eligible participant to
+        take.
 
-    \item MOSIX is the single-system-image cluster: automatic
-        resource discovery, transparent process migration, and no need to
-        know where a program runs. Its research program includes
-        communication-aware placement (Keren and Barak, ``Opportunity Cost
-        Algorithms for Reduction of I/O and Interprocess Communication
-        Overhead in a Computing Cluster,'' IEEE TPDS 2003), the earliest
-        an example of communication-aware placement.
+    \item \textbf{MOSIX} explores a single-system-image cluster with resource
+        discovery and transparent process migration. Its work on
+        communication-aware placement, including Keren and Barak,
+        \emph{Opportunity Cost Algorithms for Reduction of I/O and
+        Interprocess Communication Overhead in a Computing Cluster}, IEEE
+        TPDS 2003, is a precedent for using interoperation cost in placement.
 \end{itemize}
 
-\subsection{Cluster managers and placement products}
+\subsection{Cluster control planes and placement}
 
 \begin{itemize}
-    \item Borg / Omega / Kubernetes (Burns, Grant, Oppenheimer,
-        Brewer, and Wilkes, ``Borg, Omega, and Kubernetes: Lessons from
-        Three Decades of Platform-as-a-Service,'' ACM Queue 2016) established
-        the modern shape: software is deployed to a cluster of machines,
-        placement is a cluster decision made from constraints and packing,
-        and machines are interchangeable.
+    \item \textbf{Borg, Omega, and Kubernetes} established the modern
+        cluster-management shape: desired software is submitted to a pool of
+        machines, scheduling is a cluster decision made from constraints and
+        packing, and controllers reconcile observation with desired state.
+        Burns, Grant, Oppenheimer, Brewer, and Wilkes describe this lineage in
+        \emph{Borg, Omega, and Kubernetes: Lessons from Three Decades of
+        Platform-as-a-Service}, ACM Queue 2016.
 
-    \item HashiCorp Nomad and Consul pair cluster scheduling with
-        affinity and anti-affinity constraints and gossip-based membership.
+    \item \textbf{Kubernetes and OpenShift} are also the central counterpoint
+        of this chapter. CharlotteOS is not attempting to wish away their
+        distributed control responsibilities; it is testing whether a native
+        execution and authority model can substantially shorten the machinery
+        underneath them.
 
-    \item VMware DRS and vMotion implement the full placement arc:
-        declared affinity rules, load-observed rebalancing, and live
-        migration with a network-level switchover.
+    \item \textbf{HashiCorp Nomad and Consul} pair cluster scheduling with
+        service discovery, membership, and affinity or anti-affinity
+        constraints.
 
-    \item Erlang/OTP distribution provides node discovery, hot
-        code loading, and the ``load, register, redirect, retire'' upgrade
-        pattern.
+    \item \textbf{VMware DRS and vMotion} demonstrate the full operational
+        arc of declared placement rules, load-observed rebalancing, live
+        movement, and network-level switchover, though for virtual machines
+        rather than Charlotte execution objects.
+
+    \item \textbf{Erlang/OTP distribution} provides node discovery, named
+        processes, supervision, hot code loading, and patterns resembling
+        load, register, redirect, and retire.
 \end{itemize}
+
+\subsection{Capabilities and constrained execution}
+
+CharlotteOS also belongs in the lineage of capability-oriented and
+least-authority systems. The relevant distinction is between possessing an
+explicit reference that confers authority and inheriting a broad machine
+environment whose authority must be denied by policy. Capability systems,
+microkernels, language sandboxes, WebAssembly runtimes, and unikernels make
+different trade-offs along this boundary. CharlotteOS combines a
+capability-constrained service model with signed native artifacts and a
+cluster-level placement objective; similarity in one dimension does not
+imply identical isolation or compatibility guarantees in the others.
 
 \subsection{Trust, signing, and bootstrap}
 
 \begin{itemize}
-    \item TUF (The Update Framework) defines signed metadata that
-        describes which keys are trusted, with versioning and expiration;
-        its root-key ceremony is the model for injecting key material into a
-        blank-start cluster.
+    \item \textbf{The Update Framework (TUF)} defines signed, versioned
+        metadata and key roles for secure update systems. Its separation of
+        root trust, online roles, expiration, and rotation is relevant to the
+        blank-start and key-lifecycle work not yet implemented.
 
-    \item Uptane (automotive software update security) shows the
-        offline and build-time key provisioning patterns --- the ``bake a
-        secret into the binary at build time, but allow a blank start''
-        option.
+    \item \textbf{Uptane} applies secure-update principles in the automotive
+        setting and illustrates offline and provisioned-key patterns.
 
-    \item Sigstore / Cosign / Notary provide related artifact-signing
-        approaches for deployment systems.
+    \item \textbf{Sigstore/Cosign and Notary} provide related approaches to
+        signing, identity, provenance, and policy for deployable artifacts.
 
-    \item Remote attestation and measured boot (TPM, ARM CCA,
-        SEV-SNP) complement cluster-level validation with a hardware root
-        of trust for the node itself.
+    \item \textbf{Measured boot and remote attestation}, including TPM-,
+        ARM CCA-, and confidential-VM-based mechanisms, can complement
+        artifact validation by establishing properties of the node on which
+        the artifact will run.
 \end{itemize}
 
 \subsection{Membership and artifact stores}
 
 \begin{itemize}
-    \item SWIM (Gupta, Birman, and van Renesse, DSN 2002) and its
-        production form \textbf{memberlist} provide gossip membership and
-        failure detection for the auto-discovery step.
+    \item \textbf{SWIM} (Gupta, Birman, and van Renesse, DSN 2002) and
+        implementations such as \textbf{memberlist} provide scalable
+        membership and failure-detection techniques relevant to discovery.
+        Failure detection and Raft voting admission remain distinct
+        responsibilities.
 
-    \item Nix is the content-addressed, hash-verified software
-        store: the artifact-identity half of ``software lives in the object
-        store.''
+    \item \textbf{Nix} demonstrates immutable, hash-derived software-store
+        paths and reproducible dependency closure, closely related to the
+        goal that software be an identified object rather than a mutation of
+        a node.
 
-    \item OCI container registries with signed manifests are the
-        deployment-time equivalent.
+    \item \textbf{OCI registries with signed manifests} demonstrate
+        content-addressed distribution and integrity for today's container
+        delivery model. A CharlotteOS artifact service needs analogous
+        availability and lifecycle properties even if it does not store OCI
+        filesystem images.
 \end{itemize}
 
-CharlotteOS could use shard-level message flow and executor snapshots
-(Chapter~9) to inform placement. That controller remains future work.
+\section{Research thesis}
+
+The cluster vision can be summarised as the following proposition:
+
+\begin{quote}
+    Containers are partly an artifact of retrofitting isolation,
+    reproducibility, software distribution, and workload mobility onto
+    general-purpose operating systems whose primary administrative boundary
+    remains the machine. If immutable artifact identity, capability-based
+    authority, constrained execution, cluster-wide naming, and placement were
+    native operating-system abstractions, much of the contemporary container
+    execution stack could become unnecessary, while the essential
+    distributed control plane would remain.
+\end{quote}
+
+CharlotteOS is an experimental vehicle for testing that proposition. The
+implemented two-node slice establishes several necessary mechanisms: signed
+and name-bound loading, capability-separated services, replicated naming and
+assignment state, remote invocation, and generation-safe stateless handoff.
+It does not yet establish the full proposition. The decisive evidence will
+come from building the missing controller, artifact, membership, replica,
+state-transfer, administration, and operations layers and observing what
+complexity genuinely disappears.
+
+The likely endpoint is neither a conventional per-node operating system nor
+the absence of orchestration. It is a cluster operating system whose
+reconciliation and scheduling ideas may resemble a reduced Kubernetes
+control plane, but whose execution objects are native, signed,
+capability-constrained workloads rather than containers that reconstruct and
+then confine a Unix machine. At that boundary, the cluster stops looking
+like a collection of computers on which software is installed and starts
+looking like the computer itself.
 
 \endinput
