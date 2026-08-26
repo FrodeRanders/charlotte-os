@@ -9,7 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
-  SITAS_REV: a42ef85844957cb41896e56e82d3c9484bac689a
+  SITAS_REV: 94eca68554e88f06721df4ccf3a69222a963c2c9
 
 jobs:
   formatting:
