@@ -40,6 +40,78 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
+pub enum ProfileLaunchError {
+    EmptyProfile,
+    ProfileTooLarge,
+    Load(crate::memory::AddressSpaceRegistrationError),
+    BootstrapConnection(ipc::IpcError),
+    ProfileAllocation(crate::memory::object::MemoryObjectError),
+    ProfileTransfer(crate::memory::object::MemoryObjectError),
+    RollbackMemory(crate::memory::object::MemoryObjectError),
+    RollbackDomain(crate::memory::AddressSpaceCloseError),
+}
+
+/// Own every resource acquired while preparing a profile-backed domain.
+/// Nothing starts until the bootstrap connection and immutable profile have
+/// both reached the new address space. Explicit failure paths call `abort`;
+/// `Drop` is the best-effort fallback for a future early return.
+struct ProfileLaunchTransaction {
+    loaded: Option<loader::LoadedDomain>,
+    kernel_profile: Option<crate::memory::object::MemoryObjectCap>,
+}
+
+impl ProfileLaunchTransaction {
+    fn new(loaded: loader::LoadedDomain) -> Self {
+        Self {
+            loaded: Some(loaded),
+            kernel_profile: None,
+        }
+    }
+
+    fn loaded(&self) -> &loader::LoadedDomain {
+        self.loaded.as_ref().expect("profile launch transaction already consumed")
+    }
+
+    fn abort<T>(mut self, error: ProfileLaunchError) -> Result<T, ProfileLaunchError> {
+        if let Some(profile) = self.kernel_profile.take()
+            && let Err(close_error) = crate::memory::object::close_cap(KERNEL_ASID, profile)
+        {
+            self.kernel_profile = Some(profile);
+            self.rollback_best_effort();
+            return Err(ProfileLaunchError::RollbackMemory(close_error));
+        }
+        if let Some(loaded) = self.loaded.take()
+            && let Err(close_error) = close_user_address_space_handle(loaded.address_space)
+        {
+            self.loaded = Some(loaded);
+            self.rollback_best_effort();
+            return Err(ProfileLaunchError::RollbackDomain(close_error));
+        }
+        Err(error)
+    }
+
+    fn finish(mut self) -> loader::LoadedDomain {
+        debug_assert!(self.kernel_profile.is_none());
+        self.loaded.take().expect("profile launch transaction already consumed")
+    }
+
+    fn rollback_best_effort(&mut self) {
+        if let Some(profile) = self.kernel_profile.take() {
+            let _ = crate::memory::object::close_cap(KERNEL_ASID, profile);
+        }
+        if let Some(loaded) = self.loaded.take() {
+            let _ = close_user_address_space_handle(loaded.address_space);
+        }
+    }
+}
+
+impl Drop for ProfileLaunchTransaction {
+    fn drop(&mut self) {
+        self.rollback_best_effort();
+    }
+}
+
 /// A running EL0 service protection domain.
 #[derive(Copy, Clone)]
 pub struct ServiceDomain {
@@ -394,8 +466,8 @@ pub fn spawn_with_manifest_and_limits(
 }
 
 /// Spawn a service with one immutable profile object. The memory capability
-/// is transferred with `MAP_READ` only; the config record carries the exact
-/// authenticated byte length rather than exposing page padding.
+/// is transferred with `MAP_READ` only; typed launch metadata carries the
+/// exact meaningful byte length rather than exposing page padding.
 pub fn spawn_with_read_only_profile_and_limits(
     image: &[u8],
     name_service: &NameServiceHandle,
@@ -403,24 +475,60 @@ pub fn spawn_with_read_only_profile_and_limits(
     profile: &[u8],
     limits: ServiceLimits,
 ) -> ServiceDomain {
-    assert!(!profile.is_empty(), "launch profile is empty");
-    let loaded = loader::load_domain(image);
-    let connection = ipc::connection_delegate(
+    try_spawn_with_read_only_profile_and_limits(image, name_service, rights, profile, limits)
+        .unwrap_or_else(|error| panic!("[supervisor] profile-backed launch failed: {error:?}"))
+}
+
+/// Fallible, transactionally prepared variant of
+/// [`spawn_with_read_only_profile_and_limits`]. A failure before the initial
+/// thread starts closes the kernel-side profile object, every capability
+/// already delegated to the target, and the target address space.
+pub fn try_spawn_with_read_only_profile_and_limits(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    profile: &[u8],
+    limits: ServiceLimits,
+) -> Result<ServiceDomain, ProfileLaunchError> {
+    if profile.is_empty() {
+        return Err(ProfileLaunchError::EmptyProfile);
+    }
+    let profile_len =
+        u32::try_from(profile.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
+    let metadata = charlotte_launch::ProfileCapabilityMetadata::new(profile_len)
+        .ok_or(ProfileLaunchError::EmptyProfile)?;
+    let loaded = loader::try_load_domain(image).map_err(ProfileLaunchError::Load)?;
+    let mut transaction = ProfileLaunchTransaction::new(loaded);
+
+    let connection = match ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
-        loaded.asid,
+        transaction.loaded().asid,
         rights,
-    )
-    .expect("[supervisor] bootstrap connection delegation failed");
-    let source = crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, profile)
-        .expect("[supervisor] launch profile allocation failed");
-    let target =
-        crate::memory::object::move_read_only_to(crate::memory::KERNEL_ASID, source, loaded.asid)
-            .expect("[supervisor] launch profile transfer failed");
-    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_profile_cap(loaded.config_frame, target, profile.len());
-    bootstrap::write_manifest(loaded.config_frame, &[]);
-    start_domain_with_limits(loaded, limits)
+    ) {
+        Ok(connection) => connection,
+        Err(error) => return transaction.abort(ProfileLaunchError::BootstrapConnection(error)),
+    };
+    let source = match crate::memory::object::allocate_with_bytes(KERNEL_ASID, profile) {
+        Ok(source) => source,
+        Err(error) => return transaction.abort(ProfileLaunchError::ProfileAllocation(error)),
+    };
+    transaction.kernel_profile = Some(source);
+    let target = match crate::memory::object::move_read_only_to(
+        KERNEL_ASID,
+        source,
+        transaction.loaded().asid,
+    ) {
+        Ok(target) => {
+            transaction.kernel_profile = None;
+            target
+        }
+        Err(error) => return transaction.abort(ProfileLaunchError::ProfileTransfer(error)),
+    };
+    bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
+    bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
+    bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
+    Ok(start_domain_with_limits(transaction.finish(), limits))
 }
 
 /// Start the node observability service and delegate the unique

@@ -100,13 +100,15 @@ impl Context {
     /// by the launch environment for the domain lifetime.
     pub fn profile_memory(&self) -> Option<owned::LaunchMemoryRef<'_>> {
         let record = config::capability_record_by_kind(config::CapabilityKind::Profile)?;
-        if record.rights != charlotte_launch::PROFILE_CAPABILITY_RIGHT_MAP_READ || record.flags == 0
-        {
+        if record.rights != charlotte_launch::PROFILE_CAPABILITY_RIGHT_MAP_READ {
             return None;
         }
+        let metadata = charlotte_launch::ProfileCapabilityMetadata::decode(record.metadata)?;
         // The config page is the trusted ABI boundary and the returned borrow
         // cannot outlive this Context reference.
-        unsafe { owned::LaunchMemoryRef::from_raw(record.handle, record.flags as usize).ok() }
+        unsafe {
+            owned::LaunchMemoryRef::from_raw(record.handle, metadata.byte_len() as usize).ok()
+        }
     }
 
     pub fn heap_layout(&self) -> MemoryRegion {
@@ -220,8 +222,27 @@ pub struct CompletionQueueLayout {
 pub struct InitialCapability {
     pub kind: config::CapabilityKind,
     pub rights: u16,
-    pub flags: u32,
+    pub metadata: InitialCapabilityMetadata,
     pub handle: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InitialCapabilityMetadata {
+    None,
+    Profile(charlotte_launch::ProfileCapabilityMetadata),
+    Unknown(u32),
+}
+
+fn capability_metadata(record: charlotte_launch::CapabilityRecord) -> InitialCapabilityMetadata {
+    match config::CapabilityKind::from_raw(record.kind) {
+        Some(config::CapabilityKind::Profile) => {
+            charlotte_launch::ProfileCapabilityMetadata::decode(record.metadata)
+                .map(InitialCapabilityMetadata::Profile)
+                .unwrap_or(InitialCapabilityMetadata::Unknown(record.metadata))
+        }
+        _ if record.metadata == 0 => InitialCapabilityMetadata::None,
+        _ => InitialCapabilityMetadata::Unknown(record.metadata),
+    }
 }
 
 pub struct InitialCapabilities {
@@ -291,7 +312,7 @@ impl Iterator for InitialCapabilities {
                 return Some(InitialCapability {
                     kind,
                     rights: record.rights,
-                    flags: record.flags,
+                    metadata: capability_metadata(record),
                     handle: record.handle,
                 });
             }

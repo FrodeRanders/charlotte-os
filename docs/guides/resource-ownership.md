@@ -122,6 +122,15 @@ owned layer. Wrap their outward-facing resources and explain why the operation
 cannot use `MmioRegion`, `Interrupt`, `DmaTransfer`, or another owned type. A
 raw handle must never be managed simultaneously by an owned wrapper.
 
+The kernel-side profile launch path follows the same aggregation rule through
+`ProfileLaunchTransaction`. It owns the not-yet-running `LoadedDomain` and any
+profile memory still held by `KERNEL_ASID`. Its explicit abort path closes the
+source object and target address space, which also reclaims connections or
+objects already delegated there; `Drop` repeats that cleanup best-effort. Add a
+new pre-start resource to this transaction instead of appending an `expect`
+after allocation. Capability records carry a typed
+`ProfileCapabilityMetadata` length, never an ad hoc meaning in generic flags.
+
 ## Review checklist
 
 - Does every allocated, returned, or received capability immediately acquire

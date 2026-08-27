@@ -40,9 +40,11 @@ identity, optional connector-only SASL credentials, rights, transaction timeout,
 and an operator-selected route ceiling.
 The launcher encodes profile version 5, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
-Before opening a socket, `kafka.elf` validates the exact object length, version,
-digest, UTF-8 hostnames, field bounds, route and broker counts, safety ceilings,
-and duplicate routes or broker destinations. The hash detects corruption;
+Typed profile-capability metadata carries the exact meaningful byte length; it
+is not hidden in a generic capability-flags field. Before opening a socket,
+`kafka.elf` validates that length, the version, digest, UTF-8 DNS host-label
+syntax, field bounds, route and broker counts, safety ceilings, and duplicate
+routes or broker destinations. The hash detects corruption;
 profile provenance and immutability come from the trusted launcher and the
 read-only capability, not from an unkeyed digest.
 Only `kafka.elf` receives this profile. Producer, consumer, or transactional
@@ -50,6 +52,12 @@ step logic receives a connection capability to that specific service instance,
 not the profile or its broker/TLS/SASL configuration. Client-certificate
 secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
+
+Profile-backed launch is prepared as one kernel transaction. Until the initial
+thread starts, an owning launch object retains the unloaded domain and any
+kernel-owned profile memory. Connection delegation, profile allocation, or
+read-only transfer failure closes all earlier resources and the target address
+space; `Drop` remains a best-effort fallback for future early-return paths.
 
 The instance name and every access-point name are non-empty printable ASCII and
 at most 256 bytes. They are covered by the profile digest and cannot be

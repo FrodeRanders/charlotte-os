@@ -446,7 +446,7 @@ pub const CAPABILITY_VECTOR_OFFSET: usize = 2224;
 pub const CAPABILITY_VECTOR_CAPACITY: usize = 32;
 pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
 pub const LAUNCH_ABI_MAJOR: u16 = 2;
-pub const LAUNCH_ABI_MINOR: u16 = 0;
+pub const LAUNCH_ABI_MINOR: u16 = 1;
 
 pub const MANIFEST_VECTOR_OFFSET: usize = 32;
 pub const MANIFEST_VECTOR_CAPACITY: usize = 32;
@@ -633,12 +633,48 @@ impl CapabilityKind {
 pub struct CapabilityRecord {
     pub kind: u16,
     pub rights: u16,
-    pub flags: u32,
+    /// Capability-kind-specific metadata. Decode this through the matching
+    /// typed metadata wrapper rather than assigning flag semantics ad hoc.
+    pub metadata: u32,
     pub handle: u64,
 }
 
 /// `CapabilityRecord::rights` value for an immutable profile memory object.
 pub const PROFILE_CAPABILITY_RIGHT_MAP_READ: u16 = 1;
+
+/// Typed metadata carried by an immutable profile capability.
+///
+/// The length selects the meaningful prefix of the read-only memory object;
+/// its final page may contain padding. Authenticity still comes from the
+/// trusted launcher and the capability transfer, not from this scalar.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProfileCapabilityMetadata {
+    byte_len: u32,
+}
+
+impl ProfileCapabilityMetadata {
+    pub const fn new(byte_len: u32) -> Option<Self> {
+        if byte_len == 0 {
+            None
+        } else {
+            Some(Self {
+                byte_len,
+            })
+        }
+    }
+
+    pub const fn byte_len(self) -> u32 {
+        self.byte_len
+    }
+
+    pub const fn encode(self) -> u32 {
+        self.byte_len
+    }
+
+    pub const fn decode(encoded: u32) -> Option<Self> {
+        Self::new(encoded)
+    }
+}
 
 const _: [(); 104] = [(); core::mem::size_of::<LaunchHeader>()];
 const _: [(); 24] = [(); core::mem::size_of::<ManifestRecord>()];

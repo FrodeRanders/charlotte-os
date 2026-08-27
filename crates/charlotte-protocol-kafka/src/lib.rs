@@ -168,11 +168,26 @@ pub enum Authentication<'a> {
 
 impl BrokerEndpoint<'_> {
     fn valid(&self) -> bool {
-        self.port != 0
-            && !self.host.is_empty()
-            && self.host.len() <= 255
-            && core::str::from_utf8(self.host).is_ok()
+        self.port != 0 && valid_hostname(self.host)
     }
+}
+
+/// Accept DNS hostnames and textual IPv4 addresses suitable for Kafka
+/// metadata matching and TLS server-name verification. Each label follows
+/// the RFC host-label shape: ASCII alphanumeric at both ends with optional
+/// interior hyphens. A trailing root dot and empty labels are deliberately
+/// rejected so byte-for-byte metadata matching stays unambiguous.
+fn valid_hostname(host: &[u8]) -> bool {
+    if host.is_empty() || host.len() > 253 || core::str::from_utf8(host).is_err() {
+        return false;
+    }
+    host.split(|byte| *byte == b'.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && label.first().is_some_and(u8::is_ascii_alphanumeric)
+            && label.last().is_some_and(u8::is_ascii_alphanumeric)
+            && label.iter().all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+    })
 }
 
 impl ProduceRoute<'_> {
@@ -570,9 +585,7 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
         || profile.instance_name.len() > MAX_INSTANCE_NAME_BYTES
         || !profile.instance_name.iter().all(u8::is_ascii_graphic)
         || profile.port == 0
-        || profile.host.is_empty()
-        || profile.host.len() > 255
-        || core::str::from_utf8(profile.host).is_err()
+        || !valid_hostname(profile.host)
         || profile.topic.is_empty()
         || profile.topic.len() > MAX_TOPIC_BYTES
         || profile.partition < 0
@@ -1096,6 +1109,48 @@ mod tests {
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+    }
+
+    #[test]
+    fn profile_rejects_invalid_hostname_syntax() {
+        let base = Profile {
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            authentication: Authentication::None,
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        for host in [
+            b"-kafka.test".as_slice(),
+            b"kafka-.test",
+            b"kafka..test",
+            b"kafka_test",
+            b"kafka.test.",
+        ] {
+            let mut profile = base.clone();
+            profile.host = host;
+            assert_eq!(profile.encode(), Err(ProfileError::InvalidField), "host={host:?}");
+        }
+
+        let mut profile = base;
+        profile.broker_endpoints.push(BrokerEndpoint {
+            endpoint_ipv4: [10, 0, 2, 3],
+            host: b"broker name.test",
+            port: 9093,
+        });
         assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
     }
 

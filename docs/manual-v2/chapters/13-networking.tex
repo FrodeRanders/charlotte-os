@@ -316,14 +316,22 @@ consumer.
 
 The complete version-5 broker profile is serialized into one immutable object,
 covered by a SHA-256 integrity digest, and transferred to \texttt{kafka} with a
-kernel-enforced \texttt{MAP\_READ}-only launch capability. The service validates
-the exact size, version, digest, UTF-8 hostnames, field bounds, route and broker
-counts, configurable ceilings, and duplicate routes or endpoints before opening
-a broker connection. The hard ceiling is 64
+kernel-enforced \texttt{MAP\_READ}-only launch capability. Typed capability
+metadata carries the exact meaningful byte length rather than overloading a
+generic flags field. The service validates the size, version, digest, UTF-8 DNS
+host-label syntax, field bounds, route and broker counts, configurable ceilings,
+and duplicate routes or endpoints before opening a broker connection. The hard ceiling is 64
 produce routes, while deployment policy may select a lower limit. Metadata for
 all distinct declared topics is requested in one broker exchange.
 The digest detects corruption; authenticity and provenance come from the
 trusted launcher and the read-only capability.
+
+The kernel prepares a profile-backed launch transactionally. An owning launch
+object retains the not-yet-running domain, delegated connection, and transient
+kernel profile object until read-only transfer succeeds. Allocation,
+delegation, or transfer failure closes the earlier resources and the target
+address space before an error is returned; a best-effort destructor protects
+future early-return paths.
 
 The same digest covers a non-empty printable-ASCII instance name and a bounded
 set of separately published authority endpoints, whose names are each at most

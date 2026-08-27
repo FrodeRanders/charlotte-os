@@ -23,6 +23,7 @@ use charlotte_launch::{
     ManifestRecord,
     ManifestValueKind,
     PROFILE_CAPABILITY_RIGHT_MAP_READ,
+    ProfileCapabilityMetadata,
 };
 
 use crate::memory::physical::PAddr;
@@ -56,7 +57,7 @@ fn append_capability_record(
     kind: CapabilityKind,
     handle: u64,
     rights: u16,
-    flags: u32,
+    metadata: u32,
 ) {
     let base: *mut u8 = config_frame.into();
     let header_ptr = unsafe { base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader };
@@ -67,7 +68,7 @@ fn append_capability_record(
     let record = CapabilityRecord {
         kind: kind as u16,
         rights,
-        flags,
+        metadata,
         handle,
     };
     unsafe {
@@ -104,16 +105,15 @@ pub fn write_system_observer_cap(config_frame: PAddr, cap: u64) {
     append_capability(config_frame, CapabilityKind::SystemObserver, cap);
 }
 
-/// Record a read-only launch profile. `len` is the authenticated byte length;
-/// the final memory-object page may contain zero padding.
-pub fn write_profile_cap(config_frame: PAddr, cap: u64, len: usize) {
-    let len = u32::try_from(len).expect("launch profile exceeds u32");
+/// Record a read-only launch profile. Its typed metadata selects the
+/// meaningful byte prefix; the final memory-object page may contain padding.
+pub fn write_profile_cap(config_frame: PAddr, cap: u64, metadata: ProfileCapabilityMetadata) {
     append_capability_record(
         config_frame,
         CapabilityKind::Profile,
         cap,
         PROFILE_CAPABILITY_RIGHT_MAP_READ,
-        len,
+        metadata.encode(),
     );
 }
 
