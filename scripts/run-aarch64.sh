@@ -39,8 +39,8 @@
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
-#   --kafka-test  Start an Apache Kafka Docker fixture and verify idempotent
-#                 produce, read-committed consume, and transactions
+#   --kafka-test  Start a TLS/mTLS/SCRAM Apache Kafka Docker fixture and verify
+#                 idempotent produce, read-committed consume, and transactions
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -280,7 +280,7 @@ if [ "$S3_TEST" = "1" ]; then
 fi
 
 if [ "$KAFKA_TEST" = "1" ]; then
-    catten_boot_require_commands docker openssl
+    catten_boot_require_commands docker keytool openssl
     KAFKA_TEST_DIR="${ROOT_DIR}/target/kafka-test"
     export CATTEN_KAFKA_CERT_DIR="${KAFKA_TEST_DIR}/certs"
     export CATTEN_KAFKA_PORT="19092"
@@ -317,17 +317,62 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -passout pass:charlotte-kafka-test
     openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/ca.crt" -outform DER \
         -out "$CATTEN_KAFKA_CERT_DIR/ca.der"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_KAFKA_CERT_DIR/client.key"
+    openssl req -new -sha256 \
+        -key "$CATTEN_KAFKA_CERT_DIR/client.key" \
+        -subj "/CN=charlotte" \
+        -out "$CATTEN_KAFKA_CERT_DIR/client.csr"
+    openssl x509 -req -sha256 -days 2 \
+        -in "$CATTEN_KAFKA_CERT_DIR/client.csr" \
+        -CA "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
+        -CAkey "$CATTEN_KAFKA_CERT_DIR/ca.key" \
+        -CAserial "$CATTEN_KAFKA_CERT_DIR/ca.srl" \
+        -extfile "${ROOT_DIR}/docker/kafka-test/client-ext.cnf" \
+        -out "$CATTEN_KAFKA_CERT_DIR/client.crt"
+    openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/client.crt" -outform DER \
+        -out "$CATTEN_KAFKA_CERT_DIR/client.der"
+    openssl ec -in "$CATTEN_KAFKA_CERT_DIR/client.key" -outform DER \
+        -out "$CATTEN_KAFKA_CERT_DIR/client-key.der"
+    rm -f "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12"
+    keytool -importcert -noprompt \
+        -alias charlotte-test-ca \
+        -file "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
+        -keystore "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
+        -storetype PKCS12 \
+        -storepass charlotte-kafka-test
     printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
     printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
+    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/truststore-password"
+    printf '%s\n' \
+        'KafkaServer {' \
+        '  org.apache.kafka.common.security.scram.ScramLoginModule required' \
+        '  username="charlotte"' \
+        '  password="charlotte-kafka-test";' \
+        '};' >"$CATTEN_KAFKA_CERT_DIR/kafka_server_jaas.conf"
+    chmod 0600 "$CATTEN_KAFKA_CERT_DIR/client-key.der"
     chmod 0644 "$CATTEN_KAFKA_CERT_DIR/ca.der" \
         "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
+        "$CATTEN_KAFKA_CERT_DIR/kafka-truststore.p12" \
+        "$CATTEN_KAFKA_CERT_DIR/client.der" \
         "$CATTEN_KAFKA_CERT_DIR/key-password" \
-        "$CATTEN_KAFKA_CERT_DIR/keystore-password"
+        "$CATTEN_KAFKA_CERT_DIR/keystore-password" \
+        "$CATTEN_KAFKA_CERT_DIR/truststore-password" \
+        "$CATTEN_KAFKA_CERT_DIR/kafka_server_jaas.conf"
     export CATTEN_KAFKA_TEST_CA_DER="$CATTEN_KAFKA_CERT_DIR/ca.der"
-    echo ">>> Starting ephemeral three-broker TLS Apache Kafka fixture..."
+    export CATTEN_KAFKA_TEST_CLIENT_CERT_DER="$CATTEN_KAFKA_CERT_DIR/client.der"
+    export CATTEN_KAFKA_TEST_CLIENT_KEY_DER="$CATTEN_KAFKA_CERT_DIR/client-key.der"
+    echo ">>> Starting ephemeral three-broker TLS/mTLS/SCRAM Apache Kafka fixture..."
     docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     KAFKA_RUNNING="1"
     docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka1 kafka2 kafka3
+    docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
+        /opt/kafka/bin/kafka-configs.sh \
+        --bootstrap-server localhost:29092 \
+        --alter \
+        --add-config 'SCRAM-SHA-256=[iterations=4096,password=charlotte-kafka-test]' \
+        --entity-type users \
+        --entity-name charlotte
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \

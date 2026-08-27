@@ -31,7 +31,8 @@ not receive or reconstruct the launch profile.
 The complete profile is one versioned, immutable object rather than a set of
 config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
-identity, rights, transaction timeout, and an operator-selected route ceiling.
+identity, optional connector-only SASL credentials, rights, transaction timeout,
+and an operator-selected route ceiling.
 The launcher encodes profile version 3, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
 Before opening a socket, `kafka.elf` validates the exact object length, version,
@@ -41,8 +42,8 @@ profile provenance and immutability come from the trusted launcher and the
 read-only capability, not from an unkeyed digest.
 Only `kafka.elf` receives this profile. Producer, consumer, or transactional
 step logic receives a connection capability to that specific service instance,
-not the profile or its broker/TLS configuration. Future SASL and mTLS secrets
-belong in the same connector-only profile and must remain absent from the
+not the profile or its broker/TLS/SASL configuration. Client-certificate
+secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
 
 The implementation hard ceiling is 64 produce routes. A deployment may set
@@ -142,7 +143,7 @@ before the reply was lost. The service preserves an idempotent producer
 sequence until success is known, but applications must still treat a failed
 transaction as aborted and start a new transaction after rediscovery/retry.
 
-## TLS security boundary
+## TLS and SASL security boundary
 
 Setting `KafkaProfile::tls` selects the shared owned TLS transport and never
 downgrades to plaintext. The client verifies the broker's certificate chain,
@@ -157,10 +158,27 @@ closed. Broker sockets and both TLS record buffers are aggregated in
 `catten_services::tls_client::OwnedTlsStream`, so reconnect and error paths
 release the whole transport by dropping one owner.
 
-TLS authenticates and encrypts the broker transport; it does not authenticate
-the Kafka principal. Centrally managed clusters commonly require SASL or mTLS
-as well. That mechanism remains a separate provisioning and implementation
-step.
+`KafkaAuthentication::ScramSha256` authenticates the connector as a Kafka
+principal after TLS establishment. Every bootstrap, seed, leader, and
+coordinator connection performs `SaslHandshake` followed by the bounded
+SCRAM-SHA-256 exchange before carrying data-plane requests. Client nonces come
+from the same system entropy path as TLS. The client enforces the RFC 7677
+minimum iteration count, caps broker-selected work and message/salt sizes,
+verifies the server signature in constant time, and erases passwords and
+derived keys when their owners are dropped. Authentication is rejected unless
+verified TLS is enabled, so credentials cannot be sent over plaintext.
+Profile usernames and passwords are bounded to 256 and 1,024 printable ASCII
+bytes respectively; this deliberately avoids silently applying an incomplete
+Unicode SASLprep implementation.
+
+The profile supports `None`, `ScramSha256`, `MtlsP256`, or
+`ScramSha256AndMtlsP256`. The mTLS variants carry one DER-encoded X.509 client
+certificate and its DER-encoded SEC1 P-256 private key. The connector signs the
+TLS 1.3 client-authentication transcript with ECDSA P-256/SHA-256 on every
+broker connection. Certificate and key sizes are bounded at profile decoding;
+the key is parsed before the connection is opened and retained in zeroizing
+storage. SCRAM-SHA-512, OAuth bearer tokens, Kerberos, certificate chains, and
+other client-key algorithms are not yet implemented.
 
 ## Current interoperability boundary
 
@@ -177,19 +195,21 @@ This first profile is deliberately narrow:
   produce/fetch; coordinator migration during an active transaction remains
   limited;
 - no dynamic consumer-group membership/rebalancing;
-- no compression, headers, SASL, external hostname resolution, or TLS 1.2; and
+- no compression, headers, dynamic SASL mechanism negotiation, client
+  certificate chains, external hostname resolution, or TLS 1.2; and
 - records are bounded by the one-page application ABI.
 
-For a centrally managed cluster, add the site's required authentication
-mechanism before production deployment; do not expose an unauthenticated
-listener merely to fit the current client. Verify that the broker permits TLS
-1.3 and a certificate signature supported by the selected embedded TLS
-feature set.
+For a centrally managed cluster, verify that SCRAM-SHA-256 and/or P-256 mTLS is
+permitted, or add the site's required authentication mechanism; do not expose
+an unauthenticated listener merely to fit the client. Verify that the broker
+permits TLS 1.3 and a certificate signature supported by the selected embedded
+TLS feature set.
 
 ## Docker integration test
 
-The opt-in runner creates an ephemeral CA and server certificate, starts a
-fresh three-broker Apache Kafka KRaft fixture with verified external TLS
+The opt-in runner creates an ephemeral CA, server certificate, and P-256 client
+identity, starts a fresh three-broker Apache Kafka KRaft fixture with verified
+external TLS, required mTLS, and SCRAM-SHA-256 client authentication
 listeners, creates `charlotte-events` and `charlotte-results` on different
 leaders, and boots an
 in-guest smoke application

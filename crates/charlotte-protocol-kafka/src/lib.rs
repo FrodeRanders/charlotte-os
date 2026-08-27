@@ -69,6 +69,7 @@ pub const ERR_TOO_LARGE: i64 = -9;
 pub const ERR_BAD_OPCODE: i64 = -10;
 pub const ERR_TLS_REQUIRED: i64 = -11;
 pub const ERR_UNSUPPORTED: i64 = -12;
+pub const ERR_AUTHENTICATION: i64 = -13;
 
 pub const MAX_RECORD_BYTES: usize = 3_840;
 pub const MAX_KEY_BYTES: usize = 1_024;
@@ -80,6 +81,10 @@ pub const MAX_PRODUCE_ROUTES: usize = 64;
 /// Maximum number of explicitly authorized broker destinations in one
 /// connector profile. Kafka metadata may select only one of these endpoints.
 pub const MAX_BROKER_ENDPOINTS: usize = 32;
+pub const MAX_SASL_USERNAME_BYTES: usize = 256;
+pub const MAX_SASL_PASSWORD_BYTES: usize = 1_024;
+pub const MAX_MTLS_CERTIFICATE_BYTES: usize = 16 * 1024;
+pub const MAX_MTLS_PRIVATE_KEY_BYTES: usize = 4 * 1024;
 pub const DEFAULT_ROUTE: u16 = 0;
 pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP3\0";
 pub const PROFILE_VERSION: u16 = 3;
@@ -90,6 +95,11 @@ pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
 pub const PROFILE_BROKER_HEADER_LEN: usize = 8;
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 pub const PROFILE_FLAG_TLS: u16 = 1;
+pub const AUTH_NONE: u16 = 0;
+pub const AUTH_SCRAM_SHA_256: u16 = 1;
+pub const AUTH_MTLS_P256: u16 = 2;
+pub const AUTH_SCRAM_SHA_256_AND_MTLS_P256: u16 = 3;
+pub const PROFILE_MTLS_HEADER_LEN: usize = 8;
 pub const RECORD_REQUEST_MAGIC: u32 = 0x3152_464b; // "KFR1" LE
 pub const RECORD_REQUEST_HEADER_LEN: usize = 24;
 pub const FLAG_NULL_KEY: u16 = 1 << 0;
@@ -113,6 +123,27 @@ pub struct BrokerEndpoint<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
+}
+
+/// Connector-only Kafka authentication material. This is part of the
+/// read-only launch profile and never appears in the application IPC ABI.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Authentication<'a> {
+    None,
+    ScramSha256 {
+        username: &'a [u8],
+        password: &'a [u8],
+    },
+    MtlsP256 {
+        certificate_der: &'a [u8],
+        private_key_der: &'a [u8],
+    },
+    ScramSha256AndMtlsP256 {
+        username: &'a [u8],
+        password: &'a [u8],
+        certificate_der: &'a [u8],
+        private_key_der: &'a [u8],
+    },
 }
 
 impl BrokerEndpoint<'_> {
@@ -148,6 +179,7 @@ pub struct Profile<'a> {
     pub max_produce_routes: u16,
     pub group: &'a [u8],
     pub transactional_id: &'a [u8],
+    pub authentication: Authentication<'a>,
     pub rights: u64,
     pub transaction_timeout_ms: u32,
 }
@@ -180,6 +212,21 @@ impl Profile<'_> {
             .and_then(|len| len.checked_add(self.topic.len()))
             .and_then(|len| len.checked_add(self.group.len()))
             .and_then(|len| len.checked_add(self.transactional_id.len()))
+            .and_then(|len| {
+                let (_, username, password, certificate, private_key) =
+                    authentication_fields(self.authentication);
+                len.checked_add(username.len())?
+                    .checked_add(password.len())?
+                    .checked_add(
+                        if certificate.is_empty() {
+                            0
+                        } else {
+                            PROFILE_MTLS_HEADER_LEN
+                        },
+                    )?
+                    .checked_add(certificate.len())?
+                    .checked_add(private_key.len())
+            })
             .and_then(|len| len.checked_add(route_bytes?))
             .and_then(|len| len.checked_add(broker_bytes?))
             .ok_or(ProfileError::TooLarge)?;
@@ -213,12 +260,30 @@ impl Profile<'_> {
         put_u16(&mut output, 82, self.transactional_id.len() as u16);
         put_u32(&mut output, 84, self.ca_certificate_der.len() as u32);
         put_u16(&mut output, 88, self.broker_endpoints.len() as u16);
+        let (auth_kind, username, password, certificate, private_key) =
+            authentication_fields(self.authentication);
+        put_u16(&mut output, 90, auth_kind);
+        put_u16(&mut output, 92, username.len() as u16);
+        put_u16(&mut output, 94, password.len() as u16);
         let mut offset = PROFILE_HEADER_LEN;
         for field in
             [self.host, self.ca_certificate_der, self.topic, self.group, self.transactional_id]
         {
             output[offset..offset + field.len()].copy_from_slice(field);
             offset += field.len();
+        }
+        for field in [username, password] {
+            output[offset..offset + field.len()].copy_from_slice(field);
+            offset += field.len();
+        }
+        if !certificate.is_empty() {
+            put_u32(&mut output, offset, certificate.len() as u32);
+            put_u32(&mut output, offset + 4, private_key.len() as u32);
+            offset += PROFILE_MTLS_HEADER_LEN;
+            for field in [certificate, private_key] {
+                output[offset..offset + field.len()].copy_from_slice(field);
+                offset += field.len();
+            }
         }
         for route in &self.produce_routes {
             put_i32(&mut output, offset, route.partition);
@@ -270,15 +335,29 @@ impl Profile<'_> {
         let flags = get_u16(input, 54)?;
         let route_count = get_u16(input, 72)? as usize;
         let broker_count = get_u16(input, 88)? as usize;
+        let auth_kind = get_u16(input, 90)?;
+        let username_len = get_u16(input, 92)? as usize;
+        let password_len = get_u16(input, 94)? as usize;
         let max_produce_routes = get_u16(input, 74)?;
         if flags & !PROFILE_FLAG_TLS != 0
             || route_count > MAX_PRODUCE_ROUTES
             || route_count > usize::from(max_produce_routes)
             || usize::from(max_produce_routes) > MAX_PRODUCE_ROUTES
-            || get_u16(input, 90)? != 0
-            || get_u32(input, 92)? != 0
         {
             return Err(ProfileError::TooManyRoutes);
+        }
+        if !matches!(
+            auth_kind,
+            AUTH_NONE | AUTH_SCRAM_SHA_256 | AUTH_MTLS_P256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256
+        ) || auth_kind == AUTH_NONE && (username_len != 0 || password_len != 0)
+            || matches!(auth_kind, AUTH_SCRAM_SHA_256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256)
+                && (username_len == 0
+                    || username_len > MAX_SASL_USERNAME_BYTES
+                    || password_len == 0
+                    || password_len > MAX_SASL_PASSWORD_BYTES)
+            || auth_kind == AUTH_MTLS_P256 && (username_len != 0 || password_len != 0)
+        {
+            return Err(ProfileError::InvalidField);
         }
         if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
             return Err(ProfileError::TooManyBrokers);
@@ -297,6 +376,41 @@ impl Profile<'_> {
             *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
             offset = end;
         }
+        let username_end = offset.checked_add(username_len).ok_or(ProfileError::TooLarge)?;
+        let username = input.get(offset..username_end).ok_or(ProfileError::InvalidField)?;
+        offset = username_end;
+        let password_end = offset.checked_add(password_len).ok_or(ProfileError::TooLarge)?;
+        let password = input.get(offset..password_end).ok_or(ProfileError::InvalidField)?;
+        offset = password_end;
+        let (certificate_der, private_key_der) =
+            if matches!(auth_kind, AUTH_MTLS_P256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256) {
+                let header = input
+                    .get(offset..offset + PROFILE_MTLS_HEADER_LEN)
+                    .ok_or(ProfileError::InvalidField)?;
+                let certificate_len = get_u32(header, 0)? as usize;
+                let private_key_len = get_u32(header, 4)? as usize;
+                if certificate_len == 0
+                    || certificate_len > MAX_MTLS_CERTIFICATE_BYTES
+                    || private_key_len == 0
+                    || private_key_len > MAX_MTLS_PRIVATE_KEY_BYTES
+                {
+                    return Err(ProfileError::InvalidField);
+                }
+                offset += PROFILE_MTLS_HEADER_LEN;
+                let certificate_end =
+                    offset.checked_add(certificate_len).ok_or(ProfileError::TooLarge)?;
+                let certificate =
+                    input.get(offset..certificate_end).ok_or(ProfileError::InvalidField)?;
+                offset = certificate_end;
+                let private_key_end =
+                    offset.checked_add(private_key_len).ok_or(ProfileError::TooLarge)?;
+                let private_key =
+                    input.get(offset..private_key_end).ok_or(ProfileError::InvalidField)?;
+                offset = private_key_end;
+                (certificate, private_key)
+            } else {
+                (&[][..], &[][..])
+            };
         let mut produce_routes = Vec::with_capacity(route_count);
         for _ in 0..route_count {
             let header = input
@@ -350,6 +464,24 @@ impl Profile<'_> {
             max_produce_routes,
             group: fields[3],
             transactional_id: fields[4],
+            authentication: match auth_kind {
+                AUTH_NONE => Authentication::None,
+                AUTH_SCRAM_SHA_256 => Authentication::ScramSha256 {
+                    username,
+                    password,
+                },
+                AUTH_MTLS_P256 => Authentication::MtlsP256 {
+                    certificate_der,
+                    private_key_der,
+                },
+                AUTH_SCRAM_SHA_256_AND_MTLS_P256 => Authentication::ScramSha256AndMtlsP256 {
+                    username,
+                    password,
+                    certificate_der,
+                    private_key_der,
+                },
+                _ => return Err(ProfileError::InvalidField),
+            },
             rights: get_u64(input, 56)?,
             transaction_timeout_ms: get_u32(input, 64)?,
         };
@@ -376,6 +508,38 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
         || profile.tls != !profile.ca_certificate_der.is_empty()
     {
         return Err(ProfileError::InvalidField);
+    }
+    match profile.authentication {
+        Authentication::None => {}
+        Authentication::ScramSha256 {
+            username,
+            password,
+        } => {
+            if !profile.tls || !valid_scram(username, password) {
+                return Err(ProfileError::InvalidField);
+            }
+        }
+        Authentication::MtlsP256 {
+            certificate_der,
+            private_key_der,
+        } => {
+            if !profile.tls || !valid_mtls(certificate_der, private_key_der) {
+                return Err(ProfileError::InvalidField);
+            }
+        }
+        Authentication::ScramSha256AndMtlsP256 {
+            username,
+            password,
+            certificate_der,
+            private_key_der,
+        } => {
+            if !profile.tls
+                || !valid_scram(username, password)
+                || !valid_mtls(certificate_der, private_key_der)
+            {
+                return Err(ProfileError::InvalidField);
+            }
+        }
     }
     if profile.broker_endpoints.len() >= MAX_BROKER_ENDPOINTS {
         return Err(ProfileError::TooManyBrokers);
@@ -409,6 +573,46 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
         }
     }
     Ok(())
+}
+
+fn valid_scram(username: &[u8], password: &[u8]) -> bool {
+    !username.is_empty()
+        && username.len() <= MAX_SASL_USERNAME_BYTES
+        && !password.is_empty()
+        && password.len() <= MAX_SASL_PASSWORD_BYTES
+        && core::str::from_utf8(username).is_ok()
+        && core::str::from_utf8(password).is_ok()
+        && username.iter().all(|byte| (0x20..=0x7e).contains(byte))
+        && password.iter().all(|byte| (0x20..=0x7e).contains(byte))
+}
+
+fn valid_mtls(certificate_der: &[u8], private_key_der: &[u8]) -> bool {
+    !certificate_der.is_empty()
+        && certificate_der.len() <= MAX_MTLS_CERTIFICATE_BYTES
+        && !private_key_der.is_empty()
+        && private_key_der.len() <= MAX_MTLS_PRIVATE_KEY_BYTES
+}
+
+fn authentication_fields(authentication: Authentication<'_>) -> (u16, &[u8], &[u8], &[u8], &[u8]) {
+    match authentication {
+        Authentication::None => (AUTH_NONE, &[], &[], &[], &[]),
+        Authentication::ScramSha256 {
+            username,
+            password,
+        } => (AUTH_SCRAM_SHA_256, username, password, &[], &[]),
+        Authentication::MtlsP256 {
+            certificate_der,
+            private_key_der,
+        } => (AUTH_MTLS_P256, &[], &[], certificate_der, private_key_der),
+        Authentication::ScramSha256AndMtlsP256 {
+            username,
+            password,
+            certificate_der,
+            private_key_der,
+        } => {
+            (AUTH_SCRAM_SHA_256_AND_MTLS_P256, username, password, certificate_der, private_key_der)
+        }
+    }
 }
 
 fn put_u16(output: &mut [u8], offset: usize, value: u16) {
@@ -694,6 +898,12 @@ mod tests {
             max_produce_routes: 64,
             group: b"workers",
             transactional_id: b"worker-1",
+            authentication: Authentication::ScramSha256AndMtlsP256 {
+                username: b"worker",
+                password: b"secret",
+                certificate_der: b"client-certificate",
+                private_key_der: b"client-private-key",
+            },
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         };
@@ -723,6 +933,7 @@ mod tests {
             max_produce_routes: 64,
             group: b"workers",
             transactional_id: b"worker-1",
+            authentication: Authentication::None,
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         };
@@ -756,8 +967,81 @@ mod tests {
             max_produce_routes: 64,
             group: b"workers",
             transactional_id: b"worker-1",
+            authentication: Authentication::None,
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+    }
+
+    #[test]
+    fn profile_requires_tls_and_bounded_ascii_for_scram() {
+        let mut profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            authentication: Authentication::ScramSha256 {
+                username: b"worker",
+                password: b"secret",
+            },
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+        profile.tls = true;
+        profile.ca_certificate_der = b"certificate";
+        profile.authentication = Authentication::ScramSha256 {
+            username: b"worker",
+            password: b"line\nbreak",
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+    }
+
+    #[test]
+    fn profile_requires_tls_and_bounded_identity_for_mtls() {
+        let mut profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            authentication: Authentication::MtlsP256 {
+                certificate_der: b"client-certificate",
+                private_key_der: b"client-private-key",
+            },
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+
+        profile.tls = true;
+        profile.ca_certificate_der = b"certificate";
+        profile.authentication = Authentication::MtlsP256 {
+            certificate_der: b"",
+            private_key_der: b"client-private-key",
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+
+        let oversized_private_key = alloc::vec![0; MAX_MTLS_PRIVATE_KEY_BYTES + 1];
+        profile.authentication = Authentication::MtlsP256 {
+            certificate_der: b"client-certificate",
+            private_key_der: &oversized_private_key,
         };
         assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
     }
@@ -781,6 +1065,7 @@ mod tests {
             max_produce_routes: 64,
             group: b"workers",
             transactional_id: b"worker-1",
+            authentication: Authentication::None,
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         };
@@ -806,6 +1091,7 @@ mod tests {
             max_produce_routes: 0,
             group: b"workers",
             transactional_id: b"worker-1",
+            authentication: Authentication::None,
             rights: ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         };

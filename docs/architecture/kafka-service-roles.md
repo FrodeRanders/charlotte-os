@@ -9,8 +9,8 @@ they are separate authority surfaces, not three unrelated Kafka stacks.
 
 The broker-facing deployment unit is `kafka.elf`. Only that service receives
 the immutable profile capability containing the broker address, TLS trust
-material, topic/partition authority, group, transactional identity, and future
-SASL or mTLS credentials. IP addresses are not normally secrets, but they are
+material, topic/partition authority, group, transactional identity, and
+connector authentication credentials. IP addresses are not normally secrets, but they are
 still deployment configuration and authority that application code does not
 need. The profile capability is never delegated onward.
 
@@ -30,10 +30,12 @@ launcher/controller --procedure connection-----> kafka-step
 kafka-step        --bounded invocation----------> activity procedure
 ```
 
-The current data-plane supports verified TLS trust anchors but not SASL user
-names/passwords or client-certificate authentication. Those credentials should
-be added to the same connector-only profile when the authentication mechanism
-is implemented; they must not be added to the application or procedure ABI.
+The current data-plane supports verified TLS trust anchors, connector-only
+SASL/SCRAM-SHA-256 credentials, and connector-only P-256 mTLS identities.
+Usernames, passwords, client private keys, salted keys, nonces, and broker
+challenges never cross the application IPC boundary; password, private-key,
+and derived-key copies use zeroizing storage. SCRAM and mTLS may be provisioned
+independently or together in the same connector profile.
 
 ## Producer role
 

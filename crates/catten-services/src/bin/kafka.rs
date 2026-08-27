@@ -12,6 +12,7 @@ use alloc::{
         BTreeSet,
     },
     string::String,
+    sync::Arc,
     vec::Vec,
 };
 
@@ -48,9 +49,11 @@ use charlotte_kafka::{
     RecordInput,
 };
 use charlotte_protocol_kafka::{
+    Authentication,
     DeliveredRecord,
     RecordRequest,
 };
+use zeroize::Zeroizing;
 
 catten_rt::entry!(main);
 
@@ -97,8 +100,25 @@ struct Profile {
     produce_routes: Vec<TopicPartition>,
     group: Vec<u8>,
     transactional_id: Vec<u8>,
+    authentication: ConnectorAuthentication,
     rights: u64,
     transaction_timeout_ms: i32,
+}
+
+struct ScramCredentials {
+    username: Zeroizing<String>,
+    password: Zeroizing<Vec<u8>>,
+}
+
+struct TlsClientIdentity {
+    certificate_der: Vec<u8>,
+    private_key_der: Zeroizing<Vec<u8>>,
+}
+
+#[derive(Clone)]
+struct ConnectorAuthentication {
+    scram: Option<Arc<ScramCredentials>>,
+    tls_identity: Option<Arc<TlsClientIdentity>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -119,6 +139,35 @@ impl Profile {
         let memory = ctx.profile_memory()?;
         let mapping = memory.map_read_only().ok()?;
         let profile = protocol::Profile::decode(mapping.as_slice()).ok()?;
+        let authentication = match profile.authentication {
+            Authentication::None => ConnectorAuthentication {
+                scram: None,
+                tls_identity: None,
+            },
+            Authentication::ScramSha256 {
+                username,
+                password,
+            } => ConnectorAuthentication {
+                scram: Some(scram_credentials(username, password)?),
+                tls_identity: None,
+            },
+            Authentication::MtlsP256 {
+                certificate_der,
+                private_key_der,
+            } => ConnectorAuthentication {
+                scram: None,
+                tls_identity: Some(client_identity(certificate_der, private_key_der)),
+            },
+            Authentication::ScramSha256AndMtlsP256 {
+                username,
+                password,
+                certificate_der,
+                private_key_der,
+            } => ConnectorAuthentication {
+                scram: Some(scram_credentials(username, password)?),
+                tls_identity: Some(client_identity(certificate_der, private_key_der)),
+            },
+        };
         Some(Self {
             bootstrap: BrokerDestination {
                 ip: profile.endpoint_ipv4,
@@ -150,6 +199,7 @@ impl Profile {
                 .collect(),
             group: profile.group.to_vec(),
             transactional_id: profile.transactional_id.to_vec(),
+            authentication,
             rights: profile.rights,
             transaction_timeout_ms: profile.transaction_timeout_ms.try_into().ok()?,
         })
@@ -174,6 +224,20 @@ impl Profile {
             .chain(&self.broker_endpoints)
             .find(|broker| broker.host == host && broker.port == port)
     }
+}
+
+fn scram_credentials(username: &[u8], password: &[u8]) -> Option<Arc<ScramCredentials>> {
+    Some(Arc::new(ScramCredentials {
+        username: Zeroizing::new(String::from_utf8(username.to_vec()).ok()?),
+        password: Zeroizing::new(password.to_vec()),
+    }))
+}
+
+fn client_identity(certificate_der: &[u8], private_key_der: &[u8]) -> Arc<TlsClientIdentity> {
+    Arc::new(TlsClientIdentity {
+        certificate_der: certificate_der.to_vec(),
+        private_key_der: Zeroizing::new(private_key_der.to_vec()),
+    })
 }
 
 fn fail(code: u32) -> ! {
@@ -235,6 +299,7 @@ struct BrokerTransport<'connection> {
     tls: bool,
     host: String,
     ca_der: Vec<u8>,
+    authentication: ConnectorAuthentication,
     stream: Option<BrokerStream<'connection>>,
     received: Vec<u8>,
 }
@@ -278,6 +343,7 @@ impl<'connection> BrokerTransport<'connection> {
         destination: &BrokerDestination,
         tls: bool,
         ca_der: &[u8],
+        authentication: ConnectorAuthentication,
     ) -> Self {
         Self {
             tcp,
@@ -288,6 +354,7 @@ impl<'connection> BrokerTransport<'connection> {
             tls,
             host: destination.host.clone(),
             ca_der: ca_der.to_vec(),
+            authentication,
             stream: None,
             received: Vec::new(),
         }
@@ -308,6 +375,16 @@ impl<'connection> BrokerTransport<'connection> {
                 tls_client::OpenConfig {
                     server_name: &self.host,
                     ca_certificate_der: &self.ca_der,
+                    client_certificate_der: self
+                        .authentication
+                        .tls_identity
+                        .as_ref()
+                        .map(|identity| identity.certificate_der.as_slice()),
+                    client_private_key_der: self
+                        .authentication
+                        .tls_identity
+                        .as_ref()
+                        .map(|identity| identity.private_key_der.as_slice()),
                     unix_seconds,
                     socket_bounds: tls_client::SocketBounds {
                         send_attempts: SEND_ATTEMPTS,
@@ -337,12 +414,78 @@ impl<'connection> BrokerTransport<'connection> {
             BrokerStream::Plain(socket)
         };
         self.stream = Some(stream);
+        if let Some(credentials) = self.authentication.scram.clone()
+            && let Err(error) = self.authenticate(&credentials)
+        {
+            self.stream.take();
+            self.received.clear();
+            return Err(error);
+        }
         self.received.clear();
         Ok(())
     }
 
     fn request(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
         self.connect()?;
+        self.request_connected(request)
+    }
+
+    fn authenticate(&mut self, credentials: &ScramCredentials) -> Result<(), i64> {
+        let correlation = 1;
+        let request = wire::sasl_handshake_request(correlation, CLIENT_ID, wire::scram::MECHANISM)
+            .map_err(map_wire)?;
+        let response = self.request_connected(&request)?;
+        let handshake = wire::parse_sasl_handshake(&response, correlation).map_err(map_wire)?;
+        if handshake.error != wire::NO_ERROR
+            || !handshake
+                .mechanisms
+                .iter()
+                .any(|mechanism| mechanism.as_bytes() == wire::scram::MECHANISM)
+        {
+            return Err(protocol::ERR_AUTHENTICATION);
+        }
+
+        let mut nonce_bytes = Zeroizing::new([0u8; 24]);
+        tls_client::fill_entropy(self.entropy, &mut *nonce_bytes)
+            .map_err(|_| protocol::ERR_AUTHENTICATION)?;
+        let nonce = Zeroizing::new(wire::scram::base64_encode(&nonce_bytes[..], false));
+        let mut scram =
+            wire::scram::Client::new(&credentials.username, &credentials.password, &nonce)
+                .map_err(|_| protocol::ERR_AUTHENTICATION)?;
+
+        let correlation = 2;
+        let client_first = scram.client_first();
+        let request = Zeroizing::new(
+            wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_first)
+                .map_err(map_wire)?,
+        );
+        let response = self.request_connected(&request)?;
+        let server_first =
+            wire::parse_sasl_authenticate(&response, correlation).map_err(map_wire)?;
+        if server_first.error != wire::NO_ERROR {
+            return Err(protocol::ERR_AUTHENTICATION);
+        }
+        let client_final = scram
+            .receive_server_first(&server_first.auth_bytes)
+            .map_err(|_| protocol::ERR_AUTHENTICATION)?;
+
+        let correlation = 3;
+        let request = Zeroizing::new(
+            wire::sasl_authenticate_request(correlation, CLIENT_ID, &client_final)
+                .map_err(map_wire)?,
+        );
+        let response = self.request_connected(&request)?;
+        let server_final =
+            wire::parse_sasl_authenticate(&response, correlation).map_err(map_wire)?;
+        if server_final.error != wire::NO_ERROR {
+            return Err(protocol::ERR_AUTHENTICATION);
+        }
+        scram
+            .receive_server_final(&server_final.auth_bytes)
+            .map_err(|_| protocol::ERR_AUTHENTICATION)
+    }
+
+    fn request_connected(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
         let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
         if stream.send_all(request).is_err() {
             self.stream.take();
@@ -409,7 +552,15 @@ impl<'connection> BrokerSession<'connection> {
             .broker_endpoints
             .iter()
             .map(|destination| {
-                BrokerTransport::new(tcp, entropy, clock, destination, profile.tls, &profile.ca_der)
+                BrokerTransport::new(
+                    tcp,
+                    entropy,
+                    clock,
+                    destination,
+                    profile.tls,
+                    &profile.ca_der,
+                    profile.authentication.clone(),
+                )
             })
             .collect();
         Self {
@@ -423,6 +574,7 @@ impl<'connection> BrokerSession<'connection> {
                 &profile.bootstrap,
                 profile.tls,
                 &profile.ca_der,
+                profile.authentication.clone(),
             ),
             seeds,
             brokers: BTreeMap::new(),
@@ -490,6 +642,13 @@ impl<'connection> BrokerSession<'connection> {
                 return Err(protocol::ERR_UNSUPPORTED);
             }
         }
+        if profile.authentication.scram.is_some()
+            && (!versions.supports(wire::api::SASL_HANDSHAKE, wire::version::SASL_HANDSHAKE)
+                || !versions
+                    .supports(wire::api::SASL_AUTHENTICATE, wire::version::SASL_AUTHENTICATE))
+        {
+            return Err(protocol::ERR_UNSUPPORTED);
+        }
 
         self.refresh_routes(profile)?;
 
@@ -532,6 +691,7 @@ impl<'connection> BrokerSession<'connection> {
                         destination,
                         profile.tls,
                         &profile.ca_der,
+                        profile.authentication.clone(),
                     ),
                 );
             }
@@ -600,6 +760,7 @@ impl<'connection> BrokerSession<'connection> {
                         destination,
                         profile.tls,
                         &profile.ca_der,
+                        profile.authentication.clone(),
                     )
                 });
                 return Ok(coordinator.node_id);
@@ -914,6 +1075,7 @@ fn map_broker(error: i16) -> i64 {
         | wire::INVALID_PRODUCER_EPOCH
         | wire::TRANSACTION_COORDINATOR_FENCED => protocol::ERR_FENCED,
         wire::REQUEST_TIMED_OUT => protocol::ERR_TIMEOUT,
+        wire::SASL_AUTHENTICATION_FAILED => protocol::ERR_AUTHENTICATION,
         _ => protocol::ERR_BROKER,
     }
 }

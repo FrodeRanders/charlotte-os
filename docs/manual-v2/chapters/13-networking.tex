@@ -327,8 +327,8 @@ trusted launcher and the read-only capability.
 
 Only the broker-facing service receives this profile. Producer, consumer, and
 transactional-step logic receives a connection capability to the provisioned
-service instance, never its broker address, trust material, or future SASL or
-mTLS credentials. Credential rotation can therefore replace the connector
+service instance, never its broker address, trust material, SASL/SCRAM
+credentials, or mTLS identity. Credential rotation can therefore replace the connector
 profile without rebuilding application or procedure artifacts.
 
 The transaction owner supports the consume--transform--produce path. An
@@ -346,13 +346,19 @@ and group/transaction coordinators only from the profile's hostname/port and
 IPv4 allow-list. Authorized endpoints are alternate metadata seeds, and
 retriable produce/fetch failures refresh leader metadata before retry. The
 service does not yet fully recover coordinator migration during an active
-transaction, or implement consumer-group join/rebalance, SASL, record
+transaction, or implement consumer-group join/rebalance, client-certificate chains, record
 compression, topic
 administration, or arbitrary partition assignment. Records and the number of
 simultaneous consumers, deliveries, and transactions are bounded.
 
 TLS uses the same explicit trust-anchor, synchronized-time, and entropy path as
-S3. The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS,
+S3. Optional SCRAM-SHA-256 authenticates \texttt{kafka} to every selected broker
+after TLS establishment. Optional mTLS uses one DER X.509 client certificate
+and an ECDSA P-256 private key; both mechanisms may be required together. The
+bounded SCRAM exchange validates broker challenges, minimum and maximum
+iteration counts, and the server signature. Passwords, client private keys,
+and derived keys use zeroizing owners and remain outside the application ABI.
+The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS, required mTLS, and SCRAM,
 places the input and output routes on different leaders, and verifies
 idempotent production, read-committed consumption, atomic production plus
 group-offset commit, transaction abort, and filtering of the aborted record.

@@ -334,6 +334,8 @@ fn connect<'connection>(
             tls_client::OpenConfig {
                 server_name: &profile.host,
                 ca_certificate_der: &profile.ca_der,
+                client_certificate_der: None,
+                client_private_key_der: None,
                 unix_seconds,
                 socket_bounds: tls_client::SocketBounds {
                     send_attempts: SEND_ATTEMPTS,

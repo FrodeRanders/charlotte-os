@@ -370,7 +370,7 @@ does not by itself constitute a complete cluster executive.
         prefix, credential identity, and rights mask. A Kafka capability
         confines it to an explicit broker-destination allow-list, fixed consume partition, bounded
         produce-route allow-list, group, transactional identity, and operation
-        mask while offering idempotent production,
+        mask while keeping TLS/SCRAM and mTLS credentials inside the connector and offering idempotent production,
         read-committed consumption, and transactional offset commits. These
         adapters make external infrastructure usable from Charlotte; they are
         not yet cluster-managed storage or messaging substrates.

@@ -100,6 +100,28 @@ pub struct KafkaBrokerEndpoint<'a> {
     pub port: u16,
 }
 
+/// Connector-only Kafka client authentication. Credentials are copied into
+/// the read-only launch profile, erased from the launcher's temporary buffer,
+/// and never delegated to applications.
+#[derive(Clone, Copy)]
+pub enum KafkaAuthentication<'a> {
+    None,
+    ScramSha256 {
+        username: &'a [u8],
+        password: &'a [u8],
+    },
+    MtlsP256 {
+        certificate_der: &'a [u8],
+        private_key_der: &'a [u8],
+    },
+    ScramSha256AndMtlsP256 {
+        username: &'a [u8],
+        password: &'a [u8],
+        certificate_der: &'a [u8],
+        private_key_der: &'a [u8],
+    },
+}
+
 /// A capability profile for one Kafka data-plane service. The endpoint grants
 /// access only to this broker, fixed consume topic/partition, allow-listed
 /// produce routes, consumer group, and transactional identity.
@@ -120,6 +142,7 @@ pub struct KafkaProfile<'a> {
     pub max_produce_routes: u16,
     pub group: &'a [u8],
     pub transactional_id: &'a [u8],
+    pub authentication: KafkaAuthentication<'a>,
     pub rights: u64,
     pub transaction_timeout_ms: u32,
 }
@@ -449,24 +472,54 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
             port: broker.port,
         })
         .collect();
-    let encoded = charlotte_protocol_kafka::Profile {
-        endpoint_ipv4: profile.endpoint_ipv4,
-        host: profile.host,
-        port: profile.port,
-        broker_endpoints: brokers,
-        tls: profile.tls,
-        ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
-        topic: profile.topic,
-        partition: i32::try_from(profile.partition).expect("Kafka partition exceeds i32"),
-        produce_routes: routes,
-        max_produce_routes: profile.max_produce_routes,
-        group: profile.group,
-        transactional_id: profile.transactional_id,
-        rights: profile.rights,
-        transaction_timeout_ms: profile.transaction_timeout_ms,
-    }
-    .encode()
-    .expect("invalid Kafka profile");
+    let encoded = zeroize::Zeroizing::new(
+        charlotte_protocol_kafka::Profile {
+            endpoint_ipv4: profile.endpoint_ipv4,
+            host: profile.host,
+            port: profile.port,
+            broker_endpoints: brokers,
+            tls: profile.tls,
+            ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
+            topic: profile.topic,
+            partition: i32::try_from(profile.partition).expect("Kafka partition exceeds i32"),
+            produce_routes: routes,
+            max_produce_routes: profile.max_produce_routes,
+            group: profile.group,
+            transactional_id: profile.transactional_id,
+            authentication: match profile.authentication {
+                KafkaAuthentication::None => charlotte_protocol_kafka::Authentication::None,
+                KafkaAuthentication::ScramSha256 {
+                    username,
+                    password,
+                } => charlotte_protocol_kafka::Authentication::ScramSha256 {
+                    username,
+                    password,
+                },
+                KafkaAuthentication::MtlsP256 {
+                    certificate_der,
+                    private_key_der,
+                } => charlotte_protocol_kafka::Authentication::MtlsP256 {
+                    certificate_der,
+                    private_key_der,
+                },
+                KafkaAuthentication::ScramSha256AndMtlsP256 {
+                    username,
+                    password,
+                    certificate_der,
+                    private_key_der,
+                } => charlotte_protocol_kafka::Authentication::ScramSha256AndMtlsP256 {
+                    username,
+                    password,
+                    certificate_der,
+                    private_key_der,
+                },
+            },
+            rights: profile.rights,
+            transaction_timeout_ms: profile.transaction_timeout_ms,
+        }
+        .encode()
+        .expect("invalid Kafka profile"),
+    );
     crate::service::supervisor::spawn_with_read_only_profile_and_limits(
         crate::service::store::service_elf(b"kafka").expect("[launch] kafka.elf"),
         ns,

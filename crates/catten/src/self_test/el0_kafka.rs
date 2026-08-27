@@ -6,6 +6,7 @@ use crate::{
     logln,
     service::{
         launch::{
+            KafkaAuthentication,
             KafkaBrokerEndpoint,
             KafkaProduceRoute,
             KafkaProfile,
@@ -33,6 +34,8 @@ extern "C" fn verify_el0_kafka() {
 
     let ns = unsafe { KAFKA_NS.as_ref() }.expect("[kafka-test] name service missing");
     let ca_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CA_DER"));
+    let client_certificate_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CLIENT_CERT_DER"));
+    let client_private_key_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CLIENT_KEY_DER"));
     let service = crate::service::launch::launch_kafka_profile(
         ns,
         &KafkaProfile {
@@ -62,6 +65,12 @@ extern "C" fn verify_el0_kafka() {
             max_produce_routes: 64,
             group: b"charlotte-qemu-smoke-group",
             transactional_id: b"charlotte-qemu-smoke-transaction",
+            authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
+                username: b"charlotte",
+                password: b"charlotte-kafka-test",
+                certificate_der: client_certificate_der,
+                private_key_der: client_private_key_der,
+            },
             rights: charlotte_protocol_kafka::ALL_RIGHTS,
             transaction_timeout_ms: 60_000,
         },

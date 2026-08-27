@@ -28,6 +28,7 @@ use embedded_tls::{
     Aes128GcmSha256,
     Certificate,
     CryptoProvider,
+    SignatureScheme,
     TlsClock,
     TlsConfig,
     TlsContext,
@@ -35,6 +36,13 @@ use embedded_tls::{
     TlsVerifier,
     blocking::TlsConnection,
     pki::CertVerifier,
+};
+use p256::{
+    SecretKey,
+    ecdsa::{
+        DerSignature,
+        SigningKey,
+    },
 };
 use rand_core::{
     CryptoRng,
@@ -62,10 +70,13 @@ pub struct SocketBounds {
     pub receive_chunk_len: usize,
 }
 
-/// Inputs required to authenticate a TLS server.
+/// Inputs required to authenticate a TLS server and, optionally, present a
+/// client identity.
 pub struct OpenConfig<'a> {
     pub server_name: &'a str,
     pub ca_certificate_der: &'a [u8],
+    pub client_certificate_der: Option<&'a [u8]>,
+    pub client_private_key_der: Option<&'a [u8]>,
     pub unix_seconds: u64,
     pub socket_bounds: SocketBounds,
 }
@@ -80,6 +91,9 @@ pub enum OpenError {
 /// A failure while using or explicitly closing an established TLS stream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamError;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EntropyUnavailable;
 
 /// A verified TLS byte stream that owns all resources needed by the session.
 #[must_use = "dropping the stream closes its TLS session and owned socket"]
@@ -102,6 +116,10 @@ impl<'connection> OwnedTlsStream<'connection> {
             || config.socket_bounds.send_attempts == 0
             || config.socket_bounds.receive_attempts == 0
             || config.socket_bounds.receive_chunk_len == 0
+            || config.client_certificate_der.is_some() != config.client_private_key_der.is_some()
+            || config
+                .client_private_key_der
+                .is_some_and(|key| SecretKey::from_sec1_der(key).is_err())
         {
             return Err(OpenError::InvalidConfiguration);
         }
@@ -134,6 +152,8 @@ impl<'connection> OwnedTlsStream<'connection> {
                 service: entropy_service,
             },
             verifier: CertVerifier::new(Certificate::X509(config.ca_certificate_der)),
+            client_certificate_der: config.client_certificate_der,
+            client_private_key_der: config.client_private_key_der,
         };
         if let Err(error) = connection.open(TlsContext::new(&tls_config, provider)) {
             let code = tls_error_code(&error);
@@ -275,6 +295,20 @@ struct SystemRng<'connection> {
     service: Option<ConnectionRef<'connection>>,
 }
 
+/// Fill a caller-owned buffer from the same architecture/leased entropy path
+/// used by TLS. Protocol clients use this for nonces without gaining raw
+/// device authority.
+pub fn fill_entropy(
+    service: Option<ConnectionRef<'_>>,
+    destination: &mut [u8],
+) -> Result<(), EntropyUnavailable> {
+    SystemRng {
+        service,
+    }
+    .try_fill(destination)
+    .map_err(|_| EntropyUnavailable)
+}
+
 impl SystemRng<'_> {
     fn try_fill(&self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
         let mut offset = 0;
@@ -344,14 +378,16 @@ impl TlsClock for SynchronizedClock {
     }
 }
 
-struct TlsProvider<'connection, 'ca> {
+struct TlsProvider<'connection, 'ca, 'identity> {
     rng: SystemRng<'connection>,
     verifier: CertVerifier<'ca, Aes128GcmSha256, SynchronizedClock, TLS_CERTIFICATE_LEN>,
+    client_certificate_der: Option<&'identity [u8]>,
+    client_private_key_der: Option<&'identity [u8]>,
 }
 
-impl CryptoProvider for TlsProvider<'_, '_> {
+impl CryptoProvider for TlsProvider<'_, '_, '_> {
     type CipherSuite = Aes128GcmSha256;
-    type Signature = &'static [u8];
+    type Signature = DerSignature;
 
     fn rng(&mut self) -> impl embedded_tls::CryptoRngCore {
         &mut self.rng
@@ -359,6 +395,19 @@ impl CryptoProvider for TlsProvider<'_, '_> {
 
     fn verifier(&mut self) -> Result<&mut impl TlsVerifier<Aes128GcmSha256>, TlsError> {
         Ok(&mut self.verifier)
+    }
+
+    fn signer(
+        &mut self,
+    ) -> Result<(impl signature::SignerMut<Self::Signature>, SignatureScheme), TlsError> {
+        let private_key = self.client_private_key_der.ok_or(TlsError::InvalidPrivateKey)?;
+        let secret_key =
+            SecretKey::from_sec1_der(private_key).map_err(|_| TlsError::InvalidPrivateKey)?;
+        Ok((SigningKey::from(&secret_key), SignatureScheme::EcdsaSecp256r1Sha256))
+    }
+
+    fn client_cert(&mut self) -> Option<Certificate<impl AsRef<[u8]>>> {
+        self.client_certificate_der.map(Certificate::X509)
     }
 }
 

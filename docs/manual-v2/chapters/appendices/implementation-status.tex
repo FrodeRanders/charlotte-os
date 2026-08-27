@@ -148,7 +148,8 @@ repository history remain authoritative.
         Kafka service instances are separately provisioned because their
         endpoint, trust, credential, and data-scope profiles are not ambient
         machine configuration. Opt-in AArch64 tests validate RustFS and Apache
-        Kafka over verified TLS.
+        Kafka over verified TLS with required P-256 mTLS and SCRAM-SHA-256
+        client authentication.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a
@@ -167,7 +168,8 @@ repository history remain authoritative.
         not yet qualified against an ECS installation. Kafka is limited to a
         directly assigned partition. It routes among explicitly provisioned
         brokers and refreshes leaders for produce/fetch, but still lacks full
-        coordinator-migration recovery, group rebalance, SASL, compression,
+        coordinator-migration recovery, group rebalance, additional SASL
+        mechanisms, client-certificate chains and key algorithms, compression,
         and topic administration.
         Its versioned, digest-checked profile is already delivered only to the
         broker connector as read-only launch memory; production secret injection

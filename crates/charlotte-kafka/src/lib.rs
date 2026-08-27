@@ -8,6 +8,8 @@
 
 extern crate alloc;
 
+pub mod scram;
+
 use alloc::{
     string::String,
     vec::Vec,
@@ -21,12 +23,14 @@ pub mod api {
     pub const OFFSET_COMMIT: i16 = 8;
     pub const OFFSET_FETCH: i16 = 9;
     pub const FIND_COORDINATOR: i16 = 10;
+    pub const SASL_HANDSHAKE: i16 = 17;
     pub const API_VERSIONS: i16 = 18;
     pub const INIT_PRODUCER_ID: i16 = 22;
     pub const ADD_PARTITIONS_TO_TXN: i16 = 24;
     pub const ADD_OFFSETS_TO_TXN: i16 = 25;
     pub const END_TXN: i16 = 26;
     pub const TXN_OFFSET_COMMIT: i16 = 28;
+    pub const SASL_AUTHENTICATE: i16 = 36;
 }
 
 pub mod version {
@@ -37,12 +41,14 @@ pub mod version {
     pub const OFFSET_COMMIT: i16 = 2;
     pub const OFFSET_FETCH: i16 = 1;
     pub const FIND_COORDINATOR: i16 = 1;
+    pub const SASL_HANDSHAKE: i16 = 1;
     pub const API_VERSIONS: i16 = 0;
     pub const INIT_PRODUCER_ID: i16 = 0;
     pub const ADD_PARTITIONS_TO_TXN: i16 = 0;
     pub const ADD_OFFSETS_TO_TXN: i16 = 0;
     pub const END_TXN: i16 = 0;
     pub const TXN_OFFSET_COMMIT: i16 = 0;
+    pub const SASL_AUTHENTICATE: i16 = 1;
 }
 
 pub const NO_ERROR: i16 = 0;
@@ -58,6 +64,7 @@ pub const INVALID_PRODUCER_EPOCH: i16 = 47;
 pub const CONCURRENT_TRANSACTIONS: i16 = 51;
 pub const TRANSACTION_COORDINATOR_FENCED: i16 = 52;
 pub const PRODUCER_FENCED: i16 = 90;
+pub const SASL_AUTHENTICATION_FAILED: i16 = 58;
 
 pub const fn is_retriable_broker_error(error: i16) -> bool {
     matches!(
@@ -97,6 +104,19 @@ pub struct ApiVersion {
 pub struct ApiVersions {
     pub error: i16,
     pub versions: Vec<ApiVersion>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SaslHandshake {
+    pub error: i16,
+    pub mechanisms: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SaslAuthenticate {
+    pub error: i16,
+    pub auth_bytes: Vec<u8>,
+    pub session_lifetime_ms: i64,
 }
 
 impl ApiVersions {
@@ -424,6 +444,65 @@ pub fn parse_api_versions(frame: &[u8], correlation: i32) -> Result<ApiVersions,
     Ok(ApiVersions {
         error,
         versions,
+    })
+}
+
+pub fn sasl_handshake_request(
+    correlation: i32,
+    client_id: &[u8],
+    mechanism: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut encoder =
+        Encoder::request(api::SASL_HANDSHAKE, version::SASL_HANDSHAKE, correlation, client_id)?;
+    encoder.string(mechanism)?;
+    encoder.finish()
+}
+
+pub fn parse_sasl_handshake(frame: &[u8], correlation: i32) -> Result<SaslHandshake, Error> {
+    let mut decoder = response(frame, correlation)?;
+    let error = decoder.i16()?;
+    let count = decoder.array_len()?;
+    let mut mechanisms = Vec::with_capacity(count);
+    for _ in 0..count {
+        mechanisms.push(decoder.string()?);
+    }
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok(SaslHandshake {
+        error,
+        mechanisms,
+    })
+}
+
+pub fn sasl_authenticate_request(
+    correlation: i32,
+    client_id: &[u8],
+    auth_bytes: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut encoder = Encoder::request(
+        api::SASL_AUTHENTICATE,
+        version::SASL_AUTHENTICATE,
+        correlation,
+        client_id,
+    )?;
+    encoder.bytes(auth_bytes)?;
+    encoder.finish()
+}
+
+pub fn parse_sasl_authenticate(frame: &[u8], correlation: i32) -> Result<SaslAuthenticate, Error> {
+    let mut decoder = response(frame, correlation)?;
+    let error = decoder.i16()?;
+    let _error_message = decoder.nullable_string()?;
+    let auth_bytes = decoder.bytes()?.unwrap_or_default().to_vec();
+    let session_lifetime_ms = decoder.i64()?;
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok(SaslAuthenticate {
+        error,
+        auth_bytes,
+        session_lifetime_ms,
     })
 }
 
@@ -1316,5 +1395,28 @@ mod tests {
             0, 0, 0, 2, 0, 6, b'e', b'v', b'e', b'n', b't', b's', 0, 7, b'r', b'e', b's', b'u',
             b'l', b't', b's',
         ]));
+    }
+
+    #[test]
+    fn sasl_requests_and_responses_use_bounded_kafka_framing() {
+        let handshake = sasl_handshake_request(7, b"charlotte", scram::MECHANISM).unwrap();
+        assert_eq!(&handshake[4..6], &api::SASL_HANDSHAKE.to_be_bytes());
+        assert!(handshake.ends_with(b"SCRAM-SHA-256"));
+
+        let mut response = Vec::new();
+        response.extend_from_slice(&0i32.to_be_bytes());
+        response.extend_from_slice(&7i32.to_be_bytes());
+        response.extend_from_slice(&NO_ERROR.to_be_bytes());
+        response.extend_from_slice(&1i32.to_be_bytes());
+        response.extend_from_slice(&(scram::MECHANISM.len() as i16).to_be_bytes());
+        response.extend_from_slice(scram::MECHANISM);
+        let payload_len = (response.len() - 4) as i32;
+        response[..4].copy_from_slice(&payload_len.to_be_bytes());
+        let parsed = parse_sasl_handshake(&response, 7).unwrap();
+        assert_eq!(parsed.error, NO_ERROR);
+        assert_eq!(parsed.mechanisms, ["SCRAM-SHA-256"]);
+
+        let request = sasl_authenticate_request(8, b"charlotte", b"n,,n=user,r=nonce").unwrap();
+        assert_eq!(&request[4..6], &api::SASL_AUTHENTICATE.to_be_bytes());
     }
 }

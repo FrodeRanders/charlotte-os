@@ -7,3 +7,7 @@ description = "Bounded no_std Kafka wire protocol core for CharlotteOS"
 [lib]
 test = true
 bench = false
+
+[dependencies]
+charlotte-launch = { path = "../charlotte-launch" }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

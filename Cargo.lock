@@ -159,6 +159,7 @@ dependencies = [
  "lock_api",
  "spin 0.12.1",
  "talc",
+ "zeroize",
 ]
 
 [[package]]
@@ -205,9 +206,12 @@ dependencies = [
  "charlotte-smoltcp",
  "embedded-io",
  "embedded-tls",
+ "p256",
  "rand_core",
+ "signature",
  "smoltcp",
  "spin 0.12.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -256,6 +260,10 @@ version = "0.1.0"
 [[package]]
 name = "charlotte-kafka"
 version = "0.1.0"
+dependencies = [
+ "charlotte-launch",
+ "zeroize",
+]
 
 [[package]]
 name = "charlotte-launch"
