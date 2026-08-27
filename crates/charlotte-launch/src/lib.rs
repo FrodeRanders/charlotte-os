@@ -323,6 +323,16 @@ pub mod kafka_status {
     pub const GROUP_ASSIGNED: usize = 36;
     pub const GROUP_HEARTBEATS: usize = 40;
     pub const GROUP_REBALANCES: usize = 44;
+    pub const METADATA_REFRESHES: usize = 48;
+    pub const RECONNECTS: usize = 52;
+    pub const RETRY_ATTEMPTS: usize = 56;
+    pub const TERMINAL_ERRORS: usize = 60;
+    pub const FENCES: usize = 64;
+    pub const METADATA_AGE_MS: usize = 72;
+    pub const CONSUMER_LAG: usize = 80;
+    pub const ROUTE_COUNT: usize = 88;
+    pub const ROUTE_PRODUCED_BASE: usize = 128;
+    pub const ROUTE_PRODUCED_STRIDE: usize = 8;
 }
 
 /// Kafka end-to-end smoke-client diagnostic status-page offsets.

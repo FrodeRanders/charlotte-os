@@ -94,6 +94,16 @@ mod status {
     pub const GROUP_ASSIGNED: usize = 36;
     pub const GROUP_HEARTBEATS: usize = 40;
     pub const GROUP_REBALANCES: usize = 44;
+    pub const METADATA_REFRESHES: usize = 48;
+    pub const RECONNECTS: usize = 52;
+    pub const RETRY_ATTEMPTS: usize = 56;
+    pub const TERMINAL_ERRORS: usize = 60;
+    pub const FENCES: usize = 64;
+    pub const METADATA_AGE_MS: usize = 72;
+    pub const CONSUMER_LAG: usize = 80;
+    pub const ROUTE_COUNT: usize = 88;
+    pub const ROUTE_PRODUCED_BASE: usize = 128;
+    pub const ROUTE_PRODUCED_STRIDE: usize = 8;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -369,6 +379,8 @@ struct BrokerTransport<'connection> {
     authentication: ConnectorAuthentication,
     stream: Option<BrokerStream<'connection>>,
     received: Vec<u8>,
+    ever_connected: bool,
+    unreported_reconnects: u32,
 }
 
 enum BrokerStream<'connection> {
@@ -424,6 +436,8 @@ impl<'connection> BrokerTransport<'connection> {
             authentication,
             stream: None,
             received: Vec::new(),
+            ever_connected: false,
+            unreported_reconnects: 0,
         }
     }
 
@@ -488,8 +502,16 @@ impl<'connection> BrokerTransport<'connection> {
             self.received.clear();
             return Err(error);
         }
+        if self.ever_connected {
+            self.unreported_reconnects = self.unreported_reconnects.wrapping_add(1);
+        }
+        self.ever_connected = true;
         self.received.clear();
         Ok(())
+    }
+
+    fn take_reconnects(&mut self) -> u32 {
+        core::mem::take(&mut self.unreported_reconnects)
     }
 
     fn request(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
@@ -638,6 +660,10 @@ struct BrokerSession<'connection> {
     group_coordinator: Option<i32>,
     transaction_coordinator: Option<i32>,
     correlation: i32,
+    metadata_refreshed_ms: Option<u64>,
+    metadata_refreshes: u32,
+    reconnects: u32,
+    retry_attempts: u32,
 }
 
 struct GroupMembership {
@@ -688,6 +714,10 @@ impl<'connection> BrokerSession<'connection> {
             group_coordinator: None,
             transaction_coordinator: None,
             correlation: 1,
+            metadata_refreshed_ms: None,
+            metadata_refreshes: 0,
+            reconnects: 0,
+            retry_attempts: 0,
         }
     }
 
@@ -697,20 +727,35 @@ impl<'connection> BrokerSession<'connection> {
         value
     }
 
+    fn note_retry(&mut self) {
+        self.retry_attempts = self.retry_attempts.wrapping_add(1);
+    }
+
+    fn metadata_age_ms(&self, now_ms: u64) -> u64 {
+        self.metadata_refreshed_ms.map_or(0, |refreshed| now_ms.saturating_sub(refreshed))
+    }
+
     fn exchange_any(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
-        let mut last_error = match self.bootstrap.request(request) {
+        let bootstrap = self.bootstrap.request(request);
+        self.reconnects = self.reconnects.wrapping_add(self.bootstrap.take_reconnects());
+        let mut last_error = match bootstrap {
             Ok(response) => return Ok(response),
             Err(error) => Some(error),
         };
         for seed in &mut self.seeds {
-            match seed.request(request) {
+            let result = seed.request(request);
+            self.reconnects = self.reconnects.wrapping_add(seed.take_reconnects());
+            match result {
                 Ok(response) => return Ok(response),
                 Err(error) => last_error = Some(error),
             }
         }
         let nodes: Vec<i32> = self.brokers.keys().copied().collect();
         for node in nodes {
-            match self.brokers.get_mut(&node).ok_or(protocol::ERR_TRANSPORT)?.request(request) {
+            let transport = self.brokers.get_mut(&node).ok_or(protocol::ERR_TRANSPORT)?;
+            let result = transport.request(request);
+            self.reconnects = self.reconnects.wrapping_add(transport.take_reconnects());
+            match result {
                 Ok(response) => return Ok(response),
                 Err(error) => last_error = Some(error),
             }
@@ -719,7 +764,10 @@ impl<'connection> BrokerSession<'connection> {
     }
 
     fn exchange_node(&mut self, node: i32, request: Vec<u8>) -> Result<Vec<u8>, i64> {
-        self.brokers.get_mut(&node).ok_or(protocol::ERR_DENIED)?.request(&request)
+        let transport = self.brokers.get_mut(&node).ok_or(protocol::ERR_DENIED)?;
+        let result = transport.request(&request);
+        self.reconnects = self.reconnects.wrapping_add(transport.take_reconnects());
+        result
     }
 
     fn bootstrap(
@@ -789,12 +837,19 @@ impl<'connection> BrokerSession<'connection> {
             wire::metadata_request_many(correlation, CLIENT_ID, &topics).map_err(map_wire)?;
         let response = self.exchange_any(&request)?;
         let metadata = wire::parse_metadata_many(&response, correlation).map_err(map_wire)?;
+        let mut previous_brokers = core::mem::take(&mut self.brokers);
         let mut brokers = BTreeMap::new();
         for broker in &metadata.brokers {
             if let Some(destination) = profile.broker_destination(&broker.host, broker.port) {
-                brokers.insert(
-                    broker.node_id,
-                    BrokerTransport::new(
+                let transport = match previous_brokers.remove(&broker.node_id) {
+                    Some(existing)
+                        if existing.ip == destination.ip
+                            && existing.port == destination.port
+                            && existing.host == destination.host =>
+                    {
+                        existing
+                    }
+                    _ => BrokerTransport::new(
                         self.tcp,
                         self.entropy,
                         self.clock,
@@ -803,7 +858,8 @@ impl<'connection> BrokerSession<'connection> {
                         &profile.ca_der,
                         profile.authentication.clone(),
                     ),
-                );
+                };
+                brokers.insert(broker.node_id, transport);
             }
         }
         let mut route_nodes = BTreeMap::new();
@@ -842,6 +898,8 @@ impl<'connection> BrokerSession<'connection> {
         }
         self.brokers = brokers;
         self.route_nodes = route_nodes;
+        self.metadata_refreshed_ms = monotonic_millis(self.clock);
+        self.metadata_refreshes = self.metadata_refreshes.wrapping_add(1);
         Ok(())
     }
 
@@ -878,6 +936,7 @@ impl<'connection> BrokerSession<'connection> {
             if !wire::is_retriable_broker_error(coordinator.error) {
                 return Err(map_broker(coordinator.error));
             }
+            self.note_retry();
             sleep_ms(COORDINATOR_RETRY_MS);
         }
         Err(protocol::ERR_TIMEOUT)
@@ -919,6 +978,7 @@ impl<'connection> BrokerSession<'connection> {
                 Err(error) => {
                     self.refresh_group_coordinator(profile)?;
                     if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT {
+                        self.note_retry();
                         sleep_ms(COORDINATOR_RETRY_MS);
                         continue;
                     }
@@ -940,6 +1000,7 @@ impl<'connection> BrokerSession<'connection> {
                 {
                     return Err(map_broker(joined.error));
                 }
+                self.note_retry();
                 sleep_ms(COORDINATOR_RETRY_MS);
                 continue;
             }
@@ -968,6 +1029,7 @@ impl<'connection> BrokerSession<'connection> {
                     member_id = joined.member_id;
                     if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT {
                         self.refresh_group_coordinator(profile)?;
+                        self.note_retry();
                         sleep_ms(COORDINATOR_RETRY_MS);
                         continue;
                     }
@@ -1000,6 +1062,7 @@ impl<'connection> BrokerSession<'connection> {
             {
                 return Err(map_broker(error));
             }
+            self.note_retry();
             sleep_ms(COORDINATOR_RETRY_MS);
         }
         Err(protocol::ERR_TIMEOUT)
@@ -1060,6 +1123,7 @@ impl<'connection> BrokerSession<'connection> {
             match wire::parse_init_producer_id(&response, correlation) {
                 Ok(identity) => return Ok(identity),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
+                    self.note_retry();
                     sleep_ms(COORDINATOR_RETRY_MS);
                 }
                 Err(error) => return Err(map_wire(error)),
@@ -1110,6 +1174,7 @@ impl<'connection> BrokerSession<'connection> {
                     if attempt + 1 < ROUTING_ATTEMPTS
                         && wire::is_retriable_broker_error(result.error) =>
                 {
+                    self.note_retry();
                     self.refresh_routes(profile)?;
                 }
                 Ok(result) => return Err(map_broker(result.error)),
@@ -1117,6 +1182,7 @@ impl<'connection> BrokerSession<'connection> {
                     if attempt + 1 < ROUTING_ATTEMPTS
                         && (error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT) =>
                 {
+                    self.note_retry();
                     self.refresh_routes(profile)?;
                 }
                 Err(error) => return Err(error),
@@ -1148,6 +1214,7 @@ impl<'connection> BrokerSession<'connection> {
             match wire::parse_partition_error(&response, correlation, topic, partition) {
                 Ok(()) => return Ok(()),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
+                    self.note_retry();
                     sleep_ms(COORDINATOR_RETRY_MS);
                 }
                 Err(error) => return Err(map_wire(error)),
@@ -1195,6 +1262,7 @@ impl<'connection> BrokerSession<'connection> {
                             || error == protocol::ERR_TRANSPORT
                             || error == protocol::ERR_TIMEOUT) =>
                 {
+                    self.note_retry();
                     self.refresh_routes(profile)?;
                 }
                 Err(error) => return Err(error),
@@ -1203,7 +1271,7 @@ impl<'connection> BrokerSession<'connection> {
         Err(protocol::ERR_TIMEOUT)
     }
 
-    fn fetch(&mut self, profile: &Profile, offset: i64) -> Result<Vec<wire::Record>, i64> {
+    fn fetch(&mut self, profile: &Profile, offset: i64) -> Result<wire::FetchResult, i64> {
         for attempt in 0..ROUTING_ATTEMPTS {
             let node = self.route_node(protocol::DEFAULT_ROUTE)?;
             let correlation = self.next();
@@ -1224,11 +1292,12 @@ impl<'connection> BrokerSession<'connection> {
                 wire::parse_fetch(&response, correlation, &profile.topic, profile.partition)
                     .map_err(map_wire)
             }) {
-                Ok(result) if result.error == wire::NO_ERROR => return Ok(result.records),
+                Ok(result) if result.error == wire::NO_ERROR => return Ok(result),
                 Ok(result)
                     if attempt + 1 < ROUTING_ATTEMPTS
                         && wire::is_retriable_broker_error(result.error) =>
                 {
+                    self.note_retry();
                     self.refresh_routes(profile)?;
                 }
                 Ok(result) => return Err(map_broker(result.error)),
@@ -1236,6 +1305,7 @@ impl<'connection> BrokerSession<'connection> {
                     if attempt + 1 < ROUTING_ATTEMPTS
                         && (error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT) =>
                 {
+                    self.note_retry();
                     self.refresh_routes(profile)?;
                 }
                 Err(error) => return Err(error),
@@ -1451,6 +1521,10 @@ struct Service<'connection> {
     backpressure: u32,
     group_heartbeats: u32,
     group_rebalances: u32,
+    terminal_errors: u32,
+    fences: u32,
+    consumer_lag: i64,
+    route_produced: Vec<u64>,
 }
 
 impl Service<'_> {
@@ -1482,6 +1556,9 @@ impl Service<'_> {
         self.non_transactional_sequences
             .insert(route, sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?);
         self.produced = self.produced.wrapping_add(1);
+        if let Some(produced) = self.route_produced.get_mut(usize::from(route)) {
+            *produced = produced.wrapping_add(1);
+        }
         Ok(offset)
     }
 
@@ -1549,11 +1626,10 @@ impl Service<'_> {
             return Err(protocol::ERR_BUSY);
         }
         let offset = consumer.fetch_offset;
-        let record = self
-            .broker
-            .fetch(&self.profile, offset)?
-            .into_iter()
-            .find(|record| record.offset >= offset);
+        let committed_offset = consumer.committed_offset;
+        let fetched = self.broker.fetch(&self.profile, offset)?;
+        self.consumer_lag = fetched.high_watermark.saturating_sub(committed_offset).max(0);
+        let record = fetched.records.into_iter().find(|record| record.offset >= offset);
         let Some(record) = record else {
             return Ok(None);
         };
@@ -1618,6 +1694,8 @@ impl Service<'_> {
         self.deliveries.remove(&delivery_id);
         let consumer = self.consumers.get_mut(&consumer_id).ok_or(protocol::ERR_INVALID)?;
         consumer.outstanding = None;
+        self.consumer_lag =
+            self.consumer_lag.saturating_sub(next_offset.saturating_sub(consumer.committed_offset));
         consumer.committed_offset = next_offset;
         self.commits = self.commits.wrapping_add(1);
         Ok(())
@@ -1722,6 +1800,9 @@ impl Service<'_> {
             .insert(route, sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?);
         self.transaction.as_mut().ok_or(protocol::ERR_INVALID)?.1.touched = true;
         self.produced = self.produced.wrapping_add(1);
+        if let Some(produced) = self.route_produced.get_mut(usize::from(route)) {
+            *produced = produced.wrapping_add(1);
+        }
         Ok(offset)
     }
 
@@ -1825,6 +1906,9 @@ impl Service<'_> {
             if commit && result.is_ok() {
                 consumer.committed_offset = included.next_offset;
                 consumer.fetch_offset = included.next_offset;
+                self.consumer_lag = self
+                    .consumer_lag
+                    .saturating_sub(included.next_offset.saturating_sub(included.offset));
             } else {
                 consumer.fetch_offset = included.offset;
             }
@@ -1949,12 +2033,14 @@ impl Service<'_> {
                 self.rejoin_group(now_ms)
             }
             Ok(error) if wire::is_retriable_broker_error(error) => {
+                self.broker.note_retry();
                 self.group_membership.as_mut().ok_or(protocol::ERR_FENCED)?.next_heartbeat_ms =
                     now_ms.saturating_add(GROUP_RETRY_MS);
                 Ok(())
             }
             Ok(error) => Err(map_broker(error)),
             Err(error) if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT => {
+                self.broker.note_retry();
                 self.group_membership.as_mut().ok_or(protocol::ERR_FENCED)?.next_heartbeat_ms =
                     now_ms.saturating_add(GROUP_RETRY_MS);
                 Ok(())
@@ -1965,17 +2051,42 @@ impl Service<'_> {
 
     fn account(&mut self, result: i64) {
         self.requests = self.requests.wrapping_add(1);
+        if result < 0 {
+            self.terminal_errors = self.terminal_errors.wrapping_add(1);
+        }
+        if result == protocol::ERR_FENCED {
+            self.fences = self.fences.wrapping_add(1);
+        }
+        self.publish_observability();
+        if result == protocol::ERR_FENCED {
+            config::write::<u32>(status::ERROR, 0x4b46_0001);
+            if let Some(membership) = self.group_membership.as_mut() {
+                membership.next_heartbeat_ms = 0;
+            }
+        }
+    }
+
+    fn publish_observability(&self) {
         config::write::<u32>(status::REQUESTS, self.requests);
         config::write::<u32>(status::PRODUCED, self.produced);
         config::write::<u32>(status::CONSUMED, self.consumed);
         config::write::<u32>(status::COMMITS, self.commits);
         config::write::<u32>(status::ABORTS, self.aborts);
         config::write::<u32>(status::BACKPRESSURE, self.backpressure);
-        if result == protocol::ERR_FENCED {
-            config::write::<u32>(status::ERROR, 0x4b46_0001);
-            if let Some(membership) = self.group_membership.as_mut() {
-                membership.next_heartbeat_ms = 0;
-            }
+        config::write::<u32>(status::METADATA_REFRESHES, self.broker.metadata_refreshes);
+        config::write::<u32>(status::RECONNECTS, self.broker.reconnects);
+        config::write::<u32>(status::RETRY_ATTEMPTS, self.broker.retry_attempts);
+        config::write::<u32>(status::TERMINAL_ERRORS, self.terminal_errors);
+        config::write::<u32>(status::FENCES, self.fences);
+        let now_ms = monotonic_millis(self.clock).unwrap_or(0);
+        config::write::<u64>(status::METADATA_AGE_MS, self.broker.metadata_age_ms(now_ms));
+        config::write::<i64>(status::CONSUMER_LAG, self.consumer_lag);
+        config::write::<u32>(status::ROUTE_COUNT, self.route_produced.len() as u32);
+        for (route, produced) in self.route_produced.iter().copied().enumerate() {
+            config::write::<u64>(
+                status::ROUTE_PRODUCED_BASE + route * status::ROUTE_PRODUCED_STRIDE,
+                produced,
+            );
         }
     }
 }
@@ -2254,6 +2365,7 @@ fn main(ctx: Context) -> ! {
     );
     config::write::<u32>(status::STAGE, 2);
 
+    let route_count = profile.produce_routes.len() + 1;
     let mut service = Service {
         profile,
         clock: time_connection.as_ref(),
@@ -2276,12 +2388,18 @@ fn main(ctx: Context) -> ! {
         backpressure: 0,
         group_heartbeats: 0,
         group_rebalances: 0,
+        terminal_errors: 0,
+        fences: 0,
+        consumer_lag: 0,
+        route_produced: alloc::vec![0; route_count],
     };
+    service.publish_observability();
     let mut next_endpoint = 0usize;
     loop {
         if let Err(error) = service.maintain_group() {
             config::write::<u32>(status::ERROR, 0x4b09_0000 | (-error as u32 & 0xffff));
         }
+        service.publish_observability();
         let mut handled = false;
         for offset in 0..endpoints.len() {
             let index = (next_endpoint + offset) % endpoints.len();

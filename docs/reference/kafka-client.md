@@ -203,6 +203,14 @@ before polling resumes. A stale commit returns `ERR_FENCED`; it cannot silently
 advance the new owner's offset. The service loop maintains heartbeats with a
 monotonic deadline even when no application request arrives.
 
+The connector status page exposes cumulative requests, produced and consumed
+records, commits, aborts, backpressure, group generation/assignment,
+heartbeats, rebalances, metadata refreshes, reconnects, retry attempts,
+application-visible terminal errors, and fencing events. It also publishes
+current metadata age and consumer lag plus one cumulative produced-record
+counter per profile route. Monitoring derives rates from the per-route
+counters; the connector does not maintain an unbounded time series.
+
 This fixed-partition protocol is for Charlotte connector members. A conventional
 Kafka consumer that does not advertise `charlotte-fixed-v1` cannot join the same
 group. It is deliberately smaller than Kafka's subscription assignors: topic
@@ -296,6 +304,9 @@ that checks:
 - group join/leave across successive consumers, generation advance, and
   heartbeat operation;
 - abort filtering; and
+- the bounded observability layout, including metadata refreshes, terminal
+  authorization errors, output-route production, and non-negative consumer
+  lag; and
 - the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 Run it with:

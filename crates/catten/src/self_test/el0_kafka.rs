@@ -257,6 +257,37 @@ extern "C" fn verify_el0_kafka() {
                 charlotte_launch::kafka_status::GROUP_HEARTBEATS,
             )
         };
+        let metadata_refreshes = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::METADATA_REFRESHES,
+            )
+        };
+        let terminal_errors = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::TERMINAL_ERRORS,
+            )
+        };
+        let route_count = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::ROUTE_COUNT,
+            )
+        };
+        let output_route_produced = unsafe {
+            crate::self_test::status_i64(
+                service_status,
+                charlotte_launch::kafka_status::ROUTE_PRODUCED_BASE
+                    + charlotte_launch::kafka_status::ROUTE_PRODUCED_STRIDE,
+            )
+        };
+        let consumer_lag = unsafe {
+            crate::self_test::status_i64(
+                service_status,
+                charlotte_launch::kafka_status::CONSUMER_LAG,
+            )
+        };
         if input_error != 0 || step_error != 0 {
             logln!(
                 "[kafka-test] FAILURE: step input error={:#x} step_error={:#x}",
@@ -274,10 +305,16 @@ extern "C" fn verify_el0_kafka() {
             && timeouts >= 1
             && group_generation >= 2
             && group_heartbeats >= 1
+            && metadata_refreshes >= 1
+            && terminal_errors >= 1
+            && route_count == 2
+            && output_route_produced >= 5
+            && consumer_lag >= 0
         {
             logln!(
                 "[kafka-test] SUCCESS: low-level offset {}, generic step commits={} produced={} \
-                 retries={} dlq={} timeouts={} group_generation={} heartbeats={}",
+                 retries={} dlq={} timeouts={} group_generation={} heartbeats={} \
+                 metadata_refreshes={} terminal_errors={} output_route_produced={} lag={}",
                 output_offset,
                 commits,
                 produced,
@@ -285,7 +322,11 @@ extern "C" fn verify_el0_kafka() {
                 dlq,
                 timeouts,
                 group_generation,
-                group_heartbeats
+                group_heartbeats,
+                metadata_refreshes,
+                terminal_errors,
+                output_route_produced,
+                consumer_lag
             );
             crate::self_test::results::pass(crate::self_test::results::TestId::Kafka);
             return;

@@ -380,6 +380,11 @@ before polling resumes. The service loop uses monotonic deadlines to heartbeat
 even without application calls. Conventional consumers that do not advertise
 this assignor cannot share the group.
 
+The connector's bounded status page reports metadata refresh count and age,
+reconnects, retries, terminal failures, fences, group state, consumer lag, and
+cumulative records per route. Monitoring derives throughput by sampling these
+counters; ordinary application capabilities do not expose the operational view.
+
 For procedures that only implement business behaviour, the generic
 \texttt{kafka\_step} service owns that lifecycle instead. Its separate,
 read-only profile names one connector and one procedure endpoint, admits only
@@ -418,7 +423,9 @@ places the input and output routes on different leaders, and verifies
 idempotent production, read-committed consumption, atomic production plus
 generation-fenced group-offset commit, group generation advance and heartbeat,
 transaction abort, filtering of the aborted record, and
-the generic step runner's success, retry, timeout, and terminal-DLQ paths.
+the generic step runner's success, retry, timeout, and terminal-DLQ paths. It
+also checks metadata refreshes, terminal authorization errors, output-route
+production, and non-negative consumer lag in the bounded status page.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in
