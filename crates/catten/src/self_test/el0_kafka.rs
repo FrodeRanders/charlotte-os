@@ -5,7 +5,10 @@ use crate::{
     ipc::ConnectionRights,
     logln,
     service::{
-        launch::KafkaProfile,
+        launch::{
+            KafkaProduceRoute,
+            KafkaProfile,
+        },
         supervisor::{
             self,
             NameServiceHandle,
@@ -39,6 +42,11 @@ extern "C" fn verify_el0_kafka() {
             ca_certificate_der: Some(ca_der),
             topic: b"charlotte-events",
             partition: 0,
+            produce_routes: &[KafkaProduceRoute {
+                topic: b"charlotte-results",
+                partition: 0,
+            }],
+            max_produce_routes: 64,
             group: b"charlotte-qemu-smoke-group",
             transactional_id: b"charlotte-qemu-smoke-transaction",
             rights: charlotte_protocol_kafka::ALL_RIGHTS,

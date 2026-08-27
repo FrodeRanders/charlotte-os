@@ -14,6 +14,7 @@ applications.
 |---|---|---|
 | Memory object | `OwnedMemory` | Closes the capability |
 | CPU mapping | `MappedMemory<ReadOnly>` or `MappedMemory<Writable>` | Unmaps, then closes the memory |
+| Immutable launch profile | `LaunchMemoryRef` / `MappedLaunchMemory` | Borrows the launch grant; mapping unmaps without closing it |
 | Endpoint | `Endpoint` | Closes the endpoint |
 | Owned connection | `Connection` | Closes the connection |
 | Launch-owned connection | `ConnectionRef` | Does not close the launch grant |
@@ -111,7 +112,10 @@ let memory = unsafe { OwnedMemory::from_raw(raw_memory) }?;
 
 Every `from_raw` needs an ownership comment. Do not adopt borrowed grants.
 Launch-owned connections should use `Context::bootstrap_connection()`, which
-returns `ConnectionRef`.
+returns `ConnectionRef`. Immutable profile objects should use
+`Context::profile_memory()` and `LaunchMemoryRef::map_read_only()`; do not adopt
+the capability as `OwnedMemory`. The launcher has already attenuated it to
+kernel-enforced read-only rights, and domain teardown reclaims the grant.
 
 Drivers may retain small raw regions for contracts not represented by the
 owned layer. Wrap their outward-facing resources and explain why the operation

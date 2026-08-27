@@ -7,14 +7,16 @@ extern crate alloc;
 
 use alloc::{
     boxed::Box,
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     string::String,
     vec::Vec,
 };
 
 use catten_rt::{
     Context,
-    ManifestValue,
     config,
     owned::{
         Connection,
@@ -92,87 +94,58 @@ struct Profile {
     ca_der: Vec<u8>,
     topic: Vec<u8>,
     partition: i32,
+    produce_routes: Vec<TopicPartition>,
     group: Vec<u8>,
     transactional_id: Vec<u8>,
     rights: u64,
     transaction_timeout_ms: i32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TopicPartition {
+    topic: Vec<u8>,
+    partition: i32,
+}
+
 impl Profile {
     fn from_context(ctx: &Context) -> Option<Self> {
-        let ip = match ctx.manifest_value(protocol::manifest::IP)? {
-            ManifestValue::Bytes(bytes) if bytes.len() == 4 => {
-                [bytes[0], bytes[1], bytes[2], bytes[3]]
-            }
-            _ => return None,
-        };
-        let host = manifest_text(ctx, protocol::manifest::HOST)?;
-        let port = manifest_unsigned(ctx, protocol::manifest::PORT)
-            .and_then(|value| u16::try_from(value).ok())?;
-        let tls_value = manifest_unsigned(ctx, protocol::manifest::TLS).unwrap_or(0);
-        let tls = tls_value == 1;
-        let ca_der = manifest_bytes(ctx, protocol::manifest::CA_DER).unwrap_or_default();
-        let topic = manifest_bytes(ctx, protocol::manifest::TOPIC)?;
-        let partition = manifest_unsigned(ctx, protocol::manifest::PARTITION)
-            .and_then(|value| i32::try_from(value).ok())?;
-        let group = manifest_bytes(ctx, protocol::manifest::GROUP)?;
-        let transactional_id = manifest_bytes(ctx, protocol::manifest::TRANSACTIONAL_ID)?;
-        let rights = manifest_unsigned(ctx, protocol::manifest::RIGHTS)?;
-        let transaction_timeout_ms =
-            manifest_unsigned(ctx, protocol::manifest::TRANSACTION_TIMEOUT_MS)
-                .unwrap_or(60_000)
-                .try_into()
-                .ok()?;
-        if port == 0
-            || tls_value > 1
-            || (tls && ca_der.is_empty())
-            || host.is_empty()
-            || host.len() > 255
-            || topic.is_empty()
-            || topic.len() > 249
-            || group.is_empty()
-            || transactional_id.is_empty()
-            || rights == 0
-            || rights & !protocol::ALL_RIGHTS != 0
-            || !(1_000..=900_000).contains(&transaction_timeout_ms)
-        {
-            return None;
-        }
+        let memory = ctx.profile_memory()?;
+        let mapping = memory.map_read_only().ok()?;
+        let profile = protocol::Profile::decode(mapping.as_slice()).ok()?;
         Some(Self {
-            ip,
-            host,
-            port,
-            tls,
-            ca_der,
-            topic,
-            partition,
-            group,
-            transactional_id,
-            rights,
-            transaction_timeout_ms,
+            ip: profile.endpoint_ipv4,
+            host: String::from_utf8(profile.host.to_vec()).ok()?,
+            port: profile.port,
+            tls: profile.tls,
+            ca_der: profile.ca_certificate_der.to_vec(),
+            topic: profile.topic.to_vec(),
+            partition: profile.partition,
+            produce_routes: profile
+                .produce_routes
+                .iter()
+                .map(|route| TopicPartition {
+                    topic: route.topic.to_vec(),
+                    partition: route.partition,
+                })
+                .collect(),
+            group: profile.group.to_vec(),
+            transactional_id: profile.transactional_id.to_vec(),
+            rights: profile.rights,
+            transaction_timeout_ms: profile.transaction_timeout_ms.try_into().ok()?,
         })
     }
 
     fn has(&self, right: u64) -> bool {
         self.rights & right != 0
     }
-}
 
-fn manifest_bytes(ctx: &Context, key: u64) -> Option<Vec<u8>> {
-    match ctx.manifest_value(key)? {
-        ManifestValue::Bytes(bytes) => Some(bytes.to_vec()),
-        _ => None,
-    }
-}
-
-fn manifest_text(ctx: &Context, key: u64) -> Option<String> {
-    String::from_utf8(manifest_bytes(ctx, key)?).ok()
-}
-
-fn manifest_unsigned(ctx: &Context, key: u64) -> Option<u64> {
-    match ctx.manifest_value(key)? {
-        ManifestValue::Unsigned(value) => Some(value),
-        _ => None,
+    fn route(&self, index: u16) -> Option<(&[u8], i32)> {
+        if index == protocol::DEFAULT_ROUTE {
+            return Some((&self.topic, self.partition));
+        }
+        self.produce_routes
+            .get(usize::from(index) - 1)
+            .map(|route| (route.topic.as_slice(), route.partition))
     }
 }
 
@@ -438,26 +411,7 @@ impl<'connection> BrokerSession<'connection> {
             }
         }
 
-        let correlation = self.next();
-        let request =
-            wire::metadata_request(correlation, CLIENT_ID, &profile.topic).map_err(map_wire)?;
-        let response = self.exchange(request)?;
-        let metadata =
-            wire::parse_metadata(&response, correlation, &profile.topic).map_err(map_wire)?;
-        if metadata.topic_error != wire::NO_ERROR {
-            return Err(protocol::ERR_BROKER);
-        }
-        let leader = metadata
-            .partitions
-            .iter()
-            .find(|partition| partition.partition == profile.partition)
-            .ok_or(protocol::ERR_UNSUPPORTED)?;
-        if leader.error != wire::NO_ERROR
-            || metadata.brokers.len() != 1
-            || metadata.brokers[0].node_id != leader.leader
-        {
-            return Err(protocol::ERR_UNSUPPORTED);
-        }
+        let broker_node = self.validate_routes(profile)?;
 
         for (key, transaction) in
             [(profile.group.as_slice(), false), (profile.transactional_id.as_slice(), true)]
@@ -481,7 +435,7 @@ impl<'connection> BrokerSession<'connection> {
                 sleep_ms(COORDINATOR_RETRY_MS);
             }
             let coordinator = coordinator.ok_or(protocol::ERR_TIMEOUT)?;
-            if coordinator.node_id != metadata.brokers[0].node_id {
+            if coordinator.node_id != broker_node {
                 return Err(protocol::ERR_UNSUPPORTED);
             }
         }
@@ -490,6 +444,53 @@ impl<'connection> BrokerSession<'connection> {
         let transactional =
             self.init_producer(Some(&profile.transactional_id), profile.transaction_timeout_ms)?;
         Ok((non_transactional, transactional))
+    }
+
+    fn validate_routes(&mut self, profile: &Profile) -> Result<i32, i64> {
+        let mut topics: Vec<&[u8]> = Vec::with_capacity(profile.produce_routes.len() + 1);
+        topics.push(&profile.topic);
+        for route in &profile.produce_routes {
+            if !topics.contains(&route.topic.as_slice()) {
+                topics.push(&route.topic);
+            }
+        }
+        let correlation = self.next();
+        let request =
+            wire::metadata_request_many(correlation, CLIENT_ID, &topics).map_err(map_wire)?;
+        let response = self.exchange(request)?;
+        let metadata = wire::parse_metadata_many(&response, correlation).map_err(map_wire)?;
+        if metadata.brokers.len() != 1 {
+            return Err(protocol::ERR_UNSUPPORTED);
+        }
+        let broker_node = metadata.brokers[0].node_id;
+        for (topic, partition) in core::iter::once((profile.topic.as_slice(), profile.partition))
+            .chain(
+                profile
+                    .produce_routes
+                    .iter()
+                    .map(|route| (route.topic.as_slice(), route.partition)),
+            )
+        {
+            let topic_metadata = metadata
+                .topics
+                .iter()
+                .find(|candidate| candidate.topic == topic)
+                .ok_or(protocol::ERR_BROKER)?;
+            if topic_metadata.error != wire::NO_ERROR {
+                return Err(protocol::ERR_BROKER);
+            }
+            let leader = topic_metadata
+                .partitions
+                .iter()
+                .find(|candidate| candidate.partition == partition)
+                .ok_or(protocol::ERR_UNSUPPORTED)?;
+            if leader.error != wire::NO_ERROR || leader.leader != broker_node {
+                // The first implementation still owns one broker connection.
+                // Cross-broker leader routing is a separate transport concern.
+                return Err(protocol::ERR_UNSUPPORTED);
+            }
+        }
+        Ok(broker_node)
     }
 
     fn init_producer(
@@ -521,11 +522,13 @@ impl<'connection> BrokerSession<'connection> {
     fn produce(
         &mut self,
         profile: &Profile,
+        route: u16,
         producer: ProducerIdentity,
         sequence: i32,
         transactional: bool,
         record: &OwnedRecord,
     ) -> Result<i64, i64> {
+        let (topic, partition) = profile.route(route).ok_or(protocol::ERR_DENIED)?;
         let batch = wire::encode_record_batch(
             &[RecordInput {
                 timestamp_ms: record.timestamp_ms,
@@ -542,15 +545,15 @@ impl<'connection> BrokerSession<'connection> {
             correlation,
             CLIENT_ID,
             transactional.then_some(profile.transactional_id.as_slice()),
-            &profile.topic,
-            profile.partition,
+            topic,
+            partition,
             &batch,
             PRODUCE_TIMEOUT_MS,
         )
         .map_err(map_wire)?;
         let response = self.exchange(request)?;
-        let result = wire::parse_produce(&response, correlation, &profile.topic, profile.partition)
-            .map_err(map_wire)?;
+        let result =
+            wire::parse_produce(&response, correlation, topic, partition).map_err(map_wire)?;
         if result.error == wire::NO_ERROR {
             Ok(result.base_offset)
         } else {
@@ -558,7 +561,13 @@ impl<'connection> BrokerSession<'connection> {
         }
     }
 
-    fn add_partition(&mut self, profile: &Profile, producer: ProducerIdentity) -> Result<(), i64> {
+    fn add_partition(
+        &mut self,
+        profile: &Profile,
+        route: u16,
+        producer: ProducerIdentity,
+    ) -> Result<(), i64> {
+        let (topic, partition) = profile.route(route).ok_or(protocol::ERR_DENIED)?;
         for _ in 0..COORDINATOR_ATTEMPTS {
             let correlation = self.next();
             let request = wire::add_partitions_to_txn_request(
@@ -566,17 +575,12 @@ impl<'connection> BrokerSession<'connection> {
                 CLIENT_ID,
                 &profile.transactional_id,
                 producer,
-                &profile.topic,
-                profile.partition,
+                topic,
+                partition,
             )
             .map_err(map_wire)?;
             let response = self.exchange(request)?;
-            match wire::parse_partition_error(
-                &response,
-                correlation,
-                &profile.topic,
-                profile.partition,
-            ) {
+            match wire::parse_partition_error(&response, correlation, topic, partition) {
                 Ok(()) => return Ok(()),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
                     sleep_ms(COORDINATOR_RETRY_MS);
@@ -790,7 +794,7 @@ struct IncludedDelivery {
 
 struct TransactionState {
     owner: ClientIdentity,
-    partition_added: bool,
+    partitions_added: BTreeSet<u16>,
     touched: bool,
     reset_producer: bool,
     included: Option<IncludedDelivery>,
@@ -802,8 +806,8 @@ struct Service<'connection> {
     broker: BrokerSession<'connection>,
     non_transactional_producer: ProducerIdentity,
     transactional_producer: ProducerIdentity,
-    non_transactional_sequence: i32,
-    transactional_sequence: i32,
+    non_transactional_sequences: BTreeMap<u16, i32>,
+    transactional_sequences: BTreeMap<u16, i32>,
     consumers: BTreeMap<u32, ConsumerState>,
     deliveries: BTreeMap<u32, DeliveryState>,
     transaction: Option<(u32, TransactionState)>,
@@ -829,19 +833,21 @@ impl Service<'_> {
         Err(protocol::ERR_BUSY)
     }
 
-    fn produce(&mut self, record: OwnedRecord) -> Result<i64, i64> {
+    fn produce(&mut self, route: u16, record: OwnedRecord) -> Result<i64, i64> {
         if !self.profile.has(protocol::RIGHT_PRODUCE) {
             return Err(protocol::ERR_DENIED);
         }
+        let sequence = self.non_transactional_sequences.get(&route).copied().unwrap_or(0);
         let offset = self.broker.produce(
             &self.profile,
+            route,
             self.non_transactional_producer,
-            self.non_transactional_sequence,
+            sequence,
             false,
             &record,
         )?;
-        self.non_transactional_sequence =
-            self.non_transactional_sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?;
+        self.non_transactional_sequences
+            .insert(route, sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?);
         self.produced = self.produced.wrapping_add(1);
         Ok(offset)
     }
@@ -988,7 +994,7 @@ impl Service<'_> {
             id,
             TransactionState {
                 owner,
-                partition_added: false,
+                partitions_added: BTreeSet::new(),
                 touched: false,
                 reset_producer: false,
                 included: None,
@@ -1001,6 +1007,7 @@ impl Service<'_> {
         &mut self,
         owner: ClientIdentity,
         transaction_id: u32,
+        route: u16,
         record: OwnedRecord,
     ) -> Result<i64, i64> {
         if !self.profile.has(protocol::RIGHT_PRODUCE) {
@@ -1011,9 +1018,9 @@ impl Service<'_> {
             .as_ref()
             .filter(|(id, transaction)| *id == transaction_id && transaction.owner == owner)
             .ok_or(protocol::ERR_INVALID)?;
-        if !transaction.1.partition_added {
+        if !transaction.1.partitions_added.contains(&route) {
             if let Err(error) =
-                self.broker.add_partition(&self.profile, self.transactional_producer)
+                self.broker.add_partition(&self.profile, route, self.transactional_producer)
             {
                 let transaction = &mut self.transaction.as_mut().ok_or(protocol::ERR_INVALID)?.1;
                 // AddPartitionsToTxn may have reached the coordinator even
@@ -1023,12 +1030,19 @@ impl Service<'_> {
                 transaction.reset_producer = true;
                 return Err(error);
             }
-            self.transaction.as_mut().ok_or(protocol::ERR_INVALID)?.1.partition_added = true;
+            self.transaction
+                .as_mut()
+                .ok_or(protocol::ERR_INVALID)?
+                .1
+                .partitions_added
+                .insert(route);
         }
+        let sequence = self.transactional_sequences.get(&route).copied().unwrap_or(0);
         let result = self.broker.produce(
             &self.profile,
+            route,
             self.transactional_producer,
-            self.transactional_sequence,
+            sequence,
             true,
             &record,
         );
@@ -1041,8 +1055,8 @@ impl Service<'_> {
                 return Err(error);
             }
         };
-        self.transactional_sequence =
-            self.transactional_sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?;
+        self.transactional_sequences
+            .insert(route, sequence.checked_add(1).ok_or(protocol::ERR_FENCED)?);
         self.transaction.as_mut().ok_or(protocol::ERR_INVALID)?.1.touched = true;
         self.produced = self.produced.wrapping_add(1);
         Ok(offset)
@@ -1126,7 +1140,7 @@ impl Service<'_> {
             ) {
                 Ok(producer) => {
                     self.transactional_producer = producer;
-                    self.transactional_sequence = 0;
+                    self.transactional_sequences.clear();
                 }
                 Err(error) => result = Err(error),
             }
@@ -1204,8 +1218,21 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
             let record = usize::try_from(message.arg0)
                 .map_err(|_| protocol::ERR_INVALID)
                 .and_then(|len| decode_record(message.memory.take(), len, service.clock));
-            result =
-                record.and_then(|record| service.produce(record)).unwrap_or_else(|error| error);
+            result = record
+                .and_then(|record| service.produce(protocol::DEFAULT_ROUTE, record))
+                .unwrap_or_else(|error| error);
+            let _ = reply.reply(result);
+        }
+        protocol::OP_PRODUCE_TO => {
+            let (resource_id, route, len) = protocol::unpack_routed_record_arg(message.arg0);
+            let record = if resource_id == 0 {
+                decode_record(message.memory.take(), len, service.clock)
+            } else {
+                Err(protocol::ERR_INVALID)
+            };
+            result = record
+                .and_then(|record| service.produce(route, record))
+                .unwrap_or_else(|error| error);
             let _ = reply.reply(result);
         }
         protocol::OP_CONSUMER_OPEN => {
@@ -1261,7 +1288,24 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
             let len = (message.arg0 >> 32) as usize;
             let record = decode_record(message.memory.take(), len, service.clock);
             result = record
-                .and_then(|record| service.transaction_produce(owner, transaction_id, record))
+                .and_then(|record| {
+                    service.transaction_produce(
+                        owner,
+                        transaction_id,
+                        protocol::DEFAULT_ROUTE,
+                        record,
+                    )
+                })
+                .unwrap_or_else(|error| error);
+            let _ = reply.reply(result);
+        }
+        protocol::OP_TX_PRODUCE_TO => {
+            let (transaction_id, route, len) = protocol::unpack_routed_record_arg(message.arg0);
+            let record = decode_record(message.memory.take(), len, service.clock);
+            result = record
+                .and_then(|record| {
+                    service.transaction_produce(owner, transaction_id, route, record)
+                })
                 .unwrap_or_else(|error| error);
             let _ = reply.reply(result);
         }
@@ -1353,13 +1397,14 @@ fn main(ctx: Context) -> ! {
         fail(0x4b07);
     }
     catten_rt::logln!(
-        "[kafka] serving broker={}:{} tls={} topic={} partition={} group={} transactional-id={} \
-         rights={:#x}",
+        "[kafka] serving broker={}:{} tls={} consume-topic={} partition={} produce-routes={} \
+         group={} transactional-id={} rights={:#x}",
         profile.host,
         profile.port,
         profile.tls,
         core::str::from_utf8(&profile.topic).unwrap_or("?"),
         profile.partition,
+        profile.produce_routes.len(),
         core::str::from_utf8(&profile.group).unwrap_or("?"),
         core::str::from_utf8(&profile.transactional_id).unwrap_or("?"),
         profile.rights
@@ -1372,8 +1417,8 @@ fn main(ctx: Context) -> ! {
         broker,
         non_transactional_producer,
         transactional_producer,
-        non_transactional_sequence: 0,
-        transactional_sequence: 0,
+        non_transactional_sequences: BTreeMap::new(),
+        transactional_sequences: BTreeMap::new(),
         consumers: BTreeMap::new(),
         deliveries: BTreeMap::new(),
         transaction: None,

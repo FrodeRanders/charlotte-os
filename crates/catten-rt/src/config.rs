@@ -70,6 +70,10 @@ fn launch_header() -> LaunchHeader {
 }
 
 fn capability(kind: CapabilityKind) -> Option<u64> {
+    capability_record_by_kind(kind).map(|record| record.handle)
+}
+
+pub(crate) fn capability_record_by_kind(kind: CapabilityKind) -> Option<CapabilityRecord> {
     let header = launch_header();
     if !header.is_compatible() {
         return None;
@@ -79,7 +83,7 @@ fn capability(kind: CapabilityKind) -> Option<u64> {
     for index in 0..count {
         let record = unsafe { core::ptr::read_volatile(records.add(index)) };
         if CapabilityKind::from_raw(record.kind) == Some(kind) {
-            return Some(record.handle);
+            return Some(record);
         }
     }
     None

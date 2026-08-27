@@ -304,13 +304,28 @@ The transport-independent Signature V4 and HTTP code lives in
 \subsection{Kafka client service}
 \label{sec:kafka-service}
 
-One \texttt{kafka} service instance grants access to one broker endpoint,
-topic, partition, consumer group, transactional id, and rights mask. It owns
-the broker socket, producer ids, producer epochs, and sequence numbers.
+One \texttt{kafka} service instance grants access to one broker endpoint, a
+fixed consume topic/partition, an ordered allow-list of produce routes, a
+consumer group, transactional id, and rights mask. It owns the broker socket,
+producer ids, producer epochs, and per-route sequence numbers.
 Applications can produce idempotently, open a directly assigned consumer at
 the group's committed offset (or the earliest retained offset), poll with
 \texttt{read\_committed} isolation, commit or release a delivery, and close the
 consumer.
+
+The complete version-2 broker profile is serialized into one immutable object,
+covered by a SHA-256 digest, and transferred to \texttt{kafka} with a
+kernel-enforced \texttt{MAP\_READ}-only launch capability. The service validates
+the exact size, version, digest, field bounds, route count, configurable ceiling,
+and duplicate routes before opening a broker connection. The hard ceiling is 64
+produce routes, while deployment policy may select a lower limit. Metadata for
+all distinct declared topics is requested in one broker exchange.
+
+Only the broker-facing service receives this profile. Producer, consumer, and
+transactional-step logic receives a connection capability to the provisioned
+service instance, never its broker address, trust material, or future SASL or
+mTLS credentials. Credential rotation can therefore replace the connector
+profile without rebuilding application or procedure artifacts.
 
 The transaction owner supports the consume--transform--produce path. An
 application can produce records, move one consumed delivery's next group

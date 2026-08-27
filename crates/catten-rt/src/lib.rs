@@ -94,6 +94,21 @@ impl Context {
         }
     }
 
+    /// Borrow the immutable profile object supplied by the launcher.
+    ///
+    /// The capability has kernel-enforced read-only rights and remains owned
+    /// by the launch environment for the domain lifetime.
+    pub fn profile_memory(&self) -> Option<owned::LaunchMemoryRef<'_>> {
+        let record = config::capability_record_by_kind(config::CapabilityKind::Profile)?;
+        if record.rights != charlotte_launch::PROFILE_CAPABILITY_RIGHT_MAP_READ || record.flags == 0
+        {
+            return None;
+        }
+        // The config page is the trusted ABI boundary and the returned borrow
+        // cannot outlive this Context reference.
+        unsafe { owned::LaunchMemoryRef::from_raw(record.handle, record.flags as usize).ok() }
+    }
+
     pub fn heap_layout(&self) -> MemoryRegion {
         let header = config::launch_layout();
         MemoryRegion {

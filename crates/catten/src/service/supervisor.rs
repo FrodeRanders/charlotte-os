@@ -393,6 +393,36 @@ pub fn spawn_with_manifest_and_limits(
     start_domain_with_limits(loaded, limits)
 }
 
+/// Spawn a service with one immutable profile object. The memory capability
+/// is transferred with `MAP_READ` only; the config record carries the exact
+/// authenticated byte length rather than exposing page padding.
+pub fn spawn_with_read_only_profile_and_limits(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    profile: &[u8],
+    limits: ServiceLimits,
+) -> ServiceDomain {
+    assert!(!profile.is_empty(), "launch profile is empty");
+    let loaded = loader::load_domain(image);
+    let connection = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        rights,
+    )
+    .expect("[supervisor] bootstrap connection delegation failed");
+    let source = crate::memory::object::allocate_with_bytes(crate::memory::KERNEL_ASID, profile)
+        .expect("[supervisor] launch profile allocation failed");
+    let target =
+        crate::memory::object::move_read_only_to(crate::memory::KERNEL_ASID, source, loaded.asid)
+            .expect("[supervisor] launch profile transfer failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
+    bootstrap::write_profile_cap(loaded.config_frame, target, profile.len());
+    bootstrap::write_manifest(loaded.config_frame, &[]);
+    start_domain_with_limits(loaded, limits)
+}
+
 /// Start the node observability service and delegate the unique
 /// system-observer capability to it.
 pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceDomain {

@@ -85,9 +85,15 @@ pub struct S3Profile<'a> {
     pub rights: u64,
 }
 
+/// An allow-listed Kafka produce route within a profile.
+pub struct KafkaProduceRoute<'a> {
+    pub topic: &'a [u8],
+    pub partition: u32,
+}
+
 /// A capability profile for one Kafka data-plane service. The endpoint grants
-/// access only to this broker, topic, partition, consumer group, and
-/// transactional identity.
+/// access only to this broker, fixed consume topic/partition, allow-listed
+/// produce routes, consumer group, and transactional identity.
 pub struct KafkaProfile<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
@@ -97,6 +103,11 @@ pub struct KafkaProfile<'a> {
     pub ca_certificate_der: Option<&'a [u8]>,
     pub topic: &'a [u8],
     pub partition: u32,
+    pub produce_routes: &'a [KafkaProduceRoute<'a>],
+    /// Operator-selected admission limit, bounded by the implementation hard
+    /// maximum. Keeping this in the signed profile lets deployments choose a
+    /// lower ceiling without rebuilding the OS.
+    pub max_produce_routes: u16,
     pub group: &'a [u8],
     pub transactional_id: &'a [u8],
     pub rights: u64,
@@ -406,78 +417,41 @@ pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> Ser
 
 /// Spawn a separately provisioned Kafka producer/consumer service.
 ///
-/// Broker topology and authority stay behind the returned endpoint. The
-/// current implementation deliberately fixes one partition per profile so
-/// applications cannot escape their launch-time grant or accidentally create
-/// an unbounded fetch assignment.
+/// Broker topology and authority stay behind the returned endpoint. Fetch is
+/// fixed to one topic/partition; production may select only the bounded routes
+/// admitted by the profile. Route selection therefore does not turn topic
+/// names into ambient application authority.
 pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) -> ServiceDomain {
-    use charlotte_protocol_kafka::manifest;
-
-    let mut entries = alloc::vec::Vec::with_capacity(11);
-    entries.extend_from_slice(&[
-        ManifestEntry {
-            key: manifest::IP,
-            flags: 0,
-            value: ManifestValue::Bytes(&profile.endpoint_ipv4),
-        },
-        ManifestEntry {
-            key: manifest::HOST,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.host),
-        },
-        ManifestEntry {
-            key: manifest::PORT,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.port as u64),
-        },
-        ManifestEntry {
-            key: manifest::TLS,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.tls as u64),
-        },
-        ManifestEntry {
-            key: manifest::TOPIC,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.topic),
-        },
-        ManifestEntry {
-            key: manifest::PARTITION,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.partition as u64),
-        },
-        ManifestEntry {
-            key: manifest::GROUP,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.group),
-        },
-        ManifestEntry {
-            key: manifest::TRANSACTIONAL_ID,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.transactional_id),
-        },
-        ManifestEntry {
-            key: manifest::RIGHTS,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.rights),
-        },
-        ManifestEntry {
-            key: manifest::TRANSACTION_TIMEOUT_MS,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.transaction_timeout_ms as u64),
-        },
-    ]);
-    if let Some(ca_der) = profile.ca_certificate_der {
-        entries.push(ManifestEntry {
-            key: manifest::CA_DER,
-            flags: 0,
-            value: ManifestValue::Bytes(ca_der),
-        });
+    let routes: alloc::vec::Vec<charlotte_protocol_kafka::ProduceRoute<'_>> = profile
+        .produce_routes
+        .iter()
+        .map(|route| charlotte_protocol_kafka::ProduceRoute {
+            topic: route.topic,
+            partition: i32::try_from(route.partition).expect("Kafka partition exceeds i32"),
+        })
+        .collect();
+    let encoded = charlotte_protocol_kafka::Profile {
+        endpoint_ipv4: profile.endpoint_ipv4,
+        host: profile.host,
+        port: profile.port,
+        tls: profile.tls,
+        ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
+        topic: profile.topic,
+        partition: i32::try_from(profile.partition).expect("Kafka partition exceeds i32"),
+        produce_routes: routes,
+        max_produce_routes: profile.max_produce_routes,
+        group: profile.group,
+        transactional_id: profile.transactional_id,
+        rights: profile.rights,
+        transaction_timeout_ms: profile.transaction_timeout_ms,
     }
-    crate::service::supervisor::spawn_with_manifest_and_limits(
+    .encode()
+    .expect("invalid Kafka profile");
+    crate::service::supervisor::spawn_with_read_only_profile_and_limits(
         crate::service::store::service_elf(b"kafka").expect("[launch] kafka.elf"),
         ns,
         ConnectionRights::CALL,
-        &entries,
+        &encoded,
         ServiceLimits::default().with_user_stack_size(128 * 1024),
     )
 }

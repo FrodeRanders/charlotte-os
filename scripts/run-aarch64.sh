@@ -331,6 +331,11 @@ if [ "$KAFKA_TEST" = "1" ]; then
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
         --topic charlotte-events --partitions 1 --replication-factor 1
+    docker compose -f "$KAFKA_COMPOSE" exec -T kafka \
+        /opt/kafka/bin/kafka-topics.sh \
+        --bootstrap-server localhost:29092 \
+        --create --if-not-exists \
+        --topic charlotte-results --partitions 1 --replication-factor 1
 fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"

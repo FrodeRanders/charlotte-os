@@ -42,6 +42,66 @@ pub struct OwnedMemory {
     len: usize,
 }
 
+/// A launch-environment-owned, read-only memory capability borrowed through
+/// [`crate::Context`]. Dropping this view does not close the capability; the
+/// kernel reclaims it with the domain.
+#[derive(Debug)]
+pub struct LaunchMemoryRef<'context> {
+    cap: u64,
+    len: usize,
+    _context: PhantomData<&'context crate::Context>,
+}
+
+impl<'context> LaunchMemoryRef<'context> {
+    /// Construct at the typed launch-configuration ABI boundary.
+    pub(crate) unsafe fn from_raw(cap: u64, len: usize) -> Result<Self, MemoryError> {
+        let capacity = kernel::memory_size(cap);
+        if cap == 0 || len == 0 || len > capacity {
+            return Err(MemoryError::InvalidCapability);
+        }
+        Ok(Self {
+            cap,
+            len,
+            _context: PhantomData,
+        })
+    }
+
+    pub fn map_read_only(&self) -> Result<MappedLaunchMemory<'_>, MemoryError> {
+        let (status, base) = kernel::memory_map_any(self.cap, false);
+        if status != catten_syscall::memory_status::OK {
+            return Err(MemoryError::MemoryStatus(status));
+        }
+        Ok(MappedLaunchMemory {
+            cap: self.cap,
+            base,
+            len: self.len,
+            _borrow: PhantomData,
+        })
+    }
+}
+
+/// A temporary mapping of launch-owned immutable data.
+#[must_use = "dropping the launch mapping unmaps it"]
+#[derive(Debug)]
+pub struct MappedLaunchMemory<'memory> {
+    cap: u64,
+    base: usize,
+    len: usize,
+    _borrow: PhantomData<&'memory LaunchMemoryRef<'memory>>,
+}
+
+impl MappedLaunchMemory<'_> {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.base as *const u8, self.len) }
+    }
+}
+
+impl Drop for MappedLaunchMemory<'_> {
+    fn drop(&mut self) {
+        let _ = kernel::memory_unmap(self.cap);
+    }
+}
+
 impl OwnedMemory {
     pub fn allocate(pages: usize) -> Result<Self, MemoryError> {
         let cap = kernel::memory_alloc(pages);

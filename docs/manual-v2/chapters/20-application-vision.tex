@@ -544,13 +544,21 @@ the same payload.
 
 CharlotteOS now has an implemented, capability-scoped Kafka compatibility
 service (\autoref{sec:kafka-service}). A provisioned instance exposes one
-broker, topic/partition, group, transactional identity, and rights set. Its
+broker, a fixed consume partition, up to 64 allow-listed produce routes, a
+group, transactional identity, and rights set. Its
 owned Rust client supports idempotent produce, bounded read-committed consume,
 explicit delivery acknowledgement, and a transaction that atomically combines
 Kafka output with the consumed delivery's group-offset advance. This supplies
 a concrete external event-log boundary for a future Durga backend; it does not
 yet connect Durga-generated process identities, schemas, or lifecycle events to
 that boundary.
+
+The generated deployment should treat the broker connector and the behavioural
+role as separate authorities. Only \texttt{kafka} receives the immutable,
+digest-checked profile containing endpoint, trust, and future authentication
+secrets. A producer, consumer, or transactional-step runner receives a
+connection capability to that connector. The activity procedure behind a step
+receives only the bounded invocation capability and no Kafka authority.
 
 The useful distinction is between application events whose meaning is
 intrinsically durable and internal execution plumbing whose purpose is to

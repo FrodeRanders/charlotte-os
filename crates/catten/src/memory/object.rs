@@ -664,6 +664,53 @@ pub fn move_to(
     Ok(target_cap)
 }
 
+/// Transfer ownership while attenuating the destination capability to
+/// read-only mapping. Used for immutable launch objects: the destination can
+/// map and close the object, but cannot mutate or transfer it further.
+pub fn move_read_only_to(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+) -> Result<MemoryObjectCap, MemoryObjectError> {
+    validate_address_space(target)?;
+    let mut registry = MEMORY_OBJECTS.lock();
+    let cap_entry = registry.lookup(owner, cap)?;
+    if !cap_entry.rights.contains(MemoryObjectRights::TRANSFER)
+        || !cap_entry.rights.contains(MemoryObjectRights::MAP_READ)
+    {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    {
+        let object =
+            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        if object.owner != owner {
+            return Err(MemoryObjectError::WrongOwner);
+        }
+        if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
+            return Err(MemoryObjectError::LendingActive);
+        }
+        if !object.mappings.is_empty() {
+            return Err(MemoryObjectError::AlreadyMapped);
+        }
+    }
+    registry.caps_for_mut(owner).caps.remove(&cap).ok_or(MemoryObjectError::UnknownCapability)?;
+    registry
+        .objects
+        .get_mut(&cap_entry.object)
+        .ok_or(MemoryObjectError::UnknownCapability)?
+        .owner = target;
+    let target_cap = registry.caps_for_mut(target).insert(
+        target,
+        MemoryCap {
+            object: cap_entry.object,
+            rights: MemoryObjectRights::MAP_READ,
+        },
+    );
+    let revoked = crate::capability::remove(owner, cap, crate::capability::ObjectKind::Memory);
+    assert!(revoked, "memory source capability was absent from unified table");
+    Ok(target_cap)
+}
+
 /// Undo a successful [`move_to`] while preserving the owner's original
 /// capability number. This is restricted to kernel-internal transaction
 /// rollback; callers must supply the exact target capability returned by the

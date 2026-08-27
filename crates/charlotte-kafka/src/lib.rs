@@ -130,6 +130,19 @@ pub struct Metadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TopicMetadata {
+    pub topic: Vec<u8>,
+    pub error: i16,
+    pub partitions: Vec<PartitionMetadata>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetadataBatch {
+    pub brokers: Vec<Broker>,
+    pub topics: Vec<TopicMetadata>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Coordinator {
     pub error: i16,
     pub node_id: i32,
@@ -419,9 +432,22 @@ pub fn metadata_request(
     client_id: &[u8],
     topic: &[u8],
 ) -> Result<Vec<u8>, Error> {
+    metadata_request_many(correlation, client_id, &[topic])
+}
+
+pub fn metadata_request_many(
+    correlation: i32,
+    client_id: &[u8],
+    topics: &[&[u8]],
+) -> Result<Vec<u8>, Error> {
+    if topics.is_empty() || topics.len() > i32::MAX as usize {
+        return Err(Error::Invalid);
+    }
     let mut encoder = Encoder::request(api::METADATA, version::METADATA, correlation, client_id)?;
-    encoder.i32(1);
-    encoder.string(topic)?;
+    encoder.i32(topics.len() as i32);
+    for topic in topics {
+        encoder.string(topic)?;
+    }
     encoder.finish()
 }
 
@@ -430,6 +456,22 @@ pub fn parse_metadata(
     correlation: i32,
     wanted_topic: &[u8],
 ) -> Result<Metadata, Error> {
+    let batch = parse_metadata_many(frame, correlation)?;
+    let topic = batch.topics.into_iter().find(|topic| topic.topic == wanted_topic).unwrap_or(
+        TopicMetadata {
+            topic: wanted_topic.to_vec(),
+            error: UNKNOWN_TOPIC_OR_PARTITION,
+            partitions: Vec::new(),
+        },
+    );
+    Ok(Metadata {
+        brokers: batch.brokers,
+        topic_error: topic.error,
+        partitions: topic.partitions,
+    })
+}
+
+pub fn parse_metadata_many(frame: &[u8], correlation: i32) -> Result<MetadataBatch, Error> {
     let mut decoder = response(frame, correlation)?;
     let broker_count = decoder.array_len()?;
     let mut brokers = Vec::with_capacity(broker_count);
@@ -443,18 +485,13 @@ pub fn parse_metadata(
     }
     let _controller_id = decoder.i32()?;
     let topic_count = decoder.array_len()?;
-    let mut topic_error = UNKNOWN_TOPIC_OR_PARTITION;
-    let mut partitions = Vec::new();
+    let mut topics = Vec::with_capacity(topic_count);
     for _ in 0..topic_count {
         let error = decoder.i16()?;
-        let topic = decoder.string_bytes()?;
+        let topic = decoder.string_bytes()?.to_vec();
         let _internal = decoder.bool()?;
         let partition_count = decoder.array_len()?;
-        let wanted = topic == wanted_topic;
-        if wanted {
-            topic_error = error;
-            partitions.reserve(partition_count);
-        }
+        let mut partitions = Vec::with_capacity(partition_count);
         for _ in 0..partition_count {
             let metadata = PartitionMetadata {
                 error: decoder.i16()?,
@@ -469,18 +506,20 @@ pub fn parse_metadata(
             for _ in 0..isr {
                 let _ = decoder.i32()?;
             }
-            if wanted {
-                partitions.push(metadata);
-            }
+            partitions.push(metadata);
         }
+        topics.push(TopicMetadata {
+            topic,
+            error,
+            partitions,
+        });
     }
     if !decoder.done() {
         return Err(Error::Invalid);
     }
-    Ok(Metadata {
+    Ok(MetadataBatch {
         brokers,
-        topic_error,
-        partitions,
+        topics,
     })
 }
 
@@ -1267,5 +1306,15 @@ mod tests {
         );
         assert_eq!(&request[4..6], &api::METADATA.to_be_bytes());
         assert_eq!(&request[8..12], &0x0102_0304i32.to_be_bytes());
+    }
+
+    #[test]
+    fn metadata_request_batches_topics() {
+        let topics: &[&[u8]] = &[b"events", b"results"];
+        let request = metadata_request_many(7, b"charlotte", topics).unwrap();
+        assert!(request.ends_with(&[
+            0, 0, 0, 2, 0, 6, b'e', b'v', b'e', b'n', b't', b's', 0, 7, b'r', b'e', b's', b'u',
+            b'l', b't', b's',
+        ]));
     }
 }

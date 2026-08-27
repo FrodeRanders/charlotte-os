@@ -97,6 +97,24 @@ pub fn test_memory_objects() {
     object::unmap(target, target_cap).expect("memory object: target unmap failed");
     object::close_cap(target, target_cap).expect("memory object: close failed");
 
+    let immutable_cap = object::allocate(owner, 1).expect("immutable launch object allocation");
+    let immutable_target = object::move_read_only_to(owner, immutable_cap, reader)
+        .expect("immutable launch object transfer");
+    assert_eq!(
+        object::map(reader, immutable_target, VAddr::from(0x45000usize), true),
+        Err(MemoryObjectError::MissingRight),
+        "attenuated launch object must reject writable mappings"
+    );
+    assert_eq!(
+        object::move_to(reader, immutable_target, target),
+        Err(MemoryObjectError::MissingRight),
+        "attenuated launch object must not be transferable"
+    );
+    object::map(reader, immutable_target, VAddr::from(0x45000usize), false)
+        .expect("immutable launch object read map failed");
+    object::unmap(reader, immutable_target).expect("immutable launch object unmap failed");
+    object::close_cap(reader, immutable_target).expect("immutable launch object close failed");
+
     let lend_cap = object::allocate(owner, 1).expect("memory object: lend allocation failed");
     let lend_base = VAddr::from(0x55000usize);
     object::map(owner, lend_cap, lend_base, false).expect("memory object: owner read map failed");

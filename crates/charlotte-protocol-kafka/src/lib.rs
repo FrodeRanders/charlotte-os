@@ -1,27 +1,18 @@
 //! Wire protocol for the CharlotteOS Kafka data-plane service.
 //!
-//! One service profile grants authority to one broker endpoint, topic,
-//! partition, consumer group, and transactional identity. Broker credentials
-//! and Kafka producer epochs never cross this application-facing boundary.
+//! One service profile grants authority to one broker endpoint, one fixed
+//! consume topic/partition, an allow-listed set of produce routes, one
+//! consumer group, and one transactional identity. Broker credentials and
+//! Kafka producer epochs never cross this application-facing boundary.
 #![no_std]
+
+extern crate alloc;
+
+use alloc::vec::Vec;
 
 pub const INTERFACE: u64 = u64::from_le_bytes(*b"KAFKA\0\0\0");
 pub const VERSION: u32 = 1;
 pub const NAME: u64 = u64::from_le_bytes(*b"kafka\0\0\0");
-
-pub mod manifest {
-    pub const IP: u64 = u64::from_le_bytes(*b"kfk_ip\0\0");
-    pub const HOST: u64 = u64::from_le_bytes(*b"kfk_host");
-    pub const PORT: u64 = u64::from_le_bytes(*b"kfk_port");
-    pub const TLS: u64 = u64::from_le_bytes(*b"kfk_tls\0");
-    pub const CA_DER: u64 = u64::from_le_bytes(*b"kfk_ca\0\0");
-    pub const TOPIC: u64 = u64::from_le_bytes(*b"kfktopic");
-    pub const PARTITION: u64 = u64::from_le_bytes(*b"kfkpart\0");
-    pub const GROUP: u64 = u64::from_le_bytes(*b"kfkgroup");
-    pub const TRANSACTIONAL_ID: u64 = u64::from_le_bytes(*b"kfktxn\0\0");
-    pub const RIGHTS: u64 = u64::from_le_bytes(*b"kfkright");
-    pub const TRANSACTION_TIMEOUT_MS: u64 = u64::from_le_bytes(*b"kfktout\0");
-}
 
 /// Produce one record outside an application transaction. The service still
 /// uses Kafka's idempotent producer sequence. `arg0` is the request length.
@@ -53,6 +44,12 @@ pub const OP_TX_COMMIT: u32 = 10;
 /// Abort and consume a transaction resource.
 pub const OP_TX_ABORT: u32 = 11;
 pub const OP_STATUS: u32 = 12;
+/// Produce outside a transaction to an allow-listed route. `arg0` uses
+/// [`pack_routed_record_arg`] with a zero resource id.
+pub const OP_PRODUCE_TO: u32 = 13;
+/// Produce within a transaction to an allow-listed route. `arg0` uses
+/// [`pack_routed_record_arg`] with the transaction id as its resource id.
+pub const OP_TX_PRODUCE_TO: u32 = 14;
 
 pub const RIGHT_PRODUCE: u64 = 1 << 0;
 pub const RIGHT_CONSUME: u64 = 1 << 1;
@@ -74,11 +71,315 @@ pub const ERR_UNSUPPORTED: i64 = -12;
 
 pub const MAX_RECORD_BYTES: usize = 3_840;
 pub const MAX_KEY_BYTES: usize = 1_024;
+pub const MAX_TOPIC_BYTES: usize = 249;
+/// Hard implementation ceiling. A profile carries a lower operator-selected
+/// limit and is rejected if either its declared limit or route count exceeds
+/// this value.
+pub const MAX_PRODUCE_ROUTES: usize = 64;
+pub const DEFAULT_ROUTE: u16 = 0;
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP2\0";
+pub const PROFILE_VERSION: u16 = 2;
+pub const PROFILE_HEADER_LEN: usize = 88;
+pub const PROFILE_DIGEST_OFFSET: usize = 16;
+pub const PROFILE_DIGEST_LEN: usize = 32;
+pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
+pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
+pub const PROFILE_FLAG_TLS: u16 = 1;
 pub const RECORD_REQUEST_MAGIC: u32 = 0x3152_464b; // "KFR1" LE
 pub const RECORD_REQUEST_HEADER_LEN: usize = 24;
 pub const FLAG_NULL_KEY: u16 = 1 << 0;
 pub const FLAG_NULL_VALUE: u16 = 1 << 1;
 pub const VALID_RECORD_FLAGS: u16 = FLAG_NULL_KEY | FLAG_NULL_VALUE;
+
+/// A provisioned topic/partition route. Route zero always denotes the
+/// profile's fixed consume topic; profile routes are numbered from one in
+/// declaration order.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProduceRoute<'a> {
+    pub topic: &'a [u8],
+    pub partition: i32,
+}
+
+impl ProduceRoute<'_> {
+    fn valid(&self) -> bool {
+        self.partition >= 0 && !self.topic.is_empty() && self.topic.len() <= MAX_TOPIC_BYTES
+    }
+}
+
+/// Immutable launch profile carried in a kernel-enforced read-only memory
+/// capability. All variable-length data is covered by the SHA-256 digest.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Profile<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+    pub tls: bool,
+    pub ca_certificate_der: &'a [u8],
+    pub topic: &'a [u8],
+    pub partition: i32,
+    pub produce_routes: Vec<ProduceRoute<'a>>,
+    pub max_produce_routes: u16,
+    pub group: &'a [u8],
+    pub transactional_id: &'a [u8],
+    pub rights: u64,
+    pub transaction_timeout_ms: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileError {
+    TooLarge,
+    InvalidHeader,
+    UnsupportedVersion,
+    DigestMismatch,
+    InvalidField,
+    TooManyRoutes,
+    DuplicateRoute,
+}
+
+impl Profile<'_> {
+    pub fn encode(&self) -> Result<Vec<u8>, ProfileError> {
+        validate_profile(self)?;
+        let route_bytes = self.produce_routes.iter().try_fold(0usize, |total, route| {
+            total.checked_add(PROFILE_ROUTE_HEADER_LEN + route.topic.len())
+        });
+        let total_len = PROFILE_HEADER_LEN
+            .checked_add(self.host.len())
+            .and_then(|len| len.checked_add(self.ca_certificate_der.len()))
+            .and_then(|len| len.checked_add(self.topic.len()))
+            .and_then(|len| len.checked_add(self.group.len()))
+            .and_then(|len| len.checked_add(self.transactional_id.len()))
+            .and_then(|len| len.checked_add(route_bytes?))
+            .ok_or(ProfileError::TooLarge)?;
+        if total_len > MAX_PROFILE_BYTES || total_len > u32::MAX as usize {
+            return Err(ProfileError::TooLarge);
+        }
+        let mut output = alloc::vec![0; total_len];
+        output[0..8].copy_from_slice(&PROFILE_MAGIC);
+        put_u16(&mut output, 8, PROFILE_VERSION);
+        put_u16(&mut output, 10, PROFILE_HEADER_LEN as u16);
+        put_u32(&mut output, 12, total_len as u32);
+        output[48..52].copy_from_slice(&self.endpoint_ipv4);
+        put_u16(&mut output, 52, self.port);
+        put_u16(
+            &mut output,
+            54,
+            if self.tls {
+                PROFILE_FLAG_TLS
+            } else {
+                0
+            },
+        );
+        put_u64(&mut output, 56, self.rights);
+        put_u32(&mut output, 64, self.transaction_timeout_ms);
+        put_i32(&mut output, 68, self.partition);
+        put_u16(&mut output, 72, self.produce_routes.len() as u16);
+        put_u16(&mut output, 74, self.max_produce_routes);
+        put_u16(&mut output, 76, self.host.len() as u16);
+        put_u16(&mut output, 78, self.topic.len() as u16);
+        put_u16(&mut output, 80, self.group.len() as u16);
+        put_u16(&mut output, 82, self.transactional_id.len() as u16);
+        put_u32(&mut output, 84, self.ca_certificate_der.len() as u32);
+        let mut offset = PROFILE_HEADER_LEN;
+        for field in
+            [self.host, self.ca_certificate_der, self.topic, self.group, self.transactional_id]
+        {
+            output[offset..offset + field.len()].copy_from_slice(field);
+            offset += field.len();
+        }
+        for route in &self.produce_routes {
+            put_i32(&mut output, offset, route.partition);
+            put_u16(&mut output, offset + 4, route.topic.len() as u16);
+            offset += PROFILE_ROUTE_HEADER_LEN;
+            output[offset..offset + route.topic.len()].copy_from_slice(route.topic);
+            offset += route.topic.len();
+        }
+        let digest = charlotte_launch::sha256::digest(&output);
+        output[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
+            .copy_from_slice(&digest);
+        Ok(output)
+    }
+
+    pub fn decode(input: &'_ [u8]) -> Result<Profile<'_>, ProfileError> {
+        if input.len() < PROFILE_HEADER_LEN
+            || input.len() > MAX_PROFILE_BYTES
+            || input[0..8] != PROFILE_MAGIC
+        {
+            return Err(ProfileError::InvalidHeader);
+        }
+        if get_u16(input, 8)? != PROFILE_VERSION {
+            return Err(ProfileError::UnsupportedVersion);
+        }
+        if get_u16(input, 10)? as usize != PROFILE_HEADER_LEN
+            || get_u32(input, 12)? as usize != input.len()
+        {
+            return Err(ProfileError::InvalidHeader);
+        }
+        let expected: [u8; 32] = input
+            [PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
+            .try_into()
+            .map_err(|_| ProfileError::InvalidHeader)?;
+        let mut hasher = charlotte_launch::sha256::Sha256::new();
+        hasher.update(&input[..PROFILE_DIGEST_OFFSET]);
+        hasher.update(&[0; PROFILE_DIGEST_LEN]);
+        hasher.update(&input[PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN..]);
+        if hasher.finalize() != expected {
+            return Err(ProfileError::DigestMismatch);
+        }
+        let flags = get_u16(input, 54)?;
+        let route_count = get_u16(input, 72)? as usize;
+        let max_produce_routes = get_u16(input, 74)?;
+        if flags & !PROFILE_FLAG_TLS != 0
+            || route_count > MAX_PRODUCE_ROUTES
+            || route_count > usize::from(max_produce_routes)
+            || usize::from(max_produce_routes) > MAX_PRODUCE_ROUTES
+        {
+            return Err(ProfileError::TooManyRoutes);
+        }
+        let lengths = [
+            get_u16(input, 76)? as usize,
+            get_u32(input, 84)? as usize,
+            get_u16(input, 78)? as usize,
+            get_u16(input, 80)? as usize,
+            get_u16(input, 82)? as usize,
+        ];
+        let mut offset = PROFILE_HEADER_LEN;
+        let mut fields: [&[u8]; 5] = [&[]; 5];
+        for (slot, len) in fields.iter_mut().zip(lengths) {
+            let end = offset.checked_add(len).ok_or(ProfileError::TooLarge)?;
+            *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+            offset = end;
+        }
+        let mut produce_routes = Vec::with_capacity(route_count);
+        for _ in 0..route_count {
+            let header = input
+                .get(offset..offset + PROFILE_ROUTE_HEADER_LEN)
+                .ok_or(ProfileError::InvalidField)?;
+            let partition = get_i32(header, 0)?;
+            let topic_len = get_u16(header, 4)? as usize;
+            if get_u16(header, 6)? != 0 {
+                return Err(ProfileError::InvalidField);
+            }
+            offset += PROFILE_ROUTE_HEADER_LEN;
+            let end = offset.checked_add(topic_len).ok_or(ProfileError::TooLarge)?;
+            let topic = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+            offset = end;
+            produce_routes.push(ProduceRoute {
+                topic,
+                partition,
+            });
+        }
+        if offset != input.len() {
+            return Err(ProfileError::InvalidField);
+        }
+        let profile = Profile {
+            endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
+            host: fields[0],
+            port: get_u16(input, 52)?,
+            tls: flags & PROFILE_FLAG_TLS != 0,
+            ca_certificate_der: fields[1],
+            topic: fields[2],
+            partition: get_i32(input, 68)?,
+            produce_routes,
+            max_produce_routes,
+            group: fields[3],
+            transactional_id: fields[4],
+            rights: get_u64(input, 56)?,
+            transaction_timeout_ms: get_u32(input, 64)?,
+        };
+        validate_profile(&profile)?;
+        Ok(profile)
+    }
+}
+
+fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
+    if profile.port == 0
+        || profile.host.is_empty()
+        || profile.host.len() > 255
+        || profile.topic.is_empty()
+        || profile.topic.len() > MAX_TOPIC_BYTES
+        || profile.partition < 0
+        || profile.group.is_empty()
+        || profile.group.len() > u16::MAX as usize
+        || profile.transactional_id.is_empty()
+        || profile.transactional_id.len() > u16::MAX as usize
+        || profile.rights == 0
+        || profile.rights & !ALL_RIGHTS != 0
+        || !(1_000..=900_000).contains(&profile.transaction_timeout_ms)
+        || profile.tls != !profile.ca_certificate_der.is_empty()
+    {
+        return Err(ProfileError::InvalidField);
+    }
+    if profile.produce_routes.len() > MAX_PRODUCE_ROUTES
+        || profile.produce_routes.len() > usize::from(profile.max_produce_routes)
+        || usize::from(profile.max_produce_routes) > MAX_PRODUCE_ROUTES
+    {
+        return Err(ProfileError::TooManyRoutes);
+    }
+    for (index, route) in profile.produce_routes.iter().enumerate() {
+        if !route.valid() {
+            return Err(ProfileError::InvalidField);
+        }
+        if route.topic == profile.topic && route.partition == profile.partition
+            || profile.produce_routes[..index].iter().any(|candidate| candidate == route)
+        {
+            return Err(ProfileError::DuplicateRoute);
+        }
+    }
+    Ok(())
+}
+
+fn put_u16(output: &mut [u8], offset: usize, value: u16) {
+    output[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u32(output: &mut [u8], offset: usize, value: u32) {
+    output[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_i32(output: &mut [u8], offset: usize, value: i32) {
+    output[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u64(output: &mut [u8], offset: usize, value: u64) {
+    output[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+}
+
+fn get_u16(input: &[u8], offset: usize) -> Result<u16, ProfileError> {
+    Ok(u16::from_le_bytes(
+        input.get(offset..offset + 2).ok_or(ProfileError::InvalidHeader)?.try_into().unwrap(),
+    ))
+}
+
+fn get_u32(input: &[u8], offset: usize) -> Result<u32, ProfileError> {
+    Ok(u32::from_le_bytes(
+        input.get(offset..offset + 4).ok_or(ProfileError::InvalidHeader)?.try_into().unwrap(),
+    ))
+}
+
+fn get_i32(input: &[u8], offset: usize) -> Result<i32, ProfileError> {
+    Ok(i32::from_le_bytes(
+        input.get(offset..offset + 4).ok_or(ProfileError::InvalidHeader)?.try_into().unwrap(),
+    ))
+}
+
+fn get_u64(input: &[u8], offset: usize) -> Result<u64, ProfileError> {
+    Ok(u64::from_le_bytes(
+        input.get(offset..offset + 8).ok_or(ProfileError::InvalidHeader)?.try_into().unwrap(),
+    ))
+}
+
+/// Pack a routed record call into the scalar IPC argument.
+///
+/// Layout: resource id in bits 0..31, encoded record length in bits 32..47,
+/// and the provisioned route index in bits 48..63.
+pub fn pack_routed_record_arg(resource_id: u32, route: u16, len: usize) -> Option<u64> {
+    let len = u16::try_from(len).ok()?;
+    Some(u64::from(resource_id) | (u64::from(len) << 32) | (u64::from(route) << 48))
+}
+
+pub fn unpack_routed_record_arg(arg: u64) -> (u32, u16, usize) {
+    (arg as u32, (arg >> 48) as u16, ((arg >> 32) as u16) as usize)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RecordRequest<'a> {
@@ -286,5 +587,89 @@ mod tests {
         let mut page = [0; 4096];
         let len = record.encode(&mut page).unwrap();
         assert_eq!(DeliveredRecord::decode(&page[..len]), Some(record));
+    }
+
+    #[test]
+    fn profile_round_trip_and_integrity() {
+        let profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            tls: true,
+            ca_certificate_der: b"certificate",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![ProduceRoute {
+                topic: b"results",
+                partition: 3,
+            }],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        let encoded = profile.encode().unwrap();
+        assert_eq!(Profile::decode(&encoded).unwrap(), profile);
+        let mut corrupt = encoded;
+        *corrupt.last_mut().unwrap() ^= 1;
+        assert_eq!(Profile::decode(&corrupt), Err(ProfileError::DigestMismatch));
+    }
+
+    #[test]
+    fn profile_rejects_duplicate_routes() {
+        let route = ProduceRoute {
+            topic: b"results",
+            partition: 0,
+        };
+        let profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![route, route],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::DuplicateRoute));
+    }
+
+    #[test]
+    fn profile_enforces_declared_and_hard_route_limits() {
+        let route = ProduceRoute {
+            topic: b"results",
+            partition: 0,
+        };
+        let mut profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![route],
+            max_produce_routes: 0,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::TooManyRoutes));
+        profile.produce_routes = alloc::vec![route; MAX_PRODUCE_ROUTES + 1];
+        profile.max_produce_routes = (MAX_PRODUCE_ROUTES + 1) as u16;
+        assert_eq!(profile.encode(), Err(ProfileError::TooManyRoutes));
+    }
+
+    #[test]
+    fn routed_record_argument_round_trip() {
+        let encoded = pack_routed_record_arg(0x1234_5678, 7, MAX_RECORD_BYTES).unwrap();
+        assert_eq!(unpack_routed_record_arg(encoded), (0x1234_5678, 7, MAX_RECORD_BYTES));
     }
 }

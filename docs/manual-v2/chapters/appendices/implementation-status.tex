@@ -167,7 +167,9 @@ repository history remain authoritative.
         not yet qualified against an ECS installation. Kafka is limited to a
         directly assigned partition on one broker and lacks multi-broker
         routing, group rebalance, SASL, compression, and topic administration.
-        Production secret provisioning and trust-anchor rotation remain.
+        Its versioned, digest-checked profile is already delivered only to the
+        broker connector as read-only launch memory; production secret injection
+        and trust-anchor rotation remain controller work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

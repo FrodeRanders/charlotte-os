@@ -28,6 +28,27 @@ pub enum Error {
     Service(i64),
 }
 
+/// Index of a topic/partition route provisioned into this service endpoint.
+///
+/// Route zero is the profile's consume topic. Additional allow-listed produce
+/// routes are numbered from one in launch-manifest order. Constructing a route
+/// does not grant authority: the service rejects indices outside the endpoint's
+/// immutable profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Route(u16);
+
+impl Route {
+    pub const DEFAULT: Self = Self(protocol::DEFAULT_ROUTE);
+
+    pub const fn provisioned(index: u16) -> Self {
+        Self(index)
+    }
+
+    pub const fn index(self) -> u16 {
+        self.0
+    }
+}
+
 impl From<IpcError> for Error {
     fn from(value: IpcError) -> Self {
         Self::Ipc(value)
@@ -48,6 +69,18 @@ impl<'connection> Client<'connection> {
 
     pub fn produce(&self, record: RecordRequest<'_>) -> Result<i64, Error> {
         let reply = record_call(self.service, protocol::OP_PRODUCE, 0, record)?;
+        if reply.result >= 0 && reply.memory.is_none() {
+            Ok(reply.result)
+        } else if reply.result < 0 {
+            Err(Error::Service(reply.result))
+        } else {
+            Err(Error::InvalidReply)
+        }
+    }
+
+    /// Produce to an allow-listed profile route.
+    pub fn produce_to(&self, route: Route, record: RecordRequest<'_>) -> Result<i64, Error> {
+        let reply = routed_record_call(self.service, protocol::OP_PRODUCE_TO, 0, route, record)?;
         if reply.result >= 0 && reply.memory.is_none() {
             Ok(reply.result)
         } else if reply.result < 0 {
@@ -117,6 +150,23 @@ fn record_call(
     } else {
         ((len as u64) << 32) | u64::from(resource_id)
     };
+    service
+        .call_move(opcode, arg0, memory)
+        .map_err(|(_, error)| Error::Ipc(error))?
+        .wait()
+        .map_err(Error::Ipc)
+}
+
+fn routed_record_call(
+    service: ConnectionRef<'_>,
+    opcode: u32,
+    resource_id: u32,
+    route: Route,
+    record: RecordRequest<'_>,
+) -> Result<catten_rt::owned::CallResult, Error> {
+    let (memory, len) = encode_record(record)?;
+    let arg0 = protocol::pack_routed_record_arg(resource_id, route.index(), len)
+        .ok_or(Error::InvalidRequest)?;
     service
         .call_move(opcode, arg0, memory)
         .map_err(|(_, error)| Error::Ipc(error))?
@@ -304,6 +354,29 @@ impl Transaction<'_> {
         }
         let id = self.id.ok_or(Error::InvalidRequest)?;
         match record_call(self.service, protocol::OP_TX_PRODUCE, id, record) {
+            Ok(reply) if reply.result >= 0 && reply.memory.is_none() => Ok(reply.result),
+            Ok(reply) if reply.result < 0 => {
+                self.failed = true;
+                Err(Error::Service(reply.result))
+            }
+            Ok(_) => {
+                self.failed = true;
+                Err(Error::InvalidReply)
+            }
+            Err(error) => {
+                self.failed = true;
+                Err(error)
+            }
+        }
+    }
+
+    /// Produce within this transaction to an allow-listed profile route.
+    pub fn produce_to(&mut self, route: Route, record: RecordRequest<'_>) -> Result<i64, Error> {
+        if self.failed {
+            return Err(Error::InvalidRequest);
+        }
+        let id = self.id.ok_or(Error::InvalidRequest)?;
+        match routed_record_call(self.service, protocol::OP_TX_PRODUCE_TO, id, route, record) {
             Ok(reply) if reply.result >= 0 && reply.memory.is_none() => Ok(reply.result),
             Ok(reply) if reply.result < 0 => {
                 self.failed = true;

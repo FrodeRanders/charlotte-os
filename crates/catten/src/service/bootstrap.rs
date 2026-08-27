@@ -22,6 +22,7 @@ use charlotte_launch::{
     MANIFEST_VECTOR_CAPACITY,
     ManifestRecord,
     ManifestValueKind,
+    PROFILE_CAPABILITY_RIGHT_MAP_READ,
 };
 
 use crate::memory::physical::PAddr;
@@ -47,6 +48,16 @@ pub fn write_launch_header(config_frame: PAddr) {
 }
 
 fn append_capability(config_frame: PAddr, kind: CapabilityKind, handle: u64) {
+    append_capability_record(config_frame, kind, handle, 0, 0);
+}
+
+fn append_capability_record(
+    config_frame: PAddr,
+    kind: CapabilityKind,
+    handle: u64,
+    rights: u16,
+    flags: u32,
+) {
     let base: *mut u8 = config_frame.into();
     let header_ptr = unsafe { base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader };
     let mut header = unsafe { core::ptr::read_volatile(header_ptr) };
@@ -55,8 +66,8 @@ fn append_capability(config_frame: PAddr, kind: CapabilityKind, handle: u64) {
     assert!(index < CAPABILITY_VECTOR_CAPACITY, "launch capability vector is full");
     let record = CapabilityRecord {
         kind: kind as u16,
-        rights: 0,
-        flags: 0,
+        rights,
+        flags,
         handle,
     };
     unsafe {
@@ -91,6 +102,19 @@ pub fn write_dma_domain_cap(config_frame: PAddr, cap: u64) {
 /// Deliver the explicitly delegated system-wide observability authority.
 pub fn write_system_observer_cap(config_frame: PAddr, cap: u64) {
     append_capability(config_frame, CapabilityKind::SystemObserver, cap);
+}
+
+/// Record a read-only launch profile. `len` is the authenticated byte length;
+/// the final memory-object page may contain zero padding.
+pub fn write_profile_cap(config_frame: PAddr, cap: u64, len: usize) {
+    let len = u32::try_from(len).expect("launch profile exceeds u32");
+    append_capability_record(
+        config_frame,
+        CapabilityKind::Profile,
+        cap,
+        PROFILE_CAPABILITY_RIGHT_MAP_READ,
+        len,
+    );
 }
 
 /// Write the per-shard CQ ring layout (base virtual address and count) into a

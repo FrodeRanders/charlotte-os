@@ -16,6 +16,7 @@ use catten_services::{
     kafka_client::{
         Client,
         Error,
+        Route,
     },
     sleep_ms,
     wait_for_registered_name_owned,
@@ -27,6 +28,7 @@ catten_rt::entry!(main);
 
 const INPUT: &[u8] = b"charlotte-input";
 const OUTPUT: &[u8] = b"charlotte-output";
+const ROUTED_OUTPUT: &[u8] = b"charlotte-routed-output";
 const ABORTED: &[u8] = b"charlotte-aborted";
 
 mod status {
@@ -88,6 +90,9 @@ fn main(ctx: Context) -> ! {
     let output_offset = transaction
         .produce(RecordRequest::new(None, Some(OUTPUT)))
         .unwrap_or_else(|_| fail(0x4b19));
+    transaction
+        .produce_to(Route::provisioned(1), RecordRequest::new(None, Some(ROUTED_OUTPUT)))
+        .unwrap_or_else(|_| fail(0x4b27));
     transaction.include(input).unwrap_or_else(|_| fail(0x4b1a));
     transaction.commit().unwrap_or_else(|_| fail(0x4b1b));
     config::write::<u32>(status::STAGE, 3);
@@ -114,8 +119,8 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::OFFSET, output_offset as u32);
     config::write::<u32>(status::STAGE, status::SUCCESS);
     catten_rt::logln!(
-        "[kafka-smoke] idempotent produce, read_committed consume, transactional offset commit, \
-         and abort filtering succeeded"
+        "[kafka-smoke] idempotent produce, multi-topic transaction, read_committed consume, \
+         transactional offset commit, and abort filtering succeeded"
     );
     unsafe { thread_exit() }
 }

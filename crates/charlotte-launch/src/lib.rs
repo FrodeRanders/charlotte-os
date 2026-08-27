@@ -578,6 +578,8 @@ pub enum CapabilityKind {
     HandoffEndpoint = 5,
     DmaDomain = 6,
     SystemObserver = 7,
+    /// Immutable, versioned service profile in a read-only memory object.
+    Profile = 8,
 }
 
 impl CapabilityKind {
@@ -590,6 +592,7 @@ impl CapabilityKind {
             5 => Some(Self::HandoffEndpoint),
             6 => Some(Self::DmaDomain),
             7 => Some(Self::SystemObserver),
+            8 => Some(Self::Profile),
             _ => None,
         }
     }
@@ -603,6 +606,9 @@ pub struct CapabilityRecord {
     pub flags: u32,
     pub handle: u64,
 }
+
+/// `CapabilityRecord::rights` value for an immutable profile memory object.
+pub const PROFILE_CAPABILITY_RIGHT_MAP_READ: u16 = 1;
 
 const _: [(); 104] = [(); core::mem::size_of::<LaunchHeader>()];
 const _: [(); 24] = [(); core::mem::size_of::<ManifestRecord>()];

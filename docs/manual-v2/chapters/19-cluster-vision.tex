@@ -177,7 +177,7 @@ rather than something assembled above a set of general-purpose hosts?
 
 The comparison is useful only if it separates two kinds of complexity.
 
-\subsubsection{Distributed-systems complexity is intrinsic.}
+\subsubsection{Distributed-systems complexity is intrinsic}
 CharlotteOS does not abolish scheduling, consensus, placement, replication,
 health management, service discovery, upgrades, resource accounting,
 storage, networking, observability, failure detection, load balancing, or
@@ -189,7 +189,7 @@ Secrets still need secure creation and delegation. An operating system that
 absorbs orchestration must implement these responsibilities; moving them
 downward does not make them disappear.
 
-\subsubsection{Compatibility and boundary-construction complexity may change.}
+\subsubsection{Compatibility and boundary-construction complexity may change}
 Some machinery exists because a cluster platform must turn a
 general-purpose Unix/Linux environment into a constrained, reproducible,
 movable unit. A clean-break system with signed, self-contained artifacts,
@@ -368,8 +368,9 @@ does not by itself constitute a complete cluster executive.
         verified-TLS path (\autoref{sec:external-data-services}). An S3
         capability confines an application to one managed endpoint, bucket,
         prefix, credential identity, and rights mask. A Kafka capability
-        confines it to one broker, topic/partition, group, transactional
-        identity, and operation mask while offering idempotent production,
+        confines it to one broker, fixed consume partition, bounded
+        produce-route allow-list, group, transactional identity, and operation
+        mask while offering idempotent production,
         read-committed consumption, and transactional offset commits. These
         adapters make external infrastructure usable from Charlotte; they are
         not yet cluster-managed storage or messaging substrates.

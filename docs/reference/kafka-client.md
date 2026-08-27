@@ -17,30 +17,35 @@ The implementation is split at the userspace boundary:
 
 ## Provisioning and authority
 
-One `KafkaProfile` grants one broker endpoint, topic, partition, consumer
-group, transactional identity, and rights mask. Applications receive only the
-service connection capability. They cannot select another broker, topic,
-partition, group, or transaction identity at runtime.
+One `KafkaProfile` grants one broker endpoint, a fixed consume topic/partition,
+an ordered allow-list of produce topic/partition routes, a consumer group,
+transactional identity, and rights mask. Applications receive only the service
+connection capability. They cannot name an arbitrary broker or topic at
+runtime: `Route::provisioned(n)` selects an entry already admitted by the
+launch profile, and the service rejects every other index.
 
 The rights are `RIGHT_PRODUCE`, `RIGHT_CONSUME`, and `RIGHT_TRANSACTION`.
 A trusted launch component calls `launch_kafka_profile`; application code must
-not receive or reconstruct the launch manifest.
+not receive or reconstruct the launch profile.
 
-The manifest keys are:
+The complete profile is one versioned, immutable object rather than a set of
+config-page entries. It contains the broker address and TLS identity/trust
+anchor, consume route, ordered produce routes, consumer group, transactional
+identity, rights, transaction timeout, and an operator-selected route ceiling.
+The launcher encodes profile version 2, calculates a SHA-256 digest, and
+transfers its memory capability with kernel-enforced `MAP_READ` rights only.
+Before opening a socket, `kafka.elf` validates the exact object length, version,
+digest, field bounds, route count, safety ceiling, and duplicate routes.
+Only `kafka.elf` receives this profile. Producer, consumer, or transactional
+step logic receives a connection capability to that specific service instance,
+not the profile or its broker/TLS configuration. Future SASL and mTLS secrets
+belong in the same connector-only profile and must remain absent from the
+application-facing IPC protocol.
 
-| Key | Type | Meaning |
-| --- | --- | --- |
-| `kfk_ip` | four bytes | Resolved broker IPv4 address |
-| `kfk_host` | bytes | Provisioned broker host identity |
-| `kfk_port` | unsigned | Broker TCP port |
-| `kfk_tls` | unsigned | `1` requires verified TLS; `0` permits development plaintext |
-| `kfk_ca` | bytes | DER-encoded X.509 trust anchor; required for TLS |
-| `kfktopic` | bytes | Fixed topic |
-| `kfkpart` | unsigned | Fixed partition |
-| `kfkgroup` | bytes | Fixed consumer group |
-| `kfktxn` | bytes | Fixed transactional ID |
-| `kfkright` | unsigned | Rights mask |
-| `kfktout` | unsigned | Broker transaction timeout in milliseconds |
+The implementation hard ceiling is 64 produce routes. A deployment may set
+`KafkaProfile::max_produce_routes` lower; both the declared limit and actual
+route count must be at most 64. This bound limits startup work and memory while
+remaining independent of the launch manifest's 32-record capacity.
 
 ## Owned application API
 
@@ -59,6 +64,35 @@ let (_, connection) = wait_for_registered_name_owned(ns, kafka::NAME)?;
 let client = Client::new(connection.as_ref());
 let offset = client.produce(RecordRequest::new(Some(b"key"), Some(b"value")))?;
 ```
+
+Route zero is the fixed consume topic and preserves the original API.
+Additional routes are numbered from one in `KafkaProfile::produce_routes`
+order. Both ordinary and transactional production can select them:
+
+```rust
+use catten_services::kafka_client::Route;
+
+let mut transaction = client.begin_transaction()?;
+transaction.produce_to(
+    Route::provisioned(1),
+    RecordRequest::new(None, Some(b"result")),
+)?;
+transaction.include(delivery_token)?;
+transaction.commit()?;
+```
+
+Producer sequence numbers and `AddPartitionsToTxn` state are tracked per
+route. Startup requests metadata for all distinct profile topics in one broker
+exchange, then validates every declared partition and leader. All routes in the
+current implementation must be led by the same broker connection;
+metadata-driven multi-broker routing remains future work.
+
+An application may hold several independently provisioned Kafka service
+connections. This is useful for disjoint producer or consumer authorities,
+but a Kafka transaction cannot span those services because each owns a
+different producer identity. Atomic consume--transform--produce therefore
+uses one profile whose consume route and every output route are declared
+together.
 
 `Consumer`, `DeliveryToken`, and `Transaction` are linear owners. There is no
 public raw-ID constructor.
@@ -102,7 +136,7 @@ transaction as aborted and start a new transaction after rediscovery/retry.
 
 ## TLS security boundary
 
-Setting `kfk_tls=1` selects the shared owned TLS transport and never
+Setting `KafkaProfile::tls` selects the shared owned TLS transport and never
 downgrades to plaintext. The client verifies the broker's certificate chain,
 DNS identity from `kfk_host`, validity interval against synchronized UTC from
 the time service, and its signature using the explicitly provisioned DER trust
@@ -129,7 +163,8 @@ operations.
 
 This first profile is deliberately narrow:
 
-- one statically provisioned IPv4 broker and one partition;
+- one statically provisioned IPv4 broker; one consume partition and up to 64
+  allow-listed produce topic/partition routes led by that broker;
 - no metadata-driven multi-broker routing or leader migration;
 - no dynamic consumer-group membership/rebalancing;
 - no compression, headers, SASL, external DNS, or TLS 1.2; and
@@ -145,13 +180,14 @@ feature set.
 
 The opt-in runner creates an ephemeral CA and server certificate, starts a
 fresh single-node Apache Kafka KRaft container with a verified external TLS
-listener, creates `charlotte-events`, and boots an in-guest smoke application
+listener, creates `charlotte-events` and `charlotte-results`, and boots an
+in-guest smoke application
 that checks:
 
 - idempotent production;
 - read-committed consumption and explicit offset commit;
-- atomic consume-transform-produce with `AddOffsetsToTxn` and
-  `TxnOffsetCommit`; and
+- atomic consume-transform-produce across both topics with per-route producer
+  sequences, `AddPartitionsToTxn`, `AddOffsetsToTxn`, and `TxnOffsetCommit`; and
 - abort filtering.
 
 Run it with:

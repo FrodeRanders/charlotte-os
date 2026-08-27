@@ -283,6 +283,9 @@ version = "0.1.0"
 [[package]]
 name = "charlotte-protocol-kafka"
 version = "0.1.0"
+dependencies = [
+ "charlotte-launch",
+]
 
 [[package]]
 name = "charlotte-protocol-msg"
