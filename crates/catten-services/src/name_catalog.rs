@@ -7,7 +7,7 @@
 //! operation on the hosting node.
 //!
 //! The same state machine also carries the cluster **deployment manifest**
-//! (`artifact -> {object_id, artifact_sha256, node_key, generation}`) and the cluster's
+//! (`artifact -> {object_id, artifact_sha256, node_key, descriptor, generation}`) and the cluster's
 //! **Ed25519 public key** (committed by the key ceremony). A deployment is a
 //! cluster decision, so it lives in replicated state next to the name
 //! catalog; node-local agents read it and act on the assignments addressed
@@ -19,7 +19,8 @@
 //! ```text
 //! register:   0x01 | name_len:u32 | name | node_len:u32 | node
 //! unregister: 0x02 | name_len:u32 | name
-//! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64 | sha256:32
+//! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64 | sha256:32 |
+//!             descriptor_len:u32 | signed_descriptor
 //! set-key:    0x07 | key:[u8; 32]
 //! ```
 use alloc::{
@@ -45,6 +46,7 @@ const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
 const CATALOG_MAGIC_V4: u64 = 0x4341_5441_4c4f_4734; // "CATALOG4"
 const CATALOG_MAGIC_V5: u64 = 0x4341_5441_4c4f_4735; // "CATALOG5"
 const CATALOG_MAGIC_V6: u64 = 0x4341_5441_4c4f_4736; // "CATALOG6"
+const CATALOG_MAGIC_V7: u64 = 0x4341_5441_4c4f_4737; // "CATALOG7"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -71,6 +73,8 @@ pub struct DeploymentEntry {
     pub generation: u64,
     /// Immutable content identity selected by this deployment generation.
     pub artifact_digest: [u8; 32],
+    /// Signed, bounded deployment decision. Empty only for a legacy record.
+    pub descriptor: Vec<u8>,
 }
 
 pub struct NameCatalog {
@@ -240,6 +244,22 @@ impl NameCatalog {
                 let Ok(artifact_digest) = <[u8; 32]>::try_from(artifact_digest) else {
                     return Vec::new();
                 };
+                let after_digest = after_node + 32;
+                let descriptor = if after_digest == command.len() {
+                    Vec::new()
+                } else {
+                    let Some((descriptor, after_descriptor)) =
+                        take_len_bytes(command, after_digest)
+                    else {
+                        return Vec::new();
+                    };
+                    if after_descriptor != command.len()
+                        || descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+                    {
+                        return Vec::new();
+                    }
+                    descriptor.to_vec()
+                };
                 let mut deployments = self.deployments.lock();
                 let generation = match deployments.get(artifact) {
                     Some(entry) => entry.generation.checked_add(1),
@@ -255,6 +275,7 @@ impl NameCatalog {
                         node_key,
                         generation,
                         artifact_digest,
+                        descriptor,
                     },
                 );
                 generation.to_le_bytes().to_vec()
@@ -292,15 +313,15 @@ impl NameCatalog {
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1;
         }
-        // V6 appends the deployment manifest (count + records) and the
+        // V7 appends signed deployment descriptors to the manifest records.
         // cluster key (present flag + 32 bytes).
         size += 4;
-        for artifact in deployments.keys() {
-            size += 4 + artifact.len() + 8 + 8 + 8 + 32;
+        for (artifact, entry) in deployments.iter() {
+            size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
         }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V6.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V7.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -318,6 +339,8 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.node_key.to_le_bytes());
             buf.extend_from_slice(&entry.generation.to_le_bytes());
             buf.extend_from_slice(&entry.artifact_digest);
+            buf.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.descriptor);
         }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
@@ -342,6 +365,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V4
             && magic != CATALOG_MAGIC_V5
             && magic != CATALOG_MAGIC_V6
+            && magic != CATALOG_MAGIC_V7
         {
             return;
         }
@@ -370,6 +394,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V4
                 || magic == CATALOG_MAGIC_V5
                 || magic == CATALOG_MAGIC_V6
+                || magic == CATALOG_MAGIC_V7
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -391,7 +416,11 @@ impl NameCatalog {
         *self.entries.lock() = entries;
 
         let mut deployments = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V4 || magic == CATALOG_MAGIC_V5 || magic == CATALOG_MAGIC_V6 {
+        if magic == CATALOG_MAGIC_V4
+            || magic == CATALOG_MAGIC_V5
+            || magic == CATALOG_MAGIC_V6
+            || magic == CATALOG_MAGIC_V7
+        {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
             };
@@ -420,7 +449,7 @@ impl NameCatalog {
                         Some((_, after_mac)) => ([0; 32], after_mac),
                         None => return,
                     }
-                } else if magic == CATALOG_MAGIC_V6 {
+                } else if magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
                     else {
@@ -433,6 +462,18 @@ impl NameCatalog {
                 } else {
                     ([0; 32], after_generation)
                 };
+                let (descriptor, after_entry) = if magic == CATALOG_MAGIC_V7 {
+                    let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
+                    else {
+                        return;
+                    };
+                    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+                        return;
+                    }
+                    (descriptor.to_vec(), after_descriptor)
+                } else {
+                    (Vec::new(), after_entry)
+                };
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
@@ -440,6 +481,7 @@ impl NameCatalog {
                         node_key,
                         generation,
                         artifact_digest,
+                        descriptor,
                     },
                 );
                 pos = after_entry;
@@ -450,11 +492,12 @@ impl NameCatalog {
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
-        if magic == CATALOG_MAGIC_V5 || magic == CATALOG_MAGIC_V6 {
+        if magic == CATALOG_MAGIC_V5 || magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7 {
             let Some(present) = data.get(pos) else {
                 return;
             };
-            let (generation, key_start) = if magic == CATALOG_MAGIC_V6 {
+            let (generation, key_start) = if magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7
+            {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
                 };
@@ -524,11 +567,13 @@ impl QueryableStateMachine for NameCatalog {
             Some(QUERY_DEPLOY) => {
                 let artifact = query.get(1..).unwrap_or_default();
                 self.deployment(artifact).map_or_else(Vec::new, |entry| {
-                    let mut result = Vec::with_capacity(56);
+                    let mut result = Vec::with_capacity(60 + entry.descriptor.len());
                     result.extend_from_slice(&entry.generation.to_le_bytes());
                     result.extend_from_slice(&entry.object_id.to_le_bytes());
                     result.extend_from_slice(&entry.node_key.to_le_bytes());
                     result.extend_from_slice(&entry.artifact_digest);
+                    result.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
+                    result.extend_from_slice(&entry.descriptor);
                     result
                 })
             }
@@ -639,11 +684,24 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
     if bytes.len() < 56 {
         return None;
     }
+    let descriptor = if bytes.len() == 56 {
+        Vec::new()
+    } else {
+        let descriptor_len =
+            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
+        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || bytes.len() != 60 + descriptor_len
+        {
+            return None;
+        }
+        bytes[60..].to_vec()
+    };
     Some(DeploymentEntry {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
         node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
         artifact_digest: bytes[24..56].try_into().ok()?,
+        descriptor,
     })
 }
 
@@ -654,14 +712,17 @@ pub fn encode_deploy(
     object_id: u64,
     node_key: u64,
     artifact_digest: &[u8; 32],
+    descriptor: &[u8],
 ) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 16 + 32);
+    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 16 + 32 + 4 + descriptor.len());
     buf.push(CMD_DEPLOY);
     buf.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
     buf.extend_from_slice(artifact);
     buf.extend_from_slice(&object_id.to_le_bytes());
     buf.extend_from_slice(&node_key.to_le_bytes());
     buf.extend_from_slice(artifact_digest);
+    buf.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
+    buf.extend_from_slice(descriptor);
     buf
 }
 

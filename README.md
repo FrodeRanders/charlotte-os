@@ -176,9 +176,13 @@ AArch64 and x86-64 QEMU clusters (`scripts/run-aarch64.sh --deploy-test` and
 deployment manifest is replicated Raft state and pins an immutable digest. An
 agent with narrowly delegated deployment authority picks up and verifies the
 artifact; the kernel starts that exact ELF in a separate address space, and
-the service serves across the network and reassign it between nodes without 
-losing its name; `clusterctl` (plus a serial admin console) provides the outside 
-upload/deploy/status interface. Artifacts are real ELF binaries blessed and 
+the service serves across the network and is reassigned between nodes without
+losing its name. The normal network service set starts a bounded deployment
+ingress: CI uploads an ELF to a separately provisioned central S3 store, signs
+a descriptor with the offline cluster key, and sends only that descriptor to
+`deployd`; Raft replicates it and the assigned node pulls the pinned bytes.
+`clusterctl` also retains the local upload/deploy/status path used by the test
+console. Artifacts are real ELF binaries blessed and
 signed in place with Ed25519: the signature lives in a standard 
 `.note.charlotte-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
 the public key is injected at build time and committed to the replicated state 
@@ -188,9 +192,10 @@ version-controlled development key in `tools/cluster-sign/dev-key.hex`) and
 the deploy path validate both bytes and logical identity. Known 
 third-party-containing services can therefore be admitted once with an 
 SBOM/provenance digest and traded internally without runtime Internet 
-dependency fetching. The object store is still per-node, replica-set placement 
-is not implemented, and the mutation endpoint still needs a separately 
-delegated administrator capability. These boundaries are called out in 
+dependency fetching. Bootstrap storage is still per-node, the first central
+pull agent supports one short demonstration artifact, replica-set placement is
+not implemented, and raw internal mutation authority still requires careful
+delegation. These boundaries are called out in
 Chapter 17 of [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), 
 which describes the vision against what already exists (consensus, the
 distributed name service, the object store, and live upgrade).

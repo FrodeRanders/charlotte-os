@@ -48,8 +48,11 @@ pub(super) fn read_generation(message: &IpcMessage) -> Option<u64> {
 }
 
 /// Read an `OP_DEPLOY` request:
-/// `[object_id:u64][node_key:u64][artifact_sha256:32]`.
-pub(super) fn read_deploy_request(message: &IpcMessage) -> Option<(u64, u64, [u8; 32])> {
+/// `[object_id:u64][node_key:u64][artifact_sha256:32]
+/// [descriptor_magic:u32][descriptor_len:u32][signed_descriptor]`.
+///
+/// The descriptor suffix is optional for compatibility with legacy callers.
+pub(super) fn read_deploy_request(message: &IpcMessage) -> Option<(u64, u64, [u8; 32], Vec<u8>)> {
     if message.memory == 0 {
         return None;
     }
@@ -68,9 +71,32 @@ pub(super) fn read_deploy_request(message: &IpcMessage) -> Option<(u64, u64, [u8
     for (index, byte) in digest.iter_mut().enumerate() {
         *byte = unsafe { core::ptr::read_volatile((vaddr + 16 + index) as *const u8) };
     }
+    let capacity = memory_size(message.memory);
+    let descriptor_magic = if capacity >= 56 {
+        unsafe { core::ptr::read_volatile((vaddr + 48) as *const u32) }
+    } else {
+        0
+    };
+    let descriptor = if descriptor_magic != dns::DEPLOY_DESCRIPTOR_MAGIC {
+        Vec::new()
+    } else {
+        let len = unsafe { core::ptr::read_volatile((vaddr + 52) as *const u32) } as usize;
+        if len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || 56usize.saturating_add(len) > capacity
+        {
+            memory_unmap(message.memory);
+            memory_close(message.memory);
+            return None;
+        }
+        let mut descriptor = Vec::with_capacity(len);
+        for index in 0..len {
+            descriptor.push(unsafe { core::ptr::read_volatile((vaddr + 56 + index) as *const u8) });
+        }
+        descriptor
+    };
     memory_unmap(message.memory);
     memory_close(message.memory);
-    Some((object_id, node_key, digest))
+    Some((object_id, node_key, digest, descriptor))
 }
 
 /// Read a full-length name from moved memory. `arg0` is the byte length.

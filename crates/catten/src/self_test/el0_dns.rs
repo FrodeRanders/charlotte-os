@@ -15,16 +15,9 @@ mod inner {
         },
         logln,
         memory::KERNEL_ASID,
-        service::{
-            bootstrap::{
-                ManifestEntry,
-                ManifestValue,
-            },
-            supervisor::{
-                self,
-                NameServiceHandle,
-                ServiceDomain,
-            },
+        service::supervisor::{
+            self,
+            NameServiceHandle,
         },
     };
 
@@ -60,39 +53,6 @@ mod inner {
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }
         hash
-    }
-
-    fn spawn_with_manifest(
-        image: &[u8],
-        ns: &NameServiceHandle,
-        manifest: &[ManifestEntry<'_>],
-    ) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(image);
-        let conn = ipc::connection_delegate(
-            ns.domain.asid,
-            ns.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("dns test conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(addr.config_frame, manifest);
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("dns thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
     }
 
     fn kernel_ns_connection(ns: &NameServiceHandle) -> u64 {
@@ -267,21 +227,13 @@ mod inner {
         );
         logln!("[deploy] artifact is a note-signed ELF; tampering is refused.");
 
-        // Spawn the local deploy agent. Its status page first publishes this
-        // guest's node key (offset 16), then the uploaded stage. The launch
-        // manifest carries the cluster's build-time public key, the agent's
-        // bootstrap trust anchor for validating artifacts.
-        let agent = spawn_with_manifest(
-            crate::service::store::service_elf(b"agent").expect("[el0_dns] agent.elf"),
-            ns,
-            &[ManifestEntry {
-                key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
-            }],
-        );
-        crate::service::supervisor::authorize_deployment_agent(&agent);
-        logln!("[deploy] agent spawned (asid={})", agent.asid);
+        // Observe the normal node deployment agent rather than creating a
+        // test-only authority holder.
+        let agent = crate::service::launch::steady_state()
+            .deployment
+            .expect("[deploy] operational deployment plane missing")
+            .agent;
+        logln!("[deploy] observing deployment agent (asid={})", agent.asid);
         let agent_cfg: *const u8 = {
             let base: *mut u8 = agent.status_frame.into();
             base

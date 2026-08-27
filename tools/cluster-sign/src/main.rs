@@ -7,7 +7,13 @@
 use std::{
     env,
     fs,
+    io::{
+        Read,
+        Write,
+    },
+    net::TcpStream,
     process::ExitCode,
+    time::Duration,
 };
 
 use charlotte_launch::{
@@ -308,8 +314,11 @@ fn parse_grant(value: &str) -> Result<(&[u8], u16)> {
         "send" => deployment::RIGHT_SEND,
         "call" => deployment::RIGHT_CALL,
         "client" => deployment::CLIENT_RIGHTS,
+        "publish" => deployment::RIGHT_PUBLISH,
         _ => {
-            return Err(format!("grant rights must be send, call, or client, got {rights:?}"));
+            return Err(format!(
+                "grant rights must be send, call, client, or publish, got {rights:?}"
+            ));
         }
     };
     Ok((service.as_bytes(), rights))
@@ -400,6 +409,47 @@ fn deployment_verify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn deployment_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let descriptor = deployment::decode(&bytes)
+        .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
+    if descriptor.artifact_name.len() > 8 {
+        return Err(
+            "the current deployment catalog admits artifact names of at most 8 bytes".to_owned()
+        );
+    }
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let header = format!(
+        "POST /v1/deployments HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
+         application/vnd.charlotte.deployment\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|()| stream.write_all(&bytes))
+        .map_err(|error| format!("send deployment notification: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read deployment response: {error}"))?;
+    let status = response.lines().next().unwrap_or_default();
+    if !status.starts_with("HTTP/1.1 202 ") {
+        return Err(format!("deployment notification failed: {}", response.trim()));
+    }
+    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim());
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -422,6 +472,7 @@ fn run() -> Result<()> {
         Some("elf-verify") => elf_verify(&args[2..]),
         Some("deployment-sign") => deployment_sign(&args[2..]),
         Some("deployment-verify") => deployment_verify(&args[2..]),
+        Some("deployment-notify") => deployment_notify(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -512,8 +563,9 @@ fn run() -> Result<()> {
                   [service|driver|bootstrap|admin] [version] [rollback] [flags] \
                   [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
                   deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
-                  <node-key> <sequence> <privkey-hex> [service=send|call|client ...] | \
-                  deployment-verify <descriptor> <pubkey-hex> | selftest"
+                  <node-key> <sequence> <privkey-hex> [service=send|call|client|publish ...] | \
+                  deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
+                  [host:port] | selftest"
             .to_owned()),
     }
 }

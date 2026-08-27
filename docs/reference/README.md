@@ -21,6 +21,8 @@ should be updated with the implementation when those contracts change.
 - [Capability-grant controller](capability-grant-controller.md) — signed
   deployment grants, scoped application bootstrap, and private service
   discovery mediation.
+- [Signed deployment notification](deployment-ingress.md) — off-cluster
+  descriptor notification, Raft admission, and central-S3 node pickup.
 - [Kafka client service](kafka-client.md) — idempotent production,
   read-committed consumption, transactional offsets, and owned backpressure.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the

@@ -1,8 +1,8 @@
 # Cluster artifacts, blessing, and placement
 
-This note records the trust and placement model implemented on the
-`cluster-deploy-demo` branch, and separates it from the remaining cluster
-vision in manual Chapter 19.
+This note records the implemented trust, notification, pull, and placement
+model, and separates it from the remaining cluster vision in manual Chapter
+19.
 
 ## Artifact admission
 
@@ -38,7 +38,7 @@ The ELF signature and the deployment decision are different trust statements.
 An ELF signature binds code to an artifact name. A `CDEPLOY1` descriptor binds
 that artifact's complete SHA-256 to an opaque central-object-store key, a
 monotonic deployment sequence, a selected node, and a bounded list of named
-`SEND`/`CALL` capability grants. The descriptor is separately signed by the
+client (`SEND`/`CALL`) or publication capability grants. The descriptor is separately signed by the
 offline cluster Ed25519 authority. Tampering with placement, an object key, or
 a grant therefore fails verification even when the referenced ELF remains
 validly signed.
@@ -54,6 +54,25 @@ the platform service. This makes the intended management-plane flow:
    digest, then notifies the cluster with that descriptor.
 4. A node pulls through its preconfigured S3 capability, verifies both
    signatures and the digest, and launches the application.
+
+The normal network-enabled service set starts `clusterctl`, the node agent,
+and `deployd`. `deployd` accepts a bounded `POST /v1/deployments` on guest TCP
+port 7444. Its body is exactly one signed descriptor; no upload bytes or
+credentials traverse Raft. Under QEMU's default user network, host port
+`${CATTEN_DEPLOY_HOST_PORT:-8081}` forwards to this listener. The host tool can
+submit it directly:
+
+```text
+cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
+```
+
+The listener is intentionally plaintext because the signed descriptor is the
+authorization and integrity envelope and contains no secret. Network policy or
+TLS termination may still be required to hide deployment metadata and prevent
+unauthenticated connection exhaustion. Old signed descriptors cannot roll a
+deployment back: `clusterctl` rejects lower sequences and rejects different
+bytes at an already committed sequence; an identical notification is
+idempotent.
 
 `tools/cluster-sign deployment-sign` and `deployment-verify` implement the
 canonical bounded wire format used by the kernel and userspace. For example:
@@ -80,24 +99,31 @@ For each acquisition, the application uses the owned
 binds its artifact name to the kernel-authenticated caller principal, rejects
 stale or conflicting descriptor revisions, and checks the exact named grant.
 It then uses its private name-service connection to obtain re-delegable
-authority and replies with only the requested `SEND`/`CALL` rights. The
-temporary re-delegable connection is owned and closed by the controller.
+authority and replies with only the requested `SEND`/`CALL` rights. A service
+may instead use an exact `publish` grant to register its endpoint through the
+controller without receiving name-service or mint authority. Temporary
+re-delegable connections are owned and closed by the controller.
 
 ## Enforcement points
 
 Trust is checked more than once because the callers protect different
 boundaries:
 
-1. `clusterctl OP_UPLOAD` verifies the signature and requested logical name
-   before modifying the object store.
+1. `clusterctl OP_NOTIFY` verifies the descriptor signature, name, target,
+   and monotonic sequence before proposing it to Raft. The legacy
+   `OP_UPLOAD` path separately verifies the ELF signature and requested name
+   before modifying the local object store.
 2. The kernel service-store resolver verifies that the object found under a
    name was signed for that name before caching it.
 3. A deployment record pins the full SHA-256 of the selected stored bytes, so
    replacing an object at the same name cannot mutate an existing generation.
-4. The node agent verifies the digest, key, and name before invoking its
-   delegated deployment syscall.
-5. The kernel snapshots the memory object, repeats name/signature and ELF
-   validation, and only then maps the exact ELF in a new address space.
+4. For descriptor deployments, the assigned node agent pulls the opaque key
+   through its locally provisioned S3 connector, then verifies the descriptor,
+   ELF signature, digest, key, and name before invoking its scoped deployment
+   syscall.
+5. The kernel consumes and snapshots both memory objects, repeats descriptor,
+   name/signature, digest, and ELF validation, and only then maps the exact ELF
+   in a new address space with `grantctl` as its sole bootstrap service.
 
 The agent no longer impersonates the artifact with a hard-coded endpoint. The
 spawned ELF registers its own endpoint; the agent publishes and supervises it.
@@ -160,18 +186,19 @@ policy type and parallel-safety gate are implemented, but a placement
 controller, replica-set assignments, multi-owner lookup/load balancing, and
 observed-dependency migration are not.
 
-Raft agreement also does not authenticate the caller that proposed a mutation.
-Artifact validation prevents arbitrary unsigned code execution and the key
-ceremony now accepts only the set-once build-time anchor, but deployment can
-still be redirected as a denial of service through the raw DNS mutation
-endpoint. A separately delegated cluster-administrator capability and a real
-out-of-band management plane remain required.
+Raft agreement does not authenticate a raw DNS mutation. The network ingress
+does: it admits only a descriptor signed by the offline cluster authority and
+then enters through the administration service. The raw internal DNS mutation
+opcode and legacy local-upload/deploy IPC remain available to trusted tests,
+so production policy must ensure ordinary applications never receive those
+connections.
 
-The signed descriptor, grant-controller service, owned application helper, and
-scoped kernel launch primitive are implemented. The existing `clusterctl`
-upload operation and demo deployment agent still use the older local-object
-copy and unscoped launch operation. Wiring descriptor notification to an
-authenticated network management endpoint, pulling the referenced ELF through
-the central S3 connector, and replicating the descriptor to the assigned node
-remain the next integration step. Until that is complete, the new path is an
-internal launch API rather than a complete off-cluster deployment product.
+The signed notification, Raft descriptor replication, central S3 pull,
+grant-controller mediation, and scoped kernel launch are implemented. Current
+limits are explicit: placement and the agent still handle one active short
+(at most eight-byte) artifact name at a time; the first agent is specialized
+to the `greet` demonstration application; and the S3 connector must be
+provisioned separately before notifying the cluster. There is not yet rollout
+readiness/status over the management HTTP endpoint, multi-owner placement, a
+long-name deployment opcode, authenticated audit identities beyond the signing
+key, or an end-to-end central-store deployment fixture.

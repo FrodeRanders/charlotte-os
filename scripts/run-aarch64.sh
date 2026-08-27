@@ -83,6 +83,7 @@ KAFKA_TEST="0"
 KAFKA_COORDINATOR_TEST="0"
 KAFKA_FENCING_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
+DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
 TIMEOUT=""
@@ -149,6 +150,7 @@ done
 
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
+catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
 catten_boot_validate_instance "$INSTANCE"
 catten_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
@@ -686,9 +688,9 @@ if [ "$NETWORK" = "1" ]; then
                 # Host-side keyhole: forward the configurable host port to
                 # guest port 80 so parallel/local runs need not contend for a
                 # hard-coded listener.
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80")
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
             else
-                QEMU_OPTS+=(-netdev user,id=charlotte-net)
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
             fi
             ;;
         listen:*)

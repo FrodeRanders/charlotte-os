@@ -1,7 +1,7 @@
 //! Self-test: cluster administration service (`clusterctl`) and the serial
 //! admin console.
 //!
-//! Spawns the embedded `clusterctl` EL0 service, which wraps the dns manifest
+//! Observes the normal `clusterctl` EL0 service, which wraps the dns manifest
 //! ops and the object store behind admin operations. The verifier drives the
 //! programmatic flow through the clusterctl endpoint: upload a signed artifact
 //! ("hello"), deploy it to a fixed node, query the manifest, and run the key
@@ -18,16 +18,9 @@ mod inner {
         },
         logln,
         memory::KERNEL_ASID,
-        service::{
-            bootstrap::{
-                ManifestEntry,
-                ManifestValue,
-            },
-            supervisor::{
-                self,
-                NameServiceHandle,
-                ServiceDomain,
-            },
+        service::supervisor::{
+            self,
+            NameServiceHandle,
         },
     };
 
@@ -52,45 +45,6 @@ mod inner {
     static mut TEST_STATE: Option<NameServiceHandle> = None;
     /// The kernel-side connection to the clusterctl service.
     static mut CTL_CONN: u64 = 0;
-
-    fn spawn_clusterctl(ns: &NameServiceHandle) -> ServiceDomain {
-        let addr = crate::service::loader::load_domain(
-            crate::service::store::service_elf(b"clusterctl")
-                .expect("[el0_clusterctl] clusterctl.elf"),
-        );
-        let conn = ipc::connection_delegate(
-            ns.domain.asid,
-            ns.endpoint_cap,
-            addr.asid,
-            ConnectionRights::CALL,
-        )
-        .expect("[clusterctl] test conn delegate");
-        crate::service::bootstrap::write_bootstrap_cap(addr.config_frame, conn);
-        crate::service::bootstrap::write_manifest(
-            addr.config_frame,
-            &[ManifestEntry {
-                key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
-            }],
-        );
-        let entry: extern "C" fn() =
-            unsafe { core::mem::transmute::<usize, extern "C" fn()>(addr.entry_vaddr) };
-        let tid = crate::cpu::scheduler::spawn_thread(addr.asid, entry);
-        let generation = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE
-            .read()
-            .get(tid)
-            .expect("[clusterctl] thread missing after spawn")
-            .generation;
-        ServiceDomain {
-            asid: addr.asid,
-            address_space: addr.address_space,
-            tid,
-            generation,
-            config_frame: addr.config_frame,
-            status_frame: addr.status_frame,
-        }
-    }
 
     fn kernel_ns_connection(ns: &NameServiceHandle) -> u64 {
         ipc::connection_delegate(
@@ -189,8 +143,11 @@ mod inner {
         let ns = unsafe { TEST_STATE.as_ref() }.expect("[clusterctl] test state missing");
         let kernel_ns = kernel_ns_connection(ns);
 
-        let ctl = spawn_clusterctl(ns);
-        logln!("[clusterctl] clusterctl spawned (asid={})", ctl.asid);
+        let ctl = crate::service::launch::steady_state()
+            .deployment
+            .expect("[clusterctl] operational deployment plane missing")
+            .clusterctl;
+        logln!("[clusterctl] observing clusterctl (asid={})", ctl.asid);
         let ctl_cfg: *const u8 = {
             let base: *mut u8 = ctl.status_frame.into();
             base

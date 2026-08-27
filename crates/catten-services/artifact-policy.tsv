@@ -42,6 +42,7 @@ frouter            service     1       1        0x0   -
 dns                service     1       1        0x0   -
 agent              service     1       1        0x0   -
 clusterctl         admin       1       1        0x0   -
+deployd            service     1       1        0x0   -
 grantctl           admin       1       1        0x0   -
 # greet is explicitly safe to replicate in parallel, stateless, and forbidden
 # from fetching executable code at runtime.

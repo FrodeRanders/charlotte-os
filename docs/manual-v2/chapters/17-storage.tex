@@ -246,12 +246,15 @@ without handing each application general socket access or raw S3 credentials.
 
 RustFS is the current integration fixture. Dell EMC ECS is an intended managed
 store and the adapter can emit its namespace header, but it has not yet been
-qualified against an ECS installation. The cluster deployment agent also does
-not currently fetch signed service artifacts from S3: deployment bytes remain
-pre-staged in each node's native object store. Using S3 as an artifact source
-would require an explicit fetch, digest verification, caching, availability,
-and credential-rotation policy rather than treating the external bucket as the
-boot store.
+qualified against an ECS installation. The cluster deployment agent can use a
+separately provisioned S3 connector as an artifact source: it reads the opaque
+key from a signed deployment descriptor, streams the ELF, checks its pinned
+SHA-256 and name-bound CLS2 signature, and transfers both ELF and descriptor to
+the scoped kernel launch gate. Credentials, endpoint, bucket, prefix, and TLS
+identity remain outside both descriptor and application. Bootstrap services
+still come from the local store; central S3 is not a boot dependency. Caching,
+availability policy, credential rotation, and an end-to-end managed-store
+qualification remain operational work.
 
 \section{Raft persistence}
 

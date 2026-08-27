@@ -30,7 +30,10 @@ pub const MAX_GRANTS: usize = 64;
 
 pub const RIGHT_SEND: u16 = 1 << 0;
 pub const RIGHT_CALL: u16 = 1 << 1;
+/// Permit the artifact to publish an endpoint under the exact service name.
+pub const RIGHT_PUBLISH: u16 = 1 << 2;
 pub const CLIENT_RIGHTS: u16 = RIGHT_SEND | RIGHT_CALL;
+pub const ALL_GRANT_RIGHTS: u16 = CLIENT_RIGHTS | RIGHT_PUBLISH;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CapabilityGrant<'a> {
@@ -131,7 +134,7 @@ fn valid_name(value: &[u8], maximum: usize) -> bool {
 }
 
 fn valid_rights(rights: u16) -> bool {
-    rights != 0 && rights & !CLIENT_RIGHTS == 0
+    rights != 0 && rights & !ALL_GRANT_RIGHTS == 0
 }
 
 pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> {

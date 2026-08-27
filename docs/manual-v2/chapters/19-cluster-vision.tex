@@ -360,8 +360,10 @@ does not by itself constitute a complete cluster executive.
         store uses generation-selected directory records and copy-on-write
         replacement (\autoref{chap:storage}) for service artifacts and persistent Raft
         state. The current image producer places the same signed bundle on
-        each node; network fetch, repair, and cluster-wide artifact
-        replication are not implemented.
+        each node for bootstrap. Signed application deployments may instead
+        name an opaque key in a centrally managed S3 store; the assigned node
+        pulls through its locally provisioned connector. Repair and
+        cluster-wide artifact replication are not implemented.
 
     \item \textbf{Capability-scoped external data planes.} Separately
         provisioned S3 and Kafka services run above the userspace TCP/IP and
@@ -619,15 +621,19 @@ name service rather than through a node-specific application address.
 
 \subsection{The deployment agent}
 
-Each node runs an \texttt{agent}. It polls the manifest for assignments to
-its node key, reads the artifact from the object store, verifies the assigned
-SHA-256 identity, and checks that the signature note covers both the bytes
-and the requested logical name. It then invokes a deployment-authority
-syscall.
+Each networked node with durable local storage runs an \texttt{agent}. It polls
+the manifest for assignments to its node key. A legacy record selects bytes
+from the local object store. A signed descriptor instead names an opaque key
+that the agent pulls through the separately provisioned S3 connector. In both
+cases it verifies the assigned SHA-256 identity and checks that the signature
+note covers both the bytes and requested logical name. The descriptor path
+then invokes the scoped deployment-authority syscall with both owned memory
+objects.
 
-The kernel snapshots and revalidates the exact ELF, maps it into a fresh
-address space, and starts it. The ELF registers its local endpoint; the
-agent publishes that endpoint in the distributed catalog and supervises the
+The kernel snapshots and revalidates the exact ELF and descriptor, maps the
+ELF into a fresh address space, gives the application only the grant controller
+and its immutable descriptor, and starts it. A descriptor-authorized service
+publishes its endpoint through \texttt{grantctl}; the agent supervises the
 assignment. When the manifest assigns the artifact elsewhere, the agent
 retires the service and causes its address space to exit. Endpoint closure is
 observed by \texttt{dns}, whose generation check prevents a stale unregister.
@@ -648,14 +654,29 @@ wraps the DNS manifest operations and object store behind:
         name;
     \item \texttt{deploy}, which hashes the stored bytes and submits the
         pinned assignment; and
-    \item \texttt{status}, which queries the committed record.
+    \item \texttt{status}, which queries the committed record; and
+    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY1}
+        descriptor and commits its opaque central-object key, digest, target,
+        sequence, and capability grants without copying an ELF through Raft.
 \end{itemize}
+
+The normal service set also starts \texttt{deployd}. Its bounded plaintext
+HTTP endpoint accepts \texttt{POST /v1/deployments} on guest port 7444 with
+exactly one signed descriptor as the body. The signature is the authorisation
+and integrity envelope and the descriptor carries no secret. Lower sequences
+are rejected, different bytes at an existing sequence conflict, and identical
+notifications are idempotent. QEMU's user network forwards host port 8081 by
+default; \texttt{cluster-sign deployment-notify} is the corresponding host
+client.
 
 An interactive kernel serial console in the \texttt{--deploy-test} flow lets
 an operator issue these commands against the live cluster. The console is a
 kernel test thread, not an out-of-band production management plane, and the
 raw mutation endpoint does not yet enforce the intended separately delegated
-administrator capability.
+administrator capability. The notification endpoint is a first off-cluster
+management path, but it still needs network-level denial-of-service controls,
+audit identity beyond the signing key, generic long artifact names, rollout
+status, and multi-artifact placement.
 
 \subsection{Artifact naming}
 

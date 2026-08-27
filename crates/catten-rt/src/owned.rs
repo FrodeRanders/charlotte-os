@@ -783,6 +783,47 @@ pub enum ReceiveError {
     Status(u64),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArtifactLaunchError {
+    InvalidLength,
+    Rejected,
+}
+
+/// Transfer a signed ELF and deployment descriptor to the privileged scoped
+/// deployment gate. The kernel consumes both memory capabilities on every
+/// submitted outcome; invalid lengths are rejected locally and normal `Drop`
+/// releases both owners.
+pub fn spawn_scoped_artifact(
+    mut artifact: OwnedMemory,
+    artifact_len: usize,
+    artifact_name: u64,
+    mut descriptor: OwnedMemory,
+    descriptor_len: usize,
+) -> Result<u64, ArtifactLaunchError> {
+    if artifact_len == 0
+        || artifact_len > artifact.len()
+        || descriptor_len < charlotte_launch::deployment::HEADER_LEN
+        || descriptor_len > descriptor.len()
+        || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+    {
+        return Err(ArtifactLaunchError::InvalidLength);
+    }
+    let artifact_cap = artifact.cap.take().expect("artifact capability already consumed");
+    let descriptor_cap = descriptor.cap.take().expect("descriptor capability already consumed");
+    let asid = kernel::spawn_artifact_scoped(
+        artifact_cap,
+        artifact_len,
+        artifact_name,
+        descriptor_cap,
+        descriptor_len,
+    );
+    if asid == 0 {
+        Err(ArtifactLaunchError::Rejected)
+    } else {
+        Ok(asid)
+    }
+}
+
 /// An owned IPC endpoint capability.
 #[must_use = "dropping an endpoint closes it"]
 #[derive(Debug)]
@@ -1134,6 +1175,27 @@ impl<'connection> ConnectionRef<'connection> {
             opcode,
             arg0,
             endpoint.raw_handle(),
+            rights,
+            memory.raw_handle(),
+        ))
+    }
+
+    /// Call while re-delegating from a mintable connection and copying a
+    /// memory object. This is used by mediation services that receive an
+    /// application's endpoint connection but do not own that endpoint.
+    pub fn call_delegated_connection_copy(
+        self,
+        opcode: u32,
+        arg0: u64,
+        connection: ConnectionRef<'_>,
+        rights: IpcRights,
+        memory: &OwnedMemory,
+    ) -> Result<PendingCall<'static>, IpcError> {
+        PendingCall::from_kernel(kernel::ipc_scalar_call_connection_copy(
+            self.cap,
+            opcode,
+            arg0,
+            connection.cap,
             rights,
             memory.raw_handle(),
         ))
@@ -1878,6 +1940,22 @@ mod kernel {
     pub fn ipc_close(cap: u64) -> u64 {
         catten_syscall::ipc_close(cap)
     }
+
+    pub fn spawn_artifact_scoped(
+        artifact: u64,
+        artifact_len: usize,
+        artifact_name: u64,
+        descriptor: u64,
+        descriptor_len: usize,
+    ) -> u64 {
+        catten_syscall::spawn_artifact_scoped(
+            artifact,
+            artifact_len,
+            artifact_name,
+            descriptor,
+            descriptor_len,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -1941,6 +2019,7 @@ mod kernel {
         pub ipc_reply: VecDeque<(u64, u64, u64, u64)>,
         pub ipc_reply_status: u64,
         pub connection_watch: u64,
+        pub scoped_spawn: u64,
         pub events: Vec<Event>,
     }
 
@@ -1974,6 +2053,7 @@ mod kernel {
                 ipc_reply: VecDeque::new(),
                 ipc_reply_status: catten_syscall::ipc_status::OK,
                 connection_watch: 20,
+                scoped_spawn: 2,
                 events: Vec::new(),
             }
         }
@@ -2257,6 +2337,16 @@ mod kernel {
         with_state(|state| state.events.push(Event::IpcClose(cap)));
         catten_syscall::ipc_status::OK
     }
+
+    pub fn spawn_artifact_scoped(
+        _artifact: u64,
+        _artifact_len: usize,
+        _artifact_name: u64,
+        _descriptor: u64,
+        _descriptor_len: usize,
+    ) -> u64 {
+        with_state(|state| state.scoped_spawn)
+    }
 }
 
 #[cfg(test)]
@@ -2273,6 +2363,7 @@ mod tests {
     };
 
     use super::{
+        ArtifactLaunchError,
         CapabilityVector,
         Completion,
         Connection,
@@ -2284,6 +2375,7 @@ mod tests {
         OwnedMemory,
         ReadOperation,
         kernel,
+        spawn_scoped_artifact,
     };
 
     fn setup() -> std::sync::MutexGuard<'static, ()> {
@@ -2451,6 +2543,61 @@ mod tests {
         drop(memory);
         drop(connection);
         assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10), kernel::Event::IpcClose(8)]);
+    }
+
+    #[test]
+    fn scoped_launch_rejects_lengths_without_leaking_inputs() {
+        let _guard = setup();
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+
+        assert_eq!(
+            spawn_scoped_artifact(artifact, 1, 1, descriptor, 0),
+            Err(ArtifactLaunchError::InvalidLength)
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::MemoryClose(12), kernel::Event::MemoryClose(11)]
+        );
+    }
+
+    #[test]
+    fn scoped_launch_transfers_both_inputs_on_submission() {
+        let _guard = setup();
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+
+        assert_eq!(
+            spawn_scoped_artifact(
+                artifact,
+                1,
+                1,
+                descriptor,
+                charlotte_launch::deployment::HEADER_LEN,
+            ),
+            Ok(2)
+        );
+        assert!(kernel::events().is_empty());
+    }
+
+    #[test]
+    fn scoped_launch_kernel_rejection_still_consumes_both_inputs() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_spawn = 0);
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+
+        assert_eq!(
+            spawn_scoped_artifact(
+                artifact,
+                1,
+                1,
+                descriptor,
+                charlotte_launch::deployment::HEADER_LEN,
+            ),
+            Err(ArtifactLaunchError::Rejected)
+        );
+        assert!(kernel::events().is_empty());
     }
 
     #[test]

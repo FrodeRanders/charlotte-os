@@ -29,7 +29,8 @@ The controller fails closed unless all of these hold:
    kernel-authenticated IPC sender envelope.
 3. The descriptor revision is not older than one already observed for that
    principal; equal revisions must have the same descriptor digest.
-4. An exact service grant contains all requested `SEND`/`CALL` rights.
+4. An exact service grant contains all requested client (`SEND`/`CALL`) rights,
+   or separately authorizes endpoint publication.
 5. The service is currently registered and its publication ceiling contains
    those rights.
 
@@ -37,6 +38,12 @@ The name service returns `MINT_CONNECTION` only to the authenticated
 policy-administrator controller. `ReplyToken::reply_connection_ref` then mints
 an attenuated application connection. The temporary controller connection is
 closed by `Drop` after the reply.
+
+`grant_client::publish` is the complementary service-side operation. It moves
+no endpoint owner: the controller receives a bounded mintable connection,
+checks an exact `publish` grant, and registers only client `SEND`/`CALL` rights
+with the name service. A scoped service can therefore become discoverable
+without gaining ambient lookup or registration authority.
 
 ## Trust boundary
 

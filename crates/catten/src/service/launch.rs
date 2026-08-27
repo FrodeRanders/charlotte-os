@@ -66,6 +66,15 @@ pub struct NetworkAppliance {
     pub httpd: ServiceDomain,
 }
 
+/// The normal deployment control plane: signed-descriptor administration,
+/// the node artifact puller, and the bounded off-cluster notification ingress.
+#[derive(Copy, Clone)]
+pub struct DeploymentPlane {
+    pub clusterctl: ServiceDomain,
+    pub agent: ServiceDomain,
+    pub ingress: ServiceDomain,
+}
+
 /// A capability profile for one S3 client-service instance. The service never
 /// publishes these credentials; callers receive only its restricted endpoint.
 pub struct S3Profile<'a> {
@@ -182,6 +191,7 @@ pub struct SteadyState {
     pub network: Option<NetworkStack>,
     pub cluster: Option<Cluster>,
     pub appliance: Option<NetworkAppliance>,
+    pub deployment: Option<DeploymentPlane>,
 }
 
 /// Launch a VirtIO RNG adapter when the platform exposes one with protected
@@ -384,6 +394,48 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
         tcpip,
         time,
         httpd,
+    }
+}
+
+/// Launch the signed deployment path once both durable local storage and the
+/// network exist. The S3 connector remains separately provisioned because its
+/// endpoint and credentials are machine policy, not deployment metadata.
+pub fn launch_deployment_plane(ns: &NameServiceHandle) -> DeploymentPlane {
+    let trust = [ManifestEntry {
+        key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
+        flags: 0,
+        value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
+    }];
+    let clusterctl = crate::service::supervisor::spawn_with_manifest(
+        crate::service::store::service_elf(b"clusterctl").expect("[launch] clusterctl.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &trust,
+    );
+    let agent = crate::service::supervisor::spawn_with_manifest(
+        crate::service::store::service_elf(b"agent").expect("[launch] agent.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &trust,
+    );
+    crate::service::supervisor::authorize_deployment_agent(&agent);
+    let ingress = crate::service::supervisor::spawn_with_manifest(
+        crate::service::store::service_elf(b"deployd").expect("[launch] deployd.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &[],
+    );
+    logln!(
+        "[launch] deployment plane spawned: clusterctl={} agent={} ingress={} port={}",
+        clusterctl.asid,
+        agent.asid,
+        ingress.asid,
+        charlotte_launch::DEPLOY_NOTIFY_PORT
+    );
+    DeploymentPlane {
+        clusterctl,
+        agent,
+        ingress,
     }
 }
 
@@ -609,12 +661,18 @@ pub extern "C" fn launch_steady_state() {
         ),
         None => (None, None),
     };
+    let deployment = if storage.is_some() && network.is_some() {
+        Some(launch_deployment_plane(&ns))
+    } else {
+        None
+    };
     *STEADY_STATE.lock() = Some(SteadyState {
         storage,
         entropy,
         network,
         cluster,
         appliance,
+        deployment,
     });
     logln!("[launch] steady-state service set published.");
 }

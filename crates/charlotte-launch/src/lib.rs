@@ -35,6 +35,8 @@ const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 /// blessed artifact from being accepted into the store but rejected when its
 /// assigned node tries to execute it.
 pub const MAX_ARTIFACT_ELF_SIZE: usize = 4 * 1024 * 1024;
+/// Guest TCP port of the bounded signed-descriptor notification ingress.
+pub const DEPLOY_NOTIFY_PORT: u16 = 7444;
 
 /// DNS service status-page ABI shared by the EL0 service and its kernel boot
 /// verifier. Every field is an aligned little-endian `u32` byte offset.

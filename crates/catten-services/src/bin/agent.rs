@@ -22,6 +22,11 @@ use catten_rt::{
     ManifestValue,
     config,
     manifest_key,
+    owned::{
+        Connection,
+        OwnedMemory,
+        spawn_scoped_artifact,
+    },
 };
 use catten_services::{
     deploy,
@@ -30,6 +35,8 @@ use catten_services::{
     node_identity,
     ns,
     objstore,
+    s3,
+    s3_client::Client as S3Client,
     wait_reply,
 };
 use catten_syscall::*;
@@ -50,6 +57,7 @@ struct DeploymentInfo {
     object_id: u64,
     node_key: u64,
     artifact_digest: [u8; 32],
+    descriptor: alloc::vec::Vec<u8>,
 }
 
 fn fail(stage: u32) -> ! {
@@ -70,6 +78,22 @@ fn lookup(ns_connection: u64, name: u64) -> u64 {
     }
     let (generation, connection) = catten_services::spin_reply(lookup);
     if generation < 1 || connection == 0 {
+        0
+    } else {
+        connection
+    }
+}
+
+fn try_lookup(ns_connection: u64, name: u64) -> u64 {
+    let lookup = ipc_scalar_call(ns_connection, ns::OP_TRY_LOOKUP, name);
+    if lookup == 0 {
+        return 0;
+    }
+    let (generation, connection) = catten_services::spin_reply(lookup);
+    if generation < 1 || connection == 0 {
+        if connection != 0 {
+            ipc_close(connection);
+        }
         0
     } else {
         connection
@@ -145,9 +169,9 @@ fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
     if call == 0 {
         return None;
     }
-    let (_status, _size, _returned_connection, memory) = ipc_reply_wait_with_memory(call);
+    let (_status, size, _returned_connection, memory) = ipc_reply_wait_with_memory(call);
     ipc_close(call);
-    let entry = decode_deployment(memory);
+    let entry = usize::try_from(size).ok().and_then(|size| decode_deployment(memory, size));
     if memory != 0 {
         memory_close(memory);
     }
@@ -206,6 +230,57 @@ fn fetch_and_verify(
     Ok((returned_memory, len))
 }
 
+fn fetch_from_central_store(
+    ns_connection: u64,
+    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    cluster_key: &[u8; 32],
+) -> Option<alloc::vec::Vec<u8>> {
+    let raw_connection = try_lookup(ns_connection, s3::NAME);
+    if raw_connection == 0 {
+        return None;
+    }
+    // The lookup reply transfers one owning connection at this IPC boundary.
+    let connection = unsafe { Connection::from_raw(raw_connection) }.ok()?;
+    let client = S3Client::new(connection.as_ref());
+    let request = charlotte_protocol_s3::ObjectRequest::get(descriptor.object_key);
+    let (mut get, info) = client.get(request).ok()?;
+    let expected_len = usize::try_from(info.content_length).ok()?;
+    if info.status != 200
+        || expected_len == 0
+        || expected_len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE
+    {
+        return None;
+    }
+    let mut artifact = alloc::vec::Vec::with_capacity(expected_len);
+    while let Some(chunk) = get.read().ok()? {
+        let (memory, len) = chunk.into_parts();
+        let mapping = memory.map_read_only().ok()?;
+        artifact.extend_from_slice(mapping.as_slice().get(..len)?);
+        if artifact.len() > expected_len {
+            return None;
+        }
+    }
+    get.close().ok()?;
+    if artifact.len() != expected_len
+        || charlotte_launch::sha256::digest(&artifact) != descriptor.artifact_digest
+        || charlotte_launch::signature_note::verify_elf_for_name(
+            &artifact,
+            cluster_key,
+            descriptor.artifact_name,
+        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    {
+        return None;
+    }
+    Some(artifact)
+}
+
+fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
+    let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
+    let mut mapping = memory.map_writable().ok()?;
+    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
+    mapping.unmap().ok()
+}
+
 /// Publish the independently running artifact domain, then supervise it until
 /// the assignment moves elsewhere.
 fn supervise(
@@ -261,11 +336,12 @@ fn supervise(
         // Retirement check: is the artifact still assigned to this node? The
         // query is polled, never blocked on.
         if published {
-            let (status, _size, _returned_connection, memory) =
+            let (status, size, _returned_connection, memory) =
                 ipc_reply_poll_with_memory(deploy_query);
             if status == 0 {
                 ipc_close(deploy_query);
-                let entry = decode_deployment(memory);
+                let entry =
+                    usize::try_from(size).ok().and_then(|size| decode_deployment(memory, size));
                 if memory != 0 {
                     memory_close(memory);
                 }
@@ -291,10 +367,10 @@ fn supervise(
     }
 }
 
-/// Decode a `OP_DEPLOY_QUERY` reply page (56 bytes, `[generation][object_id]
-/// [node_key][artifact_sha256]`), mapped at `DATA_VADDR`. Returns `None` when the memory
-/// cap is absent (the query errored or found nothing).
-fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
+/// Decode an `OP_DEPLOY_QUERY` reply:
+/// `[generation][object_id][node_key][artifact_sha256]
+/// [descriptor_len:u32][signed_descriptor]`.
+fn decode_deployment(memory: u64, len: usize) -> Option<DeploymentInfo> {
     if memory == 0 {
         return None;
     }
@@ -302,19 +378,36 @@ fn decode_deployment(memory: u64) -> Option<DeploymentInfo> {
     if data_vaddr_map_status != 0 {
         return None;
     }
-    if memory_size(memory) < 56 {
+    if len < 56
+        || len > memory_size(memory)
+        || len > 60 + charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+    {
+        memory_unmap(memory);
         return None;
     }
-    let mut bytes = [0u8; 56];
-    for (index, byte) in bytes.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((data_vaddr_vaddr + index) as *const u8) };
+    let mut bytes = alloc::vec::Vec::with_capacity(len);
+    for index in 0..len {
+        bytes.push(unsafe { core::ptr::read_volatile((data_vaddr_vaddr + index) as *const u8) });
     }
     memory_unmap(memory);
+    let descriptor = if bytes.len() == 56 {
+        alloc::vec::Vec::new()
+    } else {
+        let descriptor_len =
+            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
+        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || bytes.len() != 60 + descriptor_len
+        {
+            return None;
+        }
+        bytes[60..].to_vec()
+    };
     Some(DeploymentInfo {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
         node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
         artifact_digest: bytes[24..56].try_into().ok()?,
+        descriptor,
     })
 }
 
@@ -359,6 +452,32 @@ fn main(ctx: Context) -> ! {
             // If it names this node, the artifact must validate against the
             // cluster's public key before it is served.
             if entry.node_key == my_node_key
+                && !entry.descriptor.is_empty()
+                && charlotte_launch::deployment::verify(&entry.descriptor, &cluster_key)
+                    == charlotte_launch::deployment::VerifyOutcome::Valid
+                && let Some(descriptor) = charlotte_launch::deployment::decode(&entry.descriptor)
+                && descriptor.artifact_name == b"greet"
+                && descriptor.node_key == my_node_key
+                && descriptor.artifact_digest == entry.artifact_digest
+                && let Some(artifact) =
+                    fetch_from_central_store(ns_connection, &descriptor, &cluster_key)
+                && let (Some(artifact_memory), Some(descriptor_memory)) =
+                    (memory_from_bytes(&artifact), memory_from_bytes(&entry.descriptor))
+            {
+                if spawn_scoped_artifact(
+                    artifact_memory,
+                    artifact.len(),
+                    deploy::NAME,
+                    descriptor_memory,
+                    entry.descriptor.len(),
+                )
+                .is_err()
+                {
+                    fail(STAGE_FAIL);
+                }
+                supervise(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
+            } else if entry.node_key == my_node_key
+                && entry.descriptor.is_empty()
                 && let Ok((artifact_cap, artifact_size)) = fetch_and_verify(
                     obj_conn,
                     entry.object_id,

@@ -156,13 +156,14 @@ and cumulative produced records for every profile route. Per-route throughput
 is derived by sampling those monotonic counters; no application receives the
 status capability merely because it can produce or consume.
 
-The scoped launch path now gives an application only `grantctl` plus its signed
+The scoped launch path gives an application only `grantctl` plus its signed
 deployment descriptor. The descriptor may name both the exact Kafka
 access-point and procedure service; the owned grant client acquires those
-connections without exposing the name service. The existing demo deployment
-agent has not yet switched to the scoped syscall, so central descriptor
-notification, rollout status interpretation, and end-to-end generation-fenced
-deployment remain integration work.
+connections without exposing the name service. Signed descriptors can now be
+notified off-cluster, replicated through Raft, and used by the assigned node to
+pull and scoped-launch an ELF through S3. General Kafka-step rollout remains
+integration work because the first agent is still specialized to the short
+`greet` deployment name and the S3 connector is separately provisioned.
 Fixed-partition Kafka group membership is implemented in the connector;
 controller-managed stable instance leases and cooperative assignor
 interoperability remain future work.

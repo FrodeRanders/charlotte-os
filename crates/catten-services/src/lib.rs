@@ -89,6 +89,8 @@ pub mod grant {
     pub const INTERFACE: u64 = super::name(b"GRANT");
     pub const VERSION: u32 = 1;
     pub const OP_ACQUIRE: u32 = 1;
+    /// Publish an application-owned endpoint under an exact descriptor grant.
+    pub const OP_PUBLISH: u32 = 2;
 
     pub const ERR_INVALID: i64 = -1;
     pub const ERR_UNAUTHORIZED: i64 = -2;
@@ -113,7 +115,7 @@ pub mod grant {
         if service.is_empty()
             || service.len() > charlotte_launch::deployment::MAX_SERVICE_NAME_LEN
             || rights == 0
-            || rights & !charlotte_launch::deployment::CLIENT_RIGHTS != 0
+            || rights & !charlotte_launch::deployment::ALL_GRANT_RIGHTS != 0
             || charlotte_launch::deployment::decode(descriptor).is_none()
         {
             return None;
@@ -149,7 +151,7 @@ pub mod grant {
         if service_len == 0
             || service_len > charlotte_launch::deployment::MAX_SERVICE_NAME_LEN
             || rights == 0
-            || rights & !charlotte_launch::deployment::CLIENT_RIGHTS != 0
+            || rights & !charlotte_launch::deployment::ALL_GRANT_RIGHTS != 0
             || descriptor_end != bytes.len()
         {
             return None;
@@ -1273,6 +1275,10 @@ pub mod dns {
     /// pins this generation to one immutable, blessed ELF; the reply is the
     /// committed deployment generation.
     pub const OP_DEPLOY: u32 = 8;
+    /// Marker at byte 48 of an extended `OP_DEPLOY` payload, followed by a
+    /// u32 descriptor length and the signed descriptor bytes. Its absence
+    /// selects the legacy 48-byte request.
+    pub const DEPLOY_DESCRIPTOR_MAGIC: u32 = 0x3150_4544; // "DEP1"
     /// Query the deployment record for `arg0` (packed artifact name). The
     /// reply moves a page holding
     /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE]
@@ -1395,6 +1401,10 @@ pub mod clusterctl {
     pub const VERSION: u32 = 1;
     /// The service's short name (packed LE).
     pub const NAME: u64 = super::name(b"ctl");
+    /// Plain HTTP notification ingress. Authenticity and integrity come from
+    /// the signed descriptor; the transport deliberately carries no secrets.
+    pub const NOTIFY_PORT: u16 = charlotte_launch::DEPLOY_NOTIFY_PORT;
+    pub const NOTIFY_PATH: &[u8] = b"/v1/deployments";
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
@@ -1411,8 +1421,9 @@ pub mod clusterctl {
     /// replicated).
     pub const OP_DEPLOY: u32 = 2;
     /// Query the deployment manifest. `arg0` is the packed artifact name; the
-    /// reply moves the 56-byte deployment record
-    /// `[generation][object_id][node_key][artifact_sha256]`, or is
+    /// reply moves `[generation:u64][object_id:u64][node_key:u64]
+    /// [artifact_sha256:32][descriptor_len:u32][signed_descriptor]`, or the
+    /// legacy 56-byte prefix for a legacy deployment. Missing records return
     /// `ERR_NOT_FOUND`.
     pub const OP_STATUS: u32 = 3;
     /// Commit the cluster's Ed25519 public key to the replicated state (the
@@ -1426,6 +1437,12 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
+    /// Notify the cluster of a signed `CDEPLOY1` descriptor. `arg0` is the
+    /// packed artifact name and the moved memory payload uses the same
+    /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
+    /// central object key, digest, target node, revision, and capability
+    /// grants. No object-store credentials cross this interface.
+    pub const OP_NOTIFY: u32 = 6;
     /// Join the cluster on the local network segment. The service asks the
     /// local discovery service for the cluster's leader (or a follower that
     /// redirects towards it), then asks that leader's DNS-owned Raft
@@ -1446,6 +1463,13 @@ pub mod clusterctl {
     /// different logical artifact name.
     pub const ERR_UNTRUSTED_ARTIFACT: i64 = -11;
     pub const ERR_UNTRUSTED_KEY: i64 = -12;
+    /// The deployment descriptor is malformed, untrusted, or does not bind
+    /// the requested artifact name.
+    pub const ERR_UNTRUSTED_DESCRIPTOR: i64 = -13;
+    /// The signed sequence is older than the committed descriptor sequence.
+    pub const ERR_STALE_DESCRIPTOR: i64 = -14;
+    /// The sequence is already committed with different signed bytes.
+    pub const ERR_CONFLICTING_DESCRIPTOR: i64 = -15;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

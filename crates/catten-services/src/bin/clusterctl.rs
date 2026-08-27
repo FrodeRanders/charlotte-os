@@ -24,11 +24,16 @@ use catten_rt::{
     Context,
     ManifestValue,
     config,
+    owned::{
+        ConnectionRef,
+        OwnedMemory,
+    },
 };
 use catten_services::{
     clusterctl,
     disco,
     dns,
+    name_catalog,
     ns,
     objstore,
     raft,
@@ -166,6 +171,69 @@ fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
     Some(hasher.finalize())
 }
 
+fn submit_deployment(
+    dns_conn: u64,
+    packed_name: u64,
+    object_id: u64,
+    node_key: u64,
+    artifact_digest: &[u8; 32],
+    descriptor: &[u8],
+) -> i64 {
+    let request_len = 56usize.saturating_add(descriptor.len());
+    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN || request_len > 4096 {
+        return clusterctl::ERR_UPLOAD_FAILED;
+    }
+    let request = match OwnedMemory::allocate(1) {
+        Ok(request) => request,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    let mut mapping = match request.map_writable() {
+        Ok(mapping) => mapping,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    let bytes = mapping.as_mut_slice();
+    bytes[0..8].copy_from_slice(&object_id.to_le_bytes());
+    bytes[8..16].copy_from_slice(&node_key.to_le_bytes());
+    bytes[16..48].copy_from_slice(artifact_digest);
+    if !descriptor.is_empty() {
+        bytes[48..52].copy_from_slice(&dns::DEPLOY_DESCRIPTOR_MAGIC.to_le_bytes());
+        bytes[52..56].copy_from_slice(&(descriptor.len() as u32).to_le_bytes());
+        bytes[56..request_len].copy_from_slice(descriptor);
+    }
+    let request = match mapping.unmap() {
+        Ok(request) => request,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    // `dns_conn` is owned by this legacy service loop; this short borrow keeps
+    // the newly transferred request memory under the typed ownership API.
+    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
+        Ok(dns) => dns,
+        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    };
+    match dns.call_move(dns::OP_DEPLOY, packed_name, request) {
+        Ok(call) => match call.wait() {
+            Ok(reply) => reply.result,
+            Err(_) => clusterctl::ERR_NOT_LEADER,
+        },
+        Err((_request, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
+fn current_deployment(dns_conn: u64, packed_name: u64) -> Option<name_catalog::DeploymentEntry> {
+    let dns = unsafe { ConnectionRef::from_raw(dns_conn) }.ok()?;
+    let reply = dns.call(dns::OP_DEPLOY_QUERY, packed_name).ok()?.wait().ok()?;
+    if reply.result < 56 {
+        return None;
+    }
+    let len = usize::try_from(reply.result).ok()?;
+    let memory = reply.memory?;
+    if len > memory.len() {
+        return None;
+    }
+    let mapping = memory.map_read_only().ok()?;
+    name_catalog::decode_deployment_result(mapping.as_slice().get(..len)?)
+}
+
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
 /// memory object. The memory layout is `[payload_len:u64 LE][payload]`.
 fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
@@ -297,53 +365,78 @@ fn main(ctx: Context) -> ! {
                                     }
                                     continue;
                                 };
-                                // The dns commits the deployment; its reply is
-                                // deferred until the manifest entry has
-                                // replicated.
-                                let request = memory_alloc(1);
-                                let (data_vaddr_6_map_status, data_vaddr_6_vaddr) =
-                                    memory_map_any(request, true);
-                                if request == 0 || data_vaddr_6_map_status != 0 {
-                                    clusterctl::ERR_UPLOAD_FAILED
-                                } else {
-                                    unsafe {
-                                        core::ptr::write_volatile(
-                                            data_vaddr_6_vaddr as *mut u64,
-                                            object_id,
-                                        );
-                                        core::ptr::write_volatile(
-                                            (data_vaddr_6_vaddr + 8) as *mut u64,
-                                            node_key,
-                                        );
-                                        core::ptr::copy_nonoverlapping(
-                                            artifact_digest.as_ptr(),
-                                            (data_vaddr_6_vaddr + 16) as *mut u8,
-                                            artifact_digest.len(),
-                                        );
-                                    }
-                                    memory_unmap(request);
-                                    let call = ipc_scalar_call_move(
-                                        dns_conn,
-                                        dns::OP_DEPLOY,
-                                        message.arg0,
-                                        request,
-                                    );
-                                    if call == 0 {
-                                        clusterctl::ERR_NOT_LEADER
-                                    } else {
-                                        let (raw_status, raw_result, _raw_cap) =
-                                            catten_syscall::ipc_reply_wait(call);
-                                        ipc_close(call);
-                                        if raw_status == 0 {
-                                            raw_result as i64
-                                        } else {
-                                            clusterctl::ERR_NOT_LEADER
-                                        }
-                                    }
-                                }
+                                submit_deployment(
+                                    dns_conn,
+                                    message.arg0,
+                                    object_id,
+                                    node_key,
+                                    &artifact_digest,
+                                    &[],
+                                )
                             }
                             None => clusterctl::ERR_TOO_LARGE,
                         }
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_NOTIFY => {
+                    let name = packed_name(message.arg0);
+                    let result = match read_payload(&message) {
+                        Some(descriptor_bytes)
+                            if charlotte_launch::deployment::verify(
+                                &descriptor_bytes,
+                                &trusted_key,
+                            ) == charlotte_launch::deployment::VerifyOutcome::Valid =>
+                        {
+                            match charlotte_launch::deployment::decode(&descriptor_bytes) {
+                                Some(descriptor)
+                                    if descriptor.artifact_name == name
+                                        && descriptor.node_key != 0 =>
+                                {
+                                    match current_deployment(dns_conn, message.arg0)
+                                        .filter(|current| !current.descriptor.is_empty())
+                                    {
+                                        Some(current)
+                                            if charlotte_launch::deployment::decode(
+                                                &current.descriptor,
+                                            )
+                                            .is_some_and(|previous| {
+                                                descriptor.sequence < previous.sequence
+                                            }) =>
+                                        {
+                                            clusterctl::ERR_STALE_DESCRIPTOR
+                                        }
+                                        Some(current)
+                                            if charlotte_launch::deployment::decode(
+                                                &current.descriptor,
+                                            )
+                                            .is_some_and(|previous| {
+                                                descriptor.sequence == previous.sequence
+                                            }) =>
+                                        {
+                                            if current.descriptor == descriptor_bytes {
+                                                current.generation as i64
+                                            } else {
+                                                clusterctl::ERR_CONFLICTING_DESCRIPTOR
+                                            }
+                                        }
+                                        _ => submit_deployment(
+                                            dns_conn,
+                                            message.arg0,
+                                            dns::artifact_object_id(&name),
+                                            descriptor.node_key,
+                                            &descriptor.artifact_digest,
+                                            &descriptor_bytes,
+                                        ),
+                                    }
+                                }
+                                _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                            }
+                        }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                        None => clusterctl::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);

@@ -1544,14 +1544,20 @@ fn main(ctx: Context) -> ! {
                         dns::ERR_NOT_LEADER
                     } else {
                         match request {
-                            Some((object_id, node_key, artifact_digest)) => {
+                            Some((object_id, node_key, artifact_digest, descriptor)) => {
                                 // A cluster decision: commit the assignment
                                 // to the replicated manifest. Its
                                 // authenticity is the Raft consensus; the
                                 // reply is deferred until the command is
                                 // committed (pending_registers below).
                                 match node.submit_command(
-                                    encode_deploy(&artifact, object_id, node_key, &artifact_digest),
+                                    encode_deploy(
+                                        &artifact,
+                                        object_id,
+                                        node_key,
+                                        &artifact_digest,
+                                        &descriptor,
+                                    ),
                                     node.millis(),
                                 ) {
                                     Ok(log_index) => {
@@ -1585,11 +1591,13 @@ fn main(ctx: Context) -> ! {
                     // replicated to this replica. Agents poll, so no read
                     // barrier is required.
                     if let Some(entry) = catalog.deployment(&artifact) {
-                        let mut bytes = Vec::with_capacity(56);
+                        let mut bytes = Vec::with_capacity(60 + entry.descriptor.len());
                         bytes.extend_from_slice(&entry.generation.to_le_bytes());
                         bytes.extend_from_slice(&entry.object_id.to_le_bytes());
                         bytes.extend_from_slice(&entry.node_key.to_le_bytes());
                         bytes.extend_from_slice(&entry.artifact_digest);
+                        bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
+                        bytes.extend_from_slice(&entry.descriptor);
                         reply_move_bytes(message.reply, &bytes);
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);

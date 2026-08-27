@@ -144,7 +144,9 @@ repository history remain authoritative.
         runtime-validated over the frame demultiplexer; reliable-message
         fragmentation to 64 KiB. Network capability, DHCP, discovery, cluster
         formation, HTTP, and time synchronization launch by default when a
-        supported NIC is discovered; test features only add verifiers. S3 and
+        supported NIC is discovered; with local durable storage this also
+        starts signed-descriptor ingress, cluster administration, and the node
+        deployment agent. Test features only add verifiers. S3 and
         Kafka service instances are separately provisioned because their
         endpoint, trust, credential, and data-scope profiles are not ambient
         machine configuration. Opt-in AArch64 tests validate RustFS and Apache

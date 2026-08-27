@@ -91,6 +91,7 @@ DHCP_TEST="0"
 DEPLOY_TEST="0"
 LIVE_UPGRADE_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
+DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 NET_DEVICE="virtio"
@@ -167,6 +168,7 @@ if ! [[ "$DATA_SIZE_MIB" =~ ^[0-9]+$ ]] || [ "$DATA_SIZE_MIB" -lt 16 ]; then
     exit 1
 fi
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
+catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
 if [ "$NET_BACKEND" != "user" ] && [ "$NETWORK" != "1" ]; then
     echo "error: socket networking is incompatible with --no-network" >&2
     exit 1
@@ -412,9 +414,9 @@ if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
             if [ "$HTTP_TEST" = "1" ]; then
-                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:80")
+                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
             else
-                QEMU_OPTS+=(-netdev "user,id=net0")
+                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
             fi
             ;;
         listen:*)

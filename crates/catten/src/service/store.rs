@@ -123,6 +123,7 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"kafka_smoke", "kafka_smoke"),
     bootstrap_elf!(b"fs", "fs"),
     bootstrap_elf!(b"clusterctl", "clusterctl"),
+    bootstrap_elf!(b"deployd", "deployd"),
 ];
 
 /// Loaded, store-sourced service images, keyed by the artifact name.
