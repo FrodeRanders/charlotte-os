@@ -40,7 +40,8 @@
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
 #   --kafka-test  Start a TLS/mTLS/SCRAM Apache Kafka Docker fixture and verify
-#                 idempotent produce, read-committed consume, and transactions
+#                 idempotent produce, read-committed consume, transactions,
+#                 and recovery after the active route leader is killed
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -377,12 +378,12 @@ if [ "$KAFKA_TEST" = "1" ]; then
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-events --replica-assignment 1
+        --topic charlotte-events --replica-assignment 1:2:3
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-results --replica-assignment 2
+        --topic charlotte-results --replica-assignment 2:3:1
 fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
@@ -725,6 +726,9 @@ if [ -n "$TIMEOUT" ]; then
     fi
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
+    KAFKA_FAULT_INJECTED=0
+    KAFKA_FAULT_RESTARTED=0
+    KAFKA_FAULT_TICK=-1
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
@@ -759,6 +763,19 @@ if [ -n "$TIMEOUT" ]; then
                 echo "error: guest HTTP keyhole did not return the expected JSON state page" >&2
             fi
         fi
+        if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FAULT_INJECTED" = "0" ] \
+            && grep -Fq "[kafka-test] FAULT WINDOW OPEN" "$LOG"; then
+            echo ">>> Killing Kafka route leader kafka2 during the in-guest fault window..."
+            docker compose -f "$KAFKA_COMPOSE" kill kafka2
+            KAFKA_FAULT_INJECTED=1
+            KAFKA_FAULT_TICK=$tick
+        fi
+        if [ "$KAFKA_FAULT_INJECTED" = "1" ] && [ "$KAFKA_FAULT_RESTARTED" = "0" ] \
+            && [ "$tick" -ge $((KAFKA_FAULT_TICK + 450)) ]; then
+            echo ">>> Restarting Kafka broker kafka2 after the leader-migration window..."
+            docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka2
+            KAFKA_FAULT_RESTARTED=1
+        fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
@@ -769,6 +786,7 @@ if [ -n "$TIMEOUT" ]; then
                 fi
             fi
             if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
+                && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
                 && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
@@ -852,6 +870,11 @@ if [ -n "$TIMEOUT" ]; then
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        exit 1
+    fi
+    if [ "$KAFKA_TEST" = "1" ] \
+        && { [ "$KAFKA_FAULT_INJECTED" != "1" ] || [ "$KAFKA_FAULT_RESTARTED" != "1" ]; }; then
+        echo "error: Kafka broker fault injection did not complete" >&2
         exit 1
     fi
     catten_boot_validate_selftest_log "$LOG"

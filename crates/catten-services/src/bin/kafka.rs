@@ -61,9 +61,9 @@ use zeroize::Zeroizing;
 catten_rt::entry!(main);
 
 const CLIENT_ID: &[u8] = b"charlotte-os";
-const SEND_ATTEMPTS: usize = 4_096;
+const SEND_ATTEMPTS: usize = 1_000;
 const SEND_RETRY_MS: u64 = 10;
-const RECEIVE_ATTEMPTS: usize = 3_000;
+const RECEIVE_ATTEMPTS: usize = 1_500;
 const RECEIVE_RETRY_MS: u64 = 10;
 const PRODUCE_TIMEOUT_MS: i32 = 30_000;
 const FETCH_WAIT_MS: i32 = 250;
@@ -72,11 +72,16 @@ const MAX_CONSUMERS: usize = 1;
 const MAX_DELIVERIES: usize = 8;
 const COORDINATOR_ATTEMPTS: usize = 120;
 const COORDINATOR_RETRY_MS: u64 = 250;
-const ROUTING_ATTEMPTS: usize = 3;
+const ROUTING_ATTEMPTS: usize = 12;
+const ROUTING_RETRY_MS: u64 = 250;
 const TLS_TIME_ATTEMPTS: usize = 120;
 const TLS_TIME_RETRY_MS: u64 = 250;
-const GROUP_SESSION_TIMEOUT_MS: i32 = 10_000;
-const GROUP_REBALANCE_TIMEOUT_MS: i32 = 30_000;
+// Broker exchanges are currently synchronous. Keep the membership lease
+// longer than the bounded dead-peer detection and routing-refresh window so a
+// recoverable leader migration cannot fence the transaction merely because
+// the service could not interleave a heartbeat with that exchange.
+const GROUP_SESSION_TIMEOUT_MS: i32 = 45_000;
+const GROUP_REBALANCE_TIMEOUT_MS: i32 = 60_000;
 const GROUP_HEARTBEAT_INTERVAL_MS: u64 = 2_000;
 const GROUP_RETRY_MS: u64 = 250;
 const SERVICE_WAIT_MS: u64 = 250;
@@ -477,9 +482,17 @@ impl<'connection> BrokerTransport<'connection> {
                 },
             )
             .map_err(|error| {
+                let transport_failure = error.is_transport_failure();
                 match error {
                     tls_client::OpenError::Handshake(code) => {
-                        catten_rt::logln!("[kafka] TLS handshake verification failed ({})", code)
+                        if transport_failure {
+                            catten_rt::logln!("[kafka] TLS handshake transport failed ({})", code)
+                        } else {
+                            catten_rt::logln!(
+                                "[kafka] TLS handshake verification failed ({})",
+                                code
+                            )
+                        }
                     }
                     tls_client::OpenError::EntropyUnavailable => {
                         catten_rt::logln!("[kafka] TLS unavailable: system entropy source failed")
@@ -488,7 +501,11 @@ impl<'connection> BrokerTransport<'connection> {
                         catten_rt::logln!("[kafka] invalid TLS transport profile")
                     }
                 }
-                protocol::ERR_TLS_REQUIRED
+                if transport_failure {
+                    protocol::ERR_TRANSPORT
+                } else {
+                    protocol::ERR_TLS_REQUIRED
+                }
             })?;
             BrokerStream::Tls(Box::new(stream))
         } else {
@@ -825,6 +842,26 @@ impl<'connection> BrokerSession<'connection> {
     }
 
     fn refresh_routes(&mut self, profile: &Profile) -> Result<(), i64> {
+        for attempt in 0..ROUTING_ATTEMPTS {
+            match self.refresh_routes_once(profile) {
+                Ok(()) => return Ok(()),
+                Err(error)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && matches!(
+                            error,
+                            protocol::ERR_BROKER | protocol::ERR_TRANSPORT | protocol::ERR_TIMEOUT
+                        ) =>
+                {
+                    self.note_retry();
+                    sleep_ms(ROUTING_RETRY_MS);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
+    }
+
+    fn refresh_routes_once(&mut self, profile: &Profile) -> Result<(), i64> {
         let mut topics: Vec<&[u8]> = Vec::with_capacity(profile.produce_routes.len() + 1);
         topics.push(&profile.topic);
         for route in &profile.produce_routes {
@@ -2362,6 +2399,11 @@ fn main(ctx: Context) -> ! {
         core::str::from_utf8(&profile.group).unwrap_or("?"),
         core::str::from_utf8(&profile.transactional_id).unwrap_or("?"),
         profile.rights
+    );
+    catten_rt::logln!(
+        "[kafka] coordinators group={} transaction={}",
+        broker.group_coordinator.unwrap_or(-1),
+        broker.transaction_coordinator.unwrap_or(-1)
     );
     config::write::<u32>(status::STAGE, 2);
 

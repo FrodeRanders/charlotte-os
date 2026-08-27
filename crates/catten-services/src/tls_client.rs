@@ -88,6 +88,14 @@ pub enum OpenError {
     Handshake(u32),
 }
 
+impl OpenError {
+    /// Whether opening TLS failed because the underlying byte stream closed or
+    /// returned I/O failure, rather than because peer authentication failed.
+    pub const fn is_transport_failure(self) -> bool {
+        matches!(self, Self::Handshake(1 | 6))
+    }
+}
+
 /// A failure while using or explicitly closing an established TLS stream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamError;

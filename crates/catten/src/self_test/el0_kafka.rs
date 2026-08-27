@@ -85,7 +85,11 @@ extern "C" fn verify_el0_kafka() {
             }],
             max_produce_routes: 64,
             group: b"charlotte-qemu-smoke-group",
-            transactional_id: b"charlotte-qemu-smoke-transaction",
+            // This key and the group key select an internal coordinator away
+            // from broker 2 in the three-broker fixture. The injected broker-2
+            // fault therefore isolates route-leader recovery; coordinator
+            // migration is exercised separately.
+            transactional_id: b"charlotte-qemu-smoke-transaction-0",
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
                 username: b"charlotte",
                 password: b"charlotte-kafka-test",
@@ -101,6 +105,31 @@ extern "C" fn verify_el0_kafka() {
         let base: *mut u8 = service.status_frame.into();
         base
     };
+
+    let readiness_deadline = crate::self_test::results::Deadline::after_millis(180_000);
+    loop {
+        let stage = unsafe {
+            crate::self_test::status_u32(service_status, charlotte_launch::kafka_status::STAGE)
+        };
+        let error = unsafe {
+            crate::self_test::status_u32(service_status, charlotte_launch::kafka_status::ERROR)
+        };
+        if error != 0 {
+            logln!("[kafka-test] FAILURE: Kafka service startup error={:#x}", error);
+            crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        if stage == 2 {
+            break;
+        }
+        readiness_deadline.assert_pending("Kafka service readiness");
+        yield_lp();
+    }
+    logln!("[kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted");
+    // The host runner polls the serial log and kills kafka2 in response to the
+    // marker above. Keep application traffic out of the window long enough
+    // for the hard fault and a replacement partition leader election.
+    crate::cpu::scheduler::sleep_millis(3_000);
 
     let client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"kafka_smoke").expect("[kafka-test] kafka_smoke.elf"),
@@ -263,6 +292,12 @@ extern "C" fn verify_el0_kafka() {
                 charlotte_launch::kafka_status::METADATA_REFRESHES,
             )
         };
+        let retry_attempts = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::RETRY_ATTEMPTS,
+            )
+        };
         let terminal_errors = unsafe {
             crate::self_test::status_u32(
                 service_status,
@@ -305,7 +340,8 @@ extern "C" fn verify_el0_kafka() {
             && timeouts >= 1
             && group_generation >= 2
             && group_heartbeats >= 1
-            && metadata_refreshes >= 1
+            && metadata_refreshes >= 2
+            && retry_attempts >= 1
             && terminal_errors >= 1
             && route_count == 2
             && output_route_produced >= 5
@@ -314,7 +350,8 @@ extern "C" fn verify_el0_kafka() {
             logln!(
                 "[kafka-test] SUCCESS: low-level offset {}, generic step commits={} produced={} \
                  retries={} dlq={} timeouts={} group_generation={} heartbeats={} \
-                 metadata_refreshes={} terminal_errors={} output_route_produced={} lag={}",
+                 metadata_refreshes={} retry_attempts={} terminal_errors={} \
+                 output_route_produced={} lag={}",
                 output_offset,
                 commits,
                 produced,
@@ -324,6 +361,7 @@ extern "C" fn verify_el0_kafka() {
                 group_generation,
                 group_heartbeats,
                 metadata_refreshes,
+                retry_attempts,
                 terminal_errors,
                 output_route_produced,
                 consumer_lag

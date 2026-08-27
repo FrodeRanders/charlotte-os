@@ -291,8 +291,8 @@ TLS feature set.
 The opt-in runner creates an ephemeral CA, server certificate, and P-256 client
 identity, starts a fresh three-broker Apache Kafka KRaft fixture with verified
 external TLS, required mTLS, and SCRAM-SHA-256 client authentication
-listeners, creates `charlotte-events` and `charlotte-results` on different
-leaders, and boots an
+listeners, creates three-replica `charlotte-events` and `charlotte-results`
+partitions on different leaders, and boots an
 in-guest smoke application
 that checks:
 
@@ -308,6 +308,24 @@ that checks:
   authorization errors, output-route production, and non-negative consumer
   lag; and
 - the generic step runner's success, retry, timeout, and terminal-DLQ paths.
+
+Once the connector has discovered its initial routes, the guest opens a
+bounded fault window. The host kills the broker leading `charlotte-results`,
+keeps it down beyond the connector's bounded receive timeout, and then
+restarts it. The verifier requires the transaction to finish through the
+replacement leader, at least one routing retry, and a successful post-fault
+metadata refresh. A steady-state run that never encounters the injected fault
+therefore fails.
+The fixture chooses group and transactional IDs coordinated away from the
+killed broker so this scenario measures partition-leader movement independently
+of the separate coordinator-migration case.
+
+Broker exchanges are synchronous today. The connector therefore requests a
+45-second consumer-group session while heartbeating every two seconds; the
+lease exceeds its bounded dead-peer detection and metadata-refresh window.
+This prevents a recoverable leader migration from expiring the group generation
+before the transaction can include its consumed offset. A future concurrent
+broker-exchange loop can decouple heartbeats from data-plane latency.
 
 Run it with:
 

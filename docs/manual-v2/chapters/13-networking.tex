@@ -419,13 +419,25 @@ bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
 The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS, required mTLS, and SCRAM,
-places the input and output routes on different leaders, and verifies
+places three-replica input and output routes on different leaders, and verifies
 idempotent production, read-committed consumption, atomic production plus
 generation-fenced group-offset commit, group generation advance and heartbeat,
 transaction abort, filtering of the aborted record, and
 the generic step runner's success, retry, timeout, and terminal-DLQ paths. It
 also checks metadata refreshes, terminal authorization errors, output-route
-production, and non-negative consumer lag in the bounded status page.
+production, and non-negative consumer lag in the bounded status page. After
+initial route discovery, the host hard-stops the output-route leader, keeps it
+down beyond the connector's bounded receive timeout, and restarts it. The
+verifier requires a routing retry and a second successful metadata refresh, so the
+result demonstrates replacement-leader recovery rather than merely
+steady-state multi-broker connectivity. The fixture selects group and
+transactional identifiers coordinated away from the killed broker, isolating
+partition-leader recovery from the separate coordinator-migration case.
+Because broker exchanges are currently synchronous, the connector requests a
+45-second group session while heartbeating every two seconds. The membership
+lease therefore exceeds bounded dead-peer detection and route refresh, so
+recovering a partition leader does not by itself expire and fence the
+transaction's group generation.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in

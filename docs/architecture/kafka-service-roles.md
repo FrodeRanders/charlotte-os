@@ -143,7 +143,11 @@ The runner publishes bounded readiness and operation counters for polls,
 invocations, output records, commits, retries, DLQ records, timeouts, aborts,
 and fatal startup errors. The AArch64 Kafka fixture exercises successful output,
 explicit retry, procedure timeout and terminal DLQ paths through the generic
-runner.
+runner. Its two application topics use three replicas on different initial
+leaders. During the run, the host hard-stops the output leader and later
+restarts it; the connector must refresh metadata, select the elected
+replacement, and complete the transaction before the verifier accepts the
+result.
 
 The connector publishes a separate bounded operational view: metadata refresh
 count and age, reconnects, retry attempts, terminal failures, fencing events,
