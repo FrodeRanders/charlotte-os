@@ -304,8 +304,8 @@ The transport-independent Signature V4 and HTTP code lives in
 \subsection{Kafka client service}
 \label{sec:kafka-service}
 
-One \texttt{kafka} service instance grants access to at most 32 explicitly
-provisioned broker endpoints, a
+One \texttt{kafka} service instance has an exact profile-selected registration
+name and grants access to at most 32 explicitly provisioned broker endpoints, a
 fixed consume topic/partition, an ordered allow-list of produce routes, a
 consumer group, transactional id, and rights mask. It owns the broker socket,
 producer ids, producer epochs, and per-route sequence numbers.
@@ -314,7 +314,7 @@ the group's committed offset (or the earliest retained offset), poll with
 \texttt{read\_committed} isolation, commit or release a delivery, and close the
 consumer.
 
-The complete version-3 broker profile is serialized into one immutable object,
+The complete version-4 broker profile is serialized into one immutable object,
 covered by a SHA-256 integrity digest, and transferred to \texttt{kafka} with a
 kernel-enforced \texttt{MAP\_READ}-only launch capability. The service validates
 the exact size, version, digest, UTF-8 hostnames, field bounds, route and broker
@@ -324,6 +324,14 @@ produce routes, while deployment policy may select a lower limit. Metadata for
 all distinct declared topics is requested in one broker exchange.
 The digest detects corruption; authenticity and provenance come from the
 trusted launcher and the read-only capability.
+
+The same digest covers a non-empty printable-ASCII instance name of at most
+256 bytes. Short names use the scalar name-service path and longer names use
+its copied-memory path. Multiple connectors such as
+\texttt{kafka/claims/validate} and \texttt{kafka/payments/post} can therefore
+be registered concurrently, each with independent broker, credential, route,
+group, and transaction authority. Applications cannot rename an instance
+through the Kafka ABI.
 
 Only the broker-facing service receives this profile. Producer, consumer, and
 transactional-step logic receives a connection capability to the provisioned

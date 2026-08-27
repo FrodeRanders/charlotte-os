@@ -20,6 +20,7 @@ use crate::{
 };
 
 static mut KAFKA_NS: Option<NameServiceHandle> = None;
+const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
 
 pub fn test_el0_kafka() {
     logln!("Testing EL0 Kafka idempotent and transactional data plane...");
@@ -40,6 +41,7 @@ extern "C" fn verify_el0_kafka() {
     let service = crate::service::launch::launch_kafka_profile(
         ns,
         &KafkaProfile {
+            service_name: CONNECTOR_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka-1.test",
             port: 19_092,
@@ -141,7 +143,7 @@ extern "C" fn verify_el0_kafka() {
         ns,
         &KafkaStepProfile {
             procedure_name: b"kproc",
-            kafka_connector_name: b"kafka",
+            kafka_connector_name: CONNECTOR_NAME,
             allowed_routes: &[1],
             dlq_route: 1,
             max_outputs: 4,

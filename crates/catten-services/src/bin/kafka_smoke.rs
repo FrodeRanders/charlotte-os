@@ -19,7 +19,7 @@ use catten_services::{
         Route,
     },
     sleep_ms,
-    wait_for_registered_name_owned,
+    wait_for_registered_name_bytes_owned,
 };
 use catten_syscall::thread_exit;
 use charlotte_protocol_kafka::RecordRequest;
@@ -30,6 +30,7 @@ const INPUT: &[u8] = b"charlotte-input";
 const OUTPUT: &[u8] = b"charlotte-output";
 const ROUTED_OUTPUT: &[u8] = b"charlotte-routed-output";
 const ABORTED: &[u8] = b"charlotte-aborted";
+const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
 
 mod status {
     pub const STAGE: usize = 0;
@@ -73,7 +74,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
     let ns = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4b11));
     let (_, connection) =
-        wait_for_registered_name_owned(ns, protocol::NAME).unwrap_or_else(|| fail(0x4b12));
+        wait_for_registered_name_bytes_owned(ns, CONNECTOR_NAME).unwrap_or_else(|| fail(0x4b12));
     let client = Client::new(connection.as_ref());
 
     let input_offset = produce_when_ready(&client, INPUT).unwrap_or_else(|_| fail(0x4b13));

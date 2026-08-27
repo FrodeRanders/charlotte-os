@@ -30,9 +30,11 @@ use catten_rt::{
 use catten_services::{
     entropy,
     kafka as protocol,
+    name,
     ns,
     sleep_ms,
     socket,
+    stage_name_owned,
     time,
     tls_client,
     try_registered_name_owned,
@@ -91,6 +93,7 @@ struct ClientIdentity {
 }
 
 struct Profile {
+    service_name: Vec<u8>,
     bootstrap: BrokerDestination,
     broker_endpoints: Vec<BrokerDestination>,
     tls: bool,
@@ -169,6 +172,7 @@ impl Profile {
             },
         };
         Some(Self {
+            service_name: profile.service_name.to_vec(),
             bootstrap: BrokerDestination {
                 ip: profile.endpoint_ipv4,
                 host: String::from_utf8(profile.host.to_vec()).ok()?,
@@ -243,6 +247,29 @@ fn client_identity(certificate_der: &[u8], private_key_der: &[u8]) -> Arc<TlsCli
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
     unsafe { thread_exit() }
+}
+
+fn register_endpoint(
+    ns_connection: ConnectionRef<'_>,
+    endpoint: &Endpoint,
+    service_name: &[u8],
+) -> bool {
+    let rights = IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION;
+    let reply = if service_name.len() <= 8 {
+        ns_connection.call_connection(ns::OP_REGISTER, name(service_name), endpoint, rights)
+    } else {
+        let Some(staged_name) = stage_name_owned(service_name) else {
+            return false;
+        };
+        ns_connection.call_connection_copy(
+            ns::OP_REGISTER_NAMED,
+            service_name.len() as u64,
+            endpoint,
+            rights,
+            &staged_name,
+        )
+    };
+    reply.is_ok_and(|registration| registration.wait().is_ok_and(|reply| reply.result >= 1))
 }
 
 fn time_snapshot(connection: ConnectionRef<'_>) -> Option<time::TimeSnapshot> {
@@ -1726,22 +1753,15 @@ fn main(ctx: Context) -> ! {
 
     let endpoint = Endpoint::create(protocol::INTERFACE, protocol::VERSION, 32)
         .unwrap_or_else(|_| fail(0x4b06));
-    let registration = ns_connection
-        .call_connection(
-            ns::OP_REGISTER,
-            protocol::NAME,
-            &endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-        .unwrap_or_else(|_| fail(0x4b07));
-    if !registration.wait().is_ok_and(|reply| reply.result >= 1)
+    if !register_endpoint(ns_connection, &endpoint, &profile.service_name)
         || endpoint.bind_completion_queue(0).is_err()
     {
         fail(0x4b07);
     }
     catten_rt::logln!(
-        "[kafka] serving broker={}:{} tls={} consume-topic={} partition={} produce-routes={} \
-         group={} transactional-id={} rights={:#x}",
+        "[kafka] serving name={} broker={}:{} tls={} consume-topic={} partition={} \
+         produce-routes={} group={} transactional-id={} rights={:#x}",
+        core::str::from_utf8(&profile.service_name).unwrap_or("?"),
         profile.bootstrap.host,
         profile.bootstrap.port,
         profile.tls,

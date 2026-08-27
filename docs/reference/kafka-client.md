@@ -19,7 +19,8 @@ The implementation is split at the userspace boundary:
 
 ## Provisioning and authority
 
-One `KafkaProfile` grants an allow-list of at most 32 broker endpoints, a fixed
+One `KafkaProfile` fixes an exact connector instance name and grants an
+allow-list of at most 32 broker endpoints, a fixed
 consume topic/partition, an ordered allow-list of produce topic/partition
 routes, a consumer group, transactional identity, and rights mask. Applications
 receive only the service connection capability. They cannot name an arbitrary
@@ -35,7 +36,7 @@ config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
 identity, optional connector-only SASL credentials, rights, transaction timeout,
 and an operator-selected route ceiling.
-The launcher encodes profile version 3, calculates a SHA-256 integrity digest, and
+The launcher encodes profile version 4, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
 Before opening a socket, `kafka.elf` validates the exact object length, version,
 digest, UTF-8 hostnames, field bounds, route and broker counts, safety ceilings,
@@ -48,6 +49,14 @@ not the profile or its broker/TLS/SASL configuration. Client-certificate
 secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
 
+The instance name is non-empty printable ASCII and at most 256 bytes. It is
+covered by the profile digest and cannot be selected or changed through the
+Kafka application ABI. Short names use the compact name-service operation;
+longer names such as `kafka/orders/validate` use the memory-carried operation.
+Several connectors can consequently coexist without replacing one global
+`kafka` registration, each with an independent broker, identity, route set,
+and rights profile.
+
 The implementation hard ceiling is 64 produce routes. A deployment may set
 `KafkaProfile::max_produce_routes` lower; both the declared limit and actual
 route count must be at most 64. This bound limits startup work and memory while
@@ -55,8 +64,9 @@ remaining independent of the launch manifest's 32-record capacity.
 
 ## Owned application API
 
-Resolve `kafka`, keep the returned owned connection, and borrow it through a
-client:
+Resolve the connector name from the deployment contract, keep the returned
+owned connection, and borrow it through a client. The legacy default name is
+still `kafka`:
 
 ```rust
 use catten_services::{

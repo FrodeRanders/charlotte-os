@@ -126,6 +126,10 @@ pub enum KafkaAuthentication<'a> {
 /// access only to this broker, fixed consume topic/partition, allow-listed
 /// produce routes, consumer group, and transactional identity.
 pub struct KafkaProfile<'a> {
+    /// Exact bounded name under which this connector instance registers.
+    /// Applications receive or resolve this reviewed name; they cannot change
+    /// it after launch.
+    pub service_name: &'a [u8],
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
@@ -489,6 +493,7 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
         .collect();
     let encoded = zeroize::Zeroizing::new(
         charlotte_protocol_kafka::Profile {
+            service_name: profile.service_name,
             endpoint_ipv4: profile.endpoint_ipv4,
             host: profile.host,
             port: profile.port,

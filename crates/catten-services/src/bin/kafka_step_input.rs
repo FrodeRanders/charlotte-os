@@ -13,7 +13,7 @@ use catten_services::{
         Error,
     },
     sleep_ms,
-    wait_for_registered_name_owned,
+    wait_for_registered_name_bytes_owned,
 };
 use catten_syscall::thread_exit;
 use charlotte_launch::kafka_step_input_status as status;
@@ -27,6 +27,7 @@ const INPUTS: [&[u8]; 4] = [
     b"charlotte-step-timeout",
     b"charlotte-step-dlq",
 ];
+const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
@@ -48,7 +49,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
     let ns = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4e01));
     let (_, connection) =
-        wait_for_registered_name_owned(ns, kafka::NAME).unwrap_or_else(|| fail(0x4e02));
+        wait_for_registered_name_bytes_owned(ns, CONNECTOR_NAME).unwrap_or_else(|| fail(0x4e02));
     let client = Client::new(connection.as_ref());
     for input in INPUTS {
         produce(&client, input).unwrap_or_else(|_| fail(0x4e03));

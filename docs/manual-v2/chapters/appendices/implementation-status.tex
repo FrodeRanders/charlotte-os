@@ -152,7 +152,9 @@ repository history remain authoritative.
         client authentication. The Kafka test also runs the generic
         transactional-step service through successful output, retry, procedure
         timeout, and terminal-DLQ paths while keeping broker authority out of
-        the called procedure.
+        the called procedure. Its connector uses a profile-selected long
+        instance name, exercising named-instance plumbing rather than relying
+        on the legacy global name.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a

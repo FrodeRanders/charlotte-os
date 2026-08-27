@@ -13,6 +13,9 @@ use alloc::vec::Vec;
 
 pub const INTERFACE: u64 = u64::from_le_bytes(*b"KAFKA\0\0\0");
 pub const VERSION: u32 = 1;
+pub const DEFAULT_NAME: &[u8] = b"kafka";
+/// Legacy packed form of [`DEFAULT_NAME`]. Profiles may provision any valid
+/// instance name instead.
 pub const NAME: u64 = u64::from_le_bytes(*b"kafka\0\0\0");
 
 /// Produce one record outside an application transaction. The service still
@@ -85,10 +88,12 @@ pub const MAX_SASL_USERNAME_BYTES: usize = 256;
 pub const MAX_SASL_PASSWORD_BYTES: usize = 1_024;
 pub const MAX_MTLS_CERTIFICATE_BYTES: usize = 16 * 1024;
 pub const MAX_MTLS_PRIVATE_KEY_BYTES: usize = 4 * 1024;
+/// Matches the name service's one-page bounded name ABI.
+pub const MAX_INSTANCE_NAME_BYTES: usize = 256;
 pub const DEFAULT_ROUTE: u16 = 0;
-pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP3\0";
-pub const PROFILE_VERSION: u16 = 3;
-pub const PROFILE_HEADER_LEN: usize = 96;
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP4\0";
+pub const PROFILE_VERSION: u16 = 4;
+pub const PROFILE_HEADER_LEN: usize = 100;
 pub const PROFILE_DIGEST_OFFSET: usize = 16;
 pub const PROFILE_DIGEST_LEN: usize = 32;
 pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
@@ -165,6 +170,9 @@ impl ProduceRoute<'_> {
 /// capability. All variable-length data is covered by the SHA-256 digest.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Profile<'a> {
+    /// Exact local name under which this connector instance publishes its
+    /// endpoint. It is deployment policy, not application-selected input.
+    pub service_name: &'a [u8],
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
@@ -207,7 +215,8 @@ impl Profile<'_> {
             total.checked_add(PROFILE_BROKER_HEADER_LEN + broker.host.len())
         });
         let total_len = PROFILE_HEADER_LEN
-            .checked_add(self.host.len())
+            .checked_add(self.service_name.len())
+            .and_then(|len| len.checked_add(self.host.len()))
             .and_then(|len| len.checked_add(self.ca_certificate_der.len()))
             .and_then(|len| len.checked_add(self.topic.len()))
             .and_then(|len| len.checked_add(self.group.len()))
@@ -265,10 +274,16 @@ impl Profile<'_> {
         put_u16(&mut output, 90, auth_kind);
         put_u16(&mut output, 92, username.len() as u16);
         put_u16(&mut output, 94, password.len() as u16);
+        put_u16(&mut output, 96, self.service_name.len() as u16);
         let mut offset = PROFILE_HEADER_LEN;
-        for field in
-            [self.host, self.ca_certificate_der, self.topic, self.group, self.transactional_id]
-        {
+        for field in [
+            self.service_name,
+            self.host,
+            self.ca_certificate_der,
+            self.topic,
+            self.group,
+            self.transactional_id,
+        ] {
             output[offset..offset + field.len()].copy_from_slice(field);
             offset += field.len();
         }
@@ -338,6 +353,10 @@ impl Profile<'_> {
         let auth_kind = get_u16(input, 90)?;
         let username_len = get_u16(input, 92)? as usize;
         let password_len = get_u16(input, 94)? as usize;
+        let service_name_len = get_u16(input, 96)? as usize;
+        if get_u16(input, 98)? != 0 {
+            return Err(ProfileError::InvalidField);
+        }
         let max_produce_routes = get_u16(input, 74)?;
         if flags & !PROFILE_FLAG_TLS != 0
             || route_count > MAX_PRODUCE_ROUTES
@@ -363,6 +382,7 @@ impl Profile<'_> {
             return Err(ProfileError::TooManyBrokers);
         }
         let lengths = [
+            service_name_len,
             get_u16(input, 76)? as usize,
             get_u32(input, 84)? as usize,
             get_u16(input, 78)? as usize,
@@ -370,7 +390,7 @@ impl Profile<'_> {
             get_u16(input, 82)? as usize,
         ];
         let mut offset = PROFILE_HEADER_LEN;
-        let mut fields: [&[u8]; 5] = [&[]; 5];
+        let mut fields: [&[u8]; 6] = [&[]; 6];
         for (slot, len) in fields.iter_mut().zip(lengths) {
             let end = offset.checked_add(len).ok_or(ProfileError::TooLarge)?;
             *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
@@ -452,18 +472,19 @@ impl Profile<'_> {
             return Err(ProfileError::InvalidField);
         }
         let profile = Profile {
+            service_name: fields[0],
             endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
-            host: fields[0],
+            host: fields[1],
             port: get_u16(input, 52)?,
             broker_endpoints,
             tls: flags & PROFILE_FLAG_TLS != 0,
-            ca_certificate_der: fields[1],
-            topic: fields[2],
+            ca_certificate_der: fields[2],
+            topic: fields[3],
             partition: get_i32(input, 68)?,
             produce_routes,
             max_produce_routes,
-            group: fields[3],
-            transactional_id: fields[4],
+            group: fields[4],
+            transactional_id: fields[5],
             authentication: match auth_kind {
                 AUTH_NONE => Authentication::None,
                 AUTH_SCRAM_SHA_256 => Authentication::ScramSha256 {
@@ -491,7 +512,10 @@ impl Profile<'_> {
 }
 
 fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
-    if profile.port == 0
+    if profile.service_name.is_empty()
+        || profile.service_name.len() > MAX_INSTANCE_NAME_BYTES
+        || !profile.service_name.iter().all(u8::is_ascii_graphic)
+        || profile.port == 0
         || profile.host.is_empty()
         || profile.host.len() > 255
         || core::str::from_utf8(profile.host).is_err()
@@ -879,6 +903,7 @@ mod tests {
     #[test]
     fn profile_round_trip_and_integrity() {
         let profile = Profile {
+            service_name: b"kafka/orders/worker-1",
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -912,11 +937,16 @@ mod tests {
         let mut corrupt = encoded;
         *corrupt.last_mut().unwrap() ^= 1;
         assert_eq!(Profile::decode(&corrupt), Err(ProfileError::DigestMismatch));
+
+        let mut invalid_name = profile;
+        invalid_name.service_name = b"kafka/orders/bad name";
+        assert_eq!(invalid_name.encode(), Err(ProfileError::InvalidField));
     }
 
     #[test]
     fn profile_rejects_unusable_and_duplicate_broker_destinations() {
         let mut profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka-1.test",
             port: 9093,
@@ -955,6 +985,7 @@ mod tests {
     #[test]
     fn profile_rejects_non_utf8_primary_hostname() {
         let profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"\xff",
             port: 9093,
@@ -977,6 +1008,7 @@ mod tests {
     #[test]
     fn profile_requires_tls_and_bounded_ascii_for_scram() {
         let mut profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1009,6 +1041,7 @@ mod tests {
     #[test]
     fn profile_requires_tls_and_bounded_identity_for_mtls() {
         let mut profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1053,6 +1086,7 @@ mod tests {
             partition: 0,
         };
         let profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1079,6 +1113,7 @@ mod tests {
             partition: 0,
         };
         let mut profile = Profile {
+            service_name: DEFAULT_NAME,
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,

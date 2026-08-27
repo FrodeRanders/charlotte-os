@@ -21,6 +21,14 @@ broker, group, transactional identity, or topic. A deployment controller can
 therefore replace or rotate the connector profile independently of rebuilding
 the producer, consumer, transactional-step, or procedure artifacts.
 
+Profile version 4 also fixes the connector's exact local registration name.
+Names are non-empty printable ASCII and bounded to 256 bytes; short names use
+the scalar name-service path and longer deployment names use its copied-memory
+path. Deployments can therefore publish instances such as
+`kafka/claims/validate` and `kafka/payments/post` concurrently. The application
+cannot rename a connector, and registration never reveals the profile's broker
+or credential material.
+
 For a transactional step the authority chain is:
 
 ```text

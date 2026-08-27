@@ -557,6 +557,10 @@ digest-checked profile containing endpoint, trust, and authentication
 secrets. A producer, consumer, or transactional-step runner receives a
 connection capability to that connector. The activity procedure behind a step
 receives only the bounded invocation capability and no Kafka authority.
+Each connector profile also fixes its own bounded registration name, so a
+deployment can provision one independently named connector per authority set
+without replacing a global \texttt{kafka} publication. The runner resolves
+only the connector name declared by its step profile.
 The generic \texttt{kafka\_step} runner now implements this split: it calls the
 procedure with borrowed input and an attempt number, validates its bounded
 output batch, and atomically produces admitted outputs with the consumed
