@@ -314,7 +314,7 @@ the group's committed offset (or the earliest retained offset), poll with
 \texttt{read\_committed} isolation, commit or release a delivery, and close the
 consumer.
 
-The complete version-5 broker profile is serialized into one immutable object,
+The complete version-6 broker profile is serialized into one immutable object,
 covered by a SHA-256 integrity digest, and transferred to \texttt{kafka} with a
 kernel-enforced \texttt{MAP\_READ}-only launch capability. Typed capability
 metadata carries the exact meaningful byte length rather than overloading a
@@ -332,6 +332,13 @@ kernel profile object until read-only transfer succeeds. Allocation,
 delegation, or transfer failure closes the earlier resources and the target
 address space before an error is returned; a best-effort destructor protects
 future early-return paths.
+
+Connector-only authentication uses a bounded sequence of length-delimited
+profile sections. Version 6 defines critical SCRAM-SHA-256 and P-256 mTLS
+sections, rejects duplicate known sections, and caps both section count and
+aggregate bytes. A decoder may skip an unknown optional section but rejects an
+unknown critical section, so a future mechanism can explicitly require a newer
+connector without exposing its material through the application ABI.
 
 The same digest covers a non-empty printable-ASCII instance name and a bounded
 set of separately published authority endpoints, whose names are each at most

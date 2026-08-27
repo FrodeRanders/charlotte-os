@@ -38,7 +38,7 @@ config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
 identity, optional connector-only SASL credentials, rights, transaction timeout,
 and an operator-selected route ceiling.
-The launcher encodes profile version 5, calculates a SHA-256 integrity digest, and
+The launcher encodes profile version 6, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
 Typed profile-capability metadata carries the exact meaningful byte length; it
 is not hidden in a generic capability-flags field. Before opening a socket,
@@ -52,6 +52,13 @@ step logic receives a connection capability to that specific service instance,
 not the profile or its broker/TLS/SASL configuration. Client-certificate
 secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
+
+Authentication material is a bounded sequence of length-delimited profile
+sections rather than fixed header fields. Version 6 defines critical
+SCRAM-SHA-256 and P-256 mTLS sections, caps both the section count and aggregate
+bytes, rejects duplicate known sections, and safely skips unknown optional
+sections. An unknown critical section fails profile decoding, allowing a future
+authentication mechanism to state that an older connector must not start.
 
 Profile-backed launch is prepared as one kernel transaction. Until the initial
 thread starts, an owning launch object retains the unloaded domain and any

@@ -94,9 +94,9 @@ pub const MAX_INSTANCE_NAME_BYTES: usize = 256;
 /// Bounded number of separately published capability-bearing access points.
 pub const MAX_AUTHORITY_ENDPOINTS: usize = 64;
 pub const DEFAULT_ROUTE: u16 = 0;
-pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP5\0";
-pub const PROFILE_VERSION: u16 = 5;
-pub const PROFILE_HEADER_LEN: usize = 100;
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP6\0";
+pub const PROFILE_VERSION: u16 = 6;
+pub const PROFILE_HEADER_LEN: usize = 104;
 pub const PROFILE_DIGEST_OFFSET: usize = 16;
 pub const PROFILE_DIGEST_LEN: usize = 32;
 pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
@@ -104,11 +104,13 @@ pub const PROFILE_BROKER_HEADER_LEN: usize = 8;
 pub const PROFILE_AUTHORITY_HEADER_LEN: usize = 16;
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 pub const PROFILE_FLAG_TLS: u16 = 1;
-pub const AUTH_NONE: u16 = 0;
-pub const AUTH_SCRAM_SHA_256: u16 = 1;
-pub const AUTH_MTLS_P256: u16 = 2;
-pub const AUTH_SCRAM_SHA_256_AND_MTLS_P256: u16 = 3;
-pub const PROFILE_MTLS_HEADER_LEN: usize = 8;
+pub const MAX_AUTH_SECTIONS: usize = 16;
+pub const MAX_AUTH_SECTION_BYTES: usize = 32 * 1024;
+pub const AUTH_SECTION_HEADER_LEN: usize = 8;
+pub const AUTH_PAYLOAD_HEADER_LEN: usize = 8;
+pub const AUTH_SECTION_SCRAM_SHA_256: u16 = 1;
+pub const AUTH_SECTION_MTLS_P256: u16 = 2;
+pub const AUTH_SECTION_FLAG_CRITICAL: u16 = 1;
 pub const RECORD_REQUEST_MAGIC: u32 = 0x3152_464b; // "KFR1" LE
 pub const RECORD_REQUEST_HEADER_LEN: usize = 24;
 pub const FLAG_NULL_KEY: u16 = 1 << 0;
@@ -237,6 +239,8 @@ pub enum ProfileError {
     DuplicateBroker,
     TooManyAuthorities,
     DuplicateAuthority,
+    TooManyAuthSections,
+    UnsupportedAuthentication,
 }
 
 impl Profile<'_> {
@@ -252,6 +256,7 @@ impl Profile<'_> {
             self.authority_endpoints.iter().try_fold(0usize, |total, endpoint| {
                 total.checked_add(PROFILE_AUTHORITY_HEADER_LEN + endpoint.service_name.len())
             });
+        let (auth_section_count, auth_sections) = encode_authentication(self.authentication)?;
         let total_len = PROFILE_HEADER_LEN
             .checked_add(self.instance_name.len())
             .and_then(|len| len.checked_add(self.host.len()))
@@ -259,21 +264,7 @@ impl Profile<'_> {
             .and_then(|len| len.checked_add(self.topic.len()))
             .and_then(|len| len.checked_add(self.group.len()))
             .and_then(|len| len.checked_add(self.transactional_id.len()))
-            .and_then(|len| {
-                let (_, username, password, certificate, private_key) =
-                    authentication_fields(self.authentication);
-                len.checked_add(username.len())?
-                    .checked_add(password.len())?
-                    .checked_add(
-                        if certificate.is_empty() {
-                            0
-                        } else {
-                            PROFILE_MTLS_HEADER_LEN
-                        },
-                    )?
-                    .checked_add(certificate.len())?
-                    .checked_add(private_key.len())
-            })
+            .and_then(|len| len.checked_add(auth_sections.len()))
             .and_then(|len| len.checked_add(route_bytes?))
             .and_then(|len| len.checked_add(broker_bytes?))
             .and_then(|len| len.checked_add(authority_bytes?))
@@ -308,11 +299,8 @@ impl Profile<'_> {
         put_u16(&mut output, 82, self.transactional_id.len() as u16);
         put_u32(&mut output, 84, self.ca_certificate_der.len() as u32);
         put_u16(&mut output, 88, self.broker_endpoints.len() as u16);
-        let (auth_kind, username, password, certificate, private_key) =
-            authentication_fields(self.authentication);
-        put_u16(&mut output, 90, auth_kind);
-        put_u16(&mut output, 92, username.len() as u16);
-        put_u16(&mut output, 94, password.len() as u16);
+        put_u16(&mut output, 90, auth_section_count);
+        put_u32(&mut output, 92, auth_sections.len() as u32);
         put_u16(&mut output, 96, self.instance_name.len() as u16);
         put_u16(&mut output, 98, self.authority_endpoints.len() as u16);
         let mut offset = PROFILE_HEADER_LEN;
@@ -327,19 +315,8 @@ impl Profile<'_> {
             output[offset..offset + field.len()].copy_from_slice(field);
             offset += field.len();
         }
-        for field in [username, password] {
-            output[offset..offset + field.len()].copy_from_slice(field);
-            offset += field.len();
-        }
-        if !certificate.is_empty() {
-            put_u32(&mut output, offset, certificate.len() as u32);
-            put_u32(&mut output, offset + 4, private_key.len() as u32);
-            offset += PROFILE_MTLS_HEADER_LEN;
-            for field in [certificate, private_key] {
-                output[offset..offset + field.len()].copy_from_slice(field);
-                offset += field.len();
-            }
-        }
+        output[offset..offset + auth_sections.len()].copy_from_slice(&auth_sections);
+        offset += auth_sections.len();
         for route in &self.produce_routes {
             put_i32(&mut output, offset, route.partition);
             put_u16(&mut output, offset + 4, route.topic.len() as u16);
@@ -398,12 +375,14 @@ impl Profile<'_> {
         let flags = get_u16(input, 54)?;
         let route_count = get_u16(input, 72)? as usize;
         let broker_count = get_u16(input, 88)? as usize;
-        let auth_kind = get_u16(input, 90)?;
-        let username_len = get_u16(input, 92)? as usize;
-        let password_len = get_u16(input, 94)? as usize;
+        let auth_section_count = get_u16(input, 90)? as usize;
+        let auth_section_bytes = get_u32(input, 92)? as usize;
         let instance_name_len = get_u16(input, 96)? as usize;
         let authority_count = get_u16(input, 98)? as usize;
         let max_produce_routes = get_u16(input, 74)?;
+        if input[100..PROFILE_HEADER_LEN].iter().any(|byte| *byte != 0) {
+            return Err(ProfileError::InvalidHeader);
+        }
         if flags & !PROFILE_FLAG_TLS != 0
             || route_count > MAX_PRODUCE_ROUTES
             || route_count > usize::from(max_produce_routes)
@@ -411,18 +390,11 @@ impl Profile<'_> {
         {
             return Err(ProfileError::TooManyRoutes);
         }
-        if !matches!(
-            auth_kind,
-            AUTH_NONE | AUTH_SCRAM_SHA_256 | AUTH_MTLS_P256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256
-        ) || auth_kind == AUTH_NONE && (username_len != 0 || password_len != 0)
-            || matches!(auth_kind, AUTH_SCRAM_SHA_256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256)
-                && (username_len == 0
-                    || username_len > MAX_SASL_USERNAME_BYTES
-                    || password_len == 0
-                    || password_len > MAX_SASL_PASSWORD_BYTES)
-            || auth_kind == AUTH_MTLS_P256 && (username_len != 0 || password_len != 0)
-        {
-            return Err(ProfileError::InvalidField);
+        if auth_section_count > MAX_AUTH_SECTIONS {
+            return Err(ProfileError::TooManyAuthSections);
+        }
+        if auth_section_bytes > MAX_AUTH_SECTION_BYTES {
+            return Err(ProfileError::TooLarge);
         }
         if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
             return Err(ProfileError::TooManyBrokers);
@@ -445,41 +417,10 @@ impl Profile<'_> {
             *slot = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
             offset = end;
         }
-        let username_end = offset.checked_add(username_len).ok_or(ProfileError::TooLarge)?;
-        let username = input.get(offset..username_end).ok_or(ProfileError::InvalidField)?;
-        offset = username_end;
-        let password_end = offset.checked_add(password_len).ok_or(ProfileError::TooLarge)?;
-        let password = input.get(offset..password_end).ok_or(ProfileError::InvalidField)?;
-        offset = password_end;
-        let (certificate_der, private_key_der) =
-            if matches!(auth_kind, AUTH_MTLS_P256 | AUTH_SCRAM_SHA_256_AND_MTLS_P256) {
-                let header = input
-                    .get(offset..offset + PROFILE_MTLS_HEADER_LEN)
-                    .ok_or(ProfileError::InvalidField)?;
-                let certificate_len = get_u32(header, 0)? as usize;
-                let private_key_len = get_u32(header, 4)? as usize;
-                if certificate_len == 0
-                    || certificate_len > MAX_MTLS_CERTIFICATE_BYTES
-                    || private_key_len == 0
-                    || private_key_len > MAX_MTLS_PRIVATE_KEY_BYTES
-                {
-                    return Err(ProfileError::InvalidField);
-                }
-                offset += PROFILE_MTLS_HEADER_LEN;
-                let certificate_end =
-                    offset.checked_add(certificate_len).ok_or(ProfileError::TooLarge)?;
-                let certificate =
-                    input.get(offset..certificate_end).ok_or(ProfileError::InvalidField)?;
-                offset = certificate_end;
-                let private_key_end =
-                    offset.checked_add(private_key_len).ok_or(ProfileError::TooLarge)?;
-                let private_key =
-                    input.get(offset..private_key_end).ok_or(ProfileError::InvalidField)?;
-                offset = private_key_end;
-                (certificate, private_key)
-            } else {
-                (&[][..], &[][..])
-            };
+        let auth_end = offset.checked_add(auth_section_bytes).ok_or(ProfileError::TooLarge)?;
+        let auth_bytes = input.get(offset..auth_end).ok_or(ProfileError::InvalidField)?;
+        let authentication = decode_authentication(auth_bytes, auth_section_count)?;
+        offset = auth_end;
         let mut produce_routes = Vec::with_capacity(route_count);
         for _ in 0..route_count {
             let header = input
@@ -554,24 +495,7 @@ impl Profile<'_> {
             max_produce_routes,
             group: fields[4],
             transactional_id: fields[5],
-            authentication: match auth_kind {
-                AUTH_NONE => Authentication::None,
-                AUTH_SCRAM_SHA_256 => Authentication::ScramSha256 {
-                    username,
-                    password,
-                },
-                AUTH_MTLS_P256 => Authentication::MtlsP256 {
-                    certificate_der,
-                    private_key_der,
-                },
-                AUTH_SCRAM_SHA_256_AND_MTLS_P256 => Authentication::ScramSha256AndMtlsP256 {
-                    username,
-                    password,
-                    certificate_der,
-                    private_key_der,
-                },
-                _ => return Err(ProfileError::InvalidField),
-            },
+            authentication,
             rights: get_u64(input, 56)?,
             transaction_timeout_ms: get_u32(input, 64)?,
         };
@@ -705,26 +629,182 @@ fn valid_mtls(certificate_der: &[u8], private_key_der: &[u8]) -> bool {
         && private_key_der.len() <= MAX_MTLS_PRIVATE_KEY_BYTES
 }
 
-fn authentication_fields(authentication: Authentication<'_>) -> (u16, &[u8], &[u8], &[u8], &[u8]) {
+type AuthenticationFieldPair<'a> = (&'a [u8], &'a [u8]);
+
+fn authentication_fields(
+    authentication: Authentication<'_>,
+) -> (Option<AuthenticationFieldPair<'_>>, Option<AuthenticationFieldPair<'_>>) {
     match authentication {
-        Authentication::None => (AUTH_NONE, &[], &[], &[], &[]),
+        Authentication::None => (None, None),
         Authentication::ScramSha256 {
             username,
             password,
-        } => (AUTH_SCRAM_SHA_256, username, password, &[], &[]),
+        } => (Some((username, password)), None),
         Authentication::MtlsP256 {
             certificate_der,
             private_key_der,
-        } => (AUTH_MTLS_P256, &[], &[], certificate_der, private_key_der),
+        } => (None, Some((certificate_der, private_key_der))),
         Authentication::ScramSha256AndMtlsP256 {
             username,
             password,
             certificate_der,
             private_key_der,
-        } => {
-            (AUTH_SCRAM_SHA_256_AND_MTLS_P256, username, password, certificate_der, private_key_der)
+        } => (Some((username, password)), Some((certificate_der, private_key_der))),
+    }
+}
+
+fn encode_authentication(
+    authentication: Authentication<'_>,
+) -> Result<(u16, Vec<u8>), ProfileError> {
+    let (scram, mtls) = authentication_fields(authentication);
+    let section_count = u16::from(scram.is_some()) + u16::from(mtls.is_some());
+    let mut total = 0usize;
+    if let Some((username, password)) = scram {
+        total = total
+            .checked_add(AUTH_SECTION_HEADER_LEN + AUTH_PAYLOAD_HEADER_LEN)
+            .and_then(|len| len.checked_add(username.len()))
+            .and_then(|len| len.checked_add(password.len()))
+            .ok_or(ProfileError::TooLarge)?;
+    }
+    if let Some((certificate, private_key)) = mtls {
+        total = total
+            .checked_add(AUTH_SECTION_HEADER_LEN + AUTH_PAYLOAD_HEADER_LEN)
+            .and_then(|len| len.checked_add(certificate.len()))
+            .and_then(|len| len.checked_add(private_key.len()))
+            .ok_or(ProfileError::TooLarge)?;
+    }
+    if total > MAX_AUTH_SECTION_BYTES {
+        return Err(ProfileError::TooLarge);
+    }
+    let mut output = alloc::vec![0; total];
+    let mut offset = 0usize;
+    if let Some((username, password)) = scram {
+        let payload_len = AUTH_PAYLOAD_HEADER_LEN + username.len() + password.len();
+        put_u16(&mut output, offset, AUTH_SECTION_SCRAM_SHA_256);
+        put_u16(&mut output, offset + 2, AUTH_SECTION_FLAG_CRITICAL);
+        put_u32(&mut output, offset + 4, payload_len as u32);
+        offset += AUTH_SECTION_HEADER_LEN;
+        put_u16(&mut output, offset, username.len() as u16);
+        put_u16(&mut output, offset + 2, password.len() as u16);
+        offset += AUTH_PAYLOAD_HEADER_LEN;
+        output[offset..offset + username.len()].copy_from_slice(username);
+        offset += username.len();
+        output[offset..offset + password.len()].copy_from_slice(password);
+        offset += password.len();
+    }
+    if let Some((certificate, private_key)) = mtls {
+        let payload_len = AUTH_PAYLOAD_HEADER_LEN + certificate.len() + private_key.len();
+        put_u16(&mut output, offset, AUTH_SECTION_MTLS_P256);
+        put_u16(&mut output, offset + 2, AUTH_SECTION_FLAG_CRITICAL);
+        put_u32(&mut output, offset + 4, payload_len as u32);
+        offset += AUTH_SECTION_HEADER_LEN;
+        put_u32(&mut output, offset, certificate.len() as u32);
+        put_u32(&mut output, offset + 4, private_key.len() as u32);
+        offset += AUTH_PAYLOAD_HEADER_LEN;
+        output[offset..offset + certificate.len()].copy_from_slice(certificate);
+        offset += certificate.len();
+        output[offset..offset + private_key.len()].copy_from_slice(private_key);
+        offset += private_key.len();
+    }
+    debug_assert_eq!(offset, output.len());
+    Ok((section_count, output))
+}
+
+fn decode_authentication<'a>(
+    input: &'a [u8],
+    section_count: usize,
+) -> Result<Authentication<'a>, ProfileError> {
+    let mut offset = 0usize;
+    let mut scram = None;
+    let mut mtls = None;
+    for _ in 0..section_count {
+        let header = input
+            .get(offset..offset + AUTH_SECTION_HEADER_LEN)
+            .ok_or(ProfileError::InvalidField)?;
+        let kind = get_u16(header, 0)?;
+        let flags = get_u16(header, 2)?;
+        let payload_len = get_u32(header, 4)? as usize;
+        if flags & !AUTH_SECTION_FLAG_CRITICAL != 0 {
+            return Err(ProfileError::InvalidField);
+        }
+        offset += AUTH_SECTION_HEADER_LEN;
+        let payload_end = offset.checked_add(payload_len).ok_or(ProfileError::TooLarge)?;
+        let payload = input.get(offset..payload_end).ok_or(ProfileError::InvalidField)?;
+        offset = payload_end;
+        match kind {
+            AUTH_SECTION_SCRAM_SHA_256 => {
+                if scram.is_some() || payload.len() < AUTH_PAYLOAD_HEADER_LEN {
+                    return Err(ProfileError::InvalidField);
+                }
+                let username_len = get_u16(payload, 0)? as usize;
+                let password_len = get_u16(payload, 2)? as usize;
+                if payload[4..AUTH_PAYLOAD_HEADER_LEN].iter().any(|byte| *byte != 0) {
+                    return Err(ProfileError::InvalidField);
+                }
+                let username_end = AUTH_PAYLOAD_HEADER_LEN
+                    .checked_add(username_len)
+                    .ok_or(ProfileError::TooLarge)?;
+                let password_end =
+                    username_end.checked_add(password_len).ok_or(ProfileError::TooLarge)?;
+                if password_end != payload.len() {
+                    return Err(ProfileError::InvalidField);
+                }
+                let username = &payload[AUTH_PAYLOAD_HEADER_LEN..username_end];
+                let password = &payload[username_end..password_end];
+                if !valid_scram(username, password) {
+                    return Err(ProfileError::InvalidField);
+                }
+                scram = Some((username, password));
+            }
+            AUTH_SECTION_MTLS_P256 => {
+                if mtls.is_some() || payload.len() < AUTH_PAYLOAD_HEADER_LEN {
+                    return Err(ProfileError::InvalidField);
+                }
+                let certificate_len = get_u32(payload, 0)? as usize;
+                let private_key_len = get_u32(payload, 4)? as usize;
+                let certificate_end = AUTH_PAYLOAD_HEADER_LEN
+                    .checked_add(certificate_len)
+                    .ok_or(ProfileError::TooLarge)?;
+                let private_key_end =
+                    certificate_end.checked_add(private_key_len).ok_or(ProfileError::TooLarge)?;
+                if private_key_end != payload.len() {
+                    return Err(ProfileError::InvalidField);
+                }
+                let certificate = &payload[AUTH_PAYLOAD_HEADER_LEN..certificate_end];
+                let private_key = &payload[certificate_end..private_key_end];
+                if !valid_mtls(certificate, private_key) {
+                    return Err(ProfileError::InvalidField);
+                }
+                mtls = Some((certificate, private_key));
+            }
+            _ if flags & AUTH_SECTION_FLAG_CRITICAL != 0 => {
+                return Err(ProfileError::UnsupportedAuthentication);
+            }
+            _ => {}
         }
     }
+    if offset != input.len() {
+        return Err(ProfileError::InvalidField);
+    }
+    Ok(match (scram, mtls) {
+        (None, None) => Authentication::None,
+        (Some((username, password)), None) => Authentication::ScramSha256 {
+            username,
+            password,
+        },
+        (None, Some((certificate_der, private_key_der))) => Authentication::MtlsP256 {
+            certificate_der,
+            private_key_der,
+        },
+        (Some((username, password)), Some((certificate_der, private_key_der))) => {
+            Authentication::ScramSha256AndMtlsP256 {
+                username,
+                password,
+                certificate_der,
+                private_key_der,
+            }
+        }
+    })
 }
 
 fn put_u16(output: &mut [u8], offset: usize, value: u16) {
@@ -973,6 +1053,59 @@ mod tests {
         }]
     }
 
+    fn profile_without_authentication() -> Profile<'static> {
+        Profile {
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            authentication: Authentication::None,
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        }
+    }
+
+    fn refresh_profile_digest(encoded: &mut [u8]) {
+        encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN].fill(0);
+        let digest = charlotte_launch::sha256::digest(encoded);
+        encoded[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
+            .copy_from_slice(&digest);
+    }
+
+    fn append_auth_section(encoded: &mut Vec<u8>, kind: u16, flags: u16, payload: &[u8]) {
+        let auth_offset = PROFILE_HEADER_LEN
+            + get_u16(encoded, 96).unwrap() as usize
+            + get_u16(encoded, 76).unwrap() as usize
+            + get_u32(encoded, 84).unwrap() as usize
+            + get_u16(encoded, 78).unwrap() as usize
+            + get_u16(encoded, 80).unwrap() as usize
+            + get_u16(encoded, 82).unwrap() as usize;
+        let previous_auth_len = get_u32(encoded, 92).unwrap() as usize;
+        let insert_at = auth_offset + previous_auth_len;
+        let mut section = alloc::vec![0; AUTH_SECTION_HEADER_LEN + payload.len()];
+        put_u16(&mut section, 0, kind);
+        put_u16(&mut section, 2, flags);
+        put_u32(&mut section, 4, payload.len() as u32);
+        section[AUTH_SECTION_HEADER_LEN..].copy_from_slice(payload);
+        encoded.splice(insert_at..insert_at, section);
+        let section_count = get_u16(encoded, 90).unwrap();
+        put_u16(encoded, 90, section_count + 1);
+        put_u32(encoded, 92, (previous_auth_len + AUTH_SECTION_HEADER_LEN + payload.len()) as u32);
+        let total_len = encoded.len() as u32;
+        put_u32(encoded, 12, total_len);
+        refresh_profile_digest(encoded);
+    }
+
     #[test]
     fn request_round_trip_preserves_null_and_empty() {
         let request = RecordRequest::new(None, Some(b"")).with_timestamp(7);
@@ -1046,6 +1179,31 @@ mod tests {
         let mut invalid_name = profile;
         invalid_name.authority_endpoints[0].service_name = b"kafka/orders/bad name";
         assert_eq!(invalid_name.encode(), Err(ProfileError::InvalidField));
+    }
+
+    #[test]
+    fn profile_authentication_sections_are_forward_extensible() {
+        let profile = profile_without_authentication();
+        let mut optional = profile.encode().unwrap();
+        append_auth_section(&mut optional, 0x8000, 0, b"future-auth-material");
+        assert_eq!(Profile::decode(&optional).unwrap(), profile);
+
+        let mut critical = profile.encode().unwrap();
+        append_auth_section(
+            &mut critical,
+            0x8000,
+            AUTH_SECTION_FLAG_CRITICAL,
+            b"future-auth-material",
+        );
+        assert_eq!(Profile::decode(&critical), Err(ProfileError::UnsupportedAuthentication));
+    }
+
+    #[test]
+    fn profile_authentication_section_count_is_bounded() {
+        let mut encoded = profile_without_authentication().encode().unwrap();
+        put_u16(&mut encoded, 90, (MAX_AUTH_SECTIONS + 1) as u16);
+        refresh_profile_digest(&mut encoded);
+        assert_eq!(Profile::decode(&encoded), Err(ProfileError::TooManyAuthSections));
     }
 
     #[test]

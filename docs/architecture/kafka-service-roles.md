@@ -21,7 +21,7 @@ broker, group, transactional identity, or topic. A deployment controller can
 therefore replace or rotate the connector profile independently of rebuilding
 the producer, consumer, transactional-step, or procedure artifacts.
 
-Profile version 5 separates a diagnostic connector instance name from a
+Profile version 6 separates a diagnostic connector instance name from a
 bounded set of application-facing authority endpoints. Each endpoint has a
 non-empty printable-ASCII name of at most 256 bytes and a Kafka-rights ceiling
 that must be a subset of the connector's profile ceiling. The connector checks
@@ -31,6 +31,12 @@ publish `kafka/claims/producer`, `kafka/claims/consumer`, and
 `kafka/claims/transactional` from one secret-bearing connector without giving
 all three callers uniform authority. The application cannot create or rename
 an access point.
+
+Connector-only authentication is encoded as bounded, length-delimited profile
+sections. Known SCRAM-SHA-256 and P-256 mTLS sections are critical; an older
+decoder may skip a future optional section but must reject an unknown critical
+one. Section count and aggregate bytes are bounded before any credentials are
+exposed to the broker adapter.
 
 For a transactional step the authority chain is:
 
