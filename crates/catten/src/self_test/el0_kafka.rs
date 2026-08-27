@@ -1,11 +1,12 @@
-//! Opt-in end-to-end Kafka verifier backed by the run script's single-node
-//! KRaft container.
+//! Opt-in end-to-end Kafka verifier backed by the run script's three-broker
+//! KRaft fixture.
 
 use crate::{
     ipc::ConnectionRights,
     logln,
     service::{
         launch::{
+            KafkaBrokerEndpoint,
             KafkaProduceRoute,
             KafkaProfile,
         },
@@ -36,8 +37,20 @@ extern "C" fn verify_el0_kafka() {
         ns,
         &KafkaProfile {
             endpoint_ipv4: [10, 0, 2, 2],
-            host: b"kafka.test",
+            host: b"kafka-1.test",
             port: 19_092,
+            broker_endpoints: &[
+                KafkaBrokerEndpoint {
+                    endpoint_ipv4: [10, 0, 2, 2],
+                    host: b"kafka-2.test",
+                    port: 19_094,
+                },
+                KafkaBrokerEndpoint {
+                    endpoint_ipv4: [10, 0, 2, 2],
+                    host: b"kafka-3.test",
+                    port: 19_096,
+                },
+            ],
             tls: true,
             ca_certificate_der: Some(ca_der),
             topic: b"charlotte-events",

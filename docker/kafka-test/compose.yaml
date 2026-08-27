@@ -1,32 +1,57 @@
+x-kafka-environment: &kafka-environment
+  CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: SSL://0.0.0.0:19092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:19093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SSL:SSL,INTERNAL:PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:19093,2@kafka2:19093,3@kafka3:19093
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_SSL_KEYSTORE_FILENAME: kafka.p12
+  KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+  KAFKA_SSL_KEY_CREDENTIALS: key-password
+  KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore-password
+  KAFKA_SSL_CLIENT_AUTH: none
+
+x-kafka-service: &kafka-service
+  image: ${CATTEN_KAFKA_IMAGE:-apache/kafka:4.1.1}
+  volumes:
+    - ${CATTEN_KAFKA_CERT_DIR:?set CATTEN_KAFKA_CERT_DIR}:/etc/kafka/secrets:ro
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/29092'"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 15s
+
 services:
-  kafka:
-    image: ${CATTEN_KAFKA_IMAGE:-apache/kafka:4.1.1}
+  kafka1:
+    <<: *kafka-service
     ports:
       - "${CATTEN_KAFKA_PORT:-19092}:19092"
-    volumes:
-      - ${CATTEN_KAFKA_CERT_DIR:?set CATTEN_KAFKA_CERT_DIR}:/etc/kafka/secrets:ro
     environment:
+      <<: *kafka-environment
       KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: SSL://0.0.0.0:19092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:19093
-      KAFKA_ADVERTISED_LISTENERS: SSL://10.0.2.2:19092,INTERNAL://localhost:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SSL:SSL,INTERNAL:PLAINTEXT
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:19093
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
-      KAFKA_SSL_KEYSTORE_FILENAME: kafka.p12
-      KAFKA_SSL_KEYSTORE_TYPE: PKCS12
-      KAFKA_SSL_KEY_CREDENTIALS: key-password
-      KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore-password
-      KAFKA_SSL_CLIENT_AUTH: none
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/29092'"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 15s
+      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-1.test:19092,INTERNAL://kafka1:29092
+
+  kafka2:
+    <<: *kafka-service
+    ports:
+      - "${CATTEN_KAFKA_PORT_2:-19094}:19092"
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 2
+      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-2.test:19094,INTERNAL://kafka2:29092
+
+  kafka3:
+    <<: *kafka-service
+    ports:
+      - "${CATTEN_KAFKA_PORT_3:-19096}:19092"
+    environment:
+      <<: *kafka-environment
+      KAFKA_NODE_ID: 3
+      KAFKA_ADVERTISED_LISTENERS: SSL://kafka-3.test:19096,INTERNAL://kafka3:29092

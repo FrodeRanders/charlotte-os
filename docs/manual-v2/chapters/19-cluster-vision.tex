@@ -368,7 +368,7 @@ does not by itself constitute a complete cluster executive.
         verified-TLS path (\autoref{sec:external-data-services}). An S3
         capability confines an application to one managed endpoint, bucket,
         prefix, credential identity, and rights mask. A Kafka capability
-        confines it to one broker, fixed consume partition, bounded
+        confines it to an explicit broker-destination allow-list, fixed consume partition, bounded
         produce-route allow-list, group, transactional identity, and operation
         mask while offering idempotent production,
         read-committed consumption, and transactional offset commits. These

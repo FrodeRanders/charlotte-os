@@ -1,9 +1,10 @@
 //! Wire protocol for the CharlotteOS Kafka data-plane service.
 //!
-//! One service profile grants authority to one broker endpoint, one fixed
-//! consume topic/partition, an allow-listed set of produce routes, one
-//! consumer group, and one transactional identity. Broker credentials and
-//! Kafka producer epochs never cross this application-facing boundary.
+//! One service profile grants authority to a bounded broker-destination
+//! allow-list, one fixed consume topic/partition, an allow-listed set of
+//! produce routes, one consumer group, and one transactional identity. Broker
+//! credentials and Kafka producer epochs never cross this application-facing
+//! boundary.
 #![no_std]
 
 extern crate alloc;
@@ -76,13 +77,17 @@ pub const MAX_TOPIC_BYTES: usize = 249;
 /// limit and is rejected if either its declared limit or route count exceeds
 /// this value.
 pub const MAX_PRODUCE_ROUTES: usize = 64;
+/// Maximum number of explicitly authorized broker destinations in one
+/// connector profile. Kafka metadata may select only one of these endpoints.
+pub const MAX_BROKER_ENDPOINTS: usize = 32;
 pub const DEFAULT_ROUTE: u16 = 0;
-pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP2\0";
-pub const PROFILE_VERSION: u16 = 2;
-pub const PROFILE_HEADER_LEN: usize = 88;
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP3\0";
+pub const PROFILE_VERSION: u16 = 3;
+pub const PROFILE_HEADER_LEN: usize = 96;
 pub const PROFILE_DIGEST_OFFSET: usize = 16;
 pub const PROFILE_DIGEST_LEN: usize = 32;
 pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
+pub const PROFILE_BROKER_HEADER_LEN: usize = 8;
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 pub const PROFILE_FLAG_TLS: u16 = 1;
 pub const RECORD_REQUEST_MAGIC: u32 = 0x3152_464b; // "KFR1" LE
@@ -100,6 +105,25 @@ pub struct ProduceRoute<'a> {
     pub partition: i32,
 }
 
+/// A network destination the connector may select after reading Kafka
+/// metadata. The hostname and port must exactly match the broker-advertised
+/// endpoint; the provisioned IPv4 address is never learned from the broker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BrokerEndpoint<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+}
+
+impl BrokerEndpoint<'_> {
+    fn valid(&self) -> bool {
+        self.port != 0
+            && !self.host.is_empty()
+            && self.host.len() <= 255
+            && core::str::from_utf8(self.host).is_ok()
+    }
+}
+
 impl ProduceRoute<'_> {
     fn valid(&self) -> bool {
         self.partition >= 0 && !self.topic.is_empty() && self.topic.len() <= MAX_TOPIC_BYTES
@@ -113,6 +137,9 @@ pub struct Profile<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
+    /// Additional metadata-selectable destinations. The primary
+    /// `endpoint_ipv4`/`host`/`port` tuple is always endpoint zero.
+    pub broker_endpoints: Vec<BrokerEndpoint<'a>>,
     pub tls: bool,
     pub ca_certificate_der: &'a [u8],
     pub topic: &'a [u8],
@@ -134,6 +161,8 @@ pub enum ProfileError {
     InvalidField,
     TooManyRoutes,
     DuplicateRoute,
+    TooManyBrokers,
+    DuplicateBroker,
 }
 
 impl Profile<'_> {
@@ -142,6 +171,9 @@ impl Profile<'_> {
         let route_bytes = self.produce_routes.iter().try_fold(0usize, |total, route| {
             total.checked_add(PROFILE_ROUTE_HEADER_LEN + route.topic.len())
         });
+        let broker_bytes = self.broker_endpoints.iter().try_fold(0usize, |total, broker| {
+            total.checked_add(PROFILE_BROKER_HEADER_LEN + broker.host.len())
+        });
         let total_len = PROFILE_HEADER_LEN
             .checked_add(self.host.len())
             .and_then(|len| len.checked_add(self.ca_certificate_der.len()))
@@ -149,6 +181,7 @@ impl Profile<'_> {
             .and_then(|len| len.checked_add(self.group.len()))
             .and_then(|len| len.checked_add(self.transactional_id.len()))
             .and_then(|len| len.checked_add(route_bytes?))
+            .and_then(|len| len.checked_add(broker_bytes?))
             .ok_or(ProfileError::TooLarge)?;
         if total_len > MAX_PROFILE_BYTES || total_len > u32::MAX as usize {
             return Err(ProfileError::TooLarge);
@@ -179,6 +212,7 @@ impl Profile<'_> {
         put_u16(&mut output, 80, self.group.len() as u16);
         put_u16(&mut output, 82, self.transactional_id.len() as u16);
         put_u32(&mut output, 84, self.ca_certificate_der.len() as u32);
+        put_u16(&mut output, 88, self.broker_endpoints.len() as u16);
         let mut offset = PROFILE_HEADER_LEN;
         for field in
             [self.host, self.ca_certificate_der, self.topic, self.group, self.transactional_id]
@@ -192,6 +226,14 @@ impl Profile<'_> {
             offset += PROFILE_ROUTE_HEADER_LEN;
             output[offset..offset + route.topic.len()].copy_from_slice(route.topic);
             offset += route.topic.len();
+        }
+        for broker in &self.broker_endpoints {
+            output[offset..offset + 4].copy_from_slice(&broker.endpoint_ipv4);
+            put_u16(&mut output, offset + 4, broker.port);
+            put_u16(&mut output, offset + 6, broker.host.len() as u16);
+            offset += PROFILE_BROKER_HEADER_LEN;
+            output[offset..offset + broker.host.len()].copy_from_slice(broker.host);
+            offset += broker.host.len();
         }
         let digest = charlotte_launch::sha256::digest(&output);
         output[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
@@ -227,13 +269,19 @@ impl Profile<'_> {
         }
         let flags = get_u16(input, 54)?;
         let route_count = get_u16(input, 72)? as usize;
+        let broker_count = get_u16(input, 88)? as usize;
         let max_produce_routes = get_u16(input, 74)?;
         if flags & !PROFILE_FLAG_TLS != 0
             || route_count > MAX_PRODUCE_ROUTES
             || route_count > usize::from(max_produce_routes)
             || usize::from(max_produce_routes) > MAX_PRODUCE_ROUTES
+            || get_u16(input, 90)? != 0
+            || get_u32(input, 92)? != 0
         {
             return Err(ProfileError::TooManyRoutes);
+        }
+        if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
+            return Err(ProfileError::TooManyBrokers);
         }
         let lengths = [
             get_u16(input, 76)? as usize,
@@ -268,6 +316,24 @@ impl Profile<'_> {
                 partition,
             });
         }
+        let mut broker_endpoints = Vec::with_capacity(broker_count);
+        for _ in 0..broker_count {
+            let header = input
+                .get(offset..offset + PROFILE_BROKER_HEADER_LEN)
+                .ok_or(ProfileError::InvalidField)?;
+            let endpoint_ipv4 = header[0..4].try_into().map_err(|_| ProfileError::InvalidField)?;
+            let port = get_u16(header, 4)?;
+            let host_len = get_u16(header, 6)? as usize;
+            offset += PROFILE_BROKER_HEADER_LEN;
+            let end = offset.checked_add(host_len).ok_or(ProfileError::TooLarge)?;
+            let host = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+            offset = end;
+            broker_endpoints.push(BrokerEndpoint {
+                endpoint_ipv4,
+                host,
+                port,
+            });
+        }
         if offset != input.len() {
             return Err(ProfileError::InvalidField);
         }
@@ -275,6 +341,7 @@ impl Profile<'_> {
             endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
             host: fields[0],
             port: get_u16(input, 52)?,
+            broker_endpoints,
             tls: flags & PROFILE_FLAG_TLS != 0,
             ca_certificate_der: fields[1],
             topic: fields[2],
@@ -295,6 +362,7 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
     if profile.port == 0
         || profile.host.is_empty()
         || profile.host.len() > 255
+        || core::str::from_utf8(profile.host).is_err()
         || profile.topic.is_empty()
         || profile.topic.len() > MAX_TOPIC_BYTES
         || profile.partition < 0
@@ -308,6 +376,21 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
         || profile.tls != !profile.ca_certificate_der.is_empty()
     {
         return Err(ProfileError::InvalidField);
+    }
+    if profile.broker_endpoints.len() >= MAX_BROKER_ENDPOINTS {
+        return Err(ProfileError::TooManyBrokers);
+    }
+    for (index, broker) in profile.broker_endpoints.iter().enumerate() {
+        if !broker.valid() {
+            return Err(ProfileError::InvalidField);
+        }
+        if broker.host == profile.host && broker.port == profile.port
+            || profile.broker_endpoints[..index]
+                .iter()
+                .any(|candidate| candidate.host == broker.host && candidate.port == broker.port)
+        {
+            return Err(ProfileError::DuplicateBroker);
+        }
     }
     if profile.produce_routes.len() > MAX_PRODUCE_ROUTES
         || profile.produce_routes.len() > usize::from(profile.max_produce_routes)
@@ -595,6 +678,11 @@ mod tests {
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
+            broker_endpoints: alloc::vec![BrokerEndpoint {
+                endpoint_ipv4: [10, 0, 2, 3],
+                host: b"kafka-2.test",
+                port: 9093,
+            }],
             tls: true,
             ca_certificate_der: b"certificate",
             topic: b"events",
@@ -617,6 +705,64 @@ mod tests {
     }
 
     #[test]
+    fn profile_rejects_unusable_and_duplicate_broker_destinations() {
+        let mut profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka-1.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![BrokerEndpoint {
+                endpoint_ipv4: [10, 0, 2, 3],
+                host: b"kafka-1.test",
+                port: 9093,
+            }],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::DuplicateBroker));
+
+        profile.broker_endpoints[0].host = b"\xff";
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+        profile.broker_endpoints = alloc::vec![
+            BrokerEndpoint {
+                endpoint_ipv4: [10, 0, 2, 3],
+                host: b"broker.test",
+                port: 9093,
+            };
+            MAX_BROKER_ENDPOINTS
+        ];
+        assert_eq!(profile.encode(), Err(ProfileError::TooManyBrokers));
+    }
+
+    #[test]
+    fn profile_rejects_non_utf8_primary_hostname() {
+        let profile = Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"\xff",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            rights: ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+    }
+
+    #[test]
     fn profile_rejects_duplicate_routes() {
         let route = ProduceRoute {
             topic: b"results",
@@ -626,6 +772,7 @@ mod tests {
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
+            broker_endpoints: alloc::vec![],
             tls: false,
             ca_certificate_der: b"",
             topic: b"events",
@@ -650,6 +797,7 @@ mod tests {
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
+            broker_endpoints: alloc::vec![],
             tls: false,
             ca_certificate_der: b"",
             topic: b"events",

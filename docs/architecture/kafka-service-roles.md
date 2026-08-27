@@ -54,12 +54,14 @@ independent.
 ## Transactional-step role
 
 Durga activities should normally use a generic transactional-step service. Its
-profile contains one consume route, every allowed output route (including DLQ
+profile contains authorized broker destinations, one consume route, every allowed output route (including DLQ
 and lifecycle routes), the consumer group, and a fenced transactional identity.
-The profile is a versioned, SHA-256-authenticated object delivered as a
+The profile is a versioned, SHA-256-protected object delivered as a
 kernel-enforced read-only launch capability. Its configurable route ceiling is
 bounded by the current hard maximum of 64, so deployment policy can choose a
 smaller authority/work limit without being constrained by config-page slots.
+The hash detects corruption; the launch capability is the authenticity and
+provenance boundary.
 The service performs this sequence:
 
 1. poll one input delivery;

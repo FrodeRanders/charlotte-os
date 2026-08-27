@@ -304,7 +304,8 @@ The transport-independent Signature V4 and HTTP code lives in
 \subsection{Kafka client service}
 \label{sec:kafka-service}
 
-One \texttt{kafka} service instance grants access to one broker endpoint, a
+One \texttt{kafka} service instance grants access to at most 32 explicitly
+provisioned broker endpoints, a
 fixed consume topic/partition, an ordered allow-list of produce routes, a
 consumer group, transactional id, and rights mask. It owns the broker socket,
 producer ids, producer epochs, and per-route sequence numbers.
@@ -313,13 +314,16 @@ the group's committed offset (or the earliest retained offset), poll with
 \texttt{read\_committed} isolation, commit or release a delivery, and close the
 consumer.
 
-The complete version-2 broker profile is serialized into one immutable object,
-covered by a SHA-256 digest, and transferred to \texttt{kafka} with a
+The complete version-3 broker profile is serialized into one immutable object,
+covered by a SHA-256 integrity digest, and transferred to \texttt{kafka} with a
 kernel-enforced \texttt{MAP\_READ}-only launch capability. The service validates
-the exact size, version, digest, field bounds, route count, configurable ceiling,
-and duplicate routes before opening a broker connection. The hard ceiling is 64
+the exact size, version, digest, UTF-8 hostnames, field bounds, route and broker
+counts, configurable ceilings, and duplicate routes or endpoints before opening
+a broker connection. The hard ceiling is 64
 produce routes, while deployment policy may select a lower limit. Metadata for
 all distinct declared topics is requested in one broker exchange.
+The digest detects corruption; authenticity and provenance come from the
+trusted launcher and the read-only capability.
 
 Only the broker-facing service receives this profile. Producer, consumer, and
 transactional-step logic receives a connection capability to the provisioned
@@ -337,18 +341,21 @@ lifecycle explicit, but they do not turn arbitrary application side effects
 outside Kafka into an exactly-once transaction.
 
 The wire crate negotiates \texttt{ApiVersions} and implements a deliberately
-small set of stable Kafka request versions. The current service requires a
-single broker that is simultaneously the partition leader, group coordinator,
-and transaction coordinator. It does not implement multi-broker routing or
-failover, consumer-group join/rebalance, SASL, record compression, topic
+small set of stable Kafka request versions. Metadata selects partition leaders
+and group/transaction coordinators only from the profile's hostname/port and
+IPv4 allow-list. Authorized endpoints are alternate metadata seeds, and
+retriable produce/fetch failures refresh leader metadata before retry. The
+service does not yet fully recover coordinator migration during an active
+transaction, or implement consumer-group join/rebalance, SASL, record
+compression, topic
 administration, or arbitrary partition assignment. Records and the number of
 simultaneous consumers, deliveries, and transactions are bounded.
 
 TLS uses the same explicit trust-anchor, synchronized-time, and entropy path as
-S3. The opt-in AArch64 test uses a single-node Apache Kafka fixture over TLS and
-verifies idempotent production, read-committed consumption, atomic production
-plus group-offset commit, transaction abort, and filtering of the aborted
-record.
+S3. The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS,
+places the input and output routes on different leaders, and verifies
+idempotent production, read-committed consumption, atomic production plus
+group-offset commit, transaction abort, and filtering of the aborted record.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in

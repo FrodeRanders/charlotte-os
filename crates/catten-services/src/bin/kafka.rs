@@ -66,6 +66,7 @@ const MAX_CONSUMERS: usize = 8;
 const MAX_DELIVERIES: usize = 8;
 const COORDINATOR_ATTEMPTS: usize = 120;
 const COORDINATOR_RETRY_MS: u64 = 250;
+const ROUTING_ATTEMPTS: usize = 3;
 const TLS_TIME_ATTEMPTS: usize = 120;
 const TLS_TIME_RETRY_MS: u64 = 250;
 
@@ -87,9 +88,8 @@ struct ClientIdentity {
 }
 
 struct Profile {
-    ip: [u8; 4],
-    host: String,
-    port: u16,
+    bootstrap: BrokerDestination,
+    broker_endpoints: Vec<BrokerDestination>,
     tls: bool,
     ca_der: Vec<u8>,
     topic: Vec<u8>,
@@ -99,6 +99,13 @@ struct Profile {
     transactional_id: Vec<u8>,
     rights: u64,
     transaction_timeout_ms: i32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BrokerDestination {
+    ip: [u8; 4],
+    host: String,
+    port: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -113,9 +120,22 @@ impl Profile {
         let mapping = memory.map_read_only().ok()?;
         let profile = protocol::Profile::decode(mapping.as_slice()).ok()?;
         Some(Self {
-            ip: profile.endpoint_ipv4,
-            host: String::from_utf8(profile.host.to_vec()).ok()?,
-            port: profile.port,
+            bootstrap: BrokerDestination {
+                ip: profile.endpoint_ipv4,
+                host: String::from_utf8(profile.host.to_vec()).ok()?,
+                port: profile.port,
+            },
+            broker_endpoints: profile
+                .broker_endpoints
+                .iter()
+                .map(|broker| {
+                    Some(BrokerDestination {
+                        ip: broker.endpoint_ipv4,
+                        host: String::from_utf8(broker.host.to_vec()).ok()?,
+                        port: broker.port,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?,
             tls: profile.tls,
             ca_der: profile.ca_certificate_der.to_vec(),
             topic: profile.topic.to_vec(),
@@ -146,6 +166,13 @@ impl Profile {
         self.produce_routes
             .get(usize::from(index) - 1)
             .map(|route| (route.topic.as_slice(), route.partition))
+    }
+
+    fn broker_destination(&self, host: &str, port: i32) -> Option<&BrokerDestination> {
+        let port = u16::try_from(port).ok()?;
+        core::iter::once(&self.bootstrap)
+            .chain(&self.broker_endpoints)
+            .find(|broker| broker.host == host && broker.port == port)
     }
 }
 
@@ -248,17 +275,19 @@ impl<'connection> BrokerTransport<'connection> {
         tcp: ConnectionRef<'connection>,
         entropy: Option<ConnectionRef<'connection>>,
         clock: ConnectionRef<'connection>,
-        profile: &Profile,
+        destination: &BrokerDestination,
+        tls: bool,
+        ca_der: &[u8],
     ) -> Self {
         Self {
             tcp,
             entropy,
             clock,
-            ip: profile.ip,
-            port: profile.port,
-            tls: profile.tls,
-            host: profile.host.clone(),
-            ca_der: profile.ca_der.clone(),
+            ip: destination.ip,
+            port: destination.port,
+            tls,
+            host: destination.host.clone(),
+            ca_der: ca_der.to_vec(),
             stream: None,
             received: Vec::new(),
         }
@@ -357,7 +386,15 @@ impl<'connection> BrokerTransport<'connection> {
 }
 
 struct BrokerSession<'connection> {
-    transport: BrokerTransport<'connection>,
+    tcp: ConnectionRef<'connection>,
+    entropy: Option<ConnectionRef<'connection>>,
+    clock: ConnectionRef<'connection>,
+    bootstrap: BrokerTransport<'connection>,
+    seeds: Vec<BrokerTransport<'connection>>,
+    brokers: BTreeMap<i32, BrokerTransport<'connection>>,
+    route_nodes: BTreeMap<u16, i32>,
+    group_coordinator: Option<i32>,
+    transaction_coordinator: Option<i32>,
     correlation: i32,
 }
 
@@ -368,8 +405,30 @@ impl<'connection> BrokerSession<'connection> {
         clock: ConnectionRef<'connection>,
         profile: &Profile,
     ) -> Self {
+        let seeds = profile
+            .broker_endpoints
+            .iter()
+            .map(|destination| {
+                BrokerTransport::new(tcp, entropy, clock, destination, profile.tls, &profile.ca_der)
+            })
+            .collect();
         Self {
-            transport: BrokerTransport::new(tcp, entropy, clock, profile),
+            tcp,
+            entropy,
+            clock,
+            bootstrap: BrokerTransport::new(
+                tcp,
+                entropy,
+                clock,
+                &profile.bootstrap,
+                profile.tls,
+                &profile.ca_der,
+            ),
+            seeds,
+            brokers: BTreeMap::new(),
+            route_nodes: BTreeMap::new(),
+            group_coordinator: None,
+            transaction_coordinator: None,
             correlation: 1,
         }
     }
@@ -380,8 +439,29 @@ impl<'connection> BrokerSession<'connection> {
         value
     }
 
-    fn exchange(&mut self, request: Vec<u8>) -> Result<Vec<u8>, i64> {
-        self.transport.request(&request)
+    fn exchange_any(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
+        let mut last_error = match self.bootstrap.request(request) {
+            Ok(response) => return Ok(response),
+            Err(error) => Some(error),
+        };
+        for seed in &mut self.seeds {
+            match seed.request(request) {
+                Ok(response) => return Ok(response),
+                Err(error) => last_error = Some(error),
+            }
+        }
+        let nodes: Vec<i32> = self.brokers.keys().copied().collect();
+        for node in nodes {
+            match self.brokers.get_mut(&node).ok_or(protocol::ERR_TRANSPORT)?.request(request) {
+                Ok(response) => return Ok(response),
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(last_error.unwrap_or(protocol::ERR_TRANSPORT))
+    }
+
+    fn exchange_node(&mut self, node: i32, request: Vec<u8>) -> Result<Vec<u8>, i64> {
+        self.brokers.get_mut(&node).ok_or(protocol::ERR_DENIED)?.request(&request)
     }
 
     fn bootstrap(
@@ -390,7 +470,7 @@ impl<'connection> BrokerSession<'connection> {
     ) -> Result<(ProducerIdentity, ProducerIdentity), i64> {
         let correlation = self.next();
         let request = wire::api_versions_request(correlation, CLIENT_ID).map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_any(&request)?;
         let versions = wire::parse_api_versions(&response, correlation).map_err(map_wire)?;
         for (api, version) in [
             (wire::api::PRODUCE, wire::version::PRODUCE),
@@ -411,42 +491,23 @@ impl<'connection> BrokerSession<'connection> {
             }
         }
 
-        let broker_node = self.validate_routes(profile)?;
+        self.refresh_routes(profile)?;
 
-        for (key, transaction) in
-            [(profile.group.as_slice(), false), (profile.transactional_id.as_slice(), true)]
-        {
-            let mut coordinator = None;
-            for _ in 0..COORDINATOR_ATTEMPTS {
-                let correlation = self.next();
-                let request =
-                    wire::find_coordinator_request(correlation, CLIENT_ID, key, transaction)
-                        .map_err(map_wire)?;
-                let response = self.exchange(request)?;
-                let response =
-                    wire::parse_find_coordinator(&response, correlation).map_err(map_wire)?;
-                if response.error == wire::NO_ERROR {
-                    coordinator = Some(response);
-                    break;
-                }
-                if !wire::is_retriable_broker_error(response.error) {
-                    return Err(map_broker(response.error));
-                }
-                sleep_ms(COORDINATOR_RETRY_MS);
-            }
-            let coordinator = coordinator.ok_or(protocol::ERR_TIMEOUT)?;
-            if coordinator.node_id != broker_node {
-                return Err(protocol::ERR_UNSUPPORTED);
-            }
-        }
+        self.group_coordinator = Some(self.find_coordinator(profile, &profile.group, false)?);
+        self.transaction_coordinator =
+            Some(self.find_coordinator(profile, &profile.transactional_id, true)?);
 
-        let non_transactional = self.init_producer(None, profile.transaction_timeout_ms)?;
-        let transactional =
-            self.init_producer(Some(&profile.transactional_id), profile.transaction_timeout_ms)?;
+        let leader = self.route_node(protocol::DEFAULT_ROUTE)?;
+        let non_transactional = self.init_producer(leader, None, profile.transaction_timeout_ms)?;
+        let transactional = self.init_producer(
+            self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?,
+            Some(&profile.transactional_id),
+            profile.transaction_timeout_ms,
+        )?;
         Ok((non_transactional, transactional))
     }
 
-    fn validate_routes(&mut self, profile: &Profile) -> Result<i32, i64> {
+    fn refresh_routes(&mut self, profile: &Profile) -> Result<(), i64> {
         let mut topics: Vec<&[u8]> = Vec::with_capacity(profile.produce_routes.len() + 1);
         topics.push(&profile.topic);
         for route in &profile.produce_routes {
@@ -457,20 +518,35 @@ impl<'connection> BrokerSession<'connection> {
         let correlation = self.next();
         let request =
             wire::metadata_request_many(correlation, CLIENT_ID, &topics).map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_any(&request)?;
         let metadata = wire::parse_metadata_many(&response, correlation).map_err(map_wire)?;
-        if metadata.brokers.len() != 1 {
-            return Err(protocol::ERR_UNSUPPORTED);
+        let mut brokers = BTreeMap::new();
+        for broker in &metadata.brokers {
+            if let Some(destination) = profile.broker_destination(&broker.host, broker.port) {
+                brokers.insert(
+                    broker.node_id,
+                    BrokerTransport::new(
+                        self.tcp,
+                        self.entropy,
+                        self.clock,
+                        destination,
+                        profile.tls,
+                        &profile.ca_der,
+                    ),
+                );
+            }
         }
-        let broker_node = metadata.brokers[0].node_id;
-        for (topic, partition) in core::iter::once((profile.topic.as_slice(), profile.partition))
-            .chain(
-                profile
-                    .produce_routes
-                    .iter()
-                    .map(|route| (route.topic.as_slice(), route.partition)),
+        let mut route_nodes = BTreeMap::new();
+        for (route, (topic, partition)) in core::iter::once((
+            protocol::DEFAULT_ROUTE,
+            (profile.topic.as_slice(), profile.partition),
+        ))
+        .chain(profile.produce_routes.iter().enumerate().map(|(index, route)| {
+            (
+                u16::try_from(index + 1).expect("profile route index exceeds u16"),
+                (route.topic.as_slice(), route.partition),
             )
-        {
+        })) {
             let topic_metadata = metadata
                 .topics
                 .iter()
@@ -484,17 +560,65 @@ impl<'connection> BrokerSession<'connection> {
                 .iter()
                 .find(|candidate| candidate.partition == partition)
                 .ok_or(protocol::ERR_UNSUPPORTED)?;
-            if leader.error != wire::NO_ERROR || leader.leader != broker_node {
-                // The first implementation still owns one broker connection.
-                // Cross-broker leader routing is a separate transport concern.
-                return Err(protocol::ERR_UNSUPPORTED);
+            if leader.error != wire::NO_ERROR {
+                return Err(map_broker(leader.error));
             }
+            if !brokers.contains_key(&leader.leader) {
+                // Metadata is discovery, not authority: an application profile
+                // must authorize every selected network destination.
+                return Err(protocol::ERR_DENIED);
+            }
+            route_nodes.insert(route, leader.leader);
         }
-        Ok(broker_node)
+        self.brokers = brokers;
+        self.route_nodes = route_nodes;
+        Ok(())
+    }
+
+    fn find_coordinator(
+        &mut self,
+        profile: &Profile,
+        key: &[u8],
+        transaction: bool,
+    ) -> Result<i32, i64> {
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let correlation = self.next();
+            let request = wire::find_coordinator_request(correlation, CLIENT_ID, key, transaction)
+                .map_err(map_wire)?;
+            let response = self.exchange_any(&request)?;
+            let coordinator =
+                wire::parse_find_coordinator(&response, correlation).map_err(map_wire)?;
+            if coordinator.error == wire::NO_ERROR {
+                let destination = profile
+                    .broker_destination(&coordinator.host, coordinator.port)
+                    .ok_or(protocol::ERR_DENIED)?;
+                self.brokers.entry(coordinator.node_id).or_insert_with(|| {
+                    BrokerTransport::new(
+                        self.tcp,
+                        self.entropy,
+                        self.clock,
+                        destination,
+                        profile.tls,
+                        &profile.ca_der,
+                    )
+                });
+                return Ok(coordinator.node_id);
+            }
+            if !wire::is_retriable_broker_error(coordinator.error) {
+                return Err(map_broker(coordinator.error));
+            }
+            sleep_ms(COORDINATOR_RETRY_MS);
+        }
+        Err(protocol::ERR_TIMEOUT)
+    }
+
+    fn route_node(&self, route: u16) -> Result<i32, i64> {
+        self.route_nodes.get(&route).copied().ok_or(protocol::ERR_DENIED)
     }
 
     fn init_producer(
         &mut self,
+        node: i32,
         transactional_id: Option<&[u8]>,
         timeout_ms: i32,
     ) -> Result<ProducerIdentity, i64> {
@@ -507,7 +631,7 @@ impl<'connection> BrokerSession<'connection> {
                 timeout_ms,
             )
             .map_err(map_wire)?;
-            let response = self.exchange(request)?;
+            let response = self.exchange_node(node, request)?;
             match wire::parse_init_producer_id(&response, correlation) {
                 Ok(identity) => return Ok(identity),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
@@ -540,25 +664,40 @@ impl<'connection> BrokerSession<'connection> {
             transactional,
         )
         .map_err(map_wire)?;
-        let correlation = self.next();
-        let request = wire::produce_request(
-            correlation,
-            CLIENT_ID,
-            transactional.then_some(profile.transactional_id.as_slice()),
-            topic,
-            partition,
-            &batch,
-            PRODUCE_TIMEOUT_MS,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange(request)?;
-        let result =
-            wire::parse_produce(&response, correlation, topic, partition).map_err(map_wire)?;
-        if result.error == wire::NO_ERROR {
-            Ok(result.base_offset)
-        } else {
-            Err(map_broker(result.error))
+        for attempt in 0..ROUTING_ATTEMPTS {
+            let correlation = self.next();
+            let request = wire::produce_request(
+                correlation,
+                CLIENT_ID,
+                transactional.then_some(profile.transactional_id.as_slice()),
+                topic,
+                partition,
+                &batch,
+                PRODUCE_TIMEOUT_MS,
+            )
+            .map_err(map_wire)?;
+            let node = self.route_node(route)?;
+            match self.exchange_node(node, request).and_then(|response| {
+                wire::parse_produce(&response, correlation, topic, partition).map_err(map_wire)
+            }) {
+                Ok(result) if result.error == wire::NO_ERROR => return Ok(result.base_offset),
+                Ok(result)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && wire::is_retriable_broker_error(result.error) =>
+                {
+                    self.refresh_routes(profile)?;
+                }
+                Ok(result) => return Err(map_broker(result.error)),
+                Err(error)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && (error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT) =>
+                {
+                    self.refresh_routes(profile)?;
+                }
+                Err(error) => return Err(error),
+            }
         }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn add_partition(
@@ -568,6 +707,7 @@ impl<'connection> BrokerSession<'connection> {
         producer: ProducerIdentity,
     ) -> Result<(), i64> {
         let (topic, partition) = profile.route(route).ok_or(protocol::ERR_DENIED)?;
+        let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
         for _ in 0..COORDINATOR_ATTEMPTS {
             let correlation = self.next();
             let request = wire::add_partitions_to_txn_request(
@@ -579,7 +719,7 @@ impl<'connection> BrokerSession<'connection> {
                 partition,
             )
             .map_err(map_wire)?;
-            let response = self.exchange(request)?;
+            let response = self.exchange_node(node, request)?;
             match wire::parse_partition_error(&response, correlation, topic, partition) {
                 Ok(()) => return Ok(()),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
@@ -592,6 +732,7 @@ impl<'connection> BrokerSession<'connection> {
     }
 
     fn committed_offset(&mut self, profile: &Profile) -> Result<Option<i64>, i64> {
+        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
         let correlation = self.next();
         let request = wire::offset_fetch_request(
             correlation,
@@ -601,52 +742,85 @@ impl<'connection> BrokerSession<'connection> {
             profile.partition,
         )
         .map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_node(node, request)?;
         wire::parse_offset_fetch(&response, correlation, &profile.topic, profile.partition)
             .map_err(map_wire)
     }
 
     fn earliest_offset(&mut self, profile: &Profile) -> Result<i64, i64> {
-        let correlation = self.next();
-        let request = wire::list_offsets_request(
-            correlation,
-            CLIENT_ID,
-            &profile.topic,
-            profile.partition,
-            true,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange(request)?;
-        wire::parse_list_offsets(&response, correlation, &profile.topic, profile.partition)
-            .map_err(map_wire)
+        for attempt in 0..ROUTING_ATTEMPTS {
+            let node = self.route_node(protocol::DEFAULT_ROUTE)?;
+            let correlation = self.next();
+            let request = wire::list_offsets_request(
+                correlation,
+                CLIENT_ID,
+                &profile.topic,
+                profile.partition,
+                true,
+            )
+            .map_err(map_wire)?;
+            match self.exchange_node(node, request).and_then(|response| {
+                wire::parse_list_offsets(&response, correlation, &profile.topic, profile.partition)
+                    .map_err(map_wire)
+            }) {
+                Ok(offset) => return Ok(offset),
+                Err(error)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && (error == protocol::ERR_BROKER
+                            || error == protocol::ERR_TRANSPORT
+                            || error == protocol::ERR_TIMEOUT) =>
+                {
+                    self.refresh_routes(profile)?;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn fetch(&mut self, profile: &Profile, offset: i64) -> Result<Vec<wire::Record>, i64> {
-        let correlation = self.next();
-        let request = wire::fetch_request(
-            correlation,
-            CLIENT_ID,
-            wire::Fetch {
-                topic: &profile.topic,
-                partition: profile.partition,
-                offset,
-                max_wait_ms: FETCH_WAIT_MS,
-                max_bytes: FETCH_MAX_BYTES,
-                read_committed: true,
-            },
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange(request)?;
-        let result = wire::parse_fetch(&response, correlation, &profile.topic, profile.partition)
+        for attempt in 0..ROUTING_ATTEMPTS {
+            let node = self.route_node(protocol::DEFAULT_ROUTE)?;
+            let correlation = self.next();
+            let request = wire::fetch_request(
+                correlation,
+                CLIENT_ID,
+                wire::Fetch {
+                    topic: &profile.topic,
+                    partition: profile.partition,
+                    offset,
+                    max_wait_ms: FETCH_WAIT_MS,
+                    max_bytes: FETCH_MAX_BYTES,
+                    read_committed: true,
+                },
+            )
             .map_err(map_wire)?;
-        if result.error == wire::NO_ERROR {
-            Ok(result.records)
-        } else {
-            Err(map_broker(result.error))
+            match self.exchange_node(node, request).and_then(|response| {
+                wire::parse_fetch(&response, correlation, &profile.topic, profile.partition)
+                    .map_err(map_wire)
+            }) {
+                Ok(result) if result.error == wire::NO_ERROR => return Ok(result.records),
+                Ok(result)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && wire::is_retriable_broker_error(result.error) =>
+                {
+                    self.refresh_routes(profile)?;
+                }
+                Ok(result) => return Err(map_broker(result.error)),
+                Err(error)
+                    if attempt + 1 < ROUTING_ATTEMPTS
+                        && (error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT) =>
+                {
+                    self.refresh_routes(profile)?;
+                }
+                Err(error) => return Err(error),
+            }
         }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn commit_offset(&mut self, profile: &Profile, next_offset: i64) -> Result<(), i64> {
+        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
         let correlation = self.next();
         let request = wire::offset_commit_request(
             correlation,
@@ -657,7 +831,7 @@ impl<'connection> BrokerSession<'connection> {
             next_offset,
         )
         .map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_node(node, request)?;
         wire::parse_offset_commit(&response, correlation, &profile.topic, profile.partition)
             .map_err(map_wire)
     }
@@ -668,6 +842,7 @@ impl<'connection> BrokerSession<'connection> {
         producer: ProducerIdentity,
         next_offset: i64,
     ) -> Result<(), i64> {
+        let transaction_node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
         let correlation = self.next();
         let request = wire::add_offsets_to_txn_request(
             correlation,
@@ -677,7 +852,7 @@ impl<'connection> BrokerSession<'connection> {
             &profile.group,
         )
         .map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_node(transaction_node, request)?;
         wire::parse_top_level_error(&response, correlation).map_err(map_wire)?;
 
         let correlation = self.next();
@@ -694,7 +869,8 @@ impl<'connection> BrokerSession<'connection> {
             },
         )
         .map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let group_node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+        let response = self.exchange_node(group_node, request)?;
         wire::parse_partition_error(&response, correlation, &profile.topic, profile.partition)
             .map_err(map_wire)
     }
@@ -705,6 +881,7 @@ impl<'connection> BrokerSession<'connection> {
         producer: ProducerIdentity,
         commit: bool,
     ) -> Result<(), i64> {
+        let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
         let correlation = self.next();
         let request = wire::end_txn_request(
             correlation,
@@ -714,7 +891,7 @@ impl<'connection> BrokerSession<'connection> {
             commit,
         )
         .map_err(map_wire)?;
-        let response = self.exchange(request)?;
+        let response = self.exchange_node(node, request)?;
         wire::parse_top_level_error(&response, correlation).map_err(map_wire)
     }
 }
@@ -1134,10 +1311,14 @@ impl Service<'_> {
             let _ = self.broker.end_transaction(&self.profile, self.transactional_producer, false);
         }
         if transaction.reset_producer || result.is_err() {
-            match self.broker.init_producer(
-                Some(&self.profile.transactional_id),
-                self.profile.transaction_timeout_ms,
-            ) {
+            let coordinator = self.broker.transaction_coordinator.ok_or(protocol::ERR_BROKER);
+            match coordinator.and_then(|node| {
+                self.broker.init_producer(
+                    node,
+                    Some(&self.profile.transactional_id),
+                    self.profile.transaction_timeout_ms,
+                )
+            }) {
                 Ok(producer) => {
                     self.transactional_producer = producer;
                     self.transactional_sequences.clear();
@@ -1399,8 +1580,8 @@ fn main(ctx: Context) -> ! {
     catten_rt::logln!(
         "[kafka] serving broker={}:{} tls={} consume-topic={} partition={} produce-routes={} \
          group={} transactional-id={} rights={:#x}",
-        profile.host,
-        profile.port,
+        profile.bootstrap.host,
+        profile.bootstrap.port,
         profile.tls,
         core::str::from_utf8(&profile.topic).unwrap_or("?"),
         profile.partition,

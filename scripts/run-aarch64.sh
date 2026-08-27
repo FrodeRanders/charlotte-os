@@ -284,6 +284,8 @@ if [ "$KAFKA_TEST" = "1" ]; then
     KAFKA_TEST_DIR="${ROOT_DIR}/target/kafka-test"
     export CATTEN_KAFKA_CERT_DIR="${KAFKA_TEST_DIR}/certs"
     export CATTEN_KAFKA_PORT="19092"
+    export CATTEN_KAFKA_PORT_2="19094"
+    export CATTEN_KAFKA_PORT_3="19096"
     mkdir -p "$CATTEN_KAFKA_CERT_DIR"
     openssl ecparam -name prime256v1 -genkey -noout \
         -out "$CATTEN_KAFKA_CERT_DIR/ca.key"
@@ -297,7 +299,7 @@ if [ "$KAFKA_TEST" = "1" ]; then
         -out "$CATTEN_KAFKA_CERT_DIR/kafka.key"
     openssl req -new -sha256 \
         -key "$CATTEN_KAFKA_CERT_DIR/kafka.key" \
-        -subj "/CN=kafka.test" \
+        -subj "/CN=kafka-1.test" \
         -out "$CATTEN_KAFKA_CERT_DIR/kafka.csr"
     openssl x509 -req -sha256 -days 2 \
         -in "$CATTEN_KAFKA_CERT_DIR/kafka.csr" \
@@ -322,20 +324,20 @@ if [ "$KAFKA_TEST" = "1" ]; then
         "$CATTEN_KAFKA_CERT_DIR/key-password" \
         "$CATTEN_KAFKA_CERT_DIR/keystore-password"
     export CATTEN_KAFKA_TEST_CA_DER="$CATTEN_KAFKA_CERT_DIR/ca.der"
-    echo ">>> Starting ephemeral TLS Apache Kafka fixture on host port 19092..."
+    echo ">>> Starting ephemeral three-broker TLS Apache Kafka fixture..."
     docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     KAFKA_RUNNING="1"
-    docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka
-    docker compose -f "$KAFKA_COMPOSE" exec -T kafka \
+    docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka1 kafka2 kafka3
+    docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-events --partitions 1 --replication-factor 1
-    docker compose -f "$KAFKA_COMPOSE" exec -T kafka \
+        --topic charlotte-events --replica-assignment 1
+    docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-results --partitions 1 --replication-factor 1
+        --topic charlotte-results --replica-assignment 2
 fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"

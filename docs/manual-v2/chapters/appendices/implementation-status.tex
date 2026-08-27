@@ -165,8 +165,10 @@ repository history remain authoritative.
     \item \textbf{External data-service compatibility:} S3 is fixture-tested
         with RustFS, while Dell EMC ECS namespace support is implemented but
         not yet qualified against an ECS installation. Kafka is limited to a
-        directly assigned partition on one broker and lacks multi-broker
-        routing, group rebalance, SASL, compression, and topic administration.
+        directly assigned partition. It routes among explicitly provisioned
+        brokers and refreshes leaders for produce/fetch, but still lacks full
+        coordinator-migration recovery, group rebalance, SASL, compression,
+        and topic administration.
         Its versioned, digest-checked profile is already delivered only to the
         broker connector as read-only launch memory; production secret injection
         and trust-anchor rotation remain controller work.

@@ -17,25 +17,28 @@ The implementation is split at the userspace boundary:
 
 ## Provisioning and authority
 
-One `KafkaProfile` grants one broker endpoint, a fixed consume topic/partition,
-an ordered allow-list of produce topic/partition routes, a consumer group,
-transactional identity, and rights mask. Applications receive only the service
-connection capability. They cannot name an arbitrary broker or topic at
-runtime: `Route::provisioned(n)` selects an entry already admitted by the
-launch profile, and the service rejects every other index.
+One `KafkaProfile` grants an allow-list of at most 32 broker endpoints, a fixed
+consume topic/partition, an ordered allow-list of produce topic/partition
+routes, a consumer group, transactional identity, and rights mask. Applications
+receive only the service connection capability. They cannot name an arbitrary
+broker or topic at runtime: `Route::provisioned(n)` selects an entry already
+admitted by the launch profile, and the service rejects every other index.
 
 The rights are `RIGHT_PRODUCE`, `RIGHT_CONSUME`, and `RIGHT_TRANSACTION`.
 A trusted launch component calls `launch_kafka_profile`; application code must
 not receive or reconstruct the launch profile.
 
 The complete profile is one versioned, immutable object rather than a set of
-config-page entries. It contains the broker address and TLS identity/trust
+config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
 identity, rights, transaction timeout, and an operator-selected route ceiling.
-The launcher encodes profile version 2, calculates a SHA-256 digest, and
+The launcher encodes profile version 3, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
 Before opening a socket, `kafka.elf` validates the exact object length, version,
-digest, field bounds, route count, safety ceiling, and duplicate routes.
+digest, UTF-8 hostnames, field bounds, route and broker counts, safety ceilings,
+and duplicate routes or broker destinations. The hash detects corruption;
+profile provenance and immutability come from the trusted launcher and the
+read-only capability, not from an unkeyed digest.
 Only `kafka.elf` receives this profile. Producer, consumer, or transactional
 step logic receives a connection capability to that specific service instance,
 not the profile or its broker/TLS configuration. Future SASL and mTLS secrets
@@ -81,11 +84,16 @@ transaction.include(delivery_token)?;
 transaction.commit()?;
 ```
 
-Producer sequence numbers and `AddPartitionsToTxn` state are tracked per
-route. Startup requests metadata for all distinct profile topics in one broker
-exchange, then validates every declared partition and leader. All routes in the
-current implementation must be led by the same broker connection;
-metadata-driven multi-broker routing remains future work.
+Producer sequence numbers and `AddPartitionsToTxn` state are tracked per route.
+The primary endpoint and `KafkaProfile::broker_endpoints` are the only network
+destinations. Each tuple supplies an expected broker-advertised hostname/port
+and a separately provisioned IPv4 address. Kafka metadata may select a broker
+only when its advertised hostname and port exactly match one of those tuples;
+metadata never grants authority to an address. Startup requests metadata for
+all distinct profile topics in one exchange and routes requests to the selected
+leaders and group/transaction coordinators. The authorized endpoints also act
+as alternate metadata seeds. Retriable produce/fetch leader errors refresh
+metadata before an idempotent retry.
 
 An application may hold several independently provisioned Kafka service
 connections. This is useful for disjoint producer or consumer authorities,
@@ -163,11 +171,13 @@ operations.
 
 This first profile is deliberately narrow:
 
-- one statically provisioned IPv4 broker; one consume partition and up to 64
-  allow-listed produce topic/partition routes led by that broker;
-- no metadata-driven multi-broker routing or leader migration;
+- up to 32 statically provisioned IPv4 broker destinations; one consume
+  partition and up to 64 allow-listed produce topic/partition routes;
+- metadata-driven leader and coordinator routing, with leader refresh for
+  produce/fetch; coordinator migration during an active transaction remains
+  limited;
 - no dynamic consumer-group membership/rebalancing;
-- no compression, headers, SASL, external DNS, or TLS 1.2; and
+- no compression, headers, SASL, external hostname resolution, or TLS 1.2; and
 - records are bounded by the one-page application ABI.
 
 For a centrally managed cluster, add the site's required authentication
@@ -179,8 +189,9 @@ feature set.
 ## Docker integration test
 
 The opt-in runner creates an ephemeral CA and server certificate, starts a
-fresh single-node Apache Kafka KRaft container with a verified external TLS
-listener, creates `charlotte-events` and `charlotte-results`, and boots an
+fresh three-broker Apache Kafka KRaft fixture with verified external TLS
+listeners, creates `charlotte-events` and `charlotte-results` on different
+leaders, and boots an
 in-guest smoke application
 that checks:
 
@@ -196,8 +207,9 @@ Run it with:
 scripts/run-aarch64.sh --kafka-test --timeout 300
 ```
 
-The certificate identifies `kafka.test`; the provisioned transport still
-connects to QEMU's user-network gateway at `10.0.2.2:19092`. The fixture and
+The certificate identifies the three `kafka-N.test` endpoints; their
+provisioned transports connect to QEMU's user-network gateway at
+`10.0.2.2:19092`, `:19094`, and `:19096`. The fixture and
 its volumes are removed on exit. Set `CATTEN_KAFKA_IMAGE` to exercise another
 compatible Kafka image. The switch adds the fixture, test trust anchor, and
 verifier; the ordinary network, DHCP, TCP/IP, entropy, and time services are

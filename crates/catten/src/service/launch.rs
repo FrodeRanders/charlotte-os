@@ -91,6 +91,15 @@ pub struct KafkaProduceRoute<'a> {
     pub partition: u32,
 }
 
+/// An additional broker destination authorized for metadata-driven routing.
+/// Kafka metadata must advertise the exact `host` and `port`; it cannot choose
+/// the provisioned address.
+pub struct KafkaBrokerEndpoint<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+}
+
 /// A capability profile for one Kafka data-plane service. The endpoint grants
 /// access only to this broker, fixed consume topic/partition, allow-listed
 /// produce routes, consumer group, and transactional identity.
@@ -98,6 +107,7 @@ pub struct KafkaProfile<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
+    pub broker_endpoints: &'a [KafkaBrokerEndpoint<'a>],
     pub tls: bool,
     /// DER-encoded X.509 trust anchor required when `tls` is set.
     pub ca_certificate_der: Option<&'a [u8]>,
@@ -430,10 +440,20 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
             partition: i32::try_from(route.partition).expect("Kafka partition exceeds i32"),
         })
         .collect();
+    let brokers: alloc::vec::Vec<charlotte_protocol_kafka::BrokerEndpoint<'_>> = profile
+        .broker_endpoints
+        .iter()
+        .map(|broker| charlotte_protocol_kafka::BrokerEndpoint {
+            endpoint_ipv4: broker.endpoint_ipv4,
+            host: broker.host,
+            port: broker.port,
+        })
+        .collect();
     let encoded = charlotte_protocol_kafka::Profile {
         endpoint_ipv4: profile.endpoint_ipv4,
         host: profile.host,
         port: profile.port,
+        broker_endpoints: brokers,
         tls: profile.tls,
         ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
         topic: profile.topic,

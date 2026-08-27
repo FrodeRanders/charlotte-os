@@ -1,4 +1,4 @@
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth
-subjectAltName=DNS:kafka.test,IP:10.0.2.2
+subjectAltName=DNS:kafka-1.test,DNS:kafka-2.test,DNS:kafka-3.test,IP:10.0.2.2
