@@ -215,6 +215,15 @@ catten_boot_init "$ROOT_DIR"
 catten_boot_require_commands mformat mmd mcopy
 LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
+# A root Cargo clean can remove arbitrary generated files below `target/`, not
+# only Rust artifacts. Do it before creating test certificates whose paths are
+# consumed later by kernel `include_bytes!` expressions. This ordering matters
+# for both --s3-test and --kafka-test.
+if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ] && [ "$CLEAN_BUILD" = "1" ]; then
+    echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
+    cargo clean --target "target_specs/${ARCH}-unknown-none-catten.json"
+fi
+
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
 KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
@@ -350,8 +359,6 @@ fi
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing staged AArch64 EL0 bundle."
 elif [ "$CLEAN_BUILD" = "1" ]; then
-    echo ">>> Cleaning cached ${ARCH} kernel and dependency artifacts..."
-    cargo clean --target "$TARGET_SPEC"
     echo ">>> Cleaning and rebuilding embedded EL0 service bundle..."
     "${ROOT_DIR}/scripts/build-catten-services.sh" --embed --clean
 else
