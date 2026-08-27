@@ -25,6 +25,14 @@ const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
 const PRODUCER_NAME: &[u8] = b"kafka/selftest/main/producer";
 const CONSUMER_NAME: &[u8] = b"kafka/selftest/main/consumer";
 const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
+#[cfg(feature = "kafka_fencing_test")]
+const FENCER_NAME: &[u8] = b"kafka/selftest/fencer";
+#[cfg(feature = "kafka_fencing_test")]
+const FENCER_PRODUCER_NAME: &[u8] = b"kafka/selftest/fencer/producer";
+#[cfg(feature = "kafka_fencing_test")]
+const FENCER_CONSUMER_NAME: &[u8] = b"kafka/selftest/fencer/consumer";
+#[cfg(feature = "kafka_fencing_test")]
+const FENCER_TRANSACTION_NAME: &[u8] = b"kafka/selftest/fencer/transactional";
 const GROUP_ID: &[u8] = b"charlotte-qemu-smoke-group";
 const TRANSACTIONAL_ID: &[u8] = b"charlotte-qemu-smoke-transaction-0";
 
@@ -122,6 +130,19 @@ extern "C" fn verify_el0_kafka() {
         }
         readiness_deadline.assert_pending("Kafka service readiness");
         yield_lp();
+    }
+    if cfg!(feature = "kafka_fencing_test") {
+        #[cfg(feature = "kafka_fencing_test")]
+        {
+            verify_producer_fencing(
+                ns,
+                service_status,
+                ca_der,
+                client_certificate_der,
+                client_private_key_der,
+            );
+            return;
+        }
     }
     #[cfg(not(feature = "kafka_coordinator_test"))]
     logln!("[kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted");
@@ -384,6 +405,145 @@ extern "C" fn verify_el0_kafka() {
             return;
         }
         deadline.assert_pending("Kafka-step retry, timeout, DLQ, and commit sequence");
+        yield_lp();
+    }
+}
+
+#[cfg(feature = "kafka_fencing_test")]
+fn verify_producer_fencing(
+    ns: &NameServiceHandle,
+    primary_status: *const u8,
+    ca_der: &[u8],
+    client_certificate_der: &[u8],
+    client_private_key_der: &[u8],
+) {
+    use crate::cpu::scheduler::yield_lp;
+
+    let fencer = crate::service::launch::launch_kafka_profile(
+        ns,
+        &KafkaProfile {
+            instance_name: FENCER_NAME,
+            authority_endpoints: &[
+                KafkaAuthorityEndpoint {
+                    service_name: FENCER_PRODUCER_NAME,
+                    rights: charlotte_protocol_kafka::RIGHT_PRODUCE,
+                },
+                KafkaAuthorityEndpoint {
+                    service_name: FENCER_CONSUMER_NAME,
+                    rights: charlotte_protocol_kafka::RIGHT_CONSUME,
+                },
+                KafkaAuthorityEndpoint {
+                    service_name: FENCER_TRANSACTION_NAME,
+                    rights: charlotte_protocol_kafka::ALL_RIGHTS,
+                },
+            ],
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka-1.test",
+            port: 19_092,
+            broker_endpoints: &[
+                KafkaBrokerEndpoint {
+                    endpoint_ipv4: [10, 0, 2, 2],
+                    host: b"kafka-2.test",
+                    port: 19_094,
+                },
+                KafkaBrokerEndpoint {
+                    endpoint_ipv4: [10, 0, 2, 2],
+                    host: b"kafka-3.test",
+                    port: 19_096,
+                },
+            ],
+            tls: true,
+            ca_certificate_der: Some(ca_der),
+            topic: b"charlotte-events",
+            partition: 0,
+            produce_routes: &[KafkaProduceRoute {
+                topic: b"charlotte-results",
+                partition: 0,
+            }],
+            max_produce_routes: 64,
+            group: b"charlotte-qemu-fencer-group",
+            transactional_id: TRANSACTIONAL_ID,
+            authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
+                username: b"charlotte",
+                password: b"charlotte-kafka-test",
+                certificate_der: client_certificate_der,
+                private_key_der: client_private_key_der,
+            },
+            rights: charlotte_protocol_kafka::ALL_RIGHTS,
+            transaction_timeout_ms: 60_000,
+        },
+    );
+    let fencer_status: *const u8 = {
+        let base: *mut u8 = fencer.status_frame.into();
+        base
+    };
+    let deadline = crate::self_test::results::Deadline::after_millis(180_000);
+    loop {
+        let stage = unsafe {
+            crate::self_test::status_u32(fencer_status, charlotte_launch::kafka_status::STAGE)
+        };
+        let error = unsafe {
+            crate::self_test::status_u32(fencer_status, charlotte_launch::kafka_status::ERROR)
+        };
+        if error != 0 {
+            logln!("[kafka-test] FAILURE: fencing connector startup error={:#x}", error);
+            crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        if stage == 2 {
+            break;
+        }
+        deadline.assert_pending("Kafka fencing connector readiness");
+        yield_lp();
+    }
+
+    let probe = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"kafka_fence_smoke")
+            .expect("[kafka-test] kafka_fence_smoke.elf"),
+        ns,
+        ConnectionRights::CALL,
+    );
+    let probe_status: *const u8 = {
+        let base: *mut u8 = probe.status_frame.into();
+        base
+    };
+    loop {
+        let stage = unsafe {
+            crate::self_test::status_u32(
+                probe_status,
+                charlotte_launch::kafka_fence_smoke_status::STAGE,
+            )
+        };
+        let error = unsafe {
+            crate::self_test::status_u32(
+                probe_status,
+                charlotte_launch::kafka_fence_smoke_status::ERROR,
+            )
+        };
+        let fences = unsafe {
+            crate::self_test::status_u32(primary_status, charlotte_launch::kafka_status::FENCES)
+        };
+        let connector_error = unsafe {
+            crate::self_test::status_u32(primary_status, charlotte_launch::kafka_status::ERROR)
+        };
+        if error != 0 {
+            logln!("[kafka-test] FAILURE: fencing probe error={:#x}", error);
+            crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        if stage == charlotte_launch::kafka_fence_smoke_status::SUCCESS
+            && fences >= 1
+            && connector_error != 0
+        {
+            logln!(
+                "[kafka-test] SUCCESS: duplicate transactional identity fenced the stale \
+                 producer; fences={}",
+                fences
+            );
+            crate::self_test::results::pass(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        deadline.assert_pending("Kafka producer fencing");
         yield_lp();
     }
 }

@@ -342,6 +342,17 @@ accepting the same end-to-end transaction:
 scripts/run-aarch64.sh --kafka-coordinator-test --timeout 300
 ```
 
+The producer-fencing scenario launches a second connector with the same
+transactional ID but distinct capability names. Kafka advances the producer
+epoch, after which a private probe asks the original connector to produce. The
+test requires `ERR_FENCED`, a non-zero fencing counter, and a connector fault
+diagnostic; the fencer capability and both connectors' credentials remain
+absent from the probe's application ABI:
+
+```sh
+scripts/run-aarch64.sh --kafka-fencing-test --timeout 300
+```
+
 The certificate identifies the three `kafka-N.test` endpoints; their
 provisioned transports connect to QEMU's user-network gateway at
 `10.0.2.2:19092`, `:19094`, and `:19096`. The fixture and

@@ -105,6 +105,7 @@ class ImageWriter:
         self.layout = Layout(block_size, total_blocks)
         self.data = bytearray(block_size * total_blocks)
         self.bitmap = bytearray((total_blocks + 7) // 8)
+        self.directory_slots = set()
         # Blocks below the data area are reserved metadata.
         for block in range(self.layout.data_lba):
             self._set_bit(block, True)
@@ -201,9 +202,10 @@ class ImageWriter:
         entry = self.encode_directory(obj_id, generation, header_lba)
         # Write the entry into both directory banks (identical generations,
         # so the newest-entry pick is unambiguous on mount).
+        directory_index = self._directory_index(obj_id)
         for bank in range(2):
             bank_lba = self.layout.directory_lba + bank * self.layout.directory_blocks
-            byte_offset = self._directory_index(obj_id) * DIR_ENTRY_SIZE
+            byte_offset = directory_index * DIR_ENTRY_SIZE
             lba = bank_lba + byte_offset // self.block_size
             offset = byte_offset % self.block_size
             block = bytearray(self._read_blocks(lba))
@@ -211,11 +213,19 @@ class ImageWriter:
             self._write_blocks(lba, block)
 
     def _directory_index(self, obj_id):
-        # A stable slot per object id (the store's own directory is
-        # index-assigned; ids here are sparse, so spread them by hash).
+        # Preserve deterministic hash placement while resolving collisions.
+        # The store scans the complete directory, so open addressing here is
+        # compatible with its index cache and prevents a later artifact from
+        # silently overwriting an earlier directory entry.
         entries_per_block = self.block_size // DIR_ENTRY_SIZE
         total = self.layout.directory_blocks * entries_per_block
-        return (obj_id >> 8) % total
+        start = (obj_id >> 8) % total
+        for offset in range(total):
+            index = (start + offset) % total
+            if index not in self.directory_slots:
+                self.directory_slots.add(index)
+                return index
+        raise ValueError("object-store directory is full")
 
     def _read_blocks(self, lba):
         start = lba * self.block_size

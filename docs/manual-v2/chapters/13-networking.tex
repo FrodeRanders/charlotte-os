@@ -444,6 +444,12 @@ A companion fault scenario reads the transaction coordinator selected by
 Kafka from the connector's startup diagnostics and hard-stops that broker
 after connector bootstrap. It requires transaction-coordinator rediscovery
 before the same transaction and generic-step sequence may pass.
+A fencing scenario launches a second, independently named connector with the
+same transactional identifier. Kafka advances the producer epoch; a private
+probe then requires the stale connector to return \texttt{ERR\_FENCED}, publish
+a non-zero fencing counter, and enter its diagnostic fault state. Neither the
+second connector capability nor either connector's credentials are delegated
+to the probe.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in

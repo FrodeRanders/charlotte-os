@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test|--kafka-coordinator-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -44,6 +44,8 @@
 #                 and recovery after the active route leader is killed
 #   --kafka-coordinator-test  Run the Kafka fixture while hard-stopping the
 #                 transaction coordinator discovered by the guest
+#   --kafka-fencing-test  Launch two connectors with the same transactional
+#                 identity and require the first to report producer fencing
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -79,6 +81,7 @@ DHCP_TEST="0"
 S3_TEST="0"
 KAFKA_TEST="0"
 KAFKA_COORDINATOR_TEST="0"
+KAFKA_FENCING_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
@@ -118,6 +121,7 @@ while [ "$#" -gt 0 ]; do
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
         --kafka-test)  NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; shift ;;
         --kafka-coordinator-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_COORDINATOR_TEST="1"; shift ;;
+        --kafka-fencing-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_FENCING_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -490,6 +494,9 @@ fi
 if [ "$KAFKA_COORDINATOR_TEST" = "1" ]; then
     FEATURES="${FEATURES},kafka_coordinator_test"
 fi
+if [ "$KAFKA_FENCING_TEST" = "1" ]; then
+    FEATURES="${FEATURES},kafka_fencing_test"
+fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
@@ -781,7 +788,8 @@ if [ -n "$TIMEOUT" ]; then
                 echo "error: guest HTTP keyhole did not return the expected JSON state page" >&2
             fi
         fi
-        if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FAULT_INJECTED" = "0" ] \
+        if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FENCING_TEST" = "0" ] \
+            && [ "$KAFKA_FAULT_INJECTED" = "0" ] \
             && grep -Fq "$KAFKA_FAULT_MARKER" "$LOG"; then
             if [ "$KAFKA_COORDINATOR_TEST" = "1" ]; then
                 KAFKA_COORDINATOR_LINE="$(grep -F "[kafka] coordinators group=" "$LOG" | tail -n 1)"
@@ -818,7 +826,8 @@ if [ -n "$TIMEOUT" ]; then
                 fi
             fi
             if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
-                && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
+                && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FENCING_TEST" = "1" ] \
+                    || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
                 && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
@@ -904,7 +913,7 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    if [ "$KAFKA_TEST" = "1" ] \
+    if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FENCING_TEST" = "0" ] \
         && { [ "$KAFKA_FAULT_INJECTED" != "1" ] || [ "$KAFKA_FAULT_RESTARTED" != "1" ]; }; then
         echo "error: Kafka broker fault injection did not complete" >&2
         exit 1

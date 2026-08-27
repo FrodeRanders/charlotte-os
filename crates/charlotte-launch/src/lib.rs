@@ -344,6 +344,13 @@ pub mod kafka_smoke_status {
     pub const SUCCESS: u32 = 0x4b46_4f4b; // "KFOK"
 }
 
+/// Status-page layout for the Kafka producer-fencing smoke application.
+pub mod kafka_fence_smoke_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const SUCCESS: u32 = 0x4b46_454e; // "KFEN"
+}
+
 /// Generic transactional Kafka-step diagnostic status-page offsets.
 pub mod kafka_step_status {
     pub const STAGE: usize = 0;

@@ -165,6 +165,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "kafka_fence_smoke"
+path = "src/bin/kafka_fence_smoke.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "kafka_step"
 path = "src/bin/kafka_step.rs"
 test = false

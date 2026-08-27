@@ -31,6 +31,7 @@ s3                 service     1       1        0x0   -
 s3_smoke           service     1       1        0x0   -
 kafka              service     1       1        0x0   -
 kafka_smoke        service     1       1        0x0   -
+kafka_fence_smoke  service     1       1        0x0   -
 kafka_step         service     1       1        0x0   -
 kafka_step_proc    service     1       1        0x0   -
 kafka_step_input   service     1       1        0x0   -

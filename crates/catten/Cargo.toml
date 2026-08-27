@@ -66,6 +66,9 @@ s3_test = ["dhcp_test"]
 kafka_test = ["dhcp_test"]
 # Exercise group and transaction coordinator movement in the Kafka fixture.
 kafka_coordinator_test = ["kafka_test"]
+# Fence one connector by launching a second producer with the same
+# transactional identity and require the first connector to fail closed.
+kafka_fencing_test = ["kafka_test"]
 # Run only the EL0 service lifecycle/live-upgrade deferred integration test.
 # Synchronous kernel subsystem tests still run.
 live_upgrade_test = []
