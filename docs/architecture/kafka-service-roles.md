@@ -21,13 +21,16 @@ broker, group, transactional identity, or topic. A deployment controller can
 therefore replace or rotate the connector profile independently of rebuilding
 the producer, consumer, transactional-step, or procedure artifacts.
 
-Profile version 4 also fixes the connector's exact local registration name.
-Names are non-empty printable ASCII and bounded to 256 bytes; short names use
-the scalar name-service path and longer deployment names use its copied-memory
-path. Deployments can therefore publish instances such as
-`kafka/claims/validate` and `kafka/payments/post` concurrently. The application
-cannot rename a connector, and registration never reveals the profile's broker
-or credential material.
+Profile version 5 separates a diagnostic connector instance name from a
+bounded set of application-facing authority endpoints. Each endpoint has a
+non-empty printable-ASCII name of at most 256 bytes and a Kafka-rights ceiling
+that must be a subset of the connector's profile ceiling. The connector checks
+that ceiling against every opcode received on that exact endpoint before
+decoding request memory or creating resources. Deployments can therefore
+publish `kafka/claims/producer`, `kafka/claims/consumer`, and
+`kafka/claims/transactional` from one secret-bearing connector without giving
+all three callers uniform authority. The application cannot create or rename
+an access point.
 
 For a transactional step the authority chain is:
 
@@ -47,7 +50,7 @@ independently or together in the same connector profile.
 
 ## Producer role
 
-A producer endpoint grants `RIGHT_PRODUCE` and an immutable allow-list of
+A producer access point grants `RIGHT_PRODUCE` and an immutable allow-list of
 topic/partition routes. Calls select a small route index, never an arbitrary
 topic string. This is suitable for ingress, lifecycle events, and applications
 whose correctness does not depend on consuming an offset in the same
@@ -55,7 +58,7 @@ transaction.
 
 ## Consumer role
 
-A consumer endpoint grants `RIGHT_CONSUME` for one topic/partition/group tuple.
+A consumer access point grants `RIGHT_CONSUME` for one topic/partition/group tuple.
 `Consumer`, `Delivery`, and `DeliveryToken` remain linear owners. Dropping a
 delivery releases it for redelivery; committing consumes it. Several such
 endpoint capabilities may be held by one application when their commits are
@@ -126,7 +129,7 @@ and fatal startup errors. The AArch64 Kafka fixture exercises successful output,
 explicit retry, procedure timeout and terminal DLQ paths through the generic
 runner.
 
-The development launcher currently resolves the two exact profile names
+The development launcher currently resolves the exact access-point and procedure names
 through its bootstrap name-service connection. A production deployment
 controller must instead mint and inject only those two connection capabilities,
 manage generation fencing, and interpret the status page for rollout. Dynamic

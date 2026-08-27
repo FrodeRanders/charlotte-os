@@ -100,6 +100,13 @@ pub struct KafkaBrokerEndpoint<'a> {
     pub port: u16,
 }
 
+/// One application-facing Kafka capability endpoint. Its operation rights
+/// are checked by the connector independently of IPC transport rights.
+pub struct KafkaAuthorityEndpoint<'a> {
+    pub service_name: &'a [u8],
+    pub rights: u64,
+}
+
 /// Connector-only Kafka client authentication. Credentials are copied into
 /// the read-only launch profile, erased from the launcher's temporary buffer,
 /// and never delegated to applications.
@@ -122,14 +129,14 @@ pub enum KafkaAuthentication<'a> {
     },
 }
 
-/// A capability profile for one Kafka data-plane service. The endpoint grants
-/// access only to this broker, fixed consume topic/partition, allow-listed
-/// produce routes, consumer group, and transactional identity.
+/// A capability profile for one Kafka data-plane service. Its declared access
+/// points attenuate authority over this broker, fixed consume topic/partition,
+/// allow-listed produce routes, consumer group, and transactional identity.
 pub struct KafkaProfile<'a> {
-    /// Exact bounded name under which this connector instance registers.
-    /// Applications receive or resolve this reviewed name; they cannot change
-    /// it after launch.
-    pub service_name: &'a [u8],
+    /// Stable connector identity used in status and logs.
+    pub instance_name: &'a [u8],
+    /// The only application-facing endpoints published by this connector.
+    pub authority_endpoints: &'a [KafkaAuthorityEndpoint<'a>],
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
@@ -491,9 +498,19 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
             port: broker.port,
         })
         .collect();
+    let authority_endpoints: alloc::vec::Vec<charlotte_protocol_kafka::AuthorityEndpoint<'_>> =
+        profile
+            .authority_endpoints
+            .iter()
+            .map(|endpoint| charlotte_protocol_kafka::AuthorityEndpoint {
+                service_name: endpoint.service_name,
+                rights: endpoint.rights,
+            })
+            .collect();
     let encoded = zeroize::Zeroizing::new(
         charlotte_protocol_kafka::Profile {
-            service_name: profile.service_name,
+            instance_name: profile.instance_name,
+            authority_endpoints,
             endpoint_ipv4: profile.endpoint_ipv4,
             host: profile.host,
             port: profile.port,

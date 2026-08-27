@@ -43,6 +43,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
+    cq_wait,
     thread_exit,
 };
 use charlotte_kafka::{
@@ -93,7 +94,8 @@ struct ClientIdentity {
 }
 
 struct Profile {
-    service_name: Vec<u8>,
+    instance_name: Vec<u8>,
+    authority_endpoints: Vec<AuthorityEndpoint>,
     bootstrap: BrokerDestination,
     broker_endpoints: Vec<BrokerDestination>,
     tls: bool,
@@ -106,6 +108,16 @@ struct Profile {
     authentication: ConnectorAuthentication,
     rights: u64,
     transaction_timeout_ms: i32,
+}
+
+struct AuthorityEndpoint {
+    service_name: Vec<u8>,
+    rights: u64,
+}
+
+struct PublishedEndpoint {
+    endpoint: Endpoint,
+    rights: u64,
 }
 
 struct ScramCredentials {
@@ -172,7 +184,15 @@ impl Profile {
             },
         };
         Some(Self {
-            service_name: profile.service_name.to_vec(),
+            instance_name: profile.instance_name.to_vec(),
+            authority_endpoints: profile
+                .authority_endpoints
+                .iter()
+                .map(|endpoint| AuthorityEndpoint {
+                    service_name: endpoint.service_name.to_vec(),
+                    rights: endpoint.rights,
+                })
+                .collect(),
             bootstrap: BrokerDestination {
                 ip: profile.endpoint_ipv4,
                 host: String::from_utf8(profile.host.to_vec()).ok()?,
@@ -1574,10 +1594,39 @@ fn reply_record(reply: ReplyToken, id: u32, profile: &Profile, record: &wire::Re
     reply.reply_move(memory, i64::from(id)).is_ok()
 }
 
-fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::IncomingMessage) {
+fn required_rights(opcode: u32) -> u64 {
+    match opcode {
+        protocol::OP_PRODUCE | protocol::OP_PRODUCE_TO => protocol::RIGHT_PRODUCE,
+        protocol::OP_CONSUMER_OPEN
+        | protocol::OP_CONSUMER_POLL
+        | protocol::OP_DELIVERY_COMMIT
+        | protocol::OP_DELIVERY_RELEASE
+        | protocol::OP_CONSUMER_CLOSE => protocol::RIGHT_CONSUME,
+        protocol::OP_TX_BEGIN | protocol::OP_TX_COMMIT | protocol::OP_TX_ABORT => {
+            protocol::RIGHT_TRANSACTION
+        }
+        protocol::OP_TX_PRODUCE | protocol::OP_TX_PRODUCE_TO => {
+            protocol::RIGHT_TRANSACTION | protocol::RIGHT_PRODUCE
+        }
+        protocol::OP_TX_INCLUDE_DELIVERY => protocol::RIGHT_TRANSACTION | protocol::RIGHT_CONSUME,
+        _ => 0,
+    }
+}
+
+fn handle_message(
+    service: &mut Service<'_>,
+    endpoint_rights: u64,
+    mut message: catten_rt::owned::IncomingMessage,
+) {
     let Some(reply) = message.reply.take() else {
         return;
     };
+    let required = required_rights(message.opcode);
+    if endpoint_rights & required != required {
+        let _ = reply.reply(protocol::ERR_DENIED);
+        service.account(protocol::ERR_DENIED);
+        return;
+    }
     let owner = ClientIdentity {
         domain: message.sender,
         generation: message.sender_generation,
@@ -1699,7 +1748,7 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
             let _ = reply.reply(result);
         }
         protocol::OP_STATUS => {
-            result = (service.profile.rights & 0xffff) as i64
+            result = (endpoint_rights & 0xffff) as i64
                 | ((service.profile.partition as i64 & 0xffff) << 16);
             let _ = reply.reply(result);
         }
@@ -1751,17 +1800,30 @@ fn main(ctx: Context) -> ! {
     let (non_transactional_producer, transactional_producer) =
         broker.bootstrap(&profile).unwrap_or_else(|error| fail(0x4b00 | (-error as u32 & 0xff)));
 
-    let endpoint = Endpoint::create(protocol::INTERFACE, protocol::VERSION, 32)
-        .unwrap_or_else(|_| fail(0x4b06));
-    if !register_endpoint(ns_connection, &endpoint, &profile.service_name)
-        || endpoint.bind_completion_queue(0).is_err()
-    {
-        fail(0x4b07);
+    let mut endpoints = Vec::with_capacity(profile.authority_endpoints.len());
+    for authority in &profile.authority_endpoints {
+        let endpoint = Endpoint::create(protocol::INTERFACE, protocol::VERSION, 32)
+            .unwrap_or_else(|_| fail(0x4b06));
+        if !register_endpoint(ns_connection, &endpoint, &authority.service_name)
+            || endpoint.bind_completion_queue(0).is_err()
+        {
+            fail(0x4b07);
+        }
+        catten_rt::logln!(
+            "[kafka] access-point name={} rights={:#x}",
+            core::str::from_utf8(&authority.service_name).unwrap_or("?"),
+            authority.rights
+        );
+        endpoints.push(PublishedEndpoint {
+            endpoint,
+            rights: authority.rights,
+        });
     }
     catten_rt::logln!(
-        "[kafka] serving name={} broker={}:{} tls={} consume-topic={} partition={} \
-         produce-routes={} group={} transactional-id={} rights={:#x}",
-        core::str::from_utf8(&profile.service_name).unwrap_or("?"),
+        "[kafka] serving instance={} endpoints={} broker={}:{} tls={} consume-topic={} \
+         partition={} produce-routes={} group={} transactional-id={} ceiling={:#x}",
+        core::str::from_utf8(&profile.instance_name).unwrap_or("?"),
+        endpoints.len(),
         profile.bootstrap.host,
         profile.bootstrap.port,
         profile.tls,
@@ -1793,11 +1855,27 @@ fn main(ctx: Context) -> ! {
         aborts: 0,
         backpressure: 0,
     };
+    let mut next_endpoint = 0usize;
     loop {
-        match endpoint.receive() {
-            Ok(message) => handle_message(&mut service, message),
-            Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
-            Err(_) => config::write::<u32>(status::ERROR, 0x4b08),
+        let mut handled = false;
+        for offset in 0..endpoints.len() {
+            let index = (next_endpoint + offset) % endpoints.len();
+            let published = &endpoints[index];
+            match published.endpoint.try_receive() {
+                Ok(Some(message)) => {
+                    handled = true;
+                    handle_message(&mut service, published.rights, message);
+                }
+                Ok(None) => {}
+                Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
+                Err(_) => {
+                    config::write::<u32>(status::ERROR, 0x4b08);
+                }
+            }
+        }
+        next_endpoint = (next_endpoint + 1) % endpoints.len();
+        if !handled {
+            cq_wait(1, 0);
         }
     }
 }

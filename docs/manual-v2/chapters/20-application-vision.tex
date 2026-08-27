@@ -545,7 +545,7 @@ the same payload.
 CharlotteOS now has an implemented, capability-scoped Kafka compatibility
 service (\autoref{sec:kafka-service}). A provisioned instance exposes an
 explicit broker allow-list, a fixed consume partition, up to 64 allow-listed produce routes, a
-group, transactional identity, and rights set. Its
+group, transactional identity, and separately named authority endpoints. Its
 owned Rust client supports idempotent produce, bounded read-committed consume,
 explicit delivery acknowledgement, and a transaction that atomically combines
 Kafka output with the consumed delivery's group-offset advance. This supplies
@@ -555,12 +555,14 @@ The generated deployment should treat the broker connector and the behavioural
 role as separate authorities. Only \texttt{kafka} receives the immutable,
 digest-checked profile containing endpoint, trust, and authentication
 secrets. A producer, consumer, or transactional-step runner receives a
-connection capability to that connector. The activity procedure behind a step
+connection capability to the corresponding profile-defined access point. The
+connector enforces that endpoint's Kafka-rights ceiling for every opcode, so a
+producer-only connection cannot be used to consume or transact. The activity procedure behind a step
 receives only the bounded invocation capability and no Kafka authority.
-Each connector profile also fixes its own bounded registration name, so a
-deployment can provision one independently named connector per authority set
-without replacing a global \texttt{kafka} publication. The runner resolves
-only the connector name declared by its step profile.
+Each connector profile fixes all bounded access-point names, so a deployment
+can provision several least-authority connections from one secret-bearing
+connector without replacing a global \texttt{kafka} publication. The runner
+resolves only the transactional access point declared by its step profile.
 The generic \texttt{kafka\_step} runner now implements this split: it calls the
 procedure with borrowed input and an attempt number, validates its bounded
 output batch, and atomically produces admitted outputs with the consumed

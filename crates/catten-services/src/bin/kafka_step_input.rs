@@ -27,7 +27,7 @@ const INPUTS: [&[u8]; 4] = [
     b"charlotte-step-timeout",
     b"charlotte-step-dlq",
 ];
-const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
+const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);

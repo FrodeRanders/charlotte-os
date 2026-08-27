@@ -149,12 +149,13 @@ repository history remain authoritative.
         endpoint, trust, credential, and data-scope profiles are not ambient
         machine configuration. Opt-in AArch64 tests validate RustFS and Apache
         Kafka over verified TLS with required P-256 mTLS and SCRAM-SHA-256
-        client authentication. The Kafka test also runs the generic
+        client authentication. Its profile publishes distinct producer,
+        consumer, and transactional access points and verifies that the
+        producer endpoint rejects consumer and transaction operations. The
+        Kafka test also runs the generic
         transactional-step service through successful output, retry, procedure
         timeout, and terminal-DLQ paths while keeping broker authority out of
-        the called procedure. Its connector uses a profile-selected long
-        instance name, exercising named-instance plumbing rather than relying
-        on the legacy global name.
+        the called procedure.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a

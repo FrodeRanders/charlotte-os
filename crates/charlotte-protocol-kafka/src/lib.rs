@@ -2,9 +2,10 @@
 //!
 //! One service profile grants authority to a bounded broker-destination
 //! allow-list, one fixed consume topic/partition, an allow-listed set of
-//! produce routes, one consumer group, and one transactional identity. Broker
-//! credentials and Kafka producer epochs never cross this application-facing
-//! boundary.
+//! produce routes, one consumer group, and one transactional identity. It
+//! publishes separately named access points whose Kafka-rights masks attenuate
+//! that connector authority. Broker credentials and Kafka producer epochs
+//! never cross this application-facing boundary.
 #![no_std]
 
 extern crate alloc;
@@ -90,14 +91,17 @@ pub const MAX_MTLS_CERTIFICATE_BYTES: usize = 16 * 1024;
 pub const MAX_MTLS_PRIVATE_KEY_BYTES: usize = 4 * 1024;
 /// Matches the name service's one-page bounded name ABI.
 pub const MAX_INSTANCE_NAME_BYTES: usize = 256;
+/// Bounded number of separately published capability-bearing access points.
+pub const MAX_AUTHORITY_ENDPOINTS: usize = 64;
 pub const DEFAULT_ROUTE: u16 = 0;
-pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP4\0";
-pub const PROFILE_VERSION: u16 = 4;
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHKAFP5\0";
+pub const PROFILE_VERSION: u16 = 5;
 pub const PROFILE_HEADER_LEN: usize = 100;
 pub const PROFILE_DIGEST_OFFSET: usize = 16;
 pub const PROFILE_DIGEST_LEN: usize = 32;
 pub const PROFILE_ROUTE_HEADER_LEN: usize = 8;
 pub const PROFILE_BROKER_HEADER_LEN: usize = 8;
+pub const PROFILE_AUTHORITY_HEADER_LEN: usize = 16;
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 pub const PROFILE_FLAG_TLS: u16 = 1;
 pub const AUTH_NONE: u16 = 0;
@@ -128,6 +132,17 @@ pub struct BrokerEndpoint<'a> {
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
+}
+
+/// One published connector endpoint and its Kafka operation ceiling.
+///
+/// IPC rights only decide whether a caller may issue a call. These rights are
+/// checked again by the connector against the opcode received on this exact
+/// endpoint.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AuthorityEndpoint<'a> {
+    pub service_name: &'a [u8],
+    pub rights: u64,
 }
 
 /// Connector-only Kafka authentication material. This is part of the
@@ -170,9 +185,11 @@ impl ProduceRoute<'_> {
 /// capability. All variable-length data is covered by the SHA-256 digest.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Profile<'a> {
-    /// Exact local name under which this connector instance publishes its
-    /// endpoint. It is deployment policy, not application-selected input.
-    pub service_name: &'a [u8],
+    /// Stable connector instance identity used for status and diagnostics.
+    /// Applications use one of `authority_endpoints`, never this label.
+    pub instance_name: &'a [u8],
+    /// Separately published endpoints whose rights are bounded by `rights`.
+    pub authority_endpoints: Vec<AuthorityEndpoint<'a>>,
     pub endpoint_ipv4: [u8; 4],
     pub host: &'a [u8],
     pub port: u16,
@@ -203,6 +220,8 @@ pub enum ProfileError {
     DuplicateRoute,
     TooManyBrokers,
     DuplicateBroker,
+    TooManyAuthorities,
+    DuplicateAuthority,
 }
 
 impl Profile<'_> {
@@ -214,8 +233,12 @@ impl Profile<'_> {
         let broker_bytes = self.broker_endpoints.iter().try_fold(0usize, |total, broker| {
             total.checked_add(PROFILE_BROKER_HEADER_LEN + broker.host.len())
         });
+        let authority_bytes =
+            self.authority_endpoints.iter().try_fold(0usize, |total, endpoint| {
+                total.checked_add(PROFILE_AUTHORITY_HEADER_LEN + endpoint.service_name.len())
+            });
         let total_len = PROFILE_HEADER_LEN
-            .checked_add(self.service_name.len())
+            .checked_add(self.instance_name.len())
             .and_then(|len| len.checked_add(self.host.len()))
             .and_then(|len| len.checked_add(self.ca_certificate_der.len()))
             .and_then(|len| len.checked_add(self.topic.len()))
@@ -238,6 +261,7 @@ impl Profile<'_> {
             })
             .and_then(|len| len.checked_add(route_bytes?))
             .and_then(|len| len.checked_add(broker_bytes?))
+            .and_then(|len| len.checked_add(authority_bytes?))
             .ok_or(ProfileError::TooLarge)?;
         if total_len > MAX_PROFILE_BYTES || total_len > u32::MAX as usize {
             return Err(ProfileError::TooLarge);
@@ -274,10 +298,11 @@ impl Profile<'_> {
         put_u16(&mut output, 90, auth_kind);
         put_u16(&mut output, 92, username.len() as u16);
         put_u16(&mut output, 94, password.len() as u16);
-        put_u16(&mut output, 96, self.service_name.len() as u16);
+        put_u16(&mut output, 96, self.instance_name.len() as u16);
+        put_u16(&mut output, 98, self.authority_endpoints.len() as u16);
         let mut offset = PROFILE_HEADER_LEN;
         for field in [
-            self.service_name,
+            self.instance_name,
             self.host,
             self.ca_certificate_der,
             self.topic,
@@ -314,6 +339,14 @@ impl Profile<'_> {
             offset += PROFILE_BROKER_HEADER_LEN;
             output[offset..offset + broker.host.len()].copy_from_slice(broker.host);
             offset += broker.host.len();
+        }
+        for endpoint in &self.authority_endpoints {
+            put_u64(&mut output, offset, endpoint.rights);
+            put_u16(&mut output, offset + 8, endpoint.service_name.len() as u16);
+            offset += PROFILE_AUTHORITY_HEADER_LEN;
+            output[offset..offset + endpoint.service_name.len()]
+                .copy_from_slice(endpoint.service_name);
+            offset += endpoint.service_name.len();
         }
         let digest = charlotte_launch::sha256::digest(&output);
         output[PROFILE_DIGEST_OFFSET..PROFILE_DIGEST_OFFSET + PROFILE_DIGEST_LEN]
@@ -353,10 +386,8 @@ impl Profile<'_> {
         let auth_kind = get_u16(input, 90)?;
         let username_len = get_u16(input, 92)? as usize;
         let password_len = get_u16(input, 94)? as usize;
-        let service_name_len = get_u16(input, 96)? as usize;
-        if get_u16(input, 98)? != 0 {
-            return Err(ProfileError::InvalidField);
-        }
+        let instance_name_len = get_u16(input, 96)? as usize;
+        let authority_count = get_u16(input, 98)? as usize;
         let max_produce_routes = get_u16(input, 74)?;
         if flags & !PROFILE_FLAG_TLS != 0
             || route_count > MAX_PRODUCE_ROUTES
@@ -381,8 +412,11 @@ impl Profile<'_> {
         if broker_count > MAX_BROKER_ENDPOINTS.saturating_sub(1) {
             return Err(ProfileError::TooManyBrokers);
         }
+        if authority_count == 0 || authority_count > MAX_AUTHORITY_ENDPOINTS {
+            return Err(ProfileError::TooManyAuthorities);
+        }
         let lengths = [
-            service_name_len,
+            instance_name_len,
             get_u16(input, 76)? as usize,
             get_u32(input, 84)? as usize,
             get_u16(input, 78)? as usize,
@@ -468,11 +502,31 @@ impl Profile<'_> {
                 port,
             });
         }
+        let mut authority_endpoints = Vec::with_capacity(authority_count);
+        for _ in 0..authority_count {
+            let header = input
+                .get(offset..offset + PROFILE_AUTHORITY_HEADER_LEN)
+                .ok_or(ProfileError::InvalidField)?;
+            let rights = get_u64(header, 0)?;
+            let service_name_len = get_u16(header, 8)? as usize;
+            if header[10..PROFILE_AUTHORITY_HEADER_LEN].iter().any(|byte| *byte != 0) {
+                return Err(ProfileError::InvalidField);
+            }
+            offset += PROFILE_AUTHORITY_HEADER_LEN;
+            let end = offset.checked_add(service_name_len).ok_or(ProfileError::TooLarge)?;
+            let service_name = input.get(offset..end).ok_or(ProfileError::InvalidField)?;
+            offset = end;
+            authority_endpoints.push(AuthorityEndpoint {
+                service_name,
+                rights,
+            });
+        }
         if offset != input.len() {
             return Err(ProfileError::InvalidField);
         }
         let profile = Profile {
-            service_name: fields[0],
+            instance_name: fields[0],
+            authority_endpoints,
             endpoint_ipv4: input[48..52].try_into().map_err(|_| ProfileError::InvalidHeader)?,
             host: fields[1],
             port: get_u16(input, 52)?,
@@ -512,9 +566,9 @@ impl Profile<'_> {
 }
 
 fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
-    if profile.service_name.is_empty()
-        || profile.service_name.len() > MAX_INSTANCE_NAME_BYTES
-        || !profile.service_name.iter().all(u8::is_ascii_graphic)
+    if profile.instance_name.is_empty()
+        || profile.instance_name.len() > MAX_INSTANCE_NAME_BYTES
+        || !profile.instance_name.iter().all(u8::is_ascii_graphic)
         || profile.port == 0
         || profile.host.is_empty()
         || profile.host.len() > 255
@@ -532,6 +586,27 @@ fn validate_profile(profile: &Profile<'_>) -> Result<(), ProfileError> {
         || profile.tls != !profile.ca_certificate_der.is_empty()
     {
         return Err(ProfileError::InvalidField);
+    }
+    if profile.authority_endpoints.is_empty()
+        || profile.authority_endpoints.len() > MAX_AUTHORITY_ENDPOINTS
+    {
+        return Err(ProfileError::TooManyAuthorities);
+    }
+    for (index, endpoint) in profile.authority_endpoints.iter().enumerate() {
+        if endpoint.service_name.is_empty()
+            || endpoint.service_name.len() > MAX_INSTANCE_NAME_BYTES
+            || !endpoint.service_name.iter().all(u8::is_ascii_graphic)
+            || endpoint.rights == 0
+            || endpoint.rights & !profile.rights != 0
+        {
+            return Err(ProfileError::InvalidField);
+        }
+        if profile.authority_endpoints[..index]
+            .iter()
+            .any(|candidate| candidate.service_name == endpoint.service_name)
+        {
+            return Err(ProfileError::DuplicateAuthority);
+        }
     }
     match profile.authentication {
         Authentication::None => {}
@@ -878,6 +953,13 @@ impl DeliveredRecord<'_> {
 mod tests {
     use super::*;
 
+    fn authorities() -> Vec<AuthorityEndpoint<'static>> {
+        alloc::vec![AuthorityEndpoint {
+            service_name: DEFAULT_NAME,
+            rights: ALL_RIGHTS,
+        }]
+    }
+
     #[test]
     fn request_round_trip_preserves_null_and_empty() {
         let request = RecordRequest::new(None, Some(b"")).with_timestamp(7);
@@ -903,7 +985,17 @@ mod tests {
     #[test]
     fn profile_round_trip_and_integrity() {
         let profile = Profile {
-            service_name: b"kafka/orders/worker-1",
+            instance_name: b"orders-worker-1",
+            authority_endpoints: alloc::vec![
+                AuthorityEndpoint {
+                    service_name: b"kafka/orders/worker-1/producer",
+                    rights: RIGHT_PRODUCE,
+                },
+                AuthorityEndpoint {
+                    service_name: b"kafka/orders/worker-1/step",
+                    rights: ALL_RIGHTS,
+                },
+            ],
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -939,14 +1031,15 @@ mod tests {
         assert_eq!(Profile::decode(&corrupt), Err(ProfileError::DigestMismatch));
 
         let mut invalid_name = profile;
-        invalid_name.service_name = b"kafka/orders/bad name";
+        invalid_name.authority_endpoints[0].service_name = b"kafka/orders/bad name";
         assert_eq!(invalid_name.encode(), Err(ProfileError::InvalidField));
     }
 
     #[test]
     fn profile_rejects_unusable_and_duplicate_broker_destinations() {
         let mut profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka-1.test",
             port: 9093,
@@ -985,7 +1078,8 @@ mod tests {
     #[test]
     fn profile_rejects_non_utf8_primary_hostname() {
         let profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"\xff",
             port: 9093,
@@ -1008,7 +1102,8 @@ mod tests {
     #[test]
     fn profile_requires_tls_and_bounded_ascii_for_scram() {
         let mut profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1041,7 +1136,8 @@ mod tests {
     #[test]
     fn profile_requires_tls_and_bounded_identity_for_mtls() {
         let mut profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1086,7 +1182,8 @@ mod tests {
             partition: 0,
         };
         let profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1113,7 +1210,8 @@ mod tests {
             partition: 0,
         };
         let mut profile = Profile {
-            service_name: DEFAULT_NAME,
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: authorities(),
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka.test",
             port: 9093,
@@ -1134,6 +1232,46 @@ mod tests {
         profile.produce_routes = alloc::vec![route; MAX_PRODUCE_ROUTES + 1];
         profile.max_produce_routes = (MAX_PRODUCE_ROUTES + 1) as u16;
         assert_eq!(profile.encode(), Err(ProfileError::TooManyRoutes));
+    }
+
+    #[test]
+    fn profile_rejects_duplicate_or_escalated_authority_endpoints() {
+        let mut profile = Profile {
+            instance_name: DEFAULT_NAME,
+            authority_endpoints: alloc::vec![
+                AuthorityEndpoint {
+                    service_name: b"kafka/producer",
+                    rights: RIGHT_PRODUCE,
+                },
+                AuthorityEndpoint {
+                    service_name: b"kafka/producer",
+                    rights: RIGHT_PRODUCE,
+                },
+            ],
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"kafka.test",
+            port: 9093,
+            broker_endpoints: alloc::vec![],
+            tls: false,
+            ca_certificate_der: b"",
+            topic: b"events",
+            partition: 0,
+            produce_routes: alloc::vec![],
+            max_produce_routes: 64,
+            group: b"workers",
+            transactional_id: b"worker-1",
+            authentication: Authentication::None,
+            rights: RIGHT_PRODUCE,
+            transaction_timeout_ms: 60_000,
+        };
+        assert_eq!(profile.encode(), Err(ProfileError::DuplicateAuthority));
+
+        profile.authority_endpoints.truncate(1);
+        profile.authority_endpoints[0].rights = ALL_RIGHTS;
+        assert_eq!(profile.encode(), Err(ProfileError::InvalidField));
+
+        profile.authority_endpoints.clear();
+        assert_eq!(profile.encode(), Err(ProfileError::TooManyAuthorities));
     }
 
     #[test]

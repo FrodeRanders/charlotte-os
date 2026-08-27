@@ -19,11 +19,13 @@ The implementation is split at the userspace boundary:
 
 ## Provisioning and authority
 
-One `KafkaProfile` fixes an exact connector instance name and grants an
+One `KafkaProfile` fixes a connector instance identity and grants an
 allow-list of at most 32 broker endpoints, a fixed
 consume topic/partition, an ordered allow-list of produce topic/partition
-routes, a consumer group, transactional identity, and rights mask. Applications
-receive only the service connection capability. They cannot name an arbitrary
+routes, a consumer group, transactional identity, and connector rights ceiling.
+It also declares one or more named authority endpoints, each with its own
+subset of that ceiling. Applications receive only the connection capability
+for their declared authority endpoint. They cannot name an arbitrary
 broker or topic at runtime: `Route::provisioned(n)` selects an entry already
 admitted by the launch profile, and the service rejects every other index.
 
@@ -36,7 +38,7 @@ config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
 identity, optional connector-only SASL credentials, rights, transaction timeout,
 and an operator-selected route ceiling.
-The launcher encodes profile version 4, calculates a SHA-256 integrity digest, and
+The launcher encodes profile version 5, calculates a SHA-256 integrity digest, and
 transfers its memory capability with kernel-enforced `MAP_READ` rights only.
 Before opening a socket, `kafka.elf` validates the exact object length, version,
 digest, UTF-8 hostnames, field bounds, route and broker counts, safety ceilings,
@@ -49,13 +51,15 @@ not the profile or its broker/TLS/SASL configuration. Client-certificate
 secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
 
-The instance name is non-empty printable ASCII and at most 256 bytes. It is
-covered by the profile digest and cannot be selected or changed through the
-Kafka application ABI. Short names use the compact name-service operation;
-longer names such as `kafka/orders/validate` use the memory-carried operation.
-Several connectors can consequently coexist without replacing one global
-`kafka` registration, each with an independent broker, identity, route set,
-and rights profile.
+The instance name and every access-point name are non-empty printable ASCII and
+at most 256 bytes. They are covered by the profile digest and cannot be
+selected or changed through the Kafka application ABI. Short names use the
+compact name-service operation; longer names use the memory-carried operation.
+The connector publishes only the declared access points. On each call it maps
+the opcode to its required Kafka rights and rejects missing rights with
+`ERR_DENIED` before decoding attached memory or touching delivery/transaction
+state. A producer-only caller therefore cannot open a consumer or transaction,
+even when the same connector also publishes a transactional access point.
 
 The implementation hard ceiling is 64 produce routes. A deployment may set
 `KafkaProfile::max_produce_routes` lower; both the declared limit and actual
@@ -64,19 +68,18 @@ remaining independent of the launch manifest's 32-record capacity.
 
 ## Owned application API
 
-Resolve the connector name from the deployment contract, keep the returned
-owned connection, and borrow it through a client. The legacy default name is
-still `kafka`:
+Resolve the authority-endpoint name from the deployment contract, keep the
+returned owned connection, and borrow it through a client:
 
 ```rust
 use catten_services::{
-    kafka,
     kafka_client::Client,
-    wait_for_registered_name_owned,
+    wait_for_registered_name_bytes_owned,
 };
 use charlotte_protocol_kafka::RecordRequest;
 
-let (_, connection) = wait_for_registered_name_owned(ns, kafka::NAME)?;
+let (_, connection) =
+    wait_for_registered_name_bytes_owned(ns, b"kafka/orders/producer")?;
 let client = Client::new(connection.as_ref());
 let offset = client.produce(RecordRequest::new(Some(b"key"), Some(b"value")))?;
 ```

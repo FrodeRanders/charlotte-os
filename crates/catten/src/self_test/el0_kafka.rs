@@ -7,6 +7,7 @@ use crate::{
     service::{
         launch::{
             KafkaAuthentication,
+            KafkaAuthorityEndpoint,
             KafkaBrokerEndpoint,
             KafkaProduceRoute,
             KafkaProfile,
@@ -21,6 +22,9 @@ use crate::{
 
 static mut KAFKA_NS: Option<NameServiceHandle> = None;
 const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
+const PRODUCER_NAME: &[u8] = b"kafka/selftest/main/producer";
+const CONSUMER_NAME: &[u8] = b"kafka/selftest/main/consumer";
+const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
 pub fn test_el0_kafka() {
     logln!("Testing EL0 Kafka idempotent and transactional data plane...");
@@ -41,7 +45,21 @@ extern "C" fn verify_el0_kafka() {
     let service = crate::service::launch::launch_kafka_profile(
         ns,
         &KafkaProfile {
-            service_name: CONNECTOR_NAME,
+            instance_name: CONNECTOR_NAME,
+            authority_endpoints: &[
+                KafkaAuthorityEndpoint {
+                    service_name: PRODUCER_NAME,
+                    rights: charlotte_protocol_kafka::RIGHT_PRODUCE,
+                },
+                KafkaAuthorityEndpoint {
+                    service_name: CONSUMER_NAME,
+                    rights: charlotte_protocol_kafka::RIGHT_CONSUME,
+                },
+                KafkaAuthorityEndpoint {
+                    service_name: TRANSACTION_NAME,
+                    rights: charlotte_protocol_kafka::ALL_RIGHTS,
+                },
+            ],
             endpoint_ipv4: [10, 0, 2, 2],
             host: b"kafka-1.test",
             port: 19_092,
@@ -143,7 +161,7 @@ extern "C" fn verify_el0_kafka() {
         ns,
         &KafkaStepProfile {
             procedure_name: b"kproc",
-            kafka_connector_name: CONNECTOR_NAME,
+            kafka_connector_name: TRANSACTION_NAME,
             allowed_routes: &[1],
             dlq_route: 1,
             max_outputs: 4,

@@ -30,7 +30,8 @@ const INPUT: &[u8] = b"charlotte-input";
 const OUTPUT: &[u8] = b"charlotte-output";
 const ROUTED_OUTPUT: &[u8] = b"charlotte-routed-output";
 const ABORTED: &[u8] = b"charlotte-aborted";
-const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
+const PRODUCER_NAME: &[u8] = b"kafka/selftest/main/producer";
+const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
 
 mod status {
     pub const STAGE: usize = 0;
@@ -73,11 +74,19 @@ fn next_value<'connection>(
 fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 1);
     let ns = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4b11));
-    let (_, connection) =
-        wait_for_registered_name_bytes_owned(ns, CONNECTOR_NAME).unwrap_or_else(|| fail(0x4b12));
-    let client = Client::new(connection.as_ref());
+    let (_, producer_connection) =
+        wait_for_registered_name_bytes_owned(ns, PRODUCER_NAME).unwrap_or_else(|| fail(0x4b12));
+    let producer = Client::new(producer_connection.as_ref());
+    if !matches!(producer.consumer(), Err(Error::Service(protocol::ERR_DENIED)))
+        || !matches!(producer.begin_transaction(), Err(Error::Service(protocol::ERR_DENIED)))
+    {
+        fail(0x4b28);
+    }
+    let (_, transaction_connection) =
+        wait_for_registered_name_bytes_owned(ns, TRANSACTION_NAME).unwrap_or_else(|| fail(0x4b29));
+    let client = Client::new(transaction_connection.as_ref());
 
-    let input_offset = produce_when_ready(&client, INPUT).unwrap_or_else(|_| fail(0x4b13));
+    let input_offset = produce_when_ready(&producer, INPUT).unwrap_or_else(|_| fail(0x4b13));
     config::write::<u32>(status::STAGE, 2);
 
     let mut consumer = client.consumer().unwrap_or_else(|_| fail(0x4b14));
@@ -120,8 +129,8 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::OFFSET, output_offset as u32);
     config::write::<u32>(status::STAGE, status::SUCCESS);
     catten_rt::logln!(
-        "[kafka-smoke] idempotent produce, multi-topic transaction, read_committed consume, \
-         transactional offset commit, and abort filtering succeeded"
+        "[kafka-smoke] producer attenuation, idempotent produce, multi-topic transaction, \
+         read_committed consume, transactional offset commit, and abort filtering succeeded"
     );
     unsafe { thread_exit() }
 }
