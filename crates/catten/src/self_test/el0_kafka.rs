@@ -28,14 +28,15 @@ extern "C" fn verify_el0_kafka() {
     use crate::cpu::scheduler::yield_lp;
 
     let ns = unsafe { KAFKA_NS.as_ref() }.expect("[kafka-test] name service missing");
+    let ca_der = include_bytes!(env!("CATTEN_KAFKA_TEST_CA_DER"));
     let service = crate::service::launch::launch_kafka_profile(
         ns,
         &KafkaProfile {
             endpoint_ipv4: [10, 0, 2, 2],
-            host: b"10.0.2.2",
+            host: b"kafka.test",
             port: 19_092,
-            tls: false,
-            ca_certificate_der: None,
+            tls: true,
+            ca_certificate_der: Some(ca_der),
             topic: b"charlotte-events",
             partition: 0,
             group: b"charlotte-qemu-smoke-group",

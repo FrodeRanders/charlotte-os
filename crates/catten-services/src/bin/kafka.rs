@@ -6,6 +6,7 @@
 extern crate alloc;
 
 use alloc::{
+    boxed::Box,
     collections::BTreeMap,
     string::String,
     vec::Vec,
@@ -16,6 +17,7 @@ use catten_rt::{
     ManifestValue,
     config,
     owned::{
+        Connection,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
@@ -23,11 +25,14 @@ use catten_rt::{
     },
 };
 use catten_services::{
+    entropy,
     kafka as protocol,
     ns,
     sleep_ms,
     socket,
     time,
+    tls_client,
+    try_registered_name_owned,
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
 };
@@ -59,6 +64,8 @@ const MAX_CONSUMERS: usize = 8;
 const MAX_DELIVERIES: usize = 8;
 const COORDINATOR_ATTEMPTS: usize = 120;
 const COORDINATOR_RETRY_MS: u64 = 250;
+const TLS_TIME_ATTEMPTS: usize = 120;
+const TLS_TIME_RETRY_MS: u64 = 250;
 
 mod status {
     pub const STAGE: usize = 0;
@@ -81,6 +88,8 @@ struct Profile {
     ip: [u8; 4],
     host: String,
     port: u16,
+    tls: bool,
+    ca_der: Vec<u8>,
     topic: Vec<u8>,
     partition: i32,
     group: Vec<u8>,
@@ -100,7 +109,9 @@ impl Profile {
         let host = manifest_text(ctx, protocol::manifest::HOST)?;
         let port = manifest_unsigned(ctx, protocol::manifest::PORT)
             .and_then(|value| u16::try_from(value).ok())?;
-        let tls = manifest_unsigned(ctx, protocol::manifest::TLS).unwrap_or(0);
+        let tls_value = manifest_unsigned(ctx, protocol::manifest::TLS).unwrap_or(0);
+        let tls = tls_value == 1;
+        let ca_der = manifest_bytes(ctx, protocol::manifest::CA_DER).unwrap_or_default();
         let topic = manifest_bytes(ctx, protocol::manifest::TOPIC)?;
         let partition = manifest_unsigned(ctx, protocol::manifest::PARTITION)
             .and_then(|value| i32::try_from(value).ok())?;
@@ -113,7 +124,8 @@ impl Profile {
                 .try_into()
                 .ok()?;
         if port == 0
-            || tls != 0
+            || tls_value > 1
+            || (tls && ca_der.is_empty())
             || host.is_empty()
             || host.len() > 255
             || topic.is_empty()
@@ -130,6 +142,8 @@ impl Profile {
             ip,
             host,
             port,
+            tls,
+            ca_der,
             topic,
             partition,
             group,
@@ -187,6 +201,12 @@ fn unix_millis(connection: ConnectionRef<'_>) -> Option<i64> {
         .checked_add(i64::from(snapshot.nanosecond / 1_000_000))
 }
 
+fn tls_unix_seconds(connection: ConnectionRef<'_>) -> Option<u64> {
+    let snapshot = time_snapshot(connection)?;
+    (snapshot.state == time::STATE_SYNCHRONIZED && snapshot.unix_seconds > 0)
+        .then_some(snapshot.unix_seconds as u64)
+}
+
 fn tcpip_has_ipv4(connection: ConnectionRef<'_>) -> bool {
     let Ok(call) = connection.call(socket::OP_STATUS, 0) else {
         return false;
@@ -208,47 +228,129 @@ fn tcpip_has_ipv4(connection: ConnectionRef<'_>) -> bool {
 
 struct BrokerTransport<'connection> {
     tcp: ConnectionRef<'connection>,
+    entropy: Option<ConnectionRef<'connection>>,
+    clock: ConnectionRef<'connection>,
     ip: [u8; 4],
     port: u16,
-    socket: Option<socket::OwnedSocket<'connection>>,
+    tls: bool,
+    host: String,
+    ca_der: Vec<u8>,
+    stream: Option<BrokerStream<'connection>>,
     received: Vec<u8>,
 }
 
+enum BrokerStream<'connection> {
+    Plain(socket::OwnedSocket<'connection>),
+    Tls(Box<tls_client::OwnedTlsStream<'connection>>),
+}
+
+impl BrokerStream<'_> {
+    fn send_all(&mut self, bytes: &[u8]) -> Result<(), ()> {
+        match self {
+            Self::Plain(socket) => {
+                socket.send_all(bytes, SEND_ATTEMPTS, SEND_RETRY_MS).map_err(|_| ())
+            }
+            Self::Tls(stream) => stream.send_all(bytes).map_err(|_| ()),
+        }
+    }
+
+    fn receive(&mut self) -> Result<Vec<u8>, i64> {
+        match self {
+            Self::Plain(socket) => {
+                let chunk = socket
+                    .receive_timeout(RECEIVE_ATTEMPTS, RECEIVE_RETRY_MS)
+                    .map_err(|_| protocol::ERR_TIMEOUT)?
+                    .ok_or(protocol::ERR_TRANSPORT)?;
+                let (memory, len) = chunk.into_parts();
+                let mapping = memory.map_read_only().map_err(|_| protocol::ERR_TRANSPORT)?;
+                Ok(mapping.as_slice()[..len].to_vec())
+            }
+            Self::Tls(stream) => stream.receive().map_err(|_| protocol::ERR_TRANSPORT),
+        }
+    }
+}
+
 impl<'connection> BrokerTransport<'connection> {
-    fn new(tcp: ConnectionRef<'connection>, ip: [u8; 4], port: u16) -> Self {
+    fn new(
+        tcp: ConnectionRef<'connection>,
+        entropy: Option<ConnectionRef<'connection>>,
+        clock: ConnectionRef<'connection>,
+        profile: &Profile,
+    ) -> Self {
         Self {
             tcp,
-            ip,
-            port,
-            socket: None,
+            entropy,
+            clock,
+            ip: profile.ip,
+            port: profile.port,
+            tls: profile.tls,
+            host: profile.host.clone(),
+            ca_der: profile.ca_der.clone(),
+            stream: None,
             received: Vec::new(),
         }
     }
 
     fn connect(&mut self) -> Result<(), i64> {
-        if self.socket.is_some() {
+        if self.stream.is_some() {
             return Ok(());
         }
         let socket = socket::OwnedSocket::open(self.tcp, socket::DOMAIN_TCP)
             .map_err(|_| protocol::ERR_TRANSPORT)?;
         socket.connect_ipv4(self.ip, self.port).map_err(|_| protocol::ERR_TRANSPORT)?;
-        self.socket = Some(socket);
+        let stream = if self.tls {
+            let unix_seconds = tls_unix_seconds(self.clock).ok_or(protocol::ERR_TLS_REQUIRED)?;
+            let stream = tls_client::OwnedTlsStream::open(
+                socket,
+                self.entropy,
+                tls_client::OpenConfig {
+                    server_name: &self.host,
+                    ca_certificate_der: &self.ca_der,
+                    unix_seconds,
+                    socket_bounds: tls_client::SocketBounds {
+                        send_attempts: SEND_ATTEMPTS,
+                        send_retry_ms: SEND_RETRY_MS,
+                        receive_attempts: RECEIVE_ATTEMPTS,
+                        receive_retry_ms: RECEIVE_RETRY_MS,
+                        receive_chunk_len: 16 * 1024,
+                    },
+                },
+            )
+            .map_err(|error| {
+                match error {
+                    tls_client::OpenError::Handshake(code) => {
+                        catten_rt::logln!("[kafka] TLS handshake verification failed ({})", code)
+                    }
+                    tls_client::OpenError::EntropyUnavailable => {
+                        catten_rt::logln!("[kafka] TLS unavailable: system entropy source failed")
+                    }
+                    tls_client::OpenError::InvalidConfiguration => {
+                        catten_rt::logln!("[kafka] invalid TLS transport profile")
+                    }
+                }
+                protocol::ERR_TLS_REQUIRED
+            })?;
+            BrokerStream::Tls(Box::new(stream))
+        } else {
+            BrokerStream::Plain(socket)
+        };
+        self.stream = Some(stream);
         self.received.clear();
         Ok(())
     }
 
     fn request(&mut self, request: &[u8]) -> Result<Vec<u8>, i64> {
         self.connect()?;
-        let socket = self.socket.as_ref().ok_or(protocol::ERR_TRANSPORT)?;
-        if socket.send_all(request, SEND_ATTEMPTS, SEND_RETRY_MS).is_err() {
-            self.socket.take();
+        let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
+        if stream.send_all(request).is_err() {
+            self.stream.take();
             return Err(protocol::ERR_TRANSPORT);
         }
         let result = self.read_frame();
         if result.is_err() {
             // A late reply must not be mistaken for the response to a later
             // correlation ID. Reconnect after every incomplete exchange.
-            self.socket.take();
+            self.stream.take();
             self.received.clear();
         }
         result
@@ -261,7 +363,7 @@ impl<'connection> BrokerTransport<'connection> {
                     self.received[..4].try_into().map_err(|_| protocol::ERR_PROTOCOL)?,
                 );
                 if payload < 4 || payload as usize > wire::MAX_FRAME_LEN {
-                    self.socket.take();
+                    self.stream.take();
                     return Err(protocol::ERR_PROTOCOL);
                 }
                 let frame_len = payload as usize + 4;
@@ -271,16 +373,10 @@ impl<'connection> BrokerTransport<'connection> {
                     return Ok(frame);
                 }
             }
-            let socket = self.socket.as_ref().ok_or(protocol::ERR_TRANSPORT)?;
-            let chunk = socket
-                .receive_timeout(RECEIVE_ATTEMPTS, RECEIVE_RETRY_MS)
-                .map_err(|_| protocol::ERR_TIMEOUT)?
-                .ok_or(protocol::ERR_TRANSPORT)?;
-            let (memory, len) = chunk.into_parts();
-            let mapping = memory.map_read_only().map_err(|_| protocol::ERR_TRANSPORT)?;
-            self.received.extend_from_slice(&mapping.as_slice()[..len]);
+            let stream = self.stream.as_mut().ok_or(protocol::ERR_TRANSPORT)?;
+            self.received.extend_from_slice(&stream.receive()?);
             if self.received.len() > wire::MAX_FRAME_LEN + 4 {
-                self.socket.take();
+                self.stream.take();
                 return Err(protocol::ERR_TOO_LARGE);
             }
         }
@@ -293,9 +389,14 @@ struct BrokerSession<'connection> {
 }
 
 impl<'connection> BrokerSession<'connection> {
-    fn new(tcp: ConnectionRef<'connection>, profile: &Profile) -> Self {
+    fn new(
+        tcp: ConnectionRef<'connection>,
+        entropy: Option<ConnectionRef<'connection>>,
+        clock: ConnectionRef<'connection>,
+        profile: &Profile,
+    ) -> Self {
         Self {
-            transport: BrokerTransport::new(tcp, profile.ip, profile.port),
+            transport: BrokerTransport::new(tcp, entropy, clock, profile),
             correlation: 1,
         }
     }
@@ -1204,14 +1305,35 @@ fn main(ctx: Context) -> ! {
         wait_for_registered_name_owned(ns_connection, socket::NAME).unwrap_or_else(|| fail(0x4b03));
     let (_, time_connection) =
         wait_for_registered_name_owned(ns_connection, time::NAME).unwrap_or_else(|| fail(0x4b04));
+    let entropy_connection =
+        try_registered_name_owned(ns_connection, entropy::NAME).map(|(_, connection)| connection);
     if !wait_for_local_ready_owned(ns_connection) {
         fail(0x4b05);
     }
     while !tcpip_has_ipv4(tcp_connection.as_ref()) {
         sleep_ms(250);
     }
+    if profile.tls {
+        let mut synchronized = false;
+        for _ in 0..TLS_TIME_ATTEMPTS {
+            if tls_unix_seconds(time_connection.as_ref()).is_some() {
+                synchronized = true;
+                break;
+            }
+            sleep_ms(TLS_TIME_RETRY_MS);
+        }
+        if !synchronized {
+            catten_rt::logln!("[kafka] TLS unavailable: time service did not synchronize");
+            fail(0x4b00 | (-protocol::ERR_TLS_REQUIRED as u32 & 0xff));
+        }
+    }
 
-    let mut broker = BrokerSession::new(tcp_connection.as_ref(), &profile);
+    let mut broker = BrokerSession::new(
+        tcp_connection.as_ref(),
+        entropy_connection.as_ref().map(Connection::as_ref),
+        time_connection.as_ref(),
+        &profile,
+    );
     let (non_transactional_producer, transactional_producer) =
         broker.bootstrap(&profile).unwrap_or_else(|error| fail(0x4b00 | (-error as u32 & 0xff)));
 
@@ -1231,10 +1353,11 @@ fn main(ctx: Context) -> ! {
         fail(0x4b07);
     }
     catten_rt::logln!(
-        "[kafka] serving broker={}:{} topic={} partition={} group={} transactional-id={} \
+        "[kafka] serving broker={}:{} tls={} topic={} partition={} group={} transactional-id={} \
          rights={:#x}",
         profile.host,
         profile.port,
+        profile.tls,
         core::str::from_utf8(&profile.topic).unwrap_or("?"),
         profile.partition,
         core::str::from_utf8(&profile.group).unwrap_or("?"),

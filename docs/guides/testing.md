@@ -60,8 +60,9 @@ test-only support. See
 [S3 client service](../reference/s3-client.md#rustfs-integration-test).
 
 `--kafka-test --timeout 300` similarly adds a disposable Apache Kafka KRaft
-container and an in-guest verifier. The verifier covers idempotent production,
-bounded read-committed consumption, aborted-record filtering, and an atomic
+container with an ephemeral verified TLS listener and an in-guest verifier.
+The verifier covers the TLS handshake, idempotent production, bounded
+read-committed consumption, aborted-record filtering, and an atomic
 consume-transform-produce transaction with the consumer offset included. The
 runner creates a fresh single-partition `charlotte-events` topic and removes
 the fixture and its volumes on exit. See

@@ -93,8 +93,7 @@ pub struct KafkaProfile<'a> {
     pub host: &'a [u8],
     pub port: u16,
     pub tls: bool,
-    /// Reserved for the TLS transport profile. The initial service supports
-    /// plaintext Kafka only and rejects profiles with `tls` set.
+    /// DER-encoded X.509 trust anchor required when `tls` is set.
     pub ca_certificate_der: Option<&'a [u8]>,
     pub topic: &'a [u8],
     pub partition: u32,

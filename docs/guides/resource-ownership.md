@@ -23,6 +23,7 @@ applications.
 | Completion | `Completion` | Cancels, waits for terminal state, then closes |
 | Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
 | Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
+| Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
 | MMIO/interrupt/DMA | `MmioRegion`, `Interrupt`, `DmaTransfer` | Reverses the exclusive device operation |
 
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
@@ -90,6 +91,14 @@ A remote ID is not a kernel capability. Releasing it requires a protocol call,
 which can block or fail. Its owner therefore provides `close(self)` for normal
 operation and uses `Drop` only as a leak-prevention fallback. Errors from
 `Drop` cannot be reported.
+
+For TLS clients, use `catten_services::tls_client::OwnedTlsStream`. Its
+constructor consumes an `OwnedSocket` and requires a server DNS identity, DER
+trust anchor, synchronized Unix time, entropy service reference, and bounded
+socket retry policy. The wrapper is deliberately the only owner of the
+self-referential TLS connection and record buffers. Do not reproduce its raw
+buffer-pointer lifetime pattern in individual services or add plaintext retry
+after a failed handshake.
 
 ## Raw boundary rules
 

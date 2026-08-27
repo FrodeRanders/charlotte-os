@@ -20,14 +20,7 @@ use alloc::{
     },
     vec::Vec,
 };
-use core::{
-    fmt::Write,
-    num::NonZeroU32,
-    sync::atomic::{
-        AtomicU64,
-        Ordering,
-    },
-};
+use core::fmt::Write;
 
 use catten_rt::{
     Context,
@@ -47,6 +40,7 @@ use catten_services::{
     s3 as protocol,
     socket,
     time,
+    tls_client,
     try_registered_name_owned,
     wait_for_local_ready_owned,
     wait_for_registered_name_owned,
@@ -80,28 +74,6 @@ use charlotte_s3::{
         sign,
     },
 };
-use embedded_io::{
-    ErrorType,
-    Read,
-    Write as EmbeddedWrite,
-};
-use embedded_tls::{
-    Aes128GcmSha256,
-    Certificate,
-    CryptoProvider,
-    TlsClock,
-    TlsConfig,
-    TlsContext,
-    TlsError,
-    TlsVerifier,
-    blocking::TlsConnection,
-    pki::CertVerifier,
-};
-use rand_core::{
-    CryptoRng,
-    RngCore,
-};
-
 catten_rt::entry!(main);
 
 const MAX_OPERATIONS: usize = 8;
@@ -111,48 +83,6 @@ const SEND_RETRY_MS: u64 = 10;
 const RECEIVE_ATTEMPTS: usize = 3_000;
 const RECEIVE_RETRY_MS: u64 = 10;
 const MAX_HEAD_READS: usize = 16;
-const TLS_RECORD_BUFFER_LEN: usize = 16_640;
-const TLS_CERTIFICATE_LEN: usize = 16_384;
-
-static TLS_UNIX_SECONDS: AtomicU64 = AtomicU64::new(0);
-
-fn tls_error_code(error: &TlsError) -> u32 {
-    match error {
-        TlsError::ConnectionClosed => 1,
-        TlsError::Unimplemented => 2,
-        TlsError::MissingHandshake => 3,
-        TlsError::HandshakeAborted(..) => 4,
-        TlsError::AbortHandshake(..) => 5,
-        TlsError::IoError | TlsError::Io(_) => 6,
-        TlsError::InternalError => 7,
-        TlsError::InvalidRecord => 8,
-        TlsError::UnknownContentType => 9,
-        TlsError::InvalidNonceLength => 10,
-        TlsError::InvalidTicketLength => 11,
-        TlsError::UnknownExtensionType => 12,
-        TlsError::InsufficientSpace => 13,
-        TlsError::InvalidHandshake => 14,
-        TlsError::InvalidCipherSuite => 15,
-        TlsError::InvalidSignatureScheme => 16,
-        TlsError::InvalidSignature => 17,
-        TlsError::InvalidExtensionsLength => 18,
-        TlsError::InvalidSessionIdLength => 19,
-        TlsError::InvalidSupportedVersions => 20,
-        TlsError::InvalidApplicationData => 21,
-        TlsError::InvalidKeyShare => 22,
-        TlsError::InvalidCertificate => 23,
-        TlsError::InvalidCertificateEntry => 24,
-        TlsError::InvalidCertificateRequest => 25,
-        TlsError::InvalidPrivateKey => 26,
-        TlsError::UnableToInitializeCryptoEngine => 27,
-        TlsError::ParseError(_) => 28,
-        TlsError::OutOfMemory => 29,
-        TlsError::CryptoError => 30,
-        TlsError::EncodeError => 31,
-        TlsError::DecodeError => 32,
-    }
-}
-
 struct Profile {
     ip: [u8; 4],
     host: String,
@@ -335,20 +265,22 @@ fn time_snapshot(connection: ConnectionRef<'_>) -> Option<time::TimeSnapshot> {
     time::TimeSnapshot::decode(mapping.as_slice())
 }
 
-fn time_now(connection: ConnectionRef<'_>) -> Option<Timestamp> {
+fn time_now(connection: ConnectionRef<'_>) -> Option<(Timestamp, u64)> {
     let snapshot = time_snapshot(connection)?;
     if snapshot.state != time::STATE_SYNCHRONIZED || snapshot.unix_seconds <= 0 {
         return None;
     }
-    TLS_UNIX_SECONDS.store(snapshot.unix_seconds as u64, Ordering::Relaxed);
-    Some(Timestamp {
-        year: snapshot.utc.year,
-        month: snapshot.utc.month,
-        day: snapshot.utc.day,
-        hour: snapshot.utc.hour,
-        minute: snapshot.utc.minute,
-        second: snapshot.utc.second,
-    })
+    Some((
+        Timestamp {
+            year: snapshot.utc.year,
+            month: snapshot.utc.month,
+            day: snapshot.utc.day,
+            hour: snapshot.utc.hour,
+            minute: snapshot.utc.minute,
+            second: snapshot.utc.second,
+        },
+        snapshot.unix_seconds as u64,
+    ))
 }
 
 fn monotonic_seconds(connection: ConnectionRef<'_>) -> Option<u64> {
@@ -357,266 +289,9 @@ fn monotonic_seconds(connection: ConnectionRef<'_>) -> Option<u64> {
         .then_some(snapshot.monotonic_ticks / snapshot.counter_frequency_hz)
 }
 
-#[derive(Debug)]
-struct TransportError;
-
-impl core::fmt::Display for TransportError {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str("CharlotteOS socket transport error")
-    }
-}
-
-impl core::error::Error for TransportError {}
-
-impl embedded_io::Error for TransportError {
-    fn kind(&self) -> embedded_io::ErrorKind {
-        embedded_io::ErrorKind::Other
-    }
-}
-
-struct SocketIo<'connection> {
-    socket: socket::OwnedSocket<'connection>,
-    pending: Vec<u8>,
-    offset: usize,
-}
-
-impl ErrorType for SocketIo<'_> {
-    type Error = TransportError;
-}
-
-impl Read for SocketIo<'_> {
-    fn read(&mut self, output: &mut [u8]) -> Result<usize, Self::Error> {
-        if output.is_empty() {
-            return Ok(0);
-        }
-        if self.offset == self.pending.len() {
-            self.pending = receive_plain(&self.socket).ok_or(TransportError)?;
-            self.offset = 0;
-        }
-        let len = output.len().min(self.pending.len() - self.offset);
-        output[..len].copy_from_slice(&self.pending[self.offset..self.offset + len]);
-        self.offset += len;
-        if self.offset == self.pending.len() {
-            self.pending.clear();
-            self.offset = 0;
-        }
-        Ok(len)
-    }
-}
-
-impl EmbeddedWrite for SocketIo<'_> {
-    fn write(&mut self, input: &[u8]) -> Result<usize, Self::Error> {
-        self.socket.send_all(input, SEND_ATTEMPTS, SEND_RETRY_MS).map_err(|_| TransportError)?;
-        Ok(input.len())
-    }
-
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-struct SystemRng<'connection> {
-    service: Option<ConnectionRef<'connection>>,
-}
-
-impl SystemRng<'_> {
-    fn try_fill(&self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
-        let mut offset = 0;
-        while offset < destination.len() {
-            let Some(word) = catten_syscall::random_u64() else {
-                break;
-            };
-            let bytes = word.to_ne_bytes();
-            let length = (destination.len() - offset).min(bytes.len());
-            destination[offset..offset + length].copy_from_slice(&bytes[..length]);
-            offset += length;
-        }
-        if offset == destination.len() {
-            return Ok(());
-        }
-        let remaining = destination.len() - offset;
-        let service = self.service.ok_or_else(rng_error)?;
-        let reply = service
-            .call(entropy::OP_FILL, remaining as u64)
-            .map_err(|_| rng_error())?
-            .wait()
-            .map_err(|_| rng_error())?;
-        if reply.result != remaining as i64 {
-            return Err(rng_error());
-        }
-        let mapping =
-            reply.memory.ok_or_else(rng_error)?.map_read_only().map_err(|_| rng_error())?;
-        destination[offset..].copy_from_slice(&mapping.as_slice()[..remaining]);
-        Ok(())
-    }
-}
-
-fn rng_error() -> rand_core::Error {
-    rand_core::Error::from(
-        NonZeroU32::new(rand_core::Error::CUSTOM_START).expect("nonzero error code"),
-    )
-}
-
-impl RngCore for SystemRng<'_> {
-    fn next_u32(&mut self) -> u32 {
-        self.next_u64() as u32
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let mut bytes = [0; 8];
-        self.try_fill(&mut bytes).expect("system entropy unavailable");
-        u64::from_ne_bytes(bytes)
-    }
-
-    fn fill_bytes(&mut self, destination: &mut [u8]) {
-        self.try_fill_bytes(destination).expect("system entropy unavailable");
-    }
-
-    fn try_fill_bytes(&mut self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.try_fill(destination)
-    }
-}
-
-impl CryptoRng for SystemRng<'_> {}
-
-struct SynchronizedClock;
-
-impl TlsClock for SynchronizedClock {
-    fn now() -> Option<u64> {
-        let seconds = TLS_UNIX_SECONDS.load(Ordering::Relaxed);
-        (seconds != 0).then_some(seconds)
-    }
-}
-
-struct TlsProvider<'connection, 'ca> {
-    rng: SystemRng<'connection>,
-    verifier: CertVerifier<'ca, Aes128GcmSha256, SynchronizedClock, TLS_CERTIFICATE_LEN>,
-}
-
-impl CryptoProvider for TlsProvider<'_, '_> {
-    type CipherSuite = Aes128GcmSha256;
-    type Signature = &'static [u8];
-
-    fn rng(&mut self) -> impl embedded_tls::CryptoRngCore {
-        &mut self.rng
-    }
-
-    fn verifier(&mut self) -> Result<&mut impl TlsVerifier<Aes128GcmSha256>, TlsError> {
-        Ok(&mut self.verifier)
-    }
-}
-
-type CharlotteTls<'connection> = TlsConnection<'connection, SocketIo<'connection>, Aes128GcmSha256>;
-
-/// Owns the TLS connection and both backing record buffers as one resource.
-/// Dropping it first drops the connection/socket and then releases the buffers.
-struct OwnedTlsStream<'connection> {
-    connection: Option<CharlotteTls<'connection>>,
-    read_buffer: *mut [u8; TLS_RECORD_BUFFER_LEN],
-    write_buffer: *mut [u8; TLS_RECORD_BUFFER_LEN],
-}
-
-impl<'connection> OwnedTlsStream<'connection> {
-    fn open(
-        socket: socket::OwnedSocket<'connection>,
-        profile: &Profile,
-        entropy: Option<ConnectionRef<'connection>>,
-    ) -> Result<Self, ()> {
-        if (SystemRng {
-            service: entropy,
-        })
-        .try_fill(&mut [0])
-        .is_err()
-        {
-            catten_rt::logln!("[s3] TLS unavailable: system entropy source failed");
-            config::write::<u32>(status::ERROR, 0x5400);
-            return Err(());
-        }
-        let read_buffer = Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN]));
-        let write_buffer = Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN]));
-        // SAFETY: these allocations remain exclusively owned by the wrapper,
-        // are not moved, and are reclaimed only after `connection` is dropped.
-        let read_ref: &'connection mut [u8] = unsafe { &mut *read_buffer };
-        let write_ref: &'connection mut [u8] = unsafe { &mut *write_buffer };
-        let io = SocketIo {
-            socket,
-            pending: Vec::new(),
-            offset: 0,
-        };
-        let mut connection = TlsConnection::new(io, read_ref, write_ref);
-        let config = TlsConfig::new().with_server_name(&profile.host);
-        let provider = TlsProvider {
-            rng: SystemRng {
-                service: entropy,
-            },
-            verifier: CertVerifier::new(Certificate::X509(&profile.ca_der)),
-        };
-        if let Err(error) = connection.open(TlsContext::new(&config, provider)) {
-            config::write::<u32>(status::ERROR, 0x5400 | tls_error_code(&error));
-            catten_rt::logln!("[s3] TLS handshake verification failed");
-            drop(connection);
-            // SAFETY: the connection and all buffer borrows were dropped.
-            unsafe {
-                drop(Box::from_raw(read_buffer));
-                drop(Box::from_raw(write_buffer));
-            }
-            return Err(());
-        }
-        Ok(Self {
-            connection: Some(connection),
-            read_buffer,
-            write_buffer,
-        })
-    }
-
-    fn send_all(&mut self, mut bytes: &[u8]) -> Result<(), ()> {
-        let connection = self.connection.as_mut().ok_or(())?;
-        while !bytes.is_empty() {
-            let written = connection.write(bytes).map_err(|_| ())?;
-            if written == 0 {
-                return Err(());
-            }
-            bytes = &bytes[written..];
-        }
-        connection.flush().map_err(|_| ())
-    }
-
-    fn receive(&mut self) -> Result<Vec<u8>, ()> {
-        let mut bytes = alloc::vec![0; protocol::MAX_CHUNK_LEN];
-        let len = self.connection.as_mut().ok_or(())?.read(&mut bytes).map_err(|_| ())?;
-        if len == 0 {
-            return Err(());
-        }
-        bytes.truncate(len);
-        Ok(bytes)
-    }
-
-    fn close(mut self) -> Result<(), ()> {
-        let connection = self.connection.take().ok_or(())?;
-        let (io, tls_result) = match connection.close() {
-            Ok(io) => (io, Ok(())),
-            Err((io, _)) => (io, Err(())),
-        };
-        let socket_result = io.socket.close().map_err(|_| ());
-        tls_result.and(socket_result)
-    }
-}
-
-impl Drop for OwnedTlsStream<'_> {
-    fn drop(&mut self) {
-        drop(self.connection.take());
-        // SAFETY: `connection` was dropped first, ending both exclusive
-        // borrows. Each pointer came from Box::into_raw exactly once.
-        unsafe {
-            drop(Box::from_raw(self.read_buffer));
-            drop(Box::from_raw(self.write_buffer));
-        }
-    }
-}
-
 enum Transport<'connection> {
     Plain(socket::OwnedSocket<'connection>),
-    Tls(Box<OwnedTlsStream<'connection>>),
+    Tls(Box<tls_client::OwnedTlsStream<'connection>>),
 }
 
 impl Transport<'_> {
@@ -625,21 +300,21 @@ impl Transport<'_> {
             Self::Plain(socket) => {
                 socket.send_all(bytes, SEND_ATTEMPTS, SEND_RETRY_MS).map_err(|_| ())
             }
-            Self::Tls(stream) => stream.send_all(bytes),
+            Self::Tls(stream) => stream.send_all(bytes).map_err(|_| ()),
         }
     }
 
     fn receive(&mut self) -> Result<Vec<u8>, ()> {
         match self {
             Self::Plain(socket) => receive_plain(socket).ok_or(()),
-            Self::Tls(stream) => stream.receive(),
+            Self::Tls(stream) => stream.receive().map_err(|_| ()),
         }
     }
 
     fn close(self) -> Result<(), ()> {
         match self {
             Self::Plain(socket) => socket.close().map_err(|_| ()),
-            Self::Tls(stream) => stream.close(),
+            Self::Tls(stream) => stream.close().map_err(|_| ()),
         }
     }
 }
@@ -648,12 +323,41 @@ fn connect<'connection>(
     tcp: ConnectionRef<'connection>,
     entropy: Option<ConnectionRef<'connection>>,
     profile: &Profile,
+    unix_seconds: u64,
 ) -> Result<Transport<'connection>, ()> {
     let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
     socket.connect_ipv4(profile.ip, profile.port).map_err(|_| ())?;
     if profile.tls {
-        OwnedTlsStream::open(socket, profile, entropy)
-            .map(|stream| Transport::Tls(Box::new(stream)))
+        let result = tls_client::OwnedTlsStream::open(
+            socket,
+            entropy,
+            tls_client::OpenConfig {
+                server_name: &profile.host,
+                ca_certificate_der: &profile.ca_der,
+                unix_seconds,
+                socket_bounds: tls_client::SocketBounds {
+                    send_attempts: SEND_ATTEMPTS,
+                    send_retry_ms: SEND_RETRY_MS,
+                    receive_attempts: RECEIVE_ATTEMPTS,
+                    receive_retry_ms: RECEIVE_RETRY_MS,
+                    receive_chunk_len: protocol::MAX_CHUNK_LEN,
+                },
+            },
+        );
+        match result {
+            Ok(stream) => Ok(Transport::Tls(Box::new(stream))),
+            Err(tls_client::OpenError::Handshake(code)) => {
+                config::write::<u32>(status::ERROR, 0x5400 | code);
+                catten_rt::logln!("[s3] TLS handshake verification failed");
+                Err(())
+            }
+            Err(tls_client::OpenError::EntropyUnavailable) => {
+                config::write::<u32>(status::ERROR, 0x5400);
+                catten_rt::logln!("[s3] TLS unavailable: system entropy source failed");
+                Err(())
+            }
+            Err(tls_client::OpenError::InvalidConfiguration) => Err(()),
+        }
     } else {
         Ok(Transport::Plain(socket))
     }
@@ -928,9 +632,9 @@ impl<'connection> Service<'connection> {
             return Err(protocol::ERR_INVALID);
         }
         let id = self.operation_id().ok_or(protocol::ERR_BUSY)?;
-        let timestamp = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket =
-            connect(self.tcp, self.entropy, &self.profile).map_err(|_| protocol::ERR_TRANSPORT)?;
+        let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
+        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
+            .map_err(|_| protocol::ERR_TRANSPORT)?;
         let head =
             signed_head(&self.profile, &request, "GET", timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&head).is_err() {
@@ -989,9 +693,9 @@ impl<'connection> Service<'connection> {
             return Err(protocol::ERR_INVALID);
         }
         let id = self.operation_id().ok_or(protocol::ERR_BUSY)?;
-        let timestamp = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket =
-            connect(self.tcp, self.entropy, &self.profile).map_err(|_| protocol::ERR_TRANSPORT)?;
+        let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
+        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
+            .map_err(|_| protocol::ERR_TRANSPORT)?;
         let head =
             signed_head(&self.profile, &request, "PUT", timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&head).is_err() {
@@ -1013,9 +717,9 @@ impl<'connection> Service<'connection> {
     }
 
     fn simple_request(&self, request: &OwnedRequest, method: &str) -> Result<ResponseHead, i64> {
-        let timestamp = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
-        let mut socket =
-            connect(self.tcp, self.entropy, &self.profile).map_err(|_| protocol::ERR_TRANSPORT)?;
+        let (timestamp, unix_seconds) = time_now(self.clock).ok_or(protocol::ERR_UNSYNCHRONIZED)?;
+        let mut socket = connect(self.tcp, self.entropy, &self.profile, unix_seconds)
+            .map_err(|_| protocol::ERR_TRANSPORT)?;
         let request_head =
             signed_head(&self.profile, request, method, timestamp).ok_or(protocol::ERR_INVALID)?;
         if socket.send_all(&request_head).is_err() {

@@ -21,6 +21,8 @@ pub use charlotte_protocol_time as time;
 pub mod kafka_client;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
+/// Verified, owned TLS client transport shared by network services.
+pub mod tls_client;
 
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;

@@ -33,8 +33,8 @@ The manifest keys are:
 | `kfk_ip` | four bytes | Resolved broker IPv4 address |
 | `kfk_host` | bytes | Provisioned broker host identity |
 | `kfk_port` | unsigned | Broker TCP port |
-| `kfk_tls` | unsigned | Transport security selection |
-| `kfk_ca` | bytes | Reserved DER trust anchor for TLS |
+| `kfk_tls` | unsigned | `1` requires verified TLS; `0` permits development plaintext |
+| `kfk_ca` | bytes | DER-encoded X.509 trust anchor; required for TLS |
 | `kfktopic` | bytes | Fixed topic |
 | `kfkpart` | unsigned | Fixed partition |
 | `kfkgroup` | bytes | Fixed consumer group |
@@ -100,6 +100,26 @@ before the reply was lost. The service preserves an idempotent producer
 sequence until success is known, but applications must still treat a failed
 transaction as aborted and start a new transaction after rediscovery/retry.
 
+## TLS security boundary
+
+Setting `kfk_tls=1` selects the shared owned TLS transport and never
+downgrades to plaintext. The client verifies the broker's certificate chain,
+DNS identity from `kfk_host`, validity interval against synchronized UTC from
+the time service, and its signature using the explicitly provisioned DER trust
+anchor. It currently uses TLS 1.3 with AES-128-GCM-SHA-256.
+
+Handshake randomness comes first from the architecture RNG syscall and then
+from the optional `rng` service backed by protected VirtIO RNG DMA. If trusted
+time, entropy, or verification is unavailable, connection establishment fails
+closed. Broker sockets and both TLS record buffers are aggregated in
+`catten_services::tls_client::OwnedTlsStream`, so reconnect and error paths
+release the whole transport by dropping one owner.
+
+TLS authenticates and encrypts the broker transport; it does not authenticate
+the Kafka principal. Centrally managed clusters commonly require SASL or mTLS
+as well. That mechanism remains a separate provisioning and implementation
+step.
+
 ## Current interoperability boundary
 
 The implemented broker protocol was exercised against Apache Kafka 4.1.1. It
@@ -112,19 +132,21 @@ This first profile is deliberately narrow:
 - one statically provisioned IPv4 broker and one partition;
 - no metadata-driven multi-broker routing or leader migration;
 - no dynamic consumer-group membership/rebalancing;
-- no compression, headers, SASL, DNS, or TLS; and
+- no compression, headers, SASL, external DNS, or TLS 1.2; and
 - records are bounded by the one-page application ABI.
 
-`kfk_tls=1` is rejected rather than downgraded. The CA manifest key reserves a
-compatible provisioning boundary for a future verified TLS transport. For a
-centrally managed cluster, TLS and the site's SASL mechanism must be added
-before production deployment; do not expose a plaintext listener merely to
-fit the current client.
+For a centrally managed cluster, add the site's required authentication
+mechanism before production deployment; do not expose an unauthenticated
+listener merely to fit the current client. Verify that the broker permits TLS
+1.3 and a certificate signature supported by the selected embedded TLS
+feature set.
 
 ## Docker integration test
 
-The opt-in runner starts a fresh single-node Apache Kafka KRaft container,
-creates `charlotte-events`, and boots an in-guest smoke application that checks:
+The opt-in runner creates an ephemeral CA and server certificate, starts a
+fresh single-node Apache Kafka KRaft container with a verified external TLS
+listener, creates `charlotte-events`, and boots an in-guest smoke application
+that checks:
 
 - idempotent production;
 - read-committed consumption and explicit offset commit;
@@ -138,7 +160,9 @@ Run it with:
 scripts/run-aarch64.sh --kafka-test --timeout 300
 ```
 
-The fixture advertises QEMU's user-network gateway at `10.0.2.2:19092` and is
-removed with its volumes on exit. Set `CATTEN_KAFKA_IMAGE` to exercise another
-compatible Kafka image. The switch adds the fixture and verifier; the ordinary
-network, DHCP, TCP/IP, and time services are not test-only functionality.
+The certificate identifies `kafka.test`; the provisioned transport still
+connects to QEMU's user-network gateway at `10.0.2.2:19092`. The fixture and
+its volumes are removed on exit. Set `CATTEN_KAFKA_IMAGE` to exercise another
+compatible Kafka image. The switch adds the fixture, test trust anchor, and
+verifier; the ordinary network, DHCP, TCP/IP, entropy, and time services are
+not test-only functionality.

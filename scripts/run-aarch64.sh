@@ -271,9 +271,49 @@ if [ "$S3_TEST" = "1" ]; then
 fi
 
 if [ "$KAFKA_TEST" = "1" ]; then
-    catten_boot_require_commands docker
+    catten_boot_require_commands docker openssl
+    KAFKA_TEST_DIR="${ROOT_DIR}/target/kafka-test"
+    export CATTEN_KAFKA_CERT_DIR="${KAFKA_TEST_DIR}/certs"
     export CATTEN_KAFKA_PORT="19092"
-    echo ">>> Starting ephemeral Apache Kafka fixture on host port 19092..."
+    mkdir -p "$CATTEN_KAFKA_CERT_DIR"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_KAFKA_CERT_DIR/ca.key"
+    openssl req -x509 -new -sha256 -days 2 \
+        -key "$CATTEN_KAFKA_CERT_DIR/ca.key" \
+        -subj "/CN=CharlotteOS Kafka test CA" \
+        -addext "basicConstraints=critical,CA:TRUE" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" \
+        -out "$CATTEN_KAFKA_CERT_DIR/ca.crt"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_KAFKA_CERT_DIR/kafka.key"
+    openssl req -new -sha256 \
+        -key "$CATTEN_KAFKA_CERT_DIR/kafka.key" \
+        -subj "/CN=kafka.test" \
+        -out "$CATTEN_KAFKA_CERT_DIR/kafka.csr"
+    openssl x509 -req -sha256 -days 2 \
+        -in "$CATTEN_KAFKA_CERT_DIR/kafka.csr" \
+        -CA "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
+        -CAkey "$CATTEN_KAFKA_CERT_DIR/ca.key" \
+        -CAcreateserial \
+        -extfile "${ROOT_DIR}/docker/kafka-test/server-ext.cnf" \
+        -out "$CATTEN_KAFKA_CERT_DIR/kafka.crt"
+    openssl pkcs12 -export \
+        -name kafka \
+        -inkey "$CATTEN_KAFKA_CERT_DIR/kafka.key" \
+        -in "$CATTEN_KAFKA_CERT_DIR/kafka.crt" \
+        -certfile "$CATTEN_KAFKA_CERT_DIR/ca.crt" \
+        -out "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
+        -passout pass:charlotte-kafka-test
+    openssl x509 -in "$CATTEN_KAFKA_CERT_DIR/ca.crt" -outform DER \
+        -out "$CATTEN_KAFKA_CERT_DIR/ca.der"
+    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/key-password"
+    printf '%s\n' 'charlotte-kafka-test' >"$CATTEN_KAFKA_CERT_DIR/keystore-password"
+    chmod 0644 "$CATTEN_KAFKA_CERT_DIR/ca.der" \
+        "$CATTEN_KAFKA_CERT_DIR/kafka.p12" \
+        "$CATTEN_KAFKA_CERT_DIR/key-password" \
+        "$CATTEN_KAFKA_CERT_DIR/keystore-password"
+    export CATTEN_KAFKA_TEST_CA_DER="$CATTEN_KAFKA_CERT_DIR/ca.der"
+    echo ">>> Starting ephemeral TLS Apache Kafka fixture on host port 19092..."
     docker compose -f "$KAFKA_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     KAFKA_RUNNING="1"
     docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka
