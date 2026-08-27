@@ -404,12 +404,13 @@ The wire crate negotiates \texttt{ApiVersions} and implements a deliberately
 small set of stable Kafka request versions. Metadata selects partition leaders
 and group/transaction coordinators only from the profile's hostname/port and
 IPv4 allow-list. Authorized endpoints are alternate metadata seeds, and
-retriable produce/fetch failures refresh leader metadata before retry. The
-service does not yet fully recover coordinator migration during an active
-transaction, or implement topic-pattern subscriptions, cooperative assignor
-interoperability, client-certificate chains, record compression, topic
-administration, or arbitrary partition assignment. Records and the number of
-simultaneous consumers, deliveries, and transactions are bounded.
+retriable produce/fetch failures refresh leader metadata before retry.
+Group and transactional operations rediscover a moved coordinator within a
+bounded retry budget. The service does not implement topic-pattern
+subscriptions, cooperative assignor interoperability, client-certificate
+chains, record compression, topic administration, or arbitrary partition
+assignment. Records and the number of simultaneous consumers, deliveries,
+and transactions are bounded.
 
 TLS uses the same explicit trust-anchor, synchronized-time, and entropy path as
 S3. Optional SCRAM-SHA-256 authenticates \texttt{kafka} to every selected broker
@@ -425,7 +426,8 @@ generation-fenced group-offset commit, group generation advance and heartbeat,
 transaction abort, filtering of the aborted record, and
 the generic step runner's success, retry, timeout, and terminal-DLQ paths. It
 also checks metadata refreshes, terminal authorization errors, output-route
-production, and non-negative consumer lag in the bounded status page. After
+production, coordinator refreshes, and non-negative consumer lag in the
+bounded status page. After
 initial route discovery, the host hard-stops the output-route leader, keeps it
 down beyond the connector's bounded receive timeout, and restarts it. The
 verifier requires a routing retry and a second successful metadata refresh, so the
@@ -438,6 +440,10 @@ Because broker exchanges are currently synchronous, the connector requests a
 lease therefore exceeds bounded dead-peer detection and route refresh, so
 recovering a partition leader does not by itself expire and fence the
 transaction's group generation.
+A companion fault scenario reads the transaction coordinator selected by
+Kafka from the connector's startup diagnostics and hard-stops that broker
+after connector bootstrap. It requires transaction-coordinator rediscovery
+before the same transaction and generic-step sequence may pass.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in

@@ -107,6 +107,7 @@ mod status {
     pub const METADATA_AGE_MS: usize = 72;
     pub const CONSUMER_LAG: usize = 80;
     pub const ROUTE_COUNT: usize = 88;
+    pub const COORDINATOR_REFRESHES: usize = 92;
     pub const ROUTE_PRODUCED_BASE: usize = 128;
     pub const ROUTE_PRODUCED_STRIDE: usize = 8;
 }
@@ -679,6 +680,7 @@ struct BrokerSession<'connection> {
     correlation: i32,
     metadata_refreshed_ms: Option<u64>,
     metadata_refreshes: u32,
+    coordinator_refreshes: u32,
     reconnects: u32,
     retry_attempts: u32,
 }
@@ -733,6 +735,7 @@ impl<'connection> BrokerSession<'connection> {
             correlation: 1,
             metadata_refreshed_ms: None,
             metadata_refreshes: 0,
+            coordinator_refreshes: 0,
             reconnects: 0,
             retry_attempts: 0,
         }
@@ -950,7 +953,17 @@ impl<'connection> BrokerSession<'connection> {
             let correlation = self.next();
             let request = wire::find_coordinator_request(correlation, CLIENT_ID, key, transaction)
                 .map_err(map_wire)?;
-            let response = self.exchange_any(&request)?;
+            let response = match self.exchange_any(&request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             let coordinator =
                 wire::parse_find_coordinator(&response, correlation).map_err(map_wire)?;
             if coordinator.error == wire::NO_ERROR {
@@ -985,6 +998,14 @@ impl<'connection> BrokerSession<'connection> {
 
     fn refresh_group_coordinator(&mut self, profile: &Profile) -> Result<(), i64> {
         self.group_coordinator = Some(self.find_coordinator(profile, &profile.group, false)?);
+        self.coordinator_refreshes = self.coordinator_refreshes.wrapping_add(1);
+        Ok(())
+    }
+
+    fn refresh_transaction_coordinator(&mut self, profile: &Profile) -> Result<(), i64> {
+        self.transaction_coordinator =
+            Some(self.find_coordinator(profile, &profile.transactional_id, true)?);
+        self.coordinator_refreshes = self.coordinator_refreshes.wrapping_add(1);
         Ok(())
     }
 
@@ -1110,18 +1131,39 @@ impl<'connection> BrokerSession<'connection> {
         profile: &Profile,
         membership: &GroupMembership,
     ) -> Result<i16, i64> {
-        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let correlation = self.next();
-        let request = wire::heartbeat_request(
-            correlation,
-            CLIENT_ID,
-            &profile.group,
-            membership.generation,
-            &membership.member_id,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange_node(node, request)?;
-        wire::parse_group_error(&response, correlation).map_err(map_wire)
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::heartbeat_request(
+                correlation,
+                CLIENT_ID,
+                &profile.group,
+                membership.generation,
+                &membership.member_id,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            let error = wire::parse_group_error(&response, correlation).map_err(map_wire)?;
+            if coordinator_moved(error) {
+                self.note_retry();
+                self.refresh_group_coordinator(profile)?;
+                sleep_ms(COORDINATOR_RETRY_MS);
+                continue;
+            }
+            return Ok(error);
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn leave_group(&mut self, profile: &Profile, member_id: &[u8]) -> Result<(), i64> {
@@ -1235,8 +1277,8 @@ impl<'connection> BrokerSession<'connection> {
         producer: ProducerIdentity,
     ) -> Result<(), i64> {
         let (topic, partition) = profile.route(route).ok_or(protocol::ERR_DENIED)?;
-        let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
         for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
             let correlation = self.next();
             let request = wire::add_partitions_to_txn_request(
                 correlation,
@@ -1247,11 +1289,25 @@ impl<'connection> BrokerSession<'connection> {
                 partition,
             )
             .map_err(map_wire)?;
-            let response = self.exchange_node(node, request)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_transaction_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             match wire::parse_partition_error(&response, correlation, topic, partition) {
                 Ok(()) => return Ok(()),
                 Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
                     self.note_retry();
+                    if coordinator_moved(error) {
+                        self.refresh_transaction_coordinator(profile)?;
+                    }
                     sleep_ms(COORDINATOR_RETRY_MS);
                 }
                 Err(error) => return Err(map_wire(error)),
@@ -1261,19 +1317,45 @@ impl<'connection> BrokerSession<'connection> {
     }
 
     fn committed_offset(&mut self, profile: &Profile) -> Result<Option<i64>, i64> {
-        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let correlation = self.next();
-        let request = wire::offset_fetch_request(
-            correlation,
-            CLIENT_ID,
-            &profile.group,
-            &profile.topic,
-            profile.partition,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange_node(node, request)?;
-        wire::parse_offset_fetch(&response, correlation, &profile.topic, profile.partition)
-            .map_err(map_wire)
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::offset_fetch_request(
+                correlation,
+                CLIENT_ID,
+                &profile.group,
+                &profile.topic,
+                profile.partition,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            match wire::parse_offset_fetch(
+                &response,
+                correlation,
+                &profile.topic,
+                profile.partition,
+            ) {
+                Ok(offset) => return Ok(offset),
+                Err(wire::Error::Broker(error)) if coordinator_moved(error) => {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                }
+                Err(error) => return Err(map_wire(error)),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn earliest_offset(&mut self, profile: &Profile) -> Result<i64, i64> {
@@ -1357,24 +1439,50 @@ impl<'connection> BrokerSession<'connection> {
         membership: &GroupMembership,
         next_offset: i64,
     ) -> Result<(), i64> {
-        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let correlation = self.next();
-        let request = wire::offset_commit_request(
-            correlation,
-            CLIENT_ID,
-            wire::OffsetCommit {
-                group_id: &profile.group,
-                generation: membership.generation,
-                member_id: &membership.member_id,
-                topic: &profile.topic,
-                partition: profile.partition,
-                next_offset,
-            },
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange_node(node, request)?;
-        wire::parse_offset_commit(&response, correlation, &profile.topic, profile.partition)
-            .map_err(map_wire)
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::offset_commit_request(
+                correlation,
+                CLIENT_ID,
+                wire::OffsetCommit {
+                    group_id: &profile.group,
+                    generation: membership.generation,
+                    member_id: &membership.member_id,
+                    topic: &profile.topic,
+                    partition: profile.partition,
+                    next_offset,
+                },
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            match wire::parse_offset_commit(
+                &response,
+                correlation,
+                &profile.topic,
+                profile.partition,
+            ) {
+                Ok(()) => return Ok(()),
+                Err(wire::Error::Broker(error)) if coordinator_moved(error) => {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                }
+                Err(error) => return Err(map_wire(error)),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn add_transactional_offset(
@@ -1384,50 +1492,99 @@ impl<'connection> BrokerSession<'connection> {
         membership: &GroupMembership,
         next_offset: i64,
     ) -> Result<(), i64> {
-        let transaction_node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let correlation = self.next();
-        let request = wire::add_offsets_to_txn_request(
-            correlation,
-            CLIENT_ID,
-            &profile.transactional_id,
-            producer,
-            &profile.group,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange_node(transaction_node, request)?;
-        wire::parse_top_level_error(&response, correlation).map_err(map_wire)?;
-
-        let correlation = self.next();
-        let request = wire::txn_offset_commit_request(
-            correlation,
-            CLIENT_ID,
-            wire::TxnOffsetCommit {
-                transactional_id: &profile.transactional_id,
-                group_id: &profile.group,
+        let mut offsets_added = false;
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::add_offsets_to_txn_request(
+                correlation,
+                CLIENT_ID,
+                &profile.transactional_id,
                 producer,
-                generation: membership.generation,
-                member_id: &membership.member_id,
-                topic: &profile.topic,
-                partition: profile.partition,
-                next_offset,
-            },
-        )
-        .map_err(map_wire)?;
-        let group_node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let response = self.exchange_node(group_node, request)?;
-        match wire::parse_txn_offset_commit(
-            &response,
-            correlation,
-            &profile.topic,
-            profile.partition,
-        ) {
-            Ok(()) => Ok(()),
-            Err(wire::Error::Broker(error)) => {
-                catten_rt::logln!("[kafka] transactional offset commit broker error={}", error);
-                Err(map_broker(error))
+                &profile.group,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_transaction_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            match wire::parse_top_level_error(&response, correlation) {
+                Ok(()) => {
+                    offsets_added = true;
+                    break;
+                }
+                Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
+                    self.note_retry();
+                    if coordinator_moved(error) {
+                        self.refresh_transaction_coordinator(profile)?;
+                    }
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                }
+                Err(error) => return Err(map_wire(error)),
             }
-            Err(error) => Err(map_wire(error)),
         }
+        if !offsets_added {
+            return Err(protocol::ERR_TIMEOUT);
+        }
+
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let correlation = self.next();
+            let request = wire::txn_offset_commit_request(
+                correlation,
+                CLIENT_ID,
+                wire::TxnOffsetCommit {
+                    transactional_id: &profile.transactional_id,
+                    group_id: &profile.group,
+                    producer,
+                    generation: membership.generation,
+                    member_id: &membership.member_id,
+                    topic: &profile.topic,
+                    partition: profile.partition,
+                    next_offset,
+                },
+            )
+            .map_err(map_wire)?;
+            let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            match wire::parse_txn_offset_commit(
+                &response,
+                correlation,
+                &profile.topic,
+                profile.partition,
+            ) {
+                Ok(()) => return Ok(()),
+                Err(wire::Error::Broker(error)) if coordinator_moved(error) => {
+                    self.note_retry();
+                    self.refresh_group_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                }
+                Err(wire::Error::Broker(error)) => {
+                    catten_rt::logln!("[kafka] transactional offset commit broker error={}", error);
+                    return Err(map_broker(error));
+                }
+                Err(error) => return Err(map_wire(error)),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
 
     fn end_transaction(
@@ -1436,19 +1593,47 @@ impl<'connection> BrokerSession<'connection> {
         producer: ProducerIdentity,
         commit: bool,
     ) -> Result<(), i64> {
-        let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
-        let correlation = self.next();
-        let request = wire::end_txn_request(
-            correlation,
-            CLIENT_ID,
-            &profile.transactional_id,
-            producer,
-            commit,
-        )
-        .map_err(map_wire)?;
-        let response = self.exchange_node(node, request)?;
-        wire::parse_top_level_error(&response, correlation).map_err(map_wire)
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::end_txn_request(
+                correlation,
+                CLIENT_ID,
+                &profile.transactional_id,
+                producer,
+                commit,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error)
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT =>
+                {
+                    self.note_retry();
+                    self.refresh_transaction_coordinator(profile)?;
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
+            match wire::parse_top_level_error(&response, correlation) {
+                Ok(()) => return Ok(()),
+                Err(wire::Error::Broker(error)) if wire::is_retriable_broker_error(error) => {
+                    self.note_retry();
+                    if coordinator_moved(error) {
+                        self.refresh_transaction_coordinator(profile)?;
+                    }
+                    sleep_ms(COORDINATOR_RETRY_MS);
+                }
+                Err(error) => return Err(map_wire(error)),
+            }
+        }
+        Err(protocol::ERR_TIMEOUT)
     }
+}
+
+const fn coordinator_moved(error: i16) -> bool {
+    error == wire::NOT_COORDINATOR || error == wire::COORDINATOR_NOT_AVAILABLE
 }
 
 fn map_wire(error: wire::Error) -> i64 {
@@ -2119,6 +2304,7 @@ impl Service<'_> {
         config::write::<u64>(status::METADATA_AGE_MS, self.broker.metadata_age_ms(now_ms));
         config::write::<i64>(status::CONSUMER_LAG, self.consumer_lag);
         config::write::<u32>(status::ROUTE_COUNT, self.route_produced.len() as u32);
+        config::write::<u32>(status::COORDINATOR_REFRESHES, self.broker.coordinator_refreshes);
         for (route, produced) in self.route_produced.iter().copied().enumerate() {
             config::write::<u64>(
                 status::ROUTE_PRODUCED_BASE + route * status::ROUTE_PRODUCED_STRIDE,

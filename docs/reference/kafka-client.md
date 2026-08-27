@@ -270,9 +270,9 @@ This first profile is deliberately narrow:
 
 - up to 32 statically provisioned IPv4 broker destinations; one consume
   partition and up to 64 allow-listed produce topic/partition routes;
-- metadata-driven leader and coordinator routing, with leader refresh for
-  produce/fetch; coordinator migration during an active transaction remains
-  limited;
+- metadata-driven leader and coordinator routing, with bounded leader refresh
+  for produce/fetch and coordinator rediscovery during group and transactional
+  operations;
 - fixed-partition consumer-group join, sync, heartbeat, leave, standby failover,
   and generation fencing, but no topic-pattern subscription or cooperative
   assignor interoperability;
@@ -305,8 +305,8 @@ that checks:
   heartbeat operation;
 - abort filtering; and
 - the bounded observability layout, including metadata refreshes, terminal
-  authorization errors, output-route production, and non-negative consumer
-  lag; and
+  authorization errors, coordinator refreshes, output-route production, and
+  non-negative consumer lag; and
 - the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 Once the connector has discovered its initial routes, the guest opens a
@@ -331,6 +331,15 @@ Run it with:
 
 ```sh
 scripts/run-aarch64.sh --kafka-test --timeout 300
+```
+
+The companion coordinator-movement scenario reads the transaction coordinator
+selected by Kafka from the connector's startup diagnostics and kills that
+broker after bootstrap. It requires transaction-coordinator rediscovery before
+accepting the same end-to-end transaction:
+
+```sh
+scripts/run-aarch64.sh --kafka-coordinator-test --timeout 300
 ```
 
 The certificate identifies the three `kafka-N.test` endpoints; their

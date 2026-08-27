@@ -331,6 +331,7 @@ pub mod kafka_status {
     pub const METADATA_AGE_MS: usize = 72;
     pub const CONSUMER_LAG: usize = 80;
     pub const ROUTE_COUNT: usize = 88;
+    pub const COORDINATOR_REFRESHES: usize = 92;
     pub const ROUTE_PRODUCED_BASE: usize = 128;
     pub const ROUTE_PRODUCED_STRIDE: usize = 8;
 }

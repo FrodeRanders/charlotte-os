@@ -151,10 +151,10 @@ result.
 
 The connector publishes a separate bounded operational view: metadata refresh
 count and age, reconnects, retry attempts, terminal failures, fencing events,
-group generation/heartbeats/rebalances, consumer lag, and cumulative produced
-records for every profile route. Per-route throughput is derived by sampling
-those monotonic counters; no application receives the status capability merely
-because it can produce or consume.
+coordinator refreshes, group generation/heartbeats/rebalances, consumer lag,
+and cumulative produced records for every profile route. Per-route throughput
+is derived by sampling those monotonic counters; no application receives the
+status capability merely because it can produce or consume.
 
 The development launcher currently resolves the exact access-point and procedure names
 through its bootstrap name-service connection. A production deployment

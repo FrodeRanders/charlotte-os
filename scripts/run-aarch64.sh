@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test|--kafka-coordinator-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -42,6 +42,8 @@
 #   --kafka-test  Start a TLS/mTLS/SCRAM Apache Kafka Docker fixture and verify
 #                 idempotent produce, read-committed consume, transactions,
 #                 and recovery after the active route leader is killed
+#   --kafka-coordinator-test  Run the Kafka fixture while hard-stopping the
+#                 transaction coordinator discovered by the guest
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
@@ -76,6 +78,7 @@ HTTP_TEST="0"
 DHCP_TEST="0"
 S3_TEST="0"
 KAFKA_TEST="0"
+KAFKA_COORDINATOR_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 LIVE_UPGRADE_TEST="0"
 SMP="4"
@@ -114,6 +117,7 @@ while [ "$#" -gt 0 ]; do
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
         --kafka-test)  NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; shift ;;
+        --kafka-coordinator-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_COORDINATOR_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -374,16 +378,18 @@ if [ "$KAFKA_TEST" = "1" ]; then
         --add-config 'SCRAM-SHA-256=[iterations=4096,password=charlotte-kafka-test]' \
         --entity-type users \
         --entity-name charlotte
+    KAFKA_EVENTS_REPLICAS="1:2:3"
+    KAFKA_RESULTS_REPLICAS="2:3:1"
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-events --replica-assignment 1:2:3
+        --topic charlotte-events --replica-assignment "$KAFKA_EVENTS_REPLICAS"
     docker compose -f "$KAFKA_COMPOSE" exec -T kafka1 \
         /opt/kafka/bin/kafka-topics.sh \
         --bootstrap-server localhost:29092 \
         --create --if-not-exists \
-        --topic charlotte-results --replica-assignment 2:3:1
+        --topic charlotte-results --replica-assignment "$KAFKA_RESULTS_REPLICAS"
 fi
 
 TARGET_SPEC="target_specs/${ARCH}-unknown-none-catten.json"
@@ -480,6 +486,9 @@ if [ "$S3_TEST" = "1" ]; then
 fi
 if [ "$KAFKA_TEST" = "1" ]; then
     FEATURES="${FEATURES},kafka_test"
+fi
+if [ "$KAFKA_COORDINATOR_TEST" = "1" ]; then
+    FEATURES="${FEATURES},kafka_coordinator_test"
 fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
@@ -729,6 +738,15 @@ if [ -n "$TIMEOUT" ]; then
     KAFKA_FAULT_INJECTED=0
     KAFKA_FAULT_RESTARTED=0
     KAFKA_FAULT_TICK=-1
+    if [ "$KAFKA_COORDINATOR_TEST" = "1" ]; then
+        KAFKA_FAULT_MARKER="[kafka-test] COORDINATOR FAULT WINDOW OPEN"
+        KAFKA_FAULT_DESCRIPTION=""
+        KAFKA_FAULT_SERVICE=""
+    else
+        KAFKA_FAULT_MARKER="[kafka-test] FAULT WINDOW OPEN"
+        KAFKA_FAULT_DESCRIPTION="route leader kafka2"
+        KAFKA_FAULT_SERVICE="kafka2"
+    fi
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
@@ -764,16 +782,30 @@ if [ -n "$TIMEOUT" ]; then
             fi
         fi
         if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FAULT_INJECTED" = "0" ] \
-            && grep -Fq "[kafka-test] FAULT WINDOW OPEN" "$LOG"; then
-            echo ">>> Killing Kafka route leader kafka2 during the in-guest fault window..."
-            docker compose -f "$KAFKA_COMPOSE" kill kafka2
+            && grep -Fq "$KAFKA_FAULT_MARKER" "$LOG"; then
+            if [ "$KAFKA_COORDINATOR_TEST" = "1" ]; then
+                KAFKA_COORDINATOR_LINE="$(grep -F "[kafka] coordinators group=" "$LOG" | tail -n 1)"
+                KAFKA_TRANSACTION_COORDINATOR="$(printf '%s\n' "$KAFKA_COORDINATOR_LINE" \
+                    | sed -E 's/.* transaction=([0-9]+).*/\1/')"
+                case "$KAFKA_TRANSACTION_COORDINATOR" in
+                    1|2|3) ;;
+                    *)
+                        echo "error: could not discover Kafka transaction coordinator from guest diagnostics" >&2
+                        exit 1
+                        ;;
+                esac
+                KAFKA_FAULT_SERVICE="kafka${KAFKA_TRANSACTION_COORDINATOR}"
+                KAFKA_FAULT_DESCRIPTION="transaction coordinator ${KAFKA_FAULT_SERVICE}"
+            fi
+            echo ">>> Killing Kafka ${KAFKA_FAULT_DESCRIPTION} during the in-guest fault window..."
+            docker compose -f "$KAFKA_COMPOSE" kill "$KAFKA_FAULT_SERVICE"
             KAFKA_FAULT_INJECTED=1
             KAFKA_FAULT_TICK=$tick
         fi
         if [ "$KAFKA_FAULT_INJECTED" = "1" ] && [ "$KAFKA_FAULT_RESTARTED" = "0" ] \
             && [ "$tick" -ge $((KAFKA_FAULT_TICK + 450)) ]; then
-            echo ">>> Restarting Kafka broker kafka2 after the leader-migration window..."
-            docker compose -f "$KAFKA_COMPOSE" up -d --wait kafka2
+            echo ">>> Restarting Kafka broker ${KAFKA_FAULT_SERVICE} after the fault window..."
+            docker compose -f "$KAFKA_COMPOSE" up -d --wait "$KAFKA_FAULT_SERVICE"
             KAFKA_FAULT_RESTARTED=1
         fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then

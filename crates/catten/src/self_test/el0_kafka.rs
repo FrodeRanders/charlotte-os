@@ -25,6 +25,8 @@ const CONNECTOR_NAME: &[u8] = b"kafka/selftest/main";
 const PRODUCER_NAME: &[u8] = b"kafka/selftest/main/producer";
 const CONSUMER_NAME: &[u8] = b"kafka/selftest/main/consumer";
 const TRANSACTION_NAME: &[u8] = b"kafka/selftest/main/transactional";
+const GROUP_ID: &[u8] = b"charlotte-qemu-smoke-group";
+const TRANSACTIONAL_ID: &[u8] = b"charlotte-qemu-smoke-transaction-0";
 
 pub fn test_el0_kafka() {
     logln!("Testing EL0 Kafka idempotent and transactional data plane...");
@@ -84,12 +86,8 @@ extern "C" fn verify_el0_kafka() {
                 partition: 0,
             }],
             max_produce_routes: 64,
-            group: b"charlotte-qemu-smoke-group",
-            // This key and the group key select an internal coordinator away
-            // from broker 2 in the three-broker fixture. The injected broker-2
-            // fault therefore isolates route-leader recovery; coordinator
-            // migration is exercised separately.
-            transactional_id: b"charlotte-qemu-smoke-transaction-0",
+            group: GROUP_ID,
+            transactional_id: TRANSACTIONAL_ID,
             authentication: KafkaAuthentication::ScramSha256AndMtlsP256 {
                 username: b"charlotte",
                 password: b"charlotte-kafka-test",
@@ -125,10 +123,14 @@ extern "C" fn verify_el0_kafka() {
         readiness_deadline.assert_pending("Kafka service readiness");
         yield_lp();
     }
+    #[cfg(not(feature = "kafka_coordinator_test"))]
     logln!("[kafka-test] FAULT WINDOW OPEN: route leader kafka2 may now be interrupted");
-    // The host runner polls the serial log and kills kafka2 in response to the
-    // marker above. Keep application traffic out of the window long enough
-    // for the hard fault and a replacement partition leader election.
+    #[cfg(feature = "kafka_coordinator_test")]
+    logln!("[kafka-test] COORDINATOR FAULT WINDOW OPEN");
+    // The host runner polls the serial log and kills the selected route leader
+    // or transaction coordinator in response to the marker above. Keep
+    // application traffic out of the window long enough for the hard fault
+    // and a replacement internal/application partition leader election.
     crate::cpu::scheduler::sleep_millis(3_000);
 
     let client = supervisor::spawn_with_name_service(
@@ -298,6 +300,12 @@ extern "C" fn verify_el0_kafka() {
                 charlotte_launch::kafka_status::RETRY_ATTEMPTS,
             )
         };
+        let coordinator_refreshes = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::COORDINATOR_REFRESHES,
+            )
+        };
         let terminal_errors = unsafe {
             crate::self_test::status_u32(
                 service_status,
@@ -332,6 +340,11 @@ extern "C" fn verify_el0_kafka() {
             crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
             return;
         }
+        let fault_recovered = if cfg!(feature = "kafka_coordinator_test") {
+            metadata_refreshes >= 1 && coordinator_refreshes >= 1
+        } else {
+            metadata_refreshes >= 2
+        };
         if input_stage == charlotte_launch::kafka_step_input_status::SUCCESS
             && commits >= 4
             && produced >= 4
@@ -340,7 +353,7 @@ extern "C" fn verify_el0_kafka() {
             && timeouts >= 1
             && group_generation >= 2
             && group_heartbeats >= 1
-            && metadata_refreshes >= 2
+            && fault_recovered
             && retry_attempts >= 1
             && terminal_errors >= 1
             && route_count == 2
@@ -350,8 +363,8 @@ extern "C" fn verify_el0_kafka() {
             logln!(
                 "[kafka-test] SUCCESS: low-level offset {}, generic step commits={} produced={} \
                  retries={} dlq={} timeouts={} group_generation={} heartbeats={} \
-                 metadata_refreshes={} retry_attempts={} terminal_errors={} \
-                 output_route_produced={} lag={}",
+                 metadata_refreshes={} coordinator_refreshes={} retry_attempts={} \
+                 terminal_errors={} output_route_produced={} lag={}",
                 output_offset,
                 commits,
                 produced,
@@ -361,6 +374,7 @@ extern "C" fn verify_el0_kafka() {
                 group_generation,
                 group_heartbeats,
                 metadata_refreshes,
+                coordinator_refreshes,
                 retry_attempts,
                 terminal_errors,
                 output_route_produced,
