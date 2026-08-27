@@ -10,6 +10,7 @@ default-members = [
     "crates/catten-syscall",
     "crates/charlotte-authorization",
     "crates/charlotte-kafka",
+    "crates/charlotte-kafka-step",
     "crates/charlotte-launch",
     "crates/charlotte-lifecycle",
     "crates/charlotte-protocol-block",

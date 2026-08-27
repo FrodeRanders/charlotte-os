@@ -120,6 +120,7 @@ charlotte-protocol-time = { path = "../charlotte-protocol-time" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
 charlotte-s3 = { path = "../charlotte-s3" }
 charlotte-kafka = { path = "../charlotte-kafka" }
+charlotte-kafka-step = { path = "../charlotte-kafka-step" }
 embedded-io = { version = "0.7", default-features = false }
 embedded-tls = { version = "0.19", default-features = false, features = ["alloc", "rustpki", "rsa", "p384", "ed25519"] }
 rand_core = { version = "0.6", default-features = false }
@@ -160,6 +161,24 @@ bench = false
 [[bin]]
 name = "kafka_smoke"
 path = "src/bin/kafka_smoke.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step"
+path = "src/bin/kafka_step.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step_proc"
+path = "src/bin/kafka_step_proc.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "kafka_step_input"
+path = "src/bin/kafka_step_input.rs"
 test = false
 bench = false
 

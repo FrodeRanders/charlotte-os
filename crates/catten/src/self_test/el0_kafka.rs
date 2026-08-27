@@ -10,6 +10,7 @@ use crate::{
             KafkaBrokerEndpoint,
             KafkaProduceRoute,
             KafkaProfile,
+            KafkaStepProfile,
         },
         supervisor::{
             self,
@@ -91,7 +92,7 @@ extern "C" fn verify_el0_kafka() {
         base
     };
     let deadline = crate::self_test::results::Deadline::after_millis(240_000);
-    loop {
+    let output_offset = loop {
         let stage = unsafe {
             crate::self_test::status_u32(status, charlotte_launch::kafka_smoke_status::STAGE)
         };
@@ -106,11 +107,11 @@ extern "C" fn verify_el0_kafka() {
                 crate::self_test::status_u32(status, charlotte_launch::kafka_smoke_status::OFFSET)
             };
             logln!(
-                "[kafka-test] SUCCESS: committed transaction and group offset at output offset {}",
+                "[kafka-test] low-level transaction committed at output offset {}; starting \
+                 generic step",
                 offset
             );
-            crate::self_test::results::pass(crate::self_test::results::TestId::Kafka);
-            return;
+            break offset;
         }
         if error != 0 {
             logln!("[kafka-test] FAILURE: smoke error={:#x} stage={}", error, stage);
@@ -123,6 +124,137 @@ extern "C" fn verify_el0_kafka() {
             return;
         }
         deadline.assert_pending("EL0 Kafka transactional round trip");
+        yield_lp();
+    };
+
+    let procedure = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"kafka_step_proc")
+            .expect("[kafka-test] kafka_step_proc.elf"),
+        ns,
+        ConnectionRights::CALL,
+    );
+    let procedure_status: *const u8 = {
+        let base: *mut u8 = procedure.status_frame.into();
+        base
+    };
+    let step = crate::service::launch::launch_kafka_step(
+        ns,
+        &KafkaStepProfile {
+            procedure_name: b"kproc",
+            kafka_connector_name: b"kafka",
+            allowed_routes: &[1],
+            dlq_route: 1,
+            max_outputs: 4,
+            max_attempts: 2,
+            procedure_timeout_ms: 50,
+            retry_backoff_ms: 20,
+            idle_poll_ms: 20,
+        },
+    );
+    let step_status: *const u8 = {
+        let base: *mut u8 = step.status_frame.into();
+        base
+    };
+    loop {
+        let stage = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::STAGE)
+        };
+        let error = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::ERROR)
+        };
+        let procedure_error = unsafe {
+            crate::self_test::status_u32(
+                procedure_status,
+                charlotte_launch::kafka_step_procedure_status::ERROR,
+            )
+        };
+        if error != 0 || procedure_error != 0 {
+            logln!(
+                "[kafka-test] FAILURE: step startup error={:#x} procedure_error={:#x}",
+                error,
+                procedure_error
+            );
+            crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        if stage == 2 {
+            break;
+        }
+        deadline.assert_pending("Kafka-step startup");
+        yield_lp();
+    }
+
+    let input = supervisor::spawn_with_name_service(
+        crate::service::store::service_elf(b"kafka_step_input")
+            .expect("[kafka-test] kafka_step_input.elf"),
+        ns,
+        ConnectionRights::CALL,
+    );
+    let input_status: *const u8 = {
+        let base: *mut u8 = input.status_frame.into();
+        base
+    };
+    loop {
+        let input_stage = unsafe {
+            crate::self_test::status_u32(
+                input_status,
+                charlotte_launch::kafka_step_input_status::STAGE,
+            )
+        };
+        let input_error = unsafe {
+            crate::self_test::status_u32(
+                input_status,
+                charlotte_launch::kafka_step_input_status::ERROR,
+            )
+        };
+        let step_error = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::ERROR)
+        };
+        let commits = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::COMMITS)
+        };
+        let produced = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::PRODUCED)
+        };
+        let retries = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::RETRIES)
+        };
+        let dlq = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::DLQ)
+        };
+        let timeouts = unsafe {
+            crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::TIMEOUTS)
+        };
+        if input_error != 0 || step_error != 0 {
+            logln!(
+                "[kafka-test] FAILURE: step input error={:#x} step_error={:#x}",
+                input_error,
+                step_error
+            );
+            crate::self_test::results::fail(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        if input_stage == charlotte_launch::kafka_step_input_status::SUCCESS
+            && commits >= 4
+            && produced >= 4
+            && retries >= 2
+            && dlq >= 1
+            && timeouts >= 1
+        {
+            logln!(
+                "[kafka-test] SUCCESS: low-level offset {}, generic step commits={} produced={} \
+                 retries={} dlq={} timeouts={}",
+                output_offset,
+                commits,
+                produced,
+                retries,
+                dlq,
+                timeouts
+            );
+            crate::self_test::results::pass(crate::self_test::results::TestId::Kafka);
+            return;
+        }
+        deadline.assert_pending("Kafka-step retry, timeout, DLQ, and commit sequence");
         yield_lp();
     }
 }

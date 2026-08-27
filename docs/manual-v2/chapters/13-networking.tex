@@ -340,6 +340,21 @@ than silently advancing the group offset. These linear owners make the local
 lifecycle explicit, but they do not turn arbitrary application side effects
 outside Kafka into an exactly-once transaction.
 
+For procedures that only implement business behaviour, the generic
+\texttt{kafka\_step} service owns that lifecycle instead. Its separate,
+read-only profile names one connector and one procedure endpoint, admits only
+specific output-route indices, identifies the DLQ route, and bounds output
+count, attempts, timeout, backoff, and polling. The procedure receives borrowed
+input bytes and an attempt number but no Kafka capability. The runner validates
+the complete output batch before beginning a transaction, produces admitted
+records, includes the input offset, and commits. Retry replies and procedure
+timeouts release the delivery for redelivery; terminal or malformed replies
+and retry exhaustion transactionally copy the original record to the DLQ.
+Transport and commit failures abort and redeliver without consuming the
+business-attempt budget. One owning operation aggregates the call, input
+memory, delivery token, and transaction, so cancellation and early-return
+cleanup follow the owned-resource rules rather than a manual cleanup ladder.
+
 The wire crate negotiates \texttt{ApiVersions} and implements a deliberately
 small set of stable Kafka request versions. Metadata selects partition leaders
 and group/transaction coordinators only from the profile's hostname/port and
@@ -361,7 +376,8 @@ and derived keys use zeroizing owners and remain outside the application ABI.
 The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS, required mTLS, and SCRAM,
 places the input and output routes on different leaders, and verifies
 idempotent production, read-committed consumption, atomic production plus
-group-offset commit, transaction abort, and filtering of the aborted record.
+group-offset commit, transaction abort, filtering of the aborted record, and
+the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 The bounded Kafka wire implementation is in
 \repodir|crates/charlotte-kafka|, the application protocol in

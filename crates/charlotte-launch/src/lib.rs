@@ -329,6 +329,32 @@ pub mod kafka_smoke_status {
     pub const SUCCESS: u32 = 0x4b46_4f4b; // "KFOK"
 }
 
+/// Generic transactional Kafka-step diagnostic status-page offsets.
+pub mod kafka_step_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const POLLED: usize = 8;
+    pub const INVOKED: usize = 12;
+    pub const PRODUCED: usize = 16;
+    pub const COMMITS: usize = 20;
+    pub const RETRIES: usize = 24;
+    pub const DLQ: usize = 28;
+    pub const TIMEOUTS: usize = 32;
+    pub const ABORTS: usize = 36;
+}
+
+pub mod kafka_step_procedure_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const INVOCATIONS: usize = 8;
+}
+
+pub mod kafka_step_input_status {
+    pub const STAGE: usize = 0;
+    pub const ERROR: usize = 4;
+    pub const SUCCESS: u32 = 0x4b53_4f4b; // "KSOK"
+}
+
 pub mod clusterctl_status {
     pub const STAGE: usize = 0;
 }

@@ -78,6 +78,7 @@ charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
+charlotte-kafka-step = { path = "../charlotte-kafka-step" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
 # Keep the protocol bindings aligned with the vendored, boot-tested Limine
 # loader. 0.x releases are not API-compatible with one another, so a lower

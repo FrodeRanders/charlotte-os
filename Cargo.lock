@@ -146,6 +146,7 @@ name = "catten"
 version = "0.8.1"
 dependencies = [
  "catten-syscall",
+ "charlotte-kafka-step",
  "charlotte-launch",
  "charlotte-lifecycle",
  "charlotte-protocol-disco",
@@ -192,6 +193,7 @@ dependencies = [
  "catten-syscall",
  "charlotte-authorization",
  "charlotte-kafka",
+ "charlotte-kafka-step",
  "charlotte-launch",
  "charlotte-protocol-block",
  "charlotte-protocol-disco",
@@ -263,6 +265,14 @@ version = "0.1.0"
 dependencies = [
  "charlotte-launch",
  "zeroize",
+]
+
+[[package]]
+name = "charlotte-kafka-step"
+version = "0.1.0"
+dependencies = [
+ "charlotte-launch",
+ "charlotte-protocol-kafka",
 ]
 
 [[package]]

@@ -149,7 +149,10 @@ repository history remain authoritative.
         endpoint, trust, credential, and data-scope profiles are not ambient
         machine configuration. Opt-in AArch64 tests validate RustFS and Apache
         Kafka over verified TLS with required P-256 mTLS and SCRAM-SHA-256
-        client authentication.
+        client authentication. The Kafka test also runs the generic
+        transactional-step service through successful output, retry, procedure
+        timeout, and terminal-DLQ paths while keeping broker authority out of
+        the called procedure.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a
@@ -173,7 +176,9 @@ repository history remain authoritative.
         and topic administration.
         Its versioned, digest-checked profile is already delivered only to the
         broker connector as read-only launch memory; production secret injection
-        and trust-anchor rotation remain controller work.
+        and trust-anchor rotation remain controller work. The generic step
+        runner is implemented, but production direct capability injection,
+        generation fencing, and rollout control remain controller work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

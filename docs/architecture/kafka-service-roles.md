@@ -56,8 +56,12 @@ independent.
 ## Transactional-step role
 
 Durga activities should normally use a generic transactional-step service. Its
-profile contains authorized broker destinations, one consume route, every allowed output route (including DLQ
-and lifecycle routes), the consumer group, and a fenced transactional identity.
+profile names one Kafka connector and one procedure endpoint, admits a bounded
+set of output route indices (including the DLQ), and sets the procedure
+timeout, retry backoff, maximum attempt count, idle-poll interval, and maximum
+output count. Broker destinations, the consume route, group, transactional
+identity, TLS material, and credentials remain solely in the separately
+provisioned connector profile.
 The profile is a versioned, SHA-256-protected object delivered as a
 kernel-enforced read-only launch capability. Its configurable route ceiling is
 bounded by the current hard maximum of 64, so deployment policy can choose a
@@ -80,6 +84,17 @@ which removes Kafka cleanup ladders from application development. A procedure
 that needs S3 or another service receives that capability separately through
 its launch contract.
 
+This path is implemented by `kafka_step.elf` and the bounded `no_std`
+`charlotte-kafka-step` ABI. The runner keeps the pending procedure call,
+borrowed input, delivery token, and transaction in owners whose `Drop`
+implementations cancel or release an incomplete attempt. A successful reply may
+return up to 16 records; every route is checked against the step profile before
+the transaction begins. Retry replies and timeouts cause redelivery after the
+configured backoff. Terminal or malformed replies, and retry exhaustion, copy
+the original record to the configured DLQ and include its input offset in the
+same transaction. Kafka transport or commit failures abort and redeliver
+without consuming the procedure-attempt budget.
+
 The transaction covers Kafka records and offsets only. External side effects
 cannot be made part of a Kafka transaction; such BPMN activities need an
 outbox, an idempotency key, or an explicit compensation/saga policy.
@@ -97,8 +112,15 @@ co-located using a shared `PlacementPolicy` affinity group. Correctness must not
 depend on co-location: migration and restart require a generation-fenced
 procedure capability and a fenced Kafka transactional identity.
 
-The current low-level Kafka endpoint already supports one fixed consume route
-plus allow-listed produce routes in a single transaction. The remaining work
-for the higher-level transactional-step role is the bounded procedure
-request/reply ABI, capability injection by the launcher/controller, retry and
-timeout policy, and observed-state integration for readiness and rollout.
+The runner publishes bounded readiness and operation counters for polls,
+invocations, output records, commits, retries, DLQ records, timeouts, aborts,
+and fatal startup errors. The AArch64 Kafka fixture exercises successful output,
+explicit retry, procedure timeout and terminal DLQ paths through the generic
+runner.
+
+The development launcher currently resolves the two exact profile names
+through its bootstrap name-service connection. A production deployment
+controller must instead mint and inject only those two connection capabilities,
+manage generation fencing, and interpret the status page for rollout. Dynamic
+consumer-group membership and controller-managed transactional-instance leases
+also remain future work.

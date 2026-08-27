@@ -10,6 +10,8 @@ extern crate alloc;
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
 pub use charlotte_authorization as authorization;
+/// Transactional-step profile and procedure ABI.
+pub use charlotte_kafka_step as kafka_step;
 /// Capability-oriented Kafka client-service protocol.
 pub use charlotte_protocol_kafka as kafka;
 /// Capability-oriented S3 data-plane service protocol.
@@ -1620,6 +1622,30 @@ pub fn wait_for_registered_name_owned(
     } else {
         None
     }
+}
+
+/// Wait for either a short or memory-carried service name and return one
+/// uniquely owned connection. The staged name remains owned by this call
+/// until the name-service lookup terminates.
+pub fn wait_for_registered_name_bytes_owned(
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    service_name: &[u8],
+) -> Option<(i64, catten_rt::owned::Connection)> {
+    if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
+        return None;
+    }
+    if service_name.len() <= 8 {
+        return wait_for_registered_name_owned(ns_connection, name(service_name));
+    }
+    let staged = stage_name_owned(service_name)?;
+    let result = loop {
+        match ns_connection.call_copy(ns::OP_LOOKUP_NAMED, service_name.len() as u64, &staged) {
+            Ok(call) => break call.wait().ok()?,
+            Err(_) => sleep_ms(1),
+        }
+    };
+    let connection = result.connection?;
+    (result.result >= 1).then_some((result.result, connection))
 }
 
 /// Resolve an optional service without waiting for a future registration.

@@ -543,15 +543,13 @@ message endpoint must not be treated as equivalent merely because it can carry
 the same payload.
 
 CharlotteOS now has an implemented, capability-scoped Kafka compatibility
-service (\autoref{sec:kafka-service}). A provisioned instance exposes one
-broker, a fixed consume partition, up to 64 allow-listed produce routes, a
+service (\autoref{sec:kafka-service}). A provisioned instance exposes an
+explicit broker allow-list, a fixed consume partition, up to 64 allow-listed produce routes, a
 group, transactional identity, and rights set. Its
 owned Rust client supports idempotent produce, bounded read-committed consume,
 explicit delivery acknowledgement, and a transaction that atomically combines
 Kafka output with the consumed delivery's group-offset advance. This supplies
-a concrete external event-log boundary for a future Durga backend; it does not
-yet connect Durga-generated process identities, schemas, or lifecycle events to
-that boundary.
+a concrete external event-log boundary for a Durga backend.
 
 The generated deployment should treat the broker connector and the behavioural
 role as separate authorities. Only \texttt{kafka} receives the immutable,
@@ -559,6 +557,13 @@ digest-checked profile containing endpoint, trust, and authentication
 secrets. A producer, consumer, or transactional-step runner receives a
 connection capability to that connector. The activity procedure behind a step
 receives only the bounded invocation capability and no Kafka authority.
+The generic \texttt{kafka\_step} runner now implements this split: it calls the
+procedure with borrowed input and an attempt number, validates its bounded
+output batch, and atomically produces admitted outputs with the consumed
+offset. It retries timeouts and explicit transient failures and writes terminal,
+malformed, or exhausted inputs to a configured DLQ. The remaining deployment
+work is direct capability injection, generated artifact construction, and
+controller-managed lifecycle/fencing rather than the transaction loop itself.
 
 The useful distinction is between application events whose meaning is
 intrinsically durable and internal execution plumbing whose purpose is to

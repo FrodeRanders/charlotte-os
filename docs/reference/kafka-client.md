@@ -13,7 +13,9 @@ The implementation is split at the userspace boundary:
   contains no live capabilities;
 - `kafka.elf` owns the broker socket, producer IDs, epochs, sequence numbers,
   group state, and transactional identity; and
-- `catten_services::kafka_client` is the owned application API.
+- `catten_services::kafka_client` is the owned application API; and
+- `kafka_step.elf` plus `charlotte-kafka-step` provide a generic,
+  capability-separated consume--procedure--produce runner.
 
 ## Provisioning and authority
 
@@ -122,6 +124,30 @@ The record bytes arrive in an `OwnedMemory`. `Delivery::into_parts` returns the
 delivery token, memory owner, and validated key/value ranges. Keep the memory
 behind its mapping borrow while inspecting those ranges.
 
+## Generic transactional-step runner
+
+Business procedures that only transform an input record should not own the
+Kafka connection or its delivery and transaction resources. A trusted launcher
+can instead start `kafka_step.elf` with a read-only `charlotte-kafka-step`
+profile. That profile names the connector and procedure instances, lists the
+only output route indices the procedure may select, identifies one required
+DLQ route, and bounds outputs, attempts, timeout, backoff, and polling.
+
+The procedure receives a borrowed `DeliveredRecord` memory object and the
+one-based attempt number. It replies with either no output, a bounded encoded
+`OutputBatch`, retry, or terminal failure. The runner validates the entire
+batch before beginning a transaction, produces every admitted record, includes
+the input delivery, and commits. Dropping its single transient operation owner
+cancels/releases the pending resources on every early return. Procedure
+timeouts and retry replies redeliver; terminal or invalid replies and retry
+exhaustion transactionally write the original record to the DLQ. Broker-side
+failures abort and redeliver without charging the business attempt count.
+
+The current development launch path resolves exact connector and procedure
+names through the name service. Production deployment still needs a grant
+controller that directly injects those connections, so neither the procedure
+nor unrelated callers receive ambient connector authority.
+
 ## Kafka behavior and failure semantics
 
 The service negotiates and validates the exact legacy request versions it
@@ -219,7 +245,8 @@ that checks:
 - read-committed consumption and explicit offset commit;
 - atomic consume-transform-produce across both topics with per-route producer
   sequences, `AddPartitionsToTxn`, `AddOffsetsToTxn`, and `TxnOffsetCommit`; and
-- abort filtering.
+- abort filtering; and
+- the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 Run it with:
 

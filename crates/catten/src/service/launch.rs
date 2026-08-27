@@ -147,6 +147,21 @@ pub struct KafkaProfile<'a> {
     pub transaction_timeout_ms: u32,
 }
 
+/// Orchestration policy for one generic transactional Kafka-step runner.
+/// Service names are resolved only by the trusted runner; the procedure never
+/// receives the connector connection.
+pub struct KafkaStepProfile<'a> {
+    pub procedure_name: &'a [u8],
+    pub kafka_connector_name: &'a [u8],
+    pub allowed_routes: &'a [u16],
+    pub dlq_route: u16,
+    pub max_outputs: u16,
+    pub max_attempts: u16,
+    pub procedure_timeout_ms: u32,
+    pub retry_backoff_ms: u32,
+    pub idle_poll_ms: u32,
+}
+
 /// The full steady-state service set, with each optional group present only
 /// when the hardware that backs it was discovered.
 #[derive(Copy, Clone)]
@@ -526,6 +541,31 @@ pub fn launch_kafka_profile(ns: &NameServiceHandle, profile: &KafkaProfile<'_>) 
         ConnectionRights::CALL,
         &encoded,
         ServiceLimits::default().with_user_stack_size(128 * 1024),
+    )
+}
+
+/// Launch the generic Kafka transactional-step runner with a read-only,
+/// digest-checked orchestration profile.
+pub fn launch_kafka_step(ns: &NameServiceHandle, profile: &KafkaStepProfile<'_>) -> ServiceDomain {
+    let encoded = charlotte_kafka_step::Profile {
+        procedure_name: profile.procedure_name,
+        kafka_connector_name: profile.kafka_connector_name,
+        allowed_routes: profile.allowed_routes.to_vec(),
+        dlq_route: profile.dlq_route,
+        max_outputs: profile.max_outputs,
+        max_attempts: profile.max_attempts,
+        procedure_timeout_ms: profile.procedure_timeout_ms,
+        retry_backoff_ms: profile.retry_backoff_ms,
+        idle_poll_ms: profile.idle_poll_ms,
+    }
+    .encode()
+    .expect("invalid Kafka-step profile");
+    crate::service::supervisor::spawn_with_read_only_profile_and_limits(
+        crate::service::store::service_elf(b"kafka_step").expect("[launch] kafka_step.elf"),
+        ns,
+        ConnectionRights::CALL,
+        &encoded,
+        ServiceLimits::default(),
     )
 }
 
