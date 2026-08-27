@@ -274,6 +274,31 @@ fn exact_identity_reprovisioning_is_idempotent_but_cannot_change_authority() {
 }
 
 #[test]
+fn administrator_can_resolve_for_an_exact_unprivileged_target() {
+    let mut fixture = fixture();
+    let target = identity(9, 4);
+    let target_principal = principal(90);
+    fixture.store.set_policy(fixture.admin, target_principal, SERVICE, Rights::CALL, 0).unwrap();
+
+    let grant = fixture
+        .store
+        .authorize_for_admin(fixture.admin, target, target_principal, SERVICE, Rights::CALL)
+        .unwrap();
+    assert_eq!(grant.principal, target_principal);
+    assert_eq!(fixture.store.roles_for(target), Some(Roles::NONE));
+    assert_eq!(
+        fixture.store.authorize_for_admin(
+            fixture.client,
+            identity(10, 1),
+            principal(100),
+            SERVICE,
+            Rights::CALL,
+        ),
+        Err(AuthorizationError::PolicyAdministratorRequired)
+    );
+}
+
+#[test]
 fn audit_log_is_bounded_and_preserves_monotonic_sequence() {
     let mut log = AuditLog::new(2).unwrap();
     let caller = identity(2, 1);
@@ -301,6 +326,7 @@ fn policy_wire_requests_round_trip_and_exclude_caller_identity() {
     use charlotte_authorization::wire::{
         Request,
         decode,
+        encode_grant_lookup,
         encode_lookup,
         encode_publish,
         encode_set_policy,
@@ -337,4 +363,16 @@ fn policy_wire_requests_round_trip_and_exclude_caller_identity() {
     );
     bytes[12] = 1;
     assert_eq!(decode(&bytes[..len]), None);
+
+    let len = encode_grant_lookup(SERVICE, Rights::CLIENT, 9, 4, 90, &mut bytes).unwrap();
+    assert_eq!(
+        decode(&bytes[..len]),
+        Some(Request::GrantLookup {
+            service: SERVICE,
+            requested: Rights::CLIENT,
+            target_asid: 9,
+            target_generation: 4,
+            target_principal: 90,
+        })
+    );
 }

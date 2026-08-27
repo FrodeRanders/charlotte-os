@@ -105,6 +105,11 @@ pub fn write_system_observer_cap(config_frame: PAddr, cap: u64) {
     append_capability(config_frame, CapabilityKind::SystemObserver, cap);
 }
 
+/// Deliver a private name-service connection to a trusted mediation service.
+pub fn write_name_service_cap(config_frame: PAddr, cap: u64) {
+    append_capability(config_frame, CapabilityKind::NameService, cap);
+}
+
 /// Record a read-only launch profile. Its typed metadata selects the
 /// meaningful byte prefix; the final memory-object page may contain padding.
 pub fn write_profile_cap(config_frame: PAddr, cap: u64, metadata: ProfileCapabilityMetadata) {

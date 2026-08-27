@@ -25,7 +25,7 @@ SERVICES=(
     ns observe nvme objstore nvme_client objstore_client echo raft client
     servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent
     greet relmsg rclient tcpip tcpclient httpd time s3 s3_smoke kafka kafka_smoke
-    rng fs clusterctl
+    rng fs clusterctl grantctl
 )
 
 if [ "$CLEAN" = "1" ]; then

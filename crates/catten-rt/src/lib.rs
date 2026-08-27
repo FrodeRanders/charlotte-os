@@ -160,6 +160,15 @@ impl Context {
         unsafe { owned::ConnectionRef::from_raw(cap).ok() }
     }
 
+    /// Borrow the private name-service connection supplied to a trusted
+    /// mediation service. Ordinary applications do not receive this kind.
+    pub fn name_service_connection(&self) -> Option<owned::ConnectionRef<'_>> {
+        let cap = config::capability_record_by_kind(config::CapabilityKind::NameService)?.handle;
+        // The launch environment owns the capability for this domain's
+        // lifetime, exactly like the bootstrap connection.
+        unsafe { owned::ConnectionRef::from_raw(cap).ok() }
+    }
+
     pub fn mmio_cap(&self) -> Option<u64> {
         config::mmio_cap()
     }

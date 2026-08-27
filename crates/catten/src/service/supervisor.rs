@@ -8,6 +8,8 @@
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
 const NODE_NAME_SERVICE_VERSION: u32 = 1;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
+const CAPABILITY_GRANT_INTERFACE: u64 = u64::from_le_bytes(*b"GRANT\0\0\0");
+const CAPABILITY_GRANT_VERSION: u32 = 1;
 
 use alloc::vec::Vec;
 
@@ -50,6 +52,8 @@ pub enum ProfileLaunchError {
     ProfileTransfer(crate::memory::object::MemoryObjectError),
     RollbackMemory(crate::memory::object::MemoryObjectError),
     RollbackDomain(crate::memory::AddressSpaceCloseError),
+    InvalidDeploymentDescriptor,
+    DescriptorArtifactMismatch,
 }
 
 /// Own every resource acquired while preparing a profile-backed domain.
@@ -160,6 +164,14 @@ pub struct NameServiceHandle {
     pub endpoint_cap: CapabilityId,
 }
 
+/// Trusted capability-grant controller and the endpoint from which the
+/// supervisor can mint application bootstrap connections.
+#[derive(Copy, Clone)]
+pub struct CapabilityGrantControllerHandle {
+    pub domain: ServiceDomain,
+    pub endpoint_cap: CapabilityId,
+}
+
 /// The node-local name service shared by ordinary service domains.
 ///
 /// Applications receive delegated connections to this registry; they do not
@@ -168,6 +180,10 @@ pub struct NameServiceHandle {
 /// isolated registry must use [`spawn_private_name_service`].
 static NODE_NAME_SERVICE: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NameServiceHandle>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+static CAPABILITY_GRANT_CONTROLLER: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<CapabilityGrantControllerHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// The only domain to which the boot supervisor delegates system-wide
@@ -322,6 +338,46 @@ pub fn start_node_name_service() -> NameServiceHandle {
     *KERNEL_NS_CONN.lock() = Some(kernel_conn);
     *node = Some(handle);
     handle
+}
+
+/// Start the node's trusted capability-grant controller.
+///
+/// Its own endpoint is the bootstrap capability; a separately typed private
+/// name-service connection lets it mediate lookups without exposing ambient
+/// naming authority to applications.
+pub fn start_capability_grant_controller(
+    name_service: &NameServiceHandle,
+) -> CapabilityGrantControllerHandle {
+    let mut controller = CAPABILITY_GRANT_CONTROLLER.lock();
+    assert!(controller.is_none(), "[supervisor] capability grant controller already started");
+    let loaded = loader::load_domain(
+        crate::service::store::service_elf(b"grantctl").expect("[supervisor] grantctl service elf"),
+    );
+    let endpoint_cap =
+        ipc::endpoint_create(loaded.asid, CAPABILITY_GRANT_INTERFACE, CAPABILITY_GRANT_VERSION, 64)
+            .expect("[supervisor] grant-controller endpoint creation failed");
+    let private_name_service = ipc::connection_delegate(
+        name_service.domain.asid,
+        name_service.endpoint_cap,
+        loaded.asid,
+        ConnectionRights::CALL,
+    )
+    .expect("[supervisor] grant-controller name-service delegation failed");
+    bootstrap::write_bootstrap_cap(loaded.config_frame, endpoint_cap);
+    bootstrap::write_name_service_cap(loaded.config_frame, private_name_service);
+    bootstrap::write_manifest(loaded.config_frame, &[]);
+    let handle = CapabilityGrantControllerHandle {
+        domain: start_domain(loaded),
+        endpoint_cap,
+    };
+    *controller = Some(handle);
+    handle
+}
+
+pub fn capability_grant_controller() -> CapabilityGrantControllerHandle {
+    CAPABILITY_GRANT_CONTROLLER
+        .lock()
+        .expect("[supervisor] capability grant controller has not been started")
 }
 
 /// Spawn the thread that registers the well-known local node ready marker once the
@@ -527,6 +583,66 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     };
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
+    bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
+    Ok(start_domain_with_limits(transaction.finish(), limits))
+}
+
+/// Launch a signed application with no name-service capability. Its bootstrap
+/// connection targets the capability-grant controller and its immutable
+/// profile is the signed deployment descriptor used for every acquisition.
+pub fn try_spawn_with_deployment_descriptor(
+    image: &[u8],
+    descriptor_bytes: &[u8],
+    limits: ServiceLimits,
+) -> Result<ServiceDomain, ProfileLaunchError> {
+    let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
+        .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
+    if charlotte_launch::deployment::verify(descriptor_bytes, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+        != charlotte_launch::deployment::VerifyOutcome::Valid
+    {
+        return Err(ProfileLaunchError::InvalidDeploymentDescriptor);
+    }
+    let metadata = charlotte_launch::signature_note::artifact_metadata(image)
+        .ok_or(ProfileLaunchError::DescriptorArtifactMismatch)?;
+    if metadata.name() != descriptor.artifact_name
+        || charlotte_launch::sha256::digest(image) != descriptor.artifact_digest
+    {
+        return Err(ProfileLaunchError::DescriptorArtifactMismatch);
+    }
+    let descriptor_len =
+        u32::try_from(descriptor_bytes.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
+    let profile_metadata = charlotte_launch::ProfileCapabilityMetadata::new(descriptor_len)
+        .ok_or(ProfileLaunchError::EmptyProfile)?;
+    let loaded = loader::try_load_domain(image).map_err(ProfileLaunchError::Load)?;
+    let mut transaction = ProfileLaunchTransaction::new(loaded);
+    let controller = capability_grant_controller();
+    let connection = match ipc::connection_delegate(
+        controller.domain.asid,
+        controller.endpoint_cap,
+        transaction.loaded().asid,
+        ConnectionRights::CALL,
+    ) {
+        Ok(connection) => connection,
+        Err(error) => return transaction.abort(ProfileLaunchError::BootstrapConnection(error)),
+    };
+    let source = match crate::memory::object::allocate_with_bytes(KERNEL_ASID, descriptor_bytes) {
+        Ok(source) => source,
+        Err(error) => return transaction.abort(ProfileLaunchError::ProfileAllocation(error)),
+    };
+    transaction.kernel_profile = Some(source);
+    let target = match crate::memory::object::move_read_only_to(
+        KERNEL_ASID,
+        source,
+        transaction.loaded().asid,
+    ) {
+        Ok(target) => {
+            transaction.kernel_profile = None;
+            target
+        }
+        Err(error) => return transaction.abort(ProfileLaunchError::ProfileTransfer(error)),
+    };
+    bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
+    bootstrap::write_profile_cap(transaction.loaded().config_frame, target, profile_metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
     Ok(start_domain_with_limits(transaction.finish(), limits))
 }

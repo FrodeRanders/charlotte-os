@@ -10,14 +10,21 @@ use std::{
     process::ExitCode,
 };
 
-use charlotte_launch::signature_note::{
-    self,
-    ArtifactClass,
-    ArtifactMetadata,
-    DESCRIPTOR_LEN,
-    NOTE_NAME,
-    NOTE_TYPE_SIGNATURE,
-    SIGNATURE_LEN,
+use charlotte_launch::{
+    deployment::{
+        self,
+        CapabilityGrant,
+        DescriptorFields,
+    },
+    signature_note::{
+        self,
+        ArtifactClass,
+        ArtifactMetadata,
+        DESCRIPTOR_LEN,
+        NOTE_NAME,
+        NOTE_TYPE_SIGNATURE,
+        SIGNATURE_LEN,
+    },
 };
 use ed25519_compact::{
     KeyPair,
@@ -286,6 +293,113 @@ fn elf_verify(args: &[String]) -> Result<()> {
     }
 }
 
+fn parse_required_u64(value: &str, label: &str) -> Result<u64> {
+    value
+        .strip_prefix("0x")
+        .map_or_else(|| value.parse(), |hex| u64::from_str_radix(hex, 16))
+        .map_err(|_| format!("invalid {label}: {value:?}"))
+}
+
+fn parse_grant(value: &str) -> Result<(&[u8], u16)> {
+    let (service, rights) = value
+        .split_once('=')
+        .ok_or_else(|| format!("grant must be SERVICE=RIGHTS, got {value:?}"))?;
+    let rights = match rights {
+        "send" => deployment::RIGHT_SEND,
+        "call" => deployment::RIGHT_CALL,
+        "client" => deployment::CLIENT_RIGHTS,
+        _ => {
+            return Err(format!("grant rights must be send, call, or client, got {rights:?}"));
+        }
+    };
+    Ok((service.as_bytes(), rights))
+}
+
+fn deployment_sign(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing descriptor output path".to_owned())?;
+    let artifact_name = args.get(1).ok_or_else(|| "missing artifact name".to_owned())?;
+    let object_key = args.get(2).ok_or_else(|| "missing object key".to_owned())?;
+    let artifact_digest: [u8; 32] =
+        hex_decode(args.get(3).ok_or_else(|| "missing artifact SHA-256".to_owned())?)?
+            .try_into()
+            .map_err(|_| "artifact SHA-256 must contain exactly 32 bytes".to_owned())?;
+    let node_key =
+        parse_required_u64(args.get(4).ok_or_else(|| "missing node key".to_owned())?, "node key")?;
+    let sequence = parse_required_u64(
+        args.get(5).ok_or_else(|| "missing deployment sequence".to_owned())?,
+        "deployment sequence",
+    )?;
+    let secret = SecretKey::from_slice(&hex_decode(
+        args.get(6).ok_or_else(|| "missing private key".to_owned())?,
+    )?)
+    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let parsed_grants =
+        args[7..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
+    let grants = parsed_grants
+        .iter()
+        .map(|(service, rights)| CapabilityGrant {
+            service,
+            rights: *rights,
+        })
+        .collect::<Vec<_>>();
+    let fields = DescriptorFields {
+        sequence,
+        node_key,
+        artifact_digest,
+        artifact_name: artifact_name.as_bytes(),
+        object_key: object_key.as_bytes(),
+        grants: &grants,
+    };
+    let public = secret.public_key();
+    let public_key: &[u8; 32] =
+        public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
+    let len = deployment::encoded_len(&fields)
+        .map_err(|error| format!("invalid deployment descriptor: {error:?}"))?;
+    let mut bytes = vec![0; len];
+    deployment::encode_unsigned(&fields, public_key, &mut bytes)
+        .map_err(|error| format!("encode deployment descriptor: {error:?}"))?;
+    let digest = deployment::signature_digest(&bytes)
+        .ok_or_else(|| "encoded deployment descriptor did not decode".to_owned())?;
+    let signature: Signature = secret.sign(digest, None);
+    let signature: &[u8; deployment::SIGNATURE_LEN] =
+        signature.as_ref().try_into().map_err(|_| "invalid Ed25519 signature length".to_owned())?;
+    if !deployment::set_signature(&mut bytes, signature) {
+        return Err("failed to install deployment signature".to_owned());
+    }
+    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    println!(
+        "signed deployment {output}: artifact={artifact_name:?} object={object_key:?} \
+         node={node_key:#x} sequence={sequence} grants={}",
+        grants.len()
+    );
+    Ok(())
+}
+
+fn deployment_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
+    let key_bytes: [u8; 32] =
+        hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
+            .try_into()
+            .map_err(|_| "public key must contain 32 bytes".to_owned())?;
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    if deployment::verify(&bytes, &key_bytes) != deployment::VerifyOutcome::Valid {
+        return Err("deployment descriptor signature verification failed".to_owned());
+    }
+    let descriptor = deployment::decode(&bytes)
+        .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={}",
+        String::from_utf8_lossy(descriptor.artifact_name),
+        String::from_utf8_lossy(descriptor.object_key),
+        descriptor.node_key,
+        descriptor.sequence
+    );
+    for grant in descriptor.grants() {
+        println!("grant {:?} rights={:#x}", String::from_utf8_lossy(grant.service), grant.rights);
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -306,6 +420,8 @@ fn run() -> Result<()> {
         }
         Some("elf-sign") => elf_sign(&args[2..]),
         Some("elf-verify") => elf_verify(&args[2..]),
+        Some("deployment-sign") => deployment_sign(&args[2..]),
+        Some("deployment-verify") => deployment_verify(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -344,13 +460,60 @@ fn run() -> Result<()> {
             policy
                 .validate(&metadata)
                 .map_err(|error| format!("placement policy self-test failed: {error:?}"))?;
-            println!("SHA-256, CLS2 metadata, and placement-policy self-tests pass");
+            let grants = [CapabilityGrant {
+                service: b"kafka/orders/transactional",
+                rights: deployment::CLIENT_RIGHTS,
+            }];
+            let fields = DescriptorFields {
+                sequence: 7,
+                node_key: 0x1234,
+                artifact_digest: [0xa5; 32],
+                artifact_name: b"orders-step",
+                object_key: b"releases/orders-step-a5.elf",
+                grants: &grants,
+            };
+            let pair = KeyPair::generate();
+            let public_key: &[u8; 32] = pair
+                .pk
+                .as_ref()
+                .try_into()
+                .map_err(|_| "invalid self-test public key".to_owned())?;
+            let mut descriptor = vec![
+                0;
+                deployment::encoded_len(&fields).map_err(|error| {
+                    format!("deployment descriptor self-test length failed: {error:?}")
+                })?
+            ];
+            deployment::encode_unsigned(&fields, public_key, &mut descriptor).map_err(|error| {
+                format!("deployment descriptor self-test encoding failed: {error:?}")
+            })?;
+            let digest = deployment::signature_digest(&descriptor)
+                .ok_or_else(|| "deployment descriptor self-test decode failed".to_owned())?;
+            let signature: Signature = pair.sk.sign(digest, None);
+            let signature: &[u8; deployment::SIGNATURE_LEN] = signature
+                .as_ref()
+                .try_into()
+                .map_err(|_| "invalid self-test signature".to_owned())?;
+            if !deployment::set_signature(&mut descriptor, signature)
+                || deployment::verify(&descriptor, public_key) != deployment::VerifyOutcome::Valid
+            {
+                return Err("deployment descriptor self-test verification failed".to_owned());
+            }
+            descriptor[24] ^= 1;
+            if deployment::verify(&descriptor, public_key) == deployment::VerifyOutcome::Valid {
+                return Err("mutated deployment descriptor was accepted".to_owned());
+            }
+            println!(
+                "SHA-256, CLS2 metadata, placement-policy, and signed-deployment self-tests pass"
+            );
             Ok(())
         }
         _ => Err("usage: cluster-sign generate | elf-sign <elf> <name> <privkey-hex> \
                   [service|driver|bootstrap|admin] [version] [rollback] [flags] \
                   [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
-                  selftest"
+                  deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
+                  <node-key> <sequence> <privkey-hex> [service=send|call|client ...] | \
+                  deployment-verify <descriptor> <pubkey-hex> | selftest"
             .to_owned()),
     }
 }

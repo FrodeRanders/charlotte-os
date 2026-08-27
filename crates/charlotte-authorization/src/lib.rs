@@ -623,6 +623,42 @@ impl PolicyStore {
         self.redeem_ticket(caller, ticket)
     }
 
+    /// Resolve authority for an exact target domain through an authenticated
+    /// policy-administrator path.
+    ///
+    /// The transport must obtain `target` and `principal` from the kernel IPC
+    /// envelope of the target's request. They are carried between the trusted
+    /// grant controller and this store only so the application never receives
+    /// a general name-service capability.
+    pub fn authorize_for_admin(
+        &mut self,
+        actor: DomainIdentity,
+        target: DomainIdentity,
+        principal: PrincipalId,
+        service: &[u8],
+        requested: AuthorizationRights,
+    ) -> Result<AuthorizedGrant, AuthorizationError> {
+        self.require_role(actor, Roles::POLICY_ADMIN)?;
+        if requested.is_empty() {
+            return Err(AuthorizationError::EmptyRights);
+        }
+        self.validate_service(service)?;
+        self.provision_identity_from_supervisor(target, principal, Roles::NONE)?;
+        let binding = self.active_binding(service)?;
+        if !binding.ceiling.contains(requested) {
+            return Err(AuthorizationError::RightsDenied);
+        }
+        Ok(AuthorizedGrant {
+            principal,
+            service_generation: binding.generation,
+            // The signed deployment descriptor is the policy version for
+            // this path. It is audited by the grant controller; zero marks
+            // that no mutable name-service policy row participated.
+            policy_version: 0,
+            rights: requested,
+        })
+    }
+
     pub fn policy(&self, subject: PrincipalId, service: &[u8]) -> Option<PolicyRule> {
         self.policies.get(&(subject, service.to_vec())).copied()
     }
@@ -684,11 +720,13 @@ pub mod wire {
     pub const MAGIC: u32 = 0x3154_5541; // "AUT1" little-endian
     pub const HEADER_LEN: usize = 32;
     pub const MAX_SERVICE_LEN: usize = 256;
-    pub const MAX_REQUEST_LEN: usize = HEADER_LEN + MAX_SERVICE_LEN;
+    pub const GRANT_HEADER_LEN: usize = 40;
+    pub const MAX_REQUEST_LEN: usize = GRANT_HEADER_LEN + MAX_SERVICE_LEN;
 
     const KIND_LOOKUP: u16 = 1;
     const KIND_SET_POLICY: u16 = 2;
     const KIND_PUBLISH: u16 = 3;
+    const KIND_GRANT_LOOKUP: u16 = 4;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum Request<'a> {
@@ -705,6 +743,13 @@ pub mod wire {
         Publish {
             service: &'a [u8],
             ceiling: AuthorizationRights,
+        },
+        GrantLookup {
+            service: &'a [u8],
+            requested: AuthorizationRights,
+            target_asid: u64,
+            target_generation: u64,
+            target_principal: u64,
         },
     }
 
@@ -726,13 +771,18 @@ pub mod wire {
         }
         let kind = read_u16(bytes, 4)?;
         let name_len = usize::from(read_u16(bytes, 6)?);
-        if name_len == 0 || name_len > MAX_SERVICE_LEN || bytes.len() != HEADER_LEN + name_len {
+        let header_len = if kind == KIND_GRANT_LOOKUP {
+            GRANT_HEADER_LEN
+        } else {
+            HEADER_LEN
+        };
+        if name_len == 0 || name_len > MAX_SERVICE_LEN || bytes.len() != header_len + name_len {
             return None;
         }
         let rights = AuthorizationRights::from_bits(read_u32(bytes, 8)?)?;
         let subject = read_u64(bytes, 16)?;
         let version = read_u64(bytes, 24)?;
-        let service = &bytes[HEADER_LEN..];
+        let service = &bytes[header_len..];
         match kind {
             KIND_LOOKUP if subject == 0 && version == 0 && !rights.is_empty() => {
                 Some(Request::Lookup {
@@ -750,6 +800,20 @@ pub mod wire {
                 Some(Request::Publish {
                     service,
                     ceiling: rights,
+                })
+            }
+            KIND_GRANT_LOOKUP
+                if subject != 0
+                    && version != 0
+                    && read_u64(bytes, 32).is_some_and(|asid| asid != 0)
+                    && !rights.is_empty() =>
+            {
+                Some(Request::GrantLookup {
+                    service,
+                    requested: rights,
+                    target_asid: read_u64(bytes, 32)?,
+                    target_generation: version,
+                    target_principal: subject,
                 })
             }
             _ => None,
@@ -813,5 +877,36 @@ pub mod wire {
             return None;
         }
         encode(KIND_PUBLISH, service, ceiling, 0, 0, output)
+    }
+
+    pub fn encode_grant_lookup(
+        service: &[u8],
+        requested: AuthorizationRights,
+        target_asid: u64,
+        target_generation: u64,
+        target_principal: u64,
+        output: &mut [u8],
+    ) -> Option<usize> {
+        if requested.is_empty()
+            || target_asid == 0
+            || target_generation == 0
+            || target_principal == 0
+            || service.is_empty()
+            || service.len() > MAX_SERVICE_LEN
+        {
+            return None;
+        }
+        let len = GRANT_HEADER_LEN.checked_add(service.len())?;
+        let bytes = output.get_mut(..len)?;
+        bytes.fill(0);
+        bytes[0..4].copy_from_slice(&MAGIC.to_le_bytes());
+        bytes[4..6].copy_from_slice(&KIND_GRANT_LOOKUP.to_le_bytes());
+        bytes[6..8].copy_from_slice(&(service.len() as u16).to_le_bytes());
+        bytes[8..12].copy_from_slice(&requested.bits().to_le_bytes());
+        bytes[16..24].copy_from_slice(&target_principal.to_le_bytes());
+        bytes[24..32].copy_from_slice(&target_generation.to_le_bytes());
+        bytes[32..40].copy_from_slice(&target_asid.to_le_bytes());
+        bytes[GRANT_HEADER_LEN..len].copy_from_slice(service);
+        Some(len)
     }
 }

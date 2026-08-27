@@ -215,6 +215,9 @@ pub mod call_no {
     /// Start a signed, name-bound ELF. Restricted to the delegated node
     /// deployment agent.
     pub const SPAWN_ARTIFACT: u16 = SyscallNumber::SpawnArtifact as u16;
+    /// Start a signed artifact with a signed deployment descriptor and only a
+    /// capability-grant-controller bootstrap connection.
+    pub const SPAWN_ARTIFACT_SCOPED: u16 = SyscallNumber::SpawnArtifactScoped as u16;
     /// Abort and reclaim the deployment agent's current child domain.
     pub const RETIRE_ARTIFACT: u16 = SyscallNumber::RetireArtifact as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
@@ -327,6 +330,9 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         }
         SyscallNumber::SpawnArtifact => {
             sys_spawn_artifact(frame);
+        }
+        SyscallNumber::SpawnArtifactScoped => {
+            sys_spawn_artifact_scoped(frame);
         }
         SyscallNumber::RetireArtifact => {
             sys_retire_artifact(frame);
@@ -1962,6 +1968,78 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap);
     crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
     let domain = crate::service::supervisor::start_domain(loaded);
+    *crate::service::supervisor::DEPLOYED_DOMAIN.lock() = Some(domain);
+    frame.regs[0] = domain.asid as u64;
+}
+
+fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    let elf_cap = frame.regs[1];
+    let elf_size = usize::try_from(frame.regs[2]).ok();
+    let packed_name = frame.regs[3];
+    let descriptor_cap = frame.regs[4];
+    let descriptor_size = usize::try_from(frame.regs[5]).ok();
+    let close_inputs = || {
+        if elf_cap != 0 {
+            let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+        }
+        if descriptor_cap != 0 {
+            let _ = crate::memory::object::close_cap(caller_asid, descriptor_cap);
+        }
+    };
+    if !deployment_agent_authorized(caller_asid)
+        || elf_cap == 0
+        || descriptor_cap == 0
+        || elf_size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
+        || descriptor_size.is_none_or(|size| {
+            !(charlotte_launch::deployment::HEADER_LEN
+                ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
+                .contains(&size)
+        })
+        || crate::service::supervisor::DEPLOYED_DOMAIN.lock().is_some()
+    {
+        close_inputs();
+        frame.regs[0] = 0;
+        return;
+    }
+    let name_bytes = packed_name.to_le_bytes();
+    let name_len = name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
+    let image = crate::memory::object::snapshot_bytes(
+        caller_asid,
+        elf_cap,
+        elf_size.expect("ELF size checked above"),
+    );
+    let descriptor = crate::memory::object::snapshot_bytes(
+        caller_asid,
+        descriptor_cap,
+        descriptor_size.expect("descriptor size checked above"),
+    );
+    close_inputs();
+    let (Ok(image), Ok(descriptor)) = (image, descriptor) else {
+        frame.regs[0] = 0;
+        return;
+    };
+    if name_len == 0
+        || charlotte_launch::signature_note::verify_elf_for_name(
+            &image,
+            &charlotte_launch::CLUSTER_PUBLIC_KEY,
+            &name_bytes[..name_len],
+        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    {
+        frame.regs[0] = 0;
+        return;
+    }
+    let domain = match crate::service::supervisor::try_spawn_with_deployment_descriptor(
+        &image,
+        &descriptor,
+        crate::service::supervisor::ServiceLimits::default(),
+    ) {
+        Ok(domain) => domain,
+        Err(_) => {
+            frame.regs[0] = 0;
+            return;
+        }
+    };
     *crate::service::supervisor::DEPLOYED_DOMAIN.lock() = Some(domain);
     frame.regs[0] = domain.asid as u64;
 }

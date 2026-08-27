@@ -64,6 +64,9 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     // The system observer is started by the kernel itself during boot,
     // before the disk stack is up, so it must be embedded too.
     bootstrap_elf!(b"observe", "observe"),
+    // The grant controller mediates application bootstrap authority before
+    // store-backed services are available.
+    bootstrap_elf!(b"grantctl", "grantctl"),
     // HVF cannot provide the SMMU required by the NVMe driver's protected DMA
     // domain. Keep its explicitly non-storage compatibility suite useful
     // without weakening DMA isolation or blocking on an unavailable store.
@@ -86,6 +89,7 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"ns", "ns"),
     bootstrap_elf!(b"observe", "observe"),
+    bootstrap_elf!(b"grantctl", "grantctl"),
     bootstrap_elf!(b"nvme", "nvme"),
     bootstrap_elf!(b"objstore", "objstore"),
     bootstrap_elf!(b"nvme_client", "nvme_client"),

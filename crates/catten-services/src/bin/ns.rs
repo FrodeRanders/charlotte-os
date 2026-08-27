@@ -83,6 +83,13 @@ enum PendingLookup {
         caller: DomainIdentity,
         requested: AuthorizationRights,
     },
+    Grant {
+        reply: u64,
+        actor: DomainIdentity,
+        target: DomainIdentity,
+        target_principal: PrincipalId,
+        requested: AuthorizationRights,
+    },
 }
 
 /// The registry viewed as an immediate catalog (the broker's lookups).
@@ -328,6 +335,91 @@ fn authorize_and_reply(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn authorize_grant_and_reply(
+    policy: &mut PolicyStore,
+    audit: &mut AuditLog,
+    registry: &Registry,
+    service: &[u8],
+    actor: DomainIdentity,
+    target: DomainIdentity,
+    target_principal: PrincipalId,
+    requested: AuthorizationRights,
+    reply: u64,
+) {
+    if !audit.can_record() {
+        unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        return;
+    }
+    let grant =
+        match policy.authorize_for_admin(actor, target, target_principal, service, requested) {
+            Ok(grant) => grant,
+            Err(error) => {
+                record_denial(policy, audit, target, service, requested, error);
+                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+                return;
+            }
+        };
+    let Some(registration) = registry.get(service) else {
+        record_denial(
+            policy,
+            audit,
+            target,
+            service,
+            requested,
+            AuthorizationError::ServiceMissing,
+        );
+        unsafe { ipc_reply(reply, ns::ERR_NOT_FOUND) };
+        return;
+    };
+    if registration.connection == 0
+        || u64::try_from(registration.generation) != Ok(grant.service_generation)
+    {
+        record_denial(
+            policy,
+            audit,
+            target,
+            service,
+            requested,
+            AuthorizationError::StaleServiceGeneration,
+        );
+        unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+        return;
+    }
+    // The grant controller is the only recipient of this re-delegable
+    // connection. It attenuates the application reply back to SEND/CALL; the
+    // application never receives MINT_CONNECTION or name-service authority.
+    let delegated_rights = IpcRights::from_bits(grant.rights.bits()) | IpcRights::MINT_CONNECTION;
+    let status = unsafe {
+        ipc_reply_connection(
+            reply,
+            registration.connection,
+            delegated_rights,
+            registration.generation,
+        )
+    };
+    let outcome = if status == 0 {
+        AuditOutcome::Issued
+    } else {
+        unsafe { ipc_reply(reply, ns::ERR_INVALID) };
+        AuditOutcome::DelegationFailed
+    };
+    let _ = audit.record(
+        target,
+        Some(target_principal),
+        service,
+        requested,
+        if status == 0 {
+            grant.rights
+        } else {
+            AuthorizationRights::NONE
+        },
+        grant.service_generation,
+        grant.policy_version,
+        outcome,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 fn authorized_lookup_or_defer(
     policy: &mut PolicyStore,
     audit: &mut AuditLog,
@@ -484,6 +576,23 @@ fn register(
                 caller,
                 requested,
             } => authorize_and_reply(policy, audit, registry, &key, caller, requested, reply),
+            PendingLookup::Grant {
+                reply,
+                actor,
+                target,
+                target_principal,
+                requested,
+            } => authorize_grant_and_reply(
+                policy,
+                audit,
+                registry,
+                &key,
+                actor,
+                target,
+                target_principal,
+                requested,
+                reply,
+            ),
         }
     }
     binding.generation as i64
@@ -868,6 +977,70 @@ fn main(ctx: Context) -> ! {
                 if ipc_reply_move(message.reply, cap, length as i64) != 0 {
                     memory_close(cap);
                     ipc_reply(message.reply, ns::ERR_INVALID);
+                }
+            }
+            ns::OP_LOOKUP_FOR_GRANT => {
+                let request = read_authorization_request(&message);
+                if message.connection != 0 {
+                    ipc_close(message.connection);
+                }
+                let actor = synchronize_sender(&mut policy, &message);
+                if message.reply == 0 {
+                    continue;
+                }
+                match (request.as_deref().and_then(wire::decode), actor) {
+                    (
+                        Some(wire::Request::GrantLookup {
+                            service,
+                            requested,
+                            target_asid,
+                            target_generation,
+                            target_principal,
+                        }),
+                        Ok(actor),
+                    ) if policy
+                        .roles_for(actor)
+                        .is_some_and(|roles| roles.contains(Roles::POLICY_ADMIN)) =>
+                    {
+                        let target = DomainIdentity::new(target_asid, target_generation);
+                        let target_principal = PrincipalId::new(target_principal);
+                        match (target, target_principal) {
+                            (Some(target), Some(target_principal))
+                                if RegistryCatalog(&registry).resolve(service).is_some() =>
+                            {
+                                authorize_grant_and_reply(
+                                    &mut policy,
+                                    &mut audit,
+                                    &registry,
+                                    service,
+                                    actor,
+                                    target,
+                                    target_principal,
+                                    requested,
+                                    message.reply,
+                                );
+                            }
+                            (Some(target), Some(target_principal)) => {
+                                let _ = waitlist.park(
+                                    service,
+                                    PendingLookup::Grant {
+                                        reply: message.reply,
+                                        actor,
+                                        target,
+                                        target_principal,
+                                        requested,
+                                    },
+                                    &RegistryCatalog(&registry),
+                                );
+                            }
+                            _ => unsafe {
+                                ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
+                            },
+                        }
+                    }
+                    _ => unsafe {
+                        ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
+                    },
                 }
             }
             ns::OP_STATUS => {

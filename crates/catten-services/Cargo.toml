@@ -255,6 +255,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "grantctl"
+path = "src/bin/grantctl.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "greet"
 path = "src/bin/greet.rs"
 test = false

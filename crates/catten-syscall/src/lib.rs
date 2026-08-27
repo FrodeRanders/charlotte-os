@@ -147,6 +147,7 @@ define_syscall_numbers!(
     (IpcRecvVecAuthenticated, 73),
     (LogStr, 74),
     (RandomU64, 75),
+    (SpawnArtifactScoped, 76),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -1807,6 +1808,30 @@ pub unsafe fn spawn_upgrade(
 #[inline(always)]
 pub fn spawn_artifact(elf_cap: u64, elf_size: usize, artifact_name: u64) -> u64 {
     unsafe { svc3(SyscallNumber::SpawnArtifact, elf_cap, elf_size as u64, artifact_name) }
+}
+
+/// Start a signed ELF with a signed deployment descriptor. The launched
+/// application receives only the capability-grant controller as bootstrap and
+/// the descriptor as an immutable profile. The kernel consumes both memory
+/// capabilities on success and failure.
+#[inline(always)]
+pub fn spawn_artifact_scoped(
+    elf_cap: u64,
+    elf_size: usize,
+    artifact_name: u64,
+    descriptor_cap: u64,
+    descriptor_size: usize,
+) -> u64 {
+    unsafe {
+        svc5(
+            SyscallNumber::SpawnArtifactScoped,
+            elf_cap,
+            elf_size as u64,
+            artifact_name,
+            descriptor_cap,
+            descriptor_size as u64,
+        )
+    }
 }
 
 /// Retire the domain created by [`spawn_artifact`]. Returns 1 while thread

@@ -40,6 +40,7 @@ pub const MAX_ARTIFACT_ELF_SIZE: usize = 4 * 1024 * 1024;
 /// verifier. Every field is an aligned little-endian `u32` byte offset.
 pub mod sha256;
 
+pub mod deployment;
 pub mod placement;
 pub mod signature_note;
 
@@ -628,6 +629,9 @@ pub enum CapabilityKind {
     SystemObserver = 7,
     /// Immutable, versioned service profile in a read-only memory object.
     Profile = 8,
+    /// Private name-service connection for a trusted mediation service. This
+    /// is never handed to ordinary applications.
+    NameService = 9,
 }
 
 impl CapabilityKind {
@@ -641,6 +645,7 @@ impl CapabilityKind {
             6 => Some(Self::DmaDomain),
             7 => Some(Self::SystemObserver),
             8 => Some(Self::Profile),
+            9 => Some(Self::NameService),
             _ => None,
         }
     }

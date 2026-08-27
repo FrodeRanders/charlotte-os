@@ -156,10 +156,13 @@ and cumulative produced records for every profile route. Per-route throughput
 is derived by sampling those monotonic counters; no application receives the
 status capability merely because it can produce or consume.
 
-The development launcher currently resolves the exact access-point and procedure names
-through its bootstrap name-service connection. A production deployment
-controller must instead mint and inject only those two connection capabilities,
-manage service-generation fencing, and interpret the status page for rollout.
+The scoped launch path now gives an application only `grantctl` plus its signed
+deployment descriptor. The descriptor may name both the exact Kafka
+access-point and procedure service; the owned grant client acquires those
+connections without exposing the name service. The existing demo deployment
+agent has not yet switched to the scoped syscall, so central descriptor
+notification, rollout status interpretation, and end-to-end generation-fenced
+deployment remain integration work.
 Fixed-partition Kafka group membership is implemented in the connector;
 controller-managed stable instance leases and cooperative assignor
 interoperability remain future work.

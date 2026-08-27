@@ -171,10 +171,12 @@ timeouts and retry replies redeliver; terminal or invalid replies and retry
 exhaustion transactionally write the original record to the DLQ. Broker-side
 failures abort and redeliver without charging the business attempt count.
 
-The current development launch path resolves exact connector and procedure
-names through the name service. Production deployment still needs a grant
-controller that directly injects those connections, so neither the procedure
-nor unrelated callers receive ambient connector authority.
+The scoped launch API gives the runner `grantctl` and a signed descriptor
+rather than a name-service connection. The descriptor can authorize the exact
+connector and procedure names, and `catten_services::grant_client` returns only
+those attenuated connections. The older demo deployment agent still uses the
+unscoped launch syscall; central descriptor notification and switching that
+agent to scoped launch remain deployment integration work.
 
 ## Kafka behavior and failure semantics
 

@@ -210,6 +210,13 @@ pub extern "C" fn bsp_main() -> ! {
             name_service.domain.asid,
             name_service.domain.tid
         );
+        let grant_controller =
+            crate::service::supervisor::start_capability_grant_controller(&name_service);
+        logln!(
+            "[node] capability grant controller started (asid={}, tid={})",
+            grant_controller.domain.asid,
+            grant_controller.domain.tid
+        );
         let observer = crate::service::supervisor::start_observability_service(&name_service);
         logln!(
             "[node] observability service started (asid={}, tid={})",

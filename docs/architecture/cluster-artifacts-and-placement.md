@@ -32,6 +32,57 @@ object; nodes need not fetch executable dependencies from an Internet package
 registry. Production policy still needs SBOM generation, vulnerability review,
 reproducible builds, source attestations, and key custody.
 
+## Signed deployment descriptors
+
+The ELF signature and the deployment decision are different trust statements.
+An ELF signature binds code to an artifact name. A `CDEPLOY1` descriptor binds
+that artifact's complete SHA-256 to an opaque central-object-store key, a
+monotonic deployment sequence, a selected node, and a bounded list of named
+`SEND`/`CALL` capability grants. The descriptor is separately signed by the
+offline cluster Ed25519 authority. Tampering with placement, an object key, or
+a grant therefore fails verification even when the referenced ELF remains
+validly signed.
+
+Descriptors contain no object-store endpoint, bucket credentials, Kafka
+credentials, or TLS client identity. The object key is interpreted through a
+locally configured S3 connector whose capability and secret profile remain in
+the platform service. This makes the intended management-plane flow:
+
+1. CI builds and signs a self-contained ELF off-cluster.
+2. CI uploads the immutable ELF to the centrally managed object store.
+3. CI signs a small deployment descriptor referring to the object's key and
+   digest, then notifies the cluster with that descriptor.
+4. A node pulls through its preconfigured S3 capability, verifies both
+   signatures and the digest, and launches the application.
+
+`tools/cluster-sign deployment-sign` and `deployment-verify` implement the
+canonical bounded wire format used by the kernel and userspace. For example:
+
+```text
+cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
+  <artifact-sha256> 0x1234 7 <private-key-hex> \
+  kafka/orders/input=call kafka/orders/output=client
+```
+
+The private key stays off-cluster. Nodes and `grantctl` hold only the public
+verification key.
+
+## Capability-scoped application launch
+
+The scoped launch API consumes a signed ELF and signed descriptor together. It
+checks that the descriptor's artifact name and digest match the ELF, copies the
+descriptor into a read-only launch profile, and gives the application only a
+connection to the node's `grantctl` endpoint. It does not give the application
+a name-service connection.
+
+For each acquisition, the application uses the owned
+`catten_services::grant_client` helper. `grantctl` verifies the descriptor,
+binds its artifact name to the kernel-authenticated caller principal, rejects
+stale or conflicting descriptor revisions, and checks the exact named grant.
+It then uses its private name-service connection to obtain re-delegable
+authority and replies with only the requested `SEND`/`CALL` rights. The
+temporary re-delegable connection is owned and closed by the controller.
+
 ## Enforcement points
 
 Trust is checked more than once because the callers protect different
@@ -115,3 +166,12 @@ ceremony now accepts only the set-once build-time anchor, but deployment can
 still be redirected as a denial of service through the raw DNS mutation
 endpoint. A separately delegated cluster-administrator capability and a real
 out-of-band management plane remain required.
+
+The signed descriptor, grant-controller service, owned application helper, and
+scoped kernel launch primitive are implemented. The existing `clusterctl`
+upload operation and demo deployment agent still use the older local-object
+copy and unscoped launch operation. Wiring descriptor notification to an
+authenticated network management endpoint, pulling the referenced ELF through
+the central S3 connector, and replicating the descriptor to the assigned node
+remain the next integration step. Until that is complete, the new path is an
+internal launch API rather than a complete off-cluster deployment product.

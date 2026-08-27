@@ -1430,6 +1430,25 @@ impl ReplyToken {
             Err(IpcError::Status(status))
         }
     }
+
+    /// Reply with an attenuated connection minted from a re-delegable
+    /// connection. This is the mediation counterpart to `reply_connection`:
+    /// a controller need not own the target service's endpoint.
+    pub fn reply_connection_ref(
+        mut self,
+        connection: ConnectionRef<'_>,
+        rights: IpcRights,
+        result: i64,
+    ) -> Result<(), IpcError> {
+        let reply = self.cap.take().expect("reply token already consumed");
+        let status = kernel::ipc_reply_connection(reply, connection.cap, rights, result);
+        if status == catten_syscall::ipc_status::OK {
+            Ok(())
+        } else {
+            let _ = kernel::ipc_close(reply);
+            Err(IpcError::Status(status))
+        }
+    }
 }
 
 impl Drop for ReplyToken {
@@ -2558,6 +2577,37 @@ mod tests {
                 kernel::Event::IpcClose(40),
             ]
         );
+    }
+
+    #[test]
+    fn reply_from_connection_borrow_preserves_its_owner() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(catten_syscall::IpcMessage {
+                status: catten_syscall::ipc_status::OK,
+                opcode: 1,
+                arg0: 0,
+                reply: 43,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 1,
+                version: 1,
+                memory: 0,
+                connection: 0,
+            });
+        });
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let message = endpoint.try_receive().expect("receive status").expect("queued message");
+        let reply = message.reply.expect("reply token");
+        let connection = unsafe { Connection::from_raw(42) }.expect("connection");
+        reply
+            .reply_connection_ref(connection.as_ref(), IpcRights::CALL, 7)
+            .expect("reply delegation");
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(42), kernel::Event::IpcClose(40)]);
     }
 
     #[test]
