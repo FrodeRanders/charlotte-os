@@ -243,6 +243,8 @@ fn main() {
             transactional_id: TRANSACTIONAL_ID,
             group_id: GROUP,
             producer: transactional,
+            generation: -1,
+            member_id: b"",
             topic: TOPIC,
             partition: 0,
             next_offset,
@@ -250,7 +252,7 @@ fn main() {
     )
     .unwrap();
     let response = broker.exchange(request);
-    kafka::parse_partition_error(&response, correlation, TOPIC, 0).unwrap();
+    kafka::parse_txn_offset_commit(&response, correlation, TOPIC, 0).unwrap();
     broker.end_transaction(transactional, true);
 
     let correlation = broker.correlation();

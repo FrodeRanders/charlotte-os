@@ -319,6 +319,10 @@ pub mod kafka_status {
     pub const ABORTS: usize = 20;
     pub const BACKPRESSURE: usize = 24;
     pub const ERROR: usize = 28;
+    pub const GROUP_GENERATION: usize = 32;
+    pub const GROUP_ASSIGNED: usize = 36;
+    pub const GROUP_HEARTBEATS: usize = 40;
+    pub const GROUP_REBALANCES: usize = 44;
 }
 
 /// Kafka end-to-end smoke-client diagnostic status-page offsets.

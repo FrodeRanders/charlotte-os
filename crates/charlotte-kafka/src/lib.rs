@@ -23,6 +23,10 @@ pub mod api {
     pub const OFFSET_COMMIT: i16 = 8;
     pub const OFFSET_FETCH: i16 = 9;
     pub const FIND_COORDINATOR: i16 = 10;
+    pub const JOIN_GROUP: i16 = 11;
+    pub const HEARTBEAT: i16 = 12;
+    pub const LEAVE_GROUP: i16 = 13;
+    pub const SYNC_GROUP: i16 = 14;
     pub const SASL_HANDSHAKE: i16 = 17;
     pub const API_VERSIONS: i16 = 18;
     pub const INIT_PRODUCER_ID: i16 = 22;
@@ -41,13 +45,17 @@ pub mod version {
     pub const OFFSET_COMMIT: i16 = 2;
     pub const OFFSET_FETCH: i16 = 1;
     pub const FIND_COORDINATOR: i16 = 1;
+    pub const JOIN_GROUP: i16 = 1;
+    pub const HEARTBEAT: i16 = 0;
+    pub const LEAVE_GROUP: i16 = 0;
+    pub const SYNC_GROUP: i16 = 0;
     pub const SASL_HANDSHAKE: i16 = 1;
     pub const API_VERSIONS: i16 = 0;
     pub const INIT_PRODUCER_ID: i16 = 0;
     pub const ADD_PARTITIONS_TO_TXN: i16 = 0;
     pub const ADD_OFFSETS_TO_TXN: i16 = 0;
     pub const END_TXN: i16 = 0;
-    pub const TXN_OFFSET_COMMIT: i16 = 0;
+    pub const TXN_OFFSET_COMMIT: i16 = 3;
     pub const SASL_AUTHENTICATE: i16 = 1;
 }
 
@@ -60,11 +68,16 @@ pub const COORDINATOR_NOT_AVAILABLE: i16 = 15;
 pub const NOT_COORDINATOR: i16 = 16;
 pub const NOT_ENOUGH_REPLICAS: i16 = 19;
 pub const NOT_ENOUGH_REPLICAS_AFTER_APPEND: i16 = 20;
+pub const ILLEGAL_GENERATION: i16 = 22;
+pub const INCONSISTENT_GROUP_PROTOCOL: i16 = 23;
+pub const UNKNOWN_MEMBER_ID: i16 = 25;
+pub const REBALANCE_IN_PROGRESS: i16 = 27;
 pub const INVALID_PRODUCER_EPOCH: i16 = 47;
 pub const CONCURRENT_TRANSACTIONS: i16 = 51;
 pub const TRANSACTION_COORDINATOR_FENCED: i16 = 52;
 pub const PRODUCER_FENCED: i16 = 90;
 pub const SASL_AUTHENTICATION_FAILED: i16 = 58;
+pub const MEMBER_ID_REQUIRED: i16 = 79;
 
 pub const fn is_retriable_broker_error(error: i16) -> bool {
     matches!(
@@ -77,10 +90,18 @@ pub const fn is_retriable_broker_error(error: i16) -> bool {
     )
 }
 
+pub const fn requires_group_rejoin(error: i16) -> bool {
+    matches!(
+        error,
+        ILLEGAL_GENERATION | UNKNOWN_MEMBER_ID | REBALANCE_IN_PROGRESS | MEMBER_ID_REQUIRED
+    )
+}
+
 pub const MAX_FRAME_LEN: usize = 1024 * 1024;
 pub const MAX_STRING_LEN: usize = 8 * 1024;
 pub const MAX_ARRAY_LEN: usize = 16 * 1024;
 pub const MAX_RECORDS: usize = 1024;
+pub const MAX_GROUP_MEMBERS: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -170,6 +191,28 @@ pub struct Coordinator {
     pub port: i32,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupMember {
+    pub member_id: Vec<u8>,
+    pub subscription: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JoinGroup {
+    pub error: i16,
+    pub generation: i32,
+    pub protocol_name: Vec<u8>,
+    pub leader_id: Vec<u8>,
+    pub member_id: Vec<u8>,
+    pub members: Vec<GroupMember>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupAssignment {
+    pub member_id: Vec<u8>,
+    pub assignment: Vec<u8>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProducerIdentity {
     pub producer_id: i64,
@@ -226,6 +269,17 @@ impl Encoder {
         Ok(encoder)
     }
 
+    fn flexible_request(
+        api_key: i16,
+        api_version: i16,
+        correlation: i32,
+        client_id: &[u8],
+    ) -> Result<Self, Error> {
+        let mut encoder = Self::request(api_key, api_version, correlation, client_id)?;
+        encoder.tagged_fields();
+        Ok(encoder)
+    }
+
     fn finish(mut self) -> Result<Vec<u8>, Error> {
         let payload = self.bytes.len().checked_sub(4).ok_or(Error::Invalid)?;
         if payload > MAX_FRAME_LEN || payload > i32::MAX as usize {
@@ -277,6 +331,39 @@ impl Encoder {
         self.i32(value.len() as i32);
         self.bytes.extend_from_slice(value);
         Ok(())
+    }
+
+    fn unsigned_varint(&mut self, value: usize) -> Result<(), Error> {
+        let value = u64::try_from(value).map_err(|_| Error::TooLarge)?;
+        put_uvarint(&mut self.bytes, value);
+        Ok(())
+    }
+
+    fn compact_string(&mut self, value: &[u8]) -> Result<(), Error> {
+        if value.len() > MAX_STRING_LEN {
+            return Err(Error::TooLarge);
+        }
+        self.unsigned_varint(value.len().checked_add(1).ok_or(Error::TooLarge)?)?;
+        self.bytes.extend_from_slice(value);
+        Ok(())
+    }
+
+    fn compact_nullable_string(&mut self, value: Option<&[u8]>) -> Result<(), Error> {
+        match value {
+            Some(value) => self.compact_string(value),
+            None => self.unsigned_varint(0),
+        }
+    }
+
+    fn compact_array_len(&mut self, len: usize) -> Result<(), Error> {
+        if len > MAX_ARRAY_LEN {
+            return Err(Error::TooLarge);
+        }
+        self.unsigned_varint(len.checked_add(1).ok_or(Error::TooLarge)?)
+    }
+
+    fn tagged_fields(&mut self) {
+        self.bytes.push(0);
     }
 }
 
@@ -399,6 +486,49 @@ impl<'a> Decoder<'a> {
         Ok(Some(len))
     }
 
+    fn unsigned_varint(&mut self) -> Result<usize, Error> {
+        usize::try_from(read_uvarint(self, 10)?).map_err(|_| Error::TooLarge)
+    }
+
+    fn compact_string_bytes(&mut self) -> Result<&'a [u8], Error> {
+        let encoded_len = self.unsigned_varint()?;
+        let len = encoded_len.checked_sub(1).ok_or(Error::Invalid)?;
+        if len > MAX_STRING_LEN {
+            return Err(Error::TooLarge);
+        }
+        self.take(len)
+    }
+
+    fn compact_array_len(&mut self) -> Result<usize, Error> {
+        let encoded_len = self.unsigned_varint()?;
+        let len = encoded_len.checked_sub(1).ok_or(Error::Invalid)?;
+        if len > MAX_ARRAY_LEN {
+            return Err(Error::TooLarge);
+        }
+        Ok(len)
+    }
+
+    fn skip_tagged_fields(&mut self) -> Result<(), Error> {
+        let count = self.unsigned_varint()?;
+        if count > MAX_ARRAY_LEN {
+            return Err(Error::TooLarge);
+        }
+        let mut previous = None;
+        for _ in 0..count {
+            let tag = self.unsigned_varint()?;
+            if previous.is_some_and(|previous| tag <= previous) {
+                return Err(Error::Invalid);
+            }
+            previous = Some(tag);
+            let len = self.unsigned_varint()?;
+            if len > MAX_FRAME_LEN {
+                return Err(Error::TooLarge);
+            }
+            let _ = self.take(len)?;
+        }
+        Ok(())
+    }
+
     fn done(&self) -> bool {
         self.offset == self.bytes.len()
     }
@@ -419,6 +549,12 @@ fn response<'a>(frame: &'a [u8], correlation: i32) -> Result<Decoder<'a>, Error>
     if decoder.i32()? != correlation {
         return Err(Error::Correlation);
     }
+    Ok(decoder)
+}
+
+fn flexible_response<'a>(frame: &'a [u8], correlation: i32) -> Result<Decoder<'a>, Error> {
+    let mut decoder = response(frame, correlation)?;
+    decoder.skip_tagged_fields()?;
     Ok(decoder)
 }
 
@@ -636,6 +772,220 @@ pub fn parse_find_coordinator(frame: &[u8], correlation: i32) -> Result<Coordina
     Ok(coordinator)
 }
 
+pub const FIXED_ASSIGNOR: &[u8] = b"charlotte-fixed-v1";
+const FIXED_SUBSCRIPTION_MAGIC: i32 = 0x4346_5831; // "CFX1"
+
+pub fn fixed_subscription(topic: &[u8], partition: i32) -> Result<Vec<u8>, Error> {
+    if partition < 0 {
+        return Err(Error::Invalid);
+    }
+    let mut encoder = Encoder {
+        bytes: Vec::new(),
+    };
+    encoder.i16(0);
+    encoder.i32(1);
+    encoder.string(topic)?;
+    let mut user_data = Encoder {
+        bytes: Vec::new(),
+    };
+    user_data.i32(FIXED_SUBSCRIPTION_MAGIC);
+    user_data.i32(partition);
+    encoder.bytes(&user_data.bytes)?;
+    Ok(encoder.bytes)
+}
+
+pub fn parse_fixed_subscription(metadata: &[u8]) -> Result<(Vec<u8>, i32), Error> {
+    let mut decoder = Decoder::new(metadata);
+    if decoder.i16()? != 0 || decoder.array_len()? != 1 {
+        return Err(Error::Invalid);
+    }
+    let topic = decoder.string_bytes()?.to_vec();
+    let user_data = decoder.bytes()?.ok_or(Error::Invalid)?;
+    let mut user_data = Decoder::new(user_data);
+    if user_data.i32()? != FIXED_SUBSCRIPTION_MAGIC {
+        return Err(Error::Invalid);
+    }
+    let partition = user_data.i32()?;
+    if partition < 0 || !user_data.done() || !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok((topic, partition))
+}
+
+pub fn join_group_request(
+    correlation: i32,
+    client_id: &[u8],
+    group_id: &[u8],
+    session_timeout_ms: i32,
+    rebalance_timeout_ms: i32,
+    member_id: &[u8],
+    subscription: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut encoder =
+        Encoder::request(api::JOIN_GROUP, version::JOIN_GROUP, correlation, client_id)?;
+    encoder.string(group_id)?;
+    encoder.i32(session_timeout_ms);
+    encoder.i32(rebalance_timeout_ms);
+    encoder.string(member_id)?;
+    encoder.string(b"consumer")?;
+    encoder.i32(1);
+    encoder.string(FIXED_ASSIGNOR)?;
+    encoder.bytes(subscription)?;
+    encoder.finish()
+}
+
+pub fn parse_join_group(frame: &[u8], correlation: i32) -> Result<JoinGroup, Error> {
+    let mut decoder = response(frame, correlation)?;
+    // JoinGroup v1 predates the response throttle field, which starts in v2.
+    let error = decoder.i16()?;
+    let generation = decoder.i32()?;
+    let protocol_name = decoder.string_bytes()?.to_vec();
+    let leader_id = decoder.string_bytes()?.to_vec();
+    let member_id = decoder.string_bytes()?.to_vec();
+    let member_count = decoder.array_len()?;
+    if member_count > MAX_GROUP_MEMBERS {
+        return Err(Error::TooLarge);
+    }
+    let mut members = Vec::with_capacity(member_count);
+    for _ in 0..member_count {
+        members.push(GroupMember {
+            member_id: decoder.string_bytes()?.to_vec(),
+            subscription: decoder.bytes()?.ok_or(Error::Invalid)?.to_vec(),
+        });
+    }
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok(JoinGroup {
+        error,
+        generation,
+        protocol_name,
+        leader_id,
+        member_id,
+        members,
+    })
+}
+
+pub fn fixed_assignment(topic: &[u8], partition: Option<i32>) -> Result<Vec<u8>, Error> {
+    let mut encoder = Encoder {
+        bytes: Vec::new(),
+    };
+    encoder.i16(0);
+    if let Some(partition) = partition {
+        if partition < 0 {
+            return Err(Error::Invalid);
+        }
+        encoder.i32(1);
+        encoder.string(topic)?;
+        encoder.i32(1);
+        encoder.i32(partition);
+    } else {
+        encoder.i32(0);
+    }
+    encoder.bytes(&[])?;
+    Ok(encoder.bytes)
+}
+
+pub fn parse_fixed_assignment(
+    assignment: &[u8],
+    expected_topic: &[u8],
+    expected_partition: i32,
+) -> Result<bool, Error> {
+    let mut decoder = Decoder::new(assignment);
+    if decoder.i16()? != 0 {
+        return Err(Error::Invalid);
+    }
+    let topic_count = decoder.array_len()?;
+    let mut assigned = false;
+    for _ in 0..topic_count {
+        let topic = decoder.string_bytes()?;
+        let partition_count = decoder.array_len()?;
+        for _ in 0..partition_count {
+            let partition = decoder.i32()?;
+            if topic == expected_topic && partition == expected_partition {
+                assigned = true;
+            } else {
+                return Err(Error::Invalid);
+            }
+        }
+    }
+    let _user_data = decoder.bytes()?;
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok(assigned)
+}
+
+pub fn sync_group_request(
+    correlation: i32,
+    client_id: &[u8],
+    group_id: &[u8],
+    generation: i32,
+    member_id: &[u8],
+    assignments: &[GroupAssignment],
+) -> Result<Vec<u8>, Error> {
+    if assignments.len() > MAX_GROUP_MEMBERS {
+        return Err(Error::TooLarge);
+    }
+    let mut encoder =
+        Encoder::request(api::SYNC_GROUP, version::SYNC_GROUP, correlation, client_id)?;
+    encoder.string(group_id)?;
+    encoder.i32(generation);
+    encoder.string(member_id)?;
+    encoder.i32(assignments.len() as i32);
+    for assignment in assignments {
+        encoder.string(&assignment.member_id)?;
+        encoder.bytes(&assignment.assignment)?;
+    }
+    encoder.finish()
+}
+
+pub fn parse_sync_group(frame: &[u8], correlation: i32) -> Result<(i16, Vec<u8>), Error> {
+    let mut decoder = response(frame, correlation)?;
+    let error = decoder.i16()?;
+    let assignment = decoder.bytes()?.ok_or(Error::Invalid)?.to_vec();
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok((error, assignment))
+}
+
+pub fn heartbeat_request(
+    correlation: i32,
+    client_id: &[u8],
+    group_id: &[u8],
+    generation: i32,
+    member_id: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut encoder = Encoder::request(api::HEARTBEAT, version::HEARTBEAT, correlation, client_id)?;
+    encoder.string(group_id)?;
+    encoder.i32(generation);
+    encoder.string(member_id)?;
+    encoder.finish()
+}
+
+pub fn leave_group_request(
+    correlation: i32,
+    client_id: &[u8],
+    group_id: &[u8],
+    member_id: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let mut encoder =
+        Encoder::request(api::LEAVE_GROUP, version::LEAVE_GROUP, correlation, client_id)?;
+    encoder.string(group_id)?;
+    encoder.string(member_id)?;
+    encoder.finish()
+}
+
+pub fn parse_group_error(frame: &[u8], correlation: i32) -> Result<i16, Error> {
+    let mut decoder = response(frame, correlation)?;
+    let error = decoder.i16()?;
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    Ok(error)
+}
+
 pub fn init_producer_id_request(
     correlation: i32,
     client_id: &[u8],
@@ -759,6 +1109,8 @@ pub struct TxnOffsetCommit<'a> {
     pub transactional_id: &'a [u8],
     pub group_id: &'a [u8],
     pub producer: ProducerIdentity,
+    pub generation: i32,
+    pub member_id: &'a [u8],
     pub topic: &'a [u8],
     pub partition: i32,
     pub next_offset: i64,
@@ -769,23 +1121,64 @@ pub fn txn_offset_commit_request(
     client_id: &[u8],
     commit: TxnOffsetCommit<'_>,
 ) -> Result<Vec<u8>, Error> {
-    let mut encoder = Encoder::request(
+    let mut encoder = Encoder::flexible_request(
         api::TXN_OFFSET_COMMIT,
         version::TXN_OFFSET_COMMIT,
         correlation,
         client_id,
     )?;
-    encoder.string(commit.transactional_id)?;
-    encoder.string(commit.group_id)?;
+    encoder.compact_string(commit.transactional_id)?;
+    encoder.compact_string(commit.group_id)?;
     encoder.i64(commit.producer.producer_id);
     encoder.i16(commit.producer.producer_epoch);
-    encoder.i32(1);
-    encoder.string(commit.topic)?;
-    encoder.i32(1);
+    encoder.i32(commit.generation);
+    encoder.compact_string(commit.member_id)?;
+    encoder.compact_nullable_string(None)?;
+    encoder.compact_array_len(1)?;
+    encoder.compact_string(commit.topic)?;
+    encoder.compact_array_len(1)?;
     encoder.i32(commit.partition);
     encoder.i64(commit.next_offset);
-    encoder.nullable_string(None)?;
+    encoder.i32(-1);
+    encoder.compact_nullable_string(None)?;
+    encoder.tagged_fields();
+    encoder.tagged_fields();
+    encoder.tagged_fields();
     encoder.finish()
+}
+
+pub fn parse_txn_offset_commit(
+    frame: &[u8],
+    correlation: i32,
+    expected_topic: &[u8],
+    expected_partition: i32,
+) -> Result<(), Error> {
+    let mut decoder = flexible_response(frame, correlation)?;
+    let _throttle = decoder.i32()?;
+    let topics = decoder.compact_array_len()?;
+    let mut found = None;
+    for _ in 0..topics {
+        let topic = decoder.compact_string_bytes()?;
+        let partitions = decoder.compact_array_len()?;
+        for _ in 0..partitions {
+            let partition = decoder.i32()?;
+            let error = decoder.i16()?;
+            decoder.skip_tagged_fields()?;
+            if topic == expected_topic && partition == expected_partition {
+                found = Some(error);
+            }
+        }
+        decoder.skip_tagged_fields()?;
+    }
+    decoder.skip_tagged_fields()?;
+    if !decoder.done() {
+        return Err(Error::Invalid);
+    }
+    match found {
+        Some(NO_ERROR) => Ok(()),
+        Some(error) => Err(Error::Broker(error)),
+        None => Err(Error::Invalid),
+    }
 }
 
 pub fn end_txn_request(
@@ -851,25 +1244,31 @@ pub fn parse_offset_fetch(
     found.ok_or(Error::Invalid)
 }
 
+pub struct OffsetCommit<'a> {
+    pub group_id: &'a [u8],
+    pub generation: i32,
+    pub member_id: &'a [u8],
+    pub topic: &'a [u8],
+    pub partition: i32,
+    pub next_offset: i64,
+}
+
 pub fn offset_commit_request(
     correlation: i32,
     client_id: &[u8],
-    group_id: &[u8],
-    topic: &[u8],
-    partition: i32,
-    next_offset: i64,
+    commit: OffsetCommit<'_>,
 ) -> Result<Vec<u8>, Error> {
     let mut encoder =
         Encoder::request(api::OFFSET_COMMIT, version::OFFSET_COMMIT, correlation, client_id)?;
-    encoder.string(group_id)?;
-    encoder.i32(-1);
-    encoder.string(&[])?;
+    encoder.string(commit.group_id)?;
+    encoder.i32(commit.generation);
+    encoder.string(commit.member_id)?;
     encoder.i64(-1);
     encoder.i32(1);
-    encoder.string(topic)?;
+    encoder.string(commit.topic)?;
     encoder.i32(1);
-    encoder.i32(partition);
-    encoder.i64(next_offset);
+    encoder.i32(commit.partition);
+    encoder.i64(commit.next_offset);
     encoder.nullable_string(None)?;
     encoder.finish()
 }
@@ -1418,5 +1817,115 @@ mod tests {
 
         let request = sasl_authenticate_request(8, b"charlotte", b"n,,n=user,r=nonce").unwrap();
         assert_eq!(&request[4..6], &api::SASL_AUTHENTICATE.to_be_bytes());
+    }
+
+    #[test]
+    fn fixed_partition_subscription_round_trips() {
+        let subscription = fixed_subscription(b"input-events", 7).unwrap();
+        assert_eq!(parse_fixed_subscription(&subscription).unwrap(), (b"input-events".to_vec(), 7));
+        assert_eq!(fixed_subscription(b"input-events", -1), Err(Error::Invalid));
+    }
+
+    #[test]
+    fn fixed_partition_assignment_distinguishes_active_and_standby_members() {
+        let active = fixed_assignment(b"input-events", Some(7)).unwrap();
+        let standby = fixed_assignment(b"input-events", None).unwrap();
+        assert!(parse_fixed_assignment(&active, b"input-events", 7).unwrap());
+        assert!(!parse_fixed_assignment(&standby, b"input-events", 7).unwrap());
+        assert_eq!(parse_fixed_assignment(&active, b"input-events", 8), Err(Error::Invalid));
+    }
+
+    #[test]
+    fn group_requests_use_the_selected_legacy_versions() {
+        let subscription = fixed_subscription(b"input-events", 0).unwrap();
+        let join =
+            join_group_request(1, b"client", b"group", 10_000, 30_000, b"", &subscription).unwrap();
+        assert_eq!(&join[4..6], &api::JOIN_GROUP.to_be_bytes());
+        assert_eq!(&join[6..8], &version::JOIN_GROUP.to_be_bytes());
+
+        let assignment = GroupAssignment {
+            member_id: b"member".to_vec(),
+            assignment: fixed_assignment(b"input-events", Some(0)).unwrap(),
+        };
+        let sync = sync_group_request(2, b"client", b"group", 3, b"member", &[assignment]).unwrap();
+        assert_eq!(&sync[4..6], &api::SYNC_GROUP.to_be_bytes());
+        assert_eq!(&sync[6..8], &version::SYNC_GROUP.to_be_bytes());
+
+        let heartbeat = heartbeat_request(3, b"client", b"group", 3, b"member").unwrap();
+        assert_eq!(&heartbeat[4..6], &api::HEARTBEAT.to_be_bytes());
+        let leave = leave_group_request(4, b"client", b"group", b"member").unwrap();
+        assert_eq!(&leave[4..6], &api::LEAVE_GROUP.to_be_bytes());
+    }
+
+    #[test]
+    fn join_group_v1_response_has_no_throttle_prefix() {
+        let subscription = fixed_subscription(b"input-events", 0).unwrap();
+        let mut response = Vec::new();
+        response.extend_from_slice(&0i32.to_be_bytes());
+        response.extend_from_slice(&17i32.to_be_bytes());
+        response.extend_from_slice(&NO_ERROR.to_be_bytes());
+        response.extend_from_slice(&3i32.to_be_bytes());
+        response.extend_from_slice(&(FIXED_ASSIGNOR.len() as i16).to_be_bytes());
+        response.extend_from_slice(FIXED_ASSIGNOR);
+        for value in [b"member-a".as_slice(), b"member-a".as_slice()] {
+            response.extend_from_slice(&(value.len() as i16).to_be_bytes());
+            response.extend_from_slice(value);
+        }
+        response.extend_from_slice(&1i32.to_be_bytes());
+        response.extend_from_slice(&8i16.to_be_bytes());
+        response.extend_from_slice(b"member-a");
+        response.extend_from_slice(&(subscription.len() as i32).to_be_bytes());
+        response.extend_from_slice(&subscription);
+        let payload_len = (response.len() - 4) as i32;
+        response[..4].copy_from_slice(&payload_len.to_be_bytes());
+
+        let joined = parse_join_group(&response, 17).unwrap();
+        assert_eq!(joined.generation, 3);
+        assert_eq!(joined.member_id, b"member-a");
+        assert_eq!(joined.members.len(), 1);
+    }
+
+    #[test]
+    fn transactional_offset_commit_v3_uses_flexible_framing() {
+        let request = txn_offset_commit_request(
+            19,
+            b"client",
+            TxnOffsetCommit {
+                transactional_id: b"transaction",
+                group_id: b"group",
+                producer: ProducerIdentity {
+                    producer_id: 42,
+                    producer_epoch: 3,
+                },
+                generation: 7,
+                member_id: b"member-a",
+                topic: b"input-events",
+                partition: 0,
+                next_offset: 9,
+            },
+        )
+        .unwrap();
+        assert_eq!(&request[4..6], &api::TXN_OFFSET_COMMIT.to_be_bytes());
+        assert_eq!(&request[6..8], &version::TXN_OFFSET_COMMIT.to_be_bytes());
+        // Request header v2 terminates with an empty tag buffer.
+        assert_eq!(request[20], 0);
+
+        let mut response = Vec::new();
+        response.extend_from_slice(&0i32.to_be_bytes());
+        response.extend_from_slice(&19i32.to_be_bytes());
+        response.push(0);
+        response.extend_from_slice(&0i32.to_be_bytes());
+        response.push(2);
+        response.push((b"input-events".len() + 1) as u8);
+        response.extend_from_slice(b"input-events");
+        response.push(2);
+        response.extend_from_slice(&0i32.to_be_bytes());
+        response.extend_from_slice(&NO_ERROR.to_be_bytes());
+        response.push(0);
+        response.push(0);
+        response.push(0);
+        let payload_len = (response.len() - 4) as i32;
+        response[..4].copy_from_slice(&payload_len.to_be_bytes());
+        assert_eq!(parse_txn_offset_commit(&response, 19, b"input-events", 0), Ok(()));
     }
 }

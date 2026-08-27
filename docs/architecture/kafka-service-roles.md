@@ -64,6 +64,16 @@ delivery releases it for redelivery; committing consumes it. Several such
 endpoint capabilities may be held by one application when their commits are
 independent.
 
+Each connector is one Kafka group member using the bounded
+`charlotte-fixed-v1` assignor. Connectors with the same authorized partition
+elect one active member while the others heartbeat with empty assignments as
+standbys. Group-generation and member identity fence ordinary and transactional
+offset commits. A rebalance revokes outstanding delivery authority and aborts
+an in-flight transaction before installing the new assignment. This supports
+Charlotte replicas without revealing group credentials or broker authority to
+their application procedures; it does not interoperate with consumers that do
+not advertise the Charlotte assignor.
+
 ## Transactional-step role
 
 Durga activities should normally use a generic transactional-step service. Its
@@ -132,6 +142,7 @@ runner.
 The development launcher currently resolves the exact access-point and procedure names
 through its bootstrap name-service connection. A production deployment
 controller must instead mint and inject only those two connection capabilities,
-manage generation fencing, and interpret the status page for rollout. Dynamic
-consumer-group membership and controller-managed transactional-instance leases
-also remain future work.
+manage service-generation fencing, and interpret the status page for rollout.
+Fixed-partition Kafka group membership is implemented in the connector;
+controller-managed stable instance leases and cooperative assignor
+interoperability remain future work.

@@ -245,6 +245,18 @@ extern "C" fn verify_el0_kafka() {
         let timeouts = unsafe {
             crate::self_test::status_u32(step_status, charlotte_launch::kafka_step_status::TIMEOUTS)
         };
+        let group_generation = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::GROUP_GENERATION,
+            )
+        };
+        let group_heartbeats = unsafe {
+            crate::self_test::status_u32(
+                service_status,
+                charlotte_launch::kafka_status::GROUP_HEARTBEATS,
+            )
+        };
         if input_error != 0 || step_error != 0 {
             logln!(
                 "[kafka-test] FAILURE: step input error={:#x} step_error={:#x}",
@@ -260,16 +272,20 @@ extern "C" fn verify_el0_kafka() {
             && retries >= 2
             && dlq >= 1
             && timeouts >= 1
+            && group_generation >= 2
+            && group_heartbeats >= 1
         {
             logln!(
                 "[kafka-test] SUCCESS: low-level offset {}, generic step commits={} produced={} \
-                 retries={} dlq={} timeouts={}",
+                 retries={} dlq={} timeouts={} group_generation={} heartbeats={}",
                 output_offset,
                 commits,
                 produced,
                 retries,
                 dlq,
-                timeouts
+                timeouts,
+                group_generation,
+                group_heartbeats
             );
             crate::self_test::results::pass(crate::self_test::results::TestId::Kafka);
             return;

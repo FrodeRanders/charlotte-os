@@ -170,11 +170,28 @@ Fetch uses RecordBatch v2 and `read_committed`; aborted transactional batches
 are filtered using the broker's aborted-transaction ranges and control
 markers.
 
-The initial consumer profile is intentionally assignment-based rather than a
-Kafka group-protocol member. It reads and commits the configured group's
-offset for one fixed partition but does not participate in dynamic group
-rebalancing. Run only one active CharlotteOS profile for a given
-group/topic/partition tuple.
+Each connector joins its configured group with the bounded
+`charlotte-fixed-v1` assignor. A member advertises exactly the topic/partition
+authorized by its immutable profile. The group leader assigns each advertised
+topic/partition to one member; duplicate members remain heartbeating standbys
+with an empty assignment and can acquire the partition after a join, leave, or
+session failure. One connector admits one local consumer because the connector
+owns one group membership. Deploy additional independently named connectors
+for replicas or other partitions.
+
+Deliveries and offset commits are generation-fenced. Ordinary `OffsetCommit`
+requests carry the current generation and member ID. Transactional commits use
+Kafka's flexible `TxnOffsetCommit` v3 encoding and carry the same identity. On
+a rebalance, the connector revokes outstanding deliveries, aborts a touched
+transaction, synchronizes the new assignment, and reloads the committed offset
+before polling resumes. A stale commit returns `ERR_FENCED`; it cannot silently
+advance the new owner's offset. The service loop maintains heartbeats with a
+monotonic deadline even when no application request arrives.
+
+This fixed-partition protocol is for Charlotte connector members. A conventional
+Kafka consumer that does not advertise `charlotte-fixed-v1` cannot join the same
+group. It is deliberately smaller than Kafka's subscription assignors: topic
+discovery and arbitrary partition selection remain deployment-controller work.
 
 Network operations and coordinator initialization use bounded waits. A
 transport error can be ambiguous: the broker may have accepted a request
@@ -222,9 +239,9 @@ other client-key algorithms are not yet implemented.
 ## Current interoperability boundary
 
 The implemented broker protocol was exercised against Apache Kafka 4.1.1. It
-uses the non-flexible request versions listed in `charlotte-kafka` for metadata,
-coordinators, offsets, produce/fetch, producer initialization, and transaction
-operations.
+uses the bounded request versions listed in `charlotte-kafka`; most are legacy
+non-flexible forms, while generation-fenced transactional offset commit uses
+the compact/tagged flexible v3 schema.
 
 This first profile is deliberately narrow:
 
@@ -233,7 +250,9 @@ This first profile is deliberately narrow:
 - metadata-driven leader and coordinator routing, with leader refresh for
   produce/fetch; coordinator migration during an active transaction remains
   limited;
-- no dynamic consumer-group membership/rebalancing;
+- fixed-partition consumer-group join, sync, heartbeat, leave, standby failover,
+  and generation fencing, but no topic-pattern subscription or cooperative
+  assignor interoperability;
 - no compression, headers, dynamic SASL mechanism negotiation, client
   certificate chains, external hostname resolution, or TLS 1.2; and
 - records are bounded by the one-page application ABI.
@@ -257,7 +276,10 @@ that checks:
 - idempotent production;
 - read-committed consumption and explicit offset commit;
 - atomic consume-transform-produce across both topics with per-route producer
-  sequences, `AddPartitionsToTxn`, `AddOffsetsToTxn`, and `TxnOffsetCommit`; and
+  sequences, `AddPartitionsToTxn`, `AddOffsetsToTxn`, and generation-fenced
+  flexible-v3 `TxnOffsetCommit`;
+- group join/leave across successive consumers, generation advance, and
+  heartbeat operation;
 - abort filtering; and
 - the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 

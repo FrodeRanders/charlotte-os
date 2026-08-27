@@ -308,8 +308,8 @@ One \texttt{kafka} service instance has a stable profile-selected identity and
 grants access to at most 32 explicitly provisioned broker endpoints, a
 fixed consume topic/partition, an ordered allow-list of produce routes, a
 consumer group, transactional id, and connector rights ceiling. It owns the broker socket,
-producer ids, producer epochs, and per-route sequence numbers.
-Applications can produce idempotently, open a directly assigned consumer at
+producer ids, producer epochs, per-route sequence numbers, and consumer-group membership.
+Applications can produce idempotently, open a fixed-partition group consumer at
 the group's committed offset (or the earliest retained offset), poll with
 \texttt{read\_committed} isolation, commit or release a delivery, and close the
 consumer.
@@ -351,6 +351,20 @@ than silently advancing the group offset. These linear owners make the local
 lifecycle explicit, but they do not turn arbitrary application side effects
 outside Kafka into an exactly-once transaction.
 
+The connector joins its configured group with the bounded
+\texttt{charlotte-fixed-v1} assignor. Each member advertises exactly the
+topic/partition authorized by its immutable profile. The group leader assigns
+each such partition once; duplicate connectors remain heartbeating standbys
+with an empty assignment and can take ownership after membership changes. One
+connector admits one local consumer because it owns one membership. Ordinary
+offset commits carry the active generation and member id. Transactional offset
+commits use Kafka's flexible version-3 schema and carry the same fencing
+identity. A rebalance revokes outstanding deliveries, aborts a touched
+transaction, synchronizes the new assignment, and reloads its committed offset
+before polling resumes. The service loop uses monotonic deadlines to heartbeat
+even without application calls. Conventional consumers that do not advertise
+this assignor cannot share the group.
+
 For procedures that only implement business behaviour, the generic
 \texttt{kafka\_step} service owns that lifecycle instead. Its separate,
 read-only profile names one connector and one procedure endpoint, admits only
@@ -372,8 +386,8 @@ and group/transaction coordinators only from the profile's hostname/port and
 IPv4 allow-list. Authorized endpoints are alternate metadata seeds, and
 retriable produce/fetch failures refresh leader metadata before retry. The
 service does not yet fully recover coordinator migration during an active
-transaction, or implement consumer-group join/rebalance, client-certificate chains, record
-compression, topic
+transaction, or implement topic-pattern subscriptions, cooperative assignor
+interoperability, client-certificate chains, record compression, topic
 administration, or arbitrary partition assignment. Records and the number of
 simultaneous consumers, deliveries, and transactions are bounded.
 
@@ -387,7 +401,8 @@ and derived keys use zeroizing owners and remain outside the application ABI.
 The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS, required mTLS, and SCRAM,
 places the input and output routes on different leaders, and verifies
 idempotent production, read-committed consumption, atomic production plus
-group-offset commit, transaction abort, filtering of the aborted record, and
+generation-fenced group-offset commit, group generation advance and heartbeat,
+transaction abort, filtering of the aborted record, and
 the generic step runner's success, retry, timeout, and terminal-DLQ paths.
 
 The bounded Kafka wire implementation is in

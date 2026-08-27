@@ -43,7 +43,7 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
+    cq_wait_timeout,
     thread_exit,
 };
 use charlotte_kafka::{
@@ -68,13 +68,18 @@ const RECEIVE_RETRY_MS: u64 = 10;
 const PRODUCE_TIMEOUT_MS: i32 = 30_000;
 const FETCH_WAIT_MS: i32 = 250;
 const FETCH_MAX_BYTES: i32 = 64 * 1024;
-const MAX_CONSUMERS: usize = 8;
+const MAX_CONSUMERS: usize = 1;
 const MAX_DELIVERIES: usize = 8;
 const COORDINATOR_ATTEMPTS: usize = 120;
 const COORDINATOR_RETRY_MS: u64 = 250;
 const ROUTING_ATTEMPTS: usize = 3;
 const TLS_TIME_ATTEMPTS: usize = 120;
 const TLS_TIME_RETRY_MS: u64 = 250;
+const GROUP_SESSION_TIMEOUT_MS: i32 = 10_000;
+const GROUP_REBALANCE_TIMEOUT_MS: i32 = 30_000;
+const GROUP_HEARTBEAT_INTERVAL_MS: u64 = 2_000;
+const GROUP_RETRY_MS: u64 = 250;
+const SERVICE_WAIT_MS: u64 = 250;
 
 mod status {
     pub const STAGE: usize = 0;
@@ -85,6 +90,10 @@ mod status {
     pub const ABORTS: usize = 20;
     pub const BACKPRESSURE: usize = 24;
     pub const ERROR: usize = 28;
+    pub const GROUP_GENERATION: usize = 32;
+    pub const GROUP_ASSIGNED: usize = 36;
+    pub const GROUP_HEARTBEATS: usize = 40;
+    pub const GROUP_REBALANCES: usize = 44;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -310,6 +319,17 @@ fn unix_millis(connection: ConnectionRef<'_>) -> Option<i64> {
         .unix_seconds
         .checked_mul(1_000)?
         .checked_add(i64::from(snapshot.nanosecond / 1_000_000))
+}
+
+fn monotonic_millis(connection: ConnectionRef<'_>) -> Option<u64> {
+    let snapshot = time_snapshot(connection)?;
+    let frequency = snapshot.counter_frequency_hz;
+    if frequency == 0 {
+        return None;
+    }
+    let seconds = snapshot.monotonic_ticks / frequency;
+    let remainder = snapshot.monotonic_ticks % frequency;
+    seconds.checked_mul(1_000)?.checked_add(remainder.saturating_mul(1_000) / frequency)
 }
 
 fn tls_unix_seconds(connection: ConnectionRef<'_>) -> Option<u64> {
@@ -575,6 +595,38 @@ impl<'connection> BrokerTransport<'connection> {
     }
 }
 
+fn fixed_group_assignments(
+    members: &[wire::GroupMember],
+) -> Result<Vec<wire::GroupAssignment>, i64> {
+    let mut subscriptions = Vec::with_capacity(members.len());
+    let mut winners: BTreeMap<(Vec<u8>, i32), Vec<u8>> = BTreeMap::new();
+    for member in members {
+        let (topic, partition) =
+            wire::parse_fixed_subscription(&member.subscription).map_err(map_wire)?;
+        let key = (topic.clone(), partition);
+        winners
+            .entry(key)
+            .and_modify(|winner| {
+                if member.member_id < *winner {
+                    *winner = member.member_id.clone();
+                }
+            })
+            .or_insert_with(|| member.member_id.clone());
+        subscriptions.push((member.member_id.clone(), topic, partition));
+    }
+    subscriptions
+        .into_iter()
+        .map(|(member_id, topic, partition)| {
+            let active = winners.get(&(topic.clone(), partition)) == Some(&member_id);
+            Ok(wire::GroupAssignment {
+                member_id,
+                assignment: wire::fixed_assignment(&topic, active.then_some(partition))
+                    .map_err(map_wire)?,
+            })
+        })
+        .collect()
+}
+
 struct BrokerSession<'connection> {
     tcp: ConnectionRef<'connection>,
     entropy: Option<ConnectionRef<'connection>>,
@@ -586,6 +638,13 @@ struct BrokerSession<'connection> {
     group_coordinator: Option<i32>,
     transaction_coordinator: Option<i32>,
     correlation: i32,
+}
+
+struct GroupMembership {
+    generation: i32,
+    member_id: Vec<u8>,
+    assigned: bool,
+    next_heartbeat_ms: u64,
 }
 
 impl<'connection> BrokerSession<'connection> {
@@ -679,6 +738,10 @@ impl<'connection> BrokerSession<'connection> {
             (wire::api::OFFSET_COMMIT, wire::version::OFFSET_COMMIT),
             (wire::api::OFFSET_FETCH, wire::version::OFFSET_FETCH),
             (wire::api::FIND_COORDINATOR, wire::version::FIND_COORDINATOR),
+            (wire::api::JOIN_GROUP, wire::version::JOIN_GROUP),
+            (wire::api::SYNC_GROUP, wire::version::SYNC_GROUP),
+            (wire::api::HEARTBEAT, wire::version::HEARTBEAT),
+            (wire::api::LEAVE_GROUP, wire::version::LEAVE_GROUP),
             (wire::api::INIT_PRODUCER_ID, wire::version::INIT_PRODUCER_ID),
             (wire::api::ADD_PARTITIONS_TO_TXN, wire::version::ADD_PARTITIONS_TO_TXN),
             (wire::api::ADD_OFFSETS_TO_TXN, wire::version::ADD_OFFSETS_TO_TXN),
@@ -822,6 +885,160 @@ impl<'connection> BrokerSession<'connection> {
 
     fn route_node(&self, route: u16) -> Result<i32, i64> {
         self.route_nodes.get(&route).copied().ok_or(protocol::ERR_DENIED)
+    }
+
+    fn refresh_group_coordinator(&mut self, profile: &Profile) -> Result<(), i64> {
+        self.group_coordinator = Some(self.find_coordinator(profile, &profile.group, false)?);
+        Ok(())
+    }
+
+    fn join_group(
+        &mut self,
+        profile: &Profile,
+        previous_member_id: &[u8],
+        now_ms: u64,
+    ) -> Result<GroupMembership, i64> {
+        let subscription =
+            wire::fixed_subscription(&profile.topic, profile.partition).map_err(map_wire)?;
+        let mut member_id = previous_member_id.to_vec();
+        for _ in 0..COORDINATOR_ATTEMPTS {
+            let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+            let correlation = self.next();
+            let request = wire::join_group_request(
+                correlation,
+                CLIENT_ID,
+                &profile.group,
+                GROUP_SESSION_TIMEOUT_MS,
+                GROUP_REBALANCE_TIMEOUT_MS,
+                &member_id,
+                &subscription,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error) => {
+                    self.refresh_group_coordinator(profile)?;
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT {
+                        sleep_ms(COORDINATOR_RETRY_MS);
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
+            let joined = wire::parse_join_group(&response, correlation).map_err(map_wire)?;
+            if joined.error != wire::NO_ERROR {
+                if joined.error == wire::MEMBER_ID_REQUIRED && !joined.member_id.is_empty() {
+                    member_id = joined.member_id;
+                } else if joined.error == wire::UNKNOWN_MEMBER_ID {
+                    member_id.clear();
+                } else if joined.error == wire::NOT_COORDINATOR
+                    || joined.error == wire::COORDINATOR_NOT_AVAILABLE
+                {
+                    self.refresh_group_coordinator(profile)?;
+                } else if !wire::requires_group_rejoin(joined.error)
+                    && !wire::is_retriable_broker_error(joined.error)
+                {
+                    return Err(map_broker(joined.error));
+                }
+                sleep_ms(COORDINATOR_RETRY_MS);
+                continue;
+            }
+            if joined.protocol_name != wire::FIXED_ASSIGNOR || joined.member_id.is_empty() {
+                return Err(protocol::ERR_PROTOCOL);
+            }
+
+            let assignments = if joined.leader_id == joined.member_id {
+                fixed_group_assignments(&joined.members)?
+            } else {
+                Vec::new()
+            };
+            let correlation = self.next();
+            let request = wire::sync_group_request(
+                correlation,
+                CLIENT_ID,
+                &profile.group,
+                joined.generation,
+                &joined.member_id,
+                &assignments,
+            )
+            .map_err(map_wire)?;
+            let response = match self.exchange_node(node, request) {
+                Ok(response) => response,
+                Err(error) => {
+                    member_id = joined.member_id;
+                    if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT {
+                        self.refresh_group_coordinator(profile)?;
+                        sleep_ms(COORDINATOR_RETRY_MS);
+                        continue;
+                    }
+                    return Err(error);
+                }
+            };
+            let (error, assignment) =
+                wire::parse_sync_group(&response, correlation).map_err(map_wire)?;
+            if error == wire::NO_ERROR {
+                return Ok(GroupMembership {
+                    generation: joined.generation,
+                    member_id: joined.member_id,
+                    assigned: wire::parse_fixed_assignment(
+                        &assignment,
+                        &profile.topic,
+                        profile.partition,
+                    )
+                    .map_err(map_wire)?,
+                    next_heartbeat_ms: now_ms.saturating_add(GROUP_HEARTBEAT_INTERVAL_MS),
+                });
+            }
+            member_id = if error == wire::UNKNOWN_MEMBER_ID {
+                Vec::new()
+            } else {
+                joined.member_id
+            };
+            if error == wire::NOT_COORDINATOR || error == wire::COORDINATOR_NOT_AVAILABLE {
+                self.refresh_group_coordinator(profile)?;
+            } else if !wire::requires_group_rejoin(error) && !wire::is_retriable_broker_error(error)
+            {
+                return Err(map_broker(error));
+            }
+            sleep_ms(COORDINATOR_RETRY_MS);
+        }
+        Err(protocol::ERR_TIMEOUT)
+    }
+
+    fn heartbeat_group(
+        &mut self,
+        profile: &Profile,
+        membership: &GroupMembership,
+    ) -> Result<i16, i64> {
+        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+        let correlation = self.next();
+        let request = wire::heartbeat_request(
+            correlation,
+            CLIENT_ID,
+            &profile.group,
+            membership.generation,
+            &membership.member_id,
+        )
+        .map_err(map_wire)?;
+        let response = self.exchange_node(node, request)?;
+        wire::parse_group_error(&response, correlation).map_err(map_wire)
+    }
+
+    fn leave_group(&mut self, profile: &Profile, member_id: &[u8]) -> Result<(), i64> {
+        if member_id.is_empty() {
+            return Ok(());
+        }
+        let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
+        let correlation = self.next();
+        let request = wire::leave_group_request(correlation, CLIENT_ID, &profile.group, member_id)
+            .map_err(map_wire)?;
+        let response = self.exchange_node(node, request)?;
+        let error = wire::parse_group_error(&response, correlation).map_err(map_wire)?;
+        if error == wire::NO_ERROR || error == wire::UNKNOWN_MEMBER_ID {
+            Ok(())
+        } else {
+            Err(map_broker(error))
+        }
     }
 
     fn init_producer(
@@ -1027,16 +1244,25 @@ impl<'connection> BrokerSession<'connection> {
         Err(protocol::ERR_TIMEOUT)
     }
 
-    fn commit_offset(&mut self, profile: &Profile, next_offset: i64) -> Result<(), i64> {
+    fn commit_offset(
+        &mut self,
+        profile: &Profile,
+        membership: &GroupMembership,
+        next_offset: i64,
+    ) -> Result<(), i64> {
         let node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
         let correlation = self.next();
         let request = wire::offset_commit_request(
             correlation,
             CLIENT_ID,
-            &profile.group,
-            &profile.topic,
-            profile.partition,
-            next_offset,
+            wire::OffsetCommit {
+                group_id: &profile.group,
+                generation: membership.generation,
+                member_id: &membership.member_id,
+                topic: &profile.topic,
+                partition: profile.partition,
+                next_offset,
+            },
         )
         .map_err(map_wire)?;
         let response = self.exchange_node(node, request)?;
@@ -1048,6 +1274,7 @@ impl<'connection> BrokerSession<'connection> {
         &mut self,
         profile: &Profile,
         producer: ProducerIdentity,
+        membership: &GroupMembership,
         next_offset: i64,
     ) -> Result<(), i64> {
         let transaction_node = self.transaction_coordinator.ok_or(protocol::ERR_BROKER)?;
@@ -1071,6 +1298,8 @@ impl<'connection> BrokerSession<'connection> {
                 transactional_id: &profile.transactional_id,
                 group_id: &profile.group,
                 producer,
+                generation: membership.generation,
+                member_id: &membership.member_id,
                 topic: &profile.topic,
                 partition: profile.partition,
                 next_offset,
@@ -1079,8 +1308,19 @@ impl<'connection> BrokerSession<'connection> {
         .map_err(map_wire)?;
         let group_node = self.group_coordinator.ok_or(protocol::ERR_BROKER)?;
         let response = self.exchange_node(group_node, request)?;
-        wire::parse_partition_error(&response, correlation, &profile.topic, profile.partition)
-            .map_err(map_wire)
+        match wire::parse_txn_offset_commit(
+            &response,
+            correlation,
+            &profile.topic,
+            profile.partition,
+        ) {
+            Ok(()) => Ok(()),
+            Err(wire::Error::Broker(error)) => {
+                catten_rt::logln!("[kafka] transactional offset commit broker error={}", error);
+                Err(map_broker(error))
+            }
+            Err(error) => Err(map_wire(error)),
+        }
     }
 
     fn end_transaction(
@@ -1120,7 +1360,10 @@ fn map_broker(error: i16) -> i64 {
     match error {
         wire::PRODUCER_FENCED
         | wire::INVALID_PRODUCER_EPOCH
-        | wire::TRANSACTION_COORDINATOR_FENCED => protocol::ERR_FENCED,
+        | wire::TRANSACTION_COORDINATOR_FENCED
+        | wire::ILLEGAL_GENERATION
+        | wire::UNKNOWN_MEMBER_ID
+        | wire::REBALANCE_IN_PROGRESS => protocol::ERR_FENCED,
         wire::REQUEST_TIMED_OUT => protocol::ERR_TIMEOUT,
         wire::SASL_AUTHENTICATION_FAILED => protocol::ERR_AUTHENTICATION,
         _ => protocol::ERR_BROKER,
@@ -1197,6 +1440,8 @@ struct Service<'connection> {
     consumers: BTreeMap<u32, ConsumerState>,
     deliveries: BTreeMap<u32, DeliveryState>,
     transaction: Option<(u32, TransactionState)>,
+    group_membership: Option<GroupMembership>,
+    next_group_retry_ms: u64,
     next_id: u32,
     requests: u32,
     produced: u32,
@@ -1204,6 +1449,8 @@ struct Service<'connection> {
     commits: u32,
     aborts: u32,
     backpressure: u32,
+    group_heartbeats: u32,
+    group_rebalances: u32,
 }
 
 impl Service<'_> {
@@ -1245,11 +1492,28 @@ impl Service<'_> {
         if self.consumers.len() >= MAX_CONSUMERS {
             return Err(protocol::ERR_BUSY);
         }
-        let committed = self
-            .broker
-            .committed_offset(&self.profile)?
-            .unwrap_or(self.broker.earliest_offset(&self.profile)?);
         let id = self.id()?;
+        let now_ms = monotonic_millis(self.clock).ok_or(protocol::ERR_TIMEOUT)?;
+        let membership = self.broker.join_group(&self.profile, &[], now_ms)?;
+        let committed = if membership.assigned {
+            match self.broker.committed_offset(&self.profile).and_then(
+                |committed| match committed {
+                    Some(offset) => Ok(offset),
+                    None => self.broker.earliest_offset(&self.profile),
+                },
+            ) {
+                Ok(offset) => offset,
+                Err(error) => {
+                    let _ = self.broker.leave_group(&self.profile, &membership.member_id);
+                    return Err(error);
+                }
+            }
+        } else {
+            0
+        };
+        config::write::<u32>(status::GROUP_GENERATION, membership.generation as u32);
+        config::write::<u32>(status::GROUP_ASSIGNED, membership.assigned as u32);
+        self.group_membership = Some(membership);
         self.consumers.insert(
             id,
             ConsumerState {
@@ -1273,6 +1537,9 @@ impl Service<'_> {
             .get(&consumer_id)
             .filter(|consumer| consumer.owner == owner)
             .ok_or(protocol::ERR_INVALID)?;
+        if !self.group_membership.as_ref().is_some_and(|membership| membership.assigned) {
+            return Ok(None);
+        }
         if consumer.outstanding.is_some() || consumer.reserved_transaction.is_some() {
             self.backpressure = self.backpressure.wrapping_add(1);
             return Err(protocol::ERR_BUSY);
@@ -1341,7 +1608,11 @@ impl Service<'_> {
             .get(&delivery_id)
             .filter(|delivery| delivery.owner == owner)
             .ok_or(protocol::ERR_INVALID)?;
-        self.broker.commit_offset(&self.profile, delivery.next_offset)?;
+        let membership = self.group_membership.as_ref().ok_or(protocol::ERR_FENCED)?;
+        if !membership.assigned {
+            return Err(protocol::ERR_FENCED);
+        }
+        self.broker.commit_offset(&self.profile, membership, delivery.next_offset)?;
         let consumer_id = delivery.consumer_id;
         let next_offset = delivery.next_offset;
         self.deliveries.remove(&delivery_id);
@@ -1365,6 +1636,12 @@ impl Service<'_> {
             self.deliveries.remove(&delivery);
         }
         self.consumers.remove(&consumer_id);
+        if self.consumers.is_empty()
+            && let Some(membership) = self.group_membership.take()
+        {
+            config::write::<u32>(status::GROUP_ASSIGNED, 0);
+            return self.broker.leave_group(&self.profile, &membership.member_id);
+        }
         Ok(())
     }
 
@@ -1500,11 +1777,17 @@ impl Service<'_> {
         let mut result = if transaction.touched {
             let offsets = if commit {
                 match transaction.included.as_ref() {
-                    Some(included) => self.broker.add_transactional_offset(
-                        &self.profile,
-                        self.transactional_producer,
-                        included.next_offset,
-                    ),
+                    Some(included) => match self.group_membership.as_ref() {
+                        Some(membership) if membership.assigned => {
+                            self.broker.add_transactional_offset(
+                                &self.profile,
+                                self.transactional_producer,
+                                membership,
+                                included.next_offset,
+                            )
+                        }
+                        _ => Err(protocol::ERR_FENCED),
+                    },
                     None => Ok(()),
                 }
             } else {
@@ -1554,6 +1837,132 @@ impl Service<'_> {
         result
     }
 
+    fn revoke_group_generation(&mut self) {
+        self.deliveries.clear();
+        for consumer in self.consumers.values_mut() {
+            consumer.outstanding = None;
+            consumer.reserved_transaction = None;
+            consumer.fetch_offset = consumer.committed_offset;
+        }
+        let Some((_, transaction)) = self.transaction.take() else {
+            return;
+        };
+        if transaction.touched {
+            let result =
+                self.broker.end_transaction(&self.profile, self.transactional_producer, false);
+            if result.is_err() || transaction.reset_producer {
+                let coordinator = self.broker.transaction_coordinator.ok_or(protocol::ERR_BROKER);
+                if let Ok(producer) = coordinator.and_then(|node| {
+                    self.broker.init_producer(
+                        node,
+                        Some(&self.profile.transactional_id),
+                        self.profile.transaction_timeout_ms,
+                    )
+                }) {
+                    self.transactional_producer = producer;
+                    self.transactional_sequences.clear();
+                }
+            }
+        }
+        self.aborts = self.aborts.wrapping_add(1);
+    }
+
+    fn rejoin_group(&mut self, now_ms: u64) -> Result<(), i64> {
+        let previous_member_id =
+            self.group_membership.take().map(|membership| membership.member_id).unwrap_or_default();
+        config::write::<u32>(status::GROUP_ASSIGNED, 0);
+        self.revoke_group_generation();
+        let membership = self.broker.join_group(&self.profile, &previous_member_id, now_ms)?;
+        let next_offset = if membership.assigned {
+            let offset =
+                self.broker.committed_offset(&self.profile).and_then(|committed| match committed {
+                    Some(offset) => Ok(offset),
+                    None => self.broker.earliest_offset(&self.profile),
+                });
+            match offset {
+                Ok(offset) => offset,
+                Err(error) => {
+                    let _ = self.broker.leave_group(&self.profile, &membership.member_id);
+                    return Err(error);
+                }
+            }
+        } else {
+            0
+        };
+        for consumer in self.consumers.values_mut() {
+            consumer.fetch_offset = next_offset;
+            consumer.committed_offset = next_offset;
+        }
+        self.group_rebalances = self.group_rebalances.wrapping_add(1);
+        config::write::<u32>(status::GROUP_GENERATION, membership.generation as u32);
+        config::write::<u32>(status::GROUP_ASSIGNED, membership.assigned as u32);
+        config::write::<u32>(status::GROUP_REBALANCES, self.group_rebalances);
+        catten_rt::logln!(
+            "[kafka] group generation={} assigned={} member-bytes={}",
+            membership.generation,
+            membership.assigned,
+            membership.member_id.len()
+        );
+        self.group_membership = Some(membership);
+        Ok(())
+    }
+
+    fn maintain_group(&mut self) -> Result<(), i64> {
+        if self.consumers.is_empty() {
+            return Ok(());
+        }
+        let now_ms = monotonic_millis(self.clock).ok_or(protocol::ERR_TIMEOUT)?;
+        if self.group_membership.is_none() {
+            if now_ms < self.next_group_retry_ms {
+                return Ok(());
+            }
+            self.next_group_retry_ms = now_ms.saturating_add(GROUP_RETRY_MS);
+            return self.rejoin_group(now_ms);
+        }
+        let due = self
+            .group_membership
+            .as_ref()
+            .is_some_and(|membership| now_ms >= membership.next_heartbeat_ms);
+        if !due {
+            return Ok(());
+        }
+        let heartbeat = self.broker.heartbeat_group(
+            &self.profile,
+            self.group_membership.as_ref().ok_or(protocol::ERR_FENCED)?,
+        );
+        match heartbeat {
+            Ok(wire::NO_ERROR) => {
+                let membership = self.group_membership.as_mut().ok_or(protocol::ERR_FENCED)?;
+                membership.next_heartbeat_ms = now_ms.saturating_add(GROUP_HEARTBEAT_INTERVAL_MS);
+                self.group_heartbeats = self.group_heartbeats.wrapping_add(1);
+                config::write::<u32>(status::GROUP_HEARTBEATS, self.group_heartbeats);
+                Ok(())
+            }
+            Ok(error)
+                if wire::requires_group_rejoin(error)
+                    || error == wire::NOT_COORDINATOR
+                    || error == wire::COORDINATOR_NOT_AVAILABLE =>
+            {
+                if error == wire::NOT_COORDINATOR || error == wire::COORDINATOR_NOT_AVAILABLE {
+                    self.broker.refresh_group_coordinator(&self.profile)?;
+                }
+                self.rejoin_group(now_ms)
+            }
+            Ok(error) if wire::is_retriable_broker_error(error) => {
+                self.group_membership.as_mut().ok_or(protocol::ERR_FENCED)?.next_heartbeat_ms =
+                    now_ms.saturating_add(GROUP_RETRY_MS);
+                Ok(())
+            }
+            Ok(error) => Err(map_broker(error)),
+            Err(error) if error == protocol::ERR_TRANSPORT || error == protocol::ERR_TIMEOUT => {
+                self.group_membership.as_mut().ok_or(protocol::ERR_FENCED)?.next_heartbeat_ms =
+                    now_ms.saturating_add(GROUP_RETRY_MS);
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn account(&mut self, result: i64) {
         self.requests = self.requests.wrapping_add(1);
         config::write::<u32>(status::REQUESTS, self.requests);
@@ -1564,6 +1973,9 @@ impl Service<'_> {
         config::write::<u32>(status::BACKPRESSURE, self.backpressure);
         if result == protocol::ERR_FENCED {
             config::write::<u32>(status::ERROR, 0x4b46_0001);
+            if let Some(membership) = self.group_membership.as_mut() {
+                membership.next_heartbeat_ms = 0;
+            }
         }
     }
 }
@@ -1656,6 +2068,9 @@ fn handle_message(
         }
         protocol::OP_CONSUMER_OPEN => {
             result = service.open_consumer(owner).map(i64::from).unwrap_or_else(|error| error);
+            if result < 0 {
+                catten_rt::logln!("[kafka] consumer open failed error={}", result);
+            }
             let _ = reply.reply(result);
         }
         protocol::OP_CONSUMER_POLL => {
@@ -1757,6 +2172,9 @@ fn handle_message(
             let _ = reply.reply(result);
         }
     }
+    if result < 0 {
+        catten_rt::logln!("[kafka] opcode={} failed error={}", message.opcode, result);
+    }
     service.account(result);
 }
 
@@ -1847,6 +2265,8 @@ fn main(ctx: Context) -> ! {
         consumers: BTreeMap::new(),
         deliveries: BTreeMap::new(),
         transaction: None,
+        group_membership: None,
+        next_group_retry_ms: 0,
         next_id: 1,
         requests: 0,
         produced: 0,
@@ -1854,9 +2274,14 @@ fn main(ctx: Context) -> ! {
         commits: 0,
         aborts: 0,
         backpressure: 0,
+        group_heartbeats: 0,
+        group_rebalances: 0,
     };
     let mut next_endpoint = 0usize;
     loop {
+        if let Err(error) = service.maintain_group() {
+            config::write::<u32>(status::ERROR, 0x4b09_0000 | (-error as u32 & 0xffff));
+        }
         let mut handled = false;
         for offset in 0..endpoints.len() {
             let index = (next_endpoint + offset) % endpoints.len();
@@ -1875,7 +2300,7 @@ fn main(ctx: Context) -> ! {
         }
         next_endpoint = (next_endpoint + 1) % endpoints.len();
         if !handled {
-            cq_wait(1, 0);
+            cq_wait_timeout(1, SERVICE_WAIT_MS, 0);
         }
     }
 }

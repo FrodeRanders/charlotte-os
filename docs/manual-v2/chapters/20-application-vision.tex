@@ -602,9 +602,12 @@ while avoiding a broker round trip for every internal transition. It also makes
 the durable boundary visible in the process bundle and capability request.
 
 The present Kafka adapter is intentionally narrower than a general client. It
-uses a fixed direct partition assignment while routing among an explicit broker
-allow-list, with no consumer-group rebalance, complete coordinator-migration
-recovery, client-certificate chains, or compression. It supports verified TLS,
+uses a profile-fixed partition and a Charlotte fixed-partition group assignor
+while routing among an explicit broker allow-list. It supports group join,
+heartbeat, standby failover, and generation-fenced ordinary and transactional
+offset commits, but not conventional/cooperative assignor interoperability,
+complete coordinator-migration recovery, client-certificate chains, or
+compression. It supports verified TLS,
 connector-only SCRAM-SHA-256 authentication, and connector-only P-256 mTLS,
 independently or together. A generated deployment
 would therefore need either to accept that bounded profile, extend the adapter

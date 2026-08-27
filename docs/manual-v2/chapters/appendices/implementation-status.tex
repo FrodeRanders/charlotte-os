@@ -171,10 +171,14 @@ repository history remain authoritative.
 \begin{itemize}
     \item \textbf{External data-service compatibility:} S3 is fixture-tested
         with RustFS, while Dell EMC ECS namespace support is implemented but
-        not yet qualified against an ECS installation. Kafka is limited to a
-        directly assigned partition. It routes among explicitly provisioned
+        not yet qualified against an ECS installation. Kafka is limited to
+        profile-fixed partitions. Its connector joins, synchronizes,
+        heartbeats, leaves, and generation-fences commits with a Charlotte
+        fixed-partition assignor; replicas for the same partition become
+        standbys. It routes among explicitly provisioned
         brokers and refreshes leaders for produce/fetch, but still lacks full
-        coordinator-migration recovery, group rebalance, additional SASL
+        coordinator-migration recovery, conventional/cooperative assignor
+        interoperability, additional SASL
         mechanisms, client-certificate chains and key algorithms, compression,
         and topic administration.
         Its versioned, digest-checked profile is already delivered only to the
