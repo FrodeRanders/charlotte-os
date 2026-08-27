@@ -1,4 +1,5 @@
 \chapter{Development Workflow}
+\label{chap:development}
 
 This chapter gives the current build, boot, test, and code-reading workflow.
 
@@ -241,7 +242,8 @@ Representative boot suites include:
     \item \repofiletext|crates/catten/src/self_test/el0_uart.rs|{\texttt{el0\_uart.rs}} --- userspace UART driver (delegated MMIO +
         IRQ, crash recovery).
     \item \repofiletext|crates/catten/src/self_test/el0_sitas.rs|{\texttt{el0\_sitas.rs}} --- sitas executor integration: sharded KV,
-        the mailbox index demo, and the thread-join probe (Section~9.8).
+        the mailbox index demo, and the thread-join probe
+        (\autoref{sec:sitas-mailbox-index}).
     \item \repofiletext|crates/catten/src/self_test/scheduler_lifecycle.rs|{\texttt{scheduler\_lifecycle.rs}} --- spawn, block, wake, abort,
         migration-safe migration, timer-wait affinity.
     \item \repofiletext|crates/catten/src/self_test/ipc.rs|{\texttt{ipc.rs}} --- IPC path tests (scalar, memory, delegation,

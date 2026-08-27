@@ -1,4 +1,5 @@
 \chapter{Networking}
+\label{chap:networking}
 
 CharlotteOS treats networking as an extension of its message-passing and
 capability model rather than making TCP/IP the native interface for all
@@ -228,6 +229,118 @@ time. This service starts during an ordinary networked boot; no test option is
 required. The detailed wire contract and security limitations are recorded in
 \repofile|docs/reference/time-service.md|.
 
+\section{Capability-scoped external data services}
+\label{sec:external-data-services}
+
+CharlotteOS has narrow S3 and Kafka compatibility services on top of the
+userspace TCP/IP stack. They preserve the capability model at the application
+boundary even though they communicate with conventional external systems:
+
+\begin{verbatim}
+application
+    |
+    | delegated endpoint capability
+    v
+S3 or Kafka service
+    |
+    | owned TCP socket (+ verified TLS when configured)
+    v
+managed object store or Kafka broker
+\end{verbatim}
+
+An application receives neither a generic network capability nor the remote
+credentials and protocol state. Instead, each service instance is provisioned
+with one bounded profile. The connection to that instance is the authority to
+use only the profile's endpoint, namespace, and operation rights. The
+application-side helpers build on \texttt{catten\_rt::owned}: moved memory
+pages carry payloads, and each remote stream, delivery, consumer, or transaction
+has an explicit consuming teardown plus a best-effort \texttt{Drop} fallback.
+
+These services are not launched unconditionally. A trusted provisioning path
+must supply their profiles, including secrets and trust anchors. The
+\texttt{--s3-test} and \texttt{--kafka-test} runner options create disposable
+Docker fixtures, generate short-lived test certificates, launch test profiles,
+and add guest verifiers. They validate integration; production provisioning
+does not conceptually depend on those switches.
+
+\subsection{S3 client service}
+\label{sec:s3-service}
+
+One \texttt{s3} service instance is fixed at launch to an IPv4 endpoint and
+DNS name, port, region, bucket, key prefix, credential identity, optional Dell
+EMC ECS namespace, and a GET/PUT/DELETE rights mask. Applications use keys
+relative to the granted prefix. The service rejects absolute paths and
+\texttt{.}/\texttt{..} path segments, constructs path-style S3 requests, and
+signs them with AWS Signature Version~4. The secret key remains inside the
+service address space.
+
+The implemented data plane provides streaming GET and PUT, HEAD, DELETE,
+ranged GET, and create-only PUT. Object bodies cross the application boundary
+as moved, bounded memory chunks; response metadata includes length, ETag,
+version id, and request id. The HTTP/1.1 adapter accepts fixed-length and
+chunked responses. Bucket listing, multipart upload, presigned URLs, automatic
+region discovery, and a general AWS API are not implemented. A LIST right is
+reserved in the profile format but currently has no operation.
+
+TLS profiles require an explicit DER trust anchor, a matching server name,
+system entropy, and synchronized UTC from the time service. Certificate
+verification or entropy failure aborts the connection; there is no downgrade
+to plaintext. The S3 request date also comes from synchronized UTC, so a TLS
+or signed request fails closed while the clock is unsynchronized.
+
+The AArch64 integration test starts RustFS behind verified TLS and performs a
+PUT/HEAD/GET/DELETE round trip. The same client surface is intended for
+centrally managed S3-compatible stores. The optional
+\texttt{x-emc-namespace} header specifically supports Dell EMC ECS namespace
+profiles, but ECS interoperability has not yet been runtime-qualified in this
+repository.
+
+The transport-independent Signature V4 and HTTP code lives in
+\repodir|crates/charlotte-s3|, the application protocol in
+\repodir|crates/charlotte-protocol-s3|, the owned client in
+\repofile|crates/catten-services/src/s3_client.rs|, and the service adapter in
+\repofile|crates/catten-services/src/bin/s3.rs|.
+
+\subsection{Kafka client service}
+\label{sec:kafka-service}
+
+One \texttt{kafka} service instance grants access to one broker endpoint,
+topic, partition, consumer group, transactional id, and rights mask. It owns
+the broker socket, producer ids, producer epochs, and sequence numbers.
+Applications can produce idempotently, open a directly assigned consumer at
+the group's committed offset (or the earliest retained offset), poll with
+\texttt{read\_committed} isolation, commit or release a delivery, and close the
+consumer.
+
+The transaction owner supports the consume--transform--produce path. An
+application can produce records, move one consumed delivery's next group
+offset into the same Kafka transaction, and then commit or abort. Committing
+consumes the transaction resource; dropping an unfinished transaction attempts
+an abort. Dropping an uncommitted delivery releases it for redelivery rather
+than silently advancing the group offset. These linear owners make the local
+lifecycle explicit, but they do not turn arbitrary application side effects
+outside Kafka into an exactly-once transaction.
+
+The wire crate negotiates \texttt{ApiVersions} and implements a deliberately
+small set of stable Kafka request versions. The current service requires a
+single broker that is simultaneously the partition leader, group coordinator,
+and transaction coordinator. It does not implement multi-broker routing or
+failover, consumer-group join/rebalance, SASL, record compression, topic
+administration, or arbitrary partition assignment. Records and the number of
+simultaneous consumers, deliveries, and transactions are bounded.
+
+TLS uses the same explicit trust-anchor, synchronized-time, and entropy path as
+S3. The opt-in AArch64 test uses a single-node Apache Kafka fixture over TLS and
+verifies idempotent production, read-committed consumption, atomic production
+plus group-offset commit, transaction abort, and filtering of the aborted
+record.
+
+The bounded Kafka wire implementation is in
+\repodir|crates/charlotte-kafka|, the application protocol in
+\repodir|crates/charlotte-protocol-kafka|, the linear client owners in
+\repofile|crates/catten-services/src/kafka_client.rs|, and the broker adapter in
+\repofile|crates/catten-services/src/bin/kafka.rs|.
+
 \section{Transport independence}
 
 The reliable-message interface is designed to be transport-agnostic. Candidate
@@ -268,7 +381,8 @@ The intended network stack avoids copying whenever practical:
         is implemented with AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi.
 \end{itemize}
 
-This is the memory-object transfer model (Chapter~6) applied to networking.
+This is the memory-object transfer model (\autoref{chap:memory-objects}) applied
+to networking.
 
 \section{Why the networking architecture matters for critical software}
 

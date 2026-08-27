@@ -1,4 +1,5 @@
 \chapter{Design Philosophy}
+\label{chap:design-philosophy}
 
 CharlotteOS combines ideas from three projects around one thesis.
 
@@ -34,7 +35,7 @@ without compromising isolation, it belongs in userspace.
 
 \subsection{Sitas --- the shard-per-core execution discipline}
 
-Sitas contributes an execution discipline --- a set of rules about how state is
+Sitas (\url{https://github.com/FrodeRanders/sitas}) contributes an execution discipline --- a set of rules about how state is
 owned and mutated:
 
 \begin{quote}
@@ -265,7 +266,7 @@ into userspace. Task scheduling therefore remains cooperative and reviewable.
 \section{Why this matters for critical software}
 
 Every design decision in CharlotteOS traces back to one or more of the six
-principles from Chapter~1:
+principles from \autoref{chap:problem}:
 
 \begin{itemize}
     \item Capabilities replace ambient authority --- a compromised service
@@ -282,7 +283,7 @@ principles from Chapter~1:
     \item The async model reduces adaptation --- the kernel and runtime share
         submission, completion, and wake semantics.
     \item Bounded ingress makes pressure visible --- endpoint and hardware queues
-        apply explicit backpressure. Chapter~10 records the remaining unbounded
+        apply explicit backpressure. \autoref{chap:scheduling} records the remaining unbounded
         internal backlog.
 \end{itemize}
 

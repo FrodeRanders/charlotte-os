@@ -1,4 +1,5 @@
 \chapter{Live Service Upgrade}
+\label{chap:live-upgrade}
 
 CharlotteOS has a tested prototype for replacing a reference service while
 transferring its state. It is \textbf{restart-with-state}, not zero-downtime:
@@ -193,7 +194,7 @@ True zero-downtime would require one of:
 \section{Relationship to crash recovery}
 
 The live upgrade path is the graceful variant of the crash-recovery path
-already exercised by the UART driver test (Chapter~12). In both cases, the
+already exercised by the UART driver test (\autoref{chap:userspace-drivers}). In both cases, the
 supervisor reclaims device authority, invalidates stale connections, and
 spawns a new instance with a bumped generation. The difference is that live
 upgrade transfers state explicitly through memory objects before the old

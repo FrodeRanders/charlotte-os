@@ -1,4 +1,5 @@
 \chapter{Server-Class Cluster Vision}
+\label{chap:cluster-vision}
 
 CharlotteOS is exploring an operating-system boundary at which the cluster,
 rather than an individual machine, is the primary administrative and
@@ -59,8 +60,9 @@ cannot be ignored. Differences are expressed as schedulable properties and
 constraints rather than as hand-maintained machine personalities.
 
 The same idea already appears one level down in CharlotteOS. The
-shard-per-core model of Chapter~9 treats cores as executors over explicitly
-owned state, while the scheduler in Chapter~10 moves work between them. The
+shard-per-core model of \autoref{chap:sitas-executor} treats cores as executors
+over explicitly owned state, while the scheduler in
+\autoref{chap:scheduling} moves work between them. The
 cluster vision scales this relationship outward: a cluster node is analogous
 to a core, cluster-visible storage is analogous to owned persistent state,
 and the cluster becomes the unit within which execution is placed.
@@ -175,7 +177,7 @@ rather than something assembled above a set of general-purpose hosts?
 
 The comparison is useful only if it separates two kinds of complexity.
 
-\paragraph{Distributed-systems complexity is intrinsic.}
+\subsubsection{Distributed-systems complexity is intrinsic.}
 CharlotteOS does not abolish scheduling, consensus, placement, replication,
 health management, service discovery, upgrades, resource accounting,
 storage, networking, observability, failure detection, load balancing, or
@@ -187,7 +189,7 @@ Secrets still need secure creation and delegation. An operating system that
 absorbs orchestration must implement these responsibilities; moving them
 downward does not make them disappear.
 
-\paragraph{Compatibility and boundary-construction complexity may change.}
+\subsubsection{Compatibility and boundary-construction complexity may change.}
 Some machinery exists because a cluster platform must turn a
 general-purpose Unix/Linux environment into a constrained, reproducible,
 movable unit. A clean-break system with signed, self-contained artifacts,
@@ -345,40 +347,53 @@ does not by itself constitute a complete cluster executive.
     \item \textbf{Cross-machine consensus.} The Graft core replicates the
         \texttt{dns} catalog state machine across two QEMU guests on a stream
         Ethernet segment and serves remote invocation through
-        \texttt{dns::OP\_CALL} (Chapter~14). The same replicated catalog
+        \texttt{dns::OP\_CALL} (\autoref{chap:consensus}). The same replicated catalog
         carries the set-once cluster signing key and deployment assignments.
         Placement rules are not yet stored in that state machine.
 
     \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
         fragmented across Ethernet frames and reassembled at the receiver
-        (Chapter~13). Remote name-service calls, deployment coordination,
+        (\autoref{chap:networking}). Remote name-service calls, deployment coordination,
         and the demonstrated assignment handoff use this transport.
 
     \item \textbf{Persistent per-node object stores.} The NVMe-backed object
         store uses generation-selected directory records and copy-on-write
-        replacement (Chapter~15) for service artifacts and persistent Raft
+        replacement (\autoref{chap:storage}) for service artifacts and persistent Raft
         state. The current image producer places the same signed bundle on
         each node; network fetch, repair, and cluster-wide artifact
         replication are not implemented.
 
+    \item \textbf{Capability-scoped external data planes.} Separately
+        provisioned S3 and Kafka services run above the userspace TCP/IP and
+        verified-TLS path (\autoref{sec:external-data-services}). An S3
+        capability confines an application to one managed endpoint, bucket,
+        prefix, credential identity, and rights mask. A Kafka capability
+        confines it to one broker, topic/partition, group, transactional
+        identity, and operation mask while offering idempotent production,
+        read-committed consumption, and transactional offset commits. These
+        adapters make external infrastructure usable from Charlotte; they are
+        not yet cluster-managed storage or messaging substrates.
+
     \item \textbf{Local stateful replacement.} Live service upgrade
         transfers a service's state as a memory object, tracks generations,
         invalidates stale connections, and re-registers the replacement
-        through the name service (Chapter~16). This has not yet been
+        through the name service (\autoref{chap:live-upgrade}). This has not yet been
         extended to mutable state crossing the network.
 
     \item \textbf{Service isolation and routing.} Services execute in
-        separate address spaces with delegated capabilities (Chapter~11).
+        separate address spaces with delegated capabilities
+        (\autoref{chap:service-architecture}).
         The name service is replicated across nodes and provides the routing
         indirection for a service somewhere in the cluster.
 
     \item \textbf{Certified work migration.} The scheduler migrates threads
         between LPs with generation-validated handoff and sustained-window
-        load rebalancing (Chapter~10). This is a per-node precedent for,
+        load rebalancing (\autoref{chap:scheduling}). This is a per-node precedent for,
         rather than an implementation of, cluster rebalancing.
 
     \item \textbf{Observation substrate.} The sitas executor exposes task
-        counts, poll counts, queue depth, and shard snapshots (Chapter~9).
+        counts, poll counts, queue depth, and shard snapshots
+        (\autoref{chap:sitas-executor}).
         Shard-to-shard message flow can be measured. Cluster-wide collection
         and use of those measurements by a placement controller remain
         future work.
@@ -386,7 +401,8 @@ does not by itself constitute a complete cluster executive.
     \item \textbf{Signed binaries at the loading boundary.} The EL0 loader
         validates ELF structure, rejects writable-executable segments, maps
         images with page-level permissions, and requires an Ed25519 CLS2 note
-        bound to the requested service name (Chapters~15 and~16). Store
+        bound to the requested service name (\autoref{chap:storage} and
+        \autoref{chap:live-upgrade}). Store
         lookup, administration ingress, and deployment recheck that identity.
 \end{itemize}
 
@@ -417,7 +433,8 @@ operations:
 
 \begin{enumerate}
     \item \textbf{Discover the cluster.} The node uses broadcast discovery
-        or a configured seed as discussed for Raft peers in Chapter~14.
+        or a configured seed as discussed for Raft peers in
+        \autoref{chap:consensus}.
         Discovery exists as a service, supplies MAC routes and cluster
         posture, and locates the anchor in the generic admission test.
         Discovery alone does not grant voting authority.
@@ -515,7 +532,7 @@ current state machine commits one explicit node assignment for each artifact.
 
 Declared relationships are guesses. Shard-level message counts, byte flow,
 queue depth, and task snapshots are already observable inside a node
-(Chapter~9), and the distributed name service can identify which components
+(\autoref{chap:sitas-executor}), and the distributed name service can identify which components
 call which. The target controller should aggregate these signals across
 nodes and use sustained behaviour, not transient noise, to refine placement.
 
@@ -535,7 +552,7 @@ not prove general load-driven migration.
 \subsection{Future stateful cross-node migration}
 
 Stateful migration must extend the local live-upgrade protocol from
-Chapter~16:
+\autoref{chap:live-upgrade}:
 
 \begin{enumerate}
     \item the cluster instructs the target node to obtain, validate, and
@@ -570,7 +587,7 @@ voter set keep it well short of the production target.
 
 \subsection{Replicated deployment manifest}
 
-The distributed name service's Raft catalog (Chapter~14) also holds a
+The distributed name service's Raft catalog (\autoref{chap:consensus}) also holds a
 \textbf{deployment manifest}:
 
 \begin{quote}
@@ -735,8 +752,9 @@ substantial coordination and trust work:
 
     \item \textbf{Shared artifact availability.} Manifest records are
         replicated, but artifact bytes are pre-staged independently on each
-        NVMe volume. Network fetch, integrity-checked repair, retention,
-        garbage collection, and replication policy remain.
+        NVMe volume. The implemented S3 adapter is not wired into deployment.
+        Network fetch, integrity-checked repair, retention, garbage collection,
+        credential handling, and replication policy remain.
 
     \item \textbf{Cluster-wide observation.} Per-executor metrics must be
         collected and interpreted across nodes without turning transient

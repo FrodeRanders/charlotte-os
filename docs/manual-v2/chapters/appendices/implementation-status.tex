@@ -43,6 +43,10 @@ repository history remain authoritative.
 13 & UTC time service: internal endpoint API, ISO 8601 formatting, connected
     UDP/NTP client, drift and uncertainty estimation, monotonic holdover, and
     object-store calibration persistence & Default boot-validated on both targets \\
+14 & Capability-scoped external data services: S3 Signature V4 over verified
+    TLS with streaming object operations; Kafka idempotent producer,
+    read-committed fixed-partition consumer, and transactional produce plus
+    offset commit & Opt-in AArch64 Docker-fixture tests \\
 \hline
 \end{longtable}
 
@@ -136,7 +140,15 @@ repository history remain authoritative.
     \item \textbf{Protocol crates:} \texttt{charlotte-protocol-net},
         \texttt{charlotte-protocol-msg}.
 
-    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service runtime-validated over the frame demultiplexer; reliable-message fragmentation to 64 KiB. Network capability, DHCP, discovery, cluster formation, HTTP, and time synchronization launch by default when a supported NIC is discovered; test features only add verifiers.
+    \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service
+        runtime-validated over the frame demultiplexer; reliable-message
+        fragmentation to 64 KiB. Network capability, DHCP, discovery, cluster
+        formation, HTTP, and time synchronization launch by default when a
+        supported NIC is discovered; test features only add verifiers. S3 and
+        Kafka service instances are separately provisioned because their
+        endpoint, trust, credential, and data-scope profiles are not ambient
+        machine configuration. Opt-in AArch64 tests validate RustFS and Apache
+        Kafka over verified TLS.
 
     \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
         single-voter restart, discovery-led join through joint consensus, and a
@@ -150,6 +162,12 @@ repository history remain authoritative.
 \section{Known limitations}
 
 \begin{itemize}
+    \item \textbf{External data-service compatibility:} S3 is fixture-tested
+        with RustFS, while Dell EMC ECS namespace support is implemented but
+        not yet qualified against an ECS installation. Kafka is limited to a
+        directly assigned partition on one broker and lacks multi-broker
+        routing, group rebalance, SASL, compression, and topic administration.
+        Production secret provisioning and trust-anchor rotation remain.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

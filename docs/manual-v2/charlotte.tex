@@ -46,6 +46,13 @@
     urlcolor=blue!45!black
 }
 
+% Keep cross-reference names consistent with the prose while allowing LaTeX to
+% derive their numbers and hyperlink targets from the document structure.
+\renewcommand{\chapterautorefname}{Chapter}
+\renewcommand{\sectionautorefname}{Section}
+\renewcommand{\subsectionautorefname}{Section}
+\renewcommand{\subsubsectionautorefname}{Section}
+
 \date{\today}
 \title{The Charlotte Operating System}
 \subtitle{An async-first, capability-based microkernel\\for critical, high-performance software}
@@ -166,6 +173,9 @@
     \input{chapters/19-cluster-vision.tex}
     \newpage
 
+    \input{chapters/20-application-vision.tex}
+    \newpage
+
     % ================================================================
     % PART V --- WORKING WITH CHARLOTTEOS
     % ================================================================
@@ -176,7 +186,7 @@
     \input{chapters/16-development.tex}
     \newpage
 
-    \input{chapters/20-formal-safeguards.tex}
+    \input{chapters/21-formal-safeguards.tex}
     \newpage
 
     % ================================================================

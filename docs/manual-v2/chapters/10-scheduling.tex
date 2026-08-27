@@ -1,4 +1,5 @@
 \chapter{Scheduling and Backpressure}
+\label{chap:scheduling}
 
 The kernel schedules threads through a block--yield--wake cycle. Bounded ingress
 propagates pressure, although not every internal queue has a hard memory bound.
@@ -89,7 +90,7 @@ coalescing:
         posts one wake, not 10.
     \item If 3 timer events fire before the LP processes the timer queue, the
         kernel delivers them in one batch during the next \texttt{process\_events}.
-    \item The unified shard wait (Chapter~9) aggregates multiple wake sources onto
+    \item The unified shard wait (\autoref{chap:sitas-executor}) aggregates multiple wake sources onto
         a single thread. Re-waking that thread is harmless.
 \end{itemize}
 
@@ -290,7 +291,7 @@ Rules:
 
 \begin{itemize}
     \item Terminal completions are never dropped --- the CQ backlog
-        guarantees this (Chapter~7).
+        guarantees this (\autoref{chap:completion-queues}).
     \item Coalescible notifications may be merged --- two ``data available''
         signals before the consumer wakes become one.
     \item Control messages normally fail or wait explicitly --- a service

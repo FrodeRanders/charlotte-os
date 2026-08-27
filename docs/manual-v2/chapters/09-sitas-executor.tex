@@ -1,4 +1,5 @@
 \chapter{The Sitas Executor}
+\label{chap:sitas-executor}
 
 The sitas executor drives futures on one shard and parks on the shard's completion
 queue when no task is ready.
@@ -57,6 +58,7 @@ the executor re-queues the remaining tasks and yields (either to other threads o
 the same LP via the kernel scheduler, or to idle).
 
 \section{The unified wait --- three event sources, one wait point}
+\label{sec:sitas-unified-wait}
 
 When the executor has no ready tasks and no pending timers, it calls
 \texttt{CQ\_WAIT} on the shard's completion queue. This is the \textbf{only}
@@ -122,6 +124,7 @@ and signals the reactor (if the reactor is currently blocked) to re-enter the
 polling loop. The reactor then polls the task, which finds its completion ready.
 
 \section{Cross-shard messaging without the kernel}
+\label{sec:sitas-cross-shard-messaging}
 
 Within one protection domain, tasks on different shards communicate through sitas
 typed mailboxes --- not through kernel endpoint IPC:
@@ -148,7 +151,7 @@ the task re-enters the executor's polling loop.
 
 This is \textbf{internal} cross-shard communication (same protection domain,
 different shards). External communication (different protection domains) uses
-endpoint IPC (Chapter~5).
+endpoint IPC (\autoref{chap:endpoints}).
 
 \section{The ShardParker --- blocking on native state}
 
@@ -208,6 +211,7 @@ does not need a thread pool to translate blocking calls into futures because
 \end{enumerate}
 
 \section{A worked example: the mailbox index build}
+\label{sec:sitas-mailbox-index}
 
 The mailbox index build is an end-to-end sitas demo at EL0. It is the
 \texttt{no\_std} counterpart of the host-side \texttt{sharded\_index\_mailbox}
@@ -264,10 +268,10 @@ The demo separates kernel and userspace responsibilities.
 
 \begin{itemize}
     \item One \texttt{ShardExecutor} per shard, polling its futures and
-        blocking in the unified wait (Section~9.3).
+        blocking in the unified wait (\autoref{sec:sitas-unified-wait}).
     \item The typed mailboxes (\texttt{ShardSender}/\texttt{ShardReceiver})
         that carry work between shards without ever crossing the kernel
-        boundary (Section~9.5).
+        boundary (\autoref{sec:sitas-cross-shard-messaging}).
     \item All of the logic: routing, batching, backpressure, sorting, the
         merge, and the verification.
 \end{itemize}
@@ -296,7 +300,8 @@ briefly on the runtime's \texttt{ShardParker} and retries, rather than
 spinning. The assembler task awaits \texttt{receiver.recv()}; the await
 parks the shard in its reactor wait, and the sending side's channel waker
 re-queues exactly that task and releases the reactor --- the same
-channel-waker-to-reactor chain as the sharded KV service (Section~9.5).
+channel-waker-to-reactor chain as the sharded KV service
+(\autoref{sec:sitas-cross-shard-messaging}).
 
 \subsection{Coordination and joining}
 

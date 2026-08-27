@@ -1,4 +1,5 @@
 \chapter{Completion Queues and Non-Lossy Results}
+\label{chap:completion-queues}
 
 A completion queue (CQ) carries asynchronous kernel-operation results to
 userspace. Its central safety rule is that a full userspace ring must not silently
@@ -18,7 +19,7 @@ hardware-facing mechanism}, not to another userspace service:
     \item Kernel-managed asynchronous object work.
 \end{itemize}
 
-Use endpoint IPC (Chapter~5) when one protection domain invokes another.
+Use endpoint IPC (\autoref{chap:endpoints}) when one protection domain invokes another.
 Confusing these two paths leads to architectural mistakes: a service call is not a
 kernel operation, and a reply token is not a completion record.
 

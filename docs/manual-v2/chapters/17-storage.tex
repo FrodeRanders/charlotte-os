@@ -1,4 +1,5 @@
 \chapter{Persistent Storage}
+\label{chap:storage}
 
 CharlotteOS treats storage as a layered stack of userspace services, each
 speaking a well-defined protocol through endpoint IPC. The block driver,
@@ -227,6 +228,31 @@ earlier service. The x86-64 options \texttt{--blank-storage} and
 \texttt{--build-only} instead support guest-side installation and appliance
 packaging without constructing a preseeded store.
 
+\section{Managed object storage through S3}
+
+The local \texttt{objstore} and the S3 client service solve different
+problems. The local store is part of node bootstrap and supplies service
+artifacts, Raft persistence, and the native filesystem without depending on a
+working network or external credentials. The \texttt{s3} service is an
+application-facing compatibility adapter for centrally managed object stores.
+It runs above TCP/IP and, when configured, verified TLS; it is described in
+\autoref{sec:s3-service}.
+
+An S3 service profile narrows authority to one endpoint, bucket, key prefix,
+credential identity, optional Dell EMC ECS namespace, and operation mask.
+Applications receive only the profile's endpoint capability and transfer
+object data as owned memory chunks. This makes external object storage usable
+without handing each application general socket access or raw S3 credentials.
+
+RustFS is the current integration fixture. Dell EMC ECS is an intended managed
+store and the adapter can emit its namespace header, but it has not yet been
+qualified against an ECS installation. The cluster deployment agent also does
+not currently fetch signed service artifacts from S3: deployment bytes remain
+pre-staged in each node's native object store. Using S3 as an artifact source
+would require an explicit fetch, digest verification, caching, availability,
+and credential-rotation policy rather than treating the external bucket as the
+boot store.
+
 \section{Raft persistence}
 
 The Raft service can use in-memory stores, optionally try persistent stores,
@@ -247,7 +273,8 @@ Launch configuration---node identity, peers, election timeout, cluster name,
 and storage policy---remains in the supervisor-provided manifest. The
 persistent objects hold Raft protocol state, log entries, and snapshots.
 Cross-machine catalog replication is provided separately by the \texttt{dns}
-state machine described in Chapters~14 and~17; this generic Raft persistence test
+state machine described in \autoref{chap:consensus} and
+\autoref{chap:cluster-vision}; this generic Raft persistence test
 remains a single-voter restart test.
 
 \section{Native filesystem}

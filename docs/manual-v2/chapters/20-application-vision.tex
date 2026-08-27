@@ -1,0 +1,964 @@
+\chapter{Generating Charlotte Applications}
+\label{chap:application-vision}
+
+The server-class cluster vision (\autoref{chap:cluster-vision}) asks what an operating system
+might look like if signed execution objects, explicit capabilities, and
+cluster-level placement were native mechanisms rather than layers constructed
+above general-purpose Linux. That direction creates an immediate application
+problem: a deliberately small, non-POSIX userspace does not run the existing
+body of server software, and asking ordinary application developers to program
+directly against a new kernel interface would make the platform impractical.
+
+This chapter develops a proposed answer. A process-oriented generator such as
+Durga (\url{https://github.com/FrodeRanders/durga}) can act as the abstraction and 
+compatibility layer between application intent and the Charlotte execution environment. 
+Developers describe a process in BPMN and implement its business rules against a 
+narrow generated contract; a Charlotte-specific backend generates the executable 
+wrappers, capability requirements, communication structure, and cluster desired state. 
+Familiarity then belongs primarily to the development tools and domain model, not to 
+the operating-system ABI.
+
+The current boundary is important. Durga reads BPMN and generates
+Kafka-oriented Java or Rust applications. Its generated targets share
+process-event and topic conventions, and its generated workers hide substantial
+messaging and lifecycle machinery. It does not generate Charlotte binaries,
+Charlotte capabilities, or Charlotte deployment records. CharlotteOS, in turn,
+implements the signed-ELF, name-service, deployment, observation, and stateless
+assignment mechanisms described in \autoref{chap:cluster-vision}, but it does not implement the
+Durga integration proposed here. Except where the current Durga or Charlotte
+mechanisms are stated explicitly, the remainder of this chapter is an
+architectural target and a programme of experiments.
+
+\section{The application thesis}
+
+The conventional response to a new operating system is to reproduce a familiar
+application interface. POSIX compatibility, a C library, sockets, a filesystem
+hierarchy, dynamic linking, language runtimes, and ports of common packages
+provide a path for existing programs. This is effective compatibility, but it
+also tends to recreate the execution assumptions from which Charlotte is trying
+to depart: ambient access to a machine-like namespace, software assembled from
+mutable packages, and a process API designed around one host.
+
+The alternative considered here is compatibility at a higher level:
+
+\begin{verbatim}
+business process + business rules
+                 |
+                 v
+              generator
+                 |
+                 v
+     native Charlotte application
+\end{verbatim}
+
+This does not make compatibility free. Libraries, data formats, external-system
+connectors, diagnostics, testing, and developer tools still have to exist. The
+claim is narrower: a useful class of process-oriented business applications may
+not require developers to see the operating-system interface at all. The
+generator and its runtime support can be the only code that understands such
+details as message endpoints, capability handles, service registration, memory
+objects, lifecycle events, supervision, and deployment metadata.
+
+The resulting thesis complements \autoref{chap:cluster-vision}:
+
+\begin{quote}
+A constrained execution environment need not imply a difficult application
+environment when infrastructure code is generated from a higher-level model.
+CharlotteOS need not expose a familiar operating-system API if familiar tools
+can generate Charlotte-native applications.
+\end{quote}
+
+This is not an argument that every application should be expressed in BPMN, or
+that all existing software can be regenerated. It identifies a candidate
+application class in which the process graph is already an important source of
+truth and in which infrastructure is sufficiently regular to generate.
+
+\section{Durga's present application model}
+
+Durga is presently a BPMN-driven Kafka scaffolding and monitoring system. The
+BPMN model is executable input to a generator rather than documentation added
+after implementation. Durga derives workers, gateways, orchestration, topic
+setup, process lifecycle events, and monitoring structure from that model. The
+application developer completes or supplies the task-specific business
+behaviour while generated code implements much of the surrounding protocol.
+
+Two current backends demonstrate that the process description need not be tied
+to one implementation language:
+
+\begin{itemize}
+    \item The Java target generates a Quarkus application using SmallRye
+        Reactive Messaging. Tasks, gateways, and orchestration become CDI
+        components wired to Kafka channels, with shared runtime support.
+
+    \item The Rust target generates a Cargo crate. Tasks and gateways become
+        binaries under \texttt{src/bin}, with common code in a generated
+        library and shared Durga runtime support.
+\end{itemize}
+
+Both targets use the same process-event wire model and topic layout. A monitor
+can therefore observe either target, and Java and Rust components can
+interoperate through the same generated protocol. This is implemented Durga
+behaviour. It is also evidence for an architectural separation: the semantics
+of a process can remain stable while code generation changes the language and
+runtime used to realise it.
+
+The current generated deployment remains conventional. A generated application
+can include a JAR or Rust binaries, Kafka configuration and topic provisioning,
+a container build, a Kubernetes Deployment and Service, health probes, resource
+limits, environment configuration, and deployment scripts. Scaling combines
+application replicas with Kafka consumer groups and topic partitions. In an
+OpenShift environment, image policy, registry access, security context,
+network policy, routes, secrets, monitoring integration, and organisational
+admission policy normally add further deployment concerns.
+
+These mechanisms are not accidental overhead. They supply real isolation,
+durability, routing, scaling, recovery, and operational control for conventional
+applications on general-purpose hosts. They do, however, illustrate how far the
+deployed representation has moved from the original business process.
+
+\section{Three distinct languages}
+
+The proposed architecture is easier to reason about if three layers are kept
+separate.
+
+\subsection{The business and process language}
+
+The upper layer contains BPMN and developer-owned business rules. It describes
+activities, gateways, events, participants, message flows, data objects, timers,
+failures, and process completion. Handwritten code supplies domain behaviour
+such as validating an invoice, calculating an entitlement, or selecting a
+payment route.
+
+This layer should remain largely independent of Charlotte. A developer should
+understand the business domain, the supported BPMN subset, and the Durga task
+contract. Charlotte-specific message buffers, deployment calls, signing notes,
+and capability handles should not leak into ordinary rule code unless the
+application deliberately requests a platform-specific facility.
+
+\subsection{The Durga semantic execution model}
+
+The middle layer gives execution meaning to the process. Its concepts include:
+
+\begin{itemize}
+    \item process definitions and versioned process instances;
+    \item activity entry, completion, failure, cancellation, and retry;
+    \item gateways, branch selection, fan-out, joining, and correlation;
+    \item messages, signals, timers, call activities, and subprocess scopes;
+    \item typed or schema-identified inputs and outputs;
+    \item state transitions and lifecycle observations; and
+    \item delivery, replay, idempotency, and failure semantics.
+\end{itemize}
+
+Some of these semantics are explicit in BPMN. Others are Durga runtime choices
+or policies that must be made explicit before an alternative backend can claim
+equivalence. For example, a sequence flow says that one activity follows
+another, but does not by itself settle whether delivery is durable, whether an
+activity may run more than once, where an acknowledgement occurs, or how a
+partially completed external side effect is recovered.
+
+The semantic model must therefore be a real intermediate representation rather
+than a renaming of Kafka topics. A Charlotte backend should consume concepts
+such as activity, event, correlation, retry, and durable boundary. It should not
+have to reverse-engineer those concepts from a Kafka-specific topology.
+
+\subsection{The execution substrate}
+
+The lower layer realises the semantic model. Current Durga backends use Java or
+Rust workers and Kafka communication. A proposed backend would use Charlotte
+execution objects, capabilities, names, messages, supervision, and cluster
+desired state, while retaining an external event log where its semantics are
+required.
+
+The intended relationship is therefore:
+
+\begin{verbatim}
+                 BPMN + business rules
+                           |
+                           v
+              Durga semantic process model
+                           |
+             +-------------+-------------+
+             |             |             |
+             v             v             v
+        Java/Kafka     Rust/Kafka     Charlotte
+                                      backend
+\end{verbatim}
+
+Changing the lower layer must not silently change the process contract. Where
+the available substrate cannot implement a required semantic, the generator
+must either retain a suitable service such as Kafka or reject the build. A
+backend is not correct merely because it can move bytes from one activity to
+the next.
+
+\section{A proposed Charlotte backend}
+
+The central proposal is a third Durga target, here called
+\texttt{charlotte}. It would transform the Durga semantic model and
+developer-owned rule code into Charlotte-native artifacts plus a deployment
+contract. This backend does not currently exist.
+
+\subsection{Generated activity boundary}
+
+For a simple activity, the developer-owned interface might be no broader than:
+
+\begin{verbatim}
+fn calculate_entitlement(
+    claim: Claim
+) -> Result<Decision, RuleError>
+\end{verbatim}
+
+The exact Rust interface is a design question, not an implemented ABI. Around
+that function, the Charlotte backend could generate a wrapper that:
+
+\begin{enumerate}
+    \item receives a typed activity invocation through a delegated endpoint;
+    \item validates the process, activity, instance, schema, and correlation
+        identities carried by the invocation;
+    \item deserialises input into the developer-facing type;
+    \item emits an activity-entered observation;
+    \item invokes the business rule within its assigned protection domain;
+    \item converts success or failure into the Durga execution result;
+    \item serialises the result and sends it only through generated output
+        capabilities;
+    \item emits completion, failure, and resource observations; and
+    \item participates in generated supervision, shutdown, and upgrade
+        protocols.
+\end{enumerate}
+
+The generated wrapper, not the business rule, would know how to receive a
+Charlotte message, resolve or accept a capability, allocate a shared memory
+object, re-register after replacement, respond to endpoint closure, and attach
+runtime telemetry. The developer-facing contract could remain suitable for
+unit tests on an ordinary development host.
+
+This boundary must be enforced in the source layout as well as described in
+documentation. Generated files should be replaceable on regeneration, while
+developer-owned business modules remain stable. Escape hatches may be needed
+for specialised services, but a raw Charlotte handle passed into every rule
+would defeat the abstraction.
+
+\subsection{A deliberately narrow runtime surface}
+
+The generated runtime would target a small Charlotte service interface rather
+than POSIX. A candidate surface might include:
+
+\begin{itemize}
+    \item receive from and send to delegated message endpoints;
+    \item allocate, transfer, and release bounded memory objects;
+    \item access a delegated clock, random source, or cryptographic service;
+    \item invoke a named service through an explicit capability;
+    \item emit structured observations;
+    \item checkpoint explicitly owned state; and
+    \item cooperate with supervision, replacement, and cancellation.
+\end{itemize}
+
+This list is proposed. The experiment should discover the minimum viable
+surface rather than declare it in advance. In particular, external protocols,
+TLS, databases, object storage, and durable logs will require trusted connectors
+or Charlotte-native services. Code generation cannot make those integrations
+disappear; it can make authority to use them explicit and can keep their
+mechanics outside the business rule.
+
+\section{From process graph to capability graph}
+
+Charlotte workloads begin with no ambient authority and receive only delegated
+capabilities. Durga has information from which a first capability request can be
+generated: which activity receives which input, which activity can send to
+which successor, which participant communicates with which other participant,
+and which declared data or external service an activity uses.
+
+For a simple process fragment:
+
+\begin{verbatim}
+ValidateClaim -> CalculateEntitlement -> IssueDecision
+                         |
+                         +-----------> RulesService
+\end{verbatim}
+
+the backend could derive a graph in which:
+
+\begin{itemize}
+    \item \texttt{ValidateClaim} may send validated claims to
+        \texttt{CalculateEntitlement};
+    \item \texttt{CalculateEntitlement} may invoke
+        \texttt{RulesService} and send decisions to
+        \texttt{IssueDecision};
+    \item \texttt{IssueDecision} receives decisions but cannot invoke the
+        rules service; and
+    \item no activity receives a generic network, filesystem, or cluster
+        administration capability.
+\end{itemize}
+
+The process communication graph can thus become an input to the Charlotte
+capability graph. BPMN message flows, pools, participants, and explicitly
+annotated external interactions are particularly useful because they already
+express architectural boundaries. A message between a claims pool and a
+payments pool may justify an explicit cross-domain endpoint rather than ambient
+reachability between their executables.
+
+Absence of a BPMN edge is useful negative information, but it is not sufficient
+proof that communication must be forbidden. Gateways and runtime orchestration
+may introduce control paths that are implicit in the diagram; monitoring and
+administration require separate channels; and business-rule code may depend on
+an external system not represented in the model. Capability inference must
+therefore combine several sources:
+
+\begin{itemize}
+    \item the supported BPMN topology and its scopes;
+    \item typed task contracts and data declarations;
+    \item explicit annotations for external services and durable resources;
+    \item generator-known runtime and observation requirements;
+    \item optional static analysis of the developer-owned code; and
+    \item organisation policy that may narrow, approve, or reject the inferred
+        request.
+\end{itemize}
+
+The generator should produce a reviewable request, not silently grant its own
+authority. A build or admission policy then decides which requested capability
+bindings are acceptable. This retains the distinction from
+\autoref{chap:cluster-vision} between
+an artifact's signed claims and the cluster authority that admits and delegates
+them.
+
+\subsection{Security graph and communication graph}
+
+The execution graph, communication graph, and security graph are related but
+not identical:
+
+\begin{itemize}
+    \item The execution graph says which semantic transition may follow which
+        other transition.
+
+    \item The communication graph says which generated component must exchange
+        which message or object with which other component.
+
+    \item The security graph says which protection domain is authorised to
+        perform that exchange at runtime.
+\end{itemize}
+
+One logical sequence flow need not create one network-visible endpoint, and two
+activities fused into the same executable may still be kept behind separate
+logical interfaces for observation or future decomposition. Conversely, a
+shared orchestrator may require communication not drawn as a direct business
+edge. Keeping the three graphs distinct prevents a convenient compilation
+choice from silently becoming the security policy.
+
+\section{The signed process bundle}
+
+The proposed backend would produce more than executable code. Its natural
+deployment unit is a signed process bundle that preserves the relationship
+between model, rules, generated wrappers, and cluster policy. A bundle could
+contain:
+
+\begin{itemize}
+    \item the original BPMN model and a canonical digest of the model;
+    \item the Durga semantic intermediate representation and its version;
+    \item one or more Charlotte-native executable artifacts;
+    \item immutable identities and signatures for every executable;
+    \item input, output, event, and state schemas with stable identities;
+    \item the execution, communication, and requested capability graphs;
+    \item signer, build, generator, source, dependency, and toolchain
+        provenance;
+    \item an SBOM or the signed digest of retained SBOM and attestation
+        evidence;
+    \item resource estimates, concurrency declarations, replication policy,
+        placement hints, and failure-domain constraints;
+    \item durable-log and external-connector requirements;
+    \item observation metadata mapping runtime identities back to BPMN
+        activities; and
+    \item the proposed cluster desired state for this process release.
+\end{itemize}
+
+\autoref{chap:cluster-vision} already implements signed, name-bound ELF artifacts with release,
+rollback, class, flags, and an optional provenance digest, and it pins the
+complete ELF digest in a deployment record. A process bundle would build on
+those mechanisms; it would not replace executable verification with trust in a
+container or archive. Each executable remains independently verifiable, while
+the signed bundle states that a specific set of artifact and schema identities
+collectively realises one version of a process.
+
+Bundle signing is proposed future work. It also introduces supply-chain
+questions. The generator and build toolchain become security-sensitive because
+they derive authority and create wrappers. Reproducible generation, separation
+between requested and granted capabilities, independent policy review, retained
+provenance, and verification of the bundle-to-artifact links are necessary.
+Signing generated output does not prove that the BPMN model or generator was
+correct.
+
+\subsection{Generated desired state}
+
+The bundle could carry a declarative target such as:
+
+\begin{verbatim}
+process: claims
+release: 42
+
+component validate:
+    artifact: sha256:...
+    replicas: 4
+    parallel: true
+
+component calculate:
+    artifact: sha256:...
+    replicas: 8
+    parallel: true
+    requires: service:entitlement-rules
+
+placement:
+    affinity: [validate, calculate]
+    minimum-failure-domains: 2
+
+durability:
+    ClaimSubmitted: external-event-log
+    validate-to-calculate: native-message
+\end{verbatim}
+
+The exact syntax is not proposed as a format. The significant point is that
+deployment intent is generated from the same semantic model as the executable
+wrappers. Cluster admission can validate the requested replica counts,
+parallel-safety declaration, artifact identities, capabilities, and placement
+constraints before committing desired state to the replicated manifest.
+
+The existing Charlotte manifest accepts one explicit node assignment per
+artifact. The \texttt{PlacementPolicy} contract described in
+\autoref{chap:cluster-vision} can
+express replica and affinity properties but is not yet stored or realised by a
+placement controller. Consuming a Durga process bundle therefore depends on the
+future controller, replica routing, shared artifact availability, and production
+administration authority already identified there.
+
+\section{Process topology as placement information}
+
+A general-purpose cluster scheduler normally begins with deployable units,
+resource requests, and manually supplied affinity rules. It can later infer
+relationships from traffic and resource telemetry, but it does not ordinarily
+receive the application's semantic process graph.
+
+Durga knows useful structure before execution begins:
+
+\begin{itemize}
+    \item which activities are adjacent and expected to exchange data;
+    \item where the graph fans out, joins, waits, or selects one branch;
+    \item which activities may execute concurrently;
+    \item which events enter from or leave for external systems;
+    \item which subprocesses and participants form natural boundaries; and
+    \item which activities are expected to block on timers, people, or durable
+        external events.
+\end{itemize}
+
+A Charlotte backend can translate this into an initial placement hypothesis.
+Frequently adjacent activities may receive a common affinity group; replicas of
+one parallel-safe activity may receive anti-affinity or minimum-failure-domain
+rules; an activity using a restricted service may be constrained to the same
+trust domain; a high-volume data edge may favour co-location.
+
+The BPMN topology is not a measurement. A rarely selected branch may carry very
+large objects, an apparently adjacent pair may spend almost all its time in an
+external service, and one process definition may serve workloads with very
+different data distributions. Resource estimates and expected frequencies may
+also be absent or wrong. The generated graph should therefore be the starting
+hypothesis, not permanent placement truth.
+
+Charlotte's observation substrate can refine it. Runtime identities generated
+from the process model allow the cluster to measure message counts, bytes,
+latency, queue pressure, CPU time, memory pressure, failures, and retry rates per
+activity and edge. A future placement controller can compare declared structure
+with observed behaviour, then move or replicate components when sustained
+evidence justifies the change. Availability and trust constraints remain hard
+constraints; observed affinity must not collapse replicas into one failure
+domain.
+
+This gives the process compiler and cluster different roles:
+
+\begin{verbatim}
+Durga model       -> initial graph and declared constraints
+Charlotte runtime -> measured graph and resource evidence
+placement policy  -> admissible movement and replication
+controller        -> assignments in replicated cluster state
+\end{verbatim}
+
+The feedback loop is proposed. Current Charlotte observation and assignment
+handoff mechanisms provide inputs and precedent, but they do not implement
+cluster-wide aggregation or automatic placement.
+
+\section{Logical activities and physical executables}
+
+BPMN describes logical units of work. It does not require one protection domain,
+one operating-system process, one container, or one independently scheduled
+artifact per activity. The current Rust generator's activity and gateway
+binaries are a useful backend mapping, but a Charlotte backend need not preserve
+that mapping physically.
+
+For a logical chain:
+
+\begin{verbatim}
+A -> B -> C
+\end{verbatim}
+
+the backend might generate any of:
+
+\begin{verbatim}
+[A] -> [B] -> [C]
+[A B] -> [C]
+[A B C]
+\end{verbatim}
+
+Fusion can remove serialisation, endpoint, scheduling, and network overhead. It
+may also permit intermediate values to remain in one address space. Separation
+supports independent scaling, fault containment, least authority, different
+trust domains, independent upgrades, and placement near distinct resources.
+
+Executable granularity should therefore be an explicit compiler and policy
+decision. Relevant constraints include:
+
+\begin{itemize}
+    \item capability and participant boundaries;
+    \item durable handoff points and replay requirements;
+    \item independent scaling and parallel-safety declarations;
+    \item failure and retry domains;
+    \item state ownership and upgrade boundaries;
+    \item expected message size and frequency;
+    \item architecture or hardware requirements; and
+    \item the cost of losing a fused group when one activity fails.
+\end{itemize}
+
+The logical activity identity must survive fusion. Observations, failures,
+schema versions, and business audit events should still be attributable to the
+corresponding BPMN activity. The signed bundle should state the mapping from
+logical activities to physical artifacts, so that the cluster can explain its
+placement and so that a later release can split or fuse components without
+renaming the business process.
+
+Automatic re-fusion from runtime evidence is a possible later research topic,
+not part of the initial proposal. Changing executable boundaries changes
+security, state, and upgrade semantics and should initially require a new
+generated and signed release rather than an opaque runtime rewrite.
+
+\section{Native messages and durable event logs}
+
+Kafka presently supplies more than byte transport to Durga. It offers durable
+logs, replay, partition ordering, consumer groups, offset tracking, integration
+with external producers and consumers, and transactional options. A Charlotte
+message endpoint must not be treated as equivalent merely because it can carry
+the same payload.
+
+CharlotteOS now has an implemented, capability-scoped Kafka compatibility
+service (\autoref{sec:kafka-service}). A provisioned instance exposes one
+broker, topic/partition, group, transactional identity, and rights set. Its
+owned Rust client supports idempotent produce, bounded read-committed consume,
+explicit delivery acknowledgement, and a transaction that atomically combines
+Kafka output with the consumed delivery's group-offset advance. This supplies
+a concrete external event-log boundary for a future Durga backend; it does not
+yet connect Durga-generated process identities, schemas, or lifecycle events to
+that boundary.
+
+The useful distinction is between application events whose meaning is
+intrinsically durable and internal execution plumbing whose purpose is to
+advance a running process.
+
+An externally meaningful event such as \texttt{ClaimSubmitted} may need a
+retained, replayable, independently consumable record. Kafka or another durable
+event-log service may remain the correct substrate. An internal instruction
+such as ``activity A completed; make B runnable'' may need only the delivery,
+deduplication, and recovery guarantees of the Durga runtime and could use native
+Charlotte messaging.
+
+A proposed Charlotte deployment may therefore be hybrid:
+
+\begin{verbatim}
+external producers
+        |
+        v
+ durable event log
+        |
+        v
+ [A] -> [B] -> [C]       native Charlotte messages
+        |
+        v
+ durable business event
+\end{verbatim}
+
+This keeps Kafka where log semantics and ecosystem integration are required,
+while avoiding a broker round trip for every internal transition. It also makes
+the durable boundary visible in the process bundle and capability request.
+
+The present Kafka adapter is intentionally narrower than a general client. It
+uses a fixed direct partition assignment and a single broker, with no consumer
+group rebalance, broker failover, SASL, or compression. A generated deployment
+would therefore need either to accept that bounded profile, extend the adapter
+under equally explicit authority, or retain a conventional connector outside
+Charlotte for requirements the native service cannot satisfy.
+
+The distinction cannot be inferred reliably from sequence flow alone. The
+process author or policy must declare durability, ordering, replay, retention,
+and delivery requirements. The Charlotte runtime must define how it recovers an
+in-flight process when a node fails, when an acknowledgement is lost, or when a
+business rule completes twice. If native messaging does not yet satisfy those
+requirements, the backend must retain Kafka for that edge. Removing Kafka from
+internal paths is an optimisation and architectural option, not a prerequisite
+for the Charlotte backend.
+
+\section{Preserving application intent}
+
+In a conventional deployment, semantic information is progressively lowered
+into infrastructure objects. A BPMN activity may eventually appear to the
+cluster as a container image, a Deployment, CPU and memory values, labels, and
+network endpoints. Those objects are operationally useful, but they retain
+little explanation of why two components communicate or what a latency
+measurement means to the business process.
+
+Durga and Charlotte together could preserve an identity chain:
+
+\begin{verbatim}
+BPMN process and activity identity
+                 |
+                 v
+Durga execution and schema identity
+                 |
+                 v
+capability and communication edges
+                 |
+                 v
+physical artifact and placement identity
+                 |
+                 v
+runtime observations and process outcomes
+\end{verbatim}
+
+Every generated message and observation can carry or imply stable process,
+release, instance, activity, edge, and schema identities. The signed bundle
+binds those logical identities to executable digests. The cluster desired state
+binds artifact identities to admitted capability and placement policy. Runtime
+telemetry can then be mapped back to the BPMN diagram.
+
+This allows questions at several levels to share one evidence chain:
+
+\begin{itemize}
+    \item Which business activity accounts for the current queue pressure?
+    \item Which capability edge carried the slow calls?
+    \item Which artifact release implemented that activity?
+    \item On which nodes and trust domains were its instances placed?
+    \item Did the observed traffic support the generated affinity hint?
+    \item Did an executable fusion decision improve latency while preserving
+        the intended fault and security boundaries?
+\end{itemize}
+
+Durga already emits lifecycle events and uses the BPMN model as the background
+for process monitoring. Charlotte already exposes executor observations and
+generation-aware names. Joining those identities and feeding the result into
+cluster placement is proposed future work.
+
+Telemetry must not become ambient surveillance authority. Generated observation
+channels should be explicit capabilities; payloads should avoid business data
+unless required and authorised; and retention and access belong to policy.
+Preserving intent is valuable only if the observation path preserves the same
+security discipline as execution.
+
+\section{Comparison with Kubernetes and OpenShift}
+
+The comparison is not that a Charlotte backend makes orchestration disappear.
+It changes which layer owns particular responsibilities and which deployment
+objects need to be generated.
+
+In the current conventional path, Durga may generate or depend on:
+
+\begin{verbatim}
+BPMN + rules
+    -> Java/Rust application
+    -> Kafka topics and configuration
+    -> JAR or native executable
+    -> container filesystem image
+    -> image registry and image policy
+    -> Kubernetes/OpenShift manifests
+    -> Pods, Services, probes and NetworkPolicy
+    -> container runtime
+    -> Linux isolation and resource mechanisms
+\end{verbatim}
+
+In the proposed Charlotte path:
+
+\begin{verbatim}
+BPMN + rules
+    -> Durga semantic model
+    -> signed process bundle
+    -> Charlotte desired state
+    -> Charlotte cluster
+\end{verbatim}
+
+The shorter diagram does not mean the omitted concerns vanished. Their
+essential semantics are either absorbed by Charlotte, expressed in the bundle,
+or retained as an external service:
+
+\begin{itemize}
+    \item An OCI filesystem image may become a signed, self-contained Charlotte
+        execution artifact. Artifact storage, distribution, verification, and
+        rollback remain necessary.
+
+    \item A Kubernetes Deployment may become Charlotte replicated desired state
+        plus replica and placement policy. Reconciliation, failure recovery,
+        rollout, and admission remain necessary.
+
+    \item A Service and service account may become a Charlotte name and
+        explicitly delegated invocation capability. Naming, routing, identity,
+        and key management remain necessary.
+
+    \item NetworkPolicy may be replaced for generated internal communication by
+        the admitted capability graph. Gateways to IP networks and external
+        systems still require network security policy.
+
+    \item Liveness and readiness endpoints may become native supervision and
+        generated lifecycle state. The cluster must still distinguish work
+        that is slow, blocked, failed, or safe to restart.
+
+    \item Pod affinity may begin as a generated process communication graph and
+        later be refined by Charlotte observation. Scheduling and failure-domain
+        policy remain necessary.
+
+    \item Charlotte may not need a container runtime or container-specific
+        Linux policy. Namespaces, cgroups, and seccomp may also be absent because
+        Charlotte starts with separate address spaces and delegated authority.
+        Equivalent memory, CPU, and device accounting must nevertheless exist
+        natively.
+
+    \item Kafka topics used only for internal execution plumbing may become
+        Charlotte message endpoints. Kafka remains where durable event-log and
+        integration semantics are required.
+\end{itemize}
+
+OpenShift also supplies mature multi-tenancy, policy, secrets management,
+operators, ingress, storage integration, observability, upgrades, ecosystem
+compatibility, and operational practice. A Charlotte backend inherits none of
+that maturity by removing YAML or containers. The research question is which
+mechanisms can become smaller or more direct when the OS already has the desired
+trust and execution model, not whether the operational problems cease to exist.
+
+Code generation is important in both paths. Kubernetes manifests, container
+builds, and policy can also be generated from Durga's model. The proposed
+advantage of Charlotte is not generation by itself; it is that generated intent
+can target native cluster and capability objects without first packaging a
+machine-like Linux userspace and then restricting it.
+
+\section{Developer experience and the compatibility boundary}
+
+If successful, the ordinary developer would work with:
+
+\begin{itemize}
+    \item BPMN and domain-specific annotations;
+    \item typed task inputs, outputs, errors, and business-rule interfaces;
+    \item a host-side test harness for business behaviour;
+    \item generated local simulations or integration tests;
+    \item process-level diagnostics mapped to the BPMN diagram; and
+    \item a build command that selects a verified backend.
+\end{itemize}
+
+The generator and platform team would own:
+
+\begin{itemize}
+    \item the Charlotte ABI and generated wrappers;
+    \item serialisation, schema evolution, correlation, and retry protocols;
+    \item capability-request generation and policy integration;
+    \item signing, provenance, and process-bundle construction;
+    \item supervision, observation, deployment, and upgrade integration; and
+    \item tested connectors to durable logs and external systems.
+\end{itemize}
+
+This division does not eliminate the need to learn Durga. It substitutes a
+domain and process programming model for an operating-system programming model.
+That is useful only if regeneration is predictable, generated code is
+inspectable, errors are reported in terms of model elements, and debugging can
+cross the boundary between rule code and runtime without exposing every kernel
+detail.
+
+Backend portability also requires restraint in the task API. A business rule
+that assumes a local path, arbitrary outbound socket, process environment, or
+Java-specific runtime facility is not automatically portable. The developer
+contract should make portable operations easy, platform-specific dependencies
+explicit, and unsupported dependencies visible at build time.
+
+\section{A concrete first experiment}
+
+The first experiment should be deliberately narrower than a complete process
+runtime. Add a third Durga backend that generates one minimal Charlotte-native
+activity and the metadata required to admit and invoke it. The goal is to test
+the abstraction boundary, not to replace Kafka or Kubernetes in one step.
+
+\subsection{Experiment input}
+
+Use a small BPMN process containing:
+
+\begin{itemize}
+    \item a start event;
+    \item one service activity with a typed request and response;
+    \item one successor or completion event; and
+    \item an explicit annotation for any clock, log, or external service the
+        activity requires.
+\end{itemize}
+
+The handwritten Rust module should implement one pure or nearly pure business
+function. It must not call a Charlotte syscall or manually construct an IPC
+message.
+
+\subsection{Generated output}
+
+The proposed \texttt{charlotte} backend should generate:
+
+\begin{enumerate}
+    \item a Charlotte entry point and activity wrapper;
+    \item request and response schema identities plus serialisation code;
+    \item a minimal requested capability set for input, output, observation,
+        and any explicitly declared service;
+    \item a communication edge and logical-to-physical identity map;
+    \item a self-contained ELF carrying the existing CLS2 signature note;
+    \item retained provenance or an SBOM/provenance digest compatible with the
+        existing signed metadata;
+    \item a small process-bundle manifest binding the BPMN digest, activity
+        identity, schema identities, and ELF digest; and
+    \item a desired-state record, or a translation step, for assignment through
+        the existing Charlotte deployment test path.
+\end{enumerate}
+
+The initial experiment need not implement automatic placement, replicas,
+fusion, native durable recovery, or a general bundle admission protocol. A
+single stateless activity assigned to one of the two demonstrated nodes is
+sufficient. Kafka may remain at the edge or be replaced by a host-side test
+driver for the first slice.
+
+\subsection{Execution and verification}
+
+The experiment should verify the following end-to-end properties:
+
+\begin{enumerate}
+    \item Regenerating the backend does not modify the developer-owned business
+        rule.
+
+    \item The generated ELF is signed, name-bound, digest-pinned, loaded in a
+        fresh Charlotte address space, and invocable through the distributed
+        name service.
+
+    \item The activity receives only the generated capabilities. An attempted
+        undeclared communication fails because no authority is present, not
+        because a network deny rule happens to match.
+
+    \item Typed input reaches the rule. Its typed result reaches the generated
+        successor or test driver.
+
+    \item Activity-entered, completed, and failed observations retain the BPMN
+        process and activity identities.
+
+    \item The existing stateless assignment handoff can move the generated
+        artifact between nodes without changing its logical activity identity.
+
+    \item The process-bundle metadata can be independently checked against the
+        BPMN, schemas, generated source, executable digest, and retained
+        provenance.
+\end{enumerate}
+
+The experiment should also record the amount and kind of Charlotte-specific
+code that remains handwritten. A successful first result is not merely that the
+activity runs. It is that the application developer implements the business
+rule without programming Charlotte, while the generated and trusted runtime
+surface remains small enough to inspect and verify.
+
+\subsection{Questions the experiment should answer}
+
+The slice is intended to expose design facts early:
+
+\begin{itemize}
+    \item What is the minimum Charlotte ABI needed by a generated activity?
+    \item Which capability requirements can be inferred, and which require an
+        explicit annotation or policy decision?
+    \item Which parts of Durga's current semantic contract accidentally depend
+        on Kafka?
+    \item Which schema and correlation identities must cross the wrapper
+        boundary?
+    \item How should a business failure differ from a wrapper, transport, or
+        node failure?
+    \item Can host-side tests and Charlotte execution use the same rule code
+        without conditional platform logic?
+    \item Which identities are required to map runtime telemetry back to the
+        BPMN model and signed build?
+\end{itemize}
+
+Answers to these questions determine whether a larger backend is justified.
+Only after this slice should the work extend to multiple activities, gateways,
+durable boundaries, parallel replicas, fusion, automatic placement, and
+stateful recovery.
+
+\section{Remaining work}
+
+Substantial work remains in both projects:
+
+\begin{itemize}
+    \item A substrate-neutral Durga semantic intermediate representation must
+        distinguish process semantics from the present Kafka realisation.
+
+    \item A stable generated-task contract, schema evolution rules, and explicit
+        delivery and failure semantics are required before backends can be
+        compared meaningfully.
+
+    \item The Charlotte userspace ABI and runtime services needed by generated
+        code must be identified, implemented, and kept deliberately narrow.
+
+    \item A Charlotte backend must generate or request reviewable S3 and Kafka
+        profiles without embedding credentials in developer-owned business
+        code. Secret delivery, trust-anchor rotation, and profile replacement
+        need a production provisioning path.
+
+    \item Capability inference, review, admission, and binding need a format and
+        policy model. The generator may request authority but must not grant it.
+
+    \item Process-bundle format, signatures, artifact and schema identity,
+        provenance, and reproducible generation remain to be designed.
+
+    \item The Charlotte cluster still needs shared artifact fetching,
+        production administration authority, replica realisation and routing,
+        cluster-wide telemetry, and an automatic placement controller
+        (\autoref{chap:cluster-vision}).
+
+    \item Native Charlotte messaging needs defined delivery, back-pressure,
+        cancellation, deduplication, and recovery semantics before it can
+        replace Kafka on any process edge that depends on them.
+
+    \item Durable state, process-instance recovery, timers, human tasks,
+        external side effects, and rolling process-version migration remain
+        application-runtime problems even on a cluster OS.
+
+    \item Debugging, local simulation, test fixtures, incident analysis, and
+        operational explanations must be usable without requiring application
+        teams to understand Charlotte internals.
+\end{itemize}
+
+None of these items follows automatically from code generation. The proposed
+integration is valuable precisely because it provides a concrete way to test
+them one layer at a time while preserving an honest distinction between
+application semantics and substrate mechanics.
+
+\section{Conclusion}
+
+\autoref{chap:cluster-vision} moves the administrative unit from the server to the cluster and
+asks which parts of the container stack are consequences of Linux compatibility
+rather than distributed computation. This chapter moves the same thesis into
+application development. If the deployable unit is generated from a semantic
+process model, Charlotte can offer a deliberately unfamiliar, capability-based
+execution environment without requiring every business developer to become an
+operating-system programmer.
+
+Durga supplies a plausible compiler boundary because it already turns BPMN into
+Java and Rust execution structures with common process semantics and generated
+runtime plumbing. A future Charlotte backend could extend that transformation
+to signed artifacts, typed interfaces, capability and communication graphs,
+placement hints, provenance, and cluster desired state. BPMN would provide an
+initial account of application structure; Charlotte observation would test and
+refine that account at runtime; stable identities would keep the resulting
+evidence connected to business intent.
+
+The proposal does not eliminate schedulers, durable logs, deployment policy,
+software supply chains, failure recovery, or observability. It relocates some of
+their expression from containers and infrastructure manifests into a process
+compiler and a cluster-native execution contract. The proposed third-backend
+experiment is the next falsifiable step: generate one minimal Charlotte-native
+activity and determine whether its developer can remain concerned with the
+business rule while the generated code accounts for the new operating
+environment.
+
+\endinput

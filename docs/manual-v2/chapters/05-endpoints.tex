@@ -1,4 +1,5 @@
 \chapter{Endpoints --- Communication as a First-Class Primitive}
+\label{chap:endpoints}
 
 An endpoint answers: \textbf{``Who am I communicating with?''} It is
 CharlotteOS's primary primitive for calls between protection domains.
@@ -41,7 +42,7 @@ invalidation.
 \subsection{Memory-bearing messages}
 
 A message can carry one or more \textbf{memory-object attachments} with explicit
-transfer modes (see Chapter~6). These are suitable for:
+transfer modes (see \autoref{chap:memory-objects}). These are suitable for:
 
 \begin{itemize}
     \item Structured requests and responses.
@@ -227,7 +228,8 @@ they are different kernel abstractions with different semantics.
 
     \item Scalar and memory messages are distinct --- the kernel does not
         copy arbitrary data between address spaces by default. Small control
-        messages stay small. Bulk data moves as memory objects (Chapter~6) with
+        messages stay small. Bulk data moves as memory objects
+        (\autoref{chap:memory-objects}) with
         explicit ownership semantics.
 
     \item Deferred replies enable efficient concurrency --- a server is never
