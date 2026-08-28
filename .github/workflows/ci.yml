@@ -87,7 +87,9 @@ jobs:
           toolchain: nightly-2026-07-27
 
       - name: Run host-testable library suites
-        run: scripts/run-host-tests.sh
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+          scripts/run-host-tests.sh
 
   formal-models:
     name: TLA+ safety models
