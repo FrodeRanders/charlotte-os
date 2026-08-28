@@ -4,8 +4,6 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$repo_root/rust-toolchain.toml")"
 host_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-host-tests.XXXXXX")"
-
-rg --version
 trap 'rmdir "$host_work_dir"' EXIT
 
 # Cargo discovers .cargo/config.toml from the invocation directory. CharlotteOS'
@@ -16,6 +14,7 @@ cd "$host_work_dir"
 manifests=()
 for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
     crate_dir="${manifest_path%/Cargo.toml}"
+    echo "Crate directory: ${crate_dir}"
     if ! rg --quiet '#[[:space:]]*\[[[:space:]]*test[[:space:]]*\]' \
         "$crate_dir" --glob '*.rs'; then
         continue
@@ -25,6 +24,7 @@ for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
         echo "error: ${manifest_path#"$repo_root"/} contains tests but disables its test harness" >&2
         exit 1
     fi
+    echo "Manifest: ${manifest_path} # ${repo_root}"
     manifests+=("${manifest_path#"$repo_root"/}")
 done
 
