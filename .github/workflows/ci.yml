@@ -135,7 +135,11 @@ jobs:
       # catten-user integrates the sibling gautelis/sitas checkout and is built
       # by scripts/build-catten-user.sh in developer trees that provide it.
       - name: Build service bundle
-        run: scripts/build-catten-services.sh
+        run: |
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
+          git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
+          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          scripts/build-catten-services.sh
 
   build:
     name: Build (${{ matrix.target }})
