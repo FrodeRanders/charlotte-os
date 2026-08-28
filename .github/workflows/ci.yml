@@ -26,7 +26,7 @@ jobs:
 
       - name: Check all Rust packages
         run: |
-          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout "$SITAS_REV"
@@ -47,7 +47,7 @@ jobs:
 
       - name: Lint workspace
         run: |
-          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout "$SITAS_REV"
@@ -154,7 +154,7 @@ jobs:
       - name: Build kernel
         run: |
           if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
-            SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+            SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
             git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
             git -C "$SITAS_DIR" checkout "$SITAS_REV"
             scripts/build-catten-services.sh --embed
@@ -196,7 +196,7 @@ jobs:
 
       - name: Check out sitas userspace dependency
         run: |
-          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/crates/catten-user/../../../.." && pwd)/gautelis/sitas"
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
           git -C "$SITAS_DIR" checkout "$SITAS_REV"
 
