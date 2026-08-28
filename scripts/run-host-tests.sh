@@ -14,7 +14,6 @@ cd "$host_work_dir"
 manifests=()
 for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
     crate_dir="${manifest_path%/Cargo.toml}"
-    echo "Crate directory: ${crate_dir}"
     if ! rg --quiet '#[[:space:]]*\[[[:space:]]*test[[:space:]]*\]' \
         "$crate_dir" --glob '*.rs'; then
         continue
@@ -24,7 +23,6 @@ for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
         echo "error: ${manifest_path#"$repo_root"/} contains tests but disables its test harness" >&2
         exit 1
     fi
-    echo "Manifest: ${manifest_path} # ${repo_root}"
     manifests+=("${manifest_path#"$repo_root"/}")
 done
 
