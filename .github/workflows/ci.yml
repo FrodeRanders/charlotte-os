@@ -162,10 +162,10 @@ jobs:
 
       - name: Build kernel
         run: |
+          SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
+          git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
+          git -C "$SITAS_DIR" checkout "$SITAS_REV"
           if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
-            SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
-            git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-            git -C "$SITAS_DIR" checkout "$SITAS_REV"
             scripts/build-catten-services.sh --embed
             scripts/build-catten-user.sh --embed
             export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
