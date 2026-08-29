@@ -22,6 +22,7 @@
 //! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64 | sha256:32 |
 //!             descriptor_len:u32 | signed_descriptor
 //! set-key:    0x07 | key:[u8; 32]
+//! release:    0x08 | envelope_len:u32 | signed_release | node_count:u16 | node_keys:[u64]
 //! ```
 use alloc::{
     collections::BTreeMap,
@@ -40,6 +41,7 @@ const CMD_ACTIVATE: u8 = 0x03;
 const CMD_UNREGISTER_GENERATION: u8 = 0x04;
 const CMD_DEPLOY: u8 = 0x05;
 const CMD_SET_CLUSTER_KEY: u8 = 0x07;
+const CMD_RELEASE: u8 = 0x08;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -48,6 +50,7 @@ const CATALOG_MAGIC_V5: u64 = 0x4341_5441_4c4f_4735; // "CATALOG5"
 const CATALOG_MAGIC_V6: u64 = 0x4341_5441_4c4f_4736; // "CATALOG6"
 const CATALOG_MAGIC_V7: u64 = 0x4341_5441_4c4f_4737; // "CATALOG7"
 const CATALOG_MAGIC_V8: u64 = 0x4341_5441_4c4f_4738; // "CATALOG8"
+const CATALOG_MAGIC_V9: u64 = 0x4341_5441_4c4f_4739; // "CATALOG9"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -81,9 +84,17 @@ pub struct DeploymentEntry {
     pub descriptor: Vec<u8>,
 }
 
+/// One atomically admitted, signed component set.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseEntry {
+    pub generation: u64,
+    pub envelope: Vec<u8>,
+}
+
 pub struct NameCatalog {
     entries: spin::Mutex<BTreeMap<Vec<u8>, CatalogEntry>>,
     deployments: spin::Mutex<BTreeMap<Vec<u8>, DeploymentEntry>>,
+    releases: spin::Mutex<BTreeMap<Vec<u8>, ReleaseEntry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
     last_apply: spin::Mutex<Option<Vec<u8>>>,
@@ -94,6 +105,7 @@ impl NameCatalog {
         Arc::new(Self {
             entries: spin::Mutex::new(BTreeMap::new()),
             deployments: spin::Mutex::new(BTreeMap::new()),
+            releases: spin::Mutex::new(BTreeMap::new()),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
             last_apply: spin::Mutex::new(None),
@@ -117,6 +129,10 @@ impl NameCatalog {
     /// Snapshot copy of every desired deployment, sorted by artifact name.
     pub fn deployments(&self) -> Vec<(Vec<u8>, DeploymentEntry)> {
         self.deployments.lock().iter().map(|(name, entry)| (name.clone(), entry.clone())).collect()
+    }
+
+    pub fn release(&self, name: &[u8]) -> Option<ReleaseEntry> {
+        self.releases.lock().get(name).cloned()
     }
 
     /// Whether `name` is registered to this node.
@@ -310,6 +326,138 @@ impl NameCatalog {
                 );
                 generation.to_le_bytes().to_vec()
             }
+            Some(CMD_RELEASE) => {
+                let Some((envelope_bytes, after_envelope)) = take_len_bytes(command, 1) else {
+                    return Vec::new();
+                };
+                let Some((node_count, after_count)) = read_u16(command, after_envelope) else {
+                    return Vec::new();
+                };
+                let Some(nodes_len) = usize::from(node_count).checked_mul(8) else {
+                    return Vec::new();
+                };
+                if command.len() != after_count.saturating_add(nodes_len) {
+                    return Vec::new();
+                }
+                let Some(cluster_key) = *self.cluster_key.lock() else {
+                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
+                };
+                if charlotte_launch::release::verify(envelope_bytes, &cluster_key)
+                    != charlotte_launch::release::VerifyOutcome::Valid
+                {
+                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
+                }
+                let Some(envelope) = charlotte_launch::release::decode(envelope_bytes) else {
+                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
+                };
+                if usize::from(node_count) != envelope.descriptors().count() {
+                    return Vec::new();
+                }
+
+                let mut releases = self.releases.lock();
+                if let Some(existing) = releases.get(envelope.release_name) {
+                    let Some(previous) = charlotte_launch::release::decode(&existing.envelope)
+                    else {
+                        return Vec::new();
+                    };
+                    if envelope.sequence < previous.sequence {
+                        return crate::clusterctl::ERR_STALE_DESCRIPTOR.to_le_bytes().to_vec();
+                    }
+                    if envelope.sequence == previous.sequence {
+                        return if existing.envelope == envelope_bytes {
+                            (existing.generation as i64).to_le_bytes().to_vec()
+                        } else {
+                            crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
+                        };
+                    }
+                }
+                let release_generation = releases
+                    .get(envelope.release_name)
+                    .map_or(Some(1), |entry| entry.generation.checked_add(1))
+                    .filter(|generation| *generation <= i64::MAX as u64);
+                let Some(release_generation) = release_generation else {
+                    return Vec::new();
+                };
+
+                let mut deployments = self.deployments.lock();
+                let mut planned = Vec::with_capacity(usize::from(node_count));
+                for (index, descriptor_bytes) in envelope.descriptors().enumerate() {
+                    let Some(descriptor) = charlotte_launch::deployment::decode(descriptor_bytes)
+                    else {
+                        return Vec::new();
+                    };
+                    let node_offset = after_count + index * 8;
+                    let Some((assigned_node, _)) = read_u64(command, node_offset) else {
+                        return Vec::new();
+                    };
+                    let (generation, effective_node) =
+                        match deployments.get(descriptor.artifact_name) {
+                            Some(current) if !current.descriptor.is_empty() => {
+                                let Some(previous) =
+                                    charlotte_launch::deployment::decode(&current.descriptor)
+                                else {
+                                    return Vec::new();
+                                };
+                                if descriptor.sequence < previous.sequence {
+                                    return crate::clusterctl::ERR_STALE_DESCRIPTOR
+                                        .to_le_bytes()
+                                        .to_vec();
+                                }
+                                if descriptor.sequence == previous.sequence {
+                                    if current.descriptor != descriptor_bytes {
+                                        return crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
+                                            .to_le_bytes()
+                                            .to_vec();
+                                    }
+                                    (current.generation, current.node_key)
+                                } else {
+                                    let Some(generation) = current
+                                        .generation
+                                        .checked_add(1)
+                                        .filter(|generation| *generation <= i64::MAX as u64)
+                                    else {
+                                        return Vec::new();
+                                    };
+                                    (generation, assigned_node)
+                                }
+                            }
+                            Some(current) => {
+                                let Some(generation) = current
+                                    .generation
+                                    .checked_add(1)
+                                    .filter(|generation| *generation <= i64::MAX as u64)
+                                else {
+                                    return Vec::new();
+                                };
+                                (generation, assigned_node)
+                            }
+                            None => (1, assigned_node),
+                        };
+                    planned.push((
+                        descriptor.artifact_name.to_vec(),
+                        DeploymentEntry {
+                            object_id: charlotte_launch::artifact_object_id(
+                                descriptor.artifact_name,
+                            ),
+                            node_key: effective_node,
+                            generation,
+                            artifact_digest: descriptor.artifact_digest,
+                            descriptor: descriptor_bytes.to_vec(),
+                        },
+                    ));
+                }
+                for (artifact, entry) in planned {
+                    deployments.insert(artifact, entry);
+                }
+                releases.insert(
+                    envelope.release_name.to_vec(),
+                    ReleaseEntry {
+                        generation: release_generation,
+                        envelope: envelope_bytes.to_vec(),
+                    },
+                );
+                (release_generation as i64).to_le_bytes().to_vec()
+            }
             Some(CMD_SET_CLUSTER_KEY) => {
                 let Some(key) = command.get(1..1 + 32) else {
                     return Vec::new();
@@ -338,20 +486,26 @@ impl NameCatalog {
 
     fn snapshot_bytes(&self) -> Vec<u8> {
         let entries = self.entries.lock();
+        let releases = self.releases.lock();
         let deployments = self.deployments.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
         }
         // V7 appends signed deployment descriptors to the manifest records;
-        // V8 binds active application registrations to deployment generations.
+        // V8 binds active application registrations to deployment generations;
+        // V9 persists atomically admitted signed release envelopes.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
         }
+        size += 4;
+        for (name, entry) in releases.iter() {
+            size += 4 + name.len() + 8 + 4 + entry.envelope.len();
+        }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V8.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V9.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -372,6 +526,14 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.artifact_digest);
             buf.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
             buf.extend_from_slice(&entry.descriptor);
+        }
+        buf.extend_from_slice(&(releases.len() as u32).to_le_bytes());
+        for (name, entry) in releases.iter() {
+            buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            buf.extend_from_slice(name);
+            buf.extend_from_slice(&entry.generation.to_le_bytes());
+            buf.extend_from_slice(&(entry.envelope.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.envelope);
         }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
@@ -398,6 +560,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V6
             && magic != CATALOG_MAGIC_V7
             && magic != CATALOG_MAGIC_V8
+            && magic != CATALOG_MAGIC_V9
         {
             return;
         }
@@ -428,6 +591,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V6
                 || magic == CATALOG_MAGIC_V7
                 || magic == CATALOG_MAGIC_V8
+                || magic == CATALOG_MAGIC_V9
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -436,14 +600,15 @@ impl NameCatalog {
             } else {
                 (true, after_generation)
             };
-            let (deployment_generation, after_entry) = if magic == CATALOG_MAGIC_V8 {
-                let Some((generation, after_generation)) = read_u64(data, after_entry) else {
-                    return;
+            let (deployment_generation, after_entry) =
+                if magic == CATALOG_MAGIC_V8 || magic == CATALOG_MAGIC_V9 {
+                    let Some((generation, after_generation)) = read_u64(data, after_entry) else {
+                        return;
+                    };
+                    (generation, after_generation)
+                } else {
+                    (0, after_entry)
                 };
-                (generation, after_generation)
-            } else {
-                (0, after_entry)
-            };
             entries.insert(
                 name.to_vec(),
                 CatalogEntry {
@@ -463,6 +628,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V6
             || magic == CATALOG_MAGIC_V7
             || magic == CATALOG_MAGIC_V8
+            || magic == CATALOG_MAGIC_V9
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -495,6 +661,7 @@ impl NameCatalog {
                 } else if magic == CATALOG_MAGIC_V6
                     || magic == CATALOG_MAGIC_V7
                     || magic == CATALOG_MAGIC_V8
+                    || magic == CATALOG_MAGIC_V9
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -510,6 +677,7 @@ impl NameCatalog {
                 };
                 let (descriptor, after_entry) = if magic == CATALOG_MAGIC_V7
                     || magic == CATALOG_MAGIC_V8
+                    || magic == CATALOG_MAGIC_V9
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -537,6 +705,45 @@ impl NameCatalog {
         }
         *self.deployments.lock() = deployments;
 
+        let mut releases = BTreeMap::new();
+        if magic == CATALOG_MAGIC_V9 {
+            let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
+                return;
+            };
+            let Ok(bytes) = <[u8; 4]>::try_from(bytes) else {
+                return;
+            };
+            let release_count = u32::from_le_bytes(bytes) as usize;
+            pos += 4;
+            for _ in 0..release_count {
+                let Some((name, after_name)) = take_len_bytes(data, pos) else {
+                    return;
+                };
+                let Some((generation, after_generation)) = read_u64(data, after_name) else {
+                    return;
+                };
+                let Some((envelope, after_envelope)) = take_len_bytes(data, after_generation)
+                else {
+                    return;
+                };
+                let Some(decoded) = charlotte_launch::release::decode(envelope) else {
+                    return;
+                };
+                if decoded.release_name != name || generation == 0 {
+                    return;
+                }
+                releases.insert(
+                    name.to_vec(),
+                    ReleaseEntry {
+                        generation,
+                        envelope: envelope.to_vec(),
+                    },
+                );
+                pos = after_envelope;
+            }
+        }
+        *self.releases.lock() = releases;
+
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
@@ -544,6 +751,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V6
             || magic == CATALOG_MAGIC_V7
             || magic == CATALOG_MAGIC_V8
+            || magic == CATALOG_MAGIC_V9
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -551,6 +759,7 @@ impl NameCatalog {
             let (generation, key_start) = if magic == CATALOG_MAGIC_V6
                 || magic == CATALOG_MAGIC_V7
                 || magic == CATALOG_MAGIC_V8
+                || magic == CATALOG_MAGIC_V9
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -652,6 +861,12 @@ fn take_len_bytes(bytes: &[u8], start: usize) -> Option<(&[u8], usize)> {
 fn read_u64(bytes: &[u8], start: usize) -> Option<(u64, usize)> {
     let end = start.checked_add(8)?;
     let value = u64::from_le_bytes(bytes.get(start..end)?.try_into().ok()?);
+    Some((value, end))
+}
+
+fn read_u16(bytes: &[u8], start: usize) -> Option<(u16, usize)> {
+    let end = start.checked_add(2)?;
+    let value = u16::from_le_bytes(bytes.get(start..end)?.try_into().ok()?);
     Some((value, end))
 }
 
@@ -789,6 +1004,27 @@ pub fn encode_deploy(
     buf
 }
 
+/// Encode one signed release and the leader-resolved node assignment for
+/// every nested descriptor. The state machine verifies the envelope again
+/// and applies the complete component set under one deployment-map lock.
+pub fn encode_release(envelope: &[u8], assigned_nodes: &[u64]) -> Option<Vec<u8>> {
+    let release = charlotte_launch::release::decode(envelope)?;
+    if release.descriptors().count() != assigned_nodes.len()
+        || assigned_nodes.len() > u16::MAX as usize
+    {
+        return None;
+    }
+    let mut buf = Vec::with_capacity(1 + 4 + envelope.len() + 2 + assigned_nodes.len() * 8);
+    buf.push(CMD_RELEASE);
+    buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
+    buf.extend_from_slice(envelope);
+    buf.extend_from_slice(&(assigned_nodes.len() as u16).to_le_bytes());
+    for node in assigned_nodes {
+        buf.extend_from_slice(&node.to_le_bytes());
+    }
+    Some(buf)
+}
+
 /// Encode a key-ceremony command: commit the cluster's Ed25519 public key.
 pub fn encode_set_cluster_key(key: &[u8; 32]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(1 + 32);
@@ -811,7 +1047,60 @@ impl crate::broker::Catalog for NameCatalog {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+
+    use ed25519_compact::{
+        KeyPair,
+        Signature,
+    };
+
     use super::*;
+
+    fn signed_deployment(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
+        let fields = charlotte_launch::deployment::DescriptorFields {
+            sequence,
+            node_key: 0,
+            artifact_digest: [sequence as u8; 32],
+            artifact_name: name,
+            object_key: name,
+            grants: &[],
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; charlotte_launch::deployment::encoded_len(&fields).unwrap()];
+        charlotte_launch::deployment::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature =
+            pair.sk.sign(charlotte_launch::deployment::signature_digest(&bytes).unwrap(), None);
+        let signature: &[u8; charlotte_launch::deployment::SIGNATURE_LEN] =
+            signature.as_ref().try_into().unwrap();
+        assert!(charlotte_launch::deployment::set_signature(&mut bytes, signature));
+        bytes
+    }
+
+    fn signed_release(
+        pair: &KeyPair,
+        name: &[u8],
+        sequence: u64,
+        descriptors: &[&[u8]],
+    ) -> Vec<u8> {
+        let fields = charlotte_launch::release::ReleaseFields {
+            sequence,
+            release_name: name,
+            descriptors,
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; charlotte_launch::release::encoded_len(&fields).unwrap()];
+        charlotte_launch::release::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature =
+            pair.sk.sign(charlotte_launch::release::signature_digest(&bytes).unwrap(), None);
+        let signature: &[u8; charlotte_launch::release::SIGNATURE_LEN] =
+            signature.as_ref().try_into().unwrap();
+        assert!(charlotte_launch::release::set_signature(&mut bytes, signature));
+        bytes
+    }
+
+    fn i64_result(bytes: Vec<u8>) -> i64 {
+        i64::from_le_bytes(bytes.try_into().unwrap())
+    }
 
     #[test]
     fn deployment_generation_survives_activation_and_snapshot() {
@@ -854,6 +1143,61 @@ mod tests {
         let replacement = encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor");
         let next = catalog.apply_with_result(3, &replacement);
         assert_eq!(u64::from_le_bytes(next.try_into().unwrap()), 2);
+    }
+
+    #[test]
+    fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
+        let pair = KeyPair::generate();
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let catalog = NameCatalog::new();
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_set_cluster_key(public_key))),
+            1
+        );
+
+        let receive_v1 = signed_deployment(&pair, b"receive", 1);
+        let publish_v1 = signed_deployment(&pair, b"publish", 1);
+        let release_v1 =
+            signed_release(&pair, b"orders", 1, &[receive_v1.as_slice(), publish_v1.as_slice()]);
+        let command_v1 = encode_release(&release_v1, &[0x1111, 0x2222]).unwrap();
+        assert_eq!(i64_result(catalog.apply_with_result(1, &command_v1)), 1);
+        assert_eq!(i64_result(catalog.apply_with_result(2, &command_v1)), 1);
+        assert_eq!(catalog.deployment(b"receive").unwrap().node_key, 0x1111);
+        assert_eq!(catalog.deployment(b"publish").unwrap().node_key, 0x2222);
+
+        let receive_v2 = signed_deployment(&pair, b"receive", 2);
+        let publish_v2 = signed_deployment(&pair, b"publish", 2);
+        let release_v2 =
+            signed_release(&pair, b"orders", 2, &[receive_v2.as_slice(), publish_v2.as_slice()]);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(
+                3,
+                &encode_release(&release_v2, &[0x3333, 0x4444]).unwrap(),
+            )),
+            2
+        );
+
+        let receive_v3 = signed_deployment(&pair, b"receive", 3);
+        let stale_release =
+            signed_release(&pair, b"orders", 3, &[receive_v3.as_slice(), publish_v1.as_slice()]);
+        assert_eq!(
+            i64_result(
+                catalog.apply_with_result(
+                    4,
+                    &encode_release(&stale_release, &[0x5555, 0x6666]).unwrap(),
+                )
+            ),
+            crate::clusterctl::ERR_STALE_DESCRIPTOR
+        );
+        let receive = catalog.deployment(b"receive").unwrap();
+        assert_eq!(receive.node_key, 0x3333);
+        assert_eq!(charlotte_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
+
+        let restored = NameCatalog::new();
+        restored.restore(&catalog.snapshot());
+        assert_eq!(restored.release(b"orders"), catalog.release(b"orders"));
+        assert_eq!(restored.deployment(b"receive"), catalog.deployment(b"receive"));
+        assert_eq!(restored.deployment(b"publish"), catalog.deployment(b"publish"));
     }
 
     #[test]

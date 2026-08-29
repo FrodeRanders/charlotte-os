@@ -127,6 +127,9 @@ zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 signature = { version = "2.2", default-features = false }
 
+[dev-dependencies]
+ed25519-compact = "2.3.1"
+
 [[bin]]
 name = "time"
 path = "src/bin/time.rs"

@@ -206,6 +206,7 @@ dependencies = [
  "charlotte-protocol-time",
  "charlotte-s3",
  "charlotte-smoltcp",
+ "ed25519-compact",
  "embedded-io",
  "embedded-tls",
  "p256",
