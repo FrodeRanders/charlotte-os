@@ -413,11 +413,8 @@ fn deployment_verify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn deployment_notify(args: &[String]) -> Result<()> {
-    let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
-    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
-    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
-    deployment::decode(&bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
+fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
+    deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
     stream
@@ -433,7 +430,7 @@ fn deployment_notify(args: &[String]) -> Result<()> {
     );
     stream
         .write_all(header.as_bytes())
-        .and_then(|()| stream.write_all(&bytes))
+        .and_then(|()| stream.write_all(bytes))
         .map_err(|error| format!("send deployment notification: {error}"))?;
     let mut response = String::new();
     stream
@@ -444,7 +441,14 @@ fn deployment_notify(args: &[String]) -> Result<()> {
     if !status.starts_with("HTTP/1.1 202 ") {
         return Err(format!("deployment notification failed: {}", response.trim()));
     }
-    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim());
+    Ok(response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim().to_owned())
+}
+
+fn deployment_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    println!("{}", deployment_notify_bytes(&bytes, endpoint)?);
     Ok(())
 }
 
@@ -519,6 +523,80 @@ fn deployment_status(args: &[String]) -> Result<()> {
     }
 }
 
+/// Commit a set of independently signed descriptors and wait for all exact
+/// generations to become ready. This is intentionally an orchestration layer:
+/// artifacts must already be signed and uploaded, and the cluster remains the
+/// authority that verifies and admits each descriptor.
+fn deployment_apply(args: &[String]) -> Result<()> {
+    let endpoint = args.first().ok_or_else(|| "missing deployment ingress host:port".to_owned())?;
+    let timeout = args
+        .get(1)
+        .ok_or_else(|| "missing rollout timeout seconds".to_owned())?
+        .parse::<u64>()
+        .map_err(|_| "invalid rollout timeout seconds".to_owned())?;
+    if timeout == 0 {
+        return Err("rollout timeout must be greater than zero".to_owned());
+    }
+    let paths = args.get(2..).filter(|paths| !paths.is_empty()).ok_or_else(|| {
+        "deployment-apply requires at least one signed descriptor path".to_owned()
+    })?;
+
+    let mut releases = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+        let descriptor = deployment::decode(&bytes)
+            .ok_or_else(|| format!("deployment descriptor {path:?} is malformed"))?;
+        let name = std::str::from_utf8(descriptor.artifact_name)
+            .map_err(|_| format!("descriptor {path:?} has a non-UTF-8 artifact name"))?
+            .to_owned();
+        if releases.iter().any(|(existing, _, _)| existing == &name) {
+            return Err(format!("release contains duplicate artifact name {name:?}"));
+        }
+        releases.push((name, path.clone(), bytes));
+    }
+
+    for (name, path, bytes) in &releases {
+        let body = deployment_notify_bytes(bytes, endpoint).map_err(|error| {
+            format!(
+                "release stopped while notifying {name:?} from {path:?}: {error}; earlier \
+                 descriptors may already be committed"
+            )
+        })?;
+        println!("accepted {name:?}: {body}");
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(timeout);
+    let mut pending = releases.iter().map(|(name, _, _)| name.clone()).collect::<Vec<_>>();
+    while !pending.is_empty() {
+        let mut index = 0;
+        while index < pending.len() {
+            let name = &pending[index];
+            match deployment_status_once(name, endpoint) {
+                Ok((status, body))
+                    if status.starts_with("HTTP/1.1 200 ")
+                        && body.contains("\"state\":\"ready\"") =>
+                {
+                    println!("ready {name:?}: {body}");
+                    pending.swap_remove(index);
+                }
+                _ => index += 1,
+            }
+        }
+        if pending.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            pending.sort();
+            return Err(format!(
+                "release did not become ready in {timeout}s; pending: {}",
+                pending.join(", ")
+            ));
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -543,6 +621,7 @@ fn run() -> Result<()> {
         Some("deployment-verify") => deployment_verify(&args[2..]),
         Some("deployment-notify") => deployment_notify(&args[2..]),
         Some("deployment-status") => deployment_status(&args[2..]),
+        Some("deployment-apply") => deployment_apply(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -636,7 +715,7 @@ fn run() -> Result<()> {
                   <node-key> <sequence> <privkey-hex> [service=send|call|client|publish ...] | \
                   deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
                   [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
-                  selftest"
+                  deployment-apply <host:port> <wait-seconds> <descriptor>... | selftest"
             .to_owned()),
     }
 }
@@ -648,5 +727,16 @@ fn main() -> ExitCode {
             eprintln!("error: {error}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percent_encode_path_segment;
+
+    #[test]
+    fn percent_encodes_each_non_unreserved_byte_once() {
+        assert_eq!(percent_encode_path_segment(b"orders/v2 ready"), "orders%2Fv2%20ready");
+        assert_eq!(percent_encode_path_segment(&[0xff]), "%FF");
     }
 }

@@ -67,6 +67,22 @@ submit it directly:
 cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
 ```
 
+Several generated components can be operated as one readiness wait without
+giving the generator or application object-store credentials:
+
+```text
+cluster-sign deployment-apply 127.0.0.1:8081 120 \
+  receive.cdep transform.cdep publish.cdep
+```
+
+The tool decodes the complete set and rejects duplicate artifact names before
+mutation, then submits each signed descriptor and waits until every exact
+generation is ready. This is deliberately a host-side release-controller
+slice rather than a new trust boundary: descriptors remain independently
+verified and committed by the cluster. The set is not atomic yet. If a later
+submission fails, an earlier prefix may already be committed; exact retries
+are safe because descriptor admission is idempotent.
+
 The listener is intentionally plaintext because the signed descriptor is the
 authorization and integrity envelope and contains no secret. Network policy or
 TLS termination may still be required to hide deployment metadata and prevent

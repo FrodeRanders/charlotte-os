@@ -27,8 +27,13 @@ generated adapters have been compiled into Charlotte ELFs. Business handlers
 and schemas still have developer-owned completion points, and Durga does not
 itself operate a Charlotte release controller. CharlotteOS implements signed
 central-S3 pickup, scoped launch, grant mediation, reconciliation, and
-generation-safe rollout observation. The remainder of this chapter therefore
-separates the working vertical slice from the larger architectural target.
+generation-safe rollout observation. Its host tool can now apply a set of
+independently signed component descriptors and wait for all exact generations,
+which makes Durga's generated multi-component deployment plan directly
+operable after CI has built, signed, and uploaded the ELFs. Admission is still
+per descriptor rather than an atomic signed process bundle. The remainder of
+this chapter therefore separates the working vertical slice from the larger
+architectural target.
 
 \section{The application thesis}
 
@@ -435,9 +440,12 @@ artifact. The \texttt{PlacementPolicy} contract described in
 \autoref{chap:cluster-vision} can
 express replica and affinity properties but is not yet stored or realised by a
 placement controller. Consuming a generated singleton is now possible through
-signed central-S3 notification. Consuming a complete replicated Durga process
-bundle still depends on the future controller, replica routing, and production
-administration authority already identified there.
+signed central-S3 notification. A generated set of singleton components can be
+submitted and observed together with \texttt{cluster-sign deployment-apply},
+but its descriptors are independently committed and therefore do not yet form
+an atomic release. Consuming a complete replicated Durga process bundle still
+depends on signed bundle admission, the future placement controller, replica
+routing, and production administration authority already identified there.
 
 \section{Process topology as placement information}
 
@@ -817,9 +825,11 @@ explicit, and unsupported dependencies visible at build time.
 The first experiment was deliberately narrower than a complete process runtime:
 generate minimal Charlotte-native activities and the metadata required to
 build, admit, and invoke them. Durga now emits those adapters and CharlotteOS
-can pull and launch signed applications. The next experiment is a generated
-multi-activity bundle deployed through the RustFS-backed ingress, with one
-transactional Kafka step and observable rollout completion.
+can pull and launch signed applications. A generated multi-activity set can
+now be submitted through the RustFS-backed ingress and observed to readiness
+with one host command, although it is not yet admitted atomically as a bundle.
+The next experiment is to exercise that path with one transactional Kafka step
+and then add signed, all-or-nothing bundle admission.
 
 \subsection{Experiment input}
 

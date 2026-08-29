@@ -19,6 +19,19 @@ store credentials.
 6. Observe the exact generation with
    `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
 
+For a release containing several independently signed components, the host
+tool can prevalidate every descriptor, submit them, and wait for the complete
+set in one invocation:
+
+```text
+cluster-sign deployment-apply 127.0.0.1:8081 120 \
+  ingest.cdep validate.cdep publish.cdep
+```
+
+Artifacts must already have been signed and uploaded. The command rejects a
+malformed descriptor or duplicate artifact name before submitting anything,
+then reports acceptance and generation-safe readiness for each component.
+
 The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `deployd`. `deployd` listens on guest TCP port 7444. The QEMU runners forward
 `${CATTEN_DEPLOY_HOST_PORT:-8081}` to that port under the default user network,
@@ -38,6 +51,13 @@ A successful notification returns HTTP `202 Accepted` and JSON containing the
 committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
+
+`deployment-apply` is currently release orchestration, not atomic bundle
+admission. Each descriptor is a separate Raft entry, so a transport or policy
+failure can leave an accepted prefix of the release committed. Rerunning the
+same command is safe because identical descriptors are idempotent. A future
+signed process-bundle format and controller must supply all-or-nothing
+admission, coordinated rollback, and bundle-level audit state.
 
 The request may enter through any cluster member. A follower's DNS validates
 the reliable-message source as a current peer, relays the bounded request to

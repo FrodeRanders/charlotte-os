@@ -669,6 +669,20 @@ notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
+For a release made from several independently signed components,
+\texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
+rejects duplicate artifact names, submits each descriptor, and waits for every
+exact generation to become ready against one deadline. Artifacts must already
+be signed and uploaded; object-store credentials remain outside the generated
+application and its descriptors.
+
+This command is release orchestration rather than atomic process-bundle
+admission. Each descriptor remains a separate Raft entry, so a later failure
+can leave an accepted prefix committed. Repeating the same set is safe because
+identical descriptors are idempotent. All-or-nothing admission, coordinated
+rollback, and bundle-level audit state remain responsibilities of a future
+signed-bundle controller.
+
 The client may contact any member. A follower relays the bounded submission to
 the current Raft leader over a source-validated peer route and correlates the
 committed result back to the ingress request. The management client therefore
