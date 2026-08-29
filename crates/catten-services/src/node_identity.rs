@@ -139,6 +139,29 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
     hash
 }
 
+/// Recover the stable 32-bit node key from a ratified
+/// `{cluster-mnemonic}:{eight-hex-digit-key}` node name.
+///
+/// Deployment records use this compact key while the replicated name catalog
+/// retains the human-readable node identity. Keeping the conversion here
+/// prevents rollout observers from depending on the mnemonic.
+pub fn key_from_name(name: &[u8]) -> Option<u64> {
+    let separator = name.iter().rposition(|byte| *byte == b':')?;
+    let token = name.get(separator + 1..)?;
+    if token.len() != 8 {
+        return None;
+    }
+    token.iter().try_fold(0u64, |value, byte| {
+        let digit = match byte {
+            b'0'..=b'9' => u64::from(byte - b'0'),
+            b'a'..=b'f' => u64::from(byte - b'a') + 10,
+            b'A'..=b'F' => u64::from(byte - b'A') + 10,
+            _ => return None,
+        };
+        value.checked_mul(16)?.checked_add(digit)
+    })
+}
+
 fn objstore_connect(ns_conn: u64) -> Option<u64> {
     // The identity lives on NVMe, so wait for the object store to register
     // (deferred lookup) rather than failing on first boot.

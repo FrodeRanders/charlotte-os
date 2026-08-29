@@ -1322,6 +1322,18 @@ pub mod dns {
     /// `[count:u16] ([name_len:u8][name])*`, sorted by name. Callers query
     /// individual records with `OP_DEPLOY_QUERY_NAMED`.
     pub const OP_DEPLOY_LIST: u32 = 17;
+    /// Query the rollout condition for a full artifact name carried in moved
+    /// memory (`arg0` is the name length). The fixed-size reply uses
+    /// [`crate::clusterctl::RolloutStatus`]. A deployment is ready only when
+    /// its service name is active in the replicated catalog on the node
+    /// selected by the desired deployment record.
+    pub const OP_DEPLOY_ROLLOUT_NAMED: u32 = 18;
+    /// Register a deployed application under its full artifact name. Moved
+    /// memory is `[deployment_generation:u64][name]`; `arg0` is the complete
+    /// byte length. This is agent-only in practice and binds readiness to the
+    /// exact desired generation rather than a stale endpoint with the same
+    /// name.
+    pub const OP_REGISTER_DEPLOYMENT_NAMED: u32 = 19;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1466,6 +1478,52 @@ pub mod clusterctl {
     /// negative error (`ERR_NO_CLUSTER` when no peer on the segment reports a
     /// cluster).
     pub const OP_JOIN: u32 = 7;
+    /// Query a named deployment's observable rollout condition. The full
+    /// artifact name is carried in moved memory and `arg0` is its length.
+    /// The reply is [`ROLLOUT_STATUS_LEN`] bytes encoded by
+    /// [`RolloutStatus::encode`].
+    pub const OP_ROLLOUT: u32 = 8;
+
+    pub const ROLLOUT_COMMITTED: u8 = 1;
+    pub const ROLLOUT_READY: u8 = 2;
+    /// The name is active, but its owner differs from the desired node. This
+    /// is observable during replacement and is not a successful rollout.
+    pub const ROLLOUT_REPLACING: u8 = 3;
+    pub const ROLLOUT_STATUS_LEN: usize = 32;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct RolloutStatus {
+        pub state: u8,
+        pub deployment_generation: u64,
+        pub service_generation: u64,
+        pub node_key: u64,
+    }
+
+    impl RolloutStatus {
+        pub fn encode(self) -> [u8; ROLLOUT_STATUS_LEN] {
+            let mut bytes = [0u8; ROLLOUT_STATUS_LEN];
+            bytes[0] = self.state;
+            bytes[8..16].copy_from_slice(&self.deployment_generation.to_le_bytes());
+            bytes[16..24].copy_from_slice(&self.service_generation.to_le_bytes());
+            bytes[24..32].copy_from_slice(&self.node_key.to_le_bytes());
+            bytes
+        }
+
+        pub fn decode(bytes: &[u8]) -> Option<Self> {
+            if bytes.len() != ROLLOUT_STATUS_LEN
+                || !matches!(bytes[0], ROLLOUT_COMMITTED | ROLLOUT_READY | ROLLOUT_REPLACING)
+                || bytes[1..8].iter().any(|byte| *byte != 0)
+            {
+                return None;
+            }
+            Some(Self {
+                state: bytes[0],
+                deployment_generation: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
+                service_generation: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
+                node_key: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
+            })
+        }
+    }
 
     pub const ERR_NOT_FOUND: i64 = -1;
     pub const ERR_NOT_LEADER: i64 = -2;
@@ -1909,26 +1967,32 @@ pub mod runregister {
 /// frame carries the owner (hosting node) and the service name; the reply
 /// adds the generation. The transport prepends the type tag:
 /// ```text
-/// request: 0x15 | owner_len:u8 | owner | name_len:u8 | name
+/// request: 0x15 | owner_len:u8 | owner | name_len:u8 | name |
+///          deployment_generation:u64
 /// reply:   0x16 | owner_len:u8 | owner | name_len:u8 | name | generation:u64
 /// ```
 pub mod rregister {
     pub const TAG_REQUEST: u8 = 0x15;
     pub const TAG_REPLY: u8 = 0x16;
 
-    pub fn encode_request(owner: &[u8], name: &[u8]) -> alloc::vec::Vec<u8> {
+    pub fn encode_request(
+        owner: &[u8],
+        name: &[u8],
+        deployment_generation: u64,
+    ) -> alloc::vec::Vec<u8> {
         let owner_len = owner.len().min(255);
         let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(1 + owner_len + name_len);
+        let mut frame = alloc::vec::Vec::with_capacity(10 + owner_len + name_len);
         frame.push(owner_len as u8);
         frame.extend_from_slice(&owner[..owner_len]);
         frame.push(name_len as u8);
         frame.extend_from_slice(&name[..name_len]);
+        frame.extend_from_slice(&deployment_generation.to_le_bytes());
         frame
     }
 
-    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>)> {
-        if frame.len() < 3 || frame[0] != TAG_REQUEST {
+    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
+        if frame.len() < 11 || frame[0] != TAG_REQUEST {
             return None;
         }
         let owner_len = frame[1] as usize;
@@ -1940,11 +2004,13 @@ pub mod rregister {
         let name_len_off = owner_off + owner_len;
         let name_len = frame[name_len_off] as usize;
         let name_off = name_len_off + 1;
-        if frame.len() != name_off + name_len {
+        if frame.len() != name_off + name_len + 8 {
             return None;
         }
-        let name = frame[name_off..].to_vec();
-        Some((owner, name))
+        let name = frame[name_off..name_off + name_len].to_vec();
+        let deployment_generation =
+            u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
+        Some((owner, name, deployment_generation))
     }
 
     pub fn encode_reply(owner: &[u8], name: &[u8], generation: u64) -> alloc::vec::Vec<u8> {

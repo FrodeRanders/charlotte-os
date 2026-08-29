@@ -47,6 +47,7 @@ use catten_rt::{
 };
 use catten_services::{
     broker::EventBroker,
+    clusterctl,
     disco,
     disk_raft::{
         DiskLogStore,
@@ -61,11 +62,15 @@ use catten_services::{
         encode_deploy,
         encode_lookup_query,
         encode_register,
+        encode_register_deployment,
         encode_set_cluster_key,
         encode_unregister_generation,
     },
     net,
-    node_identity::NodeIdentity,
+    node_identity::{
+        self,
+        NodeIdentity,
+    },
     ns,
     raft,
     relmsg,
@@ -131,6 +136,7 @@ use message_memory::{
     packed_name,
     read_call_request,
     read_deploy_request,
+    read_deployment_registration,
     read_generation,
     read_key,
     read_moved_bytes,
@@ -265,6 +271,7 @@ fn register_name(
     node_name: &[u8],
     message: &catten_syscall::IpcMessage,
     name: alloc::vec::Vec<u8>,
+    deployment_generation: u64,
 ) -> Option<i64> {
     if name.is_empty() {
         Some(dns::ERR_TOO_LARGE)
@@ -278,7 +285,11 @@ fn register_name(
             None => Some(dns::ERR_TOO_LARGE),
             Some((connection, local_generation)) => match node.known_leader_id.clone() {
                 Some(leader) if transport.has_peer(&leader) => {
-                    let request = catten_services::rregister::encode_request(node_name, &name);
+                    let request = catten_services::rregister::encode_request(
+                        node_name,
+                        &name,
+                        deployment_generation,
+                    );
                     transport.send_message(
                         &leader,
                         catten_services::rregister::TAG_REQUEST,
@@ -304,7 +315,12 @@ fn register_name(
         // Leader: commit the registration with this node as the owner.
         // Submit once; the reactor completes the reply once the entry has
         // replicated (see pending_registers below).
-        match node.submit_command(encode_register(&name, node_name), node.millis()) {
+        let command = if deployment_generation == 0 {
+            encode_register(&name, node_name)
+        } else {
+            encode_register_deployment(&name, node_name, deployment_generation)
+        };
+        match node.submit_command(command, node.millis()) {
             Ok(index) => {
                 let (connection, existing_local_generation) =
                     local_publication(ns_conn, message.connection, &name).unwrap_or((0, 0));
@@ -1005,6 +1021,7 @@ fn main(ctx: Context) -> ! {
                                                 node: owner,
                                                 generation,
                                                 active: true,
+                                                deployment_generation: 0,
                                             });
                                     match query.kind {
                                         PendingQueryKind::Lookup {
@@ -1144,7 +1161,7 @@ fn main(ctx: Context) -> ! {
                             Some(catten_services::rregister::TAG_REQUEST) => {
                                 // A follower hosts a service locally but only
                                 // this leader may commit its catalog entry.
-                                if let Some((owner, name)) =
+                                if let Some((owner, name, deployment_generation)) =
                                     catten_services::rregister::decode_request(frame)
                                     && node.state == NodeState::Leader
                                     && transport
@@ -1161,10 +1178,15 @@ fn main(ctx: Context) -> ! {
                                             ..
                                         } if pending_name == &name
                                     ))
-                                    && let Ok(log_index) = node.submit_command(
-                                        encode_register(&name, &owner),
-                                        node.millis(),
-                                    )
+                                    && let Ok(log_index) = node.submit_command(if deployment_generation == 0 {
+                                        encode_register(&name, &owner)
+                                    } else {
+                                        encode_register_deployment(
+                                            &name,
+                                            &owner,
+                                            deployment_generation,
+                                        )
+                                    }, node.millis())
                                 {
                                     pending_registers.push(PendingRegistration::RemotePrepare {
                                         log_index,
@@ -1392,6 +1414,7 @@ fn main(ctx: Context) -> ! {
                         &node_name,
                         &message,
                         name,
+                        0,
                     ) && message.reply != 0
                     {
                         ipc_reply(message.reply, result);
@@ -1408,6 +1431,26 @@ fn main(ctx: Context) -> ! {
                             &node_name,
                             &message,
                             name,
+                            0,
+                        )
+                        && message.reply != 0
+                    {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_REGISTER_DEPLOYMENT_NAMED => {
+                    if let Some((name, deployment_generation)) =
+                        read_deployment_registration(&message)
+                        && let Some(result) = register_name(
+                            &mut node,
+                            ns_conn,
+                            &transport,
+                            &mut pending_registers,
+                            &node_name,
+                            &message,
+                            name,
+                            deployment_generation,
                         )
                         && message.reply != 0
                     {
@@ -1428,7 +1471,7 @@ fn main(ctx: Context) -> ! {
                             match node.known_leader_id.clone() {
                                 Some(leader) if transport.has_peer(&leader) => {
                                     let request = catten_services::rregister::encode_request(
-                                        &node_name, &name,
+                                        &node_name, &name, 0,
                                     );
                                     transport.send_message(
                                         &leader,
@@ -1672,6 +1715,37 @@ fn main(ctx: Context) -> ! {
                         bytes.extend_from_slice(&name);
                     }
                     reply_move_bytes(message.reply, &bytes);
+                    continue;
+                }
+
+                dns::OP_DEPLOY_ROLLOUT_NAMED => {
+                    let artifact = read_named_bytes(&message);
+                    if let Some(artifact) = artifact
+                        && let Some(deployment) = catalog.deployment(&artifact)
+                    {
+                        let owner = catalog.lookup(&artifact);
+                        let service_generation = owner.as_ref().map_or(0, |entry| entry.generation);
+                        let state = match owner.as_ref() {
+                            None => clusterctl::ROLLOUT_COMMITTED,
+                            Some(entry)
+                                if entry.deployment_generation == deployment.generation
+                                    && node_identity::key_from_name(&entry.node)
+                                        == Some(deployment.node_key) =>
+                            {
+                                clusterctl::ROLLOUT_READY
+                            }
+                            Some(_) => clusterctl::ROLLOUT_REPLACING,
+                        };
+                        let status = clusterctl::RolloutStatus {
+                            state,
+                            deployment_generation: deployment.generation,
+                            service_generation,
+                            node_key: deployment.node_key,
+                        };
+                        reply_move_bytes(message.reply, &status.encode());
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
                     continue;
                 }
 

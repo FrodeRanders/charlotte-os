@@ -38,8 +38,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 3); // stage: endpoint created
 
     let generation = if let Some(descriptor) = ctx.profile_memory() {
-        grant_client::publish(bootstrap, &descriptor, b"greet", &endpoint)
-            .unwrap_or_else(|_| catten_rt::domain_abort())
+        grant_client::publish(bootstrap, &descriptor, b"greet", &endpoint).unwrap_or_else(|error| {
+            catten_rt::logln!("[greet] publish grant failed: {:?}", error);
+            catten_rt::domain_abort()
+        })
     } else {
         bootstrap
             .call_connection(

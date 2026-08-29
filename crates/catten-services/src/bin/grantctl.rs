@@ -245,7 +245,7 @@ fn main(ctx: Context) -> ! {
     let name_service = ctx.name_service_connection().unwrap_or_else(|| catten_rt::domain_abort());
     let mut revisions = BTreeMap::new();
     loop {
-        match endpoint.receive() {
+        match endpoint.receive_authenticated() {
             Ok(message) => handle(message, name_service, &mut revisions),
             Err(_) => catten_rt::domain_abort(),
         }

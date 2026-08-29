@@ -1,10 +1,11 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
 //! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY1`
-//! descriptor as its body. It carries no object-store or application secret:
-//! authenticity, integrity, placement, and authority all come from the
-//! descriptor signature checked by `clusterctl`. The assigned node fetches
-//! the referenced ELF through its separately provisioned S3 service.
+//! descriptor as its body and `GET /v1/deployments/{percent-encoded-name}` for
+//! rollout observation. The ingress carries no object-store or application
+//! secret: authenticity, integrity, placement, and authority all come from
+//! the descriptor signature checked by `clusterctl`. The assigned node
+//! fetches the referenced ELF through its separately provisioned S3 service.
 #![no_std]
 #![no_main]
 
@@ -32,6 +33,11 @@ const HEADER_LIMIT: usize = 1024;
 const ACCEPT_RETRY_MS: u64 = 50;
 const RECEIVE_RETRIES: usize = 300;
 const RECEIVE_RETRY_MS: u64 = 100;
+
+enum Request {
+    Notify(Vec<u8>),
+    Status(Vec<u8>),
+}
 
 fn fail() -> ! {
     unsafe { thread_exit() }
@@ -66,7 +72,39 @@ fn content_length(headers: &[u8]) -> Option<usize> {
     None
 }
 
-fn complete_body(request: &[u8]) -> Result<Option<&[u8]>, ()> {
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn decode_path_name(path: &[u8]) -> Option<Vec<u8>> {
+    let prefix = clusterctl::NOTIFY_PATH;
+    if !path.starts_with(prefix) || path.get(prefix.len()) != Some(&b'/') {
+        return None;
+    }
+    let encoded = path.get(prefix.len() + 1..)?;
+    let mut name = Vec::with_capacity(encoded.len());
+    let mut index = 0;
+    while index < encoded.len() {
+        let byte = encoded[index];
+        if byte == b'%' {
+            let high = hex_digit(*encoded.get(index + 1)?)?;
+            let low = hex_digit(*encoded.get(index + 2)?)?;
+            name.push((high << 4) | low);
+            index += 3;
+        } else {
+            name.push(byte);
+            index += 1;
+        }
+    }
+    (charlotte_launch::deployment::valid_artifact_name(&name)).then_some(name)
+}
+
+fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
     let Some(body_start) = header_end(request) else {
         return if request.len() <= HEADER_LIMIT {
             Ok(None)
@@ -80,11 +118,17 @@ fn complete_body(request: &[u8]) -> Result<Option<&[u8]>, ()> {
     let request_line_end = request.iter().position(|byte| *byte == b'\r').ok_or(())?;
     let request_line = request.get(..request_line_end).ok_or(())?;
     let mut words = request_line.split(|byte| *byte == b' ');
-    if words.next() != Some(b"POST".as_slice())
-        || words.next() != Some(clusterctl::NOTIFY_PATH)
-        || !words.next().is_some_and(|version| version.starts_with(b"HTTP/1."))
+    let method = words.next().ok_or(())?;
+    let path = words.next().ok_or(())?;
+    if !words.next().is_some_and(|version| version.starts_with(b"HTTP/1."))
         || words.next().is_some()
     {
+        return Err(());
+    }
+    if method == b"GET" {
+        return decode_path_name(path).map(Request::Status).map(Some).ok_or(());
+    }
+    if method != b"POST" || path != clusterctl::NOTIFY_PATH {
         return Err(());
     }
     let length = content_length(&request[..body_start]).ok_or(())?;
@@ -98,11 +142,11 @@ fn complete_body(request: &[u8]) -> Result<Option<&[u8]>, ()> {
     if request.len() < end {
         Ok(None)
     } else {
-        Ok(request.get(body_start..end))
+        request.get(body_start..end).map(|body| Some(Request::Notify(body.to_vec()))).ok_or(())
     }
 }
 
-fn receive_descriptor(socket: &socket::OwnedSocket<'_>) -> Result<Vec<u8>, ()> {
+fn receive_request(socket: &socket::OwnedSocket<'_>) -> Result<Request, ()> {
     let mut request = Vec::new();
     loop {
         let chunk =
@@ -116,8 +160,8 @@ fn receive_descriptor(socket: &socket::OwnedSocket<'_>) -> Result<Vec<u8>, ()> {
             return Err(());
         }
         request.extend_from_slice(bytes);
-        if let Some(body) = complete_body(&request)? {
-            return Ok(body.to_vec());
+        if let Some(request) = complete_request(&request)? {
+            return Ok(request);
         }
     }
 }
@@ -149,6 +193,36 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
     }
 }
 
+fn query_rollout(
+    controller: catten_rt::owned::ConnectionRef<'_>,
+    name: &[u8],
+) -> Result<clusterctl::RolloutStatus, i64> {
+    let memory = OwnedMemory::allocate(1).map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+    let mut mapping = memory.map_writable().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+    mapping.as_mut_slice()[..name.len()].copy_from_slice(name);
+    let memory = mapping.unmap().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
+    let reply = controller
+        .call_move(clusterctl::OP_ROLLOUT, name.len() as u64, memory)
+        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
+        .wait()
+        .map_err(|_| clusterctl::ERR_NOT_LEADER)?;
+    if reply.result < 0 {
+        return Err(reply.result);
+    }
+    if reply.result != clusterctl::ROLLOUT_STATUS_LEN as i64 {
+        return Err(clusterctl::ERR_NOT_FOUND);
+    }
+    let memory = reply.memory.ok_or(clusterctl::ERR_NOT_FOUND)?;
+    let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_NOT_FOUND)?;
+    clusterctl::RolloutStatus::decode(
+        mapping
+            .as_slice()
+            .get(..clusterctl::ROLLOUT_STATUS_LEN)
+            .ok_or(clusterctl::ERR_NOT_FOUND)?,
+    )
+    .ok_or(clusterctl::ERR_NOT_FOUND)
+}
+
 fn response(result: Result<i64, ()>) -> alloc::string::String {
     let (status, body) = match result {
         Ok(generation) if generation > 0 => {
@@ -166,6 +240,35 @@ fn response(result: Result<i64, ()>) -> alloc::string::String {
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::string::String {
+    let (http_status, body) = match result {
+        Ok(status) => {
+            let state = match status.state {
+                clusterctl::ROLLOUT_READY => "ready",
+                clusterctl::ROLLOUT_REPLACING => "replacing",
+                _ => "committed",
+            };
+            (
+                "200 OK",
+                format!(
+                    "{{\"state\":\"{state}\",\"deployment_generation\":{},\"service_generation\":\
+                     {},\"node_key\":{}}}\n",
+                    status.deployment_generation, status.service_generation, status.node_key
+                ),
+            )
+        }
+        Err(clusterctl::ERR_NOT_FOUND) => {
+            ("404 Not Found", "{\"error\":\"deployment not found\"}\n".into())
+        }
+        Err(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
+    };
+    format!(
+        "HTTP/1.1 {http_status}\r\nContent-Type: application/json\r\nContent-Length: \
+         {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     )
 }
@@ -211,9 +314,15 @@ fn main(ctx: Context) -> ! {
             sleep_ms(ACCEPT_RETRY_MS);
         }
 
-        let result = receive_descriptor(&socket)
-            .map(|descriptor| notify_cluster(controller.as_ref(), &descriptor));
-        let reply = response(result);
+        let reply = match receive_request(&socket) {
+            Ok(Request::Notify(descriptor)) => {
+                response(Ok(notify_cluster(controller.as_ref(), &descriptor)))
+            }
+            Ok(Request::Status(name)) => {
+                rollout_response(query_rollout(controller.as_ref(), &name))
+            }
+            Err(()) => response(Err(())),
+        };
         let _ = socket.send_all(reply.as_bytes(), 1000, 5);
         let _ = socket.close();
     }

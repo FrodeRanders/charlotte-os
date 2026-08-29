@@ -133,6 +133,12 @@ fn valid_name(value: &[u8], maximum: usize) -> bool {
         && value.iter().all(|byte| (0x21..=0x7e).contains(byte))
 }
 
+/// Whether `value` is a valid logical artifact name in a signed deployment
+/// descriptor and in the deployment ingress URL.
+pub fn valid_artifact_name(value: &[u8]) -> bool {
+    valid_name(value, MAX_ARTIFACT_NAME_LEN)
+}
+
 fn valid_rights(rights: u16) -> bool {
     rights != 0 && rights & !ALL_GRANT_RIGHTS == 0
 }
@@ -141,7 +147,7 @@ pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> 
     if fields.sequence == 0 {
         return Err(EncodeError::InvalidSequence);
     }
-    if !valid_name(fields.artifact_name, MAX_ARTIFACT_NAME_LEN) {
+    if !valid_artifact_name(fields.artifact_name) {
         return Err(EncodeError::InvalidArtifactName);
     }
     if !valid_name(fields.object_key, MAX_OBJECT_KEY_LEN) {
@@ -253,9 +259,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     let object_key_end = name_end.checked_add(object_key_len)?;
     let artifact_name = bytes.get(name_start..name_end)?;
     let object_key = bytes.get(name_end..object_key_end)?;
-    if !valid_name(artifact_name, MAX_ARTIFACT_NAME_LEN)
-        || !valid_name(object_key, MAX_OBJECT_KEY_LEN)
-    {
+    if !valid_artifact_name(artifact_name) || !valid_name(object_key, MAX_OBJECT_KEY_LEN) {
         return None;
     }
     let mut grants = CapabilityGrants {

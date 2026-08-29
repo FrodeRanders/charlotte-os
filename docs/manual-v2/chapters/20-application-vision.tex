@@ -18,16 +18,17 @@ wrappers, capability requirements, communication structure, and cluster desired 
 Familiarity then belongs primarily to the development tools and domain model, not to 
 the operating-system ABI.
 
-The current boundary is important. Durga reads BPMN and generates
-Kafka-oriented Java or Rust applications. Its generated targets share
-process-event and topic conventions, and its generated workers hide substantial
-messaging and lifecycle machinery. It does not generate Charlotte binaries,
-Charlotte capabilities, or Charlotte deployment records. CharlotteOS, in turn,
-implements the signed-ELF, name-service, deployment, observation, and stateless
-assignment mechanisms described in \autoref{chap:cluster-vision}, but it does not implement the
-Durga integration proposed here. Except where the current Durga or Charlotte
-mechanisms are stated explicitly, the remainder of this chapter is an
-architectural target and a programme of experiments.
+The current boundary is important. Durga now has a prototype
+\texttt{charlotte} target alongside its Kafka-oriented Java and Rust targets.
+For each BPMN component it emits a \texttt{no\_std} runtime adapter, a Cargo
+manifest template, an AArch64 Charlotte build script, capability requests,
+named Kafka connector profiles, and signed-deployment planning metadata. The
+generated adapters have been compiled into Charlotte ELFs. Business handlers
+and schemas still have developer-owned completion points, and Durga does not
+itself operate a Charlotte release controller. CharlotteOS implements signed
+central-S3 pickup, scoped launch, grant mediation, reconciliation, and
+generation-safe rollout observation. The remainder of this chapter therefore
+separates the working vertical slice from the larger architectural target.
 
 \section{The application thesis}
 
@@ -82,7 +83,7 @@ setup, process lifecycle events, and monitoring structure from that model. The
 application developer completes or supplies the task-specific business
 behaviour while generated code implements much of the surrounding protocol.
 
-Two current backends demonstrate that the process description need not be tied
+Three current backends demonstrate that the process description need not be tied
 to one implementation language:
 
 \begin{itemize}
@@ -93,23 +94,31 @@ to one implementation language:
     \item The Rust target generates a Cargo crate. Tasks and gateways become
         binaries under \texttt{src/bin}, with common code in a generated
         library and shared Durga runtime support.
+
+    \item The prototype Charlotte target generates minimal \texttt{no\_std}
+        activity adapters and a deployment plan. Kafka broker credentials stay
+        in separately named connector profiles; applications receive only
+        granted service endpoints.
 \end{itemize}
 
-Both targets use the same process-event wire model and topic layout. A monitor
-can therefore observe either target, and Java and Rust components can
-interoperate through the same generated protocol. This is implemented Durga
-behaviour. It is also evidence for an architectural separation: the semantics
-of a process can remain stable while code generation changes the language and
-runtime used to realise it.
+The Java and Rust targets use the same process-event wire model and topic
+layout, so their components interoperate through the generated protocol. The
+Charlotte target consumes the same process topology and generates Kafka
+connector intent, but its minimal adapters do not yet implement the complete
+process-event runtime. This is nevertheless evidence for an architectural
+separation: the semantics of a process can remain stable while code generation
+changes the language and runtime used to realise it.
 
-The current generated deployment remains conventional. A generated application
+The Java and Rust deployment paths remain conventional. A generated application
 can include a JAR or Rust binaries, Kafka configuration and topic provisioning,
 a container build, a Kubernetes Deployment and Service, health probes, resource
 limits, environment configuration, and deployment scripts. Scaling combines
 application replicas with Kafka consumer groups and topic partitions. In an
 OpenShift environment, image policy, registry access, security context,
 network policy, routes, secrets, monitoring integration, and organisational
-admission policy normally add further deployment concerns.
+admission policy normally add further deployment concerns. The Charlotte
+target instead emits platform build and deployment-planning inputs; operating
+the release remains outside Durga.
 
 These mechanisms are not accidental overhead. They supply real isolation,
 durability, routing, scaling, recovery, and operational control for conventional
@@ -163,11 +172,11 @@ have to reverse-engineer those concepts from a Kafka-specific topology.
 
 \subsection{The execution substrate}
 
-The lower layer realises the semantic model. Current Durga backends use Java or
-Rust workers and Kafka communication. A proposed backend would use Charlotte
-execution objects, capabilities, names, messages, supervision, and cluster
+The lower layer realises the semantic model. The established Durga backends use
+Java or Rust workers and Kafka communication. The prototype Charlotte target
+starts to use Charlotte execution objects, capabilities, names, and cluster
 desired state, while retaining an external event log where its semantics are
-required.
+required. Supervision and the complete process runtime remain target work.
 
 The intended relationship is therefore:
 
@@ -190,12 +199,14 @@ must either retain a suitable service such as Kafka or reject the build. A
 backend is not correct merely because it can move bytes from one activity to
 the next.
 
-\section{A proposed Charlotte backend}
+\section{The Charlotte backend and its target architecture}
 
-The central proposal is a third Durga target, here called
-\texttt{charlotte}. It would transform the Durga semantic model and
-developer-owned rule code into Charlotte-native artifacts plus a deployment
-contract. This backend does not currently exist.
+The third Durga target is called \texttt{charlotte}. Its first vertical slice
+transforms the Durga semantic model into Charlotte-native adapter sources,
+build inputs, authority requests, connector profiles, and a deployment plan.
+The target architecture extends that working slice with completed business-rule
+bindings, bundle admission, multi-replica placement, lifecycle supervision, and
+rollback.
 
 \subsection{Generated activity boundary}
 
@@ -423,8 +434,9 @@ The existing Charlotte manifest accepts one explicit node assignment per
 artifact. The \texttt{PlacementPolicy} contract described in
 \autoref{chap:cluster-vision} can
 express replica and affinity properties but is not yet stored or realised by a
-placement controller. Consuming a Durga process bundle therefore depends on the
-future controller, replica routing, shared artifact availability, and production
+placement controller. Consuming a generated singleton is now possible through
+signed central-S3 notification. Consuming a complete replicated Durga process
+bundle still depends on the future controller, replica routing, and production
 administration authority already identified there.
 
 \section{Process topology as placement information}
@@ -800,12 +812,14 @@ Java-specific runtime facility is not automatically portable. The developer
 contract should make portable operations easy, platform-specific dependencies
 explicit, and unsupported dependencies visible at build time.
 
-\section{A concrete first experiment}
+\section{The first vertical slice and the next experiment}
 
-The first experiment should be deliberately narrower than a complete process
-runtime. Add a third Durga backend that generates one minimal Charlotte-native
-activity and the metadata required to admit and invoke it. The goal is to test
-the abstraction boundary, not to replace Kafka or Kubernetes in one step.
+The first experiment was deliberately narrower than a complete process runtime:
+generate minimal Charlotte-native activities and the metadata required to
+build, admit, and invoke them. Durga now emits those adapters and CharlotteOS
+can pull and launch signed applications. The next experiment is a generated
+multi-activity bundle deployed through the RustFS-backed ingress, with one
+transactional Kafka step and observable rollout completion.
 
 \subsection{Experiment input}
 
@@ -825,7 +839,8 @@ message.
 
 \subsection{Generated output}
 
-The proposed \texttt{charlotte} backend should generate:
+The next \texttt{charlotte} slice should extend the current generated output
+with:
 
 \begin{enumerate}
     \item a Charlotte entry point and activity wrapper;
@@ -924,10 +939,10 @@ Substantial work remains in both projects:
     \item The Charlotte userspace ABI and runtime services needed by generated
         code must be identified, implemented, and kept deliberately narrow.
 
-    \item A Charlotte backend must generate or request reviewable S3 and Kafka
-        profiles without embedding credentials in developer-owned business
-        code. Secret delivery, trust-anchor rotation, and profile replacement
-        need a production provisioning path.
+    \item The Charlotte backend generates reviewable S3/Kafka profile requests
+        without embedding credentials in developer-owned business code. Secret
+        delivery, trust-anchor rotation, and profile replacement still need a
+        production provisioning path.
 
     \item Capability inference, review, admission, and binding need a format and
         policy model. The generator may request authority but must not grant it.
@@ -935,8 +950,9 @@ Substantial work remains in both projects:
     \item Process-bundle format, signatures, artifact and schema identity,
         provenance, and reproducible generation remain to be designed.
 
-    \item The Charlotte cluster still needs shared artifact fetching,
-        production administration authority, replica realisation and routing,
+    \item The Charlotte cluster now has shared central-S3 artifact fetching and
+        singleton rollout observation. It still needs production administration
+        authority, replica realisation and routing,
         cluster-wide telemetry, and an automatic placement controller
         (\autoref{chap:cluster-vision}).
 
@@ -970,20 +986,21 @@ operating-system programmer.
 
 Durga supplies a plausible compiler boundary because it already turns BPMN into
 Java and Rust execution structures with common process semantics and generated
-runtime plumbing. A future Charlotte backend could extend that transformation
-to signed artifacts, typed interfaces, capability and communication graphs,
-placement hints, provenance, and cluster desired state. BPMN would provide an
-initial account of application structure; Charlotte observation would test and
-refine that account at runtime; stable identities would keep the resulting
-evidence connected to business intent.
+runtime plumbing. Its prototype Charlotte target has begun extending that
+transformation to platform adapters, capability and communication requests,
+connector profiles, and cluster deployment plans. Signed bundles, complete
+typed interfaces, provenance, and policy-backed placement remain to be added.
+BPMN would provide an initial account of application structure; Charlotte
+observation would test and refine that account at runtime; stable identities
+would keep the resulting evidence connected to business intent.
 
 The proposal does not eliminate schedulers, durable logs, deployment policy,
 software supply chains, failure recovery, or observability. It relocates some of
 their expression from containers and infrastructure manifests into a process
-compiler and a cluster-native execution contract. The proposed third-backend
-experiment is the next falsifiable step: generate one minimal Charlotte-native
-activity and determine whether its developer can remain concerned with the
-business rule while the generated code accounts for the new operating
-environment.
+compiler and a cluster-native execution contract. The next falsifiable step is
+to take the generated prototype through a multi-activity release and determine
+whether its developer can remain concerned with the business rule while
+generated code and the cluster account for deployment, authority, and the
+operating environment.
 
 \endinput

@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -39,6 +39,8 @@
 #   --dhcp-test   Verify that the default DHCP client acquires a lease
 #   --s3-test     Start a TLS RustFS Docker fixture and verify S3
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
+#   --deployment-ingress-test  Use that RustFS fixture to verify the complete
+#                 signed upload/notify/pull/launch/readiness deployment path
 #   --kafka-test  Start a TLS/mTLS/SCRAM Apache Kafka Docker fixture and verify
 #                 idempotent produce, read-committed consume, transactions,
 #                 and recovery after the active route leader is killed
@@ -79,6 +81,7 @@ TCPIP_TEST="0"
 HTTP_TEST="0"
 DHCP_TEST="0"
 S3_TEST="0"
+DEPLOYMENT_INGRESS_TEST="0"
 KAFKA_TEST="0"
 KAFKA_COORDINATOR_TEST="0"
 KAFKA_FENCING_TEST="0"
@@ -120,6 +123,7 @@ while [ "$#" -gt 0 ]; do
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
+        --deployment-ingress-test) NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; DEPLOYMENT_INGRESS_TEST="1"; shift ;;
         --kafka-test)  NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; shift ;;
         --kafka-coordinator-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_COORDINATOR_TEST="1"; shift ;;
         --kafka-fencing-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_FENCING_TEST="1"; shift ;;
@@ -167,7 +171,8 @@ fi
 if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
     || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
-    || [ "$S3_TEST" = "1" ] || [ "$KAFKA_TEST" = "1" ]; }; then
+    || [ "$S3_TEST" = "1" ] || [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] \
+    || [ "$KAFKA_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
@@ -237,9 +242,13 @@ fi
 
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
+DEPLOYMENT_WORKER_PID=""
 KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
 KAFKA_RUNNING="0"
 cleanup_fixtures() {
+    if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
+        kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
+    fi
     if [ "$RUSTFS_RUNNING" = "1" ]; then
         docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
     fi
@@ -434,6 +443,32 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
     "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
 fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
+
+DEPLOYMENT_DESCRIPTOR=""
+CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
+if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+    echo ">>> Preparing signed central-store deployment fixture..."
+    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+    DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
+    mkdir -p "$DEPLOYMENT_TEST_DIR"
+    DEPLOYMENT_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
+    DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/greet.cdep"
+    DEPLOYMENT_OBJECT_KEY="deployments/greet-e2e.elf"
+    DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
+    if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
+        DEPLOYMENT_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
+    else
+        DEPLOYMENT_PRIVATE_KEY="$(grep -v '^#' "${ROOT_DIR}/tools/cluster-sign/dev-key.hex" | tr -d '[:space:]')"
+    fi
+    DEPLOYMENT_SEQUENCE="$(date +%s)"
+    docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
+        -v "${DEPLOYMENT_ELF}:/tmp/greet.elf:ro" \
+        --entrypoint /bin/sh init -ec \
+        'rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/greet.elf local/charlotte-test/deployments/greet-e2e.elf'
+    "$CLUSTER_SIGN_BIN" deployment-sign \
+        "$DEPLOYMENT_DESCRIPTOR" greet "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
+        0 "$DEPLOYMENT_SEQUENCE" "$DEPLOYMENT_PRIVATE_KEY" greet=publish
+fi
 
 # Feature selection.
 FEATURES="acpi"
@@ -730,6 +765,33 @@ if [ -n "$TIMEOUT" ]; then
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    DEPLOYMENT_RESULT_FILE=""
+    DEPLOYMENT_WORKER_LOG=""
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+        DEPLOYMENT_RESULT_FILE="${ROOT_DIR}/target/deployment-ingress-test/result"
+        DEPLOYMENT_WORKER_LOG="${ROOT_DIR}/target/deployment-ingress-test/worker.log"
+        rm -f "$DEPLOYMENT_RESULT_FILE" "$DEPLOYMENT_WORKER_LOG"
+        (
+            deadline=$((SECONDS + TIMEOUT - 5))
+            until "$CLUSTER_SIGN_BIN" deployment-notify \
+                "$DEPLOYMENT_DESCRIPTOR" "127.0.0.1:${DEPLOY_HOST_PORT}"; do
+                if [ "$SECONDS" -ge "$deadline" ]; then
+                    echo "deployment ingress did not accept the descriptor before timeout"
+                    exit 1
+                fi
+                sleep 1
+            done
+            remaining=$((deadline - SECONDS))
+            if [ "$remaining" -le 0 ]; then
+                echo "no time remained to observe deployment readiness"
+                exit 1
+            fi
+            "$CLUSTER_SIGN_BIN" deployment-status \
+                greet "127.0.0.1:${DEPLOY_HOST_PORT}" "$remaining"
+            printf '%s\n' ready >"$DEPLOYMENT_RESULT_FILE"
+        ) >"$DEPLOYMENT_WORKER_LOG" 2>&1 &
+        DEPLOYMENT_WORKER_PID=$!
+    fi
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
     # A socket-linked peer may still be applying the final Raft entry or
@@ -830,6 +892,8 @@ if [ -n "$TIMEOUT" ]; then
             if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
                 && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FENCING_TEST" = "1" ] \
                     || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
+                && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
+                    || [ -f "$DEPLOYMENT_RESULT_FILE" ]; } \
                 && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
@@ -910,6 +974,17 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "1" ] && [ "$HTTP_PROBE_OK" = "0" ]; then
         echo "error: guest HTTP keyhole was not validated from the host" >&2
         exit 1
+    fi
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+        wait "$DEPLOYMENT_WORKER_PID" 2>/dev/null || true
+        DEPLOYMENT_WORKER_PID=""
+        echo ">>> Signed deployment fixture output:"
+        cat "$DEPLOYMENT_WORKER_LOG"
+        if [ ! -f "$DEPLOYMENT_RESULT_FILE" ]; then
+            echo "error: signed RustFS deployment did not become ready" >&2
+            exit 1
+        fi
+        echo ">>> Signed RustFS upload/notify/pull/launch/readiness path validated."
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2

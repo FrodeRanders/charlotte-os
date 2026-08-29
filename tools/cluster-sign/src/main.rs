@@ -13,7 +13,11 @@ use std::{
     },
     net::TcpStream,
     process::ExitCode,
-    time::Duration,
+    thread,
+    time::{
+        Duration,
+        Instant,
+    },
 };
 
 use charlotte_launch::{
@@ -444,6 +448,77 @@ fn deployment_notify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn percent_encode_path_segment(value: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut encoded = String::new();
+    for byte in value {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(*byte));
+        } else {
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    encoded
+}
+
+fn deployment_status_once(artifact_name: &str, endpoint: &str) -> Result<(String, String)> {
+    if !deployment::valid_artifact_name(artifact_name.as_bytes()) {
+        return Err("invalid deployment artifact name".to_owned());
+    }
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    let path = percent_encode_path_segment(artifact_name.as_bytes());
+    let request = format!(
+        "GET /v1/deployments/{path} HTTP/1.1\r\nHost: {endpoint}\r\nConnection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("send deployment status request: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read deployment status response: {error}"))?;
+    let status = response.lines().next().unwrap_or_default().to_owned();
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or_default().trim().to_owned();
+    Ok((status, body))
+}
+
+fn deployment_status(args: &[String]) -> Result<()> {
+    let artifact_name = args.first().ok_or_else(|| "missing artifact name".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let timeout = args
+        .get(2)
+        .map(|value| value.parse::<u64>().map_err(|_| "invalid timeout seconds".to_owned()))
+        .transpose()?
+        .unwrap_or(0);
+    let deadline = Instant::now() + Duration::from_secs(timeout);
+    loop {
+        match deployment_status_once(artifact_name, endpoint) {
+            Ok((status, body)) if status.starts_with("HTTP/1.1 200 ") => {
+                if timeout == 0 || body.contains("\"state\":\"ready\"") {
+                    println!("{body}");
+                    return Ok(());
+                }
+            }
+            Ok((status, body)) if timeout == 0 => {
+                return Err(format!("deployment status failed: {status}: {body}"));
+            }
+            Err(error) if timeout == 0 => return Err(error),
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(format!("deployment {artifact_name:?} did not become ready in {timeout}s"));
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -467,6 +542,7 @@ fn run() -> Result<()> {
         Some("deployment-sign") => deployment_sign(&args[2..]),
         Some("deployment-verify") => deployment_verify(&args[2..]),
         Some("deployment-notify") => deployment_notify(&args[2..]),
+        Some("deployment-status") => deployment_status(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -559,7 +635,8 @@ fn run() -> Result<()> {
                   deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
                   <node-key> <sequence> <privkey-hex> [service=send|call|client|publish ...] | \
                   deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
-                  [host:port] | selftest"
+                  [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
+                  selftest"
             .to_owned()),
     }
 }

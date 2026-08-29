@@ -511,6 +511,57 @@ fn main(ctx: Context) -> ! {
                         memory_close(memory);
                     }
                 }
+                clusterctl::OP_ROLLOUT => {
+                    let name_len = usize::try_from(message.arg0).unwrap_or(0);
+                    let request = if message.memory == 0
+                        || name_len == 0
+                        || name_len > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
+                    {
+                        None
+                    } else {
+                        // ABI boundary: the caller moves this memory into the
+                        // request exactly once; forwarding consumes its owner.
+                        unsafe { OwnedMemory::from_raw(message.memory) }.ok()
+                    };
+                    let Some(request) = request else {
+                        if message.memory != 0 {
+                            memory_close(message.memory);
+                        }
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, clusterctl::ERR_TOO_LARGE);
+                        }
+                        continue;
+                    };
+                    let dns = unsafe { ConnectionRef::from_raw(dns_conn) }
+                        .expect("launch-owned DNS connection");
+                    let reply = dns
+                        .call_move(dns::OP_DEPLOY_ROLLOUT_NAMED, name_len as u64, request)
+                        .ok()
+                        .and_then(|call| call.wait().ok());
+                    match reply {
+                        Some(reply)
+                            if reply.result == clusterctl::ROLLOUT_STATUS_LEN as i64
+                                && reply.memory.is_some() =>
+                        {
+                            let memory = reply.memory.expect("checked returned memory");
+                            if message.reply != 0 {
+                                // This service's legacy raw receive loop has
+                                // not yet been converted to `IncomingMessage`;
+                                // the ABI move below consumes the returned
+                                // owner exactly once.
+                                ipc_reply_move(
+                                    message.reply,
+                                    memory.into_raw(),
+                                    clusterctl::ROLLOUT_STATUS_LEN as i64,
+                                );
+                            }
+                        }
+                        _ if message.reply != 0 => {
+                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                        }
+                        _ => {}
+                    }
+                }
                 clusterctl::OP_KEYCEREMONY => {
                     let result = match read_key(&message) {
                         Some(key) if key == trusted_key => {

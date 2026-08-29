@@ -47,6 +47,7 @@ const CATALOG_MAGIC_V4: u64 = 0x4341_5441_4c4f_4734; // "CATALOG4"
 const CATALOG_MAGIC_V5: u64 = 0x4341_5441_4c4f_4735; // "CATALOG5"
 const CATALOG_MAGIC_V6: u64 = 0x4341_5441_4c4f_4736; // "CATALOG6"
 const CATALOG_MAGIC_V7: u64 = 0x4341_5441_4c4f_4737; // "CATALOG7"
+const CATALOG_MAGIC_V8: u64 = 0x4341_5441_4c4f_4738; // "CATALOG8"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -58,6 +59,9 @@ pub struct CatalogEntry {
     pub node: Vec<u8>,
     pub generation: u64,
     pub active: bool,
+    /// Desired deployment generation whose application endpoint produced
+    /// this registration. Zero denotes an ordinary system service.
+    pub deployment_generation: u64,
 }
 
 /// A replicated deployment record: the cluster's answer to "which node runs
@@ -150,7 +154,16 @@ impl NameCatalog {
                 let Some((name, after_name)) = take_len_bytes(command, 1) else {
                     return Vec::new();
                 };
-                let Some((node, _)) = take_len_bytes(command, after_name) else {
+                let Some((node, after_node)) = take_len_bytes(command, after_name) else {
+                    return Vec::new();
+                };
+                let deployment_generation = if command.len() == after_node {
+                    0
+                } else if command.len() == after_node + 8 {
+                    u64::from_le_bytes(
+                        command[after_node..after_node + 8].try_into().unwrap_or_default(),
+                    )
+                } else {
                     return Vec::new();
                 };
                 let mut entries = self.entries.lock();
@@ -174,6 +187,7 @@ impl NameCatalog {
                         node: node.to_vec(),
                         generation,
                         active: false,
+                        deployment_generation,
                     },
                 );
                 generation.to_le_bytes().to_vec()
@@ -316,17 +330,17 @@ impl NameCatalog {
         let deployments = self.deployments.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
-            size += 4 + name.len() + 4 + entry.node.len() + 8 + 1;
+            size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
         }
-        // V7 appends signed deployment descriptors to the manifest records.
-        // cluster key (present flag + 32 bytes).
+        // V7 appends signed deployment descriptors to the manifest records;
+        // V8 binds active application registrations to deployment generations.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
         }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V7.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V8.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -335,6 +349,7 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.node);
             buf.extend_from_slice(&entry.generation.to_le_bytes());
             buf.push(u8::from(entry.active));
+            buf.extend_from_slice(&entry.deployment_generation.to_le_bytes());
         }
         buf.extend_from_slice(&(deployments.len() as u32).to_le_bytes());
         for (artifact, entry) in deployments.iter() {
@@ -371,6 +386,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V5
             && magic != CATALOG_MAGIC_V6
             && magic != CATALOG_MAGIC_V7
+            && magic != CATALOG_MAGIC_V8
         {
             return;
         }
@@ -400,6 +416,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V5
                 || magic == CATALOG_MAGIC_V6
                 || magic == CATALOG_MAGIC_V7
+                || magic == CATALOG_MAGIC_V8
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -408,12 +425,21 @@ impl NameCatalog {
             } else {
                 (true, after_generation)
             };
+            let (deployment_generation, after_entry) = if magic == CATALOG_MAGIC_V8 {
+                let Some((generation, after_generation)) = read_u64(data, after_entry) else {
+                    return;
+                };
+                (generation, after_generation)
+            } else {
+                (0, after_entry)
+            };
             entries.insert(
                 name.to_vec(),
                 CatalogEntry {
                     node: node.to_vec(),
                     generation,
                     active,
+                    deployment_generation,
                 },
             );
             pos = after_entry;
@@ -425,6 +451,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V5
             || magic == CATALOG_MAGIC_V6
             || magic == CATALOG_MAGIC_V7
+            || magic == CATALOG_MAGIC_V8
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -454,7 +481,10 @@ impl NameCatalog {
                         Some((_, after_mac)) => ([0; 32], after_mac),
                         None => return,
                     }
-                } else if magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7 {
+                } else if magic == CATALOG_MAGIC_V6
+                    || magic == CATALOG_MAGIC_V7
+                    || magic == CATALOG_MAGIC_V8
+                {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
                     else {
@@ -467,7 +497,9 @@ impl NameCatalog {
                 } else {
                     ([0; 32], after_generation)
                 };
-                let (descriptor, after_entry) = if magic == CATALOG_MAGIC_V7 {
+                let (descriptor, after_entry) = if magic == CATALOG_MAGIC_V7
+                    || magic == CATALOG_MAGIC_V8
+                {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
                         return;
@@ -497,11 +529,17 @@ impl NameCatalog {
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
-        if magic == CATALOG_MAGIC_V5 || magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7 {
+        if magic == CATALOG_MAGIC_V5
+            || magic == CATALOG_MAGIC_V6
+            || magic == CATALOG_MAGIC_V7
+            || magic == CATALOG_MAGIC_V8
+        {
             let Some(present) = data.get(pos) else {
                 return;
             };
-            let (generation, key_start) = if magic == CATALOG_MAGIC_V6 || magic == CATALOG_MAGIC_V7
+            let (generation, key_start) = if magic == CATALOG_MAGIC_V6
+                || magic == CATALOG_MAGIC_V7
+                || magic == CATALOG_MAGIC_V8
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -617,6 +655,14 @@ pub fn encode_register(name: &[u8], node: &[u8]) -> Vec<u8> {
     buf
 }
 
+/// Encode a deployed application's registration, binding the active endpoint
+/// to the exact desired deployment generation that launched it.
+pub fn encode_register_deployment(name: &[u8], node: &[u8], deployment_generation: u64) -> Vec<u8> {
+    let mut buf = encode_register(name, node);
+    buf.extend_from_slice(&deployment_generation.to_le_bytes());
+    buf
+}
+
 /// Encode an unregister command: `{name}`.
 pub fn encode_unregister(name: &[u8]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(1 + 4 + name.len());
@@ -665,6 +711,7 @@ pub fn decode_query_result(bytes: &[u8]) -> Option<CatalogEntry> {
         node,
         generation,
         active: true,
+        deployment_generation: 0,
     })
 }
 
@@ -748,5 +795,58 @@ impl crate::broker::Catalog for NameCatalog {
             generation: entry.generation,
             connection: 0,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deployment_generation_survives_activation_and_snapshot() {
+        let catalog = NameCatalog::new();
+        let prepared = catalog.apply_with_result(
+            1,
+            &encode_register_deployment(b"orders", b"charlotte:89abcdef", 42),
+        );
+        let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"orders", service_generation));
+
+        let entry = catalog.lookup(b"orders").unwrap();
+        assert_eq!(entry.deployment_generation, 42);
+        assert_eq!(crate::node_identity::key_from_name(&entry.node), Some(0x89ab_cdef));
+
+        let restored = NameCatalog::new();
+        restored.restore(&catalog.snapshot());
+        assert_eq!(restored.lookup(b"orders"), Some(entry));
+    }
+
+    #[test]
+    fn ordinary_registration_has_no_deployment_generation() {
+        let catalog = NameCatalog::new();
+        let prepared =
+            catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
+        let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"dns", service_generation));
+        assert_eq!(catalog.lookup(b"dns").unwrap().deployment_generation, 0);
+    }
+
+    #[test]
+    fn rollout_status_and_remote_registration_are_canonical() {
+        let status = crate::clusterctl::RolloutStatus {
+            state: crate::clusterctl::ROLLOUT_READY,
+            deployment_generation: 7,
+            service_generation: 11,
+            node_key: 0x1234_abcd,
+        };
+        assert_eq!(crate::clusterctl::RolloutStatus::decode(&status.encode()), Some(status));
+
+        let frame = crate::rregister::encode_request(b"charlotte:1234abcd", b"orders", 7);
+        assert_eq!(
+            crate::rregister::decode_request(
+                &[&[crate::rregister::TAG_REQUEST], frame.as_slice()].concat()
+            ),
+            Some((b"charlotte:1234abcd".to_vec(), b"orders".to_vec(), 7))
+        );
     }
 }

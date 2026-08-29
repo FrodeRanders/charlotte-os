@@ -62,6 +62,7 @@ struct ActiveDeployment {
 }
 
 fn fail(stage: u32) -> ! {
+    catten_rt::logln!("[agent] fatal stage={:#x}", stage);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, stage);
     catten_rt::domain_abort()
 }
@@ -216,6 +217,11 @@ fn fetch_from_central_store(
     descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
     cluster_key: &[u8; 32],
 ) -> Option<Vec<u8>> {
+    catten_rt::logln!(
+        "[agent] fetching {:?} from S3 key {:?}",
+        core::str::from_utf8(descriptor.artifact_name).unwrap_or("<invalid>"),
+        core::str::from_utf8(descriptor.object_key).unwrap_or("<invalid>")
+    );
     let (_, connection) = try_registered_name_bytes_owned(names, b"s3")?;
     let client = S3Client::new(connection.as_ref());
     let request = charlotte_protocol_s3::ObjectRequest::get(descriptor.object_key);
@@ -245,8 +251,10 @@ fn fetch_from_central_store(
             descriptor.artifact_name,
         ) != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
+        catten_rt::logln!("[agent] fetched artifact failed identity validation");
         return None;
     }
+    catten_rt::logln!("[agent] fetched and verified {} bytes", artifact.len());
     Some(artifact)
 }
 
@@ -297,6 +305,12 @@ fn launch(
         entry.descriptor.len(),
     )
     .ok()?;
+    catten_rt::logln!(
+        "[agent] launched {:?} generation={} asid={}",
+        core::str::from_utf8(name).unwrap_or("<invalid>"),
+        entry.generation,
+        domain.asid()
+    );
     Some(ActiveDeployment {
         name: name.to_vec(),
         generation: entry.generation,
@@ -314,17 +328,26 @@ fn publish_if_ready(
     if active.published || try_registered_name_bytes_owned(names, &active.name).is_none() {
         return;
     }
-    let Some(name_memory) = memory_from_bytes(&active.name) else {
+    let mut request = Vec::with_capacity(8 + active.name.len());
+    request.extend_from_slice(&active.generation.to_le_bytes());
+    request.extend_from_slice(&active.name);
+    let Some(name_memory) = memory_from_bytes(&request) else {
         return;
     };
     let Some(reply) = dns_connection
-        .call_move(dns::OP_REGISTER_NAMED, active.name.len() as u64, name_memory)
+        .call_move(dns::OP_REGISTER_DEPLOYMENT_NAMED, request.len() as u64, name_memory)
         .ok()
         .and_then(|call| call.wait().ok())
     else {
         return;
     };
     if reply.result >= 1 {
+        catten_rt::logln!(
+            "[agent] published {:?} deployment_generation={} service_generation={}",
+            core::str::from_utf8(&active.name).unwrap_or("<invalid>"),
+            active.generation,
+            reply.result
+        );
         active.published = true;
         config::write::<u64>(charlotte_launch::agent_status::SERVED_GENERATION, active.generation);
         config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SERVING);

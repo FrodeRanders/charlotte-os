@@ -986,6 +986,21 @@ impl Endpoint {
             .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
     }
 
+    /// Receive one queued request with the kernel-authenticated sender
+    /// generation, principal, and supervisor roles populated.
+    ///
+    /// Authority-mediating services must use this form; the legacy receive
+    /// ABI deliberately leaves those fields zero for compatibility.
+    pub fn try_receive_authenticated(&self) -> Result<Option<IncomingMessage>, ReceiveError> {
+        IncomingMessage::from_kernel(kernel::ipc_recv_authenticated(self.raw_handle()))
+    }
+
+    /// Block for a request with a kernel-authenticated sender envelope.
+    pub fn receive_authenticated(&self) -> Result<IncomingMessage, ReceiveError> {
+        IncomingMessage::from_kernel(kernel::ipc_recv_block_authenticated(self.raw_handle()))?
+            .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
+    }
+
     pub fn connect(&self, rights: IpcRights) -> Result<Connection, IpcError> {
         Connection::from_kernel(kernel::ipc_connect(self.raw_handle(), rights))
             .ok_or(IpcError::CreationFailed)
@@ -1959,6 +1974,14 @@ mod kernel {
         catten_syscall::ipc_recv_block(endpoint)
     }
 
+    pub fn ipc_recv_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
+        catten_syscall::ipc_recv_authenticated(endpoint)
+    }
+
+    pub fn ipc_recv_block_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
+        catten_syscall::ipc_recv_block_authenticated(endpoint)
+    }
+
     pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
         catten_syscall::ipc_scalar_call(connection, opcode, arg0)
     }
@@ -2355,6 +2378,14 @@ mod kernel {
     }
 
     pub fn ipc_recv_block(endpoint: u64) -> catten_syscall::IpcMessage {
+        ipc_recv(endpoint)
+    }
+
+    pub fn ipc_recv_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
+        ipc_recv(endpoint)
+    }
+
+    pub fn ipc_recv_block_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
         ipc_recv(endpoint)
     }
 

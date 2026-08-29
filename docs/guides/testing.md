@@ -59,6 +59,11 @@ VirtIO RNG device and entropy service are part of ordinary QEMU operation, not
 test-only support. See
 [S3 client service](../reference/s3-client.md#rustfs-integration-test).
 
+`--deployment-ingress-test --timeout 240` extends the same fixture with the
+release path. The host uploads the signed `greet` ELF to RustFS, signs and
+submits a `CDEPLOY1` notification, and waits on the management API until the
+exact desired generation owns the active service name on its assigned node.
+
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
 The verifier covers the TLS handshake, idempotent production, bounded

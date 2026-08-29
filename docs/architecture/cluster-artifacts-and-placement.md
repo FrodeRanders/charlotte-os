@@ -211,7 +211,9 @@ grant-controller mediation, and scoped kernel launch are implemented. Current
 limits are explicit: placement and the agent still handle one active short
 (at most eight-byte) artifact name at a time; the first agent is specialized
 to the `greet` demonstration application; and the S3 connector must be
-provisioned separately before notifying the cluster. There is not yet rollout
-readiness/status over the management HTTP endpoint, multi-owner placement, a
-long-name deployment opcode, authenticated audit identities beyond the signing
-key, or an end-to-end central-store deployment fixture.
+provisioned separately before notifying the cluster. The management endpoint
+now reports generation-safe `committed`, `replacing`, and `ready` rollout
+conditions, and the QEMU runner has a RustFS-backed end-to-end deployment
+fixture. Multi-owner placement and load balancing, authenticated audit
+identities beyond the signing key, and a production release controller remain
+open.

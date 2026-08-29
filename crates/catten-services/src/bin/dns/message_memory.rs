@@ -164,6 +164,20 @@ pub(super) fn read_named_bytes(message: &IpcMessage) -> Option<Vec<u8>> {
     Some(name)
 }
 
+/// Read `[deployment_generation:u64][name]` from a moved agent registration.
+pub(super) fn read_deployment_registration(message: &IpcMessage) -> Option<(Vec<u8>, u64)> {
+    let bytes = read_moved_bytes(message, 8 + charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN)?;
+    if bytes.len() < 9 || bytes.len() != message.arg0 as usize {
+        return None;
+    }
+    let generation = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
+    let name = bytes.get(8..)?.to_vec();
+    if generation == 0 || !charlotte_launch::deployment::valid_artifact_name(&name) {
+        return None;
+    }
+    Some((name, generation))
+}
+
 /// Read an arbitrary bounded payload from moved memory, consuming the object.
 pub(super) fn read_moved_bytes(message: &IpcMessage, max_len: usize) -> Option<Vec<u8>> {
     if message.memory == 0 {

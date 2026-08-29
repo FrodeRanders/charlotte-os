@@ -16,6 +16,8 @@ store credentials.
    the logical artifact name, exact digest, opaque object key, target node key,
    monotonic sequence, and named capability grants.
 5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
+6. Observe the exact generation with
+   `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
 
 The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `deployd`. `deployd` listens on guest TCP port 7444. The QEMU runners forward
@@ -29,12 +31,19 @@ cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
   <sha256-of-signed-elf> 0 42 <private-key-hex> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
+cluster-sign deployment-status greet 127.0.0.1:8081 120
 ```
 
 A successful notification returns HTTP `202 Accepted` and JSON containing the
 committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
+
+`GET /v1/deployments/{percent-encoded-artifact-name}` reports `committed`,
+`replacing`, or `ready`. Readiness is generation-safe: the active distributed
+name-catalog entry must name the selected node and carry the exact desired
+deployment generation. A stale endpoint with the same logical name therefore
+cannot satisfy a newer rollout.
 
 A node key of zero asks the cluster to place the singleton automatically. The
 implemented first policy chooses the leader admitting the descriptor. A
@@ -76,13 +85,10 @@ drop. The limit is a kernel admission bound, not a protocol-name limit.
 
 - The S3 connector and credentials must be provisioned before notification;
   external S3 is not a bootstrap dependency.
-- The notification response confirms Raft commitment, not application
-  readiness. A ready application is visible through the generation-fenced
-  distributed name catalog, but the HTTP API does not yet expose rollout
-  conditions.
 - Automatic placement currently handles one replica on the admitting leader.
   Capacity-aware selection, affinity/anti-affinity, failure-domain spreading,
   rescheduling after node loss, and replica counts above one need a
   cluster-level deployment planner.
-- A full central-store upload → notify → pull → readiness integration fixture
-  remains to be automated.
+- `scripts/run-aarch64.sh --deployment-ingress-test --timeout 240` automates a
+  TLS RustFS upload → signed notify → S3 pull → scoped launch → readiness path.
+  It is a development fixture, not a production release controller.

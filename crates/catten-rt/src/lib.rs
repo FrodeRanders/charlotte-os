@@ -53,7 +53,8 @@ macro_rules! entry {
         static ALLOCATOR: $crate::HeapLock = $crate::heap();
 
         #[panic_handler]
-        fn __catten_panic(_info: &::core::panic::PanicInfo) -> ! {
+        fn __catten_panic(info: &::core::panic::PanicInfo) -> ! {
+            $crate::logln!("[panic] {}", info);
             $crate::domain_abort();
         }
 
