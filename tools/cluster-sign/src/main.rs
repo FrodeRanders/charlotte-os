@@ -26,6 +26,7 @@ use charlotte_launch::{
         CapabilityGrant,
         DescriptorFields,
     },
+    release,
     signature_note::{
         self,
         ArtifactClass,
@@ -413,6 +414,89 @@ fn deployment_verify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn release_sign(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing release output path".to_owned())?;
+    let release_name = args.get(1).ok_or_else(|| "missing release name".to_owned())?;
+    let sequence = parse_required_u64(
+        args.get(2).ok_or_else(|| "missing release sequence".to_owned())?,
+        "release sequence",
+    )?;
+    let secret = SecretKey::from_slice(&hex_decode(
+        args.get(3).ok_or_else(|| "missing private key".to_owned())?,
+    )?)
+    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let paths = args.get(4..).filter(|paths| !paths.is_empty()).ok_or_else(|| {
+        "release-sign requires at least one signed deployment descriptor".to_owned()
+    })?;
+    let descriptors = paths
+        .iter()
+        .map(|path| fs::read(path).map_err(|error| format!("read {path}: {error}")))
+        .collect::<Result<Vec<_>>>()?;
+    let descriptor_refs = descriptors.iter().map(Vec::as_slice).collect::<Vec<_>>();
+    let public = secret.public_key();
+    let public_key: &[u8; 32] =
+        public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
+    for (path, descriptor) in paths.iter().zip(&descriptor_refs) {
+        if deployment::verify(descriptor, public_key) != deployment::VerifyOutcome::Valid {
+            return Err(format!("deployment descriptor {path:?} is not signed by the release key"));
+        }
+    }
+    let fields = release::ReleaseFields {
+        sequence,
+        release_name: release_name.as_bytes(),
+        descriptors: &descriptor_refs,
+    };
+    let len = release::encoded_len(&fields)
+        .map_err(|error| format!("invalid release envelope: {error:?}"))?;
+    let mut bytes = vec![0; len];
+    release::encode_unsigned(&fields, public_key, &mut bytes)
+        .map_err(|error| format!("encode release envelope: {error:?}"))?;
+    let digest = release::signature_digest(&bytes)
+        .ok_or_else(|| "encoded release envelope did not decode".to_owned())?;
+    let signature: Signature = secret.sign(digest, None);
+    let signature: &[u8; release::SIGNATURE_LEN] =
+        signature.as_ref().try_into().map_err(|_| "invalid Ed25519 signature length".to_owned())?;
+    if !release::set_signature(&mut bytes, signature) {
+        return Err("failed to install release signature".to_owned());
+    }
+    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    println!(
+        "signed release {output}: name={release_name:?} sequence={sequence} components={}",
+        descriptor_refs.len()
+    );
+    Ok(())
+}
+
+fn release_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
+    let key_bytes: [u8; 32] =
+        hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
+            .try_into()
+            .map_err(|_| "public key must contain 32 bytes".to_owned())?;
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    if release::verify(&bytes, &key_bytes) != release::VerifyOutcome::Valid {
+        return Err("release envelope signature verification failed".to_owned());
+    }
+    let envelope =
+        release::decode(&bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: release={:?} sequence={} components={}",
+        String::from_utf8_lossy(envelope.release_name),
+        envelope.sequence,
+        envelope.descriptors().count()
+    );
+    for descriptor in envelope.descriptors() {
+        let descriptor = deployment::decode(descriptor)
+            .ok_or_else(|| "nested deployment descriptor is malformed".to_owned())?;
+        println!(
+            "component {:?} deployment-sequence={}",
+            String::from_utf8_lossy(descriptor.artifact_name),
+            descriptor.sequence
+        );
+    }
+    Ok(())
+}
+
 fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
@@ -622,6 +706,8 @@ fn run() -> Result<()> {
         Some("deployment-notify") => deployment_notify(&args[2..]),
         Some("deployment-status") => deployment_status(&args[2..]),
         Some("deployment-apply") => deployment_apply(&args[2..]),
+        Some("release-sign") => release_sign(&args[2..]),
+        Some("release-verify") => release_verify(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -715,7 +801,9 @@ fn run() -> Result<()> {
                   <node-key> <sequence> <privkey-hex> [service=send|call|client|publish ...] | \
                   deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
                   [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
-                  deployment-apply <host:port> <wait-seconds> <descriptor>... | selftest"
+                  deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
+                  <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
+                  release-verify <release> <pubkey-hex> | selftest"
             .to_owned()),
     }
 }
@@ -732,11 +820,66 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::percent_encode_path_segment;
+    use super::*;
+
+    fn signed_descriptor(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
+        let fields = DescriptorFields {
+            sequence,
+            node_key: 0,
+            artifact_digest: [sequence as u8; 32],
+            artifact_name: name,
+            object_key: name,
+            grants: &[],
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+        deployment::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature =
+            pair.sk.sign(deployment::signature_digest(&bytes).unwrap(), None);
+        let signature: &[u8; deployment::SIGNATURE_LEN] = signature.as_ref().try_into().unwrap();
+        assert!(deployment::set_signature(&mut bytes, signature));
+        bytes
+    }
 
     #[test]
     fn percent_encodes_each_non_unreserved_byte_once() {
         assert_eq!(percent_encode_path_segment(b"orders/v2 ready"), "orders%2Fv2%20ready");
         assert_eq!(percent_encode_path_segment(&[0xff]), "%FF");
+    }
+
+    #[test]
+    fn signed_release_binds_exact_distinct_component_set() {
+        let pair = KeyPair::generate();
+        let first = signed_descriptor(&pair, b"receive", 3);
+        let second = signed_descriptor(&pair, b"publish", 7);
+        let descriptors = [first.as_slice(), second.as_slice()];
+        let fields = release::ReleaseFields {
+            sequence: 11,
+            release_name: b"orders-v11",
+            descriptors: &descriptors,
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; release::encoded_len(&fields).unwrap()];
+        release::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature = pair.sk.sign(release::signature_digest(&bytes).unwrap(), None);
+        let signature: &[u8; release::SIGNATURE_LEN] = signature.as_ref().try_into().unwrap();
+        assert!(release::set_signature(&mut bytes, signature));
+        assert_eq!(release::verify(&bytes, public_key), release::VerifyOutcome::Valid);
+        let envelope = release::decode(&bytes).unwrap();
+        assert_eq!(envelope.release_name, b"orders-v11");
+        assert_eq!(envelope.descriptors().count(), 2);
+
+        bytes[release::HEADER_LEN + fields.release_name.len() + 2] ^= 1;
+        assert_eq!(release::verify(&bytes, public_key), release::VerifyOutcome::Invalid);
+
+        let duplicates = [first.as_slice(), first.as_slice()];
+        let duplicate_fields = release::ReleaseFields {
+            descriptors: &duplicates,
+            ..fields
+        };
+        assert_eq!(
+            release::encoded_len(&duplicate_fields),
+            Err(release::EncodeError::DuplicateArtifact)
+        );
     }
 }

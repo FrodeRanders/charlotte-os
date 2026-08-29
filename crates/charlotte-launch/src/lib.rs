@@ -44,6 +44,7 @@ pub mod sha256;
 
 pub mod deployment;
 pub mod placement;
+pub mod release;
 pub mod signature_note;
 
 /// FNV-1a 64, the cluster's identity hash (node keys, artifact ids).
