@@ -280,6 +280,17 @@ impl NameCatalog {
                     descriptor.to_vec()
                 };
                 let mut deployments = self.deployments.lock();
+                if let Some(existing) = deployments.get(artifact)
+                    && existing.object_id == object_id
+                    && existing.node_key == node_key
+                    && existing.artifact_digest == artifact_digest
+                    && existing.descriptor == descriptor
+                {
+                    // Admission may be retried after the follower-to-leader
+                    // reply is lost. Make exact desired state idempotent in
+                    // the replicated state machine, not merely at ingress.
+                    return existing.generation.to_le_bytes().to_vec();
+                }
                 let generation = match deployments.get(artifact) {
                     Some(entry) => entry.generation.checked_add(1),
                     None => Some(1),
@@ -832,6 +843,20 @@ mod tests {
     }
 
     #[test]
+    fn exact_deployment_retry_is_idempotent() {
+        let catalog = NameCatalog::new();
+        let command = encode_deploy(b"orders", 17, 0x1234_abcd, &[0x5a; 32], b"descriptor");
+        let first = catalog.apply_with_result(1, &command);
+        let retry = catalog.apply_with_result(2, &command);
+        assert_eq!(u64::from_le_bytes(first.try_into().unwrap()), 1);
+        assert_eq!(u64::from_le_bytes(retry.try_into().unwrap()), 1);
+
+        let replacement = encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor");
+        let next = catalog.apply_with_result(3, &replacement);
+        assert_eq!(u64::from_le_bytes(next.try_into().unwrap()), 2);
+    }
+
+    #[test]
     fn rollout_status_and_remote_registration_are_canonical() {
         let status = crate::clusterctl::RolloutStatus {
             state: crate::clusterctl::ROLLOUT_READY,
@@ -847,6 +872,31 @@ mod tests {
                 &[&[crate::rregister::TAG_REQUEST], frame.as_slice()].concat()
             ),
             Some((b"charlotte:1234abcd".to_vec(), b"orders".to_vec(), 7))
+        );
+
+        let request = crate::rdeploy::Request {
+            session: 3,
+            request_id: 9,
+            caller: b"charlotte:1234abcd".to_vec(),
+            artifact: b"orders".to_vec(),
+            object_id: 17,
+            node_key: 0,
+            digest: [0x5a; 32],
+            descriptor: b"signed descriptor".to_vec(),
+        };
+        let encoded = crate::rdeploy::encode_request(&request).unwrap();
+        assert_eq!(
+            crate::rdeploy::decode_request(
+                &[&[crate::rdeploy::TAG_REQUEST], encoded.as_slice()].concat()
+            ),
+            Some(request)
+        );
+        let reply = crate::rdeploy::encode_reply(3, 9, 21);
+        assert_eq!(
+            crate::rdeploy::decode_reply(
+                &[&[crate::rdeploy::TAG_REPLY], reply.as_slice()].concat()
+            ),
+            Some((3, 9, 21))
         );
     }
 }

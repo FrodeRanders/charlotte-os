@@ -72,6 +72,9 @@ pub(super) enum PendingQueryKind {
         opcode: u32,
         arg: i64,
     },
+    Deploy {
+        reply: u64,
+    },
 }
 
 pub(super) struct PendingQuery {
@@ -108,6 +111,14 @@ pub(super) enum PendingRegistration {
     Deploy {
         log_index: u64,
         reply: u64,
+    },
+    /// Leader-side: a follower relayed a deployment after its local
+    /// administration service verified the signed descriptor.
+    RemoteDeploy {
+        log_index: u64,
+        peer: String,
+        session: u64,
+        request_id: u64,
     },
     /// Leader-side: the key ceremony committed the cluster public key; the
     /// reply reports the committed key generation.

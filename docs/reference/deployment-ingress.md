@@ -39,6 +39,11 @@ committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
 
+The request may enter through any cluster member. A follower's DNS validates
+the reliable-message source as a current peer, relays the bounded request to
+the current Raft leader, and correlates the committed result back to the HTTP
+request. The release client therefore does not need to discover the leader.
+
 `GET /v1/deployments/{percent-encoded-artifact-name}` reports `committed`,
 `replacing`, or `ready`. Readiness is generation-safe: the active distributed
 name-catalog entry must name the selected node and carry the exact desired
@@ -46,7 +51,8 @@ deployment generation. A stale endpoint with the same logical name therefore
 cannot satisfy a newer rollout.
 
 A node key of zero asks the cluster to place the singleton automatically. The
-implemented first policy chooses the leader admitting the descriptor. A
+implemented first policy chooses the current Raft leader, independently of
+which member accepted the HTTP request. A
 nonzero key remains an explicit pin. The descriptor name may use the complete
 CLS2 limit of 48 bytes; it is no longer restricted by the old scalar-name ABI.
 
@@ -85,7 +91,7 @@ drop. The limit is a kernel admission bound, not a protocol-name limit.
 
 - The S3 connector and credentials must be provisioned before notification;
   external S3 is not a bootstrap dependency.
-- Automatic placement currently handles one replica on the admitting leader.
+- Automatic placement currently handles one replica on the current Raft leader.
   Capacity-aware selection, affinity/anti-affinity, failure-domain spreading,
   rescheduling after node loss, and replica counts above one need a
   cluster-level deployment planner.

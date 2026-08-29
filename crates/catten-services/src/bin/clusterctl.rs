@@ -8,7 +8,9 @@
 //!    immutable ELF under its derived cluster-wide id.
 //! 2. `OP_DEPLOY` assigns the artifact to a node by submitting a deployment record through the
 //!    local dns (the manifest is replicated cluster state).
-//! 3. `OP_STATUS` reports the committed deployment record.
+//! 3. `OP_NOTIFY` verifies a signed central-store descriptor and submits it through the node-local
+//!    DNS, which relays follower admissions to the current Raft leader.
+//! 4. `OP_STATUS` and `OP_ROLLOUT` expose committed and generation-safe ready state.
 //!
 //! Artifact names are bare cluster-global names; the node dimension appears
 //! only in the deployment record. The private signing key never enters this
@@ -34,8 +36,6 @@ use catten_services::{
     disco,
     dns,
     name_catalog,
-    net,
-    node_identity,
     ns,
     objstore,
     raft,
@@ -247,26 +247,6 @@ fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
     mapping.unmap().ok()
 }
 
-/// Select the local node for an unpinned descriptor. This is the initial
-/// scheduler policy: deterministic placement on the leader handling
-/// admission. Replica spread and capacity-aware rescheduling are represented
-/// by the deployment plan but remain controller work.
-fn local_node_key(ns_connection: u64) -> Option<u64> {
-    let net_conn = lookup(ns_connection, net::NAME);
-    if net_conn == 0 {
-        return None;
-    }
-    let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status_call == 0 {
-        ipc_close(net_conn);
-        return None;
-    }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
-    ipc_close(net_conn);
-    let (link, mac) = charlotte_protocol_net::decode_status(status);
-    (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
-}
-
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
 /// memory object. The memory layout is `[payload_len:u64 LE][payload]`.
 fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<u8>> {
@@ -317,8 +297,6 @@ fn main(ctx: Context) -> ! {
     if obj_conn == 0 || dns_conn == 0 {
         fail(0xdea1);
     }
-    let this_node_key = local_node_key(ns_connection).unwrap_or_else(|| fail(0xdea6));
-
     let endpoint = ipc_endpoint_create(clusterctl::INTERFACE, clusterctl::VERSION, 8);
     if endpoint == 0 {
         fail(0xdea2);
@@ -425,11 +403,6 @@ fn main(ctx: Context) -> ! {
                         {
                             match charlotte_launch::deployment::decode(&descriptor_bytes) {
                                 Some(descriptor) => {
-                                    let assigned_node = if descriptor.node_key == 0 {
-                                        this_node_key
-                                    } else {
-                                        descriptor.node_key
-                                    };
                                     match current_deployment(dns_conn, descriptor.artifact_name)
                                         .filter(|current| !current.descriptor.is_empty())
                                     {
@@ -461,7 +434,7 @@ fn main(ctx: Context) -> ! {
                                             dns_conn,
                                             descriptor.artifact_name,
                                             dns::artifact_object_id(descriptor.artifact_name),
-                                            assigned_node,
+                                            descriptor.node_key,
                                             &descriptor.artifact_digest,
                                             &descriptor_bytes,
                                         ),

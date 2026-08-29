@@ -669,6 +669,11 @@ notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
+The client may contact any member. A follower relays the bounded submission to
+the current Raft leader over a source-validated peer route and correlates the
+committed result back to the ingress request. The management client therefore
+does not need a separate leader-discovery protocol.
+
 The same endpoint accepts
 \texttt{GET /v1/deployments/\{percent-encoded-name\}}. It reports
 \texttt{committed}, \texttt{replacing}, or \texttt{ready}. A ready observation
@@ -677,8 +682,9 @@ registration must carry the exact desired deployment generation. A stale
 endpoint with the same name cannot make a replacement rollout appear ready.
 
 The signed descriptor may carry node key zero to request automatic singleton
-placement. The implemented initial policy chooses the leader admitting the
-descriptor; a nonzero key remains an explicit pin. Full signed artifact names
+placement. The implemented initial policy chooses the current Raft leader,
+independently of which member accepted the HTTP request; a nonzero key remains
+an explicit pin. Full signed artifact names
 up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
 than the historical eight-byte scalar encoding.
 
@@ -697,7 +703,7 @@ its signed artifact name, so a generation change retires only the matching
 application even if address-space identifiers have been reused. This bound is
 kernel admission policy, not a naming or descriptor-format limit.
 
-Automatic placement currently covers one replica on the admitting leader. A
+Automatic placement currently covers one replica on the current Raft leader. A
 cluster-level deployment planner is still required for capacity-aware node
 selection, labels and failure domains, affinity and anti-affinity, replica
 sets, rescheduling, readiness conditions, rollout surge/unavailability, and

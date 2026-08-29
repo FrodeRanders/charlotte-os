@@ -1012,6 +1012,10 @@ fn main(ctx: Context) -> ! {
                                     && let Some(index) = pending_queries.iter().position(|query| {
                                         query.query_id == query_id
                                             && query.expected_leader == source_peer
+                                            && !matches!(
+                                                query.kind,
+                                                PendingQueryKind::Deploy { .. }
+                                            )
                                     })
                                 {
                                     let query = pending_queries.swap_remove(index);
@@ -1117,6 +1121,13 @@ fn main(ctx: Context) -> ! {
                                                 && reply != 0
                                             {
                                                 ipc_reply(reply, result);
+                                            }
+                                        }
+                                        PendingQueryKind::Deploy {
+                                            reply,
+                                        } => {
+                                            if reply != 0 {
+                                                ipc_reply(reply, dns::ERR_NOT_LEADER);
                                             }
                                         }
                                     }
@@ -1251,6 +1262,91 @@ fn main(ctx: Context) -> ! {
                                                 dns::ERR_NOT_FOUND
                                             },
                                         );
+                                    }
+                                }
+                            }
+                            Some(catten_services::rdeploy::TAG_REQUEST) => {
+                                if let Some(request) = catten_services::rdeploy::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == request.caller
+                                {
+                                    let result = if node.state != NodeState::Leader {
+                                        Some(dns::ERR_NOT_LEADER)
+                                    } else if !charlotte_launch::deployment::valid_artifact_name(
+                                        &request.artifact,
+                                    ) || request.descriptor.len()
+                                        > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+                                    {
+                                        Some(dns::ERR_TOO_LARGE)
+                                    } else {
+                                        let assigned_node = if request.node_key == 0 {
+                                            node_identity::key_from_name(&node_name).unwrap_or(0)
+                                        } else {
+                                            request.node_key
+                                        };
+                                        match node.submit_command(
+                                            encode_deploy(
+                                                &request.artifact,
+                                                request.object_id,
+                                                assigned_node,
+                                                &request.digest,
+                                                &request.descriptor,
+                                            ),
+                                            node.millis(),
+                                        ) {
+                                            Ok(log_index) => {
+                                                pending_registers.push(
+                                                    PendingRegistration::RemoteDeploy {
+                                                        log_index,
+                                                        peer: source_peer.clone(),
+                                                        session: request.session,
+                                                        request_id: request.request_id,
+                                                    },
+                                                );
+                                                None
+                                            }
+                                            Err(code) => Some(code),
+                                        }
+                                    };
+                                    if let Some(result) = result {
+                                        transport.send_message(
+                                            &source_peer,
+                                            catten_services::rdeploy::TAG_REPLY,
+                                            catten_services::rdeploy::encode_reply(
+                                                request.session,
+                                                request.request_id,
+                                                result,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::rdeploy::TAG_REPLY) => {
+                                if let Some((session, request_id, result)) =
+                                    catten_services::rdeploy::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) =
+                                        pending_queries.iter().position(|query| {
+                                            query.query_id == request_id
+                                                && query.expected_leader == source_peer
+                                                && matches!(
+                                                    query.kind,
+                                                    PendingQueryKind::Deploy { .. }
+                                                )
+                                        })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let PendingQueryKind::Deploy {
+                                        reply,
+                                    } = query.kind
+                                    else {
+                                        unreachable!()
+                                    };
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
                                     }
                                 }
                             }
@@ -1598,7 +1694,11 @@ fn main(ctx: Context) -> ! {
                                     encode_deploy(
                                         &artifact,
                                         object_id,
-                                        node_key,
+                                        if node_key == 0 {
+                                            node_identity::key_from_name(&node_name).unwrap_or(0)
+                                        } else {
+                                            node_key
+                                        },
                                         &artifact_digest,
                                         &descriptor,
                                     ),
@@ -1624,15 +1724,17 @@ fn main(ctx: Context) -> ! {
 
                 dns::OP_DEPLOY_NAMED => {
                     let request = read_named_deploy_request(&message);
-                    let result = if node.state != NodeState::Leader {
-                        dns::ERR_NOT_LEADER
-                    } else {
-                        match request {
-                            Some(request) => match node.submit_command(
+                    let result = match request {
+                        Some(request) if node.state == NodeState::Leader => {
+                            match node.submit_command(
                                 encode_deploy(
                                     &request.name,
                                     request.object_id,
-                                    request.node_key,
+                                    if request.node_key == 0 {
+                                        node_identity::key_from_name(&node_name).unwrap_or(0)
+                                    } else {
+                                        request.node_key
+                                    },
                                     &request.digest,
                                     &request.descriptor,
                                 ),
@@ -1646,9 +1748,56 @@ fn main(ctx: Context) -> ! {
                                     continue;
                                 }
                                 Err(code) => code,
-                            },
-                            None => dns::ERR_TOO_LARGE,
+                            }
                         }
+                        Some(request) => {
+                            let Some(leader) = node.known_leader_id.clone() else {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                                }
+                                continue;
+                            };
+                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                                || !transport.has_peer(&leader)
+                            {
+                                dns::ERR_BUSY
+                            } else {
+                                let request_id = next_query_id;
+                                next_query_id = next_query_id.wrapping_add(1).max(1);
+                                let relay = catten_services::rdeploy::Request {
+                                    session: dns_session,
+                                    request_id,
+                                    caller: node_name.clone(),
+                                    artifact: request.name,
+                                    object_id: request.object_id,
+                                    node_key: request.node_key,
+                                    digest: request.digest,
+                                    descriptor: request.descriptor,
+                                };
+                                let Some(frame) = catten_services::rdeploy::encode_request(&relay)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                                    }
+                                    continue;
+                                };
+                                pending_queries.push(PendingQuery {
+                                    query_id: request_id,
+                                    expected_leader: leader.clone(),
+                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                    kind: PendingQueryKind::Deploy {
+                                        reply: message.reply,
+                                    },
+                                });
+                                transport.send_message(
+                                    &leader,
+                                    catten_services::rdeploy::TAG_REQUEST,
+                                    frame,
+                                );
+                                continue;
+                            }
+                        }
+                        None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
@@ -2101,6 +2250,10 @@ fn main(ctx: Context) -> ! {
                     log_index,
                     ..
                 }
+                | PendingRegistration::RemoteDeploy {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::SetKey {
                     log_index,
                     ..
@@ -2138,6 +2291,32 @@ fn main(ctx: Context) -> ! {
                     if reply != 0 {
                         ipc_reply(reply, generation as i64);
                     }
+                }
+                PendingRegistration::RemoteDeploy {
+                    peer,
+                    session,
+                    request_id,
+                    ..
+                } => {
+                    let generation = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        .unwrap_or(0);
+                    transport.send_message(
+                        &peer,
+                        catten_services::rdeploy::TAG_REPLY,
+                        catten_services::rdeploy::encode_reply(
+                            session,
+                            request_id,
+                            if generation == 0 {
+                                dns::ERR_NOT_FOUND
+                            } else {
+                                generation as i64
+                            },
+                        ),
+                    );
                 }
                 PendingRegistration::SetKey {
                     reply,

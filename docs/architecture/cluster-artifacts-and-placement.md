@@ -75,6 +75,12 @@ deployment back: `clusterctl` rejects lower sequences and rejects different
 bytes at an already committed sequence; an identical notification is
 idempotent.
 
+An operator may contact any member. A follower relays the bounded deployment
+submission over its source-validated peer route to the current Raft leader and
+correlates the committed result back to the ingress request. Automatic
+singleton placement is resolved by that leader rather than by whichever node
+received the HTTP connection.
+
 `tools/cluster-sign deployment-sign` and `deployment-verify` implement the
 canonical bounded wire format used by the kernel and userspace. For example:
 
@@ -135,7 +141,7 @@ reassignment or generation change the agent aborts and reclaims only that
 domain. Endpoint closure drives generation-fenced distributed removal.
 
 The current automatic placement policy is intentionally small: `node_key = 0`
-selects the leader that admits a singleton descriptor. This removes offline
+selects the current Raft leader for a singleton descriptor. This removes offline
 knowledge of a node key from the common one-replica release flow, but it is not
 a general scheduler. Cluster-level planning must next model node capacity,
 labels and failure domains, affinity/anti-affinity, replicas, health/readiness,
@@ -206,12 +212,11 @@ opcode and legacy local-upload/deploy IPC remain available to trusted tests,
 so production policy must ensure ordinary applications never receive those
 connections.
 
-The signed notification, Raft descriptor replication, central S3 pull,
-grant-controller mediation, and scoped kernel launch are implemented. Current
-limits are explicit: placement and the agent still handle one active short
-(at most eight-byte) artifact name at a time; the first agent is specialized
-to the `greet` demonstration application; and the S3 connector must be
-provisioned separately before notifying the cluster. The management endpoint
+The signed notification, follower-to-leader admission relay, Raft descriptor
+replication, central S3 pull, grant-controller mediation, and scoped kernel
+launch are implemented. The agent handles full 48-byte artifact names and up
+to 64 independently reconciled application domains per node. The S3 connector
+must still be provisioned separately before notifying the cluster. The management endpoint
 now reports generation-safe `committed`, `replacing`, and `ready` rollout
 conditions, and the QEMU runner has a RustFS-backed end-to-end deployment
 fixture. Multi-owner placement and load balancing, authenticated audit

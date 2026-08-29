@@ -121,8 +121,9 @@ pub(super) fn expire_remote_calls(calls: &mut Vec<InFlightCall>, now: u64) {
     }
 }
 
-/// Expire leader-routed catalog queries. These have no target-side effect and
-/// are therefore safely retryable.
+/// Expire leader-routed catalog operations. Lookups have no side effect;
+/// relayed deployment retries are safe because exact desired state is
+/// idempotent in the replicated catalog.
 pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>, now: u64) {
     let mut index = 0;
     while index < queries.len() {
@@ -139,6 +140,9 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>, now: u64) {
             | PendingQueryKind::Call {
                 reply,
                 ..
+            }
+            | PendingQueryKind::Deploy {
+                reply,
             } => reply,
         };
         if reply != 0 {

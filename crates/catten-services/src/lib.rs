@@ -2046,3 +2046,111 @@ pub mod rregister {
         Some((owner, name, generation))
     }
 }
+
+/// Correlated follower-to-leader deployment submission.
+///
+/// `clusterctl` verifies the signed descriptor before calling its node-local
+/// DNS. A follower relays the already-bounded deployment request to the Raft
+/// leader, which resolves automatic placement and commits it. The caller node
+/// identity is checked against the reliable-message source route before the
+/// leader accepts the request.
+pub mod rdeploy {
+    pub const TAG_REQUEST: u8 = 0x17;
+    pub const TAG_REPLY: u8 = 0x18;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Request {
+        pub session: u64,
+        pub request_id: u64,
+        pub caller: alloc::vec::Vec<u8>,
+        pub artifact: alloc::vec::Vec<u8>,
+        pub object_id: u64,
+        pub node_key: u64,
+        pub digest: [u8; 32],
+        pub descriptor: alloc::vec::Vec<u8>,
+    }
+
+    pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
+        if request.caller.is_empty()
+            || request.caller.len() > 255
+            || request.artifact.is_empty()
+            || request.artifact.len() > u16::MAX as usize
+            || request.descriptor.len() > u16::MAX as usize
+        {
+            return None;
+        }
+        let mut frame = alloc::vec::Vec::with_capacity(
+            69 + request.caller.len() + request.artifact.len() + request.descriptor.len(),
+        );
+        frame.extend_from_slice(&request.session.to_le_bytes());
+        frame.extend_from_slice(&request.request_id.to_le_bytes());
+        frame.push(request.caller.len() as u8);
+        frame.extend_from_slice(&request.caller);
+        frame.extend_from_slice(&(request.artifact.len() as u16).to_le_bytes());
+        frame.extend_from_slice(&request.artifact);
+        frame.extend_from_slice(&request.object_id.to_le_bytes());
+        frame.extend_from_slice(&request.node_key.to_le_bytes());
+        frame.extend_from_slice(&request.digest);
+        frame.extend_from_slice(&(request.descriptor.len() as u16).to_le_bytes());
+        frame.extend_from_slice(&request.descriptor);
+        Some(frame)
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 70 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = usize::from(frame[17]);
+        let caller_start = 18usize;
+        let artifact_len_offset = caller_start.checked_add(caller_len)?;
+        let artifact_len = usize::from(u16::from_le_bytes(
+            frame.get(artifact_len_offset..artifact_len_offset + 2)?.try_into().ok()?,
+        ));
+        let artifact_start = artifact_len_offset + 2;
+        let artifact_end = artifact_start.checked_add(artifact_len)?;
+        let fixed_end = artifact_end.checked_add(50)?;
+        let object_id =
+            u64::from_le_bytes(frame.get(artifact_end..artifact_end + 8)?.try_into().ok()?);
+        let node_key =
+            u64::from_le_bytes(frame.get(artifact_end + 8..artifact_end + 16)?.try_into().ok()?);
+        let digest = frame.get(artifact_end + 16..artifact_end + 48)?.try_into().ok()?;
+        let descriptor_len = usize::from(u16::from_le_bytes(
+            frame.get(artifact_end + 48..fixed_end)?.try_into().ok()?,
+        ));
+        let descriptor_end = fixed_end.checked_add(descriptor_len)?;
+        if caller_len == 0 || artifact_len == 0 || frame.len() != descriptor_end {
+            return None;
+        }
+        Some(Request {
+            session,
+            request_id,
+            caller: frame.get(caller_start..artifact_len_offset)?.to_vec(),
+            artifact: frame.get(artifact_start..artifact_end)?.to_vec(),
+            object_id,
+            node_key,
+            digest,
+            descriptor: frame.get(fixed_end..descriptor_end)?.to_vec(),
+        })
+    }
+
+    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        let mut frame = alloc::vec::Vec::with_capacity(24);
+        frame.extend_from_slice(&session.to_le_bytes());
+        frame.extend_from_slice(&request_id.to_le_bytes());
+        frame.extend_from_slice(&result.to_le_bytes());
+        frame
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
+        if frame.len() != 25 || frame[0] != TAG_REPLY {
+            return None;
+        }
+        Some((
+            u64::from_le_bytes(frame[1..9].try_into().ok()?),
+            u64::from_le_bytes(frame[9..17].try_into().ok()?),
+            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+        ))
+    }
+}
