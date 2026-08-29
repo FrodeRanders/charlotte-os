@@ -216,10 +216,24 @@ pub(crate) static DEPLOYMENT_AGENT_ASID: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
-/// The domain currently owned by the deployment agent on this node.
-pub(crate) static DEPLOYED_DOMAIN: spin::LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<ServiceDomain>>,
-> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+/// A domain owned by the deployment agent on this node. The stable principal
+/// is derived from the signed artifact name; it fences retirement from ASID
+/// reuse and permits several independently deployed applications to coexist.
+#[derive(Copy, Clone)]
+pub(crate) struct DeployedDomain {
+    pub principal: u64,
+    pub domain: ServiceDomain,
+}
+
+/// Domains currently owned by the deployment agent on this node.
+///
+/// The limit is an admission bound, not a wire-format limitation. It keeps a
+/// compromised deployment agent from growing kernel bookkeeping without
+/// bound while allowing a useful set of co-located application components.
+pub(crate) const MAX_DEPLOYED_DOMAINS: usize = 64;
+pub(crate) static DEPLOYED_DOMAINS: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Vec<DeployedDomain>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
 
 /// Kernel-private connection to the node name service, minted when the node
 /// registry starts, used by the supervisor to publish the local node ready-marker.

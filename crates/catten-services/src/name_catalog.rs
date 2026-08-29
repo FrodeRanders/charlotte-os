@@ -110,6 +110,11 @@ impl NameCatalog {
         self.deployments.lock().get(artifact).cloned()
     }
 
+    /// Snapshot copy of every desired deployment, sorted by artifact name.
+    pub fn deployments(&self) -> Vec<(Vec<u8>, DeploymentEntry)> {
+        self.deployments.lock().iter().map(|(name, entry)| (name.clone(), entry.clone())).collect()
+    }
+
     /// Whether `name` is registered to this node.
     pub fn is_local(&self, name: &[u8], local_node: &[u8]) -> bool {
         self.lookup(name).is_some_and(|entry| entry.node == local_node)

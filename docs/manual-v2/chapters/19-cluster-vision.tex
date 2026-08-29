@@ -669,14 +669,34 @@ notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
+The signed descriptor may carry node key zero to request automatic singleton
+placement. The implemented initial policy chooses the leader admitting the
+descriptor; a nonzero key remains an explicit pin. Full signed artifact names
+up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
+than the historical eight-byte scalar encoding.
+
 An interactive kernel serial console in the \texttt{--deploy-test} flow lets
 an operator issue these commands against the live cluster. The console is a
 kernel test thread, not an out-of-band production management plane, and the
 raw mutation endpoint does not yet enforce the intended separately delegated
 administrator capability. The notification endpoint is a first off-cluster
 management path, but it still needs network-level denial-of-service controls,
-audit identity beyond the signing key, generic long artifact names, rollout
-status, and multi-artifact placement.
+audit identity beyond the signing key, and an HTTP representation of rollout
+status.
+
+The node agent now reconciles the complete replicated deployment-name set,
+rather than polling only 	exttt{greet}. A node can own up to 64 independently
+named application domains. Each domain is fenced by the principal derived from
+its signed artifact name, so a generation change retires only the matching
+application even if address-space identifiers have been reused. This bound is
+kernel admission policy, not a naming or descriptor-format limit.
+
+Automatic placement currently covers one replica on the admitting leader. A
+cluster-level deployment planner is still required for capacity-aware node
+selection, labels and failure domains, affinity and anti-affinity, replica
+sets, rescheduling, readiness conditions, rollout surge/unavailability, and
+rollback. Such a planner should commit desired assignments through Raft; node
+agents should remain mechanism-only reconcilers.
 
 \subsection{Artifact naming}
 

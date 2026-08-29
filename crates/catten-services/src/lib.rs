@@ -257,6 +257,9 @@ pub mod ns {
     /// call this operation. Its returned connection is re-delegable solely so
     /// the controller can attenuate and pass it to that application.
     pub const OP_LOOKUP_FOR_GRANT: u32 = 15;
+    /// Best-effort memory-carried lookup. This is the long-name equivalent
+    /// of [`OP_TRY_LOOKUP`] and never parks the caller.
+    pub const OP_TRY_LOOKUP_NAMED: u32 = 16;
 
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
@@ -1306,6 +1309,19 @@ pub mod dns {
     /// `ERR_NOT_LEADER`. The reply is the committed generation (deferred
     /// until replicated).
     pub const OP_EVENT_FIRE: u32 = 12;
+    /// Replicate a deployment whose full request travels in moved memory:
+    /// `[name_len:u16][name][object_id:u64][node_key:u64][sha256:32]
+    /// [descriptor_len:u32][signed_descriptor]`. `arg0` is the total byte
+    /// length. This is the normal operation for signed descriptors; the
+    /// scalar `OP_DEPLOY` remains for legacy short-name clients.
+    pub const OP_DEPLOY_NAMED: u32 = 15;
+    /// Query one deployment by a full artifact name carried in moved memory.
+    /// `arg0` is the name length. The reply layout matches `OP_DEPLOY_QUERY`.
+    pub const OP_DEPLOY_QUERY_NAMED: u32 = 16;
+    /// Enumerate desired deployment names. The reply is
+    /// `[count:u16] ([name_len:u8][name])*`, sorted by name. Callers query
+    /// individual records with `OP_DEPLOY_QUERY_NAMED`.
+    pub const OP_DEPLOY_LIST: u32 = 17;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1437,8 +1453,8 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
-    /// Notify the cluster of a signed `CDEPLOY1` descriptor. `arg0` is the
-    /// packed artifact name and the moved memory payload uses the same
+    /// Notify the cluster of a signed `CDEPLOY1` descriptor. The artifact
+    /// name is taken from the signed descriptor and the moved memory uses the same
     /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
     /// central object key, digest, target node, revision, and capability
     /// grants. No object-store credentials cross this interface.
@@ -1777,6 +1793,28 @@ pub fn try_registered_name_owned(
     } else {
         None
     }
+}
+
+/// Resolve an optional full-length service name without waiting for a future
+/// registration. The staged name remains borrowed until the call completes.
+pub fn try_registered_name_bytes_owned(
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    service_name: &[u8],
+) -> Option<(i64, catten_rt::owned::Connection)> {
+    if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
+        return None;
+    }
+    if service_name.len() <= 8 {
+        return try_registered_name_owned(ns_connection, name(service_name));
+    }
+    let staged = stage_name_owned(service_name)?;
+    let result = ns_connection
+        .call_copy(ns::OP_TRY_LOOKUP_NAMED, service_name.len() as u64, &staged)
+        .ok()?
+        .wait()
+        .ok()?;
+    let connection = result.connection?;
+    (result.result >= 1).then_some((result.result, connection))
 }
 
 /// Wait for the local boot-ready marker using ownership-aware IPC.

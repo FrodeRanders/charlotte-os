@@ -21,7 +21,6 @@ use catten_rt::{
 };
 use catten_services::{
     clusterctl,
-    name,
     sleep_ms,
     socket,
     wait_for_local_ready_owned,
@@ -127,10 +126,7 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
     let Some(decoded) = charlotte_launch::deployment::decode(descriptor) else {
         return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
     };
-    // The current replicated deployment operation retains the original
-    // scalar short-name ABI. The signed format is already wider; extending
-    // catalog placement to long names can therefore preserve this ingress.
-    if decoded.artifact_name.is_empty() || decoded.artifact_name.len() > 8 {
+    if decoded.artifact_name.is_empty() {
         return clusterctl::ERR_TOO_LARGE;
     }
     let memory = match OwnedMemory::allocate(1) {
@@ -147,7 +143,7 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY, name(decoded.artifact_name), memory) {
+    match controller.call_move(clusterctl::OP_NOTIFY, 0, memory) {
         Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
         Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
     }

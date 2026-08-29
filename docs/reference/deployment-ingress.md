@@ -26,7 +26,7 @@ For the current demonstration service, the final signing steps resemble:
 
 ```text
 cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
-  <sha256-of-signed-elf> <target-node-key> 42 <private-key-hex> \
+  <sha256-of-signed-elf> 0 42 <private-key-hex> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 ```
@@ -35,6 +35,11 @@ A successful notification returns HTTP `202 Accepted` and JSON containing the
 committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
+
+A node key of zero asks the cluster to place the singleton automatically. The
+implemented first policy chooses the leader admitting the descriptor. A
+nonzero key remains an explicit pin. The descriptor name may use the complete
+CLS2 limit of 48 bytes; it is no longer restricted by the old scalar-name ABI.
 
 ## Trust and secret boundary
 
@@ -60,14 +65,24 @@ the checks and launches the ELF with only `grantctl` and the immutable
 descriptor. An exact `publish` grant lets a service publish its endpoint
 without obtaining name-service or mint authority.
 
-## Current limits
+## Reconciliation and current limits
+
+Each node agent enumerates the replicated desired-deployment set. It can own
+up to 64 independently named application domains, launches assignments for
+its node, and fences each retirement by the stable artifact principal and
+deployment generation. A `DeployedArtifact` owner in `catten_rt::owned`
+retains the retirement obligation and requests best-effort retirement on
+drop. The limit is a kernel admission bound, not a protocol-name limit.
 
 - The S3 connector and credentials must be provisioned before notification;
   external S3 is not a bootstrap dependency.
-- The replicated placement ABI currently accepts artifact names of at most
-  eight bytes, and the first agent is specialized to `greet`.
-- There is one active assignment and one active owner per artifact name.
 - The notification response confirms Raft commitment, not application
-  readiness. Rollout status, generic multi-artifact agents, replica placement,
-  long deployment names, and a full central-store integration fixture remain.
-
+  readiness. A ready application is visible through the generation-fenced
+  distributed name catalog, but the HTTP API does not yet expose rollout
+  conditions.
+- Automatic placement currently handles one replica on the admitting leader.
+  Capacity-aware selection, affinity/anti-affinity, failure-domain spreading,
+  rescheduling after node loss, and replica counts above one need a
+  cluster-level deployment planner.
+- A full central-store upload → notify → pull → readiness integration fixture
+  remains to be automated.

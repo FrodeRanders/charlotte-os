@@ -413,13 +413,7 @@ fn deployment_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
     let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
-    let descriptor = deployment::decode(&bytes)
-        .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
-    if descriptor.artifact_name.len() > 8 {
-        return Err(
-            "the current deployment catalog admits artifact names of at most 8 bytes".to_owned()
-        );
-    }
+    deployment::decode(&bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
         .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
     stream

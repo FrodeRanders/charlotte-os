@@ -787,6 +787,7 @@ pub enum ReceiveError {
 pub enum ArtifactLaunchError {
     InvalidLength,
     Rejected,
+    RetirementDenied,
 }
 
 /// Transfer a signed ELF and deployment descriptor to the privileged scoped
@@ -822,6 +823,116 @@ pub fn spawn_scoped_artifact(
     } else {
         Ok(asid)
     }
+}
+
+/// Transfer a signed ELF and descriptor to the scoped deployment gate using
+/// the descriptor's full artifact name as the authoritative identity.
+///
+/// This is the normal API for deployment descriptors. The packed-name form
+/// above remains for ABI compatibility with early short-name callers.
+pub fn spawn_scoped_artifact_named(
+    artifact: OwnedMemory,
+    artifact_len: usize,
+    descriptor: OwnedMemory,
+    descriptor_len: usize,
+) -> Result<u64, ArtifactLaunchError> {
+    spawn_scoped_artifact(artifact, artifact_len, 0, descriptor, descriptor_len)
+}
+
+/// An application domain created through the scoped deployment gate.
+///
+/// The owner remains with the deployment agent until retirement completes.
+/// `poll_retire` is explicit because draining all domain threads can block;
+/// `Drop` retains a best-effort abort fallback.
+#[must_use = "dropping a deployed artifact requests best-effort retirement"]
+pub struct DeployedArtifact {
+    principal: u64,
+    asid: u64,
+    retired: bool,
+}
+
+impl DeployedArtifact {
+    pub fn principal(&self) -> u64 {
+        self.principal
+    }
+
+    pub fn asid(&self) -> u64 {
+        self.asid
+    }
+
+    /// Request retirement and report whether reclamation has completed.
+    pub fn poll_retire(&mut self) -> Result<bool, ArtifactLaunchError> {
+        if self.retired {
+            return Ok(true);
+        }
+        match kernel::retire_artifact_named(self.principal) {
+            0 => {
+                self.retired = true;
+                Ok(true)
+            }
+            1 => Ok(false),
+            _ => Err(ArtifactLaunchError::RetirementDenied),
+        }
+    }
+}
+
+impl Drop for DeployedArtifact {
+    fn drop(&mut self) {
+        if !self.retired {
+            let _ = kernel::retire_artifact_named(self.principal);
+        }
+    }
+}
+
+/// Launch a scoped artifact and retain an owner that fences retirement by the
+/// full signed artifact identity.
+pub fn launch_scoped_artifact_named(
+    artifact: OwnedMemory,
+    artifact_len: usize,
+    artifact_name: &[u8],
+    descriptor: OwnedMemory,
+    descriptor_len: usize,
+) -> Result<DeployedArtifact, ArtifactLaunchError> {
+    if artifact_name.is_empty()
+        || artifact_name.len() > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
+    {
+        return Err(ArtifactLaunchError::InvalidLength);
+    }
+    let asid = spawn_scoped_artifact_named(artifact, artifact_len, descriptor, descriptor_len)?;
+    Ok(DeployedArtifact {
+        principal: charlotte_launch::artifact_principal_id(artifact_name),
+        asid,
+        retired: false,
+    })
+}
+
+/// Launch a legacy short-name artifact while retaining principal-fenced
+/// retirement ownership. New production deployments should use a signed
+/// descriptor and [`launch_scoped_artifact_named`].
+pub fn launch_artifact(
+    mut artifact: OwnedMemory,
+    artifact_len: usize,
+    artifact_name: &[u8],
+) -> Result<DeployedArtifact, ArtifactLaunchError> {
+    if artifact_len == 0
+        || artifact_len > artifact.len()
+        || artifact_name.is_empty()
+        || artifact_name.len() > 8
+    {
+        return Err(ArtifactLaunchError::InvalidLength);
+    }
+    let mut packed = [0u8; 8];
+    packed[..artifact_name.len()].copy_from_slice(artifact_name);
+    let artifact_cap = artifact.cap.take().expect("artifact capability already consumed");
+    let asid = kernel::spawn_artifact(artifact_cap, artifact_len, u64::from_le_bytes(packed));
+    if asid == 0 {
+        return Err(ArtifactLaunchError::Rejected);
+    }
+    Ok(DeployedArtifact {
+        principal: charlotte_launch::artifact_principal_id(artifact_name),
+        asid,
+        retired: false,
+    })
 }
 
 /// An owned IPC endpoint capability.
@@ -1956,6 +2067,14 @@ mod kernel {
             descriptor_len,
         )
     }
+
+    pub fn spawn_artifact(artifact: u64, artifact_len: usize, artifact_name: u64) -> u64 {
+        catten_syscall::spawn_artifact(artifact, artifact_len, artifact_name)
+    }
+
+    pub fn retire_artifact_named(principal: u64) -> u64 {
+        catten_syscall::retire_artifact_named(principal)
+    }
 }
 
 #[cfg(test)]
@@ -2346,6 +2465,14 @@ mod kernel {
         _descriptor_len: usize,
     ) -> u64 {
         with_state(|state| state.scoped_spawn)
+    }
+
+    pub fn spawn_artifact(_artifact: u64, _artifact_len: usize, _artifact_name: u64) -> u64 {
+        with_state(|state| state.scoped_spawn)
+    }
+
+    pub fn retire_artifact_named(_principal: u64) -> u64 {
+        0
     }
 }
 

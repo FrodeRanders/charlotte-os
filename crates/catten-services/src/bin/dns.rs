@@ -135,6 +135,7 @@ use message_memory::{
     read_key,
     read_moved_bytes,
     read_named_bytes,
+    read_named_deploy_request,
     reply_move_bytes,
 };
 use reactor::{
@@ -1578,6 +1579,39 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                dns::OP_DEPLOY_NAMED => {
+                    let request = read_named_deploy_request(&message);
+                    let result = if node.state != NodeState::Leader {
+                        dns::ERR_NOT_LEADER
+                    } else {
+                        match request {
+                            Some(request) => match node.submit_command(
+                                encode_deploy(
+                                    &request.name,
+                                    request.object_id,
+                                    request.node_key,
+                                    &request.digest,
+                                    &request.descriptor,
+                                ),
+                                node.millis(),
+                            ) {
+                                Ok(log_index) => {
+                                    pending_registers.push(PendingRegistration::Deploy {
+                                        log_index,
+                                        reply: message.reply,
+                                    });
+                                    continue;
+                                }
+                                Err(code) => code,
+                            },
+                            None => dns::ERR_TOO_LARGE,
+                        }
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
                 dns::OP_DEPLOY_QUERY => {
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
@@ -1602,6 +1636,42 @@ fn main(ctx: Context) -> ! {
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);
                     }
+                    continue;
+                }
+
+                dns::OP_DEPLOY_QUERY_NAMED => {
+                    let artifact = read_named_bytes(&message);
+                    if let Some(artifact) = artifact
+                        && let Some(entry) = catalog.deployment(&artifact)
+                    {
+                        let mut bytes = Vec::with_capacity(60 + entry.descriptor.len());
+                        bytes.extend_from_slice(&entry.generation.to_le_bytes());
+                        bytes.extend_from_slice(&entry.object_id.to_le_bytes());
+                        bytes.extend_from_slice(&entry.node_key.to_le_bytes());
+                        bytes.extend_from_slice(&entry.artifact_digest);
+                        bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
+                        bytes.extend_from_slice(&entry.descriptor);
+                        reply_move_bytes(message.reply, &bytes);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
+                    continue;
+                }
+
+                dns::OP_DEPLOY_LIST => {
+                    let deployments = catalog.deployments();
+                    let mut bytes = Vec::with_capacity(
+                        2 + deployments.iter().map(|(name, _)| 1 + name.len()).sum::<usize>(),
+                    );
+                    bytes.extend_from_slice(&(deployments.len() as u16).to_le_bytes());
+                    for (name, _) in deployments {
+                        let Ok(name_len) = u8::try_from(name.len()) else {
+                            continue;
+                        };
+                        bytes.push(name_len);
+                        bytes.extend_from_slice(&name);
+                    }
+                    reply_move_bytes(message.reply, &bytes);
                     continue;
                 }
 

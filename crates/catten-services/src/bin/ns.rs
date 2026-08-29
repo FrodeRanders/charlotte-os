@@ -848,6 +848,17 @@ fn main(ctx: Context) -> ! {
                     },
                 }
             }
+            ns::OP_TRY_LOOKUP_NAMED => {
+                let key = read_named_key(&message);
+                if message.reply != 0 {
+                    match key {
+                        Some(key) => try_lookup(&registry, &key, message.reply),
+                        None => unsafe {
+                            ipc_reply(message.reply, ns::ERR_INVALID);
+                        },
+                    }
+                }
+            }
             ns::OP_REGISTER_AUTHORIZED => {
                 let request = read_authorization_request(&message);
                 let actor = synchronize_sender(&mut policy, &message);

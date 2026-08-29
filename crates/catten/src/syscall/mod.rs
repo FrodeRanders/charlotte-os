@@ -1908,7 +1908,8 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
     if !deployment_agent_authorized(caller_asid)
         || elf_cap == 0
         || size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
-        || crate::service::supervisor::DEPLOYED_DOMAIN.lock().is_some()
+        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
+            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
     {
         close_input();
         frame.regs[0] = 0;
@@ -1968,7 +1969,12 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap);
     crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
     let domain = crate::service::supervisor::start_domain(loaded);
-    *crate::service::supervisor::DEPLOYED_DOMAIN.lock() = Some(domain);
+    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
+        crate::service::supervisor::DeployedDomain {
+            principal: charlotte_launch::artifact_principal_id(&name_bytes[..name_len]),
+            domain,
+        },
+    );
     frame.regs[0] = domain.asid as u64;
 }
 
@@ -1996,14 +2002,13 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
                 ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })
-        || crate::service::supervisor::DEPLOYED_DOMAIN.lock().is_some()
+        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
+            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
     {
         close_inputs();
         frame.regs[0] = 0;
         return;
     }
-    let name_bytes = packed_name.to_le_bytes();
-    let name_len = name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
     let image = crate::memory::object::snapshot_bytes(
         caller_asid,
         elf_cap,
@@ -2019,12 +2024,28 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     };
-    if name_len == 0
+    let Some(decoded) = charlotte_launch::deployment::decode(&descriptor) else {
+        frame.regs[0] = 0;
+        return;
+    };
+    let packed_name_bytes = packed_name.to_le_bytes();
+    let packed_name_len =
+        packed_name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
+    if (packed_name_len != 0 && decoded.artifact_name != &packed_name_bytes[..packed_name_len])
         || charlotte_launch::signature_note::verify_elf_for_name(
             &image,
             &charlotte_launch::CLUSTER_PUBLIC_KEY,
-            &name_bytes[..name_len],
+            decoded.artifact_name,
         ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    {
+        frame.regs[0] = 0;
+        return;
+    }
+    let principal = charlotte_launch::artifact_principal_id(decoded.artifact_name);
+    if crate::service::supervisor::DEPLOYED_DOMAINS
+        .lock()
+        .iter()
+        .any(|deployed| deployed.principal == principal)
     {
         frame.regs[0] = 0;
         return;
@@ -2040,7 +2061,12 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
             return;
         }
     };
-    *crate::service::supervisor::DEPLOYED_DOMAIN.lock() = Some(domain);
+    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
+        crate::service::supervisor::DeployedDomain {
+            principal,
+            domain,
+        },
+    );
     frame.regs[0] = domain.asid as u64;
 }
 
@@ -2050,11 +2076,18 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
         frame.regs[0] = u64::MAX;
         return;
     }
-    let mut deployed = crate::service::supervisor::DEPLOYED_DOMAIN.lock();
-    let Some(domain) = *deployed else {
+    let principal = frame.regs[1];
+    let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
+    let position = if principal == 0 && deployed.len() == 1 {
+        Some(0)
+    } else {
+        deployed.iter().position(|entry| entry.principal == principal)
+    };
+    let Some(position) = position else {
         frame.regs[0] = 0;
         return;
     };
+    let domain = deployed[position].domain;
     if !crate::service::supervisor::domain_exited(&domain) {
         crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
@@ -2062,7 +2095,7 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
         frame.regs[0] = 1;
         return;
     }
-    let domain = deployed.take().expect("deployed domain checked above");
+    let domain = deployed.swap_remove(position).domain;
     drop(deployed);
     crate::service::supervisor::teardown_domain(domain);
     frame.regs[0] = 0;

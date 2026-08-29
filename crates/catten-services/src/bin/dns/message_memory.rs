@@ -99,6 +99,44 @@ pub(super) fn read_deploy_request(message: &IpcMessage) -> Option<(u64, u64, [u8
     Some((object_id, node_key, digest, descriptor))
 }
 
+/// Read an `OP_DEPLOY_NAMED` request, consuming its moved memory object.
+pub(super) struct NamedDeployRequest {
+    pub name: Vec<u8>,
+    pub object_id: u64,
+    pub node_key: u64,
+    pub digest: [u8; 32],
+    pub descriptor: Vec<u8>,
+}
+
+pub(super) fn read_named_deploy_request(message: &IpcMessage) -> Option<NamedDeployRequest> {
+    let bytes = read_moved_bytes(message, 4096)?;
+    let name_len = usize::from(u16::from_le_bytes(bytes.get(0..2)?.try_into().ok()?));
+    if name_len == 0 || name_len > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN {
+        return None;
+    }
+    let after_name = 2usize.checked_add(name_len)?;
+    let name = bytes.get(2..after_name)?.to_vec();
+    let object_id = u64::from_le_bytes(bytes.get(after_name..after_name + 8)?.try_into().ok()?);
+    let node_key = u64::from_le_bytes(bytes.get(after_name + 8..after_name + 16)?.try_into().ok()?);
+    let digest: [u8; 32] = bytes.get(after_name + 16..after_name + 48)?.try_into().ok()?;
+    let descriptor_len = usize::try_from(u32::from_le_bytes(
+        bytes.get(after_name + 48..after_name + 52)?.try_into().ok()?,
+    ))
+    .ok()?;
+    if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+        || bytes.len() != after_name + 52 + descriptor_len
+    {
+        return None;
+    }
+    Some(NamedDeployRequest {
+        name,
+        object_id,
+        node_key,
+        digest,
+        descriptor: bytes[after_name + 52..].to_vec(),
+    })
+}
+
 /// Read a full-length name from moved memory. `arg0` is the byte length.
 pub(super) fn read_named_bytes(message: &IpcMessage) -> Option<Vec<u8>> {
     if message.memory == 0 {
@@ -178,13 +216,13 @@ pub(super) fn read_key(message: &IpcMessage) -> Option<[u8; 32]> {
 
 /// Reply by moving a page containing `bytes`.
 pub(super) fn reply_move_bytes(reply: u64, bytes: &[u8]) {
-    if reply == 0 || bytes.len() > 4096 {
+    if reply == 0 || bytes.len() > 64 * 4096 {
         if reply != 0 {
             ipc_reply(reply, dns::ERR_TOO_LARGE);
         }
         return;
     }
-    let cap = memory_alloc(1);
+    let cap = memory_alloc(bytes.len().div_ceil(4096).max(1));
     let (map_status, vaddr) = memory_map_any(cap, true);
     if cap != 0 && map_status == 0 {
         unsafe {

@@ -1,21 +1,17 @@
-//! Cluster deploy agent: the node-side "picker-upper" of the server-class
-//! cluster vision (manual Chapter 19).
+//! Node-side reconciler for cluster deployments.
 //!
-//! Each agent:
-//!
-//! 1. Polls the replicated deployment manifest for assignments to this node.
-//! 2. Fetches the pinned object-store bytes, verifies their SHA-256 and CLS2 name-bound cluster
-//!    signature, and passes the memory object to the privileged deployment syscall.
-//! 3. The kernel loads that exact ELF in a fresh address space; the service registers locally and
-//!    the agent publishes it to the distributed catalog.
-//! 4. On reassignment the agent retires and reclaims the spawned domain. The resulting endpoint
-//!    close drives generation-fenced distributed removal.
+//! Desired deployments live in the replicated name catalog. Each agent
+//! enumerates them, launches every assignment for its node, publishes ready
+//! application endpoints to the distributed catalog, and retires only the
+//! exact artifact generation that moved away. Executable bytes come from the
+//! node's separately provisioned S3 connector; no object-store secret enters
+//! an application descriptor.
 #![no_std]
 #![no_main]
 
 extern crate alloc;
 
-catten_rt::entry!(main);
+use alloc::vec::Vec;
 
 use catten_rt::{
     Context,
@@ -24,113 +20,73 @@ use catten_rt::{
     manifest_key,
     owned::{
         Connection,
+        ConnectionRef,
+        DeployedArtifact,
         OwnedMemory,
-        spawn_scoped_artifact,
+        launch_artifact,
+        launch_scoped_artifact_named,
     },
 };
 use catten_services::{
-    deploy,
     dns,
     net,
     node_identity,
-    ns,
     objstore,
-    s3,
     s3_client::Client as S3Client,
-    wait_reply,
+    sleep_ms,
+    try_registered_name_bytes_owned,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::*;
 
-/// Status-page stage markers (offset 0).
+catten_rt::entry!(main);
+
 const STAGE_IDENTITY: u32 = 2;
 const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
 const STAGE_FAIL: u32 = 0xdead;
 
-const REPLY_SPINS: u64 = 50_000_000;
-
-/// A replicated deployment record as decoded from `OP_DEPLOY_QUERY`
-/// (`[generation][object_id][node_key][artifact_sha256]`; Raft establishes
-/// the authoritative generation and the digest pins its exact bytes).
 struct DeploymentInfo {
     generation: u64,
     object_id: u64,
     node_key: u64,
     artifact_digest: [u8; 32],
-    descriptor: alloc::vec::Vec<u8>,
+    descriptor: Vec<u8>,
+}
+
+struct ActiveDeployment {
+    name: Vec<u8>,
+    generation: u64,
+    domain: DeployedArtifact,
+    published: bool,
+    retiring: bool,
 }
 
 fn fail(stage: u32) -> ! {
     config::write_u32_release(charlotte_launch::agent_status::STAGE, stage);
-    unsafe { thread_exit() }
+    catten_rt::domain_abort()
 }
 
-fn lookup(ns_connection: u64, name: u64) -> u64 {
-    let lookup = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_LOOKUP,
-        name,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if lookup == 0 {
-        return 0;
-    }
-    let (generation, connection) = catten_services::spin_reply(lookup);
-    if generation < 1 || connection == 0 {
-        0
-    } else {
-        connection
-    }
+fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
+    let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
+    let mut mapping = memory.map_writable().ok()?;
+    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
+    mapping.unmap().ok()
 }
 
-fn try_lookup(ns_connection: u64, name: u64) -> u64 {
-    let lookup = ipc_scalar_call(ns_connection, ns::OP_TRY_LOOKUP, name);
-    if lookup == 0 {
-        return 0;
-    }
-    let (generation, connection) = catten_services::spin_reply(lookup);
-    if generation < 1 || connection == 0 {
-        if connection != 0 {
-            ipc_close(connection);
-        }
-        0
-    } else {
-        connection
-    }
+fn lookup(names: ConnectionRef<'_>, service: u64) -> Option<Connection> {
+    wait_for_registered_name_owned(names, service).map(|(_, connection)| connection)
 }
 
-/// The cluster's public key as committed by the key ceremony, read through
-/// the local dns replica (replicated state).
-fn read_cluster_key(dns_conn: u64) -> Option<[u8; 32]> {
-    let call = ipc_scalar_call(dns_conn, dns::OP_KEY, 0);
-    if call == 0 {
+fn read_cluster_key(dns_connection: ConnectionRef<'_>) -> Option<[u8; 32]> {
+    let reply = dns_connection.call(dns::OP_KEY, 0).ok()?.wait().ok()?;
+    if reply.result < 32 {
         return None;
     }
-    let (status, size, _returned_connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if memory == 0 || (status as i64) < 0 || size < 32 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    let (data_vaddr_3_map_status, data_vaddr_3_vaddr) = memory_map_any(memory, false);
-    if data_vaddr_3_map_status != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let mut key = [0u8; 32];
-    for (index, byte) in key.iter_mut().enumerate() {
-        *byte = unsafe { core::ptr::read_volatile((data_vaddr_3_vaddr + index) as *const u8) };
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(key)
+    let memory = reply.memory?;
+    let mapping = memory.map_read_only().ok()?;
+    mapping.as_slice().get(..32)?.try_into().ok()
 }
 
-/// The build-time cluster public key, as the kernel wrote it into the launch
-/// manifest when it spawned this service.
 fn manifest_cluster_key(ctx: &Context) -> Option<[u8; 32]> {
     match ctx.manifest_value(charlotte_launch::CLUSTER_KEY_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => <[u8; 32]>::try_from(bytes).ok(),
@@ -138,109 +94,129 @@ fn manifest_cluster_key(ctx: &Context) -> Option<[u8; 32]> {
     }
 }
 
-/// This node's cluster key: the FNV-1a of its NIC MAC (truncated to 32 bits,
-/// matching the node-name suffix the dns derives for the cluster members).
-fn local_node_key(ns_connection: u64) -> Option<u64> {
-    let net_lookup = ipc_scalar_call(ns_connection, ns::OP_LOOKUP, net::NAME);
-    if net_lookup == 0 {
-        return None;
-    }
-    let (net_generation, net_conn) = unsafe { wait_reply(net_lookup, REPLY_SPINS) };
-    if net_generation < 1 || net_conn == 0 {
-        return None;
-    }
-    let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
-    if status_call == 0 {
-        return None;
-    }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
-    let (link, local_mac) = charlotte_protocol_net::decode_status(status);
-    if link == 0 {
-        return None;
-    }
-    Some(node_identity::fnv1a(&local_mac) & 0xffff_ffff)
+fn local_node_key(names: ConnectionRef<'_>) -> Option<u64> {
+    let connection = lookup(names, net::NAME)?;
+    let reply = connection.as_ref().call(net::OP_STATUS, 0).ok()?.wait().ok()?;
+    let (link, mac) = charlotte_protocol_net::decode_status(reply.result);
+    (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
 }
 
-/// Blocking query of the replicated deployment manifest for `packed_name`
-/// (packed LE). Used by the polling loop, where nothing invokes the agent
-/// yet, so blocking on the dns reply cannot deadlock.
-fn query_deployment(dns_conn: u64, packed_name: u64) -> Option<DeploymentInfo> {
-    let call = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, packed_name);
-    if call == 0 {
-        return None;
+fn deployment_names(dns_connection: ConnectionRef<'_>) -> Vec<Vec<u8>> {
+    let Some(reply) =
+        dns_connection.call(dns::OP_DEPLOY_LIST, 0).ok().and_then(|call| call.wait().ok())
+    else {
+        return Vec::new();
+    };
+    let Ok(len) = usize::try_from(reply.result) else {
+        return Vec::new();
+    };
+    let Some(memory) = reply.memory else {
+        return Vec::new();
+    };
+    let Ok(mapping) = memory.map_read_only() else {
+        return Vec::new();
+    };
+    let Some(bytes) = mapping.as_slice().get(..len) else {
+        return Vec::new();
+    };
+    let Some(count_bytes) = bytes.get(..2) else {
+        return Vec::new();
+    };
+    let count = usize::from(u16::from_le_bytes(count_bytes.try_into().unwrap_or_default()));
+    let mut offset = 2;
+    let mut names = Vec::with_capacity(count);
+    for _ in 0..count {
+        let Some(name_len) = bytes.get(offset).copied().map(usize::from) else {
+            return Vec::new();
+        };
+        let start = offset + 1;
+        let Some(name) = bytes.get(start..start.saturating_add(name_len)) else {
+            return Vec::new();
+        };
+        if name.is_empty() || name.len() > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN {
+            return Vec::new();
+        }
+        names.push(name.to_vec());
+        offset = start + name_len;
     }
-    let (_status, size, _returned_connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    let entry = usize::try_from(size).ok().and_then(|size| decode_deployment(memory, size));
-    if memory != 0 {
-        memory_close(memory);
+    if offset == bytes.len() {
+        names
+    } else {
+        Vec::new()
     }
-    entry
 }
 
-/// Read the artifact at `object_id` from the object store, verify that it is
-/// exactly the deployed artifact (SHA-256 identity) and that its signature
-/// note validates against the cluster's public key.
-fn fetch_and_verify(
-    obj_conn: u64,
+fn query_deployment(dns_connection: ConnectionRef<'_>, name: &[u8]) -> Option<DeploymentInfo> {
+    let request = memory_from_bytes(name)?;
+    let reply = dns_connection
+        .call_move(dns::OP_DEPLOY_QUERY_NAMED, name.len() as u64, request)
+        .ok()?
+        .wait()
+        .ok()?;
+    let len = usize::try_from(reply.result).ok()?;
+    let memory = reply.memory?;
+    let mapping = memory.map_read_only().ok()?;
+    decode_deployment(mapping.as_slice().get(..len)?)
+}
+
+fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
+    if bytes.len() < 56 {
+        return None;
+    }
+    let descriptor = if bytes.len() == 56 {
+        Vec::new()
+    } else {
+        let descriptor_len =
+            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
+        if descriptor_len == 0
+            || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || bytes.len() != 60 + descriptor_len
+        {
+            return None;
+        }
+        bytes[60..].to_vec()
+    };
+    Some(DeploymentInfo {
+        generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
+        object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
+        node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
+        artifact_digest: bytes[24..56].try_into().ok()?,
+        descriptor,
+    })
+}
+
+fn fetch_from_local_store(
+    names: ConnectionRef<'_>,
     object_id: u64,
     expected_digest: &[u8; 32],
     cluster_key: &[u8; 32],
-) -> Result<(u64, usize), ()> {
-    let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
-    if read == 0 {
-        return Err(());
+    artifact_name: &[u8],
+) -> Option<(OwnedMemory, usize)> {
+    let connection = lookup(names, objstore::NAME)?;
+    let reply = connection.as_ref().call(objstore::OP_READ, object_id).ok()?.wait().ok()?;
+    let len = usize::try_from(reply.result).ok()?;
+    let memory = reply.memory?;
+    if len == 0 || len > memory.len() {
+        return None;
     }
-    let (status, size, returned_connection, returned_memory) = ipc_reply_wait_with_memory(read);
-    ipc_close(read);
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    let len = usize::try_from(size).map_err(|_| ())?;
-    if status != 0 || returned_memory == 0 || len == 0 || len > memory_size(returned_memory) {
-        if returned_memory != 0 {
-            memory_close(returned_memory);
-        }
-        return Err(());
-    }
-    let (data_vaddr_2_map_status, data_vaddr_2_vaddr) = memory_map_any(returned_memory, false);
-    if data_vaddr_2_map_status != 0 {
-        memory_close(returned_memory);
-        return Err(());
-    }
-    let mut artifact = alloc::vec::Vec::with_capacity(len);
-    for index in 0..len {
-        artifact
-            .push(unsafe { core::ptr::read_volatile((data_vaddr_2_vaddr + index) as *const u8) });
-    }
-    memory_unmap(returned_memory);
-    // The artifact is the note-signed `greet` ELF: it must be exactly the
-    // artifact this agent is built to serve, and its signature note must
-    // validate against the cluster's public key.
-    if charlotte_launch::sha256::digest(&artifact) != *expected_digest {
-        memory_close(returned_memory);
-        return Err(());
-    }
-    if charlotte_launch::signature_note::verify_elf_for_name(&artifact, cluster_key, b"greet")
-        != charlotte_launch::signature_note::VerifyOutcome::Valid
+    let mapping = memory.map_read_only().ok()?;
+    let bytes = mapping.as_slice().get(..len)?;
+    if charlotte_launch::sha256::digest(bytes) != *expected_digest
+        || charlotte_launch::signature_note::verify_elf_for_name(bytes, cluster_key, artifact_name)
+            != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
-        memory_close(returned_memory);
-        return Err(());
+        return None;
     }
-    Ok((returned_memory, len))
+    let memory = mapping.unmap().ok()?;
+    Some((memory, len))
 }
 
 fn fetch_from_central_store(
-    ns_connection: u64,
+    names: ConnectionRef<'_>,
     descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
     cluster_key: &[u8; 32],
-) -> Option<alloc::vec::Vec<u8>> {
-    let raw_connection = try_lookup(ns_connection, s3::NAME);
-    if raw_connection == 0 {
-        return None;
-    }
-    // The lookup reply transfers one owning connection at this IPC boundary.
-    let connection = unsafe { Connection::from_raw(raw_connection) }.ok()?;
+) -> Option<Vec<u8>> {
+    let (_, connection) = try_registered_name_bytes_owned(names, b"s3")?;
     let client = S3Client::new(connection.as_ref());
     let request = charlotte_protocol_s3::ObjectRequest::get(descriptor.object_key);
     let (mut get, info) = client.get(request).ok()?;
@@ -251,7 +227,7 @@ fn fetch_from_central_store(
     {
         return None;
     }
-    let mut artifact = alloc::vec::Vec::with_capacity(expected_len);
+    let mut artifact = Vec::with_capacity(expected_len);
     while let Some(chunk) = get.read().ok()? {
         let (memory, len) = chunk.into_parts();
         let mapping = memory.map_read_only().ok()?;
@@ -274,223 +250,149 @@ fn fetch_from_central_store(
     Some(artifact)
 }
 
-fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
-    let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
-    let mut mapping = memory.map_writable().ok()?;
-    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
-    mapping.unmap().ok()
-}
-
-/// Publish the independently running artifact domain, then supervise it until
-/// the assignment moves elsewhere.
-fn supervise(
-    dns_conn: u64,
-    ns_connection: u64,
+fn launch(
+    names: ConnectionRef<'_>,
+    name: &[u8],
+    entry: &DeploymentInfo,
+    cluster_key: &[u8; 32],
     my_node_key: u64,
-    poll_ms: u64,
-    generation: u64,
-) -> ! {
-    // A blocking node-name lookup is the startup synchronization: it proves
-    // that the spawned ELF, not this agent, created and registered its endpoint.
-    let service_connection = lookup(ns_connection, deploy::NAME);
-    if service_connection == 0 {
-        fail(STAGE_FAIL);
+) -> Option<ActiveDeployment> {
+    if entry.descriptor.is_empty() {
+        let (artifact, artifact_len) = fetch_from_local_store(
+            names,
+            entry.object_id,
+            &entry.artifact_digest,
+            cluster_key,
+            name,
+        )?;
+        let domain = launch_artifact(artifact, artifact_len, name).ok()?;
+        return Some(ActiveDeployment {
+            name: name.to_vec(),
+            generation: entry.generation,
+            domain,
+            published: false,
+            retiring: false,
+        });
     }
-    ipc_close(service_connection);
-
-    // Publish through the dns. The reply is deferred until the catalog entry
-    // has replicated (locally through the leader, or relayed to it); poll it
-    // while serving rather than blocking on it.
-    let publish = ipc_scalar_call(dns_conn, dns::OP_REGISTER, deploy::NAME);
-    if publish == 0 {
-        fail(STAGE_FAIL);
-    }
-    // Polling deployment query; the retirement decision is made from its
-    // reply without ever blocking the serve loop.
-    let mut deploy_query = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, deploy::NAME);
-    if deploy_query == 0 {
-        fail(STAGE_FAIL);
-    }
-
-    let mut published = false;
-    loop {
-        cq_wait_timeout(1, poll_ms, 0);
-        // Publish progress: has the catalog registration committed?
-        if !published {
-            let (status, result, _returned_connection) = ipc_reply_poll(publish);
-            if status == 0 {
-                ipc_close(publish);
-                if result >= 1 {
-                    published = true;
-                    config::write::<u64>(
-                        charlotte_launch::agent_status::SERVED_GENERATION,
-                        generation,
-                    );
-                    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SERVING);
-                } else {
-                    fail(STAGE_FAIL);
-                }
-            }
-        }
-
-        // Retirement check: is the artifact still assigned to this node? The
-        // query is polled, never blocked on.
-        if published {
-            let (status, size, _returned_connection, memory) =
-                ipc_reply_poll_with_memory(deploy_query);
-            if status == 0 {
-                ipc_close(deploy_query);
-                let entry =
-                    usize::try_from(size).ok().and_then(|size| decode_deployment(memory, size));
-                if memory != 0 {
-                    memory_close(memory);
-                }
-                let still_mine = entry.is_some_and(|entry| entry.node_key == my_node_key);
-                if !still_mine {
-                    loop {
-                        let retirement = retire_artifact();
-                        match retirement {
-                            0 => break,
-                            1 => cq_wait_timeout(1, poll_ms.min(25), 0),
-                            _ => fail(STAGE_FAIL),
-                        };
-                    }
-                    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_RETIRED);
-                    unsafe { thread_exit() }
-                }
-                deploy_query = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, deploy::NAME);
-                if deploy_query == 0 {
-                    fail(STAGE_FAIL);
-                }
-            }
-        }
-    }
-}
-
-/// Decode an `OP_DEPLOY_QUERY` reply:
-/// `[generation][object_id][node_key][artifact_sha256]
-/// [descriptor_len:u32][signed_descriptor]`.
-fn decode_deployment(memory: u64, len: usize) -> Option<DeploymentInfo> {
-    if memory == 0 {
-        return None;
-    }
-    let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(memory, false);
-    if data_vaddr_map_status != 0 {
-        return None;
-    }
-    if len < 56
-        || len > memory_size(memory)
-        || len > 60 + charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+    if charlotte_launch::deployment::verify(&entry.descriptor, cluster_key)
+        != charlotte_launch::deployment::VerifyOutcome::Valid
     {
-        memory_unmap(memory);
         return None;
     }
-    let mut bytes = alloc::vec::Vec::with_capacity(len);
-    for index in 0..len {
-        bytes.push(unsafe { core::ptr::read_volatile((data_vaddr_vaddr + index) as *const u8) });
+    let descriptor = charlotte_launch::deployment::decode(&entry.descriptor)?;
+    if descriptor.artifact_name != name
+        || (descriptor.node_key != 0 && descriptor.node_key != my_node_key)
+        || descriptor.artifact_digest != entry.artifact_digest
+    {
+        return None;
     }
-    memory_unmap(memory);
-    let descriptor = if bytes.len() == 56 {
-        alloc::vec::Vec::new()
-    } else {
-        let descriptor_len =
-            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
-        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-            || bytes.len() != 60 + descriptor_len
-        {
-            return None;
-        }
-        bytes[60..].to_vec()
-    };
-    Some(DeploymentInfo {
-        generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
-        object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-        node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
-        artifact_digest: bytes[24..56].try_into().ok()?,
-        descriptor,
+    let artifact = fetch_from_central_store(names, &descriptor, cluster_key)?;
+    let artifact_memory = memory_from_bytes(&artifact)?;
+    let descriptor_memory = memory_from_bytes(&entry.descriptor)?;
+    let domain = launch_scoped_artifact_named(
+        artifact_memory,
+        artifact.len(),
+        name,
+        descriptor_memory,
+        entry.descriptor.len(),
+    )
+    .ok()?;
+    Some(ActiveDeployment {
+        name: name.to_vec(),
+        generation: entry.generation,
+        domain,
+        published: false,
+        retiring: false,
     })
 }
 
+fn publish_if_ready(
+    names: ConnectionRef<'_>,
+    dns_connection: ConnectionRef<'_>,
+    active: &mut ActiveDeployment,
+) {
+    if active.published || try_registered_name_bytes_owned(names, &active.name).is_none() {
+        return;
+    }
+    let Some(name_memory) = memory_from_bytes(&active.name) else {
+        return;
+    };
+    let Some(reply) = dns_connection
+        .call_move(dns::OP_REGISTER_NAMED, active.name.len() as u64, name_memory)
+        .ok()
+        .and_then(|call| call.wait().ok())
+    else {
+        return;
+    };
+    if reply.result >= 1 {
+        active.published = true;
+        config::write::<u64>(charlotte_launch::agent_status::SERVED_GENERATION, active.generation);
+        config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SERVING);
+    }
+}
+
 fn main(ctx: Context) -> ! {
-    let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| fail(STAGE_FAIL));
+    let names = ctx.bootstrap_connection().unwrap_or_else(|| fail(STAGE_FAIL));
     let poll_ms = match ctx.manifest_value(manifest_key(b"poll-ms")) {
         Some(ManifestValue::Unsigned(ms)) => ms,
         _ => 500,
     };
-
-    let obj_conn = lookup(ns_connection, objstore::NAME);
-    let dns_conn = lookup(ns_connection, dns::NAME);
-    if obj_conn == 0 || dns_conn == 0 {
-        fail(STAGE_FAIL);
-    }
-
-    // This node's cluster key, derived the same way the dns derives its node
-    // identity (from the NIC MAC). Publish it so the kernel verifier can tell
-    // which cluster node this guest is.
-    let my_node_key = match local_node_key(ns_connection) {
-        Some(key) => key,
-        None => fail(STAGE_FAIL),
-    };
+    let dns_connection = lookup(names, dns::NAME).unwrap_or_else(|| fail(STAGE_FAIL));
+    let my_node_key = local_node_key(names).unwrap_or_else(|| fail(STAGE_FAIL));
     config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
 
-    // The cluster's public key: prefer the key committed by the ceremony
-    // (obtained from the cluster), else the build-time copy the kernel
-    // handed us in the launch manifest. The kernel pre-stages the signed
-    // artifact into the object store; this agent only fetches, verifies, and
-    // serves.
     let cluster_key = manifest_cluster_key(&ctx).unwrap_or_else(|| fail(STAGE_FAIL));
-    if read_cluster_key(dns_conn).is_some_and(|replicated| replicated != cluster_key) {
-        // Replicated state may distribute the bootstrap anchor, but it may
-        // not replace it without an authenticated key-rotation protocol.
+    if read_cluster_key(dns_connection.as_ref()).is_some_and(|key| key != cluster_key) {
         fail(STAGE_FAIL);
     }
 
+    let mut active: Vec<ActiveDeployment> = Vec::new();
     loop {
-        if let Some(entry) = query_deployment(dns_conn, deploy::NAME) {
-            // The assignment is a cluster decision (committed by consensus).
-            // If it names this node, the artifact must validate against the
-            // cluster's public key before it is served.
-            if entry.node_key == my_node_key
-                && !entry.descriptor.is_empty()
-                && charlotte_launch::deployment::verify(&entry.descriptor, &cluster_key)
-                    == charlotte_launch::deployment::VerifyOutcome::Valid
-                && let Some(descriptor) = charlotte_launch::deployment::decode(&entry.descriptor)
-                && descriptor.artifact_name == b"greet"
-                && descriptor.node_key == my_node_key
-                && descriptor.artifact_digest == entry.artifact_digest
-                && let Some(artifact) =
-                    fetch_from_central_store(ns_connection, &descriptor, &cluster_key)
-                && let (Some(artifact_memory), Some(descriptor_memory)) =
-                    (memory_from_bytes(&artifact), memory_from_bytes(&entry.descriptor))
-            {
-                if spawn_scoped_artifact(
-                    artifact_memory,
-                    artifact.len(),
-                    deploy::NAME,
-                    descriptor_memory,
-                    entry.descriptor.len(),
-                )
-                .is_err()
-                {
-                    fail(STAGE_FAIL);
-                }
-                supervise(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
-            } else if entry.node_key == my_node_key
-                && entry.descriptor.is_empty()
-                && let Ok((artifact_cap, artifact_size)) = fetch_and_verify(
-                    obj_conn,
-                    entry.object_id,
-                    &entry.artifact_digest,
-                    &cluster_key,
-                )
-            {
-                if spawn_artifact(artifact_cap, artifact_size, deploy::NAME) == 0 {
-                    fail(STAGE_FAIL);
-                }
-                supervise(dns_conn, ns_connection, my_node_key, poll_ms, entry.generation);
+        let desired_names = deployment_names(dns_connection.as_ref());
+
+        for running in &mut active {
+            let still_desired = query_deployment(dns_connection.as_ref(), &running.name)
+                .is_some_and(|entry| {
+                    entry.node_key == my_node_key && entry.generation == running.generation
+                });
+            running.retiring |= !still_desired;
+            if !running.retiring {
+                publish_if_ready(names, dns_connection.as_ref(), running);
             }
         }
-        cq_wait_timeout(1, poll_ms, 0);
+        let mut index = 0;
+        while index < active.len() {
+            if active[index].retiring {
+                match active[index].domain.poll_retire() {
+                    Ok(true) => {
+                        active.swap_remove(index);
+                        if active.is_empty() {
+                            config::write_u32_release(
+                                charlotte_launch::agent_status::STAGE,
+                                STAGE_RETIRED,
+                            );
+                        }
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(_) => fail(STAGE_FAIL),
+                }
+            }
+            index += 1;
+        }
+
+        for name in desired_names {
+            if active.iter().any(|running| running.name == name) {
+                continue;
+            }
+            if let Some(entry) = query_deployment(dns_connection.as_ref(), &name)
+                && entry.node_key == my_node_key
+                && let Some(running) = launch(names, &name, &entry, &cluster_key, my_node_key)
+            {
+                active.push(running);
+            }
+        }
+        sleep_ms(poll_ms);
     }
 }

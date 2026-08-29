@@ -1842,6 +1842,14 @@ pub fn retire_artifact() -> u64 {
     unsafe { svc3(SyscallNumber::RetireArtifact, 0, 0, 0) }
 }
 
+/// Retire the deployed domain identified by its signed artifact principal.
+/// Returns 1 while retirement is in progress, 0 once it is absent/reclaimed,
+/// and `u64::MAX` when the caller lacks deployment authority.
+#[inline(always)]
+pub fn retire_artifact_named(principal: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::RetireArtifact, principal, 0, 0) }
+}
+
 /// Send a scalar message and move a memory object to the receiver.
 #[inline(always)]
 pub fn ipc_scalar_send_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> IpcStatusCode {

@@ -34,6 +34,8 @@ use catten_services::{
     disco,
     dns,
     name_catalog,
+    net,
+    node_identity,
     ns,
     objstore,
     raft,
@@ -173,13 +175,14 @@ fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
 
 fn submit_deployment(
     dns_conn: u64,
-    packed_name: u64,
+    name: &[u8],
     object_id: u64,
     node_key: u64,
     artifact_digest: &[u8; 32],
     descriptor: &[u8],
 ) -> i64 {
-    let request_len = 56usize.saturating_add(descriptor.len());
+    let request_len =
+        2usize.saturating_add(name.len()).saturating_add(52).saturating_add(descriptor.len());
     if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN || request_len > 4096 {
         return clusterctl::ERR_UPLOAD_FAILED;
     }
@@ -192,14 +195,15 @@ fn submit_deployment(
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
     let bytes = mapping.as_mut_slice();
-    bytes[0..8].copy_from_slice(&object_id.to_le_bytes());
-    bytes[8..16].copy_from_slice(&node_key.to_le_bytes());
-    bytes[16..48].copy_from_slice(artifact_digest);
-    if !descriptor.is_empty() {
-        bytes[48..52].copy_from_slice(&dns::DEPLOY_DESCRIPTOR_MAGIC.to_le_bytes());
-        bytes[52..56].copy_from_slice(&(descriptor.len() as u32).to_le_bytes());
-        bytes[56..request_len].copy_from_slice(descriptor);
-    }
+    bytes[0..2].copy_from_slice(&(name.len() as u16).to_le_bytes());
+    let after_name = 2 + name.len();
+    bytes[2..after_name].copy_from_slice(name);
+    bytes[after_name..after_name + 8].copy_from_slice(&object_id.to_le_bytes());
+    bytes[after_name + 8..after_name + 16].copy_from_slice(&node_key.to_le_bytes());
+    bytes[after_name + 16..after_name + 48].copy_from_slice(artifact_digest);
+    bytes[after_name + 48..after_name + 52]
+        .copy_from_slice(&(descriptor.len() as u32).to_le_bytes());
+    bytes[after_name + 52..request_len].copy_from_slice(descriptor);
     let request = match mapping.unmap() {
         Ok(request) => request,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
@@ -210,7 +214,7 @@ fn submit_deployment(
         Ok(dns) => dns,
         Err(_) => return clusterctl::ERR_NOT_LEADER,
     };
-    match dns.call_move(dns::OP_DEPLOY, packed_name, request) {
+    match dns.call_move(dns::OP_DEPLOY_NAMED, request_len as u64, request) {
         Ok(call) => match call.wait() {
             Ok(reply) => reply.result,
             Err(_) => clusterctl::ERR_NOT_LEADER,
@@ -219,9 +223,11 @@ fn submit_deployment(
     }
 }
 
-fn current_deployment(dns_conn: u64, packed_name: u64) -> Option<name_catalog::DeploymentEntry> {
+fn current_deployment(dns_conn: u64, name: &[u8]) -> Option<name_catalog::DeploymentEntry> {
     let dns = unsafe { ConnectionRef::from_raw(dns_conn) }.ok()?;
-    let reply = dns.call(dns::OP_DEPLOY_QUERY, packed_name).ok()?.wait().ok()?;
+    let request = memory_from_bytes(name)?;
+    let reply =
+        dns.call_move(dns::OP_DEPLOY_QUERY_NAMED, name.len() as u64, request).ok()?.wait().ok()?;
     if reply.result < 56 {
         return None;
     }
@@ -232,6 +238,33 @@ fn current_deployment(dns_conn: u64, packed_name: u64) -> Option<name_catalog::D
     }
     let mapping = memory.map_read_only().ok()?;
     name_catalog::decode_deployment_result(mapping.as_slice().get(..len)?)
+}
+
+fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
+    let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
+    let mut mapping = memory.map_writable().ok()?;
+    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
+    mapping.unmap().ok()
+}
+
+/// Select the local node for an unpinned descriptor. This is the initial
+/// scheduler policy: deterministic placement on the leader handling
+/// admission. Replica spread and capacity-aware rescheduling are represented
+/// by the deployment plan but remain controller work.
+fn local_node_key(ns_connection: u64) -> Option<u64> {
+    let net_conn = lookup(ns_connection, net::NAME);
+    if net_conn == 0 {
+        return None;
+    }
+    let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
+    if status_call == 0 {
+        ipc_close(net_conn);
+        return None;
+    }
+    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    ipc_close(net_conn);
+    let (link, mac) = charlotte_protocol_net::decode_status(status);
+    (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
 }
 
 /// The raw payload attached to an `OP_UPLOAD` call, copied out of the moved
@@ -284,6 +317,7 @@ fn main(ctx: Context) -> ! {
     if obj_conn == 0 || dns_conn == 0 {
         fail(0xdea1);
     }
+    let this_node_key = local_node_key(ns_connection).unwrap_or_else(|| fail(0xdea6));
 
     let endpoint = ipc_endpoint_create(clusterctl::INTERFACE, clusterctl::VERSION, 8);
     if endpoint == 0 {
@@ -367,7 +401,7 @@ fn main(ctx: Context) -> ! {
                                 };
                                 submit_deployment(
                                     dns_conn,
-                                    message.arg0,
+                                    &name,
                                     object_id,
                                     node_key,
                                     &artifact_digest,
@@ -382,7 +416,6 @@ fn main(ctx: Context) -> ! {
                     }
                 }
                 clusterctl::OP_NOTIFY => {
-                    let name = packed_name(message.arg0);
                     let result = match read_payload(&message) {
                         Some(descriptor_bytes)
                             if charlotte_launch::deployment::verify(
@@ -391,11 +424,13 @@ fn main(ctx: Context) -> ! {
                             ) == charlotte_launch::deployment::VerifyOutcome::Valid =>
                         {
                             match charlotte_launch::deployment::decode(&descriptor_bytes) {
-                                Some(descriptor)
-                                    if descriptor.artifact_name == name
-                                        && descriptor.node_key != 0 =>
-                                {
-                                    match current_deployment(dns_conn, message.arg0)
+                                Some(descriptor) => {
+                                    let assigned_node = if descriptor.node_key == 0 {
+                                        this_node_key
+                                    } else {
+                                        descriptor.node_key
+                                    };
+                                    match current_deployment(dns_conn, descriptor.artifact_name)
                                         .filter(|current| !current.descriptor.is_empty())
                                     {
                                         Some(current)
@@ -424,9 +459,9 @@ fn main(ctx: Context) -> ! {
                                         }
                                         _ => submit_deployment(
                                             dns_conn,
-                                            message.arg0,
-                                            dns::artifact_object_id(&name),
-                                            descriptor.node_key,
+                                            descriptor.artifact_name,
+                                            dns::artifact_object_id(descriptor.artifact_name),
+                                            assigned_node,
                                             &descriptor.artifact_digest,
                                             &descriptor_bytes,
                                         ),

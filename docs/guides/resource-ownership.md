@@ -25,6 +25,7 @@ applications.
 | Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
 | Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
 | Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
+| Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` reports drain completion and `Drop` requests best-effort retirement |
 | MMIO/interrupt/DMA | `MmioRegion`, `Interrupt`, `DmaTransfer` | Reverses the exclusive device operation |
 
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
@@ -100,6 +101,13 @@ socket retry policy. The wrapper is deliberately the only owner of the
 self-referential TLS connection and record buffers. Do not reproduce its raw
 buffer-pointer lifetime pattern in individual services or add plaintext retry
 after a failed handshake.
+
+Deployment agents use `launch_scoped_artifact_named`, which consumes both the
+ELF and signed descriptor memory and returns `DeployedArtifact`. Keep that
+owner in the reconciliation record until `poll_retire` returns `Ok(true)`.
+Do not keep only the returned ASID or call the retirement syscall directly:
+the principal-bound owner prevents one rollout from retiring another domain
+after ASID reuse.
 
 ## Raw boundary rules
 

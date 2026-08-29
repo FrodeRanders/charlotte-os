@@ -37,7 +37,8 @@ reproducible builds, source attestations, and key custody.
 The ELF signature and the deployment decision are different trust statements.
 An ELF signature binds code to an artifact name. A `CDEPLOY1` descriptor binds
 that artifact's complete SHA-256 to an opaque central-object-store key, a
-monotonic deployment sequence, a selected node, and a bounded list of named
+  monotonic deployment sequence, a selected node (or zero for automatic
+  singleton placement), and a bounded list of named
 client (`SEND`/`CALL`) or publication capability grants. The descriptor is separately signed by the
 offline cluster Ed25519 authority. Tampering with placement, an object key, or
 a grant therefore fails verification even when the referenced ELF remains
@@ -79,7 +80,7 @@ canonical bounded wire format used by the kernel and userspace. For example:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
-  <artifact-sha256> 0x1234 7 <private-key-hex> \
+  <artifact-sha256> 0 7 <private-key-hex> \
   kafka/orders/input=call kafka/orders/output=client
 ```
 
@@ -125,10 +126,22 @@ boundaries:
    name/signature, digest, and ELF validation, and only then maps the exact ELF
    in a new address space with `grantctl` as its sole bootstrap service.
 
-The agent no longer impersonates the artifact with a hard-coded endpoint. The
-spawned ELF registers its own endpoint; the agent publishes and supervises it.
-On reassignment, the agent aborts and reclaims the deployed domain, which
-closes the endpoint and drives generation-fenced distributed removal.
+The agent is a desired-state reconciler rather than an artifact-specific
+launcher. It enumerates all signed deployment names, launches assignments for
+its node, and waits for each spawned ELF to register its own endpoint before
+publishing it. Up to 64 deployed domains may coexist on a node. Each is keyed
+by the stable principal derived from its full, at-most-48-byte signed name; on
+reassignment or generation change the agent aborts and reclaims only that
+domain. Endpoint closure drives generation-fenced distributed removal.
+
+The current automatic placement policy is intentionally small: `node_key = 0`
+selects the leader that admits a singleton descriptor. This removes offline
+knowledge of a node key from the common one-replica release flow, but it is not
+a general scheduler. Cluster-level planning must next model node capacity,
+labels and failure domains, affinity/anti-affinity, replicas, health/readiness,
+rescheduling, rollout surge/unavailability, and rollback decisions. Those
+decisions belong above the node reconciler and should be committed as desired
+state through Raft.
 
 Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no
