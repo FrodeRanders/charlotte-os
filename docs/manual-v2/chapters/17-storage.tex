@@ -334,14 +334,15 @@ creates a blank v3 store and destructively replaces the image contents.
 \section{Why this matters for critical software}
 
 \begin{enumerate}
-    \item Storage policy lives in userspace --- a bug in the NVMe
+    \item Storage policy lives in userspace --- a bug in a block
         driver, the object store, or the filesystem corrupts that service's
         address space, not the kernel. The kernel grants MMIO and interrupts;
         everything else is userspace.
 
-    \item Device-independent protocol --- the block protocol is intended
-        to let the object store and filesystem work over other block drivers.
-        Those alternative drivers have not yet been implemented.
+    \item Device-independent protocol --- the object store and filesystem use
+        one block protocol over the implemented NVMe, AHCI, and virtio-blk
+        userspace drivers. Further backends can implement the same protocol
+        without moving storage policy into the kernel.
 
     \item Crash-safety mechanism under development --- process-restart
         persistence is boot-validated. Copy-on-write object replacement and

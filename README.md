@@ -11,37 +11,92 @@ service-based direction. It is not a replacement for upstream, and features
 described below should not be assumed to be present or supported in the
 upstream repository.
 
+## Research direction: the cluster as a capability machine
+
+This fork explores a deliberately ambitious question: what would an operating
+system look like if isolation, explicit ownership, and least authority did not
+stop at the process boundary, but extended through services, deployment, and a
+whole cluster? The aim is a distributed computer in which nodes can discover
+one another, agree on desired state, fetch signed software, and place it without
+turning every application into its own miniature infrastructure platform.
+
+The central bet is that cluster software can become easier to reason about when
+authority is a first-class value. Applications should receive narrow
+capabilities, not ambient network access or copied credentials. Infrastructure
+connectors should own Kafka, S3, TLS, and authentication policy. Signed release
+descriptors should state both what code may run and which named services it may
+use. Rust ownership should then carry those constraints into ordinary program
+structure, making resource leaks and accidental authority propagation harder to
+express.
+
+This opens several connected research directions: capability-safe distributed
+deployment, content-addressed and provenance-aware software delivery,
+replicated naming and lifecycle state, bounded asynchronous execution,
+failure-domain-aware placement, and generation of Charlotte applications from
+higher-level process models such as
+[Durga](https://github.com/FrodeRanders/durga/tree/feature/charlotte-target). The
+aspiration is an understandable substrate for long-lived service systems whose
+security and failure behaviour can be inspected end to end.
+
+Some of that path already exists as working vertical slices while other parts
+remain research. The lists below distinguish implemented mechanisms from
+the longer-term direction.
+
 ## Contributions in this fork
 
 The main additions and extensions currently maintained here are:
 
-- **AArch64 QEMU bring-up and SMP execution:** boot on QEMU's `virt` machine,
+- **AArch64 bring-up and SMP execution:** boot on QEMU's `virt` machine,
   secondary-processor startup, GICv3 and generic-timer support, PCIe ECAM
   enumeration, preemptive scheduling, and serial-first development tooling.
-- **Capability-based userspace services:** EL0 service loading, typed launch
-  manifests, endpoint IPC, transferable memory objects, completion queues,
-  device capabilities, service supervision, and stale-connection handling.
+  The server-oriented SBSA Reference work additionally exercises UEFI/ACPI
+  discovery through MADT and SPCR, high physical addresses, GICv3 ITS/LPI
+  delivery, and firmware handoff from EL2 into the EL1-oriented kernel.
+- **x86-64 service and cluster parity:** multi-LP ring-3 execution uses the
+  shared Rust service, syscall, IPC, and launch ABIs. QEMU suites exercise
+  storage, networking, discovery, distributed naming, Raft, live upgrade, and
+  signed deployment behind Intel VT-d or AMD-Vi. An installable two-disk VMware
+  Fusion appliance additionally validates persistent first-boot installation,
+  virtual NVMe, VT-d, and the userspace E1000E path.
+- **Capability-based userspace services:** EL0 (userspace) service loading,
+  typed launch manifests, endpoint IPC, transferable memory objects,
+  completion queues, device capabilities, service supervision, and
+  stale-connection handling. The non-`Copy` owners in `catten_rt::owned`
+  mirror linear kernel ownership: moved capabilities transfer exactly once,
+  memory borrows outlive pending calls, and `Drop` or explicit consuming
+  teardown closes compound operations across ordinary error paths.
+- **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
+  virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
+  interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate
+  requester DMA; MSI/MSI-X and IRQ-to-completion-queue delivery keep interrupt
+  handling outside application code, while reset and reconciliation support
+  driver restart.
 - **Scheduler and completion work:** interrupt-safe per-processor state,
   blocking completion waits, timer-affinity preservation, constrained runtime
-  rebalancing, lifecycle cleanup, and idle operation without steady-state
-  polling.
+  rebalancing (between cores), lifecycle cleanup, and idle operation without
+  steady-state polling.
 - **One shared node-local name service:** services register in a common
   registry; waitable lookup blocks until registration instead of relying on
   arbitrary boot-time spin ranges. A distributed name service (`dns`)
-  replicates a `name → node` catalog across two QEMU guests over the
-  reliable-message layer.
+  replicates a `name → node` catalog across QEMU guests and provides
+  linearizable leader-read lookups, bounded generation-fenced remote
+  invocation, duplicate suppression, two-phase publication, and
+  owner-and-generation-fenced retraction over the reliable-message layer.
 - **Generic Raft service:** a transport-independent Raft core and one durable,
   network-enabled EL0 member per CharlotteOS node. Discovery supplies peer
   routes and the service performs restart-safe dynamic admission between
   machines. The distributed name service currently uses a separate instance
-  of the same Graft core to replicate its catalog.
-- **TCP/IP and UTC as userspace services:** the smoltcp stack runs through a frame
+  of the same [Graft](https://github.com/FrodeRanders/raft) core to
+  replicate its catalog.
+- **TCP/IP and UTC as userspace services:** the
+  [smoltcp](https://github.com/smoltcp-rs/smoltcp) stack runs through a frame
   demultiplexer (IPv4/ARP routed to the `tcpip` service) and exposes a
   TCP/connected-UDP socket API. The `time` service uses it to sample NTP,
   calibrates the observe service's monotonic counter, persists holdover state
   in the object store, and publishes Unix, calendar, and ISO 8601 UTC over
-  endpoint IPC. An `httpd` keyhole serves a full-node JSON report over TCP,
-  reachable from the host via SLIRP `hostfwd`
+  endpoint IPC. A simple `httpd` service provides a self-refreshing dashboard
+  and a full-node JSON report with scheduler and per-service telemetry over
+  TCP, reachable from the host via SLIRP `hostfwd`
   (`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
   Both QEMU runners attach a NIC by default: ordinary boots acquire a DHCP
   lease, start discovery and cluster formation, and synchronize UTC. The
@@ -51,25 +106,32 @@ The main additions and extensions currently maintained here are:
   Ethernet frames and reassembled at the receiver, carrying the distributed
   name service / Raft across two guests.
 - **Capability-scoped data-plane clients:** the S3 service confines a managed
-  object-store endpoint, bucket/prefix, credentials, and operations behind one
-  endpoint capability. The Kafka service similarly confines a broker,
-  topic/partition, group, and transactional identity while providing
-  idempotent production, bounded read-committed consumption, and transactional
-  offset commits through linear Rust owners.
-- **Userspace persistent-storage prototype:** an NVMe block driver using DMA
-  and MSI-X, a block protocol, an object store, and namespaced Raft
-  term/vote/log/snapshot storage. Process-restart recovery is boot-tested;
-  objects and files can exceed a single NVMe request. Object-store v3 adds
-  mirrored generation-selected directory records, device-scaled directory
-  capacity, up to 16 extents per object, integrity hashes, allocation
-  reconstruction, and copy-on-write replacement (individual objects use
-  32-bit lengths). One torn directory-record write is recoverable; full
-  device-level power-loss guarantees still depend on truthful flush/FUA
-  behaviour.
-- **Experimental live service upgrade:** an EL0 service manager can spawn a
-  replacement generation, transfer state, synchronize registration, and
-  invalidate stale connections. This remains prototype work rather than a
-  production upgrade framework.
+  object-store endpoint, bucket/prefix, TLS trust anchor, credentials, and
+  operations behind endpoint capabilities. Named Kafka connectors confine an
+  authorized broker pool, TLS/mTLS and SASL/SCRAM material, topic/partition
+  routes, consumer-group membership, and transactional identity. Attenuated
+  access points support idempotent production, bounded read-committed
+  consumption, failover and rebalancing, and transactional offset commits
+  through linear Rust owners. A generic `kafka_step` service owns the Kafka
+  transaction while invoking separately deployed business logic. Verified TLS
+  obtains fallible entropy from Arm `RNDR`, x86-64 `RDRAND`, or an isolated
+  VirtIO RNG service and fails closed rather than using a deterministic
+  fallback.
+- **Userspace persistent-storage prototype:** NVMe, AHCI, and virtio-blk
+  drivers publish one block protocol consumed by the object store, native
+  hierarchical filesystem, and namespaced Raft term/vote/log/snapshot storage.
+  Process-restart recovery is boot-tested; objects and files can exceed a
+  single device request. Object-store v3 adds mirrored generation-selected
+  directory records, device-scaled directory capacity, up to 16 extents
+  per object, integrity hashes, allocation reconstruction, and copy-on-write
+  replacement (individual objects use 32-bit lengths). One torn
+  directory-record write is recoverable; full device-level power-loss
+  guarantees still depend on truthful flush/FUA behaviour. A host-side
+  inspector checks directory generations, hashes, allocation overlap,
+  filesystem reachability, and raw persistent images.
+- **Experimental live service upgrade:** an EL0 service manager prototype
+  can spawn a replacement generation, transfer state, synchronize
+  registration, and invalidate stale connections.
 - **Store-backed, blessed service artifacts:** AArch64 embeds only the
   bootstrap storage path and loads the remaining service ELFs by logical name
   from an initial NVMe object-store image. x86-64 can also install its complete
@@ -78,23 +140,39 @@ The main additions and extensions currently maintained here are:
   bytes to name, class, release/rollback policy, parallel-instance permission,
   and optional provenance evidence. Deployment pins the complete artifact
   SHA-256.
-- **Sitas shard runtime at EL0:** the `sitas` no_std shard-per-core runtime
-  (external crates) runs as a real EL0 image (`catten-user`) boot-tested by
-  the kernel. A mailbox index demo shows the division of responsibility:
-  scanner shards route entries to logical assemblers through typed owned
-  messages in userspace, and the coordinator merges and verifies the result,
-  while the kernel only supplies the address space, LP-pinned thread spawn,
-  and the completion-queue wait/wake.
+- **Signed, capability-scoped cluster deployment:** CI can place immutable ELFs
+  in a separately managed S3-compatible store and notify any cluster member
+  with a signed `CDEPLOY1` descriptor. A signed `CRELEASE` binds an ordered
+  multi-component change and admits all desired revisions in one Raft command.
+  Assigned node agents fetch and verify each artifact, launch it in a fresh
+  address space, and give it only `grantctl`; the controller translates the
+  descriptor's named grants into attenuated service connections without
+  exposing the name service or infrastructure credentials to the application.
+- **Authorization and executable safety models:** the name service hosts a
+  bounded default-deny policy engine with kernel-authenticated principals,
+  separately protected administration and publication roles, attenuated and
+  generation-fenced connection issuance, and an audit stream. A set of TLA+
+  models cover IPC, memory transfer, completions, scheduling, lifecycle,
+  authorization, DMA, Raft, remote calls, and reliable messaging; CI checks the
+  safe configurations and expected-counterexample regressions.
+- **[Sitas](https://github.com/FrodeRanders/sitas) shard runtime at EL0:**
+  the `sitas` no_std shard-per-core runtime (external crates) runs as a real
+  EL0 image (`catten-user`) boot-tested by the kernel. A mailbox index demo
+  shows the division of responsibility: scanner shards route entries to
+  logical assemblers through typed owned messages in userspace, and the
+  coordinator merges and verifies the result, while the kernel only supplies
+  the address space, logical processor (core) pinned thread spawn, and the
+  completion-queue wait/wake.
 - **Architecture and implementation documentation:** the
   [documentation index](docs/README.md) separates living architecture,
   implementation reference, contributor guides, platform status, historical
-  reports, and research context. The LaTeX manual in
-  [`docs/manual-v2`](docs/manual-v2) provides the integrated narrative.
+  reports, and research context. The
+  [LaTeX manual](docs/manual-v2/charlotte.pdf) provides the integrated narrative.
 
-The automated AArch64 boot path exercises these mechanisms under QEMU, but this
-is an experimental research and development system. A successful self-test is
-evidence for the tested configuration, not a general reliability, security, or
-hardware-compatibility claim.
+Automated AArch64 and x86-64 QEMU paths exercise these mechanisms, with
+additional opt-in Docker fixtures for S3 and Kafka and a VMware appliance path.
+This is experimental *research and development*, so we are not making
+any reliability, security, or hardware-compatibility claims.
 
 Run target-independent suites with `scripts/run-host-tests.sh`. The split
 between host tests and target/QEMU tests is documented in
@@ -159,46 +237,51 @@ locality, and rapid recovery.
 ## Vision: server-class clusters
 
 The long-term direction is to scale this model from one machine to a cluster:
-interchangeable server-class ARM nodes assemble themselves into clusters on
-boot, software is deployed to a named cluster rather than to named servers,
-and the cluster decides placement -- initially from declared component
-affinity, eventually from observed inter-dependency, with cross-node
-migration of running components. Placement policy distinguishes replica count,
-per-node instance capacity, affinity/co-location, and anti-affinity. Multiple
-instances are legal only when the signed artifact policy blesses parallel
-execution. Nodes are "dumb" compute over a shared
-object store, validating signed software against a cluster-wide key held in
-replicated state.
+interchangeable server-class nodes assemble themselves on boot, software is
+deployed to a named cluster rather than to named servers, and replicated policy
+decides where components belong. Placement should eventually account for
+replica count, node capacity and labels, failure domains, affinity,
+anti-affinity, observed communication, readiness, and disruption budgets. A
+node should be replaceable compute, retaining only the local state needed to
+participate safely while pulling immutable software from a managed object
+store and validating it against cluster-wide trust state.
 
-A first end-to-end slice of this is implemented and boot-tested on two-guest
+A first end-to-end version of this is implemented and boot-tested on two-guest
 AArch64 and x86-64 QEMU clusters (`scripts/run-aarch64.sh --deploy-test` and
 `scripts/run-x86_64.sh --deploy-test`): the
-deployment manifest is replicated Raft state and pins an immutable digest. An
-agent with narrowly delegated deployment authority picks up and verifies the
-artifact; the kernel starts that exact ELF in a separate address space, and
-the service serves across the network and is reassigned between nodes without
-losing its name. The normal network service set starts a bounded deployment
-ingress: CI uploads an ELF to a separately provisioned central S3 store, signs
-a descriptor with the offline cluster key, and sends only that descriptor to
-`deployd`; Raft replicates it and the assigned node pulls the pinned bytes.
-`clusterctl` also retains the local upload/deploy/status path used by the test
-console. Artifacts are real ELF binaries blessed and
+deployment catalog is replicated Raft state and pins immutable digests. The
+normal network service set starts a bounded deployment ingress: CI uploads
+ELFs to a separately provisioned central S3 store, signs deployment descriptors
+with the offline cluster key, and sends descriptors rather than executable
+bytes or storage credentials to `deployd`. A request may enter through any
+cluster member and be relayed to the leader. `CRELEASE` adds atomic admission
+of an ordered component set; assigned node agents independently reconcile the
+committed desired state, pull pinned bytes, and report exact-generation
+readiness. Admission is atomic, while fetch, launch, readiness, coordinated
+rollback, and rollout policy remain separate concerns.
+
+The node agent has narrowly delegated deployment authority. After verification,
+the kernel starts each exact ELF in a separate address space with `grantctl` as
+its sole bootstrap service. Signed descriptors determine which named
+capabilities the component may acquire, and service publication is generation
+fenced. `clusterctl` also retains the local upload/deploy/status path used by
+the test console. Artifacts are real ELF binaries blessed and
 signed in place with Ed25519: the signature lives in a standard 
 `.note.charlotte-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
 the public key is injected at build time and committed to the replicated state 
 by the key ceremony, and the EL0 loader (which refuses any unsigned or invalidly 
-signed image -- the build pipeline signs every staged service ELF with the 
-version-controlled development key in `tools/cluster-sign/dev-key.hex`) and 
-the deploy path validate both bytes and logical identity. Known 
-third-party-containing services can therefore be admitted once with an 
-SBOM/provenance digest and traded internally without runtime Internet 
-dependency fetching. Bootstrap storage is still per-node, the first central
-pull agent supports one short demonstration artifact, replica-set placement is
-not implemented, and raw internal mutation authority still requires careful
-delegation. These boundaries are called out in
-Chapter 17 of [the manual](docs/manual-v2) ("Server-Class Cluster Vision"), 
-which describes the vision against what already exists (consensus, the
-distributed name service, the object store, and live upgrade).
+signed image -- the build pipeline signs every staged service ELF with a
+*publicly known* version-controlled development key in
+`tools/cluster-sign/dev-key.hex`) and the deploy path validate both bytes
+and logical identity. Known third-party-containing services can therefore be
+admitted once with an SBOM/provenance digest and traded internally without
+runtime Internet dependency fetching. Bootstrap and Raft durability are still
+per-node; capacity-aware replica placement, failure-domain scheduling,
+rescheduling, coordinated rollback, and a richer process-level release bundle
+are not yet implemented. These boundaries are called out in
+Chapter 17 of [the manual](docs/manual-v2/charlotte.pdf) ("Server-Class
+Cluster Vision"), which describes the vision against what already exists
+(consensus, the distributed name service, the object store, and live upgrade).
 
 That should make it particularly interesting for:
 - Control systems and appliances.

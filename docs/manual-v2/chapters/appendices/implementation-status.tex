@@ -177,17 +177,19 @@ repository history remain authoritative.
         profile-fixed partitions. Its connector joins, synchronizes,
         heartbeats, leaves, and generation-fences commits with a Charlotte
         fixed-partition assignor; replicas for the same partition become
-        standbys. It routes among explicitly provisioned
-        brokers and refreshes leaders for produce/fetch, but still lacks full
-        coordinator-migration recovery, conventional/cooperative assignor
+        standbys. It routes among explicitly provisioned brokers, refreshes
+        leaders for produce/fetch, and rediscovers moved group and transaction
+        coordinators. It still lacks conventional/cooperative assignor
         interoperability, additional SASL
         mechanisms, client-certificate chains and key algorithms, compression,
         and topic administration.
         Its versioned, digest-checked profile is already delivered only to the
         broker connector as read-only launch memory; production secret injection
         and trust-anchor rotation remain controller work. The generic step
-        runner is implemented, but production direct capability injection,
-        generation fencing, and rollout control remain controller work.
+        runner, named connector/procedure grants, scoped deployment launch, and
+        generation-fenced Kafka commits are implemented; controller-managed
+        instance leases, replica-aware rollout, and coordinated rollback remain
+        future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's
