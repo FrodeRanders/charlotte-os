@@ -67,6 +67,7 @@ service) route through that service, and each VM runs a name-service replica.
 
 Two-node tests use `--relmsg-test`, `--disco-test`, `--dns-test`, and
 `--tcpip-test` with the stream backend (the relmsg smoke client derives its
-peer from MAC last-octets 1 and 2). `--http-test` runs a single guest on the
+peer from MAC last-octets 1 and 2 and exchanges a 70,000-byte v3 message).
+`--http-test` runs a single guest on the
 SLIRP user network with `hostfwd=tcp::8080-:80` so the host can curl the
 httpd keyhole.

@@ -108,12 +108,16 @@ use catten_syscall::{
     memory_alloc,
     memory_close,
     memory_map_any,
+    memory_size,
     memory_unmap,
     poll as completion_poll,
     submit_detached_timer,
     thread_exit,
 };
-use charlotte_protocol_msg::unpack_address_and_len;
+use charlotte_protocol_msg::{
+    IPC_MESSAGE_HEADER_SIZE,
+    parse_ipc_message_header,
+};
 
 #[path = "dns/catalog.rs"]
 mod catalog;
@@ -780,12 +784,25 @@ fn main(ctx: Context) -> ! {
                 ipc_close(recv_pending);
                 recv_pending = 0;
                 if memory != 0 {
-                    let (source_mac, len) = unpack_address_and_len(result);
+                    let capacity = memory_size(memory);
                     let (rx_scratch_map_status, rx_scratch_vaddr) = memory_map_any(memory, false);
                     if rx_scratch_map_status == 0 {
-                        let frame = unsafe {
-                            core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, len as usize)
+                        let object = unsafe {
+                            core::slice::from_raw_parts(rx_scratch_vaddr as *const u8, capacity)
                         };
+                        let Ok(envelope) = parse_ipc_message_header(object) else {
+                            memory_unmap(memory);
+                            memory_close(memory);
+                            continue;
+                        };
+                        let source_mac = envelope.peer;
+                        let len = envelope.payload_len as usize;
+                        if result != envelope.payload_len as u64 {
+                            memory_unmap(memory);
+                            memory_close(memory);
+                            continue;
+                        }
+                        let frame = &object[IPC_MESSAGE_HEADER_SIZE..IPC_MESSAGE_HEADER_SIZE + len];
                         match frame.first().copied() {
                             Some(catten_services::rcall::TAG_REQUEST) => {
                                 // A remote invocation addressed to this node:

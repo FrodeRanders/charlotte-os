@@ -86,7 +86,7 @@ use catten_syscall::{
 };
 use charlotte_launch::httpd_status as status;
 use charlotte_protocol_disco::parse_peer_list;
-use charlotte_protocol_msg::unpack_address_and_len;
+use charlotte_protocol_msg::unpack_mac;
 use charlotte_protocol_net::decode_status;
 
 const HTTP_PORT: u16 = 80;
@@ -825,7 +825,7 @@ fn render_disco(s: &mut String, disco_conn: u64) {
 
 fn render_relmsg(s: &mut String, relmsg_conn: u64) {
     if let Some(result) = call_scalar(relmsg_conn, relmsg::OP_STATUS, 0) {
-        let (local_mac, _len) = unpack_address_and_len(result as u64);
+        let local_mac = unpack_mac(result as u64);
         let _ = write!(
             s,
             "\"relmsg\":{{\"local_mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\"",

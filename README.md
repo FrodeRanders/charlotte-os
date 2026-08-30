@@ -102,9 +102,11 @@ The main additions and extensions currently maintained here are:
   lease, start discovery and cluster formation, and synchronize UTC. The
   `*-test` options only add verifiers; use `--no-network` for an intentionally
   isolated boot.
-- **Reliable-message fragmentation:** messages up to 64 KiB are split across
-  Ethernet frames and reassembled at the receiver, carrying the distributed
-  name service / Raft across two guests.
+- **Reliable-message fragmentation:** wire protocol v3 uses 32-bit message
+  lengths and fragment offsets. The initial 1 MiB operational ceiling is a
+  resource policy, not a field-width limit; messages are split across Ethernet
+  frames and reassembled at the receiver, carrying the distributed name
+  service / Raft across two guests.
 - **Capability-scoped data-plane clients:** the S3 service confines a managed
   object-store endpoint, bucket/prefix, TLS trust anchor, credentials, and
   operations behind endpoint capabilities. Named Kafka connectors confine an

@@ -141,8 +141,8 @@ repository history remain authoritative.
         \texttt{charlotte-protocol-msg}.
 
     \item \textbf{Networking:} smoltcp 0.13 adapter and TCP/IP service
-        runtime-validated over the frame demultiplexer; reliable-message
-        fragmentation to 64 KiB. Network capability, DHCP, discovery, cluster
+        runtime-validated over the frame demultiplexer; reliable-message v3
+        uses 32-bit lengths with an initial 1~MiB policy ceiling. Network capability, DHCP, discovery, cluster
         formation, HTTP, and time synchronization launch by default when a
         supported NIC is discovered; with local durable storage this also
         starts signed-descriptor ingress, cluster administration, and the node

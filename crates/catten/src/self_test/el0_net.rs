@@ -108,11 +108,11 @@ extern "C" fn verify_el0_net() {
         logln!("[frouter] reached serving stage.");
     }
 
-    let client = supervisor::spawn_with_name_service(
-        crate::service::store::service_elf(b"nclient").expect("[el0_net] nclient.elf"),
-        ns,
-        ConnectionRights::CALL,
-    );
+    #[cfg(feature = "relmsg_net_test")]
+    let client_elf = crate::service::store::service_elf(b"rclient").expect("[el0_net] rclient.elf");
+    #[cfg(not(feature = "relmsg_net_test"))]
+    let client_elf = crate::service::store::service_elf(b"nclient").expect("[el0_net] nclient.elf");
+    let client = supervisor::spawn_with_name_service(client_elf, ns, ConnectionRights::CALL);
     let client_config = client.status_frame;
     let client_asid = client.asid;
     logln!("[net] client spawned (asid={})", client_asid);

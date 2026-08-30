@@ -102,22 +102,37 @@ This layer provides sequenced, acknowledged, reliable delivery of \textbf{messag
 The abstraction exported is a \textbf{reliable message}, not a byte stream.
 This is the building block for RPC, consensus protocols, and distributed objects.
 
-Fragmentation is implemented: a message larger than one frame's payload
-($\approx$1460 bytes in wire protocol v2) is split across frames that share the message's sequence
-number, each fragment carrying its byte offset and a \texttt{FLAG\_FRAG}/
-\texttt{FLAG\_MORE} pair in the header's reserved bits. The receiver buffers
-fragments by offset and reassembles the message once the last fragment
-arrives. The application-level ceiling is \texttt{relmsg::MAX\_MSG}
-(65535 bytes).
+Fragmentation is implemented: a message larger than one frame's payload (1454
+bytes in wire protocol v3) is split across frames that share the message's
+sequence number. Every data frame carries a 32-bit total message length; each
+fragment additionally carries a 32-bit byte offset and a
+\texttt{FLAG\_FRAG}/\texttt{FLAG\_MORE} pair. The receiver validates those
+bounds, buffers fragments by offset, and reassembles a contiguous message.
 
-Wire protocol v2 carries a 64-bit sender-session identifier.  Data and
-acknowledgement frames assert it with \texttt{FLAG\_SYN}.  Observing a new,
-non-retired session resets the per-peer sequence spaces (including an
-outstanding transmission), so one reliable-message service can restart while
-its peer remains running.  A bounded retired-session window rejects delayed
-frames from prior instances.  The receive queue and fragment count/bytes are
-also bounded; a full delivery queue withholds sequence advancement and its
-acknowledgement, applying retransmission-based backpressure.
+The 32-bit fields separate representation from resource policy. The initial
+application-level ceiling is 1~MiB, as configured by
+\texttt{relmsg::}\allowbreak\texttt{MAX\_MSG}. This limits
+allocation and head-of-line blocking without another protocol revision when
+experience supports increasing it. Application IPC no longer packs a MAC and
+16-bit length into one scalar: transferred memory begins with a typed 16-byte
+v3 envelope containing a magic value, a 32-bit payload length, and the peer
+MAC. The per-frame payload length remains 16-bit because it describes only one
+Ethernet frame.
+
+Wire protocol v3 carries a 64-bit sender-session identifier. Data and
+acknowledgement frames assert it with \texttt{FLAG\_SYN}. A receiver accepts
+only a strictly newer session when resetting receive ordering, so one
+reliable-message service can restart while its peer remains running and old
+delayed frames cannot roll state backward. Receive-message count, queued
+bytes, fragment count, aggregate reassembly bytes, and retained outbound bytes
+are bounded; a full delivery queue withholds sequence advancement and its
+acknowledgement, applying retransmission-based backpressure. An incomplete
+fragmented message does not emit one useless cumulative acknowledgement per
+fragment, and retransmission grace scales with retained fragment count up to a
+fixed cap; one-frame RPCs retain the 200~ms retry. The transport still permits
+one in-flight message per peer and retains fragments for retry, so bulk streams
+should use a streaming or object-store protocol rather than treating the
+32-bit representation as a recommended message size.
 
 \subsection{RPC layer}
 

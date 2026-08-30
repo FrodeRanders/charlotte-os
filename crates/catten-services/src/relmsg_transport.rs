@@ -575,7 +575,8 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
     if len > crate::relmsg::MAX_MSG {
         return None;
     }
-    let pages = len.div_ceil(4096);
+    let object_len = charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE + len;
+    let pages = object_len.div_ceil(4096);
     let cap = memory_alloc(pages);
     if cap == 0 {
         return None;
@@ -585,16 +586,18 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
         return None;
     }
     unsafe {
-        (SCRATCH as *mut u8).write(tag);
+        let mut header = [0u8; charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE];
+        charlotte_protocol_msg::build_ipc_message_header(&mut header, *mac, len as u32);
+        core::ptr::copy_nonoverlapping(header.as_ptr(), SCRATCH as *mut u8, header.len());
+        (SCRATCH as *mut u8).add(charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE).write(tag);
         core::ptr::copy_nonoverlapping(
             payload.as_ptr(),
-            (SCRATCH as *mut u8).add(1),
+            (SCRATCH as *mut u8).add(charlotte_protocol_msg::IPC_MESSAGE_HEADER_SIZE + 1),
             payload.len(),
         );
     }
     memory_unmap(cap);
-    let destination = charlotte_protocol_msg::pack_address_and_len(*mac, len as u16);
-    let call = ipc_scalar_call_move(relmsg_conn, crate::relmsg::OP_SEND, destination, cap);
+    let call = ipc_scalar_call_move(relmsg_conn, crate::relmsg::OP_SEND, 0, cap);
     if call == 0 {
         memory_close(cap);
         None

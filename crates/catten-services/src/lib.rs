@@ -1126,7 +1126,7 @@ pub mod fs {
     pub const ERR_DIR_NOT_EMPTY: i64 = 6;
 }
 
-/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v2).
+/// Reliable Message Layer protocol (`charlotte-protocol-relmsg` v3).
 ///
 /// Exposes sequenced, acknowledged, retransmitted message delivery.
 /// Clients send messages addressed to peer service names; the RML
@@ -1134,7 +1134,7 @@ pub mod fs {
 /// them via the NIC driver (or directly for same-machine peers).
 pub mod relmsg {
     pub const INTERFACE: u64 = super::name(b"RELMSG");
-    pub const VERSION: u32 = 2;
+    pub const VERSION: u32 = 3;
     pub const NAME: u64 = super::name(b"relmsg");
 
     pub const OP_SEND: u32 = 1;
@@ -1168,17 +1168,19 @@ pub mod relmsg {
     pub const ERR_BUSY: i64 = -4;
 
     pub const MAX_PEERS: usize = 16;
-    /// Maximum application message payload in bytes. Messages larger than one
-    /// frame are fragmented across multiple `charlotte-protocol-msg` frames
-    /// (the frame payload limit is `MAX_PAYLOAD_SIZE`); 65535 is the u16
-    /// message-length ceiling in the address/length packing.
-    pub const MAX_MSG: usize = 65535;
+    /// Initial operational ceiling for an application payload. The v3 wire
+    /// and IPC formats represent lengths with `u32`; this lower policy bound
+    /// limits allocation, buffering, and head-of-line blocking independently
+    /// of that representation and can be raised without a protocol revision.
+    pub const MAX_MSG: usize = 1024 * 1024;
     pub const RETRANSMIT_MS: u64 = 200;
-    /// Bound one stop-and-wait transmission to two seconds. Raft retries
-    /// heartbeats and replication at its own layer; retaining a lost
-    /// heartbeat for 30 seconds would monopolize the peer's only in-flight
-    /// slot beyond DNS's five-second remote-call deadline.
+    /// Number of retransmission rounds before an uncertain send is abandoned.
+    /// The wait between rounds scales with the retained fragment count (up to
+    /// [`MAX_RETRY_DELAY_TICKS`]), so a one-frame RPC retains its 200 ms retry
+    /// while a large message is not resent wholesale before the receiver has
+    /// had a bounded opportunity to drain its first transmission.
     pub const MAX_RETRIES: u32 = 10;
+    pub const MAX_RETRY_DELAY_TICKS: u32 = 25;
 }
 
 /// Cluster discovery protocol (`charlotte-protocol-disco` v1).

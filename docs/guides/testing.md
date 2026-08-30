@@ -18,7 +18,7 @@ The runner currently covers:
 |---|---|
 | `charlotte-authorization` | principal binding, role separation, default deny, attenuation, policy and service fencing, one-shot redemption, and bounded state |
 | `charlotte-protocol-disco` | discovery encoding, decoding, and malformed input |
-| `charlotte-protocol-msg` | framing, checked parsing, fragmentation offsets, and session fencing |
+| `charlotte-protocol-msg` | v3 framing, checked parsing, 32-bit message lengths and fragmentation offsets, typed IPC envelopes, and session fencing |
 | `charlotte-protocol-net` | NIC status decoding |
 | `catten-graft` | Raft election, membership, joining, snapshots, persistence projections, and wire format |
 | `charlotte-smoltcp` | receive-queue bounds and clock progression |
@@ -49,6 +49,11 @@ is compiled. `--net-test`, `--dhcp-test`, `--disco-test`, and related options
 register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
+
+The two-guest `--relmsg-test` verifier sends and compares a 70,000-byte
+payload. This intentionally crosses v2's 65,535-byte limit and exercises the
+v3 IPC envelope, fragmentation, adaptive retry, reassembly, and cumulative
+delivery acknowledgement end to end.
 
 `--s3-test --timeout 240` is an explicitly test-only integration fixture. It
 adds a local TLS RustFS Docker container, a provisioned S3 service profile, and

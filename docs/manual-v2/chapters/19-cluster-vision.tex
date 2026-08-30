@@ -351,8 +351,10 @@ does not by itself constitute a complete cluster executive.
         carries the set-once cluster signing key and deployment assignments.
         Placement rules are not yet stored in that state machine.
 
-    \item \textbf{Reliable cluster messaging.} Messages up to 64~KiB are
-        fragmented across Ethernet frames and reassembled at the receiver
+    \item \textbf{Reliable cluster messaging.} Protocol v3 represents message
+        lengths and fragment offsets with 32 bits and initially admits messages
+        up to a bounded 1~MiB policy ceiling. They are fragmented across
+        Ethernet frames and reassembled at the receiver
         (\autoref{chap:networking}). Remote name-service calls, deployment coordination,
         and the demonstrated assignment handoff use this transport.
 

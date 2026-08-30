@@ -356,24 +356,38 @@ Provides:
 
 This layer exports **messages**, not streams.
 
-Fragmentation is implemented: a message larger than one frame's payload
-(~1460 bytes in wire protocol v2) is split across frames that share the message's sequence
-number; each fragment carries its byte offset and a `FLAG_FRAG`/`FLAG_MORE`
-pair in the header's reserved bits. The receiver reassembles contiguous
-fragments of the expected message before delivering one message. The
-application-level message ceiling is `relmsg::MAX_MSG` (65535 bytes, the u16
-length field); a message that still exceeds one frame is fragmented
-automatically.
+Fragmentation is implemented: a message larger than one frame's payload (1454
+bytes in wire protocol v3) is split across frames that share the message's
+sequence number. Each data frame carries a 32-bit total message length; each
+fragment additionally carries a 32-bit byte offset and a
+`FLAG_FRAG`/`FLAG_MORE` pair. The receiver validates the advertised bounds and
+reassembles contiguous fragments of the expected message before delivering one
+message.
 
-Wire protocol v2 also carries a 64-bit sender-session identifier. `FLAG_SYN`
-asserts that session on data and acknowledgement frames. A peer that observes
-a new, non-retired session resets both sequence spaces and rewrites an
-outstanding transmission from sequence one, allowing one relmsg service to
-restart without requiring its peer to restart. Recently retired sessions are
-remembered so delayed frames cannot immediately roll state backward. Receive
-queues and fragment count/bytes are bounded; when the delivery queue is full,
-the receiver withholds sequence advancement and acknowledgement so normal
-retransmission supplies backpressure.
+The 32-bit fields deliberately separate representation from policy. The
+initial application-level ceiling is `relmsg::MAX_MSG` (1 MiB), limiting
+allocation, retained retransmission data, and head-of-line blocking without
+requiring another wire revision when experience supports raising it. The IPC
+boundary likewise uses a typed 16-byte v3 envelope (`magic`, `u32` payload
+length, peer MAC) in the transferred memory object; address and length are no
+longer packed into a 48+16-bit scalar. Per-frame payload length remains `u16`
+because it describes at most one Ethernet frame.
+
+Wire protocol v3 also carries a 64-bit sender-session identifier. `FLAG_SYN`
+asserts that session on data and acknowledgement frames. A receiver accepts
+only a strictly newer session when resetting its receive sequence, allowing
+one relmsg service to restart without requiring its peer to restart while
+rejecting delayed older sessions. Receive queues, aggregate queued bytes,
+aggregate reassembly bytes, fragment counts, and aggregate outbound bytes are
+bounded. When the delivery queue is full, the receiver withholds sequence
+advancement and acknowledgement so normal retransmission supplies
+backpressure. An incomplete fragmented message does not generate one useless
+cumulative ACK per fragment, and the retransmission grace scales with retained
+fragment count up to a fixed cap; one-frame RPCs retain the 200 ms retry.
+Transport remains one message in flight per peer and retains its fragments for
+retransmission; large streaming data should therefore use a
+streaming or object-store protocol rather than treating the 32-bit width as a
+recommended message size.
 
 ---
 
@@ -794,7 +808,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 | Operational transport | DNS carries Raft and admission frames over relmsg using discovery-provided MAC routes |
 | Election/heartbeat clock | Detached timer completion plus an independent bounded completion-queue wait watchdog; no spin-polling loop |
 | Protobuf RPCs over endpoint IPC | Shared `raft.proto` VoteRequest/AppendEntries/InstallSnapshot payloads move in memory capabilities; exact lengths use the scalar argument |
-| RPC batching | relmsg now fragments messages to 64 KiB, so a single Raft RPC can carry well beyond one frame; the dns still chunks snapshots at 1200 bytes |
+| RPC batching | relmsg v3 fragments messages up to its 1 MiB policy ceiling (using 32-bit wire lengths), so a single Raft RPC can carry well beyond one frame; the dns still chunks snapshots at 1200 bytes |
 | Durable state/log (survives process restart) | NVMe object-store backend implemented; term recovery boot-validated for one restarted voter; persistent objects are not limited to 4 KiB |
 | Cross-machine Raft (NIC driver + reliable message layer) | Implemented: two guests exchange relmsg frames over the frouter and replicate the dns catalog (`--dns-test`) |
 | Distributed name service and membership | Implemented as one owner: `dns` runs the Graft node and `CatalogMachine` over relmsg; membership, registrations, deployments, keys, and cluster events share its durable log |

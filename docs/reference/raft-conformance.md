@@ -46,9 +46,9 @@ application state and membership. See
 - The current memory-capability transport limits one RPC attachment to 4 KiB.
   This is a transport batching limit, not a Raft log or persistent-object size
   limit.
-- Cross-machine Raft RPCs (the distributed name service) travel over the
-  relmsg transport instead, which fragments messages to 64 KiB; the local
-  capability IPC attachment remains one page.
+- Cross-machine Raft RPCs (the distributed name service) travel over relmsg v3,
+  whose 32-bit lengths support an initial 1 MiB message policy ceiling; the
+  local direct capability IPC attachment remains one page.
 
 ## Validation and drift control
 
