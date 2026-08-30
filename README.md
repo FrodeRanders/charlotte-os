@@ -262,6 +262,15 @@ committed desired state, pull pinned bytes, and report exact-generation
 readiness. Admission is atomic, while fetch, launch, readiness, coordinated
 rollback, and rollout policy remain separate concerns.
 
+The next deployment boundary separates development approval from operational
+configuration: developers sign immutable behavior and request logical
+capabilities, while operators bind those names to production Kafka and S3
+profiles without exposing credentials to the application. The first bounded,
+operator-signed HPKE envelope and offline tooling are implemented, but cluster
+admission and privileged decryption remain planned work. See
+[Deployment secrets and the development/operations boundary](docs/architecture/deployment-secrets-and-operations.md)
+for the trust model, precise status, and rollout plan.
+
 The node agent has narrowly delegated deployment authority. After verification,
 the kernel starts each exact ELF in a separate address space with `grantctl` as
 its sole bootstrap service. Signed descriptors determine which named

@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 ed25519-compact = "2.3.1"
 charlotte-launch = { path = "../../crates/charlotte-launch" }
+getrandom = { version = "0.4", features = ["sys_rng"] }
+rand_core = "0.10.0"
+zeroize = "1.9"

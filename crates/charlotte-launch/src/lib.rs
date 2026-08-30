@@ -43,6 +43,7 @@ pub const DEPLOY_NOTIFY_PORT: u16 = 7444;
 pub mod sha256;
 
 pub mod deployment;
+pub mod operations;
 pub mod placement;
 pub mod release;
 pub mod signature_note;

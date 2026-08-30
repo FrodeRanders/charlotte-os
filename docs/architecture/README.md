@@ -26,6 +26,9 @@ consult the [manual status appendix](../manual-v2/charlotte.pdf) and
   issuance and the policy/name-service boundary.
 - [Cluster artifacts and placement](cluster-artifacts-and-placement.md) —
   signed artifact admission, placement records, and honest remaining limits.
+- [Deployment secrets and the development/operations boundary](deployment-secrets-and-operations.md)
+  — independently authorized artifacts and encrypted operational connector
+  bindings, including implementation status and rollout plan.
 - [Real-hardware roadmap](real-hardware-roadmap.md) — progression from QEMU
   server models to SystemReady hardware.
 - [EL2 capability root](el2-capability-root.md) — an exploratory security

@@ -124,6 +124,14 @@ prefix, access credentials, Dell EMC ECS namespace, CA certificate, and TLS
 client identity remain in the node's separately provisioned S3 profile. The
 application receives neither that profile nor ambient name-service authority.
 
+The first encrypted operational-binding foundation is now available as the
+separate `COPSENC1` format and host tooling. It binds an encrypted S3 or Kafka
+profile to a cluster and exact release under an independent operations
+signature. It is **not yet accepted by this ingress or decrypted by the
+cluster**; profiles must still be provisioned separately. The trust model,
+format and staged integration plan are documented in
+[Deployment secrets and the development/operations boundary](../architecture/deployment-secrets-and-operations.md).
+
 ## Node-side pickup
 
 Raft stores the signed descriptor with the assignment. The selected node agent

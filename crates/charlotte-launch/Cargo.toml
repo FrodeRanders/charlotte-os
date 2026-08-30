@@ -12,3 +12,8 @@ bench = false
 
 [dependencies]
 ed25519-compact = { version = "2.3.1", default-features = false }
+hpke = { version = "0.14.0", default-features = false, features = ["chacha", "x25519"] }
+rand_core = { version = "0.10.0", default-features = false }
+
+[dev-dependencies]
+getrandom = { version = "0.4", features = ["sys_rng"] }

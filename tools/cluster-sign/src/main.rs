@@ -4,9 +4,14 @@
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
 //! into subtly different interpretations of the signed byte stream.
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 use std::{
     env,
-    fs,
+    fs::{
+        self,
+        OpenOptions,
+    },
     io::{
         Read,
         Write,
@@ -26,6 +31,7 @@ use charlotte_launch::{
         CapabilityGrant,
         DescriptorFields,
     },
+    operations,
     release,
     signature_note::{
         self,
@@ -43,6 +49,8 @@ use ed25519_compact::{
     SecretKey,
     Signature,
 };
+use rand_core::UnwrapErr;
+use zeroize::Zeroizing;
 
 const NOTE_SECTION_NAME: &[u8] = b".note.charlotte-sig";
 const SHT_NOTE: u32 = 7;
@@ -231,6 +239,271 @@ fn parse_digest(value: Option<&String>) -> Result<[u8; 32]> {
     hex_decode(value)?
         .try_into()
         .map_err(|_| "provenance digest must contain exactly 32 bytes".to_owned())
+}
+
+fn parse_fixed_hex(value: &str, length: usize, label: &str) -> Result<Vec<u8>> {
+    let bytes = hex_decode(value)?;
+    if bytes.len() != length {
+        return Err(format!("{label} must contain exactly {length} bytes"));
+    }
+    Ok(bytes)
+}
+
+fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
+    let contents =
+        Zeroizing::new(fs::read_to_string(path).map_err(|error| format!("read {path}: {error}"))?);
+    let encoded = Zeroizing::new(
+        contents
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<String>(),
+    );
+    parse_fixed_hex(&encoded, length, label)
+}
+
+fn write_new_file(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(
+        if secret {
+            0o600
+        } else {
+            0o644
+        },
+    );
+    let mut file = options.open(path).map_err(|error| format!("create {path}: {error}"))?;
+    if let Err(error) = file.write_all(bytes) {
+        drop(file);
+        let cleanup = fs::remove_file(path);
+        return Err(match cleanup {
+            Ok(()) => format!("write {path}: {error}"),
+            Err(cleanup) => format!("write {path}: {error}; remove partial file: {cleanup}"),
+        });
+    }
+    Ok(())
+}
+
+fn write_new_hex_key(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
+    let mut encoded = Zeroizing::new(hex_encode(bytes));
+    encoded.push('\n');
+    write_new_file(path, encoded.as_bytes(), secret)
+}
+
+fn parse_profile_kind(value: &str) -> Result<u16> {
+    match value {
+        "s3" => Ok(operations::PROFILE_KIND_S3),
+        "kafka" => Ok(operations::PROFILE_KIND_KAFKA),
+        other => Err(format!("profile kind must be s3 or kafka, got {other:?}")),
+    }
+}
+
+fn operations_recipient_generate(args: &[String]) -> Result<()> {
+    let private_path = args.first().ok_or_else(|| "missing private-key output path".to_owned())?;
+    let public_path = args.get(1).ok_or_else(|| "missing public-key output path".to_owned())?;
+    let mut rng = UnwrapErr(getrandom::SysRng);
+    let (private_key, public_key) = operations::generate_recipient_keypair(&mut rng);
+    let private_key = Zeroizing::new(private_key);
+    write_new_hex_key(private_path, &*private_key, true)?;
+    if let Err(error) = write_new_hex_key(public_path, &public_key, false) {
+        let _ = fs::remove_file(private_path);
+        return Err(error);
+    }
+    println!(
+        "generated distinct cluster-recipient key: public={} key-id={}",
+        public_path,
+        hex_encode(&operations::recipient_key_id(&public_key))
+    );
+    println!("private key written mode 0600 to {private_path}; never use it as an Ed25519 key");
+    Ok(())
+}
+
+fn operations_signing_generate(args: &[String]) -> Result<()> {
+    let private_path = args.first().ok_or_else(|| "missing private-key output path".to_owned())?;
+    let public_path = args.get(1).ok_or_else(|| "missing public-key output path".to_owned())?;
+    let pair = KeyPair::generate();
+    write_new_hex_key(private_path, pair.sk.as_ref(), true)?;
+    if let Err(error) = write_new_hex_key(public_path, pair.pk.as_ref(), false) {
+        let _ = fs::remove_file(private_path);
+        return Err(error);
+    }
+    println!(
+        "generated distinct operational signing key: public={} key-id={}",
+        public_path,
+        hex_encode(&operations::signing_key_id(
+            pair.pk.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?
+        ))
+    );
+    println!("private key written mode 0600 to {private_path}; do not use the artifact key here");
+    Ok(())
+}
+
+fn operations_seal(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing envelope output path".to_owned())?;
+    let profile_name = args.get(1).ok_or_else(|| "missing profile name".to_owned())?;
+    let profile_kind =
+        parse_profile_kind(args.get(2).ok_or_else(|| "missing profile kind".to_owned())?)?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(3).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let release_digest: [u8; 32] = parse_fixed_hex(
+        args.get(4).ok_or_else(|| "missing release digest".to_owned())?,
+        32,
+        "release digest",
+    )?
+    .try_into()
+    .unwrap();
+    let sequence = parse_required_u64(
+        args.get(5).ok_or_else(|| "missing operational sequence".to_owned())?,
+        "operational sequence",
+    )?;
+    let expires_unix_seconds =
+        parse_required_u64(args.get(6).ok_or_else(|| "missing expiry".to_owned())?, "expiry")?;
+    let recipient_public: [u8; 32] = read_hex_key(
+        args.get(7).ok_or_else(|| "missing recipient public-key path".to_owned())?,
+        32,
+        "recipient public key",
+    )?
+    .try_into()
+    .unwrap();
+    let operational_secret_bytes = Zeroizing::new(read_hex_key(
+        args.get(8).ok_or_else(|| "missing operational signing-key path".to_owned())?,
+        64,
+        "operational Ed25519 secret key",
+    )?);
+    let operational_secret = SecretKey::from_slice(&operational_secret_bytes)
+        .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
+    let profile_path = args.get(9).ok_or_else(|| "missing plaintext profile path".to_owned())?;
+    let profile = Zeroizing::new(
+        fs::read(profile_path).map_err(|error| format!("read {profile_path}: {error}"))?,
+    );
+    let operational_public = operational_secret.public_key();
+    let operational_public: &[u8; 32] =
+        operational_public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
+    let fields = operations::EnvelopeFields {
+        sequence,
+        expires_unix_seconds,
+        profile_kind,
+        cluster_id,
+        release_digest,
+        profile_name: profile_name.as_bytes(),
+    };
+    let len = operations::encoded_len(&fields, profile.len())
+        .map_err(|error| format!("invalid operational envelope: {error:?}"))?;
+    let mut envelope = vec![0u8; len];
+    let mut rng = UnwrapErr(getrandom::SysRng);
+    operations::seal_unsigned(
+        &fields,
+        &profile,
+        &recipient_public,
+        operational_public,
+        &mut rng,
+        &mut envelope,
+    )
+    .map_err(|error| format!("encrypt operational profile: {error:?}"))?;
+    let digest = operations::signature_digest(&envelope)
+        .ok_or_else(|| "encrypted operational envelope did not decode".to_owned())?;
+    let signature: Signature = operational_secret.sign(digest, None);
+    let signature: &[u8; operations::SIGNATURE_LEN] =
+        signature.as_ref().try_into().map_err(|_| "invalid Ed25519 signature length".to_owned())?;
+    if !operations::set_signature(&mut envelope, signature) {
+        return Err("failed to install operational signature".to_owned());
+    }
+    write_new_file(output, &envelope, false)?;
+    println!(
+        "sealed operational profile {output}: name={profile_name:?} sequence={sequence} \
+         recipient={} signing-key={} ciphertext={} bytes",
+        hex_encode(&operations::recipient_key_id(&recipient_public)),
+        hex_encode(&operations::signing_key_id(operational_public)),
+        profile.len()
+    );
+    Ok(())
+}
+
+fn operations_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing envelope path".to_owned())?;
+    let public_key: [u8; 32] = read_hex_key(
+        args.get(1).ok_or_else(|| "missing operational public-key path".to_owned())?,
+        32,
+        "operational Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let envelope = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    if operations::verify(&envelope, &public_key) != operations::VerifyOutcome::Valid {
+        return Err("operational envelope signature verification failed".to_owned());
+    }
+    let decoded = operations::decode(&envelope)
+        .ok_or_else(|| "operational envelope is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: name={:?} kind={} sequence={} expires={} recipient={}",
+        String::from_utf8_lossy(decoded.profile_name),
+        decoded.profile_kind,
+        decoded.sequence,
+        decoded.expires_unix_seconds,
+        hex_encode(&decoded.recipient_key_id)
+    );
+    Ok(())
+}
+
+fn operations_open(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing envelope path".to_owned())?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(1).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let release_digest: [u8; 32] = parse_fixed_hex(
+        args.get(2).ok_or_else(|| "missing release digest".to_owned())?,
+        32,
+        "release digest",
+    )?
+    .try_into()
+    .unwrap();
+    let now = parse_required_u64(
+        args.get(3).ok_or_else(|| "missing current Unix time".to_owned())?,
+        "current Unix time",
+    )?;
+    let recipient_private: [u8; 32] = read_hex_key(
+        args.get(4).ok_or_else(|| "missing recipient private-key path".to_owned())?,
+        32,
+        "recipient private key",
+    )?
+    .try_into()
+    .unwrap();
+    let recipient_private = Zeroizing::new(recipient_private);
+    let operational_public: [u8; 32] = read_hex_key(
+        args.get(5).ok_or_else(|| "missing operational public-key path".to_owned())?,
+        32,
+        "operational Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let output = args.get(6).ok_or_else(|| "missing plaintext output path".to_owned())?;
+    let envelope = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let decoded = operations::decode(&envelope)
+        .ok_or_else(|| "operational envelope is malformed".to_owned())?;
+    let mut plaintext = Zeroizing::new(vec![0u8; decoded.ciphertext.len()]);
+    let len = operations::open(
+        &envelope,
+        &recipient_private,
+        &operational_public,
+        &cluster_id,
+        &release_digest,
+        now,
+        &mut plaintext,
+    )
+    .map_err(|error| format!("open operational envelope: {error:?}"))?;
+    write_new_file(output, &plaintext[..len], true)?;
+    println!("opened operational profile to mode-0600 file {output}");
+    Ok(())
 }
 
 fn elf_sign(args: &[String]) -> Result<()> {
@@ -808,6 +1081,11 @@ fn run() -> Result<()> {
         Some("release-verify") => release_verify(&args[2..]),
         Some("release-notify") => release_notify(&args[2..]),
         Some("release-apply") => release_apply(&args[2..]),
+        Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
+        Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
+        Some("operations-seal") => operations_seal(&args[2..]),
+        Some("operations-verify") => operations_verify(&args[2..]),
+        Some("operations-open") => operations_open(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -904,7 +1182,15 @@ fn run() -> Result<()> {
                   deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
                   <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
                   release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
-                  release-apply <release> [host:port] [wait-seconds] | selftest"
+                  release-apply <release> [host:port] [wait-seconds] | \
+                  operations-recipient-generate <private-key-file> <public-key-file> | \
+                  operations-signing-generate <private-key-file> <public-key-file> | \
+                  operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
+                  <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
+                  <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
+                  <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
+                  <release-sha256> <now-unix> <recipient-private-key-file> \
+                  <ops-ed25519-public-key-file> <output> | selftest"
             .to_owned()),
     }
 }
