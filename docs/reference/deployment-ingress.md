@@ -56,8 +56,42 @@ sequence, returns HTTP `409 Conflict`.
 admission. Each descriptor is a separate Raft entry, so a transport or policy
 failure can leave an accepted prefix of the release committed. Rerunning the
 same command is safe because identical descriptors are idempotent. A future
-signed process-bundle format and controller must supply all-or-nothing
-admission, coordinated rollback, and bundle-level audit state.
+signed process-bundle controller must still supply coordinated rollback and
+the complete process-level policy described below.
+
+## Atomic component releases
+
+For all-or-nothing admission, wrap the independently signed descriptors in a
+signed `CRELEASE` envelope and apply that envelope instead:
+
+```text
+cluster-sign release-sign orders.crelease orders 42 <private-key-hex> \
+  ingest.cdep validate.cdep publish.cdep
+cluster-sign release-verify orders.crelease <public-key-hex>
+cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
+```
+
+The outer signature binds the release name, monotonic release sequence, and
+exact ordered descriptor bytes. Every nested `CDEPLOY1` signature is also
+verified against the cluster key. An envelope is limited to 16 distinct
+artifact names and 3,584 bytes so it, its IPC envelope, and the leader-resolved
+node assignments remain bounded.
+
+`deployd` accepts the envelope at `POST /v1/releases`. The request can enter
+through any member; a follower source-validates and correlates its relay to the
+leader. The leader resolves every zero node key and proposes the complete set
+as one Raft command. The replicated state machine preflights the release and
+all component sequences while holding the deployment map, then changes either
+all desired deployments or none. Exact retries return the existing release
+generation, and catalog v9 snapshots retain the signed release record.
+
+Atomic admission does not mean simultaneous readiness. Node agents reconcile
+the newly visible desired records independently, and `release-apply` waits for
+each exact deployment generation. A fetch or launch failure can therefore
+leave a release committed but not ready; automatic rollback and rollout policy
+remain controller work. `CRELEASE` binds executable deployment decisions, not
+yet the BPMN digest, schemas, provenance graph, replica policy, or other
+semantic content of a complete Durga process bundle.
 
 The request may enter through any cluster member. A follower's DNS validates
 the reliable-message source as a current peer, relays the bounded request to
@@ -116,5 +150,6 @@ drop. The limit is a kernel admission bound, not a protocol-name limit.
   rescheduling after node loss, and replica counts above one need a
   cluster-level deployment planner.
 - `scripts/run-aarch64.sh --deployment-ingress-test --timeout 240` automates a
-  TLS RustFS upload → signed notify → S3 pull → scoped launch → readiness path.
+  TLS RustFS upload → signed atomic release → S3 pull → scoped launch →
+  readiness path.
   It is a development fixture, not a production release controller.

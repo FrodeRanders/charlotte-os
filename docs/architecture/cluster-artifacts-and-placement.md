@@ -75,13 +75,29 @@ cluster-sign deployment-apply 127.0.0.1:8081 120 \
   receive.cdep transform.cdep publish.cdep
 ```
 
-The tool decodes the complete set and rejects duplicate artifact names before
-mutation, then submits each signed descriptor and waits until every exact
-generation is ready. This is deliberately a host-side release-controller
-slice rather than a new trust boundary: descriptors remain independently
-verified and committed by the cluster. The set is not atomic yet. If a later
-submission fails, an earlier prefix may already be committed; exact retries
-are safe because descriptor admission is idempotent.
+The compatibility command decodes the complete set and rejects duplicate
+artifact names before mutation, then submits each signed descriptor and waits
+until every exact generation is ready. Its descriptors are independently
+committed, so a later failure can leave an earlier prefix committed; exact
+retries are safe because descriptor admission is idempotent.
+
+The preferred multi-component form is a signed release envelope:
+
+```text
+cluster-sign release-sign orders.crelease orders 42 <private-key-hex> \
+  receive.cdep transform.cdep publish.cdep
+cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
+```
+
+`CRELEASE` binds a monotonic release identity to the exact ordered descriptor
+bytes. The cluster verifies the outer and nested signatures, relays a request
+received by a follower to the current leader, resolves automatic placement,
+and admits the whole set in one Raft command. Catalog preflight rejects a stale
+or conflicting release or component before changing the deployment map; v9
+snapshots retain the release record. Admission is atomic, while S3 fetch,
+launch, publication, and readiness remain independently reconciled after the
+commit. Coordinated rollback and richer rollout policy still require a release
+controller.
 
 The listener is intentionally plaintext because the signed descriptor is the
 authorization and integrity envelope and contains no secret. Network policy or

@@ -75,6 +75,9 @@ pub(super) enum PendingQueryKind {
     Deploy {
         reply: u64,
     },
+    Release {
+        reply: u64,
+    },
 }
 
 pub(super) struct PendingQuery {
@@ -115,6 +118,13 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed a deployment after its local
     /// administration service verified the signed descriptor.
     RemoteDeploy {
+        log_index: u64,
+        peer: String,
+        session: u64,
+        request_id: u64,
+    },
+    /// Leader-side: a follower relayed an already verified signed release.
+    RemoteRelease {
         log_index: u64,
         peer: String,
         session: u64,

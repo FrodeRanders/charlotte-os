@@ -240,6 +240,28 @@ fn current_deployment(dns_conn: u64, name: &[u8]) -> Option<name_catalog::Deploy
     name_catalog::decode_deployment_result(mapping.as_slice().get(..len)?)
 }
 
+fn submit_release(dns_conn: u64, envelope: &[u8]) -> i64 {
+    if envelope.len() > charlotte_launch::release::MAX_RELEASE_LEN
+        || charlotte_launch::release::decode(envelope).is_none()
+    {
+        return clusterctl::ERR_TOO_LARGE;
+    }
+    let Some(memory) = memory_from_bytes(envelope) else {
+        return clusterctl::ERR_UPLOAD_FAILED;
+    };
+    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
+        Ok(dns) => dns,
+        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    };
+    match dns.call_move(dns::OP_DEPLOY_RELEASE, envelope.len() as u64, memory) {
+        Ok(call) => match call.wait() {
+            Ok(reply) => reply.result,
+            Err(_) => clusterctl::ERR_NOT_LEADER,
+        },
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
     let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
     let mut mapping = memory.map_writable().ok()?;
@@ -442,6 +464,22 @@ fn main(ctx: Context) -> ! {
                                 }
                                 _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
                             }
+                        }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                        None => clusterctl::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_NOTIFY_RELEASE => {
+                    let result = match read_payload(&message) {
+                        Some(envelope)
+                            if envelope.len() <= charlotte_launch::release::MAX_RELEASE_LEN
+                                && charlotte_launch::release::verify(&envelope, &trusted_key)
+                                    == charlotte_launch::release::VerifyOutcome::Valid =>
+                        {
+                            submit_release(dns_conn, &envelope)
                         }
                         Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
                         None => clusterctl::ERR_TOO_LARGE,

@@ -679,9 +679,25 @@ application and its descriptors.
 This command is release orchestration rather than atomic process-bundle
 admission. Each descriptor remains a separate Raft entry, so a later failure
 can leave an accepted prefix committed. Repeating the same set is safe because
-identical descriptors are idempotent. All-or-nothing admission, coordinated
-rollback, and bundle-level audit state remain responsibilities of a future
-signed-bundle controller.
+identical descriptors are idempotent.
+
+The atomic alternative is a signed \texttt{CRELEASE} envelope produced with
+\texttt{cluster-sign release-sign} and submitted with
+\texttt{release-apply}. Its outer signature binds a release name, monotonic
+sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
+the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
+outer signature and every \texttt{CDEPLOY1} signature. A follower relays the
+request to the current leader, which resolves all automatic node selections
+and proposes the set as one Raft command. The state machine preflights every
+release and component revision before changing the deployment map, so desired
+state changes all at once or not at all. Exact retries are idempotent and the
+signed release record survives catalog snapshots.
+
+Admission atomicity does not make component startup simultaneous. Agents fetch,
+launch, and publish independently after commit, and \texttt{release-apply}
+waits for every exact generation. Coordinated rollback, progress policy, and a
+semantic process bundle that also binds BPMN, schemas, provenance, and replica
+intent remain controller work.
 
 The client may contact any member. A follower relays the bounded submission to
 the current Raft leader over a source-validated peer route and correlates the
@@ -726,10 +742,10 @@ agents should remain mechanism-only reconcilers.
 
 The development runner's
 \texttt{--deployment-ingress-test --timeout 240} option proves the complete
-host upload to TLS RustFS, signed notification, S3 pull, scoped launch, and
-generation-safe readiness path. It is an integration fixture; production still
-needs a release controller that manages signed bundles, policy approval,
-progress deadlines, rollback, and audit identity.
+host upload to TLS RustFS, signed atomic release admission, S3 pull, scoped
+launch, and generation-safe readiness path. It is an integration fixture;
+production still needs a release controller that manages policy approval,
+progress deadlines, rollback, and operator audit identity.
 
 \subsection{Artifact naming}
 

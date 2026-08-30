@@ -339,9 +339,12 @@ impl NameCatalog {
                 if command.len() != after_count.saturating_add(nodes_len) {
                     return Vec::new();
                 }
-                let Some(cluster_key) = *self.cluster_key.lock() else {
-                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
-                };
+                // The build-time key is the bootstrap trust anchor. A key
+                // ceremony commits that same key for join/snapshot state,
+                // but release admission must also work before the optional
+                // ceremony on the first node.
+                let cluster_key =
+                    (*self.cluster_key.lock()).unwrap_or(charlotte_launch::CLUSTER_PUBLIC_KEY);
                 if charlotte_launch::release::verify(envelope_bytes, &cluster_key)
                     != charlotte_launch::release::VerifyOutcome::Valid
                 {
@@ -1160,6 +1163,26 @@ mod tests {
         let release_v1 =
             signed_release(&pair, b"orders", 1, &[receive_v1.as_slice(), publish_v1.as_slice()]);
         let command_v1 = encode_release(&release_v1, &[0x1111, 0x2222]).unwrap();
+        let relay = crate::rrelease::Request {
+            session: 3,
+            request_id: 9,
+            caller: b"charlotte:1234abcd".to_vec(),
+            envelope: release_v1.clone(),
+        };
+        let encoded_relay = crate::rrelease::encode_request(&relay).unwrap();
+        assert_eq!(
+            crate::rrelease::decode_request(
+                &[&[crate::rrelease::TAG_REQUEST], encoded_relay.as_slice()].concat()
+            ),
+            Some(relay)
+        );
+        let relay_reply = crate::rrelease::encode_reply(3, 9, 1);
+        assert_eq!(
+            crate::rrelease::decode_reply(
+                &[&[crate::rrelease::TAG_REPLY], relay_reply.as_slice()].concat()
+            ),
+            Some((3, 9, 1))
+        );
         assert_eq!(i64_result(catalog.apply_with_result(1, &command_v1)), 1);
         assert_eq!(i64_result(catalog.apply_with_result(2, &command_v1)), 1);
         assert_eq!(catalog.deployment(b"receive").unwrap().node_key, 0x1111);

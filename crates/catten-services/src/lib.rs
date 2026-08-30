@@ -1334,6 +1334,11 @@ pub mod dns {
     /// exact desired generation rather than a stale endpoint with the same
     /// name.
     pub const OP_REGISTER_DEPLOYMENT_NAMED: u32 = 19;
+    /// Atomically admit one signed `CRELEASE` envelope. `arg0` is the byte
+    /// length of the envelope in moved memory. The leader resolves every
+    /// automatic node assignment and commits the complete component set in
+    /// one Raft command. The reply is the release generation.
+    pub const OP_DEPLOY_RELEASE: u32 = 20;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1433,6 +1438,7 @@ pub mod clusterctl {
     /// the signed descriptor; the transport deliberately carries no secrets.
     pub const NOTIFY_PORT: u16 = charlotte_launch::DEPLOY_NOTIFY_PORT;
     pub const NOTIFY_PATH: &[u8] = b"/v1/deployments";
+    pub const RELEASE_PATH: &[u8] = b"/v1/releases";
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
@@ -1483,6 +1489,10 @@ pub mod clusterctl {
     /// The reply is [`ROLLOUT_STATUS_LEN`] bytes encoded by
     /// [`RolloutStatus::encode`].
     pub const OP_ROLLOUT: u32 = 8;
+    /// Notify the cluster of a signed `CRELEASE` envelope. The moved memory
+    /// uses `[len:u64][bytes]`, as for `OP_NOTIFY`; the reply is the atomically
+    /// committed release generation.
+    pub const OP_NOTIFY_RELEASE: u32 = 9;
 
     pub const ROLLOUT_COMMITTED: u8 = 1;
     pub const ROLLOUT_READY: u8 = 2;
@@ -2141,6 +2151,83 @@ pub mod rdeploy {
         frame.extend_from_slice(&request_id.to_le_bytes());
         frame.extend_from_slice(&result.to_le_bytes());
         frame
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
+        if frame.len() != 25 || frame[0] != TAG_REPLY {
+            return None;
+        }
+        Some((
+            u64::from_le_bytes(frame[1..9].try_into().ok()?),
+            u64::from_le_bytes(frame[9..17].try_into().ok()?),
+            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+        ))
+    }
+}
+
+/// Correlated follower-to-leader atomic release submission.
+pub mod rrelease {
+    pub const TAG_REQUEST: u8 = 0x19;
+    pub const TAG_REPLY: u8 = 0x1a;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Request {
+        pub session: u64,
+        pub request_id: u64,
+        pub caller: alloc::vec::Vec<u8>,
+        pub envelope: alloc::vec::Vec<u8>,
+    }
+
+    pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
+        if request.caller.is_empty()
+            || request.caller.len() > 255
+            || request.envelope.len() > charlotte_launch::release::MAX_RELEASE_LEN
+            || charlotte_launch::release::decode(&request.envelope).is_none()
+        {
+            return None;
+        }
+        let mut frame =
+            alloc::vec::Vec::with_capacity(19 + request.caller.len() + request.envelope.len());
+        frame.extend_from_slice(&request.session.to_le_bytes());
+        frame.extend_from_slice(&request.request_id.to_le_bytes());
+        frame.push(request.caller.len() as u8);
+        frame.extend_from_slice(&request.caller);
+        frame.extend_from_slice(&(request.envelope.len() as u16).to_le_bytes());
+        frame.extend_from_slice(&request.envelope);
+        Some(frame)
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 20 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = usize::from(frame[17]);
+        let caller_start = 18usize;
+        let envelope_len_offset = caller_start.checked_add(caller_len)?;
+        let envelope_len = usize::from(u16::from_le_bytes(
+            frame.get(envelope_len_offset..envelope_len_offset + 2)?.try_into().ok()?,
+        ));
+        let envelope_start = envelope_len_offset + 2;
+        let envelope_end = envelope_start.checked_add(envelope_len)?;
+        if caller_len == 0
+            || envelope_len > charlotte_launch::release::MAX_RELEASE_LEN
+            || frame.len() != envelope_end
+            || charlotte_launch::release::decode(frame.get(envelope_start..envelope_end)?).is_none()
+        {
+            return None;
+        }
+        Some(Request {
+            session,
+            request_id,
+            caller: frame.get(caller_start..envelope_len_offset)?.to_vec(),
+            envelope: frame.get(envelope_start..envelope_end)?.to_vec(),
+        })
+    }
+
+    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        super::rdeploy::encode_reply(session, request_id, result)
     }
 
     pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {

@@ -1,11 +1,12 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
 //! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY1`
-//! descriptor as its body and `GET /v1/deployments/{percent-encoded-name}` for
-//! rollout observation. The ingress carries no object-store or application
-//! secret: authenticity, integrity, placement, and authority all come from
-//! the descriptor signature checked by `clusterctl`. The assigned node
-//! fetches the referenced ELF through its separately provisioned S3 service.
+//! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
+//! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.
+//! The ingress carries no object-store or application secret: authenticity,
+//! integrity, placement, and authority come from signatures checked by
+//! `clusterctl`. Assigned nodes fetch referenced ELFs through their separately
+//! provisioned S3 service.
 #![no_std]
 #![no_main]
 
@@ -36,6 +37,7 @@ const RECEIVE_RETRY_MS: u64 = 100;
 
 enum Request {
     Notify(Vec<u8>),
+    Release(Vec<u8>),
     Status(Vec<u8>),
 }
 
@@ -128,21 +130,36 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
     if method == b"GET" {
         return decode_path_name(path).map(Request::Status).map(Some).ok_or(());
     }
-    if method != b"POST" || path != clusterctl::NOTIFY_PATH {
+    if method != b"POST" {
         return Err(());
     }
+    let (minimum, maximum) = if path == clusterctl::NOTIFY_PATH {
+        (charlotte_launch::deployment::HEADER_LEN, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
+    } else if path == clusterctl::RELEASE_PATH {
+        (charlotte_launch::release::HEADER_LEN, charlotte_launch::release::MAX_RELEASE_LEN)
+    } else {
+        return Err(());
+    };
     let length = content_length(&request[..body_start]).ok_or(())?;
-    if !(charlotte_launch::deployment::HEADER_LEN
-        ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
-        .contains(&length)
-    {
+    if !(minimum..=maximum).contains(&length) {
         return Err(());
     }
     let end = body_start.checked_add(length).ok_or(())?;
     if request.len() < end {
         Ok(None)
     } else {
-        request.get(body_start..end).map(|body| Some(Request::Notify(body.to_vec()))).ok_or(())
+        request
+            .get(body_start..end)
+            .map(|body| {
+                Some(
+                    if path == clusterctl::RELEASE_PATH {
+                        Request::Release(body.to_vec())
+                    } else {
+                        Request::Notify(body.to_vec())
+                    },
+                )
+            })
+            .ok_or(())
     }
 }
 
@@ -188,6 +205,30 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
     match controller.call_move(clusterctl::OP_NOTIFY, 0, memory) {
+        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
+fn notify_release(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
+    if charlotte_launch::release::decode(envelope).is_none() {
+        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
+    }
+    let memory = match OwnedMemory::allocate(1) {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    let mut mapping = match memory.map_writable() {
+        Ok(mapping) => mapping,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
+    mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
+    let memory = match mapping.unmap() {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    match controller.call_move(clusterctl::OP_NOTIFY_RELEASE, 0, memory) {
         Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
         Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
     }
@@ -317,6 +358,9 @@ fn main(ctx: Context) -> ! {
         let reply = match receive_request(&socket) {
             Ok(Request::Notify(descriptor)) => {
                 response(Ok(notify_cluster(controller.as_ref(), &descriptor)))
+            }
+            Ok(Request::Release(envelope)) => {
+                response(Ok(notify_release(controller.as_ref(), &envelope)))
             }
             Ok(Request::Status(name)) => {
                 rollout_response(query_rollout(controller.as_ref(), &name))

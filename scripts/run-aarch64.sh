@@ -445,6 +445,7 @@ fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
 
 DEPLOYMENT_DESCRIPTOR=""
+DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
@@ -453,6 +454,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     mkdir -p "$DEPLOYMENT_TEST_DIR"
     DEPLOYMENT_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
     DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/greet.cdep"
+    DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/greet.crelease"
     DEPLOYMENT_OBJECT_KEY="deployments/greet-e2e.elf"
     DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
     if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
@@ -468,6 +470,9 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     "$CLUSTER_SIGN_BIN" deployment-sign \
         "$DEPLOYMENT_DESCRIPTOR" greet "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
         0 "$DEPLOYMENT_SEQUENCE" "$DEPLOYMENT_PRIVATE_KEY" greet=publish
+    "$CLUSTER_SIGN_BIN" release-sign \
+        "$DEPLOYMENT_RELEASE" deployment-ingress-e2e "$DEPLOYMENT_SEQUENCE" \
+        "$DEPLOYMENT_PRIVATE_KEY" "$DEPLOYMENT_DESCRIPTOR"
 fi
 
 # Feature selection.
@@ -773,21 +778,15 @@ if [ -n "$TIMEOUT" ]; then
         rm -f "$DEPLOYMENT_RESULT_FILE" "$DEPLOYMENT_WORKER_LOG"
         (
             deadline=$((SECONDS + TIMEOUT - 5))
-            until "$CLUSTER_SIGN_BIN" deployment-notify \
-                "$DEPLOYMENT_DESCRIPTOR" "127.0.0.1:${DEPLOY_HOST_PORT}"; do
+            until "$CLUSTER_SIGN_BIN" release-apply \
+                "$DEPLOYMENT_RELEASE" "127.0.0.1:${DEPLOY_HOST_PORT}" \
+                "$((deadline - SECONDS))"; do
                 if [ "$SECONDS" -ge "$deadline" ]; then
-                    echo "deployment ingress did not accept the descriptor before timeout"
+                    echo "deployment ingress did not accept and realize the release before timeout"
                     exit 1
                 fi
                 sleep 1
             done
-            remaining=$((deadline - SECONDS))
-            if [ "$remaining" -le 0 ]; then
-                echo "no time remained to observe deployment readiness"
-                exit 1
-            fi
-            "$CLUSTER_SIGN_BIN" deployment-status \
-                greet "127.0.0.1:${DEPLOY_HOST_PORT}" "$remaining"
             printf '%s\n' ready >"$DEPLOYMENT_RESULT_FILE"
         ) >"$DEPLOYMENT_WORKER_LOG" 2>&1 &
         DEPLOYMENT_WORKER_PID=$!
@@ -984,7 +983,7 @@ if [ -n "$TIMEOUT" ]; then
             echo "error: signed RustFS deployment did not become ready" >&2
             exit 1
         fi
-        echo ">>> Signed RustFS upload/notify/pull/launch/readiness path validated."
+        echo ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2

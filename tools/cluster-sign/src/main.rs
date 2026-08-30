@@ -528,6 +528,45 @@ fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     Ok(response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim().to_owned())
 }
 
+fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
+    release::decode(bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let header = format!(
+        "POST /v1/releases HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
+         application/vnd.charlotte.release\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|()| stream.write_all(bytes))
+        .map_err(|error| format!("send release notification: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read release response: {error}"))?;
+    let status = response.lines().next().unwrap_or_default();
+    if !status.starts_with("HTTP/1.1 202 ") {
+        return Err(format!("release notification failed: {}", response.trim()));
+    }
+    Ok(response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim().to_owned())
+}
+
+fn release_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    println!("{}", release_notify_bytes(&bytes, endpoint)?);
+    Ok(())
+}
+
 fn deployment_notify(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing descriptor path".to_owned())?;
     let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
@@ -681,6 +720,65 @@ fn deployment_apply(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn release_apply(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing release path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let timeout = args
+        .get(2)
+        .map(|value| value.parse::<u64>().map_err(|_| "invalid rollout timeout seconds".to_owned()))
+        .transpose()?
+        .unwrap_or(120);
+    if timeout == 0 {
+        return Err("rollout timeout must be greater than zero".to_owned());
+    }
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let envelope =
+        release::decode(&bytes).ok_or_else(|| "release envelope is malformed".to_owned())?;
+    let release_name = String::from_utf8_lossy(envelope.release_name);
+    let mut pending = envelope
+        .descriptors()
+        .map(|bytes| {
+            let descriptor = deployment::decode(bytes)
+                .ok_or_else(|| "nested deployment descriptor is malformed".to_owned())?;
+            std::str::from_utf8(descriptor.artifact_name)
+                .map(str::to_owned)
+                .map_err(|_| "nested deployment artifact name is not UTF-8".to_owned())
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let body = release_notify_bytes(&bytes, endpoint)?;
+    println!("accepted release {release_name:?}: {body}");
+
+    let deadline = Instant::now() + Duration::from_secs(timeout);
+    while !pending.is_empty() {
+        let mut index = 0;
+        while index < pending.len() {
+            let name = &pending[index];
+            match deployment_status_once(name, endpoint) {
+                Ok((status, body))
+                    if status.starts_with("HTTP/1.1 200 ")
+                        && body.contains("\"state\":\"ready\"") =>
+                {
+                    println!("ready {name:?}: {body}");
+                    pending.swap_remove(index);
+                }
+                _ => index += 1,
+            }
+        }
+        if pending.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            pending.sort();
+            return Err(format!(
+                "release {release_name:?} did not become ready in {timeout}s; pending: {}",
+                pending.join(", ")
+            ));
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
@@ -708,6 +806,8 @@ fn run() -> Result<()> {
         Some("deployment-apply") => deployment_apply(&args[2..]),
         Some("release-sign") => release_sign(&args[2..]),
         Some("release-verify") => release_verify(&args[2..]),
+        Some("release-notify") => release_notify(&args[2..]),
+        Some("release-apply") => release_apply(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -803,7 +903,8 @@ fn run() -> Result<()> {
                   [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
                   deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
                   <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
-                  release-verify <release> <pubkey-hex> | selftest"
+                  release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
+                  release-apply <release> [host:port] [wait-seconds] | selftest"
             .to_owned()),
     }
 }

@@ -63,6 +63,7 @@ use catten_services::{
         encode_lookup_query,
         encode_register,
         encode_register_deployment,
+        encode_release,
         encode_set_cluster_key,
         encode_unregister_generation,
     },
@@ -500,6 +501,24 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
             }
         }
     }
+}
+
+fn release_command(envelope: &[u8], automatic_node: u64) -> Option<Vec<u8>> {
+    let release = charlotte_launch::release::decode(envelope)?;
+    let nodes = release
+        .descriptors()
+        .map(|bytes| {
+            let descriptor = charlotte_launch::deployment::decode(bytes)?;
+            Some(
+                if descriptor.node_key == 0 {
+                    automatic_node
+                } else {
+                    descriptor.node_key
+                },
+            )
+        })
+        .collect::<Option<Vec<_>>>()?;
+    encode_release(envelope, &nodes)
 }
 
 fn main(ctx: Context) -> ! {
@@ -1015,6 +1034,7 @@ fn main(ctx: Context) -> ! {
                                             && !matches!(
                                                 query.kind,
                                                 PendingQueryKind::Deploy { .. }
+                                                    | PendingQueryKind::Release { .. }
                                             )
                                     })
                                 {
@@ -1124,6 +1144,9 @@ fn main(ctx: Context) -> ! {
                                             }
                                         }
                                         PendingQueryKind::Deploy {
+                                            reply,
+                                        }
+                                        | PendingQueryKind::Release {
                                             reply,
                                         } => {
                                             if reply != 0 {
@@ -1340,6 +1363,79 @@ fn main(ctx: Context) -> ! {
                                 {
                                     let query = pending_queries.swap_remove(index);
                                     let PendingQueryKind::Deploy {
+                                        reply,
+                                    } = query.kind
+                                    else {
+                                        unreachable!()
+                                    };
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
+                                    }
+                                }
+                            }
+                            Some(catten_services::rrelease::TAG_REQUEST) => {
+                                if let Some(request) =
+                                    catten_services::rrelease::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == request.caller
+                                {
+                                    let result = if node.state != NodeState::Leader {
+                                        Some(dns::ERR_NOT_LEADER)
+                                    } else {
+                                        let automatic_node = node_identity::key_from_name(&node_name)
+                                            .unwrap_or(0);
+                                        match release_command(&request.envelope, automatic_node) {
+                                            Some(command) => match node
+                                                .submit_command(command, node.millis())
+                                            {
+                                                Ok(log_index) => {
+                                                    pending_registers.push(
+                                                        PendingRegistration::RemoteRelease {
+                                                            log_index,
+                                                            peer: source_peer.clone(),
+                                                            session: request.session,
+                                                            request_id: request.request_id,
+                                                        },
+                                                    );
+                                                    None
+                                                }
+                                                Err(code) => Some(code),
+                                            },
+                                            None => Some(dns::ERR_TOO_LARGE),
+                                        }
+                                    };
+                                    if let Some(result) = result {
+                                        transport.send_message(
+                                            &source_peer,
+                                            catten_services::rrelease::TAG_REPLY,
+                                            catten_services::rrelease::encode_reply(
+                                                request.session,
+                                                request.request_id,
+                                                result,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::rrelease::TAG_REPLY) => {
+                                if let Some((session, request_id, result)) =
+                                    catten_services::rrelease::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) =
+                                        pending_queries.iter().position(|query| {
+                                            query.query_id == request_id
+                                                && query.expected_leader == source_peer
+                                                && matches!(
+                                                    query.kind,
+                                                    PendingQueryKind::Release { .. }
+                                                )
+                                        })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let PendingQueryKind::Release {
                                         reply,
                                     } = query.kind
                                     else {
@@ -1804,6 +1900,79 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                dns::OP_DEPLOY_RELEASE => {
+                    let envelope =
+                        read_moved_bytes(&message, charlotte_launch::release::MAX_RELEASE_LEN);
+                    let result = match envelope {
+                        Some(envelope) if node.state == NodeState::Leader => {
+                            let automatic_node =
+                                node_identity::key_from_name(&node_name).unwrap_or(0);
+                            match release_command(&envelope, automatic_node) {
+                                Some(command) => {
+                                    match node.submit_command(command, node.millis()) {
+                                        Ok(log_index) => {
+                                            pending_registers.push(PendingRegistration::Deploy {
+                                                log_index,
+                                                reply: message.reply,
+                                            });
+                                            continue;
+                                        }
+                                        Err(code) => code,
+                                    }
+                                }
+                                None => dns::ERR_TOO_LARGE,
+                            }
+                        }
+                        Some(envelope) => {
+                            let Some(leader) = node.known_leader_id.clone() else {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                                }
+                                continue;
+                            };
+                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                                || !transport.has_peer(&leader)
+                            {
+                                dns::ERR_BUSY
+                            } else {
+                                let request_id = next_query_id;
+                                next_query_id = next_query_id.wrapping_add(1).max(1);
+                                let relay = catten_services::rrelease::Request {
+                                    session: dns_session,
+                                    request_id,
+                                    caller: node_name.clone(),
+                                    envelope,
+                                };
+                                let Some(frame) = catten_services::rrelease::encode_request(&relay)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                                    }
+                                    continue;
+                                };
+                                pending_queries.push(PendingQuery {
+                                    query_id: request_id,
+                                    expected_leader: leader.clone(),
+                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                    kind: PendingQueryKind::Release {
+                                        reply: message.reply,
+                                    },
+                                });
+                                transport.send_message(
+                                    &leader,
+                                    catten_services::rrelease::TAG_REQUEST,
+                                    frame,
+                                );
+                                continue;
+                            }
+                        }
+                        None => dns::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
                 dns::OP_DEPLOY_QUERY => {
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
@@ -2254,6 +2423,10 @@ fn main(ctx: Context) -> ! {
                     log_index,
                     ..
                 }
+                | PendingRegistration::RemoteRelease {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::SetKey {
                     log_index,
                     ..
@@ -2316,6 +2489,24 @@ fn main(ctx: Context) -> ! {
                                 generation as i64
                             },
                         ),
+                    );
+                }
+                PendingRegistration::RemoteRelease {
+                    peer,
+                    session,
+                    request_id,
+                    ..
+                } => {
+                    let result = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(i64::from_le_bytes)
+                        .unwrap_or(dns::ERR_NOT_FOUND);
+                    transport.send_message(
+                        &peer,
+                        catten_services::rrelease::TAG_REPLY,
+                        catten_services::rrelease::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::SetKey {
