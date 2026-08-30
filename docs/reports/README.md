@@ -14,6 +14,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Investigations
 
+- [DMA isolation and hostile-device security](investigations/2026-08-30-dma-security.md)
 - [Frame-allocator interrupt-masking latency](investigations/2026-08-16-frame-allocator-irq-latency.md)
 - [Live-upgrade stall](investigations/live-upgrade-stall.md)
 - [Scheduler investigation](investigations/scheduler.md)
