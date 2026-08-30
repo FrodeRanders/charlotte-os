@@ -57,7 +57,7 @@ use charlotte_launch::nvme_status as status;
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
 const PAGE_SIZE: usize = 4096;
-/// One PRP-list page holds 512 physical page addresses. We deliberately cap
+/// One PRP-list page holds 512 device-visible page addresses. We deliberately cap
 /// transfers at 512 data pages so a request never needs chained PRP lists.
 const MAX_TRANSFER_PAGES: usize = PAGE_SIZE / core::mem::size_of::<u64>();
 const MAX_TRANSFER_BYTES: u64 = (MAX_TRANSFER_PAGES * PAGE_SIZE) as u64;
@@ -172,12 +172,12 @@ unsafe fn doorbell_write(offset: usize, val: u16) {
 #[allow(dead_code)]
 struct QueueMemory {
     cap: u64,
-    phys: u64,
+    iova: u64,
     vaddr: usize,
     pages: usize,
 }
 
-/// Allocate physically contiguous, page-aligned memory for a queue.
+/// Allocate page-aligned queue memory with a contiguous device-visible IOVA range.
 fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> {
     let total_bytes = entries * entry_size;
     let pages = total_bytes.div_ceil(PAGE_SIZE);
@@ -192,16 +192,16 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
     }
     // SAFETY: admin/I/O queue fields use volatile device-ring access and the
     // allocation remains pinned until the queue is dismantled.
-    let phys =
+    let iova =
         unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
-    if phys == 0 {
+    if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
         return None;
     }
     Some(QueueMemory {
         cap,
-        phys,
+        iova,
         vaddr,
         pages,
     })
@@ -345,7 +345,7 @@ struct Prps {
 ///
 /// A one-page request uses PRP1 only, a two-page request uses PRP1+PRP2, and a
 /// larger request uses PRP2 to point at a temporary list containing every
-/// remaining physical page. No physical-contiguity assumption is made.
+/// remaining device-visible page. No physical-contiguity assumption is made.
 fn prepare_prps(memory: u64, bytes: u64, direction: DmaDirection) -> Option<Prps> {
     let pages = usize::try_from(bytes).ok()?.div_ceil(PAGE_SIZE);
     if pages == 0 || pages > MAX_TRANSFER_PAGES {
@@ -391,9 +391,9 @@ fn prepare_prps(memory: u64, bytes: u64, direction: DmaDirection) -> Option<Prps
     core::sync::atomic::fence(Ordering::Release);
     Some(Prps {
         first,
-        second: list.phys,
+        second: list.iova,
         list_cap: list.cap,
-        list_iova: list.phys,
+        list_iova: list.iova,
         data_iova: first,
     })
 }
@@ -504,8 +504,8 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
 
     unsafe {
         write32(reg::AQA, (ADMIN_QUEUE_SIZE - 1) | ((ADMIN_QUEUE_SIZE - 1) << 16));
-        write64(reg::ASQ, asq_mem.phys);
-        write64(reg::ACQ, acq_mem.phys);
+        write64(reg::ASQ, asq_mem.iova);
+        write64(reg::ACQ, acq_mem.iova);
         write32(reg::CC, CC_EN | CC_IOSQES | CC_IOCQES);
         let mut ready_one = false;
         for _ in 0..RESET_RDY_ONE_SPINS {
@@ -538,7 +538,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     // 3. Identify controller (CNS=1) — allocate memory for the 4096-byte data structure
     let id_ctrl_mem = alloc_queue_memory(1, PAGE_SIZE)?;
     config::write::<u32>(status::DETAIL, 19); // id-ctrl buffer allocated
-    let sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_IDENTIFY, 0, 1, 0, id_ctrl_mem.phys) };
+    let sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_IDENTIFY, 0, 1, 0, id_ctrl_mem.iova) };
     config::write::<u32>(status::DETAIL, 20); // admin_submit_and_wait returned
     if sf != 0 {
         return None;
@@ -553,7 +553,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     // Verify admin queue still works: Get Features (Arbitration, FID=1)
     let test_mem = alloc_queue_memory(1, PAGE_SIZE)?;
     let test_sf =
-        unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.phys) };
+        unsafe { admin_submit_and_wait(&mut aq, ADMIN_GET_FEATURES, 0, 1, 0, test_mem.iova) };
     config::write::<u32>(status::TEST_FEATURE_RESULT, test_sf);
     if test_sf != 0 {
         return None;
@@ -572,7 +572,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
 
     // 4. Identify namespace 1 (CNS=0)
     let id_ns_mem = alloc_queue_memory(1, PAGE_SIZE)?;
-    let sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_IDENTIFY, 1, 0, 0, id_ns_mem.phys) };
+    let sf = unsafe { admin_submit_and_wait(&mut aq, ADMIN_IDENTIFY, 1, 0, 0, id_ns_mem.iova) };
     if sf != 0 {
         return None;
     }
@@ -601,7 +601,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let cq_cdw10: u32 = ((IO_QUEUE_SIZE - 1) << 16) | 1;
     let cq_cdw11: u32 = 3; // PC=1, IEN=1, IV=0
     let cq_sf = unsafe {
-        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.phys)
+        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_CQ, 0, cq_cdw10, cq_cdw11, io_cq_mem.iova)
     };
     config::write::<u32>(status::CREATE_CQ_RESULT, cq_sf);
     if cq_sf != 0 {
@@ -616,7 +616,7 @@ unsafe fn nvme_init() -> Option<(usize, usize, u64, u32, u32)> {
     let sq_cdw10: u32 = ((IO_QUEUE_SIZE - 1) << 16) | 1;
     let sq_cdw11: u32 = (1u32 << 16) | 1; // CQID=1, PC=1
     let sq_sf = unsafe {
-        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.phys)
+        admin_submit_and_wait(&mut aq, ADMIN_CREATE_IO_SQ, 0, sq_cdw10, sq_cdw11, io_sq_mem.iova)
     };
     config::write::<u32>(status::CREATE_SQ_RESULT, sq_sf);
     if sq_sf != 0 {
