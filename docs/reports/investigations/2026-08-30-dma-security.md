@@ -47,6 +47,8 @@ of a deliberately malicious PCIe endpoint on arbitrary production hardware.
 This analysis considers:
 
 - a physically malicious PCIe or PCIe-tunneled endpoint;
+- an untrusted accelerator, coherent peripheral, chiplet, or peer SoC acting as
+  a memory or interrupt requester;
 - compromised device firmware;
 - a device that correctly identifies sufficiently to select a CharlotteOS
   driver, then violates that device protocol;
@@ -72,6 +74,52 @@ caused by physically removing a device. It also distinguishes isolation from
 data authenticity: a storage controller allowed to return a block can still
 return false contents, and a network adapter can still drop, replay, or alter a
 frame. End-to-end authentication is required when those properties matter.
+
+### 2.1 Cross-SoC attack class
+
+DMA is one concrete instance of the broader **cross-SoC attack** class. An
+idealised cache-coherent non-uniform memory-access (ccNUMA) model describes
+where memory resides and how participating processors maintain coherence. It
+does not define a security boundary, and it commonly assumes that processors,
+home agents, coherence controllers, and other fabric participants are mutually
+trusted.
+
+That assumption is unsuitable once an independently administered or
+potentially compromised component can originate memory transactions. A remote
+SoC, accelerator, device function, or coherent fabric endpoint may attempt:
+
+- DMA reads and writes;
+- peer-to-peer transactions that do not traverse the expected root complex;
+- forged or excessive interrupts;
+- translated requests using a device-side address-translation cache; or
+- cache-coherent reads, writes, invalidations, and ownership transitions that
+  are not represented by the conventional non-coherent DMA API.
+
+The security model must therefore place an explicit enforcement point between
+the trusted CharlotteOS compute/memory domain and every external transaction
+origin:
+
+```text
+trusted CPU/SoC and memory
+            │
+    requester-aware policy
+            │
+untrusted device, accelerator, chiplet, or peer SoC
+```
+
+Protection holds only if every transaction path crosses such an enforcement
+point, requester identity survives bridges and fabric translation, and the
+policy covers memory, interrupts, peer traffic, caches, and teardown. A PCIe
+IOMMU provides the memory-translation part of that boundary. Isolation groups,
+ACS, interrupt remapping, device-TLB management, coherent-fabric controls, and
+end-to-end data integrity supply other parts.
+
+CharlotteOS currently implements the conventional PCIe/SMMU protected-DMA
+case. It does not yet claim capability enforcement for CXL.cache, CXL.mem, or
+another cache-coherent cross-SoC protocol. Before supporting such a fabric, its
+coherence agents and protocol state transitions must be incorporated into the
+capability and revocation model rather than treated as trusted ccNUMA
+participants.
 
 ---
 
@@ -393,6 +441,7 @@ physical addresses or sensitive buffer information.
 | One PCI function equals one isolated requester | Not generally true; topology/ACS grouping is missing |
 | MSI source and vector are requester-authorized | Stronger with GIC ITS; incomplete for direct LAPIC MSI, AMD-Vi, and GICv2m |
 | ATS/device-TLB state cannot bypass teardown | Not established; features must be explicitly disabled |
+| Every cross-SoC/coherent-fabric path crosses capability enforcement | Not established beyond supported conventional DMA requester paths |
 | Malicious device cannot deny service | Not achievable in full; fault and interrupt effects can be bounded better |
 | Device output is authentic and fresh | Outside IOMMU scope; requires protocol or application cryptography |
 
@@ -421,6 +470,8 @@ physical addresses or sensitive buffer information.
 4. Implement VT-d and AMD-Vi interrupt remapping; require GIC ITS where a
    requester-aware AArch64 MSI path is part of the threat model.
 5. Enumerate and explicitly disable ATS, PRI, and PASID.
+6. Define a separate admission and authority model before enabling CXL or any
+   other cache-coherent endpoint; do not inherit trust from ccNUMA coherence.
 
 ### Phase 2 — Least-authority DMA buffers
 
@@ -443,6 +494,8 @@ physical addresses or sensitive buffer information.
    interrupt remapping, device-TLB state, malformed completion, and quarantine.
 4. Establish a physical-hardware qualification matrix for ACS, DMAR/IVRS/IORT,
    interrupt remapping, reset behavior, and warm boot.
+5. Extend the threat-model matrix from PCIe DMA to every supported cross-SoC
+   transaction type and record its requester identity and enforcement point.
 
 ---
 
