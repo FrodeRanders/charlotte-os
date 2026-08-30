@@ -44,6 +44,7 @@ use catten_rt::{
     ManifestValue,
     config,
     manifest_key,
+    owned::ConnectionRef,
 };
 use catten_services::{
     broker::EventBroker,
@@ -73,6 +74,7 @@ use catten_services::{
         NodeIdentity,
     },
     ns,
+    operations_admission,
     raft,
     relmsg,
     relmsg_transport::{
@@ -84,7 +86,9 @@ use catten_services::{
         encode_join_reply,
         encode_join_request,
     },
+    time,
     wait_for_local_ready,
+    wait_for_registered_name_owned,
     wait_reply,
 };
 use catten_syscall::{
@@ -181,6 +185,7 @@ const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
 const DISCO_QUERY_MS: u64 = 2_000;
 const JOIN_RETRY_MS: u64 = 1_000;
 const REMOTE_CALL_TIMEOUT_MS: u64 = 5_000;
+const REMOTE_OPERATIONS_TIMEOUT_MS: u64 = 60_000;
 const MAX_IN_FLIGHT_CALLS: usize = 64;
 const DEDUP_WINDOW: usize = 128;
 
@@ -525,6 +530,33 @@ fn release_command(envelope: &[u8], automatic_node: u64) -> Option<Vec<u8>> {
     encode_release(envelope, &nodes)
 }
 
+fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
+    let reply = time.call(catten_services::time::OP_UNIX_SECONDS, 0).ok()?.wait().ok()?;
+    u64::try_from(reply.result).ok()
+}
+
+fn operations_command(
+    bundle: &[u8],
+    trust: &charlotte_launch::trust::AdmissionTrust,
+    time: ConnectionRef<'_>,
+    automatic_node: u64,
+) -> Result<Vec<u8>, i64> {
+    let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
+    operations_admission::verify_and_encode(bundle, trust, now, automatic_node).map_err(|error| {
+        match error {
+            operations_admission::AdmissionError::Expired => clusterctl::ERR_EXPIRED_OPERATION,
+            operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
+            operations_admission::AdmissionError::Invalid
+            | operations_admission::AdmissionError::WrongCluster
+            | operations_admission::AdmissionError::WrongOperationsKey
+            | operations_admission::AdmissionError::WrongRecipient
+            | operations_admission::AdmissionError::WrongReleaseKey => {
+                clusterctl::ERR_UNTRUSTED_DESCRIPTOR
+            }
+        }
+    })
+}
+
 fn main(ctx: Context) -> ! {
     config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
@@ -534,6 +566,12 @@ fn main(ctx: Context) -> ! {
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 300,
+    };
+    let admission_trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => {
+            charlotte_launch::trust::AdmissionTrust::decode(bytes).unwrap_or_else(|| fatal(21))
+        }
+        _ => fatal(21),
     };
     // Keep heartbeats comfortably below the election timeout without
     // flooding the serialized relmsg path on a slow emulator.
@@ -618,6 +656,14 @@ fn main(ctx: Context) -> ! {
         fatal(15);
     }
     let dns_session = generation as u64;
+    // Operational admission must fail closed unless the existing UTC service
+    // can evaluate signed expiry. Retain this looked-up connection as an
+    // owner for the DNS process lifetime.
+    let (_, time_conn) = wait_for_registered_name_owned(
+        ctx.bootstrap_connection().unwrap_or_else(|| fatal(22)),
+        time::NAME,
+    )
+    .unwrap_or_else(|| fatal(22));
 
     // DNS owns the cluster's Raft node. Publish its administrative/status
     // face under the conventional per-node Raft name so discovery and
@@ -653,7 +699,7 @@ fn main(ctx: Context) -> ! {
     let me = Peer::voter(node_name_str.clone(), raft_name);
     config::write_u32_release(dns::status::PEER_COUNT, 1);
 
-    let catalog = NameCatalog::new();
+    let catalog = NameCatalog::new_with_deployment_key(admission_trust.deployment_key);
     // A clustered voter must retain term, vote, log, and snapshot state.
     // Falling back to memory after advertising the same durable node identity
     // would permit a restarted replica to vote twice in one term.
@@ -1052,6 +1098,7 @@ fn main(ctx: Context) -> ! {
                                                 query.kind,
                                                 PendingQueryKind::Deploy { .. }
                                                     | PendingQueryKind::Release { .. }
+                                                    | PendingQueryKind::Operations { .. }
                                             )
                                     })
                                 {
@@ -1164,6 +1211,9 @@ fn main(ctx: Context) -> ! {
                                             reply,
                                         }
                                         | PendingQueryKind::Release {
+                                            reply,
+                                        }
+                                        | PendingQueryKind::Operations {
                                             reply,
                                         } => {
                                             if reply != 0 {
@@ -1453,6 +1503,84 @@ fn main(ctx: Context) -> ! {
                                 {
                                     let query = pending_queries.swap_remove(index);
                                     let PendingQueryKind::Release {
+                                        reply,
+                                    } = query.kind
+                                    else {
+                                        unreachable!()
+                                    };
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
+                                    }
+                                }
+                            }
+                            Some(catten_services::roperations::TAG_REQUEST) => {
+                                if let Some(request) =
+                                    catten_services::roperations::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == request.caller
+                                {
+                                    let result = if node.state != NodeState::Leader {
+                                        Some(dns::ERR_NOT_LEADER)
+                                    } else {
+                                        let automatic_node = node_identity::key_from_name(&node_name)
+                                            .unwrap_or(0);
+                                        match operations_command(
+                                            &request.bundle,
+                                            &admission_trust,
+                                            time_conn.as_ref(),
+                                            automatic_node,
+                                        ) {
+                                            Ok(command) => match node
+                                                .submit_command(command, node.millis())
+                                            {
+                                                Ok(log_index) => {
+                                                    pending_registers.push(
+                                                        PendingRegistration::RemoteOperations {
+                                                            log_index,
+                                                            peer: source_peer.clone(),
+                                                            session: request.session,
+                                                            request_id: request.request_id,
+                                                        },
+                                                    );
+                                                    None
+                                                }
+                                                Err(code) => Some(code),
+                                            },
+                                            Err(code) => Some(code),
+                                        }
+                                    };
+                                    if let Some(result) = result {
+                                        transport.send_message(
+                                            &source_peer,
+                                            catten_services::roperations::TAG_REPLY,
+                                            catten_services::roperations::encode_reply(
+                                                request.session,
+                                                request.request_id,
+                                                result,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::roperations::TAG_REPLY) => {
+                                if let Some((session, request_id, result)) =
+                                    catten_services::roperations::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) =
+                                        pending_queries.iter().position(|query| {
+                                            query.query_id == request_id
+                                                && query.expected_leader == source_peer
+                                                && matches!(
+                                                    query.kind,
+                                                    PendingQueryKind::Operations { .. }
+                                                )
+                                        })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let PendingQueryKind::Operations {
                                         reply,
                                     } = query.kind
                                     else {
@@ -1990,6 +2118,87 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                dns::OP_DEPLOY_OPERATIONS => {
+                    let bundle = read_moved_bytes(
+                        &message,
+                        charlotte_launch::operations_bundle::MAX_BUNDLE_LEN,
+                    );
+                    let result = match bundle {
+                        Some(bundle) if node.state == NodeState::Leader => {
+                            let automatic_node =
+                                node_identity::key_from_name(&node_name).unwrap_or(0);
+                            match operations_command(
+                                &bundle,
+                                &admission_trust,
+                                time_conn.as_ref(),
+                                automatic_node,
+                            ) {
+                                Ok(command) => match node.submit_command(command, node.millis()) {
+                                    Ok(log_index) => {
+                                        pending_registers.push(PendingRegistration::Deploy {
+                                            log_index,
+                                            reply: message.reply,
+                                        });
+                                        continue;
+                                    }
+                                    Err(code) => code,
+                                },
+                                Err(code) => code,
+                            }
+                        }
+                        Some(bundle) => {
+                            let Some(leader) = node.known_leader_id.clone() else {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                                }
+                                continue;
+                            };
+                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                                || !transport.has_peer(&leader)
+                            {
+                                dns::ERR_BUSY
+                            } else {
+                                let request_id = next_query_id;
+                                next_query_id = next_query_id.wrapping_add(1).max(1);
+                                let relay = catten_services::roperations::Request {
+                                    session: dns_session,
+                                    request_id,
+                                    caller: node_name.clone(),
+                                    bundle,
+                                };
+                                let Some(frame) =
+                                    catten_services::roperations::encode_request(&relay)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                                    }
+                                    continue;
+                                };
+                                pending_queries.push(PendingQuery {
+                                    query_id: request_id,
+                                    expected_leader: leader.clone(),
+                                    deadline: node
+                                        .millis()
+                                        .saturating_add(REMOTE_OPERATIONS_TIMEOUT_MS),
+                                    kind: PendingQueryKind::Operations {
+                                        reply: message.reply,
+                                    },
+                                });
+                                transport.send_message(
+                                    &leader,
+                                    catten_services::roperations::TAG_REQUEST,
+                                    frame,
+                                );
+                                continue;
+                            }
+                        }
+                        None => dns::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
                 dns::OP_DEPLOY_QUERY => {
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
@@ -2444,6 +2653,10 @@ fn main(ctx: Context) -> ! {
                     log_index,
                     ..
                 }
+                | PendingRegistration::RemoteOperations {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::SetKey {
                     log_index,
                     ..
@@ -2524,6 +2737,24 @@ fn main(ctx: Context) -> ! {
                         &peer,
                         catten_services::rrelease::TAG_REPLY,
                         catten_services::rrelease::encode_reply(session, request_id, result),
+                    );
+                }
+                PendingRegistration::RemoteOperations {
+                    peer,
+                    session,
+                    request_id,
+                    ..
+                } => {
+                    let result = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(i64::from_le_bytes)
+                        .unwrap_or(dns::ERR_NOT_FOUND);
+                    transport.send_message(
+                        &peer,
+                        catten_services::roperations::TAG_REPLY,
+                        catten_services::roperations::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::SetKey {

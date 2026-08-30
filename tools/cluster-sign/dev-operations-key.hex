@@ -1,0 +1,7 @@
+# CharlotteOS development operational-signing key.
+#
+# This private Ed25519 key matches DEVELOPMENT_OPERATIONS_PUBLIC_KEY and exists
+# only so the QEMU development cluster can exercise the independently signed
+# operations path. It grants no artifact-signing authority. Never use it for a
+# real cluster; supply an operations key from the organisational KMS instead.
+6b62283019a468b5e7ae64dee11975fea35016fb63be37d29ab54c94295bd1ac446f9f1e6bc0cf4452859456ffec355733f0d7fc9fcf637655ebabb2a4767335

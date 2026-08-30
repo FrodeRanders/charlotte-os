@@ -26,7 +26,9 @@ pub const VERSION: u16 = 1;
 pub const HEADER_LEN: usize = 192;
 pub const MAX_BINDINGS: usize = 8;
 pub const MAX_OBJECT_KEY_LEN: usize = deployment::MAX_OBJECT_KEY_LEN;
-pub const MAX_BUNDLE_LEN: usize = 1024 * 1024;
+/// Leaves room below relmsg v3's 1 MiB message ceiling for the authenticated
+/// follower-to-leader correlation header and transport tag.
+pub const MAX_BUNDLE_LEN: usize = 1024 * 1024 - 512;
 pub const SIGNATURE_OFFSET: usize = 128;
 pub const SIGNATURE_LEN: usize = 64;
 

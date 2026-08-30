@@ -558,13 +558,15 @@ fn operations_bundle_sign(args: &[String]) -> Result<()> {
         .ok_or_else(|| {
             "operations-bundle-sign requires target-artifact object-key envelope triples".to_owned()
         })?;
-    let envelope_paths = triples.chunks_exact(3).map(|triple| &triple[2]).collect::<Vec<_>>();
+    let (triples, remainder) = triples.as_chunks::<3>();
+    debug_assert!(remainder.is_empty());
+    let envelope_paths = triples.iter().map(|triple| &triple[2]).collect::<Vec<_>>();
     let envelopes = envelope_paths
         .iter()
         .map(|path| fs::read(path).map_err(|error| format!("read {path}: {error}")))
         .collect::<Result<Vec<_>>>()?;
     let bindings = triples
-        .chunks_exact(3)
+        .iter()
         .zip(&envelopes)
         .map(|(triple, envelope)| operations_bundle::BindingFields {
             target_artifact: triple[0].as_bytes(),
@@ -672,6 +674,43 @@ fn operations_bundle_verify(args: &[String]) -> Result<()> {
             envelope.expires_unix_seconds
         );
     }
+    Ok(())
+}
+
+fn operations_bundle_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing bundle path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    operations_bundle::decode(&bytes)
+        .ok_or_else(|| "operational bundle is malformed".to_owned())?;
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let header = format!(
+        "POST /v1/operations HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
+         application/vnd.charlotte.operations-bundle\r\nContent-Length: {}\r\nConnection: \
+         close\r\n\r\n",
+        bytes.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|()| stream.write_all(&bytes))
+        .map_err(|error| format!("send operational bundle: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read operational admission response: {error}"))?;
+    let status = response.lines().next().unwrap_or_default();
+    if !status.starts_with("HTTP/1.1 202 ") {
+        return Err(format!("operational admission failed: {}", response.trim()));
+    }
+    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or(response.as_str()).trim());
     Ok(())
 }
 
@@ -1257,6 +1296,14 @@ fn run() -> Result<()> {
         Some("operations-open") => operations_open(&args[2..]),
         Some("operations-bundle-sign") => operations_bundle_sign(&args[2..]),
         Some("operations-bundle-verify") => operations_bundle_verify(&args[2..]),
+        Some("operations-bundle-notify") => operations_bundle_notify(&args[2..]),
+        Some("cluster-id") => {
+            let mnemonic = args.get(2).ok_or_else(|| "missing cluster mnemonic".to_owned())?;
+            let id = charlotte_launch::trust::cluster_id(mnemonic.as_bytes())
+                .ok_or_else(|| "cluster mnemonic must not be empty".to_owned())?;
+            println!("{}", hex_encode(&id));
+            Ok(())
+        }
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -1366,7 +1413,9 @@ fn run() -> Result<()> {
                   <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
                   (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
                   <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | selftest"
+                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
+                  operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | \
+                  selftest"
             .to_owned()),
     }
 }

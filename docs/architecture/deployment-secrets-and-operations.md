@@ -169,9 +169,51 @@ target, profile name, object key, encrypted-envelope digest, expiry, key IDs,
 and per-profile sequence. It does not store the large admission bundle,
 ciphertext, or plaintext. Updates are atomic with the release deployment,
 reject stale/conflicting sequences, retain inactive tombstones, retire bindings
-when their release advances, and survive snapshots. Only a future trusted DNS
-admission path may construct this compact command after full bundle
-verification; ordinary clients cannot submit it directly.
+when their release advances, and survive snapshots. Only the DNS leader
+constructs this compact command, after full bundle verification against
+role-specific launch trust and trusted UTC; ordinary clients cannot submit it
+directly.
+
+## Implemented cluster ingress and public trust roles
+
+`CTRUST1` is a fixed, bounded launch-owned public trust configuration. It names
+the cluster identity and separate artifact, deployment/release, operations and
+X25519 recipient roles. It contains no private material. Reusing the operations
+key or recipient key across the other cryptographic domains is rejected. The
+development image currently uses its existing Ed25519 development key for both
+artifact and deployment roles, but they are separate fields so a production
+launcher can provision them independently. Trust-policy rotation is identified
+by a nonzero sequence; replicated rotation policy remains future work.
+
+`deployd` accepts `COPSBND1` at `POST /v1/operations`, and the host tool exposes
+`operations-bundle-notify`. A request may enter through any member. A follower
+only validates bounded framing and source-correlated transport; it sends the
+complete signed proof to the current leader using 32-bit relmsg v3 framing. The
+leader always re-verifies:
+
+- the release authority and every nested deployment;
+- the independent operations authority and outer connector mapping;
+- cluster ID and recipient public key;
+- expiry using the existing NTP-backed time service;
+- all structural bounds before constructing the compact Raft command.
+
+Admission fails closed while UTC is unavailable. The relayed proof can exceed
+64 KiB but reserves framing room below relmsg's 1 MiB ceiling. Neither the full
+bundle nor its ciphertext enters the Raft log.
+
+For the default development cluster, derive its ID and notify an already signed
+bundle with:
+
+```sh
+cluster-sign cluster-id charlotte
+cluster-sign operations-bundle-notify orders.copsbundle 127.0.0.1:8081
+```
+
+The version-controlled `dev-operations-key.*` and `dev-recipient-key.*` files
+are QEMU fixtures analogous to the existing artifact development key. They
+must never be used in a real environment. Production provisioning must replace
+the public launch trust and keep both private keys in the responsible
+organisational KMS/cluster secrets boundary.
 
 ## Admission and storage rules
 
@@ -201,17 +243,18 @@ Rollback must not make an expired or lower-sequence binding admissible again.
 
 1. **Envelope and host tooling — implemented foundation.** `COPSENC1`, HPKE,
    independent operational signing, strict bounds and codec tests exist.
-2. **Role-aware trust registry — not implemented.** Replace the single embedded
-   `CLUSTER_PUBLIC_KEY` assumption with separately identified artifact,
-   deployment and operational verification authorities plus rotation policy.
+2. **Role-aware trust configuration — implemented foundation; replicated
+   rotation policy not implemented.** `CTRUST1` separately identifies artifact,
+   deployment, operations and recipient roles in launch-owned policy. The
+   development artifact/deployment roles still share the existing demo key.
 3. **Release binding — implemented foundation.** `COPSBND1` avoids a digest
    cycle while joining one exact release to operator-signed encrypted profiles,
    connector targets and central-object-store keys.
-4. **Replicated replay fencing — implemented foundation; network admission not
-   implemented.** Catalog V10 atomically retains compact bindings, complete-set
-   and per-profile sequence fences, retirement tombstones and snapshots. The
-   ingress, follower relay and leader verification path still need the separate
-   operations/recipient trust configuration and trusted UTC.
+4. **Cluster admission and replicated replay fencing — implemented
+   foundation.** `/v1/operations`, follower relay, leader-side dual-authority
+   verification, trusted-UTC expiry and Catalog V10 compact fences are wired.
+   Authenticated transport, admission audit and replicated trust rotation are
+   still production-hardening work.
 5. **Privileged decryption and launch — not implemented.** Add a small secrets
    service or controller-owned primitive that can use the cluster recipient key
    and move plaintext directly into an S3/Kafka connector launch.
@@ -219,9 +262,10 @@ Rollback must not make an expired or lower-sequence binding admissible again.
    rollover, loss recovery, generation replacement, redacted observability and
    KMS/measured-boot integration.
 
-Until steps 2, 4's network path, and 5 exist, production connector profiles
-remain separately provisioned as before. `COPSENC1`/`COPSBND1` must not be
-described as accepted by `deployd` or automatically delivered to a connector.
+Until step 5 exists, admission records desired encrypted connector bindings but
+does not automatically fetch, decrypt or deliver profiles to a connector.
+Production connector profiles therefore remain separately provisioned as
+before.
 
 ## Review checklist
 

@@ -125,12 +125,15 @@ client identity remain in the node's separately provisioned S3 profile. The
 application receives neither that profile nor ambient name-service authority.
 
 The encrypted operational-binding foundation now comprises `COPSENC1`, the
-separate operator-signed `COPSBND1` admission proof, host tooling, and compact
+separate operator-signed `COPSBND1` admission proof, role-aware public launch
+trust, host tooling, leader verification, follower relay and compact
 replay-fenced catalog state. It binds an encrypted S3 or Kafka profile to a
-cluster, exact release, target connector and central-object-store key. It is
-**not yet accepted by this ingress or decrypted by the cluster**; profiles must
-still be provisioned separately. The trust model, format and staged integration
-plan are documented in
+cluster, exact release, target connector and central-object-store key. Submit a
+bundle with `operations-bundle-notify` to `POST /v1/operations`. Admission fails
+closed without trusted UTC and places neither ciphertext nor plaintext in
+Raft. The cluster does **not yet fetch, decrypt or deliver the admitted profile
+to a connector**, so profiles must still be provisioned separately for actual
+connector launch. The trust model, format and staged integration plan are in
 [Deployment secrets and the development/operations boundary](../architecture/deployment-secrets-and-operations.md).
 
 ## Node-side pickup

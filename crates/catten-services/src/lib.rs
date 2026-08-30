@@ -38,6 +38,7 @@ pub mod broker;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
+pub mod operations_admission;
 
 /// Raft peer transport over the reliable message layer (`relmsg`).
 pub mod relmsg_transport;
@@ -1341,6 +1342,11 @@ pub mod dns {
     /// automatic node assignment and commits the complete component set in
     /// one Raft command. The reply is the release generation.
     pub const OP_DEPLOY_RELEASE: u32 = 20;
+    /// Admit one fully verified `COPSBND1` operational bundle. `arg0` is the
+    /// byte length in moved memory. A follower relays the complete signed
+    /// proof; the leader re-verifies both authorities and trusted UTC before
+    /// committing only compact references and replay fences.
+    pub const OP_DEPLOY_OPERATIONS: u32 = 21;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1441,6 +1447,7 @@ pub mod clusterctl {
     pub const NOTIFY_PORT: u16 = charlotte_launch::DEPLOY_NOTIFY_PORT;
     pub const NOTIFY_PATH: &[u8] = b"/v1/deployments";
     pub const RELEASE_PATH: &[u8] = b"/v1/releases";
+    pub const OPERATIONS_PATH: &[u8] = b"/v1/operations";
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
@@ -1495,6 +1502,10 @@ pub mod clusterctl {
     /// uses `[len:u64][bytes]`, as for `OP_NOTIFY`; the reply is the atomically
     /// committed release generation.
     pub const OP_NOTIFY_RELEASE: u32 = 9;
+    /// Notify the cluster of an independently operator-signed `COPSBND1`.
+    /// The moved memory uses `[len:u64][bytes]`; the leader verifies release,
+    /// operations, recipient, cluster and expiry context before admission.
+    pub const OP_NOTIFY_OPERATIONS: u32 = 10;
 
     pub const ROLLOUT_COMMITTED: u8 = 1;
     pub const ROLLOUT_READY: u8 = 2;
@@ -1556,6 +1567,10 @@ pub mod clusterctl {
     pub const ERR_STALE_DESCRIPTOR: i64 = -14;
     /// The sequence is already committed with different signed bytes.
     pub const ERR_CONFLICTING_DESCRIPTOR: i64 = -15;
+    /// UTC was unavailable, so expiry validation failed closed.
+    pub const ERR_TIME_UNAVAILABLE: i64 = -16;
+    /// At least one encrypted operational profile has expired.
+    pub const ERR_EXPIRED_OPERATION: i64 = -17;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.
@@ -2225,6 +2240,92 @@ pub mod rrelease {
             request_id,
             caller: frame.get(caller_start..envelope_len_offset)?.to_vec(),
             envelope: frame.get(envelope_start..envelope_end)?.to_vec(),
+        })
+    }
+
+    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        super::rdeploy::encode_reply(session, request_id, result)
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
+        if frame.len() != 25 || frame[0] != TAG_REPLY {
+            return None;
+        }
+        Some((
+            u64::from_le_bytes(frame[1..9].try_into().ok()?),
+            u64::from_le_bytes(frame[9..17].try_into().ok()?),
+            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+        ))
+    }
+}
+
+/// Correlated follower-to-leader encrypted operational-bundle submission.
+/// The body uses a 32-bit bundle length because `COPSBND1` intentionally
+/// exceeds the historical 64 KiB release envelope.
+pub mod roperations {
+    pub const TAG_REQUEST: u8 = 0x1b;
+    pub const TAG_REPLY: u8 = 0x1c;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Request {
+        pub session: u64,
+        pub request_id: u64,
+        pub caller: alloc::vec::Vec<u8>,
+        pub bundle: alloc::vec::Vec<u8>,
+    }
+
+    pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
+        if request.caller.is_empty()
+            || request.caller.len() > 255
+            || request.bundle.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
+            || charlotte_launch::operations_bundle::decode(&request.bundle).is_none()
+        {
+            return None;
+        }
+        let frame_len =
+            21usize.checked_add(request.caller.len())?.checked_add(request.bundle.len())?;
+        // The transport adds the one-byte type tag.
+        if frame_len + 1 > super::relmsg::MAX_MSG {
+            return None;
+        }
+        let mut frame = alloc::vec::Vec::with_capacity(frame_len);
+        frame.extend_from_slice(&request.session.to_le_bytes());
+        frame.extend_from_slice(&request.request_id.to_le_bytes());
+        frame.push(request.caller.len() as u8);
+        frame.extend_from_slice(&request.caller);
+        frame.extend_from_slice(&(request.bundle.len() as u32).to_le_bytes());
+        frame.extend_from_slice(&request.bundle);
+        Some(frame)
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 22 || frame[0] != TAG_REQUEST || frame.len() > super::relmsg::MAX_MSG {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = usize::from(frame[17]);
+        let caller_start = 18usize;
+        let bundle_len_offset = caller_start.checked_add(caller_len)?;
+        let bundle_len = usize::try_from(u32::from_le_bytes(
+            frame.get(bundle_len_offset..bundle_len_offset + 4)?.try_into().ok()?,
+        ))
+        .ok()?;
+        let bundle_start = bundle_len_offset + 4;
+        let bundle_end = bundle_start.checked_add(bundle_len)?;
+        let bundle = frame.get(bundle_start..bundle_end)?;
+        if caller_len == 0
+            || bundle_len > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
+            || frame.len() != bundle_end
+            || charlotte_launch::operations_bundle::decode(bundle).is_none()
+        {
+            return None;
+        }
+        Some(Request {
+            session,
+            request_id,
+            caller: frame.get(caller_start..bundle_len_offset)?.to_vec(),
+            bundle: bundle.to_vec(),
         })
     }
 

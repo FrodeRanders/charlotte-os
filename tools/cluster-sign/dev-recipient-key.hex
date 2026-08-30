@@ -1,0 +1,6 @@
+# CharlotteOS development X25519 recipient private key.
+#
+# This key matches DEVELOPMENT_RECIPIENT_PUBLIC_KEY and is a test fixture for
+# the future privileged decryptor. It is not embedded in the OS yet and must
+# never be reused as an Ed25519 key or used for a real cluster.
+f02776ea1574493094eef5b99db4d957890d0f483cd92bade26ce3cb107d3b0d

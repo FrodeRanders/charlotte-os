@@ -124,6 +124,9 @@ pub struct NameCatalog {
     operational_bindings: spin::Mutex<BTreeMap<Vec<u8>, OperationalBindingEntry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
+    /// Launch-owned deployment/release authority used before an optional
+    /// replicated key ceremony commits a replacement.
+    bootstrap_deployment_key: [u8; 32],
     last_apply: spin::Mutex<Option<Vec<u8>>>,
 }
 
@@ -238,6 +241,11 @@ fn parse_operational_tail(
 
 impl NameCatalog {
     pub fn new() -> Arc<Self> {
+        Self::new_with_deployment_key(charlotte_launch::CLUSTER_PUBLIC_KEY)
+    }
+
+    pub fn new_with_deployment_key(bootstrap_deployment_key: [u8; 32]) -> Arc<Self> {
+        assert!(bootstrap_deployment_key.iter().any(|byte| *byte != 0));
         Arc::new(Self {
             entries: spin::Mutex::new(BTreeMap::new()),
             deployments: spin::Mutex::new(BTreeMap::new()),
@@ -245,6 +253,7 @@ impl NameCatalog {
             operational_bindings: spin::Mutex::new(BTreeMap::new()),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
+            bootstrap_deployment_key,
             last_apply: spin::Mutex::new(None),
         })
     }
@@ -497,7 +506,7 @@ impl NameCatalog {
                 // but release admission must also work before the optional
                 // ceremony on the first node.
                 let cluster_key =
-                    (*self.cluster_key.lock()).unwrap_or(charlotte_launch::CLUSTER_PUBLIC_KEY);
+                    (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
                 if charlotte_launch::release::verify(envelope_bytes, &cluster_key)
                     != charlotte_launch::release::VerifyOutcome::Valid
                 {

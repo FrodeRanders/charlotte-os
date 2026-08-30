@@ -298,8 +298,23 @@ pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
 /// DNS owns the node's one durable Raft member. Membership, names, deployment
 /// state, and cluster events therefore share one ordered log.
 pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
+    let trust = charlotte_launch::development_admission_trust(cluster)
+        .expect("valid development admission trust");
+    launch_node_cluster_with_trust(ns, cluster, trust)
+}
+
+/// Spawn cluster services with caller-provisioned, role-separated public
+/// admission trust. Production platform integration uses this entry point;
+/// no private key is accepted by the launch contract.
+pub fn launch_node_cluster_with_trust(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+) -> Cluster {
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
+    assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
+    let trust = trust.encode().expect("valid admission trust");
 
     let disco = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"disco").expect("[launch] disco.elf"),
@@ -331,6 +346,11 @@ pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
                 key: ELECTION_KEY,
                 flags: 0,
                 value: ManifestValue::Unsigned(2_000),
+            },
+            ManifestEntry {
+                key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(&trust),
             },
         ],
     );
@@ -400,23 +420,42 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
 /// Launch the signed deployment path once both durable local storage and the
 /// network exist. The S3 connector remains separately provisioned because its
 /// endpoint and credentials are machine policy, not deployment metadata.
-pub fn launch_deployment_plane(ns: &NameServiceHandle) -> DeploymentPlane {
-    let trust = [ManifestEntry {
+pub fn launch_deployment_plane(ns: &NameServiceHandle, cluster: &[u8]) -> DeploymentPlane {
+    let trust = charlotte_launch::development_admission_trust(cluster)
+        .expect("valid development admission trust");
+    launch_deployment_plane_with_trust(ns, cluster, trust)
+}
+
+/// Launch the administration and reconciliation plane with caller-provisioned
+/// public trust. Artifact and deployment roles may be distinct.
+pub fn launch_deployment_plane_with_trust(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+) -> DeploymentPlane {
+    assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
+    let admission_trust = trust.encode().expect("valid admission trust");
+    let controller_trust = [ManifestEntry {
+        key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+        flags: 0,
+        value: ManifestValue::Bytes(&admission_trust),
+    }];
+    let artifact_trust = [ManifestEntry {
         key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
         flags: 0,
-        value: ManifestValue::Bytes(&charlotte_launch::CLUSTER_PUBLIC_KEY),
+        value: ManifestValue::Bytes(&trust.artifact_key),
     }];
     let clusterctl = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"clusterctl").expect("[launch] clusterctl.elf"),
         ns,
         ConnectionRights::CALL,
-        &trust,
+        &controller_trust,
     );
     let agent = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"agent").expect("[launch] agent.elf"),
         ns,
         ConnectionRights::CALL,
-        &trust,
+        &artifact_trust,
     );
     crate::service::supervisor::authorize_deployment_agent(&agent);
     let ingress = crate::service::supervisor::spawn_with_manifest(
@@ -662,7 +701,7 @@ pub extern "C" fn launch_steady_state() {
         None => (None, None),
     };
     let deployment = if storage.is_some() && network.is_some() {
-        Some(launch_deployment_plane(&ns))
+        Some(launch_deployment_plane(&ns, b"charlotte"))
     } else {
         None
     };

@@ -146,6 +146,9 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>, now: u64) {
             }
             | PendingQueryKind::Release {
                 reply,
+            }
+            | PendingQueryKind::Operations {
+                reply,
             } => reply,
         };
         if reply != 0 {

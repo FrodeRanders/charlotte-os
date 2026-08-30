@@ -24,8 +24,8 @@ should be updated with the implementation when those contracts change.
 - [Signed deployment notification](deployment-ingress.md) — off-cluster
   descriptor notification, Raft admission, and central-S3 node pickup.
 - [Encrypted operational deployment bindings](../architecture/deployment-secrets-and-operations.md)
-  — the implemented `COPSENC1` foundation and the unfinished cluster admission
-  and decryption plan.
+  — HPKE profiles, signed admission bundles, role-aware trust, leader-verified
+  ingress, replay fencing, and the remaining privileged decryption plan.
 - [Kafka client service](kafka-client.md) — idempotent production,
   read-committed consumption, transactional offsets, and owned backpressure.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the

@@ -262,6 +262,28 @@ fn submit_release(dns_conn: u64, envelope: &[u8]) -> i64 {
     }
 }
 
+fn submit_operations(dns_conn: u64, bundle: &[u8]) -> i64 {
+    if bundle.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
+        || charlotte_launch::operations_bundle::decode(bundle).is_none()
+    {
+        return clusterctl::ERR_TOO_LARGE;
+    }
+    let Some(memory) = memory_from_bytes(bundle) else {
+        return clusterctl::ERR_UPLOAD_FAILED;
+    };
+    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
+        Ok(dns) => dns,
+        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    };
+    match dns.call_move(dns::OP_DEPLOY_OPERATIONS, bundle.len() as u64, memory) {
+        Ok(call) => match call.wait() {
+            Ok(reply) => reply.result,
+            Err(_) => clusterctl::ERR_NOT_LEADER,
+        },
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
     let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
     let mut mapping = memory.map_writable().ok()?;
@@ -306,11 +328,10 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
 }
 
 fn main(ctx: Context) -> ! {
-    let trusted_key = match ctx.manifest_value(charlotte_launch::CLUSTER_KEY_MANIFEST_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => match <[u8; 32]>::try_from(bytes) {
-            Ok(key) => key,
-            Err(_) => fail(0xdea5),
-        },
+    let trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => {
+            charlotte_launch::trust::AdmissionTrust::decode(bytes).unwrap_or_else(|| fail(0xdea5))
+        }
         _ => fail(0xdea5),
     };
     let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| fail(0xdea0));
@@ -362,7 +383,7 @@ fn main(ctx: Context) -> ! {
                                 // any object-store slot can be modified.
                                 let trusted = charlotte_launch::signature_note::verify_elf_for_name(
                                     &artifact,
-                                    &trusted_key,
+                                    &trust.artifact_key,
                                     &name,
                                 )
                                     == charlotte_launch::signature_note::VerifyOutcome::Valid;
@@ -420,7 +441,7 @@ fn main(ctx: Context) -> ! {
                         Some(descriptor_bytes)
                             if charlotte_launch::deployment::verify(
                                 &descriptor_bytes,
-                                &trusted_key,
+                                &trust.deployment_key,
                             ) == charlotte_launch::deployment::VerifyOutcome::Valid =>
                         {
                             match charlotte_launch::deployment::decode(&descriptor_bytes) {
@@ -476,10 +497,32 @@ fn main(ctx: Context) -> ! {
                     let result = match read_payload(&message) {
                         Some(envelope)
                             if envelope.len() <= charlotte_launch::release::MAX_RELEASE_LEN
-                                && charlotte_launch::release::verify(&envelope, &trusted_key)
-                                    == charlotte_launch::release::VerifyOutcome::Valid =>
+                                && charlotte_launch::release::verify(
+                                    &envelope,
+                                    &trust.deployment_key,
+                                ) == charlotte_launch::release::VerifyOutcome::Valid =>
                         {
                             submit_release(dns_conn, &envelope)
+                        }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                        None => clusterctl::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_NOTIFY_OPERATIONS => {
+                    let result = match read_payload(&message) {
+                        Some(bundle)
+                            if bundle.len()
+                                <= charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
+                                && charlotte_launch::operations_bundle::decode(&bundle)
+                                    .is_some() =>
+                        {
+                            // The DNS leader performs authoritative signature,
+                            // cluster, recipient and expiry verification. A
+                            // follower is only a bounded transport hop.
+                            submit_operations(dns_conn, &bundle)
                         }
                         Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
                         None => clusterctl::ERR_TOO_LARGE,
@@ -575,7 +618,7 @@ fn main(ctx: Context) -> ! {
                 }
                 clusterctl::OP_KEYCEREMONY => {
                     let result = match read_key(&message) {
-                        Some(key) if key == trusted_key => {
+                        Some(key) if key == trust.deployment_key => {
                             // Forward the key to the dns, which commits it to
                             // the replicated state (leader-only; the reply is
                             // deferred until the ceremony record commits).

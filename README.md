@@ -266,9 +266,10 @@ The next deployment boundary separates development approval from operational
 configuration: developers sign immutable behavior and request logical
 capabilities, while operators bind those names to production Kafka and S3
 profiles without exposing credentials to the application. The first bounded,
-operator-signed HPKE envelope, admission-bundle tooling, and compact replicated
-replay fences are implemented, but the cluster's bundle ingress, role-aware
-trust configuration, and privileged decryption remain planned work. See
+operator-signed HPKE envelope, admission-bundle tooling, role-aware public
+trust, leader-verified ingress, follower relay, trusted-time expiry, and compact
+replicated replay fences are implemented. Privileged profile fetch/decryption
+and direct connector delivery remain planned work. See
 [Deployment secrets and the development/operations boundary](docs/architecture/deployment-secrets-and-operations.md)
 for the trust model, precise status, and rollout plan.
 

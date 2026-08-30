@@ -2,6 +2,7 @@
 //!
 //! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY1`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
+//! `POST /v1/operations` with one encrypted `COPSBND1` admission proof,
 //! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.
 //! The ingress carries no object-store or application secret: authenticity,
 //! integrity, placement, and authority come from signatures checked by
@@ -38,6 +39,7 @@ const RECEIVE_RETRY_MS: u64 = 100;
 enum Request {
     Notify(Vec<u8>),
     Release(Vec<u8>),
+    Operations(Vec<u8>),
     Status(Vec<u8>),
 }
 
@@ -133,12 +135,19 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
     if method != b"POST" {
         return Err(());
     }
-    let (minimum, maximum) = if path == clusterctl::NOTIFY_PATH {
-        (charlotte_launch::deployment::HEADER_LEN, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
-    } else if path == clusterctl::RELEASE_PATH {
-        (charlotte_launch::release::HEADER_LEN, charlotte_launch::release::MAX_RELEASE_LEN)
-    } else {
-        return Err(());
+    let (minimum, maximum) = match path {
+        clusterctl::NOTIFY_PATH => (
+            charlotte_launch::deployment::HEADER_LEN,
+            charlotte_launch::deployment::MAX_DESCRIPTOR_LEN,
+        ),
+        clusterctl::RELEASE_PATH => {
+            (charlotte_launch::release::HEADER_LEN, charlotte_launch::release::MAX_RELEASE_LEN)
+        }
+        clusterctl::OPERATIONS_PATH => (
+            charlotte_launch::operations_bundle::HEADER_LEN,
+            charlotte_launch::operations_bundle::MAX_BUNDLE_LEN,
+        ),
+        _ => return Err(()),
     };
     let length = content_length(&request[..body_start]).ok_or(())?;
     if !(minimum..=maximum).contains(&length) {
@@ -154,6 +163,8 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
                 Some(
                     if path == clusterctl::RELEASE_PATH {
                         Request::Release(body.to_vec())
+                    } else if path == clusterctl::OPERATIONS_PATH {
+                        Request::Operations(body.to_vec())
                     } else {
                         Request::Notify(body.to_vec())
                     },
@@ -172,7 +183,7 @@ fn receive_request(socket: &socket::OwnedSocket<'_>) -> Result<Request, ()> {
         let mapping = memory.map_read_only().map_err(|_| ())?;
         let bytes = mapping.as_slice().get(..len).ok_or(())?;
         if request.len().saturating_add(bytes.len())
-            > HEADER_LIMIT + charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            > HEADER_LIMIT + charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
         {
             return Err(());
         }
@@ -234,6 +245,34 @@ fn notify_release(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u
     }
 }
 
+fn notify_operations(controller: catten_rt::owned::ConnectionRef<'_>, bundle: &[u8]) -> i64 {
+    if charlotte_launch::operations_bundle::decode(bundle).is_none() {
+        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
+    }
+    let bytes = match bundle.len().checked_add(8) {
+        Some(bytes) => bytes,
+        None => return clusterctl::ERR_TOO_LARGE,
+    };
+    let memory = match OwnedMemory::allocate(bytes.div_ceil(4096).max(1)) {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    let mut mapping = match memory.map_writable() {
+        Ok(mapping) => mapping,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    mapping.as_mut_slice()[..8].copy_from_slice(&(bundle.len() as u64).to_le_bytes());
+    mapping.as_mut_slice()[8..8 + bundle.len()].copy_from_slice(bundle);
+    let memory = match mapping.unmap() {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    match controller.call_move(clusterctl::OP_NOTIFY_OPERATIONS, 0, memory) {
+        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn query_rollout(
     controller: catten_rt::owned::ConnectionRef<'_>,
     name: &[u8],
@@ -274,6 +313,9 @@ fn response(result: Result<i64, ()>) -> alloc::string::String {
         }
         Ok(clusterctl::ERR_STALE_DESCRIPTOR | clusterctl::ERR_CONFLICTING_DESCRIPTOR) => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", result.unwrap_or_default()))
+        }
+        Ok(clusterctl::ERR_EXPIRED_OPERATION) => {
+            ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_EXPIRED_OPERATION))
         }
         Ok(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
         Err(()) => ("400 Bad Request", "{\"error\":\"malformed request\"}\n".into()),
@@ -361,6 +403,9 @@ fn main(ctx: Context) -> ! {
             }
             Ok(Request::Release(envelope)) => {
                 response(Ok(notify_release(controller.as_ref(), &envelope)))
+            }
+            Ok(Request::Operations(bundle)) => {
+                response(Ok(notify_operations(controller.as_ref(), &bundle)))
             }
             Ok(Request::Status(name)) => {
                 rollout_response(query_rollout(controller.as_ref(), &name))

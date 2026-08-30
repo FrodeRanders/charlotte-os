@@ -48,6 +48,7 @@ pub mod operations_bundle;
 pub mod placement;
 pub mod release;
 pub mod signature_note;
+pub mod trust;
 
 /// FNV-1a 64, the cluster's identity hash (node keys, artifact ids).
 pub fn fnv1a(bytes: &[u8]) -> u64 {
@@ -725,3 +726,36 @@ pub const CLUSTER_PUBLIC_KEY: [u8; 32] = [
 /// Launch-manifest key under which the kernel hands the cluster public key to
 /// services (agents, clusterctl).
 pub const CLUSTER_KEY_MANIFEST_KEY: u64 = manifest_key(b"ckey");
+
+/// Launch-manifest key for a complete role-aware public admission policy.
+pub const ADMISSION_TRUST_MANIFEST_KEY: u64 = manifest_key(b"trust");
+
+/// Development-only operational signing public key. Its matching private key
+/// is tooling material and must never enter an OS image or production build.
+pub const DEVELOPMENT_OPERATIONS_PUBLIC_KEY: [u8; 32] = [
+    0x44, 0x6f, 0x9f, 0x1e, 0x6b, 0xc0, 0xcf, 0x44, 0x52, 0x85, 0x94, 0x56, 0xff, 0xec, 0x35, 0x57,
+    0x33, 0xf0, 0xd7, 0xfc, 0x9f, 0xcf, 0x63, 0x76, 0x55, 0xeb, 0xab, 0xb2, 0xa4, 0x76, 0x73, 0x35,
+];
+
+/// Development-only X25519 recipient public key. Only the public half is
+/// launch policy; production private-key custody belongs behind the future
+/// privileged secrets boundary.
+pub const DEVELOPMENT_RECIPIENT_PUBLIC_KEY: [u8; 32] = [
+    0x17, 0x24, 0x41, 0xaf, 0xd8, 0x97, 0x55, 0x19, 0xbf, 0x60, 0xe8, 0xce, 0x02, 0xf6, 0x38, 0x9b,
+    0xa2, 0x5d, 0xd6, 0xd0, 0xf4, 0x8b, 0xe4, 0x52, 0x49, 0xc4, 0x70, 0xef, 0x73, 0x0f, 0x49, 0x58,
+];
+
+/// Construct the development admission policy for a named cluster. Artifact
+/// and deployment roles intentionally retain the existing development key so
+/// current signed images and descriptors remain compatible; their roles are
+/// explicit and can be rotated independently by a production launcher.
+pub fn development_admission_trust(cluster: &[u8]) -> Option<trust::AdmissionTrust> {
+    Some(trust::AdmissionTrust {
+        sequence: 1,
+        cluster_id: trust::cluster_id(cluster)?,
+        artifact_key: CLUSTER_PUBLIC_KEY,
+        deployment_key: CLUSTER_PUBLIC_KEY,
+        operations_key: DEVELOPMENT_OPERATIONS_PUBLIC_KEY,
+        recipient_key: DEVELOPMENT_RECIPIENT_PUBLIC_KEY,
+    })
+}
