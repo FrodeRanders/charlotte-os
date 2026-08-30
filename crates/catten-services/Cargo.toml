@@ -136,6 +136,8 @@ signature = { version = "2.2", default-features = false }
 
 [dev-dependencies]
 ed25519-compact = "2.3.1"
+getrandom = { version = "0.4", features = ["sys_rng"] }
+rand_core_10 = { package = "rand_core", version = "0.10" }
 
 [[bin]]
 name = "time"

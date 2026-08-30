@@ -128,6 +128,51 @@ the cluster must decrypt into transient owned memory and consume that memory in
 a connector launch without publishing plaintext to a filesystem or ordinary
 service API.
 
+## Joining development and operations: `COPSBND1`
+
+An operational envelope binds the SHA-256 of an exact, already signed
+`CRELEASE`. Putting the operational-envelope digest back into that same release
+would create a cryptographic cycle. CharlotteOS therefore does not extend
+`CRELEASE1` with secret-profile references.
+
+`charlotte_launch::operations_bundle` instead defines `COPSBND1`, a separate
+operator-signed admission proof. It contains:
+
+- the exact signed release;
+- a nonzero monotonic revision of the complete operational set;
+- the cluster and recipient identities;
+- up to eight signed encrypted envelopes;
+- for each envelope, the exact connector artifact receiving it and the opaque
+  central-object-store key from which a node will later fetch it.
+
+The outer operational signature prevents an intermediary from remapping a
+valid profile to another connector or object key. Verification checks both
+independent signatures, the cluster, recipient, exact release digest, expiry,
+unique profile/target/object names, and that every target is a component of the
+release. The bundle is bounded to 1 MiB and is an admission transport proof,
+not replicated state.
+
+`cluster-sign operations-bundle-sign` and `operations-bundle-verify` implement
+the host-side format. Bundle creation takes target/object/envelope triples:
+
+```sh
+cluster-sign operations-bundle-sign orders.copsbundle 1 <cluster-id-hex> \
+  <release-public-key-hex> ops-signing.key cluster-recipient.pub orders.crelease \
+  kafka operations/orders-kafka.cops kafka-orders.cops
+cluster-sign operations-bundle-verify orders.copsbundle <cluster-id-hex> \
+  <release-public-key-hex> ops-signing.pub cluster-recipient.pub <now-unix>
+```
+
+The replicated catalog now has a version-ten compact representation for a
+verified bundle. It stores the release, bundle digest and sequence, connector
+target, profile name, object key, encrypted-envelope digest, expiry, key IDs,
+and per-profile sequence. It does not store the large admission bundle,
+ciphertext, or plaintext. Updates are atomic with the release deployment,
+reject stale/conflicting sequences, retain inactive tombstones, retire bindings
+when their release advances, and survive snapshots. Only a future trusted DNS
+admission path may construct this compact command after full bundle
+verification; ordinary clients cannot submit it directly.
+
 ## Admission and storage rules
 
 The encrypted envelope can be uploaded to the central object store and named by
@@ -140,7 +185,8 @@ The cluster must:
    context exactly;
 3. reject expired, duplicate-conflicting and non-monotonic sequences;
 4. authorize the logical requirement/profile-name binding;
-5. store only ciphertext in Raft logs, snapshots, diagnostics and crash dumps;
+5. store only compact ciphertext references and digests in Raft logs and
+   snapshots, and never plaintext in diagnostics or crash dumps;
 6. decrypt only on a node selected to launch the connector;
 7. transfer the profile through owned, bounded, read-only launch memory, then
    zero the transient plaintext;
@@ -158,12 +204,14 @@ Rollback must not make an expired or lower-sequence binding admissible again.
 2. **Role-aware trust registry — not implemented.** Replace the single embedded
    `CLUSTER_PUBLIC_KEY` assumption with separately identified artifact,
    deployment and operational verification authorities plus rotation policy.
-3. **Release binding — not implemented.** A future release version must name
-   exact operational-envelope digests without putting plaintext profiles in
-   `CDEPLOY1` or `CRELEASE1`.
-4. **Cluster admission and replay fencing — not implemented.** Extend ingress,
-   Raft desired state and the planner with atomic two-authority validation,
-   expiry and per-binding monotonic sequence enforcement.
+3. **Release binding — implemented foundation.** `COPSBND1` avoids a digest
+   cycle while joining one exact release to operator-signed encrypted profiles,
+   connector targets and central-object-store keys.
+4. **Replicated replay fencing — implemented foundation; network admission not
+   implemented.** Catalog V10 atomically retains compact bindings, complete-set
+   and per-profile sequence fences, retirement tombstones and snapshots. The
+   ingress, follower relay and leader verification path still need the separate
+   operations/recipient trust configuration and trusted UTC.
 5. **Privileged decryption and launch — not implemented.** Add a small secrets
    service or controller-owned primitive that can use the cluster recipient key
    and move plaintext directly into an S3/Kafka connector launch.
@@ -171,10 +219,9 @@ Rollback must not make an expired or lower-sequence binding admissible again.
    rollover, loss recovery, generation replacement, redacted observability and
    KMS/measured-boot integration.
 
-Until steps 2–5 exist, production connector profiles remain separately
-provisioned as before. `COPSENC1` must not be described as accepted by
-`deployd`, replicated by the controller, or automatically delivered to a
-connector.
+Until steps 2, 4's network path, and 5 exist, production connector profiles
+remain separately provisioned as before. `COPSENC1`/`COPSBND1` must not be
+described as accepted by `deployd` or automatically delivered to a connector.
 
 ## Review checklist
 

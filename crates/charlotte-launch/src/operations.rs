@@ -120,13 +120,13 @@ pub enum OpenError {
     WrongSigningKey,
 }
 
-fn valid_profile_name(value: &[u8]) -> bool {
+pub fn valid_profile_name(value: &[u8]) -> bool {
     !value.is_empty()
         && value.len() <= MAX_PROFILE_NAME_LEN
         && value.iter().all(|byte| (0x21..=0x7e).contains(byte))
 }
 
-fn valid_profile_kind(value: u16) -> bool {
+pub fn valid_profile_kind(value: u16) -> bool {
     matches!(value, PROFILE_KIND_S3 | PROFILE_KIND_KAFKA)
 }
 

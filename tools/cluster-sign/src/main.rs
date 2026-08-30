@@ -32,6 +32,7 @@ use charlotte_launch::{
         DescriptorFields,
     },
     operations,
+    operations_bundle,
     release,
     signature_note::{
         self,
@@ -503,6 +504,174 @@ fn operations_open(args: &[String]) -> Result<()> {
     .map_err(|error| format!("open operational envelope: {error:?}"))?;
     write_new_file(output, &plaintext[..len], true)?;
     println!("opened operational profile to mode-0600 file {output}");
+    Ok(())
+}
+
+fn operations_bundle_sign(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing bundle output path".to_owned())?;
+    let sequence = parse_required_u64(
+        args.get(1).ok_or_else(|| "missing bundle sequence".to_owned())?,
+        "bundle sequence",
+    )?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(2).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let release_public: [u8; 32] = parse_fixed_hex(
+        args.get(3).ok_or_else(|| "missing release public key".to_owned())?,
+        32,
+        "release Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let operational_secret_bytes = Zeroizing::new(read_hex_key(
+        args.get(4).ok_or_else(|| "missing operational signing-key path".to_owned())?,
+        64,
+        "operational Ed25519 secret key",
+    )?);
+    let operational_secret = SecretKey::from_slice(&operational_secret_bytes)
+        .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
+    let operational_public = operational_secret.public_key();
+    let operational_public: &[u8; 32] = operational_public
+        .as_ref()
+        .try_into()
+        .map_err(|_| "invalid operational public key".to_owned())?;
+    let recipient_public: [u8; 32] = read_hex_key(
+        args.get(5).ok_or_else(|| "missing recipient public-key path".to_owned())?,
+        32,
+        "recipient public key",
+    )?
+    .try_into()
+    .unwrap();
+    let release_path = args.get(6).ok_or_else(|| "missing signed release path".to_owned())?;
+    let release =
+        fs::read(release_path).map_err(|error| format!("read {release_path}: {error}"))?;
+    if release::verify(&release, &release_public) != release::VerifyOutcome::Valid {
+        return Err("release is not valid under the supplied release public key".to_owned());
+    }
+    let triples = args
+        .get(7..)
+        .filter(|values| !values.is_empty() && values.len() % 3 == 0)
+        .ok_or_else(|| {
+            "operations-bundle-sign requires target-artifact object-key envelope triples".to_owned()
+        })?;
+    let envelope_paths = triples.chunks_exact(3).map(|triple| &triple[2]).collect::<Vec<_>>();
+    let envelopes = envelope_paths
+        .iter()
+        .map(|path| fs::read(path).map_err(|error| format!("read {path}: {error}")))
+        .collect::<Result<Vec<_>>>()?;
+    let bindings = triples
+        .chunks_exact(3)
+        .zip(&envelopes)
+        .map(|(triple, envelope)| operations_bundle::BindingFields {
+            target_artifact: triple[0].as_bytes(),
+            object_key: triple[1].as_bytes(),
+            envelope,
+        })
+        .collect::<Vec<_>>();
+    let fields = operations_bundle::BundleFields {
+        sequence,
+        cluster_id,
+        release: &release,
+        bindings: &bindings,
+    };
+    let len = operations_bundle::encoded_len(&fields)
+        .map_err(|error| format!("invalid operational bundle: {error:?}"))?;
+    let mut bundle = vec![0u8; len];
+    operations_bundle::encode_unsigned(&fields, operational_public, &recipient_public, &mut bundle)
+        .map_err(|error| format!("encode operational bundle: {error:?}"))?;
+    let digest = operations_bundle::signature_digest(&bundle)
+        .ok_or_else(|| "encoded operational bundle did not decode".to_owned())?;
+    let signature: Signature = operational_secret.sign(digest, None);
+    let signature: &[u8; operations_bundle::SIGNATURE_LEN] = signature
+        .as_ref()
+        .try_into()
+        .map_err(|_| "invalid operational bundle signature length".to_owned())?;
+    if !operations_bundle::set_signature(&mut bundle, signature) {
+        return Err("failed to install operational bundle signature".to_owned());
+    }
+    write_new_file(output, &bundle, false)?;
+    println!(
+        "signed operational admission bundle {output}: release={release_path:?} \
+         sequence={sequence} bindings={} bytes={}",
+        bindings.len(),
+        bundle.len()
+    );
+    Ok(())
+}
+
+fn operations_bundle_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing bundle path".to_owned())?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(1).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let release_public: [u8; 32] = parse_fixed_hex(
+        args.get(2).ok_or_else(|| "missing release public key".to_owned())?,
+        32,
+        "release Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let operational_public: [u8; 32] = read_hex_key(
+        args.get(3).ok_or_else(|| "missing operational public-key path".to_owned())?,
+        32,
+        "operational Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let recipient_public: [u8; 32] = read_hex_key(
+        args.get(4).ok_or_else(|| "missing recipient public-key path".to_owned())?,
+        32,
+        "recipient public key",
+    )?
+    .try_into()
+    .unwrap();
+    let now = parse_required_u64(
+        args.get(5).ok_or_else(|| "missing current Unix time".to_owned())?,
+        "current Unix time",
+    )?;
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    let outcome = operations_bundle::verify(
+        &bytes,
+        &release_public,
+        &operational_public,
+        &recipient_public,
+        &cluster_id,
+        now,
+    );
+    if outcome != operations_bundle::VerifyOutcome::Valid {
+        return Err(format!("operational bundle verification failed: {outcome:?}"));
+    }
+    let bundle = operations_bundle::decode(&bytes)
+        .ok_or_else(|| "operational bundle is malformed".to_owned())?;
+    let release = release::decode(bundle.release)
+        .ok_or_else(|| "operational bundle release is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: release={:?} release-sha256={} sequence={} bindings={}",
+        String::from_utf8_lossy(release.release_name),
+        hex_encode(&bundle.release_digest),
+        bundle.sequence,
+        bundle.bindings().count()
+    );
+    for binding in bundle.bindings() {
+        let envelope = operations::decode(binding.envelope)
+            .ok_or_else(|| "operational binding envelope is malformed".to_owned())?;
+        println!(
+            "binding target={:?} profile={:?} object={:?} sequence={} expires={}",
+            String::from_utf8_lossy(binding.target_artifact),
+            String::from_utf8_lossy(envelope.profile_name),
+            String::from_utf8_lossy(binding.object_key),
+            envelope.sequence,
+            envelope.expires_unix_seconds
+        );
+    }
     Ok(())
 }
 
@@ -1086,6 +1255,8 @@ fn run() -> Result<()> {
         Some("operations-seal") => operations_seal(&args[2..]),
         Some("operations-verify") => operations_verify(&args[2..]),
         Some("operations-open") => operations_open(&args[2..]),
+        Some("operations-bundle-sign") => operations_bundle_sign(&args[2..]),
+        Some("operations-bundle-verify") => operations_bundle_verify(&args[2..]),
         Some("sha256") => {
             let path = args.get(2).ok_or_else(|| "missing file path".to_owned())?;
             let data = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
@@ -1190,7 +1361,12 @@ fn run() -> Result<()> {
                   <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
                   <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
                   <release-sha256> <now-unix> <recipient-private-key-file> \
-                  <ops-ed25519-public-key-file> <output> | selftest"
+                  <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
+                  <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                  <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
+                  (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
+                  <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | selftest"
             .to_owned()),
     }
 }
