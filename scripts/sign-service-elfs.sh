@@ -6,11 +6,16 @@
 # staging so that every image the kernel embeds — and therefore every image
 # the EL0 loader accepts — carries a valid .note.charlotte-sig signature.
 #
-# Usage: scripts/sign-service-elfs.sh <bundle-dir>
+# Usage: scripts/sign-service-elfs.sh <bundle-dir> [service-name ...]
+#
+# With no service names, every ELF in the bundle is signed. Supplying names
+# signs only those ELFs, which lets a later staging step add one artifact
+# without needlessly re-signing the existing bundle.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir>}"
+BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir> [service-name ...]}"
+shift
 BUNDLE="$(cd "$BUNDLE" && pwd)"
 POLICY="$ROOT/crates/catten-services/artifact-policy.tsv"
 
@@ -22,8 +27,30 @@ else
     PRIVATE_KEY="$(grep -v '^#' "$KEY_FILE" | tr -d '[:space:]')"
 fi
 
-for elf in "$BUNDLE"/*.elf; do
-    [ -f "$elf" ] || continue
+ELFS=()
+if [ "$#" -eq 0 ]; then
+    for elf in "$BUNDLE"/*.elf; do
+        [ -f "$elf" ] || continue
+        ELFS+=("$elf")
+    done
+else
+    for name in "$@"; do
+        case "$name" in
+            */*|*.elf)
+                echo "error: service name must be a bare name without .elf: $name" >&2
+                exit 1
+                ;;
+        esac
+        elf="$BUNDLE/$name.elf"
+        if [ ! -f "$elf" ]; then
+            echo "error: requested service ELF is missing: $elf" >&2
+            exit 1
+        fi
+        ELFS+=("$elf")
+    done
+fi
+
+for elf in "${ELFS[@]}"; do
     name="$(basename "$elf" .elf)"
     matches="$(awk -v wanted="$name" '$1 == wanted { count++ } END { print count + 0 }' "$POLICY")"
     if [ "$matches" -ne 1 ]; then

@@ -99,7 +99,7 @@ if [ "$EMBED" -eq 1 ]; then
     echo ">>> Copied ELF to $DEST"
     # The loader refuses unsigned images: sign the staged ELF with the
     # cluster's development key (or $CLUSTER_SIGN_PRIVATE_KEY).
-    "$ROOT/scripts/sign-service-elfs.sh" "$(dirname "$DEST")"
+    "$ROOT/scripts/sign-service-elfs.sh" "$(dirname "$DEST")" sitas-user
 
     # Read the ELF entry point. The kernel ELF loader starts exactly there.
     ENTRY=$("$READOBJ" -h "$TARGET_DIR/$BIN_NAME" | awk '/Entry:/ {print $2}')

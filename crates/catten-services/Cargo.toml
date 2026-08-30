@@ -3,6 +3,7 @@ name = "catten-services"
 version = "0.1.0"
 edition = "2024"
 description = "Reference EL0 service programs: name service, echo service, client"
+autobins = false
 
 [lib]
 name = "catten_services"
@@ -84,6 +85,12 @@ bench = false
 [[bin]]
 name = "relmsg"
 path = "src/bin/relmsg.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "rclient"
+path = "src/bin/rclient.rs"
 test = false
 bench = false
 
@@ -197,6 +204,18 @@ test = false
 bench = false
 
 [[bin]]
+name = "ahci"
+path = "src/bin/ahci.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "virtio_blk"
+path = "src/bin/virtio_blk.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "objstore"
 path = "src/bin/objstore.rs"
 test = false
@@ -247,6 +266,12 @@ bench = false
 [[bin]]
 name = "agent"
 path = "src/bin/agent.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "deployd"
+path = "src/bin/deployd.rs"
 test = false
 bench = false
 

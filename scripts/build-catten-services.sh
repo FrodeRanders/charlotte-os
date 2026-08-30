@@ -47,7 +47,7 @@ if [ "$MODE" = "embed" ]; then
         install -m 0755 "$OUTPUT/$service" \
             "$BUNDLE/$service.elf"
     done
-    "$ROOT/scripts/sign-service-elfs.sh" "$BUNDLE"
+    "$ROOT/scripts/sign-service-elfs.sh" "$BUNDLE" "${SERVICES[@]}"
     echo ">>> Staged and signed AArch64 EL0 service bundle at $BUNDLE."
 elif [ "$MODE" = "check" ]; then
     # Reproduce the signed bundle from the just-built binaries and compare it
