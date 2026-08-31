@@ -86,6 +86,18 @@ pub fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, dea
     }
 }
 
+/// Read the application's lifecycle acknowledgement from its status page.
+/// This is diagnostic evidence only; thread exit remains the authoritative
+/// condition for reclaiming a domain.
+pub fn lifecycle_status(status_frame: PAddr) -> u32 {
+    let base: *mut u8 = status_frame.into();
+    let status = unsafe {
+        &*(base.add(charlotte_launch::lifecycle::STATUS_STATE_OFFSET)
+            as *const core::sync::atomic::AtomicU32)
+    };
+    status.load(core::sync::atomic::Ordering::Acquire)
+}
+
 fn append_capability(config_frame: PAddr, kind: CapabilityKind, handle: u64) {
     append_capability_record(config_frame, kind, handle, 0, 0);
 }

@@ -388,6 +388,12 @@ fn launch(
             name,
         )?;
         let domain = launch_artifact(artifact, artifact_len, name).ok()?;
+        catten_rt::logln!(
+            "[agent] launched legacy {:?} generation={} asid={}",
+            core::str::from_utf8(name).unwrap_or("<invalid>"),
+            entry.generation,
+            domain.asid()
+        );
         return Some(ActiveDeployment {
             name: name.to_vec(),
             generation: entry.generation,

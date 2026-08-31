@@ -47,4 +47,5 @@ grantctl           admin       1       1        0x0   -
 # greet is explicitly safe to replicate in parallel, stateless, and forbidden
 # from fetching executable code at runtime.
 greet              service     1       1        0x7   -
+shutdown_probe     service     1       1        0x0   -
 smoke              service     1       1        0x0   -

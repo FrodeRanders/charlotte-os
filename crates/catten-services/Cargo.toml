@@ -294,3 +294,9 @@ name = "greet"
 path = "src/bin/greet.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "shutdown_probe"
+path = "src/bin/shutdown_probe.rs"
+test = false
+bench = false

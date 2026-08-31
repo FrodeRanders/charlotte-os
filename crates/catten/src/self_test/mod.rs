@@ -150,6 +150,8 @@ pub mod el0_raft;
 #[cfg(feature = "s3_test")]
 pub mod el0_s3;
 pub mod el0_service;
+#[cfg(feature = "shutdown_test")]
+pub mod el0_shutdown;
 pub mod el0_sitas;
 #[cfg(all(target_arch = "x86_64", feature = "x86_el0_smoke"))]
 pub mod el0_smoke;
@@ -231,6 +233,10 @@ pub(crate) fn close_test_address_space(
 /// are the only mutator of global test state.
 pub fn run_synchronous_self_tests() {
     logln!("Running self tests...");
+    if cfg!(feature = "shutdown_test") {
+        results::register(results::TestId::Shutdown);
+        return;
+    }
     if cfg!(feature = "live_upgrade_test") {
         results::register(results::TestId::Nvme);
         results::register(results::TestId::Service);
@@ -261,6 +267,12 @@ pub fn run_synchronous_self_tests() {
 /// execute it from a scheduler-owned kernel thread after the AP schedulers are
 /// live.
 pub fn run_deferred_self_tests() {
+    if cfg!(feature = "shutdown_test") {
+        #[cfg(feature = "shutdown_test")]
+        el0_shutdown::test_el0_shutdown();
+        logln!("Isolated domain-shutdown verifier is pending.");
+        return;
+    }
     if cfg!(feature = "live_upgrade_test") {
         // The service ELFs (echo, client, servicemgr) are store-sourced;
         // bring up the disk stack first so the object store registers and

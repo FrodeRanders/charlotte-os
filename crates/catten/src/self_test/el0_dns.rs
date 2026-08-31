@@ -243,6 +243,11 @@ mod inner {
             deadline.assert_pending("EL0 deploy agent identity");
             yield_lp();
         }
+        let acknowledged_retirements_before =
+            crate::service::supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS
+                .load(core::sync::atomic::Ordering::Relaxed);
+        let forced_retirements_before = crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
+            .load(core::sync::atomic::Ordering::Relaxed);
         let my_key = status_word(agent_cfg, charlotte_launch::agent_status::NODE_KEY) as u64;
         let key_a = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x01]) & 0xffff_ffff;
         let key_b = fnv1a(&[0x52, 0x54, 0x00, 0x12, 0x34, 0x02]) & 0xffff_ffff;
@@ -311,7 +316,7 @@ mod inner {
         // generation locally. Generation fencing correctly rejects a call in
         // this brief window, so retry the idempotent probe until both applied
         // views converge.
-        let deadline = crate::self_test::results::Deadline::after_millis(30_000);
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
         let result;
         let mut attempts = 0u32;
         loop {
@@ -376,6 +381,20 @@ mod inner {
             "[deploy] local agent stage {} after migration.",
             status_word(agent_cfg, charlotte_launch::agent_status::STAGE)
         );
+        if !is_leader {
+            assert!(
+                crate::service::supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS
+                    .load(core::sync::atomic::Ordering::Relaxed)
+                    > acknowledged_retirements_before,
+                "[deploy] lifecycle-aware greet must acknowledge cooperative retirement"
+            );
+            assert_eq!(
+                crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
+                    .load(core::sync::atomic::Ordering::Relaxed),
+                forced_retirements_before,
+                "[deploy] cooperative greet retirement must finish before forced termination"
+            );
+        }
 
         // The deployed service must still be reachable after the handover.
         // The old host retires before the new host registers, so a call can
@@ -432,9 +451,75 @@ mod inner {
             logln!("[deploy] leader observed the follower's causal post-migration barrier.");
         }
 
+        // Exercise the other terminal path as well. The leader currently
+        // hosts greet. Test-only kernel code shortens that already-admitted
+        // domain's grace period to zero, then moves the desired assignment
+        // back to the follower. Descriptor decoding independently tests the
+        // signed zero-grace value; this phase proves the runtime force path,
+        // reaping, and generation-fenced replacement end to end.
+        let forced_before_return_migration =
+            crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
+                .load(core::sync::atomic::Ordering::Relaxed);
+        if is_leader {
+            let principal = charlotte_launch::artifact_principal_id(b"greet");
+            let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
+            let running = deployed
+                .iter_mut()
+                .find(|entry| entry.principal == principal)
+                .expect("[deploy] leader-owned greet domain before forced migration");
+            running.shutdown_grace_ms = 0;
+            drop(deployed);
+
+            let mut request = Vec::with_capacity(48);
+            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
+            request.extend_from_slice(&peer_key.to_le_bytes());
+            request.extend_from_slice(&artifact_digest);
+            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            logln!("[deploy] zero-grace return migration result = {deploy:?}");
+            assert!(
+                deploy.is_some_and(|generation| generation >= 3),
+                "[deploy] return migration must commit a third generation"
+            );
+        }
+
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        let expected_stage = if is_leader {
+            AGENT_STAGE_RETIRED
+        } else {
+            AGENT_STAGE_SERVING
+        };
+        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) != expected_stage {
+            deadline.assert_pending("EL0 deploy forced return migration");
+            crate::cpu::scheduler::sleep_millis(10);
+            yield_lp();
+        }
+        if is_leader {
+            assert!(
+                crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
+                    .load(core::sync::atomic::Ordering::Relaxed)
+                    > forced_before_return_migration,
+                "[deploy] zero-grace retirement must take the forced path"
+            );
+        }
+
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        loop {
+            let mut request = Vec::with_capacity(12);
+            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+            request.extend_from_slice(&0i64.to_le_bytes());
+            if call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request) == Some(GREET_VALUE) {
+                break;
+            }
+            deadline.assert_pending("EL0 deploy forced-migration reachability");
+            crate::cpu::scheduler::sleep_millis(250);
+            yield_lp();
+        }
+        logln!("[deploy] forced retirement preserved replacement reachability.");
+
         logln!(
             "[deploy] SUCCESS: the cluster deployed a signed artifact to the peer node, served it \
-             across the network, and migrated it without losing the name."
+             across the network, cooperatively retired it, and exercised zero-grace forced \
+             retirement without losing the name."
         );
     }
 

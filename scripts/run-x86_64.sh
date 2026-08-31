@@ -17,7 +17,8 @@
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
 #                         [--no-network]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
-#                         [--tcpip-test|--http-test|--dhcp-test] [--live-upgrade-test]
+#                         [--tcpip-test|--http-test|--dhcp-test]
+#                         [--live-upgrade-test|--shutdown-test]
 #                         [--nic virtio|e1000e] [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
 #                         [--fresh-storage|--reuse-storage|--blank-storage]
@@ -46,6 +47,7 @@
 #   --http-test    Serve the HTTP state keyhole through SLIRP host forwarding
 #   --dhcp-test    Acquire a DHCP lease through the tcpip service (single guest)
 #   --live-upgrade-test  Run the isolated persistent service-upgrade test
+#   --shutdown-test  Run the isolated cooperative/forced domain-shutdown test
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
@@ -90,6 +92,7 @@ HTTP_TEST="0"
 DHCP_TEST="0"
 DEPLOY_TEST="0"
 LIVE_UPGRADE_TEST="0"
+SHUTDOWN_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
 NET_BACKEND="user"
@@ -129,6 +132,7 @@ while [ "$#" -gt 0 ]; do
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # implies --net-test
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
+        --shutdown-test) SHUTDOWN_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -284,6 +288,9 @@ fi
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
 fi
+if [ "$SHUTDOWN_TEST" = "1" ]; then
+    FEATURES="${FEATURES},shutdown_test"
+fi
 if [ "${CATTEN_SCHEDULER_TRACE:-0}" = "1" ]; then
     FEATURES="${FEATURES},scheduler_trace"
 fi
@@ -293,7 +300,7 @@ fi
 # image, so the bundle must exist before the kernel build.
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet relmsg rclient tcpip tcpclient httpd time s3 rng fs clusterctl grantctl"
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet shutdown_probe relmsg rclient tcpip tcpclient httpd time s3 rng fs clusterctl grantctl"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
         if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then

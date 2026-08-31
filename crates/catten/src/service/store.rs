@@ -67,6 +67,8 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     // The grant controller mediates application bootstrap authority before
     // store-backed services are available.
     bootstrap_elf!(b"grantctl", "grantctl"),
+    #[cfg(feature = "shutdown_test")]
+    bootstrap_elf!(b"shutdown_probe", "shutdown_probe"),
     // HVF cannot provide the SMMU required by the NVMe driver's protected DMA
     // domain. Keep its explicitly non-storage compatibility suite useful
     // without weakening DMA isolation or blocking on an unavailable store.
@@ -108,6 +110,8 @@ const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"dns", "dns"),
     bootstrap_elf!(b"agent", "agent"),
     bootstrap_elf!(b"greet", "greet"),
+    #[cfg(feature = "shutdown_test")]
+    bootstrap_elf!(b"shutdown_probe", "shutdown_probe"),
     bootstrap_elf!(b"relmsg", "relmsg"),
     bootstrap_elf!(b"rclient", "rclient"),
     bootstrap_elf!(b"tcpip", "tcpip"),

@@ -72,6 +72,25 @@ wraps its `CDEPLOY4` descriptor in a signed `CRELEASE` envelope, atomically
 admits the release, and waits on the management API until the exact desired
 generation owns the active service name on its assigned node.
 
+The two-guest `--deploy-test` exercises the runtime retirement paths. It moves
+the lifecycle-aware `greet` domain between nodes and requires an acknowledged
+cooperative exit, then returns the assignment with a test-injected zero grace
+period and requires forced termination, generation-safe reaping, and continued
+reachability through the replacement generation.
+
+For a deterministic test that does not require networking or cluster
+formation, use:
+
+```sh
+./scripts/run-aarch64.sh release --shutdown-test --no-network \
+    --fresh-storage --timeout 120
+```
+
+The isolated verifier launches one probe that drops an owned endpoint and
+acknowledges the read-only lifecycle request, then a deliberately unresponsive
+probe that must be forcibly terminated and reclaimed after its deadline. The
+same switch is available through `scripts/run-x86_64.sh`.
+
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
 The verifier covers the TLS handshake, idempotent production, bounded

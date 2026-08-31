@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -27,7 +27,8 @@
 #   --disco-test   Run the cluster discovery test (implies --net-test)
 #   --deploy-test  Run the cluster-deployment test (implies --dns-test):
 #               deploys a signed artifact to the peer node, executes it across
-#               the network, and migrates it between nodes.
+#               the network, migrates it between nodes, and verifies
+#               cooperative plus zero-grace forced retirement.
 #   --dns-test     Run the distributed name service test (Raft over the
 #               network; both guests must run it, implies --disco-test)
 #   --tcpip-test  Run the TCP/IP test: smoltcp adapter over the frouter,
@@ -53,6 +54,7 @@
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
+#   --shutdown-test  Run the isolated cooperative/forced domain-shutdown test
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
 #   --fresh-storage  Recreate this instance's NVMe store from the blessed bundle
@@ -88,6 +90,7 @@ KAFKA_FENCING_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
 LIVE_UPGRADE_TEST="0"
+SHUTDOWN_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -140,6 +143,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "Missing value for --mac" >&2; exit 1; }
             NET_MAC="$2"; shift 2 ;;
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
+        --shutdown-test) SHUTDOWN_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
             SMP="$2"; shift 2 ;;
@@ -542,6 +546,9 @@ fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
+fi
+if [ "$SHUTDOWN_TEST" = "1" ]; then
+    FEATURES="${FEATURES},shutdown_test"
 fi
 
 if [ "$SCHEDULER_TRACE" = "1" ]; then

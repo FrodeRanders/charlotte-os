@@ -314,6 +314,13 @@ pub(crate) static DEPLOYED_DOMAINS: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Vec<DeployedDomain>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
 
+/// Retirement outcomes retained for self-tests and debugger observability.
+/// They are evidence counters, not synchronization inputs.
+pub(crate) static DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+pub(crate) static DEPLOYMENT_FORCED_RETIREMENTS: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+
 /// Kernel-private connection to the node name service, minted when the node
 /// registry starts, used by the supervisor to publish the local node ready-marker.
 static KERNEL_NS_CONN: spin::LazyLock<

@@ -27,7 +27,7 @@ MANIFEST="crates/catten-services/Cargo.toml"
 TARGET="crates/catten-services/aarch64-unknown-none.json"
 OUTPUT="crates/catten-services/target/aarch64-unknown-none/release"
 BUNDLE="$ROOT/target/embedded-services/aarch64-unknown-none"
-SERVICES=(ns echo client uart cclient servicemgr raft nvme nvme_client objstore objstore_client fs net nclient relmsg rclient tcpip tcpclient httpd time s3 s3_smoke kafka kafka_smoke kafka_fence_smoke kafka_step kafka_step_proc kafka_step_input rng observe disco frouter dns agent clusterctl deployd grantctl greet)
+SERVICES=(ns echo client uart cclient servicemgr raft nvme nvme_client objstore objstore_client fs net nclient relmsg rclient tcpip tcpclient httpd time s3 s3_smoke kafka kafka_smoke kafka_fence_smoke kafka_step kafka_step_proc kafka_step_input rng observe disco frouter dns agent clusterctl deployd grantctl greet shutdown_probe)
 
 if [ "$CLEAN" = "1" ]; then
     echo ">>> Cleaning service target artifacts..."

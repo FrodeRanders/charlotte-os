@@ -110,10 +110,11 @@ pub enum TestId {
     Dhcp = 24,
     S3 = 25,
     Kafka = 26,
+    Shutdown = 27,
 }
 
 impl TestId {
-    const ALL: [Self; 27] = [
+    const ALL: [Self; 28] = [
         Self::El0,
         Self::RaftStorage,
         Self::El0Ipc,
@@ -141,6 +142,7 @@ impl TestId {
         Self::Dhcp,
         Self::S3,
         Self::Kafka,
+        Self::Shutdown,
     ];
 
     const fn name(self) -> &'static str {
@@ -172,6 +174,7 @@ impl TestId {
             Self::Dhcp => "dhcp",
             Self::S3 => "s3-tls",
             Self::Kafka => "kafka",
+            Self::Shutdown => "domain-shutdown",
         }
     }
 }

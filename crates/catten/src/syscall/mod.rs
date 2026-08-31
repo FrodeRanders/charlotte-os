@@ -2288,7 +2288,18 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
         frame.regs[0] = 1;
         return;
     }
-    let domain = deployed.swap_remove(position).domain;
+    let retired = deployed.swap_remove(position);
+    if retired.force_requested {
+        crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
+            .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    } else if retired.retirement_deadline_ms.is_some()
+        && crate::service::bootstrap::lifecycle_status(retired.domain.status_frame)
+            == charlotte_launch::lifecycle::STATUS_READY
+    {
+        crate::service::supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS
+            .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+    let domain = retired.domain;
     drop(deployed);
     crate::service::supervisor::teardown_domain(domain);
     frame.regs[0] = 0;
