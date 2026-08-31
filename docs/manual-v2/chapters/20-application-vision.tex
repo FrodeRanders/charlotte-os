@@ -184,8 +184,7 @@ partially completed external side effect is recovered.
 
 The semantic model must therefore be a real intermediate representation rather
 than a renaming of Kafka topics. A Charlotte backend should consume concepts
-such as activity, event, correlation, retry, and durable boundary. It should not
-have to reverse-engineer those concepts from a Kafka-specific topology.
+such as activity, event, correlation, retry, and durable boundary.
 
 \subsection{The execution substrate}
 
@@ -229,11 +228,11 @@ rollback.
 
 For a simple activity, the developer-owned interface might be no broader than:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 fn calculate_entitlement(
     claim: Claim
 ) -> Result<Decision, RuleError>
-\end{verbatim}
+\end{lstlisting}
 
 The exact Rust interface is a design question, not an implemented ABI. Around
 that function, the Charlotte backend could generate a wrapper that:

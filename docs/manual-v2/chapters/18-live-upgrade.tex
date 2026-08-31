@@ -98,7 +98,7 @@ boot remain future policy work.
 
 \section{What the supervisor prototype provides}
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 pub struct UpgradeGrant {
     pub state_caps: Vec<MemoryObjectCap>,
 }
@@ -109,7 +109,7 @@ pub fn spawn_upgrade(
     old_domain: ServiceDomain,
     grant: UpgradeGrant,
 ) -> ServiceDomain;
-\end{verbatim}
+\end{lstlisting}
 
 \texttt{spawn\_upgrade} is a privileged kernel operation invoked by the
 userspace service manager. It validates that the manager holds a callable
@@ -128,7 +128,7 @@ teardown remain future work.
 
 The old service must handle \texttt{OP\_HANDOFF}:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 OP_HANDOFF => {
     // Stop accepting new work.
     // Serialize all mutable state into memory objects.
@@ -136,11 +136,11 @@ OP_HANDOFF => {
     //   (the supervisor passes its ASID in the handoff call).
     // Reply "ready", then exit.
 }
-\end{verbatim}
+\end{lstlisting}
 
 The new service reads the extended bootstrap contract:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 fn main(ctx: Context) -> ! {
     let ns_connection = ctx.bootstrap_cap();
     let state_count = ctx.handoff_count();
@@ -149,14 +149,14 @@ fn main(ctx: Context) -> ! {
     // Deserialize state, create and register a fresh endpoint
     // under the same name (NS bumps generation), start serving.
 }
-\end{verbatim}
+\end{lstlisting}
 
 \section{What clients see}
 
 A client holding a stale connection from the previous generation sees a clean
 failure and retries:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Before upgrade:
 let conn = ns.lookup("payroll")?;       // generation 3
 payroll.call(OP_CALCULATE, employee_id); // in-flight
@@ -165,7 +165,7 @@ payroll.call(OP_CALCULATE, employee_id); // in-flight
 // Client retries:
 let conn = ns.lookup("payroll")?;       // generation 4
 payroll.call(OP_CALCULATE, employee_id); // reaches new instance
-\end{verbatim}
+\end{lstlisting}
 
 The new instance receives the old instance's state. The client observes a failed
 request, performs a new lookup, and retries. Protocols must decide when a retry is

@@ -1,5 +1,9 @@
 {
   "theme": "neutral",
+  "themeVariables": {
+    "actorLineColor": "#666666"
+  },
+  "themeCSS": ".actor-line { stroke: #666666 !important; stroke-width: 1.25px !important; }",
   "deterministicIds": true,
   "deterministicIDSeed": "charlotte-os-manual",
   "htmlLabels": false,

@@ -22,7 +22,7 @@ kernel.
 When a driver domain is created, the supervisor delivers a \texttt{DriverGrant}
 through the config-page contract:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 struct DriverGrant {
     device: DeviceCap,        // identity and lifecycle of the device
     mmio: Vec<MmioRegionCap>, // register windows, page-granular
@@ -32,7 +32,7 @@ struct DriverGrant {
     // Endpoint on which to serve clients.
     bootstrap_endpoint: EndpointCap,
 }
-\end{verbatim}
+\end{lstlisting}
 
 The driver receives \textbf{exactly} the MMIO register windows and interrupt
 vectors it needs. It cannot:
@@ -64,9 +64,9 @@ The common MMIO access therefore avoids a syscall or context switch.
 An \texttt{Interrupt} capability represents a routed interrupt source. The driver
 binds it to its completion queue:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 interrupt_bind(int_cap, cq_id);
-\end{verbatim}
+\end{lstlisting}
 
 When the interrupt fires:
 

@@ -46,14 +46,14 @@ The Raft core (\texttt{catten-graft}) is a generic, transport-agnostic library.
 It implements the \texttt{RaftTransport} trait, which abstracts peer
 communication behind a few methods:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 trait RaftTransport {
     fn send_vote_request(&self, request: VoteRequest);
     fn send_append_entries(&self, request: AppendEntries);
     fn send_install_snapshot(&self, request: InstallSnapshot);
     fn poll_completions(&self) -> Vec<RpcCompletion>;
 }
-\end{verbatim}
+\end{lstlisting}
 
 The operational CharlotteOS implementation uses the reliable message layer
 between DNS replicas; the consensus core does not change.
@@ -66,10 +66,10 @@ Once the cluster is running, peers are identified by name service entries, not
 \texttt{IP:port}. A node that has joined the cluster receives connection caps
 for its peers through the name service:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 let peer_1: ConnectionCap = name_service.lookup("raft-node-1")?;
 let peer_2: ConnectionCap = name_service.lookup("raft-node-2")?;
-\end{verbatim}
+\end{lstlisting}
 
 No IP configuration. No DNS. The authority to communicate with a peer is the 
 capability; without it, you cannot even address the peer.
@@ -176,13 +176,13 @@ distinct services.
 Raft replicates an opaque command log. The meaning of those commands is provided
 by a pluggable \texttt{StateMachine} trait:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 trait StateMachine {
     fn apply(&mut self, command: Vec<u8>) -> Result<Vec<u8>, ApplyError>;
     fn snapshot(&self) -> Vec<u8>;
     fn restore(&mut self, snapshot: Vec<u8>);
 }
-\end{verbatim}
+\end{lstlisting}
 
 Different services are different state machines on the same Raft substrate:
 
@@ -260,25 +260,25 @@ object itself.
 In a traditional Raft implementation, election timeouts are implemented with
 \texttt{sleep()} or a polling loop:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Traditional: busy wait or sleep
 while !timeout_elapsed() {
     sleep_ms(10); // or just spin
 }
-\end{verbatim}
+\end{lstlisting}
 
 In CharlotteOS, they use the completion system:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // CharlotteOS:
 let timer_id = submit_timer(timeout_duration)?;
 let result = wait_on_cq(timer_id).await?;
 // Timer fired; start election.
-\end{verbatim}
+\end{lstlisting}
 
 The timer is a kernel-managed operation. The shard parks on its CQ. When the
 timer fires, the executor wakes, drains the CQ entry, and resumes the election
-task. No polling loop, no thread dedicated to sleeping.
+task. There is no need for a polling loop and no thread dedicated to sleeping.
 
 \section{Why consensus as a service matters for critical software}
 

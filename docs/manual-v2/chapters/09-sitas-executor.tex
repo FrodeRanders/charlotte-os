@@ -28,7 +28,7 @@ LP is free to run another domain's thread.
 
 The executor's main loop is:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 loop {
     // 1. Poll ready tasks within a budget.
     while budget_remaining > 0 && ready_tasks.not_empty() {
@@ -50,7 +50,7 @@ loop {
         reactor.wait_for_events(); // -> CQ_WAIT
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 The budget prevents one task (or a tight loop of always-ready tasks) from
 starving other tasks on the shard. If the budget is exhausted with work remaining,
@@ -72,7 +72,7 @@ When a submitted operation completes (timer expired, DMA finished, device
 interrupt processed), the kernel posts a \texttt{CompletionEntry} to the shard's
 CQ ring and wakes the blocked thread. The executor drains the ring:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 fn drain_cq(&mut self) {
     while let Some(entry) = self.cq_ring.read() {
         let waker = self.waker_registry.take(entry.user_data);
@@ -81,7 +81,7 @@ fn drain_cq(&mut self) {
         }
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{Endpoint readiness (coalesced wake)}
 
@@ -104,7 +104,7 @@ When the executor drains a CQ entry, it looks up the registered waker for that
 entry's \texttt{user\_data} cookie. The cookie was set by the task when it
 submitted the operation. The waker marks the task ready:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Inside a task's Future::poll:
 fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u64> {
     match self.cap.poll() {
@@ -117,7 +117,7 @@ fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u64> {
         Err(e) => Poll::Ready(/* error */),
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 The waker is a \texttt{ShardWaker} --- when invoked, it sets the task's ready flag
 and signals the reactor (if the reactor is currently blocked) to re-enter the
@@ -129,7 +129,7 @@ polling loop. The reactor then polls the task, which finds its completion ready.
 Within one protection domain, tasks on different shards communicate through sitas
 typed mailboxes --- not through kernel endpoint IPC:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Shard A: send work to Shard B.
 let sender: ShardSender<Command> = shard_b.mailbox();
 sender.try_send(Command::Process { data: owned_buffer })?;
@@ -142,7 +142,7 @@ loop {
         Command::Process { data } => { /* handle */ }
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 The \texttt{ShardSender/ShardReceiver} pair is a bounded, typed, MPSC channel
 within userspace. Sending does not cross the kernel boundary. The receiving task
@@ -158,19 +158,19 @@ endpoint IPC (\autoref{chap:endpoints}).
 When the executor has no ready tasks, it must block its OS thread. The mechanism
 is the \texttt{ShardParker} trait:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 trait ShardParker {
     fn park(&self);    // Block the current thread.
     fn unpark(&self);  // Wake the blocked thread (from another shard).
 }
-\end{verbatim}
+\end{lstlisting}
 
 On CharlotteOS, the implementation is:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 fn park(&self) { syscall::cq_wait(self.cq_id); }
 fn unpark(&self) { syscall::cq_wake(self.cq_id, self.target_lp); }
-\end{verbatim}
+\end{lstlisting}
 
 The parker maps directly to \texttt{CQ\_WAIT} and \texttt{CQ\_WAKE}. There is no
 intermediate thread pool, condition variable, or busy-loop.
@@ -285,12 +285,12 @@ state and message discipline.
 
 The typed channel carries \texttt{IndexMessage}:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 enum IndexMessage {
     Entries { from: ShardId, batch: Vec<IndexEntry> },
     ProducerDone { from: ShardId },
 }
-\end{verbatim}
+\end{lstlisting}
 
 Senders are cloned into every scanner; each receiver moves into its
 assembler shard, and assemblers are started before scanners so receivers

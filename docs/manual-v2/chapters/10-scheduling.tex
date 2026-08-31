@@ -225,9 +225,9 @@ lock on one LP deadlocks.
 
 The scheduler's chain is fixed:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 SYSTEM_SCHEDULER.read() -> lp_scheduler.lock() -> MASTER_THREAD_TABLE.write()
-\end{verbatim}
+\end{lstlisting}
 
 Cross-subsystem rules hold today:
 
@@ -277,7 +277,7 @@ Hardware & DMA descriptor ring & Ring full \\
 
 Each layer has an explicit backpressure policy:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 enum SendPolicy {
     Try,               // Fail immediately if full.
     Wait,              // Wait for capacity.
@@ -285,7 +285,7 @@ enum SendPolicy {
     // Merge a pending "data available" notification.
     DropIfCoalescible,
 }
-\end{verbatim}
+\end{lstlisting}
 
 Rules:
 

@@ -31,7 +31,7 @@ circular array of fixed-size entries.
 
 Each entry is 32 bytes:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 struct CompletionEntry {
     operation: u64,    // operation identifier (e.g., timer id)
     cookie: u64,       // opaque value set by the submitter
@@ -39,7 +39,7 @@ struct CompletionEntry {
     flags: u32,        // per-entry flags
     result: i64,       // operation result (e.g., bytes read)
 }
-\end{verbatim}
+\end{lstlisting}
 
 The ring page is mapped read-write in userspace because the consumer advances its
 tail; the kernel accesses the same frame through its privileged mapping. The ABI

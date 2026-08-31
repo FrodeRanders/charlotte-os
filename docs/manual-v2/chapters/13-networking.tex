@@ -59,7 +59,7 @@ Capability Invocation
         |
 Distributed Objects
         |
-RPC
+       RPC
         |
 Reliable Message Layer
         |
@@ -185,10 +185,10 @@ not linearizable reads.
 At the top of the stack, applications interact with \textbf{capabilities} ---
 the same abstraction they use for local IPC:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 let payroll: Capability<PayrollService> = lookup("Payroll")?;
 payroll.call("calculate_salary", employee).await?;
-\end{verbatim}
+\end{lstlisting}
 
 The intended API hides whether a service uses local endpoint IPC or remote RPC.
 The implemented remote path is limited to the scalar DNS v3 call contract
@@ -196,14 +196,13 @@ described above.
 
 \section{TCP/IP as a compatibility service}
 
-TCP/IP is supported as a userspace compatibility service, not the native
-programming model. The frouter owns the NIC's deferred \texttt{OP\_RECV} and
-routes IPv4 (\texttt{0x0800}) and ARP (\texttt{0x0806}) frames to the
-\texttt{tcpip} service's \texttt{OP\_FRAME} ingress; a smoltcp
-\texttt{phy::Device} adapter pulls those frames and transmits via
+TCP/IP is supported as a userspace compatibility service. The frouter owns
+the NIC's deferred \texttt{OP\_RECV} and routes IPv4 (\texttt{0x0800}) and
+ARP (\texttt{0x0806}) frames to the \texttt{tcpip} service's \texttt{OP\_FRAME}
+ingress; a smoltcp \texttt{phy::Device} adapter pulls those frames and transmits via
 \texttt{OP\_SEND}:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // smoltcp adapter (receive is fed by the frouter's OP_FRAME ingress):
 fn receive(&mut self, now: Instant) -> Option<(IpPacket, ...)> {
     self.rx.pop_front() // frames queued by the tcpip service
@@ -212,7 +211,7 @@ fn receive(&mut self, now: Instant) -> Option<(IpPacket, ...)> {
 fn transmit(&mut self, now: Instant) -> Option<...> {
     // Calls OP_SEND with a memory object.
 }
-\end{verbatim}
+\end{lstlisting}
 
 The TCP/IP stack itself uses smoltcp 0.13. It is wrapped in a userspace
 service that registers as \texttt{"tcpip"} and serves clients through a

@@ -76,29 +76,48 @@
 
 \lstdefinestyle{rustCode}{%
     language={},
-    frame=none,
+    abovecaptionskip=10pt,
+    belowcaptionskip=0pt,
     aboveskip=3mm,
     belowskip=3mm,
+    frame=none,
+    xleftmargin=2em,
     basicstyle=\footnotesize\ttfamily,
-    keywordstyle=\ttfamily\bf,
+    columns=fullflexible,
     keepspaces=true,
     showspaces=false,
     showstringspaces=false,
     showtabs=false,
-    stringstyle=\itshape,
-    flexiblecolumns=true,
-    commentstyle=\itshape,
+    tabsize=4,
+    breaklines=true,
+    breakatwhitespace=false,
     captionpos=below,
-    abovecaptionskip=10pt,
-    belowcaptionskip=0pt,
     backgroundcolor=\color{light-gray},
-    keywordstyle=\color{blue},
-    commentstyle=\color{dkgreen},
+    keywordstyle=\color{blue}\bfseries,
+    keywordstyle={[2]\color{iptoAccent}\bfseries},
+    keywordstyle={[3]\color{mauve}\bfseries},
+    commentstyle=\color{dkgreen}\itshape,
     stringstyle=\color{mauve},
     escapeinside={(*}{*)},
     numbers=left,
-    numberstyle={\tiny},
-    columns=flexible,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    upquote=true,
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    morestring=[b]",
+    morekeywords={%
+        as,async,await,break,const,continue,crate,dyn,else,enum,extern,false,fn,
+        for,if,impl,in,let,loop,match,mod,move,mut,pub,ref,return,self,Self,
+        static,struct,super,trait,true,type,union,unsafe,use,where,while,abstract,
+        become,box,do,final,macro,override,priv,typeof,unsized,virtual,yield,try%
+    },
+    morekeywords=[2]{%
+        bool,char,str,u8,u16,u32,u64,u128,usize,i8,i16,i32,i64,i128,isize,
+        String,Vec,Box,Option,Result,Some,None,Ok,Err%
+    },
+    morekeywords=[3]{macro_rules},
 }
 
 % ---------------------------------------------------------------------------
@@ -129,6 +148,35 @@
 }
 {
     \end{enumerate}
+}
+
+
+%-------------------------------------------------------------------
+% Notabene box
+%-------------------------------------------------------------------
+\newenvironment{notabene}[1][]
+{
+    \ifstrempty{#1}%
+    {\mdfsetup{%
+    frametitle={%
+    \tikz[baseline=(current bounding box.east),outer sep=0pt]
+    \node[anchor=east,rectangle,fill=red!20]
+    {\strut Note};}}
+    }%
+    {\mdfsetup{%
+    frametitle={%
+    \tikz[baseline=(current bounding box.east),outer sep=0pt]
+    \node[anchor=east,rectangle,fill=red!20]
+    {\strut Note:~#1};}}%
+    }%
+    \mdfsetup{innertopmargin=10pt,linecolor=red!20,%
+    linewidth=2pt,topline=true,%
+    frametitleaboveskip=\dimexpr-\ht\strutbox\relax
+    }
+    \begin{mdframed}[]\relax%
+}
+{
+    \end{mdframed}
 }
 
 % ---------------------------------------------------------------------------

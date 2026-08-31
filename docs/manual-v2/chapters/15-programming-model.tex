@@ -46,7 +46,7 @@ this pattern.
 Lock-wrapped per-LP container. Use for data accessed from interrupt handlers,
 IPI handlers, or multiple LPs:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Declaration:
 static SCHEDULER: PerLp<RoundRobin> = PerLp::new();
 
@@ -54,7 +54,7 @@ static SCHEDULER: PerLp<RoundRobin> = PerLp::new();
 SCHEDULER.with(|scheduler| {
     scheduler.submit_ready_thread(tid);
 });
-\end{verbatim}
+\end{lstlisting}
 
 The lock masks interrupts during the critical section on architectures that
 require it.
@@ -63,7 +63,7 @@ require it.
 
 Lock-free per-LP container for single-LP, thread-only data:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 // Declaration:
 static MAILBOX: ShardLocal<ShardMailbox<Command>> = ShardLocal::new();
 
@@ -71,7 +71,7 @@ static MAILBOX: ShardLocal<ShardMailbox<Command>> = ShardLocal::new();
 MAILBOX.with(|mb| {
     mb.try_send(Command::Ping)?;
 });
-\end{verbatim}
+\end{lstlisting}
 
 Panics on wrong-LP access or re-entrant access.
 
@@ -81,11 +81,11 @@ A typed, bounded per-LP queue has cloneable \texttt{ShardSender<M>} producers an
 one \texttt{ShardReceiver<M>} consumer per LP, accessed through
 \texttt{ShardLocal}:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 let sender: ShardSender<Command> = mailbox.sender();
 // Returns Err(data) if full.
 sender.try_send(Command::Process { data })?;
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{IPI closures}
 
@@ -101,13 +101,13 @@ The API provides \texttt{submit}, \texttt{submit\_worker}, \texttt{complete},
 (\texttt{submit\_worker}) is the intended default for fire-and-forget async
 kernel work:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 let cap = submit_worker(|| {
     // Worker thread: do async work, then exit.
     // Completion fires automatically on exit.
 });
 let result = wait(cap)?; // Block until worker exits.
-\end{verbatim}
+\end{lstlisting}
 
 \subsection{CQ ring}
 
@@ -123,7 +123,7 @@ A CharlotteOS userspace program is a \texttt{no\_std} ELF binary. It uses
 the \texttt{catten-rt} crate (the CRT, or C runtime) and the \texttt{entry!}
 macro:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 #![no_std]
 #![no_main]
 
@@ -147,7 +147,7 @@ fn main(ctx: Context) -> ! {
         // Poll tasks, drain CQ, wait for events.
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 The program does not define \texttt{\_start}, a panic handler, or an allocator.
 These are provided by \texttt{catten-rt}. The \texttt{entry!} macro wires them

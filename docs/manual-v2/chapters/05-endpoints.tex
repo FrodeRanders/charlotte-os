@@ -60,7 +60,7 @@ new capability to the memory (or a temporary mapping, for borrows).
 The kernel validates a fixed-width message envelope. It does not understand Rust
 enums, \texttt{serde} formats, or protocol-specific types:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 struct MessageHeader {
     interface: u128,       // protocol identity
     version: u32,
@@ -72,7 +72,7 @@ struct MessageHeader {
     reserved: u16,
     user_tag: u64,
 }
-\end{verbatim}
+\end{lstlisting}
 
 Constraints on the ABI:
 
@@ -94,9 +94,10 @@ expects a response.
 
 At the Rust level, a client writes:
 
-\begin{verbatim}
+
+\begin{lstlisting}[style=rustCode]
 let response = network_service.connect(address).await?;
-\end{verbatim}
+\end{lstlisting}
 
 Underneath, the runtime:
 
@@ -119,14 +120,15 @@ A server may retain a reply token and complete it later --- while continuing to
 serve other requests on the same shard. This supports device-driven
 operations:
 
-\begin{verbatim}
+
+\begin{lstlisting}[style=rustCode]
 async fn handle_read(pending: PendingRequest) {
     // Submit a DMA read, retaining the reply token.
     // Continue serving other clients while the read is in flight.
     let buffer = device.read(address, len).await?;
     pending.reply_with_buffer(buffer);
 }
-\end{verbatim}
+\end{lstlisting}
 
 The shard's executor polls other tasks while the read completes.
 
@@ -161,7 +163,8 @@ A connection capability can be delegated to another domain with attenuated right
 This is the mechanism by which the userspace name service returns service-level
 connections:
 
-\begin{verbatim}
+
+\begin{lstlisting}[style=rustCode]
 // Name service:
 let full_connection = name_service.lookup("driver.nic.v1")?;
 // full_connection has SEND | CALL | DELEGATE rights
@@ -169,7 +172,7 @@ let full_connection = name_service.lookup("driver.nic.v1")?;
 // Delegate to a client with reduced rights:
 connection_delegate(full_connection, client_domain, SEND | CALL)?;
 // client_domain now holds a connection with SEND | CALL only
-\end{verbatim}
+\end{lstlisting}
 
 The kernel mediates. The name service never sees raw endpoint identities; it
 holds connection capabilities, which it re-delegates. Each delegation step can

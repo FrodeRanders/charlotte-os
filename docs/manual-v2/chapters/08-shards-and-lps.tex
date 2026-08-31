@@ -78,9 +78,9 @@ For kernel data that must be accessible from multiple LPs (including from
 interrupt context), CharlotteOS uses \rusttype{PerLp<T>}: a boxed slice of
 per-LP cells, each wrapped in a lock. Access is:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 per_lp_data.with(|lp_data| { lp_data.do_something(); });
-\end{verbatim}
+\end{lstlisting}
 
 The \texttt{with} closure acquires the lock for the current LP, calls the closure,
 and releases the lock. This is interrupt-safe (the lock masks interrupts during
@@ -103,9 +103,9 @@ context, CharlotteOS provides \rusttype{ShardLocal<T>}: a lock-free per-LP
 container using \texttt{UnsafeCell<T>} with runtime owner-check and borrow-flag
 guard. Access is:
 
-\begin{verbatim}
+\begin{lstlisting}[style=rustCode]
 shard_local.with(|val| { *val = 42; });
-\end{verbatim}
+\end{lstlisting}
 
 The \texttt{with} closure:
 \begin{enumerate}
