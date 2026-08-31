@@ -12,10 +12,10 @@ store credentials.
 2. Calculate the SHA-256 of the final signed ELF.
 3. Upload those immutable bytes from CI or an operator workstation to the
    central RustFS, Dell EMC ECS, or other compatible store.
-4. Create a `CDEPLOY3` descriptor with `cluster-sign deployment-sign`. It binds
+4. Create a `CDEPLOY4` descriptor with `cluster-sign deployment-sign`. It binds
    the logical artifact name, exact digest, opaque object key, target node key,
    monotonic sequence, per-thread stack allocation in 4 KiB pages, maximum
-   active-thread count, and named capability grants.
+   active-thread count, cooperative shutdown grace, and named capability grants.
 5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
 6. Observe the exact generation with
    `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
@@ -42,7 +42,7 @@ For the current demonstration service, the final signing steps resemble:
 
 ```text
 cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
-  <sha256-of-signed-elf> 0 42 4 1 <private-key-hex> \
+  <sha256-of-signed-elf> 0 42 4 1 5000 <private-key-hex> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 cluster-sign deployment-status greet 127.0.0.1:8081 120
@@ -53,16 +53,18 @@ committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
 
-The `4 1` between the deployment sequence and private key in the example means
+The `4 1 5000` between the deployment sequence and private key in the example means
 four 4 KiB stack pages per thread and at most one active thread, including the
-bootstrap thread. Valid `CDEPLOY3` values are 1 through 64 for each field. Both
-values are signed and enforced exactly by the kernel; values outside those
+bootstrap thread, with five seconds to drain before forced retirement. Valid
+`CDEPLOY4` execution values are 1 through 64; shutdown grace is zero through
+300,000 milliseconds. All three values are signed and enforced exactly by the kernel; values outside those
 ranges are rejected rather than clamped. A thread publication beyond the
 signed quota aborts that protection domain under the current fail-closed spawn
-ABI. The release pipeline should take both requirements from the
+ABI. The release pipeline should take all three requirements from the signed,
 developer-reviewed component plan. For compatibility, `CDEPLOY1` is interpreted
 as four pages and 16 threads, while `CDEPLOY2` retains its signed stack pages
-and receives the 16-thread default.
+and receives the 16-thread default. `CDEPLOY3` receives the five-second
+shutdown compatibility default.
 
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
@@ -85,8 +87,8 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 
 The outer signature binds the release name, monotonic release sequence, and
 exact ordered descriptor bytes. Every nested deployment signature is also
-verified against the cluster key; current tooling emits `CDEPLOY3`, while the
-reader retains `CDEPLOY1` and `CDEPLOY2` compatibility. An envelope is limited
+verified against the cluster key; current tooling emits `CDEPLOY4`, while the
+reader retains `CDEPLOY1` through `CDEPLOY3` compatibility. An envelope is limited
 to 16 distinct artifact names and 3,584 bytes so it, its IPC envelope, and the
 leader-resolved node assignments remain bounded.
 

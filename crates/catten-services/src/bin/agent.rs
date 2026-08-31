@@ -49,6 +49,7 @@ const STAGE_IDENTITY: u32 = 2;
 const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
 const STAGE_FAIL: u32 = 0xdead;
+const RETIREMENT_POLL_MS: u64 = 10;
 
 struct DeploymentInfo {
     generation: u64,
@@ -666,6 +667,14 @@ fn main(ctx: Context) -> ! {
                 active.push(running);
             }
         }
-        sleep_ms(poll_ms);
+        let retirement_in_progress = active.iter().any(|running| running.retiring)
+            || operational.iter().any(|running| running.retiring);
+        sleep_ms(
+            if retirement_in_progress {
+                poll_ms.min(RETIREMENT_POLL_MS)
+            } else {
+                poll_ms
+            },
+        );
     }
 }

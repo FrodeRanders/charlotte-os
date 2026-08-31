@@ -1488,7 +1488,7 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
-    /// Notify the cluster of a signed `CDEPLOY3` descriptor. The artifact
+    /// Notify the cluster of a signed `CDEPLOY4` descriptor. The artifact
     /// name is taken from the signed descriptor and the moved memory uses the same
     /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
     /// central object key, digest, target node, revision, per-thread stack

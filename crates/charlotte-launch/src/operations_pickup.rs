@@ -231,7 +231,7 @@ impl Pickup<'_> {
             || !(release::HEADER_LEN..=release::MAX_RELEASE_LEN).contains(&self.release.len())
             || self.artifact.is_empty()
             || self.artifact.len() > crate::MAX_ARTIFACT_ELF_SIZE
-            || !(deployment::HEADER_LEN..=deployment::MAX_DESCRIPTOR_LEN)
+            || !(deployment::MIN_HEADER_LEN..=deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&self.descriptor.len())
             || !(operations::HEADER_LEN..=operations::MAX_ENVELOPE_LEN)
                 .contains(&self.envelope.len())

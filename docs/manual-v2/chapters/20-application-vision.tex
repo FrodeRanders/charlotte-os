@@ -401,17 +401,21 @@ Execution resources deserve special treatment among those estimates. Only the ap
 and generator authors know the component's worst-case call depth, generated
 adapter frames, stack-resident data, and safe concurrency. Durga therefore
 creates a developer-owned \texttt{charlotte/resources.yaml} carrying explicit
-\texttt{stackPagesPerThread} and \texttt{maxThreads} requests. It creates that
+\texttt{stackPagesPerThread}, \texttt{maxThreads}, and
+\texttt{shutdownGraceMillis} requests. It creates that
 file once and never overwrites it during regeneration. Operations may approve
 or reject the reviewed values when signing the deployment, but should not have
 to guess them from the ELF or silently rewrite them. Charlotte's
-\texttt{CDEPLOY3} descriptor signs both values; the kernel gives every thread
+\texttt{CDEPLOY4} descriptor signs all three values; the kernel gives every thread
 in the protected domain the specified 4 KiB-page stack allocation and counts
-the bootstrap thread against the active-thread quota. Both current admissible
-ranges are one through 64. A quota-exceeding spawn aborts the domain under the
+the bootstrap thread against the active-thread quota. It first requests
+cooperative application draining and then forcibly retires the domain at the
+signed deadline. Both execution-resource ranges are one through 64; shutdown
+grace is zero through 300,000 milliseconds. A quota-exceeding spawn aborts the domain under the
 current fail-closed ABI. Legacy \texttt{CDEPLOY1} descriptors retain the former
 four-page and 16-thread defaults; \texttt{CDEPLOY2} retains its signed stack
-value and receives the 16-thread compatibility default.
+value and receives the 16-thread compatibility default; and \texttt{CDEPLOY3}
+retains both execution limits and receives the five-second shutdown default.
 
 \autoref{chap:cluster-vision} already implements signed, name-bound ELF artifacts with release,
 rollback, class, flags, and an optional provenance digest, and it pins the
@@ -441,6 +445,7 @@ component validate:
     artifact: sha256:...
     stack-pages-per-thread: 4
     max-threads: 4
+    shutdown-grace-millis: 15000
     replicas: 4
     parallel: true
 
@@ -448,6 +453,7 @@ component calculate:
     artifact: sha256:...
     stack-pages-per-thread: 8
     max-threads: 8
+    shutdown-grace-millis: 30000
     replicas: 8
     parallel: true
     requires: service:entitlement-rules

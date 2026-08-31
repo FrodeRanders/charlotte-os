@@ -45,6 +45,44 @@ pub fn write_launch_header(config_frame: PAddr) {
             base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader,
             LaunchHeader::new(),
         );
+        core::ptr::write_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_MAGIC_OFFSET) as *mut u64,
+            charlotte_launch::lifecycle::CONTROL_MAGIC,
+        );
+        core::ptr::write_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
+            0,
+        );
+        core::ptr::write_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
+            0,
+        );
+        let state = &*(base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET)
+            as *const core::sync::atomic::AtomicU32);
+        state.store(
+            charlotte_launch::lifecycle::STATE_RUNNING,
+            core::sync::atomic::Ordering::Release,
+        );
+    }
+}
+
+/// Publish a lifecycle transition into a domain's read-only launch page.
+/// Payload fields are written before the release-store of `state` so an EL0
+/// acquire-load observes a complete request.
+pub fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, deadline_ms: u64) {
+    let base: *mut u8 = config_frame.into();
+    unsafe {
+        core::ptr::write_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *mut u32,
+            reason,
+        );
+        core::ptr::write_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *mut u64,
+            deadline_ms,
+        );
+        let control = &*(base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET)
+            as *const core::sync::atomic::AtomicU32);
+        control.store(state, core::sync::atomic::Ordering::Release);
     }
 }
 

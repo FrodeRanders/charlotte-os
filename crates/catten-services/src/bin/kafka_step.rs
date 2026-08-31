@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
     owned::{
         ConnectionRef,
@@ -275,9 +276,9 @@ fn fail(code: u32) -> ! {
     unsafe { thread_exit() }
 }
 
-fn main(ctx: Context) -> ! {
+fn run(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let profile = Profile::from_context(&ctx).unwrap_or_else(|| fail(0x4c01));
+    let profile = Profile::from_context(ctx).unwrap_or_else(|| fail(0x4c01));
     let ns = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4c02));
     let (_, kafka_connection) =
         wait_for_registered_name_bytes_owned(ns, &profile.kafka_connector_name)
@@ -292,6 +293,10 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 2);
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            drop(consumer);
+            return request;
+        }
         let delivery = match consumer.poll() {
             Ok(Some(delivery)) => delivery,
             Ok(None) => {
@@ -400,6 +405,10 @@ fn main(ctx: Context) -> ! {
         drop(operation);
         sleep_ms(u64::from(profile.retry_backoff_ms));
     }
+}
+
+fn main(ctx: Context) -> ! {
+    run(&ctx).complete()
 }
 
 enum AttemptOutcome {

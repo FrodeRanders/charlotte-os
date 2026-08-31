@@ -372,7 +372,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             62 => asm!("svc #62", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             63 => asm!("svc #63", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             64 => asm!("svc #64", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
-            65 => asm!("svc #65", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            65 => asm!("svc #65", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             68 => asm!("svc #68", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             69 => asm!("svc #69", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             74 => asm!("svc #74", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
@@ -1869,6 +1869,14 @@ pub fn retire_artifact() -> u64 {
 #[inline(always)]
 pub fn retire_artifact_named(principal: u64) -> u64 {
     unsafe { svc3(SyscallNumber::RetireArtifact, principal, 0, 0) }
+}
+
+/// Immediately abort retirement of the named deployed domain. This is the
+/// owner-drop fallback; normal control paths should use cooperative
+/// [`retire_artifact_named`] polling instead.
+#[inline(always)]
+pub fn force_retire_artifact_named(principal: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::RetireArtifact, principal, 1, 0) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.

@@ -1,6 +1,6 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
-//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY3`
+//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY4`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
 //! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.
@@ -137,7 +137,7 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
     }
     let (minimum, maximum) = match path {
         clusterctl::NOTIFY_PATH => (
-            charlotte_launch::deployment::HEADER_LEN,
+            charlotte_launch::deployment::MIN_HEADER_LEN,
             charlotte_launch::deployment::MAX_DESCRIPTOR_LEN,
         ),
         clusterctl::RELEASE_PATH => {

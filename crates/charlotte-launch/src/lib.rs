@@ -32,6 +32,11 @@ pub const MAX_USER_STACK_PAGES: usize = 64;
 /// The bootstrap thread counts toward this limit.
 pub const DEFAULT_USER_MAX_THREADS: usize = 16;
 pub const MAX_USER_THREADS: usize = 64;
+/// Default cooperative shutdown window for legacy deployment descriptors.
+pub const DEFAULT_SHUTDOWN_GRACE_MS: u32 = 5_000;
+/// Largest cooperative shutdown window accepted from signed deployment
+/// policy. A non-cooperating application is forcibly retired afterwards.
+pub const MAX_SHUTDOWN_GRACE_MS: u32 = 300_000;
 
 const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 
@@ -123,6 +128,39 @@ pub mod agent_status {
     pub const SERVED_GENERATION: usize = 8;
     /// Stable 64-bit key of the node hosting this agent.
     pub const NODE_KEY: usize = 16;
+}
+
+/// Kernel-to-domain lifecycle control and domain-to-kernel acknowledgement.
+///
+/// The control record lives in the kernel-owned, userspace-read-only launch
+/// page. The acknowledgement lives at the end of the mutable status page so
+/// it does not overlap service-specific diagnostic layouts.
+pub mod lifecycle {
+    pub const CONTROL_OFFSET: usize = 2080;
+    pub const CONTROL_MAGIC: u64 = 0x3145_4649_4c43_4343; // "CCLIFE1"
+    pub const CONTROL_MAGIC_OFFSET: usize = CONTROL_OFFSET;
+    pub const CONTROL_STATE_OFFSET: usize = CONTROL_OFFSET + 8;
+    pub const CONTROL_REASON_OFFSET: usize = CONTROL_OFFSET + 12;
+    pub const CONTROL_DEADLINE_MS_OFFSET: usize = CONTROL_OFFSET + 16;
+
+    pub const STATE_RUNNING: u32 = 0;
+    pub const STATE_DRAIN_REQUESTED: u32 = 1;
+    pub const STATE_FORCE_TERMINATING: u32 = 2;
+
+    pub const REASON_DEPLOYMENT_RETIRED: u32 = 1;
+    pub const REASON_NODE_SHUTDOWN: u32 = 2;
+
+    pub const STATUS_OFFSET: usize = crate::STATUS_PAGE_SIZE as usize - 16;
+    pub const STATUS_STATE_OFFSET: usize = STATUS_OFFSET;
+    pub const STATUS_REQUEST_SEEN: u32 = 1;
+    pub const STATUS_READY: u32 = 2;
+
+    const _: () = assert!(
+        CONTROL_DEADLINE_MS_OFFSET + core::mem::size_of::<u64>() <= crate::LAUNCH_HEADER_OFFSET
+    );
+    const _: () = assert!(
+        STATUS_STATE_OFFSET + core::mem::size_of::<u32>() <= crate::STATUS_PAGE_SIZE as usize
+    );
 }
 
 /// Frame-router diagnostic status-page byte offsets.
@@ -477,7 +515,7 @@ pub const CAPABILITY_VECTOR_OFFSET: usize = 2224;
 pub const CAPABILITY_VECTOR_CAPACITY: usize = 32;
 pub const LAUNCH_MAGIC: u64 = 0x4348_4152_4c4f_5454; // "CHARLOTT"
 pub const LAUNCH_ABI_MAJOR: u16 = 2;
-pub const LAUNCH_ABI_MINOR: u16 = 1;
+pub const LAUNCH_ABI_MINOR: u16 = 2;
 
 pub const MANIFEST_VECTOR_OFFSET: usize = 32;
 pub const MANIFEST_VECTOR_CAPACITY: usize = 32;

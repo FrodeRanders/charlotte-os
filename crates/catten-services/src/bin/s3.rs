@@ -25,6 +25,7 @@ use core::fmt::Write;
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
     owned::{
         Connection,
@@ -38,6 +39,7 @@ use catten_services::{
     entropy,
     ns,
     s3 as protocol,
+    sleep_ms,
     socket,
     time,
     tls_client,
@@ -1038,9 +1040,9 @@ fn handle_message(service: &mut Service<'_>, mut message: catten_rt::owned::Inco
     service.account(accounted);
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let profile = Profile::from_context(&ctx).unwrap_or_else(|| fail(0xe001));
+    let profile = Profile::from_context(ctx).unwrap_or_else(|| fail(0xe001));
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe002));
     let (_, tcp_connection) =
         wait_for_registered_name_owned(ns_connection, socket::NAME).unwrap_or_else(|| fail(0xe003));
@@ -1091,13 +1093,23 @@ fn main(ctx: Context) -> ! {
         failures: 0,
     };
     loop {
-        match endpoint.receive() {
-            Ok(message) => handle_message(&mut service, message),
-            Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            drop(service);
+            drop(endpoint);
+            return request;
+        }
+        match endpoint.try_receive() {
+            Ok(None) => sleep_ms(10),
+            Ok(Some(message)) => handle_message(&mut service, message),
+            Err(catten_rt::owned::ReceiveError::EndpointClosed) => fail(0xe008),
             Err(_) => {
                 service.failures = service.failures.wrapping_add(1);
                 config::write::<u32>(status::FAILURES, service.failures);
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }

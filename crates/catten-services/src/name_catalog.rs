@@ -1633,6 +1633,7 @@ mod tests {
             artifact_name: name,
             stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
+            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
             object_key: name,
             grants: &[],
         };

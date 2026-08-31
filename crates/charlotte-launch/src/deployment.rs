@@ -14,17 +14,21 @@ use ed25519_compact::{
 
 use crate::sha256;
 
-pub const MAGIC: &[u8; 8] = b"CDEPLOY3";
-pub const VERSION: u16 = 3;
+pub const MAGIC: &[u8; 8] = b"CDEPLOY4";
+pub const VERSION: u16 = 4;
+pub const V3_MAGIC: &[u8; 8] = b"CDEPLOY3";
+pub const V3_VERSION: u16 = 3;
 pub const V2_MAGIC: &[u8; 8] = b"CDEPLOY2";
 pub const V2_VERSION: u16 = 2;
 pub const LEGACY_MAGIC: &[u8; 8] = b"CDEPLOY1";
 pub const LEGACY_VERSION: u16 = 1;
-pub const HEADER_LEN: usize = 154;
+pub const HEADER_LEN: usize = 158;
 pub const LEGACY_HEADER_LEN: usize = 152;
+pub const MIN_HEADER_LEN: usize = LEGACY_HEADER_LEN;
 pub const SIGNATURE_OFFSET: usize = 88;
 pub const SIGNATURE_LEN: usize = 64;
 pub const MAX_THREADS_OFFSET: usize = SIGNATURE_OFFSET + SIGNATURE_LEN;
+pub const SHUTDOWN_GRACE_MS_OFFSET: usize = MAX_THREADS_OFFSET + 2;
 pub const KEY_ID_LEN: usize = 16;
 /// Leaves room in one 4 KiB IPC memory object for an acquisition header and
 /// the requested service name.
@@ -62,6 +66,8 @@ pub struct DescriptorFields<'a> {
     /// Maximum active threads in the protected domain, including its
     /// bootstrap thread.
     pub max_threads: u16,
+    /// Maximum cooperative drain interval before forced domain retirement.
+    pub shutdown_grace_ms: u32,
     /// Opaque key interpreted inside the node's preconfigured object-store
     /// connector. It contains neither a bucket endpoint nor credentials.
     pub object_key: &'a [u8],
@@ -77,6 +83,7 @@ pub enum EncodeError {
     InvalidSequence,
     InvalidStackPages,
     InvalidMaxThreads,
+    InvalidShutdownGrace,
     TooLarge,
     TooManyGrants,
 }
@@ -98,6 +105,7 @@ pub struct DeploymentDescriptor<'a> {
     pub artifact_name: &'a [u8],
     pub stack_pages_per_thread: u16,
     pub max_threads: u16,
+    pub shutdown_grace_ms: u32,
     pub object_key: &'a [u8],
     grants_offset: usize,
     grant_count: usize,
@@ -170,6 +178,9 @@ pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> 
     if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(fields.max_threads)) {
         return Err(EncodeError::InvalidMaxThreads);
     }
+    if fields.shutdown_grace_ms > crate::MAX_SHUTDOWN_GRACE_MS {
+        return Err(EncodeError::InvalidShutdownGrace);
+    }
     if !valid_artifact_name(fields.artifact_name) {
         return Err(EncodeError::InvalidArtifactName);
     }
@@ -223,6 +234,8 @@ pub fn encode_unsigned(
     bytes[72..88].copy_from_slice(&sha256::digest(public_key)[..KEY_ID_LEN]);
     bytes[MAX_THREADS_OFFSET..MAX_THREADS_OFFSET + 2]
         .copy_from_slice(&fields.max_threads.to_le_bytes());
+    bytes[SHUTDOWN_GRACE_MS_OFFSET..SHUTDOWN_GRACE_MS_OFFSET + 4]
+        .copy_from_slice(&fields.shutdown_grace_ms.to_le_bytes());
 
     let mut offset = HEADER_LEN;
     let name_end = offset + fields.artifact_name.len();
@@ -261,44 +274,71 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
         return None;
     }
     let format_version = read_u16(bytes, 8)?;
-    let (header_len, stack_pages_per_thread, max_threads) = match (bytes.get(0..8)?, format_version)
-    {
-        (magic, VERSION) if magic == MAGIC => {
-            if usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
-                return None;
+    let (header_len, stack_pages_per_thread, max_threads, shutdown_grace_ms) =
+        match (bytes.get(0..8)?, format_version) {
+            (magic, VERSION) if magic == MAGIC => {
+                if usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
+                    return None;
+                }
+                let pages = read_u16(bytes, 70)?;
+                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
+                    return None;
+                }
+                let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
+                if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
+                    return None;
+                }
+                let grace = read_u32(bytes, SHUTDOWN_GRACE_MS_OFFSET)?;
+                if grace > crate::MAX_SHUTDOWN_GRACE_MS {
+                    return None;
+                }
+                (HEADER_LEN, pages, max_threads, grace)
             }
-            let pages = read_u16(bytes, 70)?;
-            if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                return None;
+            (magic, V3_VERSION) if magic == V3_MAGIC => {
+                let header_len = MAX_THREADS_OFFSET + 2;
+                if usize::from(read_u16(bytes, 10)?) != header_len {
+                    return None;
+                }
+                let pages = read_u16(bytes, 70)?;
+                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
+                    return None;
+                }
+                let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
+                if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
+                    return None;
+                }
+                (header_len, pages, max_threads, crate::DEFAULT_SHUTDOWN_GRACE_MS)
             }
-            let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
-            if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
-                return None;
+            (magic, V2_VERSION) if magic == V2_MAGIC => {
+                if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN {
+                    return None;
+                }
+                let pages = read_u16(bytes, 70)?;
+                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
+                    return None;
+                }
+                (
+                    LEGACY_HEADER_LEN,
+                    pages,
+                    crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
+                    crate::DEFAULT_SHUTDOWN_GRACE_MS,
+                )
             }
-            (HEADER_LEN, pages, max_threads)
-        }
-        (magic, V2_VERSION) if magic == V2_MAGIC => {
-            if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN {
-                return None;
+            (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
+                if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN
+                    || read_u16(bytes, 70)? != 0
+                {
+                    return None;
+                }
+                (
+                    LEGACY_HEADER_LEN,
+                    crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?,
+                    crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
+                    crate::DEFAULT_SHUTDOWN_GRACE_MS,
+                )
             }
-            let pages = read_u16(bytes, 70)?;
-            if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                return None;
-            }
-            (LEGACY_HEADER_LEN, pages, crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?)
-        }
-        (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
-            if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN || read_u16(bytes, 70)? != 0 {
-                return None;
-            }
-            (
-                LEGACY_HEADER_LEN,
-                crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?,
-                crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
-            )
-        }
-        _ => return None,
-    };
+            _ => return None,
+        };
     let total_len = usize::try_from(read_u32(bytes, 12)?).ok()?;
     if total_len != bytes.len() || total_len > MAX_DESCRIPTOR_LEN {
         return None;
@@ -346,6 +386,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
         artifact_name,
         stack_pages_per_thread,
         max_threads,
+        shutdown_grace_ms,
         object_key,
         grants_offset: object_key_end,
         grant_count,

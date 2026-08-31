@@ -359,7 +359,7 @@ participant P as Application components
 
       C->>C: Build self-contained ELFs and add CLS2 signatures
       C->>O: Upload immutable artifact objects
-      C->>C: Sign one CDEPLOY3 per component, including stack and thread limits
+      C->>C: Sign one CDEPLOY4 per component, including execution and shutdown limits
       C->>C: Sign ordered descriptors as CRELEASE(name, sequence)
       C->>D: POST /v1/releases
       D->>X: Move bounded release memory
@@ -384,7 +384,7 @@ participant P as Application components
       end
 ```
 
-The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY3` bytes. Admission is atomic:
+The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY4` bytes. Admission is atomic:
 all component revisions enter the replicated desired state or none do. Readiness is deliberately not claimed to be
 simultaneous—fetch, verification, launch, capability acquisition, and publication occur independently after commit.
 Coordinated rollback, progress deadlines, and failure-domain-aware rescheduling remain controller work.
@@ -403,7 +403,7 @@ participant K as Kernel launch gate
 participant C as Isolated connector
 
       DEV->>DEV: Sign ELF with artifact key
-      DEV->>DEV: Sign CDEPLOY3 + CRELEASE with deployment key
+      DEV->>DEV: Sign CDEPLOY4 + CRELEASE with deployment key
       DEV->>O: Upload immutable connector ELF
 
       OPS->>OPS: Build bounded CHS3PF1 or Kafka profile
@@ -448,7 +448,7 @@ RPK["Cluster recipient public key"]
 RSK["Recipient private key<br/>kernel/KMS custody"]
 TRUST["CTRUST1 public policy<br/>role-specific keys + cluster ID"]
 ELF["CLS2-signed ELF"]
-DESC["CDEPLOY3<br/>digest · object key · selector · stack pages · max threads · grants"]
+DESC["CDEPLOY4<br/>digest · object key · selector · stack pages · max threads · shutdown grace · grants"]
 REL["CRELEASE<br/>name · sequence · ordered descriptors"]
 PROFILE["CHS3PF1 / Kafka profile<br/>infrastructure details + credentials"]
 ENC["COPSENC1<br/>HPKE ciphertext + operations signature"]
@@ -504,7 +504,7 @@ GEN["Charlotte target generator"]
           ADAPTERS["Compilable no_std<br/>activity adapters"]
           HANDLERS["Business handler stubs<br/>fail closed until implemented"]
           BUILD["Cargo manifest and build script"]
-          RESOURCES["Developer-owned resources.yaml<br/>stack pages · max threads · review"]
+          RESOURCES["Developer-owned resources.yaml<br/>stack pages · max threads · shutdown grace · review"]
           CAPS["Capability plan"]
           KPROFILES["Named Kafka connector<br/>and kafka_step profiles"]
           PLAN["Multi-component deployment plan"]
@@ -542,5 +542,41 @@ decisions. A richer semantic bundle could additionally bind the original process
 communication graph, replica policy, affinity rules, and update strategy. Connector profiles are infrastructure inputs,
 not application-visible release secrets; descriptors bind only the names and rights an application may request.
 Per-thread stack pages and maximum active threads originate in the retained, developer-reviewed
-`charlotte/resources.yaml`, are signed into `CDEPLOY3`, and are enforced exactly for the protected domain rather than
+`charlotte/resources.yaml`, are signed into `CDEPLOY4`, and are enforced exactly for the protected domain rather than
 guessed or silently clamped by the cluster.
+
+### 12. Bounded cooperative deployment shutdown
+
+```mermaid
+sequenceDiagram
+participant R as Replicated desired state
+participant A as Node deployment agent
+participant K as Kernel lifecycle gate
+participant P as Application domain
+participant E as External services
+
+      R-->>A: Deployment removed or replaced
+      A->>K: poll_retire(principal)
+      K-->>P: DrainRequested(reason, monotonic deadline)<br/>via read-only launch page
+      loop Bounded application event loop
+          P->>P: Stop accepting new work
+          P->>E: Abort or finish transactions,<br/>close remote resources
+          P->>P: Return from owning scope,<br/>drop local capabilities
+      end
+      P->>K: Ready acknowledgement + thread_exit
+      alt All domain threads exit before deadline
+          A->>K: poll_retire(principal)
+          K->>K: Reclaim endpoints, memory,<br/>address space and DMA state
+          K-->>A: retirement complete
+      else First agent poll at or after deadline
+          A->>K: poll_retire(principal)
+          K-->>P: ForceTerminating
+          K->>K: Abort remaining domain threads
+          K-->>A: complete after generation-safe reaping
+      end
+```
+
+The cooperative request is kernel-authenticated because the application maps its launch page read-only. The signed
+`shutdownGraceMillis` value is bounded by admission policy; the application cannot clear the request or extend its
+deadline. `thread_exit` does not unwind Rust, so the generated and hand-written application pattern returns from the
+resource-owning serving function before calling `ShutdownRequest::complete()`.

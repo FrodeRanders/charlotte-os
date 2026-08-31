@@ -469,7 +469,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
         'rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/greet.elf local/charlotte-test/deployments/greet-e2e.elf'
     "$CLUSTER_SIGN_BIN" deployment-sign \
         "$DEPLOYMENT_DESCRIPTOR" greet "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
-        0 "$DEPLOYMENT_SEQUENCE" 4 1 "$DEPLOYMENT_PRIVATE_KEY" greet=publish
+        0 "$DEPLOYMENT_SEQUENCE" 4 1 5000 "$DEPLOYMENT_PRIVATE_KEY" greet=publish
     "$CLUSTER_SIGN_BIN" release-sign \
         "$DEPLOYMENT_RELEASE" deployment-ingress-e2e "$DEPLOYMENT_SEQUENCE" \
         "$DEPLOYMENT_PRIVATE_KEY" "$DEPLOYMENT_DESCRIPTOR"

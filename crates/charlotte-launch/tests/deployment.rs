@@ -22,6 +22,7 @@ fn fields(stack_pages_per_thread: u16, max_threads: u16) -> DescriptorFields<'st
         artifact_name: b"orders",
         stack_pages_per_thread,
         max_threads,
+        shutdown_grace_ms: 12_000,
         object_key: b"releases/orders.elf",
         grants: &[],
     }
@@ -44,7 +45,7 @@ fn downgrade(mut bytes: Vec<u8>, magic: &[u8; 8], version: u16) -> Vec<u8> {
 }
 
 #[test]
-fn v3_round_trip_binds_execution_resources() {
+fn v4_round_trip_binds_execution_and_shutdown_resources() {
     let pair = KeyPair::from_seed([0x31; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let fields = fields(16, 8);
@@ -56,6 +57,7 @@ fn v3_round_trip_binds_execution_resources() {
     assert_eq!(decoded.format_version, deployment::VERSION);
     assert_eq!(decoded.stack_pages_per_thread, 16);
     assert_eq!(decoded.max_threads, 8);
+    assert_eq!(decoded.shutdown_grace_ms, 12_000);
     assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 
     let mut stack_tamper = bytes.clone();
@@ -64,6 +66,27 @@ fn v3_round_trip_binds_execution_resources() {
 
     bytes[deployment::MAX_THREADS_OFFSET] ^= 1;
     assert_ne!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
+}
+
+#[test]
+fn v3_decodes_with_default_shutdown_grace() {
+    let pair = KeyPair::from_seed([0x32; 32].into());
+    let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+    let fields = fields(16, 8);
+    let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, public, &mut bytes).unwrap();
+    bytes.drain(deployment::SHUTDOWN_GRACE_MS_OFFSET..deployment::HEADER_LEN);
+    bytes[..8].copy_from_slice(deployment::V3_MAGIC);
+    bytes[8..10].copy_from_slice(&deployment::V3_VERSION.to_le_bytes());
+    bytes[10..12].copy_from_slice(&(deployment::SHUTDOWN_GRACE_MS_OFFSET as u16).to_le_bytes());
+    let total_len = bytes.len() as u32;
+    bytes[12..16].copy_from_slice(&total_len.to_le_bytes());
+    sign(&mut bytes, &pair);
+
+    let decoded = deployment::decode(&bytes).unwrap();
+    assert_eq!(decoded.format_version, deployment::V3_VERSION);
+    assert_eq!(decoded.shutdown_grace_ms, charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS);
+    assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 }
 
 #[test]
@@ -80,6 +103,7 @@ fn v2_decodes_with_stack_pages_and_default_thread_limit() {
     assert_eq!(decoded.format_version, deployment::V2_VERSION);
     assert_eq!(decoded.stack_pages_per_thread, 12);
     assert_eq!(decoded.max_threads, DEFAULT_USER_MAX_THREADS as u16);
+    assert_eq!(decoded.shutdown_grace_ms, charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS);
     assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 }
 
@@ -98,6 +122,7 @@ fn v1_decodes_with_historical_defaults() {
     assert_eq!(decoded.format_version, deployment::LEGACY_VERSION);
     assert_eq!(decoded.stack_pages_per_thread, DEFAULT_USER_STACK_PAGES as u16);
     assert_eq!(decoded.max_threads, DEFAULT_USER_MAX_THREADS as u16);
+    assert_eq!(decoded.shutdown_grace_ms, charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS);
     assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 }
 
@@ -113,10 +138,13 @@ fn encoder_rejects_invalid_execution_resources() {
         deployment::encoded_len(&fields(1, MAX_USER_THREADS as u16 + 1)),
         Err(EncodeError::InvalidMaxThreads)
     );
+    let mut invalid_grace = fields(1, 1);
+    invalid_grace.shutdown_grace_ms = charlotte_launch::MAX_SHUTDOWN_GRACE_MS + 1;
+    assert_eq!(deployment::encoded_len(&invalid_grace), Err(EncodeError::InvalidShutdownGrace));
 }
 
 #[test]
-fn decoder_rejects_invalid_v3_and_noncanonical_legacy_resources() {
+fn decoder_rejects_invalid_v4_and_noncanonical_legacy_resources() {
     let pair = KeyPair::from_seed([0x75; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let fields = fields(DEFAULT_USER_STACK_PAGES as u16, 1);

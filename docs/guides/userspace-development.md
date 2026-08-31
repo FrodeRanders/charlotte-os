@@ -51,7 +51,7 @@ Stack and thread count are protected-domain execution limits, not
 application-controlled manifest knobs. For centrally deployed applications,
 generation or development records the required number of 4 KiB pages per
 thread and maximum active threads in the component deployment plan. Release
-tooling places the reviewed values in the signed `CDEPLOY3` descriptor. Every
+tooling places the reviewed values in the signed `CDEPLOY4` descriptor. Every
 thread subsequently created in that domain inherits the stack allocation, and
 the scheduler counts the bootstrap thread against the signed thread quota.
 
@@ -66,6 +66,12 @@ and legacy `CDEPLOY1` descriptors use four stack pages and 16 threads;
 `CDEPLOY2` preserves its signed stack value and receives the 16-thread
 compatibility default. Developers own the estimates, while the deployment
 signer and cluster admission retain the right to reject them.
+
+The same developer-owned plan carries `shutdownGraceMillis`, because the
+component author knows how long in-flight work and remote teardown may need.
+The signed value is bounded to zero through 300,000 milliseconds. Structure
+lifecycle-aware code so its owning serving scope returns before calling the
+divergent exit primitive; see [Cooperative shutdown](shutdown.md).
 
 ## Launch ABI v2
 

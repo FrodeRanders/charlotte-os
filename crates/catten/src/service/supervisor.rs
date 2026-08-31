@@ -299,6 +299,9 @@ pub(crate) fn configured_admission_trust() -> Option<charlotte_launch::trust::Ad
 pub(crate) struct DeployedDomain {
     pub principal: u64,
     pub domain: ServiceDomain,
+    pub shutdown_grace_ms: u32,
+    pub retirement_deadline_ms: Option<u64>,
+    pub force_requested: bool,
 }
 
 /// Domains currently owned by the deployment agent on this node.

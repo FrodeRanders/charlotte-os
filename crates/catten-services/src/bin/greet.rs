@@ -17,6 +17,7 @@ extern crate alloc;
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
     owned::Endpoint,
 };
@@ -24,11 +25,12 @@ use catten_services::{
     deploy,
     grant_client,
     ns,
+    sleep_ms,
 };
 use catten_syscall::IpcRights;
 use charlotte_launch::greet_status as status;
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1); // stage: started
     let bootstrap = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
     config::write::<u32>(status::STAGE, 2); // stage: bootstrap connection received
@@ -64,10 +66,18 @@ fn main(ctx: Context) -> ! {
 
     loop {
         // This service owns no completion queue work other than endpoint
-        // readiness. Block directly on the endpoint so every subsequent
-        // invocation wakes it; an unbound `cq_wait` after the first request
-        // left the service asleep forever.
-        let mut message = endpoint.receive().unwrap_or_else(|_| catten_rt::domain_abort());
+        // readiness. Poll the endpoint with a bounded sleep so every request
+        // is observed while the lifecycle request remains responsive.
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            drop(endpoint);
+            return request;
+        }
+        let Some(mut message) =
+            endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+        else {
+            sleep_ms(10);
+            continue;
+        };
         match message.opcode {
             deploy::OP_GET => {
                 // The deployed artifact's greeting: the leading eight bytes
@@ -83,6 +93,10 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

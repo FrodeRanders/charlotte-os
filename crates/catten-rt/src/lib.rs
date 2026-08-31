@@ -95,6 +95,17 @@ impl Context {
         }
     }
 
+    /// Borrow the kernel-owned lifecycle channel for this protected domain.
+    ///
+    /// The request side is in the read-only launch page. Applications cannot
+    /// forge or clear a request; they can only acknowledge it through their
+    /// mutable status page after releasing resources.
+    pub const fn lifecycle(&self) -> Lifecycle<'_> {
+        Lifecycle {
+            _context: core::marker::PhantomData,
+        }
+    }
+
     /// Borrow the immutable profile object supplied by the launcher.
     ///
     /// The capability has kernel-enforced read-only rights and remains owned
@@ -213,6 +224,64 @@ impl Context {
         }
         owned::ReadOperation::submit(buffer).map_err(|_| InputError::SubmissionFailed)?.wait();
         Ok(())
+    }
+}
+
+/// Why the supervisor asked this domain to stop accepting new work.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ShutdownReason {
+    DeploymentRetired,
+    NodeShutdown,
+    Unknown(u32),
+}
+
+/// A cooperative shutdown request authenticated by the read-only launch
+/// contract. The deadline uses the kernel monotonic millisecond epoch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ShutdownRequest {
+    pub reason: ShutdownReason,
+    pub deadline_ms: u64,
+}
+
+impl ShutdownRequest {
+    /// Mark cleanup complete and terminate this thread.
+    ///
+    /// Call this only after owned resources have been explicitly closed or
+    /// dropped. `thread_exit` does not unwind the Rust stack.
+    pub fn complete(self) -> ! {
+        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_READY);
+        unsafe { catten_syscall::thread_exit() }
+    }
+}
+
+/// Borrowed lifecycle view tied to the launch [`Context`].
+#[derive(Clone, Copy, Debug)]
+pub struct Lifecycle<'context> {
+    _context: core::marker::PhantomData<&'context Context>,
+}
+
+impl Lifecycle<'_> {
+    /// Return the current cooperative shutdown request, if any.
+    ///
+    /// Event loops should call this at bounded intervals and avoid indefinitely
+    /// blocking receives when graceful shutdown is required.
+    pub fn shutdown_requested(&self) -> Option<ShutdownRequest> {
+        let (state, reason, deadline_ms) = config::lifecycle_control()?;
+        if state == charlotte_launch::lifecycle::STATE_RUNNING {
+            return None;
+        }
+        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_REQUEST_SEEN);
+        let reason = match reason {
+            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED => {
+                ShutdownReason::DeploymentRetired
+            }
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN => ShutdownReason::NodeShutdown,
+            value => ShutdownReason::Unknown(value),
+        };
+        Some(ShutdownRequest {
+            reason,
+            deadline_ms,
+        })
     }
 }
 

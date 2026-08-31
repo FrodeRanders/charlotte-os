@@ -19,6 +19,7 @@ names=(
     operational-profile-pickup
     role-separated-deployment-trust
     durga-charlotte-generation
+    cooperative-deployment-shutdown
 )
 
 command -v mmdc >/dev/null 2>&1 || {

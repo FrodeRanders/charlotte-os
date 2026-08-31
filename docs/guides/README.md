@@ -9,6 +9,8 @@ These documents contain repeatable workflows rather than architectural claims.
   points, launch manifests, capabilities, and service packaging.
 - [Userspace resource ownership](resource-ownership.md) — RAII, typed mappings,
   IPC transfer/borrowing, server replies, cancellation, and raw boundaries.
+- [Cooperative shutdown](shutdown.md) — signed grace periods, lifecycle-aware
+  event loops, resource teardown, and forced deployment retirement.
 - [AArch64 network development](aarch64-network-development.md) — macOS TCG,
   default network services, two-guest stream LANs, and optional verifier
   commands.

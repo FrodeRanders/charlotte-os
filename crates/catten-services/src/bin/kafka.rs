@@ -18,6 +18,7 @@ use alloc::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
     owned::{
         Connection,
@@ -1750,6 +1751,14 @@ struct Service<'connection> {
 }
 
 impl Service<'_> {
+    fn shutdown(&mut self) {
+        self.revoke_group_generation();
+        if let Some(membership) = self.group_membership.take() {
+            let _ = self.broker.leave_group(&self.profile, &membership.member_id);
+        }
+        self.publish_observability();
+    }
+
     fn id(&mut self) -> Result<u32, i64> {
         for _ in 0..u32::MAX {
             let id = self.next_id.max(1);
@@ -2512,9 +2521,9 @@ fn handle_message(
     service.account(result);
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let profile = Profile::from_context(&ctx).unwrap_or_else(|| fail(0x4b01));
+    let profile = Profile::from_context(ctx).unwrap_or_else(|| fail(0x4b01));
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0x4b02));
     let (_, tcp_connection) =
         wait_for_registered_name_owned(ns_connection, socket::NAME).unwrap_or_else(|| fail(0x4b03));
@@ -2624,6 +2633,12 @@ fn main(ctx: Context) -> ! {
     service.publish_observability();
     let mut next_endpoint = 0usize;
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            service.shutdown();
+            drop(service);
+            drop(endpoints);
+            return request;
+        }
         if let Err(error) = service.maintain_group() {
             config::write::<u32>(status::ERROR, 0x4b09_0000 | (-error as u32 & 0xffff));
         }
@@ -2638,7 +2653,7 @@ fn main(ctx: Context) -> ! {
                     handle_message(&mut service, published.rights, message);
                 }
                 Ok(None) => {}
-                Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
+                Err(catten_rt::owned::ReceiveError::EndpointClosed) => fail(0x4b0a),
                 Err(_) => {
                     config::write::<u32>(status::ERROR, 0x4b08);
                 }
@@ -2649,4 +2664,8 @@ fn main(ctx: Context) -> ! {
             cq_wait_timeout(1, SERVICE_WAIT_MS, 0);
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }

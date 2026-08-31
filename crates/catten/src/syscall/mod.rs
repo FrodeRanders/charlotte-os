@@ -1979,6 +1979,9 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
         crate::service::supervisor::DeployedDomain {
             principal: charlotte_launch::artifact_principal_id(&name_bytes[..name_len]),
             domain,
+            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            retirement_deadline_ms: None,
+            force_requested: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2004,7 +2007,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         || descriptor_cap == 0
         || elf_size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
         || descriptor_size.is_none_or(|size| {
-            !(charlotte_launch::deployment::HEADER_LEN
+            !(charlotte_launch::deployment::MIN_HEADER_LEN
                 ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })
@@ -2076,6 +2079,9 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         crate::service::supervisor::DeployedDomain {
             principal,
             domain,
+            shutdown_grace_ms: decoded.shutdown_grace_ms,
+            retirement_deadline_ms: None,
+            force_requested: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2204,18 +2210,19 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
             if !valid_profile {
                 return None;
             }
-            crate::service::supervisor::try_spawn_with_read_only_profile_and_limits(
+            let domain = crate::service::supervisor::try_spawn_with_read_only_profile_and_limits(
                 pickup.artifact,
                 name_service,
                 crate::ipc::ConnectionRights::CALL,
                 profile,
                 crate::service::supervisor::ServiceLimits::for_deployment(&descriptor),
             )
-            .ok()
+            .ok()?;
+            Some((domain, descriptor.shutdown_grace_ms))
         },
     )
     .flatten();
-    let Some(domain) = launched else {
+    let Some((domain, shutdown_grace_ms)) = launched else {
         frame.regs[0] = 0;
         return;
     };
@@ -2223,6 +2230,9 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
         crate::service::supervisor::DeployedDomain {
             principal,
             domain,
+            shutdown_grace_ms,
+            retirement_deadline_ms: None,
+            force_requested: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2235,6 +2245,7 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
         return;
     }
     let principal = frame.regs[1];
+    let force = frame.regs[2] != 0;
     let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
     let position = if principal == 0 && deployed.len() == 1 {
         Some(0)
@@ -2247,9 +2258,33 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
     };
     let domain = deployed[position].domain;
     if !crate::service::supervisor::domain_exited(&domain) {
-        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-            .read()
-            .abort_as_threads(domain.asid);
+        let now = crate::cpu::scheduler::monotonic_millis();
+        let entry = &mut deployed[position];
+        if entry.retirement_deadline_ms.is_none() {
+            let deadline = now.saturating_add(u64::from(entry.shutdown_grace_ms));
+            entry.retirement_deadline_ms = Some(deadline);
+            crate::service::bootstrap::write_lifecycle_request(
+                domain.config_frame,
+                charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                deadline,
+            );
+        }
+        let deadline_reached = entry.retirement_deadline_ms.is_some_and(|deadline| now >= deadline);
+        if force || deadline_reached {
+            if !entry.force_requested {
+                crate::service::bootstrap::write_lifecycle_request(
+                    domain.config_frame,
+                    charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                    charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                    entry.retirement_deadline_ms.unwrap_or(now),
+                );
+                entry.force_requested = true;
+            }
+            crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .abort_as_threads(domain.asid);
+        }
         frame.regs[0] = 1;
         return;
     }

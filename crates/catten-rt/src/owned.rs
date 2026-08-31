@@ -803,7 +803,7 @@ pub fn spawn_scoped_artifact(
 ) -> Result<u64, ArtifactLaunchError> {
     if artifact_len == 0
         || artifact_len > artifact.len()
-        || descriptor_len < charlotte_launch::deployment::HEADER_LEN
+        || descriptor_len < charlotte_launch::deployment::MIN_HEADER_LEN
         || descriptor_len > descriptor.len()
         || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
     {
@@ -873,7 +873,7 @@ pub fn launch_operational_connector(
 /// The owner remains with the deployment agent until retirement completes.
 /// `poll_retire` is explicit because draining all domain threads can block;
 /// `Drop` retains a best-effort abort fallback.
-#[must_use = "dropping a deployed artifact requests best-effort retirement"]
+#[must_use = "dropping a deployed artifact requests best-effort forced retirement"]
 pub struct DeployedArtifact {
     principal: u64,
     asid: u64,
@@ -908,7 +908,7 @@ impl DeployedArtifact {
 impl Drop for DeployedArtifact {
     fn drop(&mut self) {
         if !self.retired {
-            let _ = kernel::retire_artifact_named(self.principal);
+            let _ = kernel::force_retire_artifact_named(self.principal);
         }
     }
 }
@@ -2131,6 +2131,10 @@ mod kernel {
     pub fn retire_artifact_named(principal: u64) -> u64 {
         catten_syscall::retire_artifact_named(principal)
     }
+
+    pub fn force_retire_artifact_named(principal: u64) -> u64 {
+        catten_syscall::force_retire_artifact_named(principal)
+    }
 }
 
 #[cfg(test)]
@@ -2164,6 +2168,8 @@ mod kernel {
         CompletionWait(u64),
         CompletionClose(u64),
         IpcClose(u64),
+        RetireArtifact(u64),
+        ForceRetireArtifact(u64),
     }
 
     pub struct State {
@@ -2195,6 +2201,7 @@ mod kernel {
         pub ipc_reply_status: u64,
         pub connection_watch: u64,
         pub scoped_spawn: u64,
+        pub retire_result: u64,
         pub events: Vec<Event>,
     }
 
@@ -2229,6 +2236,7 @@ mod kernel {
                 ipc_reply_status: catten_syscall::ipc_status::OK,
                 connection_watch: 20,
                 scoped_spawn: 2,
+                retire_result: 0,
                 events: Vec::new(),
             }
         }
@@ -2539,7 +2547,15 @@ mod kernel {
         with_state(|state| state.scoped_spawn)
     }
 
-    pub fn retire_artifact_named(_principal: u64) -> u64 {
+    pub fn retire_artifact_named(principal: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RetireArtifact(principal));
+            state.retire_result
+        })
+    }
+
+    pub fn force_retire_artifact_named(principal: u64) -> u64 {
+        with_state(|state| state.events.push(Event::ForceRetireArtifact(principal)));
         0
     }
 }
@@ -2562,6 +2578,7 @@ mod tests {
         CapabilityVector,
         Completion,
         Connection,
+        DeployedArtifact,
         DmaDomain,
         Endpoint,
         IncomingMessage,
@@ -2774,6 +2791,41 @@ mod tests {
             Ok(2)
         );
         assert!(kernel::events().is_empty());
+    }
+
+    #[test]
+    fn deployed_artifact_polls_cooperatively_then_forces_on_owner_drop() {
+        let _guard = setup();
+        kernel::update(|state| state.retire_result = 1);
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_1234,
+            asid: 7,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_retire(), Ok(false));
+        drop(artifact);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::RetireArtifact(0x8000_1234),
+                kernel::Event::ForceRetireArtifact(0x8000_1234),
+            ]
+        );
+    }
+
+    #[test]
+    fn completed_deployment_retirement_does_not_force_again() {
+        let _guard = setup();
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_5678,
+            asid: 8,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_retire(), Ok(true));
+        drop(artifact);
+        assert_eq!(kernel::events(), [kernel::Event::RetireArtifact(0x8000_5678)]);
     }
 
     #[test]

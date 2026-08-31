@@ -694,10 +694,11 @@ wraps the DNS manifest operations and object store behind:
     \item \texttt{deploy}, which hashes the stored bytes and submits the
         pinned assignment; and
     \item \texttt{status}, which queries the committed record; and
-    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY3}
+    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY4}
         descriptor and commits its opaque central-object key, digest, target,
         sequence, per-thread stack pages, maximum active-thread count, and
-        capability grants without copying an ELF through Raft.
+        cooperative shutdown grace period and capability grants without
+        copying an ELF through Raft.
 \end{itemize}
 
 The normal service set also starts \texttt{deployd}. Its bounded plaintext
@@ -727,8 +728,8 @@ The atomic alternative is a signed \texttt{CRELEASE} envelope produced with
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
 outer signature and every nested deployment signature. Current tooling emits
-\texttt{CDEPLOY3}; the reader retains compatibility with \texttt{CDEPLOY1}
-and \texttt{CDEPLOY2}.
+\texttt{CDEPLOY4}; the reader retains compatibility with \texttt{CDEPLOY1}
+through \texttt{CDEPLOY3}.
 A follower relays the
 request to the current leader, which resolves all automatic node selections
 and proposes the set as one Raft command. The state machine preflights every
@@ -741,6 +742,22 @@ launch, and publish independently after commit, and \texttt{release-apply}
 waits for every exact generation. Coordinated rollback, progress policy, and a
 semantic process bundle that also binds BPMN, schemas, provenance, and replica
 intent remain controller work.
+
+Retirement is nevertheless bounded locally. On the first reconciliation poll,
+the kernel publishes a drain request and monotonic deadline in the domain's
+read-only launch page. A lifecycle-aware application stops new work, completes
+or aborts external transactions, returns from its resource-owning scope, and
+then exits. If any domain thread remains, the kernel forces termination on the
+agent's first retirement poll at or after the signed deadline and reclaims the
+address space only after generation-safe reaping. While retirement is active,
+the agent polls at most ten milliseconds apart.
+Figure~\ref{fig:cooperative-deployment-shutdown} shows this path.
+
+\architecturewidefigure{cooperative-deployment-shutdown}
+    {Bounded cooperative shutdown followed by generation-safe forced retirement.
+    The application can acknowledge but cannot clear or extend a
+    kernel-published lifecycle request.}
+    {fig:cooperative-deployment-shutdown}
 
 The client may contact any member. A follower relays the bounded submission to
 the current Raft leader over a source-validated peer route and correlates the

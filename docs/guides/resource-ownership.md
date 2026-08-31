@@ -27,7 +27,7 @@ applications.
 | Asynchronous buffer read | `ReadOperation` | Cancels and waits before releasing the Rust borrow |
 | Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
 | Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
-| Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` reports drain completion and `Drop` requests best-effort retirement |
+| Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` provides the signed cooperative window and `Drop` forces best-effort retirement |
 | MMIO/interrupt/DMA | `MmioRegion`, `Interrupt`, `DmaTransfer` | Reverses the exclusive device operation |
 
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
@@ -125,6 +125,12 @@ owner in the reconciliation record until `poll_retire` returns `Ok(true)`.
 Do not keep only the returned ASID or call the retirement syscall directly:
 the principal-bound owner prevents one rollout from retiring another domain
 after ASID reuse.
+
+For lifecycle-aware applications, keep the resource-owning serving loop in a
+function that returns `ShutdownRequest`, then call `complete()` outside that
+scope. This is important because the divergent `thread_exit` syscall does not
+run destructors. See [Cooperative shutdown and forced retirement](shutdown.md)
+for the complete pattern and bounded-wait rule.
 
 ## Raw boundary rules
 

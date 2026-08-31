@@ -184,6 +184,30 @@ pub fn bootstrap_cap() -> Option<u64> {
     capability(CapabilityKind::Bootstrap)
 }
 
+pub(crate) fn lifecycle_control() -> Option<(u32, u32, u64)> {
+    use core::sync::atomic::{
+        AtomicU32,
+        Ordering,
+    };
+
+    let magic = unsafe { read_launch::<u64>(charlotte_launch::lifecycle::CONTROL_MAGIC_OFFSET) };
+    if magic != charlotte_launch::lifecycle::CONTROL_MAGIC {
+        return None;
+    }
+    let state = unsafe {
+        &*((CONFIG_VADDR + charlotte_launch::lifecycle::CONTROL_STATE_OFFSET) as *const AtomicU32)
+    }
+    .load(Ordering::Acquire);
+    let reason = unsafe { read_launch::<u32>(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) };
+    let deadline =
+        unsafe { read_launch::<u64>(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) };
+    Some((state, reason, deadline))
+}
+
+pub(crate) fn publish_lifecycle_status(state: u32) {
+    write_u32_release(charlotte_launch::lifecycle::STATUS_STATE_OFFSET, state);
+}
+
 unsafe fn read_launch<T: Copy>(offset: usize) -> T {
     assert!(offset.is_multiple_of(core::mem::align_of::<T>()));
     assert!(offset.saturating_add(core::mem::size_of::<T>()) <= CONFIG_PAGE_SIZE as usize);
