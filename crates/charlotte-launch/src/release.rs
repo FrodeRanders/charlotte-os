@@ -31,7 +31,7 @@ pub struct ReleaseFields<'a> {
     /// Monotonic revision within `release_name`.
     pub sequence: u64,
     pub release_name: &'a [u8],
-    /// Canonical, independently signed `CDEPLOY1` descriptors.
+    /// Canonical, independently signed `CDEPLOY1` or `CDEPLOY2` descriptors.
     pub descriptors: &'a [&'a [u8]],
 }
 

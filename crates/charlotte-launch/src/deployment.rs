@@ -14,8 +14,10 @@ use ed25519_compact::{
 
 use crate::sha256;
 
-pub const MAGIC: &[u8; 8] = b"CDEPLOY1";
-pub const VERSION: u16 = 1;
+pub const MAGIC: &[u8; 8] = b"CDEPLOY2";
+pub const VERSION: u16 = 2;
+pub const LEGACY_MAGIC: &[u8; 8] = b"CDEPLOY1";
+pub const LEGACY_VERSION: u16 = 1;
 pub const HEADER_LEN: usize = 152;
 pub const SIGNATURE_OFFSET: usize = 88;
 pub const SIGNATURE_LEN: usize = 64;
@@ -50,6 +52,9 @@ pub struct DescriptorFields<'a> {
     /// SHA-256 of the exact signed ELF stored at `object_key`.
     pub artifact_digest: [u8; 32],
     pub artifact_name: &'a [u8],
+    /// Kernel-enforced stack allocation inherited by every thread in the
+    /// protected domain, expressed in 4 KiB pages.
+    pub stack_pages_per_thread: u16,
     /// Opaque key interpreted inside the node's preconfigured object-store
     /// connector. It contains neither a bucket endpoint nor credentials.
     pub object_key: &'a [u8],
@@ -63,6 +68,7 @@ pub enum EncodeError {
     InvalidGrant,
     InvalidObjectKey,
     InvalidSequence,
+    InvalidStackPages,
     TooLarge,
     TooManyGrants,
 }
@@ -77,10 +83,12 @@ pub enum VerifyOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DeploymentDescriptor<'a> {
     bytes: &'a [u8],
+    pub format_version: u16,
     pub sequence: u64,
     pub node_key: u64,
     pub artifact_digest: [u8; 32],
     pub artifact_name: &'a [u8],
+    pub stack_pages_per_thread: u16,
     pub object_key: &'a [u8],
     grants_offset: usize,
     grant_count: usize,
@@ -147,6 +155,9 @@ pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> 
     if fields.sequence == 0 {
         return Err(EncodeError::InvalidSequence);
     }
+    if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(fields.stack_pages_per_thread)) {
+        return Err(EncodeError::InvalidStackPages);
+    }
     if !valid_artifact_name(fields.artifact_name) {
         return Err(EncodeError::InvalidArtifactName);
     }
@@ -196,6 +207,7 @@ pub fn encode_unsigned(
     bytes[64..66].copy_from_slice(&(fields.artifact_name.len() as u16).to_le_bytes());
     bytes[66..68].copy_from_slice(&(fields.object_key.len() as u16).to_le_bytes());
     bytes[68..70].copy_from_slice(&(fields.grants.len() as u16).to_le_bytes());
+    bytes[70..72].copy_from_slice(&fields.stack_pages_per_thread.to_le_bytes());
     bytes[72..88].copy_from_slice(&sha256::digest(public_key)[..KEY_ID_LEN]);
 
     let mut offset = HEADER_LEN;
@@ -231,19 +243,32 @@ pub fn set_signature(bytes: &mut [u8], signature: &[u8; SIGNATURE_LEN]) -> bool 
 }
 
 pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
-    if bytes.len() < HEADER_LEN
-        || bytes.get(0..8)? != MAGIC
-        || read_u16(bytes, 8)? != VERSION
-        || usize::from(read_u16(bytes, 10)?) != HEADER_LEN
-    {
+    if bytes.len() < HEADER_LEN || usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
         return None;
     }
+    let format_version = read_u16(bytes, 8)?;
+    let stack_pages_per_thread = match (bytes.get(0..8)?, format_version) {
+        (magic, VERSION) if magic == MAGIC => {
+            let pages = read_u16(bytes, 70)?;
+            if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
+                return None;
+            }
+            pages
+        }
+        (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
+            if read_u16(bytes, 70)? != 0 {
+                return None;
+            }
+            crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?
+        }
+        _ => return None,
+    };
     let total_len = usize::try_from(read_u32(bytes, 12)?).ok()?;
     if total_len != bytes.len() || total_len > MAX_DESCRIPTOR_LEN {
         return None;
     }
     let sequence = read_u64(bytes, 16)?;
-    if sequence == 0 || read_u16(bytes, 70)? != 0 {
+    if sequence == 0 {
         return None;
     }
     let node_key = read_u64(bytes, 24)?;
@@ -278,10 +303,12 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     }
     Some(DeploymentDescriptor {
         bytes,
+        format_version,
         sequence,
         node_key,
         artifact_digest,
         artifact_name,
+        stack_pages_per_thread,
         object_key,
         grants_offset: object_key_end,
         grant_count,

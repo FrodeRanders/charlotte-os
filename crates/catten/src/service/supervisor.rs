@@ -42,6 +42,8 @@ use crate::{
     },
 };
 
+const _: () = assert!(charlotte_launch::USER_STACK_PAGE_SIZE == loader::PAGE_SIZE);
+
 #[derive(Debug)]
 pub enum ProfileLaunchError {
     EmptyProfile,
@@ -143,12 +145,24 @@ impl ServiceLimits {
         self.user_stack_size = bytes;
         self
     }
+
+    /// Derive the execution limits for an already decoded and verified
+    /// deployment descriptor. Keeping this conversion at the launch boundary
+    /// prevents individual deployment paths from inventing stack policy.
+    pub fn for_deployment(
+        descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    ) -> Self {
+        Self::default().with_user_stack_size(
+            usize::from(descriptor.stack_pages_per_thread) * charlotte_launch::USER_STACK_PAGE_SIZE,
+        )
+    }
 }
 
 impl Default for ServiceLimits {
     fn default() -> Self {
         Self {
-            user_stack_size: charlotte_launch::DEFAULT_USER_STACK_PAGES * loader::PAGE_SIZE,
+            user_stack_size: charlotte_launch::DEFAULT_USER_STACK_PAGES
+                * charlotte_launch::USER_STACK_PAGE_SIZE,
         }
     }
 }
@@ -660,7 +674,6 @@ pub fn try_spawn_with_deployment_descriptor(
     descriptor_bytes: &[u8],
     deployment_key: &[u8; 32],
     artifact_key: &[u8; 32],
-    limits: ServiceLimits,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
     let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
         .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
@@ -681,6 +694,7 @@ pub fn try_spawn_with_deployment_descriptor(
     {
         return Err(ProfileLaunchError::DescriptorArtifactMismatch);
     }
+    let limits = ServiceLimits::for_deployment(&descriptor);
     let descriptor_len =
         u32::try_from(descriptor_bytes.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
     let profile_metadata = charlotte_launch::ProfileCapabilityMetadata::new(descriptor_len)

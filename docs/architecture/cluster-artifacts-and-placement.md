@@ -35,14 +35,28 @@ reproducible builds, source attestations, and key custody.
 ## Signed deployment descriptors
 
 The ELF signature and the deployment decision are different trust statements.
-An ELF signature binds code to an artifact name. A `CDEPLOY1` descriptor binds
+An ELF signature binds code to an artifact name. A `CDEPLOY2` descriptor binds
 that artifact's complete SHA-256 to an opaque central-object-store key, a
-  monotonic deployment sequence, a selected node (or zero for automatic
-  singleton placement), and a bounded list of named
-client (`SEND`/`CALL`) or publication capability grants. The descriptor is separately signed by the
-offline cluster Ed25519 authority. Tampering with placement, an object key, or
-a grant therefore fails verification even when the referenced ELF remains
-validly signed.
+monotonic deployment sequence, a selected node (or zero for automatic
+singleton placement), a per-thread stack allocation, and a bounded list of
+named client (`SEND`/`CALL`) or publication capability grants. The descriptor
+is separately signed by the offline cluster Ed25519 authority. Tampering with
+placement, an object key, the stack allocation, or a grant therefore fails
+verification even when the referenced ELF remains validly signed.
+
+The stack allocation is expressed in 4 KiB pages and inherited by every thread
+created in the protected domain. The platform currently accepts 1 through 64
+pages (4 KiB through 256 KiB) per thread. It rejects zero, an excessive value,
+or a non-canonical descriptor; it never silently clamps the developer's
+request. Legacy `CDEPLOY1` descriptors remain readable and receive the former
+four-page (16 KiB) default. New release tooling emits only `CDEPLOY2`.
+
+This is deliberately a two-role decision. Development and generation know the
+component's call depth, local variables, language/runtime needs, and expected
+handler shape, so they propose and review the value in the deployment plan.
+The deployment signer approves that request alongside placement and capability
+grants. The kernel then enforces the exact signed value; an application cannot
+increase it after launch.
 
 Descriptors contain no object-store endpoint, bucket credentials, Kafka
 credentials, or TLS client identity. The object key is interpreted through a
@@ -52,7 +66,8 @@ the platform service. This makes the intended management-plane flow:
 1. CI builds and signs a self-contained ELF off-cluster.
 2. CI uploads the immutable ELF to the centrally managed object store.
 3. CI signs a small deployment descriptor referring to the object's key and
-   digest, then notifies the cluster with that descriptor.
+   digest and declaring its per-thread stack pages, then notifies the cluster
+   with that descriptor.
 4. A node pulls through its preconfigured S3 capability, verifies both
    signatures and the digest, and launches the application.
 
@@ -122,7 +137,7 @@ canonical bounded wire format used by the kernel and userspace. For example:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
-  <artifact-sha256> 0 7 <private-key-hex> \
+  <artifact-sha256> 0 7 16 <private-key-hex> \
   kafka/orders/input=call kafka/orders/output=client
 ```
 

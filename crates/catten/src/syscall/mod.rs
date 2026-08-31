@@ -2065,7 +2065,6 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         &descriptor,
         &trust.deployment_key,
         &trust.artifact_key,
-        crate::service::supervisor::ServiceLimits::default(),
     ) {
         Ok(domain) => domain,
         Err(_) => {
@@ -2210,8 +2209,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 name_service,
                 crate::ipc::ConnectionRights::CALL,
                 profile,
-                crate::service::supervisor::ServiceLimits::default()
-                    .with_user_stack_size(128 * 1024),
+                crate::service::supervisor::ServiceLimits::for_deployment(&descriptor),
             )
             .ok()
         },

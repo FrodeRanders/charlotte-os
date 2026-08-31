@@ -25,6 +25,7 @@ pub const STATUS_PAGE_SIZE: u32 = 4096;
 /// domain. Threads subsequently spawned inside that domain inherit the same
 /// limit. The upper bound reserves virtual-address slots; physical pages are
 /// allocated only for the selected limit.
+pub const USER_STACK_PAGE_SIZE: usize = 4096;
 pub const DEFAULT_USER_STACK_PAGES: usize = 4;
 pub const MAX_USER_STACK_PAGES: usize = 64;
 

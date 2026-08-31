@@ -12,9 +12,10 @@ store credentials.
 2. Calculate the SHA-256 of the final signed ELF.
 3. Upload those immutable bytes from CI or an operator workstation to the
    central RustFS, Dell EMC ECS, or other compatible store.
-4. Create a `CDEPLOY1` descriptor with `cluster-sign deployment-sign`. It binds
+4. Create a `CDEPLOY2` descriptor with `cluster-sign deployment-sign`. It binds
    the logical artifact name, exact digest, opaque object key, target node key,
-   monotonic sequence, and named capability grants.
+   monotonic sequence, per-thread stack allocation in 4 KiB pages, and named
+   capability grants.
 5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
 6. Observe the exact generation with
    `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
@@ -41,7 +42,7 @@ For the current demonstration service, the final signing steps resemble:
 
 ```text
 cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
-  <sha256-of-signed-elf> 0 42 <private-key-hex> \
+  <sha256-of-signed-elf> 0 42 4 <private-key-hex> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 cluster-sign deployment-status greet 127.0.0.1:8081 120
@@ -51,6 +52,14 @@ A successful notification returns HTTP `202 Accepted` and JSON containing the
 committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
+
+The `4` between the deployment sequence and private key in the example is the
+per-thread stack allocation: 4 pages, or 16 KiB. Valid `CDEPLOY2` values are 1
+through 64 pages. The value is signed, inherited by all threads in the domain,
+and enforced exactly by the kernel. Values outside that range are rejected,
+not clamped. The release pipeline should take this requirement from the
+developer-reviewed component plan. A legacy `CDEPLOY1` descriptor has no such
+field and is interpreted as four pages for compatibility.
 
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
@@ -72,8 +81,9 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 ```
 
 The outer signature binds the release name, monotonic release sequence, and
-exact ordered descriptor bytes. Every nested `CDEPLOY1` signature is also
-verified against the cluster key. An envelope is limited to 16 distinct
+exact ordered descriptor bytes. Every nested deployment signature is also
+verified against the cluster key; current tooling emits `CDEPLOY2`, while the
+reader retains `CDEPLOY1` compatibility. An envelope is limited to 16 distinct
 artifact names and 3,584 bytes so it, its IPC envelope, and the leader-resolved
 node assignments remain bounded.
 

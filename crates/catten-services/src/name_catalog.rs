@@ -1631,6 +1631,7 @@ mod tests {
             node_key: 0,
             artifact_digest: [sequence as u8; 32],
             artifact_name: name,
+            stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             object_key: name,
             grants: &[],
         };

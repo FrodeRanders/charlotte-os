@@ -1488,11 +1488,12 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
-    /// Notify the cluster of a signed `CDEPLOY1` descriptor. The artifact
+    /// Notify the cluster of a signed `CDEPLOY2` descriptor. The artifact
     /// name is taken from the signed descriptor and the moved memory uses the same
     /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
-    /// central object key, digest, target node, revision, and capability
-    /// grants. No object-store credentials cross this interface.
+    /// central object key, digest, target node, revision, per-thread stack
+    /// pages, and capability grants. No object-store credentials cross this
+    /// interface.
     pub const OP_NOTIFY: u32 = 6;
     /// Join the cluster on the local network segment. The service asks the
     /// local discovery service for the cluster's leader (or a follower that

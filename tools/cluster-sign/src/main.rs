@@ -836,12 +836,18 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         args.get(5).ok_or_else(|| "missing deployment sequence".to_owned())?,
         "deployment sequence",
     )?;
+    let stack_pages_per_thread = parse_required_u64(
+        args.get(6).ok_or_else(|| "missing per-thread stack pages".to_owned())?,
+        "per-thread stack pages",
+    )?
+    .try_into()
+    .map_err(|_| "per-thread stack pages exceed the descriptor width".to_owned())?;
     let secret = SecretKey::from_slice(&hex_decode(
-        args.get(6).ok_or_else(|| "missing private key".to_owned())?,
+        args.get(7).ok_or_else(|| "missing private key".to_owned())?,
     )?)
     .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
     let parsed_grants =
-        args[7..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
+        args[8..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
     let grants = parsed_grants
         .iter()
         .map(|(service, rights)| CapabilityGrant {
@@ -854,6 +860,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         node_key,
         artifact_digest,
         artifact_name: artifact_name.as_bytes(),
+        stack_pages_per_thread,
         object_key: object_key.as_bytes(),
         grants: &grants,
     };
@@ -876,7 +883,8 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
     println!(
         "signed deployment {output}: artifact={artifact_name:?} object={object_key:?} \
-         node={node_key:#x} sequence={sequence} grants={}",
+         node={node_key:#x} sequence={sequence} stack_pages_per_thread={} grants={}",
+        stack_pages_per_thread,
         grants.len()
     );
     Ok(())
@@ -895,11 +903,12 @@ fn deployment_verify(args: &[String]) -> Result<()> {
     let descriptor = deployment::decode(&bytes)
         .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     println!(
-        "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={}",
+        "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={} stack_pages_per_thread={}",
         String::from_utf8_lossy(descriptor.artifact_name),
         String::from_utf8_lossy(descriptor.object_key),
         descriptor.node_key,
-        descriptor.sequence
+        descriptor.sequence,
+        descriptor.stack_pages_per_thread
     );
     for grant in descriptor.grants() {
         println!("grant {:?} rights={:#x}", String::from_utf8_lossy(grant.service), grant.rights);
@@ -1363,6 +1372,7 @@ fn run() -> Result<()> {
                 node_key: 0x1234,
                 artifact_digest: [0xa5; 32],
                 artifact_name: b"orders-step",
+                stack_pages_per_thread: 16,
                 object_key: b"releases/orders-step-a5.elf",
                 grants: &grants,
             };
@@ -1406,28 +1416,28 @@ fn run() -> Result<()> {
                   [service|driver|bootstrap|admin] [version] [rollback] [flags] \
                   [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
                   deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
-                  <node-key> <sequence> <privkey-hex> [service=send|call|client|publish ...] | \
-                  deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
-                  [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
-                  deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
-                  <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
-                  release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
-                  release-apply <release> [host:port] [wait-seconds] | \
-                  operations-recipient-generate <private-key-file> <public-key-file> | \
-                  operations-signing-generate <private-key-file> <public-key-file> | \
-                  operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
-                  <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
-                  <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
-                  <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
-                  <release-sha256> <now-unix> <recipient-private-key-file> \
-                  <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
-                  <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                  <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
-                  (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
-                  <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                  operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | \
-                  selftest"
+                  <node-key> <sequence> <stack-pages-per-thread> <privkey-hex> \
+                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
+                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
+                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
+                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
+                  <sequence> <privkey-hex> <descriptor>... | release-verify <release> \
+                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
+                  [host:port] [wait-seconds] | operations-recipient-generate <private-key-file> \
+                  <public-key-file> | operations-signing-generate <private-key-file> \
+                  <public-key-file> | operations-seal <output> <profile-name> <s3|kafka> \
+                  <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
+                  <recipient-public-key-file> <ops-ed25519-private-key-file> <profile-file> | \
+                  operations-verify <envelope> <ops-ed25519-public-key-file> | operations-open \
+                  <envelope> <cluster-id-hex> <release-sha256> <now-unix> \
+                  <recipient-private-key-file> <ops-ed25519-public-key-file> <output> | \
+                  operations-bundle-sign <output> <bundle-sequence> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-private-key-file> \
+                  <recipient-public-key-file> <release> (<target-artifact> <object-key> \
+                  <envelope>)... | operations-bundle-verify <bundle> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-public-key-file> \
+                  <recipient-public-key-file> <now-unix> | operations-bundle-notify <bundle> \
+                  [host:port] | cluster-id <mnemonic> | selftest"
             .to_owned()),
     }
 }
@@ -1452,6 +1462,7 @@ mod tests {
             node_key: 0,
             artifact_digest: [sequence as u8; 32],
             artifact_name: name,
+            stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             object_key: name,
             grants: &[],
         };

@@ -22,7 +22,8 @@ The current boundary is important. Durga now has a prototype
 \texttt{charlotte} target alongside its Kafka-oriented Java and Rust targets.
 For each BPMN component it emits a \texttt{no\_std} runtime adapter, a Cargo
 manifest template, an AArch64 Charlotte build script, capability requests,
-named Kafka connector profiles, and signed-deployment planning metadata. The
+named Kafka connector profiles, an explicit per-thread stack requirement, and
+signed-deployment planning metadata. The
 generated adapters have been compiled into Charlotte ELFs. Business handlers
 and schemas still have developer-owned completion points, and Durga does not
 itself operate a Charlotte release controller. CharlotteOS implements signed
@@ -392,6 +393,17 @@ contain:
     \item the proposed cluster desired state for this process release.
 \end{itemize}
 
+Stack deserves special treatment among those estimates. Only the application
+and generator authors know the component's worst-case call depth, generated
+adapter frames, and stack-resident data. The generated component plan should
+therefore carry an explicit \texttt{stackPagesPerThread} request for developer
+review. Operations may approve or reject it when signing the deployment, but
+should not have to guess it from the ELF or silently rewrite it. Charlotte's
+\texttt{CDEPLOY2} descriptor signs this value in 4 KiB pages; the kernel gives
+every thread in the protected domain that exact limit. The current admissible
+range is one through 64 pages, and legacy \texttt{CDEPLOY1} descriptors retain
+the former four-page default.
+
 \autoref{chap:cluster-vision} already implements signed, name-bound ELF artifacts with release,
 rollback, class, flags, and an optional provenance digest, and it pins the
 complete ELF digest in a deployment record. A process bundle would build on
@@ -418,11 +430,13 @@ release: 42
 
 component validate:
     artifact: sha256:...
+    stack-pages-per-thread: 4
     replicas: 4
     parallel: true
 
 component calculate:
     artifact: sha256:...
+    stack-pages-per-thread: 8
     replicas: 8
     parallel: true
     requires: service:entitlement-rules
@@ -439,8 +453,9 @@ durability:
 The exact syntax is not proposed as a format. The significant point is that
 deployment intent is generated from the same semantic model as the executable
 wrappers. Cluster admission can validate the requested replica counts,
-parallel-safety declaration, artifact identities, capabilities, and placement
-constraints before committing desired state to the replicated manifest.
+parallel-safety declaration, artifact identities, stack limits, capabilities,
+and placement constraints before committing desired state to the replicated
+manifest.
 
 The existing Charlotte manifest accepts one explicit node assignment per
 artifact. The \texttt{PlacementPolicy} contract described in
