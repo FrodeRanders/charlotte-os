@@ -6,7 +6,14 @@ unqualified design statement as direction, not proof that the feature exists;
 consult the [manual status appendix](../manual-v2/charlotte.pdf) and
 [`reference/`](../reference/README.md) for implemented contracts.
 
+![CharlotteOS system layering](../manual-v2/figures/system-layering.svg)
+
+The system keeps kernel mechanism, isolated services, generated application
+logic, and external managed infrastructure at explicit boundaries.
+
 ## Core architecture
+
+![Steady-state CharlotteOS service composition](../manual-v2/figures/service-composition.svg)
 
 - [Sitas and Xous co-design](sitas-xous.md) — capabilities, endpoints, memory
   objects, completion queues, isolated services, and shard-local execution.

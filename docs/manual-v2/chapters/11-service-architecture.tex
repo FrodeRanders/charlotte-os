@@ -138,6 +138,11 @@ At steady state, a CharlotteOS system consists of:
         services and invokes them through capabilities.
 \end{itemize}
 
+\architecturewidefigure{service-composition}
+    {Steady-state userspace composition around the name service, capability
+    delegation, network stack, storage, and external-service connectors.}
+    {fig:service-composition}
+
 Every component beyond the kernel, supervisor, and name service is a replaceable
 userspace process. A different NIC driver, a different filesystem, a different
 network stack --- these are configuration choices, not kernel modifications.

@@ -8,6 +8,8 @@ The raw functions in `catten-syscall` describe the register ABI. They are not
 the normal service-development API. Use `catten_rt::owned` in services and
 applications.
 
+![Kernel and userspace ownership boundary](../manual-v2/figures/kernel-userspace-boundary.svg)
+
 ## Resource types
 
 | Resource | Owner | Drop behavior |
@@ -32,6 +34,13 @@ All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
 ownership. Dropping it releases ownership.
 
 ## Memory and IPC example
+
+![Capability-safe service registration, lookup, and IPC call](../manual-v2/figures/capability-safe-ipc.svg)
+
+The target service first creates its endpoint and transfers a re-delegable
+connection to the name service. Applications can then resolve an attenuated
+connection and perform calls whose transient resources remain owned until a
+terminal completion.
 
 ```rust
 let memory = OwnedMemory::allocate(1)?;

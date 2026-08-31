@@ -27,6 +27,8 @@ operational signature says *this logical connector may use this environment
 binding*. Neither statement is sufficient by itself. Cluster policy intersects
 them and mints the capability actually delivered to the application.
 
+![Role-separated deployment trust and capability chain](../manual-v2/figures/role-separated-deployment-trust.svg)
+
 Endpoint addresses are often not confidential, but they remain operational
 configuration and may reveal network structure. Credentials, private keys and
 tokens are confidential. The format treats the complete connector profile as
@@ -268,6 +270,8 @@ their sealed platform/KMS path; `launch_deployment_plane_with_trust` deliberatel
 installs public verification policy without enabling decryption. The private
 key is checked against `CTRUST1`, stored in zeroizing kernel memory, and never
 placed in an EL0 manifest.
+
+![Privileged operational-profile pickup](../manual-v2/figures/operational-profile-pickup.svg)
 
 ## Admission and storage rules
 

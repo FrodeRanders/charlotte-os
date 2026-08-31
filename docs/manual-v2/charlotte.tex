@@ -10,7 +10,30 @@
 \usepackage[T1]{fontenc}
 \usepackage{textcomp}
 \usepackage{graphicx}
+\usepackage{svg}
+\usepackage{pdflscape}
 \usepackage[useregional]{datetime2}
+
+\svgsetup{inkscapelatex=false}
+\newcommand{\architecturefigure}[4][0.96\linewidth]{%
+    \begin{figure}[tbp]
+        \centering
+        \includesvg[width=#1,inkscapelatex=false]{figures/#2}
+        \caption{#3}
+        \label{#4}
+    \end{figure}%
+}
+\newcommand{\architecturewidefigure}[3]{%
+    \begin{landscape}
+        \begin{figure}[p]
+            \centering
+            \includesvg[width=0.96\linewidth,height=0.78\textheight,
+                keepaspectratio,inkscapelatex=false]{figures/#1}
+            \caption{#2}
+            \label{#3}
+        \end{figure}
+    \end{landscape}%
+}
 
 \usepackage{titlesec}
 \setcounter{secnumdepth}{4}

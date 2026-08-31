@@ -427,6 +427,16 @@ does not by itself constitute a complete cluster executive.
         lookup, administration ingress, and deployment recheck that identity.
 \end{itemize}
 
+\architecturewidefigure{external-service-capabilities}
+    {Secret-bearing S3 and Kafka connectors receive infrastructure profiles;
+    applications receive only named, role-attenuated service capabilities.}
+    {fig:external-service-capabilities}
+
+\architecturefigure{operational-profile-pickup}
+    {Privileged operational-profile pickup keeps ciphertext references in Raft
+    and decrypts directly into immutable connector launch memory.}
+    {fig:operational-profile-pickup}
+
 \section{Current bootstrap and node model}
 
 The implemented kernel embeds five signed bootstrap services:
@@ -501,6 +511,12 @@ dependencies from the Internet during placement. Software distribution and
 machine configuration are therefore separated: the same immutable object can
 be placed on any eligible node without reconstructing a userspace installation
 there.
+
+\architecturefigure{release-admission-rollout}
+    {A signed multi-component release is admitted atomically to desired state;
+    artifact retrieval, launch, publication, and readiness then reconcile per
+    component.}
+    {fig:release-admission-rollout}
 
 \subsection{The implemented pipeline}
 
@@ -605,6 +621,11 @@ logical name. Both guests complete with zero failed or pending self-tests.
 The slice is important evidence for the architecture, but its simulated
 administration, pre-staged artifacts, explicit assignments, and static DNS
 voter set keep it well short of the production target.
+
+\architecturewidefigure{two-node-cluster}
+    {The demonstrated two-node cluster combines Raft-held compact desired state,
+    local reconcilers, capability-routed services, and central object pickup.}
+    {fig:two-node-cluster}
 
 \subsection{Replicated deployment manifest}
 
@@ -779,6 +800,12 @@ collision-resolving or fully content-addressed namespace.
 
 \subsection{Cryptographic boundary}
 
+\architecturewidefigure{role-separated-deployment-trust}
+    {Independent artifact, deployment, operations, and recipient-key roles
+    converge only at cluster admission and the privileged connector launch
+    gate.}
+    {fig:role-separated-deployment-trust}
+
 Artifact validation uses Ed25519 signatures embedded in the ELF. The private
 cluster key remains off-cluster in the
 \repodir|tools/cluster-sign| host tool. The signature is stored in a standard
@@ -859,11 +886,11 @@ substantial coordination and trust work:
         anchor. Authenticated blank-start establishment, overlapping
         rotation, revocation, and recovery remain.
 
-    \item \textbf{Shared artifact availability.} Manifest records are
-        replicated, but artifact bytes are pre-staged independently on each
-        NVMe volume. The implemented S3 adapter is not wired into deployment.
-        Network fetch, integrity-checked repair, retention, garbage collection,
-        credential handling, and replication policy remain.
+    \item \textbf{Durable artifact availability.} Signed descriptor deployment
+        now pulls digest-pinned artifacts through a separately provisioned S3
+        connector, while the legacy path still uses per-node NVMe staging.
+        Integrity-checked repair, retention, garbage collection, connector
+        bootstrap, and replication policy remain.
 
     \item \textbf{Cluster-wide observation.} Per-executor metrics must be
         collected and interpreted across nodes without turning transient

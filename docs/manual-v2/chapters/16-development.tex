@@ -209,6 +209,11 @@ self-tests. Host suites cover components such as \texttt{catten-graft},
 from \texttt{self\_test::run\_self\_tests()} after initialization; assertion or
 verifier failure fails the boot suite.
 
+\architecturefigure{boot-and-testing}
+    {Ordinary boot enables production networking and services; test switches
+    add validators, while explicit negative switches remove runtime features.}
+    {fig:boot-and-testing}
+
 Deferred tests register an expected result bit and spawn their verifier through
 \texttt{results::spawn\_verifier}. The result subsystem associates that
 single verifier thread with the test in a fixed atomic table. If the verifier

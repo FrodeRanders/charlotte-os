@@ -93,6 +93,8 @@ remain controller work. `CRELEASE` binds executable deployment decisions, not
 yet the BPMN digest, schemas, provenance graph, replica policy, or other
 semantic content of a complete Durga process bundle.
 
+![Signed atomic release admission and rollout](../manual-v2/figures/release-admission-rollout.svg)
+
 The request may enter through any cluster member. A follower's DNS validates
 the reliable-message source as a current peer, relays the bounded request to
 the current Raft leader, and correlates the committed result back to the HTTP

@@ -50,6 +50,8 @@ register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
 
+![Ordinary boot and optional test validators](../manual-v2/figures/boot-and-testing.svg)
+
 The two-guest `--relmsg-test` verifier sends and compares a 70,000-byte
 payload. This intentionally crosses v2's 65,535-byte limit and exercises the
 v3 IPC envelope, fragmentation, adaptive retry, reassembly, and cumulative

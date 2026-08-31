@@ -70,6 +70,8 @@ cluster-sign deployment-notify orders.cdep 127.0.0.1:8081
 Several generated components can be operated as one readiness wait without
 giving the generator or application object-store credentials:
 
+![Durga-to-Charlotte generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
+
 ```text
 cluster-sign deployment-apply 127.0.0.1:8081 120 \
   receive.cdep transform.cdep publish.cdep
@@ -98,6 +100,8 @@ snapshots retain the release record. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
 commit. Coordinated rollback and richer rollout policy still require a release
 controller.
+
+![Two-node Charlotte cluster and deployment data path](../manual-v2/figures/two-node-cluster.svg)
 
 The listener is intentionally plaintext because the signed descriptor is the
 authorization and integrity envelope and contains no secret. Network policy or

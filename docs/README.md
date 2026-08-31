@@ -28,7 +28,7 @@ is evidence about one revision and configuration, not a standing guarantee.
 
 | Area | Use it for |
 |---|---|
-| [`manual-v2`](manual-v2/charlotte.pdf) | Integrated architecture, programming model, implementation status, and cluster vision |
+| [`manual-v2`](manual-v2/README.md) | Integrated architecture, programming model, implementation status, cluster vision, and PDF build instructions |
 | [`architecture/`](architecture/README.md) | Living designs, security boundaries, protocols, and future direction |
 | [`reference/`](reference/README.md) | Code-facing invariants, conformance rules, and subsystem mechanics |
 | [`guides/`](guides/README.md) | Repeatable contributor workflows: testing, userspace development, and networking |
@@ -36,6 +36,7 @@ is evidence about one revision and configuration, not a standing guarantee.
 | [`reports/`](reports/README.md) | Dated audits, debugging investigations, and milestone records |
 | [`research/`](research/README.md) | Prior systems, their afterlives, and CharlotteOS's inheritance |
 | [`tla/`](tla/README.md) | Executable TLA+ models, model-checking instructions, and Rust conformance map |
+| [`figures.md`](figures.md) | Editable Mermaid sources and explanatory captions for the architecture figure set |
 
 ## Maintenance rules
 

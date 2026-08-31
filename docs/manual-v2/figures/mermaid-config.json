@@ -1,0 +1,13 @@
+{
+  "theme": "neutral",
+  "deterministicIds": true,
+  "deterministicIDSeed": "charlotte-os-manual",
+  "htmlLabels": false,
+  "flowchart": {
+    "useMaxWidth": true
+  },
+  "sequence": {
+    "useMaxWidth": true,
+    "wrap": true
+  }
+}

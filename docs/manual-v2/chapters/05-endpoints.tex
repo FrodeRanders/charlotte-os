@@ -150,6 +150,11 @@ A reply token is:
         a single reply.
 \end{itemize}
 
+\architecturefigure[0.93\linewidth]{capability-safe-ipc}
+    {A service creates and registers its endpoint before a client resolves an
+    attenuated connection and performs a capability-safe IPC call.}
+    {fig:capability-safe-ipc}
+
 \section{Connection delegation}
 
 A connection capability can be delegated to another domain with attenuated rights.

@@ -29,6 +29,11 @@ Capabilities have four key properties:
         undefined behavior.
 \end{itemize}
 
+\architecturewidefigure{kernel-userspace-boundary}
+    {The capability boundary: the kernel owns enforcement and opaque objects;
+    userspace owns policy, protocols, and typed resource lifetimes.}
+    {fig:kernel-userspace-boundary}
+
 \section{Object types and their rights}
 
 CharlotteOS defines a fixed set of kernel object types, each with its own rights

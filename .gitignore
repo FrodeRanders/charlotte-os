@@ -9,6 +9,7 @@ os-images/
 *.out
 *.synctex.gz
 *.toc
+docs/manual-v2/svg-inkscape/
 .idea/
 tmp/
 docs/tla/states/

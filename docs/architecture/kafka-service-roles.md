@@ -32,6 +32,8 @@ publish `kafka/claims/producer`, `kafka/claims/consumer`, and
 all three callers uniform authority. The application cannot create or rename
 an access point.
 
+![Secrets remain in connectors while applications receive attenuated capabilities](../manual-v2/figures/external-service-capabilities.svg)
+
 Connector-only authentication is encoded as bounded, length-delimited profile
 sections. Known SCRAM-SHA-256 and P-256 mTLS sections are critical; an older
 decoder may skip a future optional section but must reject an unknown critical
