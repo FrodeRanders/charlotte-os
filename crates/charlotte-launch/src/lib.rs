@@ -28,6 +28,10 @@ pub const STATUS_PAGE_SIZE: u32 = 4096;
 pub const USER_STACK_PAGE_SIZE: usize = 4096;
 pub const DEFAULT_USER_STACK_PAGES: usize = 4;
 pub const MAX_USER_STACK_PAGES: usize = 64;
+/// Default and hard upper bound for active threads in one userspace domain.
+/// The bootstrap thread counts toward this limit.
+pub const DEFAULT_USER_MAX_THREADS: usize = 16;
+pub const MAX_USER_THREADS: usize = 64;
 
 const _: () = assert!(HEAP_VADDR + HEAP_SIZE <= STATUS_VADDR);
 

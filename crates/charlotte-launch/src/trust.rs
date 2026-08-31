@@ -17,7 +17,7 @@ pub struct AdmissionTrust {
     pub cluster_id: [u8; 32],
     /// Ed25519 authority for executable ELF notes.
     pub artifact_key: [u8; 32],
-    /// Ed25519 authority for `CDEPLOY2` and `CRELEASE` decisions.
+    /// Ed25519 authority for `CDEPLOY1`--`CDEPLOY3` and `CRELEASE` decisions.
     pub deployment_key: [u8; 32],
     /// Independent Ed25519 authority for `COPSENC1` and `COPSBND2`.
     pub operations_key: [u8; 32],

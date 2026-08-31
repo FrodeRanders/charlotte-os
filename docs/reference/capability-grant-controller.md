@@ -10,7 +10,7 @@ authority or connector credentials.
 A scoped application receives exactly two relevant launch objects:
 
 - its bootstrap connection, which targets `grantctl` with `CALL` rights;
-- a read-only `Profile` capability containing its signed `CDEPLOY2`
+- a read-only `Profile` capability containing its signed `CDEPLOY3`
   descriptor.
 
 Only `grantctl` receives the separately typed `NameService` initial

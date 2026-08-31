@@ -134,6 +134,7 @@ mod tests {
             artifact_digest: [0x77; 32],
             artifact_name: b"kafka",
             stack_pages_per_thread: 32,
+            max_threads: 16,
             object_key: b"releases/kafka.elf",
             grants: &[],
         };

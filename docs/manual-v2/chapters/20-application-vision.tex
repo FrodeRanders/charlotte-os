@@ -22,8 +22,12 @@ The current boundary is important. Durga now has a prototype
 \texttt{charlotte} target alongside its Kafka-oriented Java and Rust targets.
 For each BPMN component it emits a \texttt{no\_std} runtime adapter, a Cargo
 manifest template, an AArch64 Charlotte build script, capability requests,
-named Kafka connector profiles, an explicit per-thread stack requirement, and
-signed-deployment planning metadata. The
+named Kafka connector profiles, explicit stack and thread-count requirements,
+and signed-deployment planning metadata. The generator creates a
+developer-owned \texttt{charlotte/resources.yaml} once and preserves it on
+later runs; deployment output remains blocked until its values have been
+reviewed, and the signing command is derived from that same retained source.
+The
 generated adapters have been compiled into Charlotte ELFs. Business handlers
 and schemas still have developer-owned completion points, and Durga does not
 itself operate a Charlotte release controller. CharlotteOS implements signed
@@ -393,16 +397,21 @@ contain:
     \item the proposed cluster desired state for this process release.
 \end{itemize}
 
-Stack deserves special treatment among those estimates. Only the application
+Execution resources deserve special treatment among those estimates. Only the application
 and generator authors know the component's worst-case call depth, generated
-adapter frames, and stack-resident data. The generated component plan should
-therefore carry an explicit \texttt{stackPagesPerThread} request for developer
-review. Operations may approve or reject it when signing the deployment, but
-should not have to guess it from the ELF or silently rewrite it. Charlotte's
-\texttt{CDEPLOY2} descriptor signs this value in 4 KiB pages; the kernel gives
-every thread in the protected domain that exact limit. The current admissible
-range is one through 64 pages, and legacy \texttt{CDEPLOY1} descriptors retain
-the former four-page default.
+adapter frames, stack-resident data, and safe concurrency. Durga therefore
+creates a developer-owned \texttt{charlotte/resources.yaml} carrying explicit
+\texttt{stackPagesPerThread} and \texttt{maxThreads} requests. It creates that
+file once and never overwrites it during regeneration. Operations may approve
+or reject the reviewed values when signing the deployment, but should not have
+to guess them from the ELF or silently rewrite them. Charlotte's
+\texttt{CDEPLOY3} descriptor signs both values; the kernel gives every thread
+in the protected domain the specified 4 KiB-page stack allocation and counts
+the bootstrap thread against the active-thread quota. Both current admissible
+ranges are one through 64. A quota-exceeding spawn aborts the domain under the
+current fail-closed ABI. Legacy \texttt{CDEPLOY1} descriptors retain the former
+four-page and 16-thread defaults; \texttt{CDEPLOY2} retains its signed stack
+value and receives the 16-thread compatibility default.
 
 \autoref{chap:cluster-vision} already implements signed, name-bound ELF artifacts with release,
 rollback, class, flags, and an optional provenance digest, and it pins the
@@ -431,12 +440,14 @@ release: 42
 component validate:
     artifact: sha256:...
     stack-pages-per-thread: 4
+    max-threads: 4
     replicas: 4
     parallel: true
 
 component calculate:
     artifact: sha256:...
     stack-pages-per-thread: 8
+    max-threads: 8
     replicas: 8
     parallel: true
     requires: service:entitlement-rules

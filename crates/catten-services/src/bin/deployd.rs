@@ -1,6 +1,6 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
-//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY2`
+//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY3`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
 //! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.

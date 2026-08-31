@@ -45,23 +45,27 @@ The former `fn(Args, Input<N>) -> !` entry form has been removed. Startup input
 is no longer hidden in a function signature; a program explicitly calls
 `Context::read_startup_input` when it intends to block for input.
 
-## Declaring stack requirements
+## Declaring execution resources
 
-Stack is a protected-domain execution limit, not an application-controlled
-manifest knob. For centrally deployed applications, generation or development
-records the required number of 4 KiB pages per thread in the component
-deployment plan. Release tooling places the reviewed value in the signed
-`CDEPLOY2` descriptor, and every thread subsequently created in that domain
-inherits it.
+Stack and thread count are protected-domain execution limits, not
+application-controlled manifest knobs. For centrally deployed applications,
+generation or development records the required number of 4 KiB pages per
+thread and maximum active threads in the component deployment plan. Release
+tooling places the reviewed values in the signed `CDEPLOY3` descriptor. Every
+thread subsequently created in that domain inherits the stack allocation, and
+the scheduler counts the bootstrap thread against the signed thread quota.
 
 Choose the value from actual worst-case call depth and stack-resident data,
 including generated adapter and language/runtime frames. Prefer heap-backed
 buffers for large or input-sized data. The current valid range is 1 through 64
-pages (4 KiB through 256 KiB); the default used by built-in and legacy
-`CDEPLOY1` launches is 4 pages (16 KiB). The kernel enforces the signed value
-exactly and rejects an invalid request rather than clamping it. Developers own
-the estimate, while the deployment signer and cluster admission retain the
-right to reject it.
+pages (4 KiB through 256 KiB), and the current thread-count range is 1 through
+64. The kernel enforces both values exactly and rejects invalid requests rather
+than clamping them. A thread publication beyond the quota fails closed by
+aborting that protection domain under the current spawn ABI. Built-in launches
+and legacy `CDEPLOY1` descriptors use four stack pages and 16 threads;
+`CDEPLOY2` preserves its signed stack value and receives the 16-thread
+compatibility default. Developers own the estimates, while the deployment
+signer and cluster admission retain the right to reject them.
 
 ## Launch ABI v2
 

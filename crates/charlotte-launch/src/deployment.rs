@@ -14,13 +14,17 @@ use ed25519_compact::{
 
 use crate::sha256;
 
-pub const MAGIC: &[u8; 8] = b"CDEPLOY2";
-pub const VERSION: u16 = 2;
+pub const MAGIC: &[u8; 8] = b"CDEPLOY3";
+pub const VERSION: u16 = 3;
+pub const V2_MAGIC: &[u8; 8] = b"CDEPLOY2";
+pub const V2_VERSION: u16 = 2;
 pub const LEGACY_MAGIC: &[u8; 8] = b"CDEPLOY1";
 pub const LEGACY_VERSION: u16 = 1;
-pub const HEADER_LEN: usize = 152;
+pub const HEADER_LEN: usize = 154;
+pub const LEGACY_HEADER_LEN: usize = 152;
 pub const SIGNATURE_OFFSET: usize = 88;
 pub const SIGNATURE_LEN: usize = 64;
+pub const MAX_THREADS_OFFSET: usize = SIGNATURE_OFFSET + SIGNATURE_LEN;
 pub const KEY_ID_LEN: usize = 16;
 /// Leaves room in one 4 KiB IPC memory object for an acquisition header and
 /// the requested service name.
@@ -55,6 +59,9 @@ pub struct DescriptorFields<'a> {
     /// Kernel-enforced stack allocation inherited by every thread in the
     /// protected domain, expressed in 4 KiB pages.
     pub stack_pages_per_thread: u16,
+    /// Maximum active threads in the protected domain, including its
+    /// bootstrap thread.
+    pub max_threads: u16,
     /// Opaque key interpreted inside the node's preconfigured object-store
     /// connector. It contains neither a bucket endpoint nor credentials.
     pub object_key: &'a [u8],
@@ -69,6 +76,7 @@ pub enum EncodeError {
     InvalidObjectKey,
     InvalidSequence,
     InvalidStackPages,
+    InvalidMaxThreads,
     TooLarge,
     TooManyGrants,
 }
@@ -89,6 +97,7 @@ pub struct DeploymentDescriptor<'a> {
     pub artifact_digest: [u8; 32],
     pub artifact_name: &'a [u8],
     pub stack_pages_per_thread: u16,
+    pub max_threads: u16,
     pub object_key: &'a [u8],
     grants_offset: usize,
     grant_count: usize,
@@ -158,6 +167,9 @@ pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> 
     if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(fields.stack_pages_per_thread)) {
         return Err(EncodeError::InvalidStackPages);
     }
+    if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(fields.max_threads)) {
+        return Err(EncodeError::InvalidMaxThreads);
+    }
     if !valid_artifact_name(fields.artifact_name) {
         return Err(EncodeError::InvalidArtifactName);
     }
@@ -209,6 +221,8 @@ pub fn encode_unsigned(
     bytes[68..70].copy_from_slice(&(fields.grants.len() as u16).to_le_bytes());
     bytes[70..72].copy_from_slice(&fields.stack_pages_per_thread.to_le_bytes());
     bytes[72..88].copy_from_slice(&sha256::digest(public_key)[..KEY_ID_LEN]);
+    bytes[MAX_THREADS_OFFSET..MAX_THREADS_OFFSET + 2]
+        .copy_from_slice(&fields.max_threads.to_le_bytes());
 
     let mut offset = HEADER_LEN;
     let name_end = offset + fields.artifact_name.len();
@@ -243,23 +257,45 @@ pub fn set_signature(bytes: &mut [u8], signature: &[u8; SIGNATURE_LEN]) -> bool 
 }
 
 pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
-    if bytes.len() < HEADER_LEN || usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
+    if bytes.len() < LEGACY_HEADER_LEN {
         return None;
     }
     let format_version = read_u16(bytes, 8)?;
-    let stack_pages_per_thread = match (bytes.get(0..8)?, format_version) {
+    let (header_len, stack_pages_per_thread, max_threads) = match (bytes.get(0..8)?, format_version)
+    {
         (magic, VERSION) if magic == MAGIC => {
+            if usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
+                return None;
+            }
             let pages = read_u16(bytes, 70)?;
             if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
                 return None;
             }
-            pages
-        }
-        (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
-            if read_u16(bytes, 70)? != 0 {
+            let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
+            if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
                 return None;
             }
-            crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?
+            (HEADER_LEN, pages, max_threads)
+        }
+        (magic, V2_VERSION) if magic == V2_MAGIC => {
+            if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN {
+                return None;
+            }
+            let pages = read_u16(bytes, 70)?;
+            if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
+                return None;
+            }
+            (LEGACY_HEADER_LEN, pages, crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?)
+        }
+        (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
+            if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN || read_u16(bytes, 70)? != 0 {
+                return None;
+            }
+            (
+                LEGACY_HEADER_LEN,
+                crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?,
+                crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
+            )
         }
         _ => return None,
     };
@@ -279,7 +315,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     if grant_count > MAX_GRANTS {
         return None;
     }
-    let name_start = HEADER_LEN;
+    let name_start = header_len;
     let name_end = name_start.checked_add(name_len)?;
     let object_key_end = name_end.checked_add(object_key_len)?;
     let artifact_name = bytes.get(name_start..name_end)?;
@@ -309,6 +345,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
         artifact_digest,
         artifact_name,
         stack_pages_per_thread,
+        max_threads,
         object_key,
         grants_offset: object_key_end,
         grant_count,

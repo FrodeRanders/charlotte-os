@@ -66,12 +66,15 @@ static DOMAIN_AUTHORITIES: LazyLock<
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DomainLimits {
     pub user_stack_pages: usize,
+    /// Maximum active threads, including the bootstrap thread.
+    pub max_threads: usize,
 }
 
 impl Default for DomainLimits {
     fn default() -> Self {
         Self {
             user_stack_pages: charlotte_launch::DEFAULT_USER_STACK_PAGES,
+            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS,
         }
     }
 }
@@ -80,6 +83,7 @@ impl Default for DomainLimits {
 pub enum DomainLimitError {
     StaleAddressSpace,
     InvalidUserStackPages,
+    InvalidMaxThreads,
 }
 
 /// Limits are keyed by a generation-bearing handle so ASID reuse cannot
@@ -220,6 +224,9 @@ pub fn set_domain_limits(
 ) -> Result<(), DomainLimitError> {
     if !(1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&limits.user_stack_pages) {
         return Err(DomainLimitError::InvalidUserStackPages);
+    }
+    if !(1..=charlotte_launch::MAX_USER_THREADS).contains(&limits.max_threads) {
+        return Err(DomainLimitError::InvalidMaxThreads);
     }
     if !address_space_handle_is_current(handle) {
         return Err(DomainLimitError::StaleAddressSpace);

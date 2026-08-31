@@ -104,14 +104,26 @@ static ABORTING_ADDRESS_SPACES: Mutex<BTreeMap<AddressSpaceId, usize>> =
 pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
     let asid = thread.asid;
     let aborting = ABORTING_ADDRESS_SPACES.lock();
+    let mut maximum = None;
     if asid != crate::memory::KERNEL_ASID {
         let handle =
             crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?;
         if aborting.get(&asid).is_some_and(|generation| *generation == handle.generation()) {
             return Err(Error::ThreadTerminated);
         }
+        maximum = Some(crate::memory::domain_limits(asid).max_threads);
     }
-    Ok(MASTER_THREAD_TABLE.write().add_element(thread))
+    let mut table = MASTER_THREAD_TABLE.write();
+    if maximum.is_some_and(|maximum| {
+        table
+            .iter()
+            .filter(|entry| entry.as_ref().is_some_and(|thread| thread.asid == asid))
+            .count()
+            >= maximum
+    }) {
+        return Err(Error::DomainThreadLimitExceeded);
+    }
+    Ok(table.add_element(thread))
 }
 
 pub fn set_rebalance_window_millis(window_millis: u64) {
@@ -122,6 +134,7 @@ pub fn set_rebalance_window_millis(window_millis: u64) {
 pub enum Error {
     InvalidThread,
     AlreadyBlocked,
+    DomainThreadLimitExceeded,
     ThreadTerminated,
 }
 

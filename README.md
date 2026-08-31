@@ -144,8 +144,9 @@ The main additions and extensions currently maintained here are:
   SHA-256.
 - **Signed, capability-scoped cluster deployment:** CI can place immutable ELFs
   in a separately managed S3-compatible store and notify any cluster member
-  with a signed `CDEPLOY2` descriptor that binds placement, per-thread stack
-  pages, and capability grants. A signed `CRELEASE` binds an ordered
+  with a signed `CDEPLOY3` descriptor that binds placement, per-thread stack
+  pages, a maximum active-thread count, and capability grants. A signed
+  `CRELEASE` binds an ordered
   multi-component change and admits all desired revisions in one Raft command.
   Assigned node agents fetch and verify each artifact, launch it in a fresh
   address space, and give it only `grantctl`; the controller translates the

@@ -842,12 +842,18 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .map_err(|_| "per-thread stack pages exceed the descriptor width".to_owned())?;
+    let max_threads = parse_required_u64(
+        args.get(7).ok_or_else(|| "missing maximum thread count".to_owned())?,
+        "maximum thread count",
+    )?
+    .try_into()
+    .map_err(|_| "maximum thread count exceeds the descriptor width".to_owned())?;
     let secret = SecretKey::from_slice(&hex_decode(
-        args.get(7).ok_or_else(|| "missing private key".to_owned())?,
+        args.get(8).ok_or_else(|| "missing private key".to_owned())?,
     )?)
     .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
     let parsed_grants =
-        args[8..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
+        args[9..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
     let grants = parsed_grants
         .iter()
         .map(|(service, rights)| CapabilityGrant {
@@ -861,6 +867,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         artifact_digest,
         artifact_name: artifact_name.as_bytes(),
         stack_pages_per_thread,
+        max_threads,
         object_key: object_key.as_bytes(),
         grants: &grants,
     };
@@ -883,8 +890,9 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
     println!(
         "signed deployment {output}: artifact={artifact_name:?} object={object_key:?} \
-         node={node_key:#x} sequence={sequence} stack_pages_per_thread={} grants={}",
+         node={node_key:#x} sequence={sequence} stack_pages_per_thread={} max_threads={} grants={}",
         stack_pages_per_thread,
+        max_threads,
         grants.len()
     );
     Ok(())
@@ -903,12 +911,14 @@ fn deployment_verify(args: &[String]) -> Result<()> {
     let descriptor = deployment::decode(&bytes)
         .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     println!(
-        "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={} stack_pages_per_thread={}",
+        "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={} stack_pages_per_thread={} \
+         max_threads={}",
         String::from_utf8_lossy(descriptor.artifact_name),
         String::from_utf8_lossy(descriptor.object_key),
         descriptor.node_key,
         descriptor.sequence,
-        descriptor.stack_pages_per_thread
+        descriptor.stack_pages_per_thread,
+        descriptor.max_threads
     );
     for grant in descriptor.grants() {
         println!("grant {:?} rights={:#x}", String::from_utf8_lossy(grant.service), grant.rights);
@@ -1373,6 +1383,7 @@ fn run() -> Result<()> {
                 artifact_digest: [0xa5; 32],
                 artifact_name: b"orders-step",
                 stack_pages_per_thread: 16,
+                max_threads: 8,
                 object_key: b"releases/orders-step-a5.elf",
                 grants: &grants,
             };
@@ -1416,7 +1427,7 @@ fn run() -> Result<()> {
                   [service|driver|bootstrap|admin] [version] [rollback] [flags] \
                   [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
                   deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
-                  <node-key> <sequence> <stack-pages-per-thread> <privkey-hex> \
+                  <node-key> <sequence> <stack-pages-per-thread> <max-threads> <privkey-hex> \
                   [service=send|call|client|publish ...] | deployment-verify <descriptor> \
                   <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
                   <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
@@ -1463,6 +1474,7 @@ mod tests {
             artifact_digest: [sequence as u8; 32],
             artifact_name: name,
             stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
+            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
             object_key: name,
             grants: &[],
         };

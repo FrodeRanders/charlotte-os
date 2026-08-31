@@ -134,15 +134,22 @@ pub struct ServiceDomain {
 /// Per-domain resource limits selected by the trusted launch path.
 ///
 /// These are kernel-enforced limits, not mutable manifest data. Every thread
-/// subsequently created inside the domain inherits the selected stack size.
+/// subsequently created inside the domain inherits the selected stack size,
+/// and the scheduler rejects publication beyond the domain's thread quota.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceLimits {
     pub user_stack_size: usize,
+    pub max_threads: usize,
 }
 
 impl ServiceLimits {
     pub const fn with_user_stack_size(mut self, bytes: usize) -> Self {
         self.user_stack_size = bytes;
+        self
+    }
+
+    pub const fn with_max_threads(mut self, max_threads: usize) -> Self {
+        self.max_threads = max_threads;
         self
     }
 
@@ -152,9 +159,12 @@ impl ServiceLimits {
     pub fn for_deployment(
         descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
     ) -> Self {
-        Self::default().with_user_stack_size(
-            usize::from(descriptor.stack_pages_per_thread) * charlotte_launch::USER_STACK_PAGE_SIZE,
-        )
+        Self::default()
+            .with_user_stack_size(
+                usize::from(descriptor.stack_pages_per_thread)
+                    * charlotte_launch::USER_STACK_PAGE_SIZE,
+            )
+            .with_max_threads(usize::from(descriptor.max_threads))
     }
 }
 
@@ -163,6 +173,7 @@ impl Default for ServiceLimits {
         Self {
             user_stack_size: charlotte_launch::DEFAULT_USER_STACK_PAGES
                 * charlotte_launch::USER_STACK_PAGE_SIZE,
+            max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS,
         }
     }
 }
@@ -330,6 +341,7 @@ pub(crate) fn start_domain_with_limits(
         loaded.address_space,
         crate::memory::DomainLimits {
             user_stack_pages,
+            max_threads: limits.max_threads,
         },
     )
     .unwrap_or_else(|error| panic!("[supervisor] invalid service limits: {error:?}"));

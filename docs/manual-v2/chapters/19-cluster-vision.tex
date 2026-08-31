@@ -694,10 +694,10 @@ wraps the DNS manifest operations and object store behind:
     \item \texttt{deploy}, which hashes the stored bytes and submits the
         pinned assignment; and
     \item \texttt{status}, which queries the committed record; and
-    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY2}
+    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY3}
         descriptor and commits its opaque central-object key, digest, target,
-        sequence, per-thread stack pages, and capability grants without
-        copying an ELF through Raft.
+        sequence, per-thread stack pages, maximum active-thread count, and
+        capability grants without copying an ELF through Raft.
 \end{itemize}
 
 The normal service set also starts \texttt{deployd}. Its bounded plaintext
@@ -727,7 +727,8 @@ The atomic alternative is a signed \texttt{CRELEASE} envelope produced with
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
 outer signature and every nested deployment signature. Current tooling emits
-\texttt{CDEPLOY2}; the reader retains compatibility with \texttt{CDEPLOY1}.
+\texttt{CDEPLOY3}; the reader retains compatibility with \texttt{CDEPLOY1}
+and \texttt{CDEPLOY2}.
 A follower relays the
 request to the current leader, which resolves all automatic node selections
 and proposes the set as one Raft command. The state machine preflights every

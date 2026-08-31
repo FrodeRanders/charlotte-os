@@ -68,7 +68,7 @@ test-only support. See
 
 `--deployment-ingress-test --timeout 240` extends the same fixture with the
 release path. The host uploads the signed `greet` ELF to RustFS, signs and
-wraps its `CDEPLOY2` descriptor in a signed `CRELEASE` envelope, atomically
+wraps its `CDEPLOY3` descriptor in a signed `CRELEASE` envelope, atomically
 admits the release, and waits on the management API until the exact desired
 generation owns the active service name on its assigned node.
 

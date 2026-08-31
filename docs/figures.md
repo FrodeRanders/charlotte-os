@@ -359,7 +359,7 @@ participant P as Application components
 
       C->>C: Build self-contained ELFs and add CLS2 signatures
       C->>O: Upload immutable artifact objects
-      C->>C: Sign one CDEPLOY2 per component, including stack pages
+      C->>C: Sign one CDEPLOY3 per component, including stack and thread limits
       C->>C: Sign ordered descriptors as CRELEASE(name, sequence)
       C->>D: POST /v1/releases
       D->>X: Move bounded release memory
@@ -384,7 +384,7 @@ participant P as Application components
       end
 ```
 
-The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY2` bytes. Admission is atomic:
+The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY3` bytes. Admission is atomic:
 all component revisions enter the replicated desired state or none do. Readiness is deliberately not claimed to be
 simultaneous—fetch, verification, launch, capability acquisition, and publication occur independently after commit.
 Coordinated rollback, progress deadlines, and failure-domain-aware rescheduling remain controller work.
@@ -403,7 +403,7 @@ participant K as Kernel launch gate
 participant C as Isolated connector
 
       DEV->>DEV: Sign ELF with artifact key
-      DEV->>DEV: Sign CDEPLOY2 + CRELEASE with deployment key
+      DEV->>DEV: Sign CDEPLOY3 + CRELEASE with deployment key
       DEV->>O: Upload immutable connector ELF
 
       OPS->>OPS: Build bounded CHS3PF1 or Kafka profile
@@ -448,7 +448,7 @@ RPK["Cluster recipient public key"]
 RSK["Recipient private key<br/>kernel/KMS custody"]
 TRUST["CTRUST1 public policy<br/>role-specific keys + cluster ID"]
 ELF["CLS2-signed ELF"]
-DESC["CDEPLOY2<br/>digest · object key · selector · stack pages · grants"]
+DESC["CDEPLOY3<br/>digest · object key · selector · stack pages · max threads · grants"]
 REL["CRELEASE<br/>name · sequence · ordered descriptors"]
 PROFILE["CHS3PF1 / Kafka profile<br/>infrastructure details + credentials"]
 ENC["COPSENC1<br/>HPKE ciphertext + operations signature"]
@@ -504,7 +504,8 @@ GEN["Charlotte target generator"]
           ADAPTERS["Compilable no_std<br/>activity adapters"]
           HANDLERS["Business handler stubs<br/>fail closed until implemented"]
           BUILD["Cargo manifest and build script"]
-          CAPS["Execution-resource and<br/>capability plan"]
+          RESOURCES["Developer-owned resources.yaml<br/>stack pages · max threads · review"]
+          CAPS["Capability plan"]
           KPROFILES["Named Kafka connector<br/>and kafka_step profiles"]
           PLAN["Multi-component deployment plan"]
           COMMANDS["Exact descriptor-sign,<br/>release-sign and release-apply commands"]
@@ -518,6 +519,7 @@ GEN["Charlotte target generator"]
       GEN --> ADAPTERS
       GEN --> HANDLERS
       GEN --> BUILD
+      GEN -->|"create once; preserve thereafter"| RESOURCES
       GEN --> CAPS
       GEN --> KPROFILES
       GEN --> PLAN
@@ -525,6 +527,7 @@ GEN["Charlotte target generator"]
 
       BUILD --> ARTIFACTS
       PLAN --> RELEASE
+      RESOURCES --> RELEASE
       CAPS --> RELEASE
       KPROFILES -->|"provision connector instances separately"| CLUSTER
       COMMANDS --> RELEASE
@@ -532,10 +535,12 @@ GEN["Charlotte target generator"]
       RELEASE --> CLUSTER
 ```
 
-Durga now generates the Charlotte-specific scaffolding and a deployable component release plan, but it does not invent
-business behavior: developers still implement the generated fail-closed handlers. The present `CRELEASE` binds concrete
-executable deployment decisions. A richer semantic bundle could additionally bind the original process model, schemas,
-provenance, communication graph, replica policy, affinity rules, and update strategy. Connector profiles are
-infrastructure inputs, not application-visible release secrets; descriptors bind only the names and rights an
-application may request. Per-thread stack pages originate in the developer-reviewed component plan, are signed into
-`CDEPLOY2`, and are enforced exactly for the protected domain rather than guessed or silently clamped by the cluster.
+Durga now generates the Charlotte-specific scaffolding and an actionable component release plan, but it does not invent
+business behavior: developers still implement the generated fail-closed handlers. Deployment also remains blocked until
+the retained execution-resource values have been reviewed. The present `CRELEASE` binds concrete executable deployment
+decisions. A richer semantic bundle could additionally bind the original process model, schemas, provenance,
+communication graph, replica policy, affinity rules, and update strategy. Connector profiles are infrastructure inputs,
+not application-visible release secrets; descriptors bind only the names and rights an application may request.
+Per-thread stack pages and maximum active threads originate in the retained, developer-reviewed
+`charlotte/resources.yaml`, are signed into `CDEPLOY3`, and are enforced exactly for the protected domain rather than
+guessed or silently clamped by the cluster.
