@@ -196,6 +196,14 @@ mod tests {
             &mut bundle,
         )
         .unwrap();
+        let binding_signature: Signature = operational_pair
+            .sk
+            .sign(operations_bundle::binding_signature_digest(&bundle, 0).unwrap(), None);
+        assert!(operations_bundle::set_binding_signature(
+            &mut bundle,
+            0,
+            binding_signature.as_ref().try_into().unwrap()
+        ));
         let signature: Signature =
             operational_pair.sk.sign(operations_bundle::signature_digest(&bundle).unwrap(), None);
         assert!(operations_bundle::set_signature(

@@ -585,6 +585,18 @@ fn operations_bundle_sign(args: &[String]) -> Result<()> {
     let mut bundle = vec![0u8; len];
     operations_bundle::encode_unsigned(&fields, operational_public, &recipient_public, &mut bundle)
         .map_err(|error| format!("encode operational bundle: {error:?}"))?;
+    for index in 0..bindings.len() {
+        let digest = operations_bundle::binding_signature_digest(&bundle, index)
+            .ok_or_else(|| "encoded compact binding did not decode".to_owned())?;
+        let signature: Signature = operational_secret.sign(digest, None);
+        let signature: &[u8; operations_bundle::BINDING_SIGNATURE_LEN] = signature
+            .as_ref()
+            .try_into()
+            .map_err(|_| "invalid compact-binding signature length".to_owned())?;
+        if !operations_bundle::set_binding_signature(&mut bundle, index, signature) {
+            return Err("failed to install compact-binding signature".to_owned());
+        }
+    }
     let digest = operations_bundle::signature_digest(&bundle)
         .ok_or_else(|| "encoded operational bundle did not decode".to_owned())?;
     let signature: Signature = operational_secret.sign(digest, None);

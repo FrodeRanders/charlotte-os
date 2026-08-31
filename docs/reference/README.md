@@ -25,7 +25,8 @@ should be updated with the implementation when those contracts change.
   descriptor notification, Raft admission, and central-S3 node pickup.
 - [Encrypted operational deployment bindings](../architecture/deployment-secrets-and-operations.md)
   — HPKE profiles, signed admission bundles, role-aware trust, leader-verified
-  ingress, replay fencing, and the remaining privileged decryption plan.
+  ingress, replay fencing, privileged S3 pickup, kernel-only HPKE open, and
+  read-only connector profile delivery.
 - [Kafka client service](kafka-client.md) — idempotent production,
   read-committed consumption, transactional offsets, and owned backpressure.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the

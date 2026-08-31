@@ -19,7 +19,7 @@ pub struct AdmissionTrust {
     pub artifact_key: [u8; 32],
     /// Ed25519 authority for `CDEPLOY1` and `CRELEASE` decisions.
     pub deployment_key: [u8; 32],
-    /// Independent Ed25519 authority for `COPSENC1` and `COPSBND1`.
+    /// Independent Ed25519 authority for `COPSENC1` and `COPSBND2`.
     pub operations_key: [u8; 32],
     /// X25519 public key naming the privileged cluster decryptor.
     pub recipient_key: [u8; 32],

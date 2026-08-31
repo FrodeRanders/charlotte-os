@@ -45,6 +45,7 @@ pub mod sha256;
 pub mod deployment;
 pub mod operations;
 pub mod operations_bundle;
+pub mod operations_pickup;
 pub mod placement;
 pub mod release;
 pub mod signature_note;

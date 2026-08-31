@@ -423,7 +423,20 @@ pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> N
 pub fn launch_deployment_plane(ns: &NameServiceHandle, cluster: &[u8]) -> DeploymentPlane {
     let trust = charlotte_launch::development_admission_trust(cluster)
         .expect("valid development admission trust");
-    launch_deployment_plane_with_trust(ns, cluster, trust)
+    // Development fixture matching `DEVELOPMENT_RECIPIENT_PUBLIC_KEY`. A
+    // production platform must inject its sealed recipient key through
+    // `launch_deployment_plane_with_operational_key` instead.
+    const DEVELOPMENT_RECIPIENT_PRIVATE_KEY: [u8; 32] = [
+        0xf0, 0x27, 0x76, 0xea, 0x15, 0x74, 0x49, 0x30, 0x94, 0xee, 0xf5, 0xb9, 0x9d, 0xb4, 0xd9,
+        0x57, 0x89, 0x0d, 0x0f, 0x48, 0x3c, 0xd9, 0x2b, 0xad, 0xe2, 0x6c, 0xe3, 0xcb, 0x10, 0x7d,
+        0x3b, 0x0d,
+    ];
+    launch_deployment_plane_with_operational_key(
+        ns,
+        cluster,
+        trust,
+        DEVELOPMENT_RECIPIENT_PRIVATE_KEY,
+    )
 }
 
 /// Launch the administration and reconciliation plane with caller-provisioned
@@ -433,18 +446,51 @@ pub fn launch_deployment_plane_with_trust(
     cluster: &[u8],
     trust: charlotte_launch::trust::AdmissionTrust,
 ) -> DeploymentPlane {
+    launch_deployment_plane_configured(ns, cluster, trust, None)
+}
+
+/// Launch the reconciliation plane with the cluster's HPKE recipient key held
+/// only by the kernel. The key is checked against public admission trust and
+/// is never copied into the agent or connector catalog.
+pub fn launch_deployment_plane_with_operational_key(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+    recipient_private_key: [u8; 32],
+) -> DeploymentPlane {
+    launch_deployment_plane_configured(ns, cluster, trust, Some(recipient_private_key))
+}
+
+fn launch_deployment_plane_configured(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+    recipient_private_key: Option<[u8; 32]>,
+) -> DeploymentPlane {
     assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
+    assert!(crate::service::supervisor::configure_operational_launch_trust(
+        *ns,
+        trust,
+        recipient_private_key,
+    ));
     let admission_trust = trust.encode().expect("valid admission trust");
     let controller_trust = [ManifestEntry {
         key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
         flags: 0,
         value: ManifestValue::Bytes(&admission_trust),
     }];
-    let artifact_trust = [ManifestEntry {
-        key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
-        flags: 0,
-        value: ManifestValue::Bytes(&trust.artifact_key),
-    }];
+    let artifact_trust = [
+        ManifestEntry {
+            key: charlotte_launch::CLUSTER_KEY_MANIFEST_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&trust.artifact_key),
+        },
+        ManifestEntry {
+            key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&admission_trust),
+        },
+    ];
     let clusterctl = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"clusterctl").expect("[launch] clusterctl.elf"),
         ns,
@@ -485,80 +531,29 @@ pub fn launch_deployment_plane_with_trust(
 /// provisioning path. Multiple instances may eventually publish distinct
 /// policy-selected names; the current protocol name supports one instance.
 pub fn launch_s3_profile(ns: &NameServiceHandle, profile: &S3Profile<'_>) -> ServiceDomain {
-    use charlotte_protocol_s3::manifest;
-
-    let mut entries = alloc::vec::Vec::with_capacity(12);
-    entries.extend_from_slice(&[
-        ManifestEntry {
-            key: manifest::IP,
-            flags: 0,
-            value: ManifestValue::Bytes(&profile.endpoint_ipv4),
-        },
-        ManifestEntry {
-            key: manifest::HOST,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.host),
-        },
-        ManifestEntry {
-            key: manifest::PORT,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.port as u64),
-        },
-        ManifestEntry {
-            key: manifest::TLS,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.tls as u64),
-        },
-        ManifestEntry {
-            key: manifest::REGION,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.region),
-        },
-        ManifestEntry {
-            key: manifest::BUCKET,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.bucket),
-        },
-        ManifestEntry {
-            key: manifest::PREFIX,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.prefix),
-        },
-        ManifestEntry {
-            key: manifest::ACCESS_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.access_key),
-        },
-        ManifestEntry {
-            key: manifest::SECRET_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(profile.secret_key),
-        },
-        ManifestEntry {
-            key: manifest::RIGHTS,
-            flags: 0,
-            value: ManifestValue::Unsigned(profile.rights),
-        },
-    ]);
-    if let Some(namespace) = profile.namespace {
-        entries.push(ManifestEntry {
-            key: manifest::NAMESPACE,
-            flags: 0,
-            value: ManifestValue::Bytes(namespace),
-        });
-    }
-    if let Some(ca_der) = profile.ca_certificate_der {
-        entries.push(ManifestEntry {
-            key: manifest::CA_DER,
-            flags: 0,
-            value: ManifestValue::Bytes(ca_der),
-        });
-    }
-    crate::service::supervisor::spawn_with_manifest_and_limits(
+    let encoded = zeroize::Zeroizing::new(
+        charlotte_protocol_s3::Profile {
+            endpoint_ipv4: profile.endpoint_ipv4,
+            host: profile.host,
+            port: profile.port,
+            tls: profile.tls,
+            ca_certificate_der: profile.ca_certificate_der.unwrap_or(&[]),
+            region: profile.region,
+            bucket: profile.bucket,
+            prefix: profile.prefix,
+            access_key: profile.access_key,
+            secret_key: profile.secret_key,
+            namespace: profile.namespace.unwrap_or(&[]),
+            rights: profile.rights,
+        }
+        .encode()
+        .expect("valid S3 launch profile"),
+    );
+    crate::service::supervisor::spawn_with_read_only_profile_and_limits(
         crate::service::store::service_elf(b"s3").expect("[launch] s3.elf"),
         ns,
         ConnectionRights::CALL,
-        &entries,
+        &encoded,
         // TLS certificate parsing and record processing need more than the
         // normal 16 KiB EL0 stack. Record buffers themselves live on the heap.
         ServiceLimits::default().with_user_stack_size(128 * 1024),

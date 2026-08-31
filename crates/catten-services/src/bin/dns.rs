@@ -2262,6 +2262,61 @@ fn main(ctx: Context) -> ! {
                     continue;
                 }
 
+                dns::OP_OPERATIONAL_LIST => {
+                    let stored = catalog.operational_bindings();
+                    let bindings = stored
+                        .iter()
+                        .map(|(profile_name, entry)| {
+                            charlotte_launch::operations_pickup::CatalogBinding {
+                                generation: entry.generation,
+                                bundle_sequence: entry.bundle_sequence,
+                                sequence: entry.sequence,
+                                expires_unix_seconds: entry.expires_unix_seconds,
+                                profile_kind: entry.profile_kind,
+                                release_name: &entry.release_name,
+                                profile_name,
+                                target_artifact: &entry.target_artifact,
+                                object_key: &entry.object_key,
+                                release_digest: entry.release_digest,
+                                bundle_digest: entry.bundle_digest,
+                                envelope_digest: entry.envelope_digest,
+                                recipient_key_id: entry.recipient_key_id,
+                                signing_key_id: entry.signing_key_id,
+                                authorization_signature: entry.authorization_signature,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    if let Some(len) =
+                        charlotte_launch::operations_pickup::catalog_list_encoded_len(&bindings)
+                    {
+                        let mut bytes = vec![0; len];
+                        if charlotte_launch::operations_pickup::encode_catalog_list(
+                            &bindings, &mut bytes,
+                        )
+                        .is_some()
+                        {
+                            reply_move_bytes(message.reply, &bytes);
+                        } else if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                        }
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                    }
+                    continue;
+                }
+
+                dns::OP_RELEASE_QUERY_NAMED => {
+                    let release_name = read_named_bytes(&message);
+                    if let Some(release_name) = release_name
+                        && let Some(entry) = catalog.release(&release_name)
+                    {
+                        reply_move_bytes(message.reply, &entry.envelope);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
+                    continue;
+                }
+
                 dns::OP_DEPLOY_ROLLOUT_NAMED => {
                     let artifact = read_named_bytes(&message);
                     if let Some(artifact) = artifact

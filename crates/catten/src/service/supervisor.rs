@@ -216,6 +216,57 @@ pub(crate) static DEPLOYMENT_AGENT_ASID: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<AddressSpaceHandle>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+struct OperationalLaunchTrust {
+    public: charlotte_launch::trust::AdmissionTrust,
+    recipient_private_key: Option<zeroize::Zeroizing<[u8; 32]>>,
+    name_service: NameServiceHandle,
+}
+
+/// Kernel-private operational trust. Public role keys are retained here so
+/// the final launch gate can independently re-verify the artifact, descriptor,
+/// and envelope. The HPKE private key never enters an EL0 manifest.
+static OPERATIONAL_LAUNCH_TRUST: spin::LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<OperationalLaunchTrust>>,
+> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+
+pub fn configure_operational_launch_trust(
+    name_service: NameServiceHandle,
+    trust: charlotte_launch::trust::AdmissionTrust,
+    recipient_private_key: Option<[u8; 32]>,
+) -> bool {
+    if !trust.is_valid() {
+        return false;
+    }
+    if let Some(private) = recipient_private_key.as_ref()
+        && charlotte_launch::operations::recipient_public_key(private).ok()
+            != Some(trust.recipient_key)
+    {
+        return false;
+    }
+    *OPERATIONAL_LAUNCH_TRUST.lock() = Some(OperationalLaunchTrust {
+        public: trust,
+        recipient_private_key: recipient_private_key.map(zeroize::Zeroizing::new),
+        name_service,
+    });
+    true
+}
+
+pub(crate) fn with_operational_launch_trust<T>(
+    f: impl FnOnce(&charlotte_launch::trust::AdmissionTrust, &[u8; 32], &NameServiceHandle) -> T,
+) -> Option<T> {
+    let (public, private, name_service) = {
+        let policy = OPERATIONAL_LAUNCH_TRUST.lock();
+        let policy = policy.as_ref()?;
+        let private = zeroize::Zeroizing::new(**policy.recipient_private_key.as_ref()?);
+        (policy.public, private, policy.name_service)
+    };
+    Some(f(&public, &private, &name_service))
+}
+
+pub(crate) fn configured_admission_trust() -> Option<charlotte_launch::trust::AdmissionTrust> {
+    OPERATIONAL_LAUNCH_TRUST.lock().as_ref().map(|policy| policy.public)
+}
+
 /// A domain owned by the deployment agent on this node. The stable principal
 /// is derived from the signed artifact name; it fences retirement from ASID
 /// reuse and permits several independently deployed applications to coexist.
@@ -607,11 +658,13 @@ pub fn try_spawn_with_read_only_profile_and_limits(
 pub fn try_spawn_with_deployment_descriptor(
     image: &[u8],
     descriptor_bytes: &[u8],
+    deployment_key: &[u8; 32],
+    artifact_key: &[u8; 32],
     limits: ServiceLimits,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
     let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
         .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
-    if charlotte_launch::deployment::verify(descriptor_bytes, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+    if charlotte_launch::deployment::verify(descriptor_bytes, deployment_key)
         != charlotte_launch::deployment::VerifyOutcome::Valid
     {
         return Err(ProfileLaunchError::InvalidDeploymentDescriptor);
@@ -620,6 +673,11 @@ pub fn try_spawn_with_deployment_descriptor(
         .ok_or(ProfileLaunchError::DescriptorArtifactMismatch)?;
     if metadata.name() != descriptor.artifact_name
         || charlotte_launch::sha256::digest(image) != descriptor.artifact_digest
+        || charlotte_launch::signature_note::verify_elf_for_name(
+            image,
+            artifact_key,
+            descriptor.artifact_name,
+        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
         return Err(ProfileLaunchError::DescriptorArtifactMismatch);
     }

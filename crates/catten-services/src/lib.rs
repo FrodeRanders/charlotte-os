@@ -1342,11 +1342,19 @@ pub mod dns {
     /// automatic node assignment and commits the complete component set in
     /// one Raft command. The reply is the release generation.
     pub const OP_DEPLOY_RELEASE: u32 = 20;
-    /// Admit one fully verified `COPSBND1` operational bundle. `arg0` is the
+    /// Admit one fully verified `COPSBND2` operational bundle. `arg0` is the
     /// byte length in moved memory. A follower relays the complete signed
     /// proof; the leader re-verifies both authorities and trusted UTC before
     /// committing only compact references and replay fences.
     pub const OP_DEPLOY_OPERATIONS: u32 = 21;
+    /// Enumerate active compact operational bindings from locally applied
+    /// Raft state. The reply is a bounded `COPSLST1` record set; it contains
+    /// object keys and authenticated digests, never ciphertext or plaintext.
+    pub const OP_OPERATIONAL_LIST: u32 = 22;
+    /// Query the exact signed `CRELEASE` envelope by release name carried in
+    /// moved memory. This lets the privileged launch gate prove that a target
+    /// descriptor belongs to the release named by a compact binding.
+    pub const OP_RELEASE_QUERY_NAMED: u32 = 23;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1502,7 +1510,7 @@ pub mod clusterctl {
     /// uses `[len:u64][bytes]`, as for `OP_NOTIFY`; the reply is the atomically
     /// committed release generation.
     pub const OP_NOTIFY_RELEASE: u32 = 9;
-    /// Notify the cluster of an independently operator-signed `COPSBND1`.
+    /// Notify the cluster of an independently operator-signed `COPSBND2`.
     /// The moved memory uses `[len:u64][bytes]`; the leader verifies release,
     /// operations, recipient, cluster and expiry context before admission.
     pub const OP_NOTIFY_OPERATIONS: u32 = 10;
@@ -2260,7 +2268,7 @@ pub mod rrelease {
 }
 
 /// Correlated follower-to-leader encrypted operational-bundle submission.
-/// The body uses a 32-bit bundle length because `COPSBND1` intentionally
+/// The body uses a 32-bit bundle length because `COPSBND2` intentionally
 /// exceeds the historical 64 KiB release envelope.
 pub mod roperations {
     pub const TAG_REQUEST: u8 = 0x1b;

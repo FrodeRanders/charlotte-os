@@ -148,6 +148,7 @@ define_syscall_numbers!(
     (LogStr, 74),
     (RandomU64, 75),
     (SpawnArtifactScoped, 76),
+    (SpawnOperationalConnector, 77),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -1831,6 +1832,25 @@ pub fn spawn_artifact_scoped(
             artifact_name,
             descriptor_cap,
             descriptor_size as u64,
+        )
+    }
+}
+
+/// Submit one `COPSPK01` encrypted connector pickup package. The kernel
+/// consumes the memory capability on every submitted outcome and returns the
+/// connector ASID only after re-verification, HPKE open, and profile transfer.
+#[inline(always)]
+pub fn spawn_operational_connector(
+    package_cap: u64,
+    package_size: usize,
+    artifact_principal: u64,
+) -> u64 {
+    unsafe {
+        svc3(
+            SyscallNumber::SpawnOperationalConnector,
+            package_cap,
+            package_size as u64,
+            artifact_principal,
         )
     }
 }

@@ -11,7 +11,10 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{
+    vec,
+    vec::Vec,
+};
 
 use catten_rt::{
     Context,
@@ -24,6 +27,7 @@ use catten_rt::{
         DeployedArtifact,
         OwnedMemory,
         launch_artifact,
+        launch_operational_connector,
         launch_scoped_artifact_named,
     },
 };
@@ -34,6 +38,7 @@ use catten_services::{
     objstore,
     s3_client::Client as S3Client,
     sleep_ms,
+    time,
     try_registered_name_bytes_owned,
     wait_for_registered_name_owned,
 };
@@ -61,6 +66,33 @@ struct ActiveDeployment {
     retiring: bool,
 }
 
+struct OperationalBinding {
+    generation: u64,
+    bundle_sequence: u64,
+    sequence: u64,
+    expires_unix_seconds: u64,
+    profile_kind: u16,
+    release_name: Vec<u8>,
+    profile_name: Vec<u8>,
+    target_artifact: Vec<u8>,
+    object_key: Vec<u8>,
+    release_digest: [u8; 32],
+    bundle_digest: [u8; 32],
+    envelope_digest: [u8; 32],
+    recipient_key_id: [u8; 16],
+    signing_key_id: [u8; 16],
+    authorization_signature: [u8; 64],
+}
+
+struct ActiveOperational {
+    profile_name: Vec<u8>,
+    binding_generation: u64,
+    deployment_generation: u64,
+    target_artifact: Vec<u8>,
+    domain: DeployedArtifact,
+    retiring: bool,
+}
+
 fn fail(stage: u32) -> ! {
     catten_rt::logln!("[agent] fatal stage={:#x}", stage);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, stage);
@@ -78,19 +110,9 @@ fn lookup(names: ConnectionRef<'_>, service: u64) -> Option<Connection> {
     wait_for_registered_name_owned(names, service).map(|(_, connection)| connection)
 }
 
-fn read_cluster_key(dns_connection: ConnectionRef<'_>) -> Option<[u8; 32]> {
-    let reply = dns_connection.call(dns::OP_KEY, 0).ok()?.wait().ok()?;
-    if reply.result < 32 {
-        return None;
-    }
-    let memory = reply.memory?;
-    let mapping = memory.map_read_only().ok()?;
-    mapping.as_slice().get(..32)?.try_into().ok()
-}
-
-fn manifest_cluster_key(ctx: &Context) -> Option<[u8; 32]> {
-    match ctx.manifest_value(charlotte_launch::CLUSTER_KEY_MANIFEST_KEY) {
-        Some(ManifestValue::Bytes(bytes)) => <[u8; 32]>::try_from(bytes).ok(),
+fn manifest_admission_trust(ctx: &Context) -> Option<charlotte_launch::trust::AdmissionTrust> {
+    match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::trust::AdmissionTrust::decode(bytes),
         _ => None,
     }
 }
@@ -147,6 +169,61 @@ fn deployment_names(dns_connection: ConnectionRef<'_>) -> Vec<Vec<u8>> {
     }
 }
 
+fn operational_bindings(dns_connection: ConnectionRef<'_>) -> Vec<OperationalBinding> {
+    let Some(reply) =
+        dns_connection.call(dns::OP_OPERATIONAL_LIST, 0).ok().and_then(|call| call.wait().ok())
+    else {
+        return Vec::new();
+    };
+    let Ok(len) = usize::try_from(reply.result) else {
+        return Vec::new();
+    };
+    let Some(memory) = reply.memory else {
+        return Vec::new();
+    };
+    let Ok(mapping) = memory.map_read_only() else {
+        return Vec::new();
+    };
+    let Some(bytes) = mapping.as_slice().get(..len) else {
+        return Vec::new();
+    };
+    let Some(expected_count) = bytes
+        .get(10..12)
+        .and_then(|count| <[u8; 2]>::try_from(count).ok())
+        .map(u16::from_le_bytes)
+        .map(usize::from)
+    else {
+        return Vec::new();
+    };
+    let Some(bindings) = charlotte_launch::operations_pickup::decode_catalog_list(bytes) else {
+        return Vec::new();
+    };
+    let result = bindings
+        .map(|binding| OperationalBinding {
+            generation: binding.generation,
+            bundle_sequence: binding.bundle_sequence,
+            sequence: binding.sequence,
+            expires_unix_seconds: binding.expires_unix_seconds,
+            profile_kind: binding.profile_kind,
+            release_name: binding.release_name.to_vec(),
+            profile_name: binding.profile_name.to_vec(),
+            target_artifact: binding.target_artifact.to_vec(),
+            object_key: binding.object_key.to_vec(),
+            release_digest: binding.release_digest,
+            bundle_digest: binding.bundle_digest,
+            envelope_digest: binding.envelope_digest,
+            recipient_key_id: binding.recipient_key_id,
+            signing_key_id: binding.signing_key_id,
+            authorization_signature: binding.authorization_signature,
+        })
+        .collect::<Vec<_>>();
+    if result.len() == expected_count {
+        result
+    } else {
+        Vec::new()
+    }
+}
+
 fn query_deployment(dns_connection: ConnectionRef<'_>, name: &[u8]) -> Option<DeploymentInfo> {
     let request = memory_from_bytes(name)?;
     let reply = dns_connection
@@ -158,6 +235,26 @@ fn query_deployment(dns_connection: ConnectionRef<'_>, name: &[u8]) -> Option<De
     let memory = reply.memory?;
     let mapping = memory.map_read_only().ok()?;
     decode_deployment(mapping.as_slice().get(..len)?)
+}
+
+fn query_release(dns_connection: ConnectionRef<'_>, release_name: &[u8]) -> Option<Vec<u8>> {
+    let request = memory_from_bytes(release_name)?;
+    let reply = dns_connection
+        .call_move(dns::OP_RELEASE_QUERY_NAMED, release_name.len() as u64, request)
+        .ok()?
+        .wait()
+        .ok()?;
+    let len = usize::try_from(reply.result).ok()?;
+    if !(charlotte_launch::release::HEADER_LEN..=charlotte_launch::release::MAX_RELEASE_LEN)
+        .contains(&len)
+    {
+        return None;
+    }
+    let memory = reply.memory?;
+    let mapping = memory.map_read_only().ok()?;
+    let bytes = mapping.as_slice().get(..len)?;
+    charlotte_launch::release::decode(bytes)?;
+    Some(bytes.to_vec())
 }
 
 fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
@@ -222,34 +319,17 @@ fn fetch_from_central_store(
         core::str::from_utf8(descriptor.artifact_name).unwrap_or("<invalid>"),
         core::str::from_utf8(descriptor.object_key).unwrap_or("<invalid>")
     );
-    let (_, connection) = try_registered_name_bytes_owned(names, b"s3")?;
-    let client = S3Client::new(connection.as_ref());
-    let request = charlotte_protocol_s3::ObjectRequest::get(descriptor.object_key);
-    let (mut get, info) = client.get(request).ok()?;
-    let expected_len = usize::try_from(info.content_length).ok()?;
-    if info.status != 200
-        || expected_len == 0
-        || expected_len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE
-    {
-        return None;
-    }
-    let mut artifact = Vec::with_capacity(expected_len);
-    while let Some(chunk) = get.read().ok()? {
-        let (memory, len) = chunk.into_parts();
-        let mapping = memory.map_read_only().ok()?;
-        artifact.extend_from_slice(mapping.as_slice().get(..len)?);
-        if artifact.len() > expected_len {
-            return None;
-        }
-    }
-    get.close().ok()?;
-    if artifact.len() != expected_len
-        || charlotte_launch::sha256::digest(&artifact) != descriptor.artifact_digest
-        || charlotte_launch::signature_note::verify_elf_for_name(
-            &artifact,
-            cluster_key,
-            descriptor.artifact_name,
-        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    let artifact = fetch_s3_object(
+        names,
+        descriptor.object_key,
+        charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
+        &descriptor.artifact_digest,
+    )?;
+    if charlotte_launch::signature_note::verify_elf_for_name(
+        &artifact,
+        cluster_key,
+        descriptor.artifact_name,
+    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
         catten_rt::logln!("[agent] fetched artifact failed identity validation");
         return None;
@@ -258,11 +338,44 @@ fn fetch_from_central_store(
     Some(artifact)
 }
 
+fn fetch_s3_object(
+    names: ConnectionRef<'_>,
+    key: &[u8],
+    max_len: usize,
+    expected_digest: &[u8; 32],
+) -> Option<Vec<u8>> {
+    let (_, connection) = try_registered_name_bytes_owned(names, b"s3")?;
+    let client = S3Client::new(connection.as_ref());
+    let (mut get, info) = client.get(charlotte_protocol_s3::ObjectRequest::get(key)).ok()?;
+    let expected_len = usize::try_from(info.content_length).ok()?;
+    if info.status != 200 || expected_len == 0 || expected_len > max_len {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(expected_len);
+    while let Some(chunk) = get.read().ok()? {
+        let (memory, len) = chunk.into_parts();
+        let mapping = memory.map_read_only().ok()?;
+        bytes.extend_from_slice(mapping.as_slice().get(..len)?);
+        if bytes.len() > expected_len {
+            return None;
+        }
+    }
+    get.close().ok()?;
+    (bytes.len() == expected_len && charlotte_launch::sha256::digest(&bytes) == *expected_digest)
+        .then_some(bytes)
+}
+
+fn trusted_unix_seconds(names: ConnectionRef<'_>) -> Option<u64> {
+    let time = lookup(names, time::NAME)?;
+    let reply = time.as_ref().call(time::OP_UNIX_SECONDS, 0).ok()?.wait().ok()?;
+    u64::try_from(reply.result).ok().filter(|seconds| *seconds != 0)
+}
+
 fn launch(
     names: ConnectionRef<'_>,
     name: &[u8],
     entry: &DeploymentInfo,
-    cluster_key: &[u8; 32],
+    trust: &charlotte_launch::trust::AdmissionTrust,
     my_node_key: u64,
 ) -> Option<ActiveDeployment> {
     if entry.descriptor.is_empty() {
@@ -270,7 +383,7 @@ fn launch(
             names,
             entry.object_id,
             &entry.artifact_digest,
-            cluster_key,
+            &trust.artifact_key,
             name,
         )?;
         let domain = launch_artifact(artifact, artifact_len, name).ok()?;
@@ -282,7 +395,7 @@ fn launch(
             retiring: false,
         });
     }
-    if charlotte_launch::deployment::verify(&entry.descriptor, cluster_key)
+    if charlotte_launch::deployment::verify(&entry.descriptor, &trust.deployment_key)
         != charlotte_launch::deployment::VerifyOutcome::Valid
     {
         return None;
@@ -294,7 +407,7 @@ fn launch(
     {
         return None;
     }
-    let artifact = fetch_from_central_store(names, &descriptor, cluster_key)?;
+    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
     let artifact_memory = memory_from_bytes(&artifact)?;
     let descriptor_memory = memory_from_bytes(&entry.descriptor)?;
     let domain = launch_scoped_artifact_named(
@@ -316,6 +429,87 @@ fn launch(
         generation: entry.generation,
         domain,
         published: false,
+        retiring: false,
+    })
+}
+
+fn launch_operational(
+    names: ConnectionRef<'_>,
+    dns_connection: ConnectionRef<'_>,
+    binding: &OperationalBinding,
+    deployment: &DeploymentInfo,
+    trust: &charlotte_launch::trust::AdmissionTrust,
+    my_node_key: u64,
+) -> Option<ActiveOperational> {
+    if deployment.descriptor.is_empty()
+        || deployment.node_key != my_node_key
+        || deployment.artifact_digest == [0; 32]
+    {
+        return None;
+    }
+    let descriptor = charlotte_launch::deployment::decode(&deployment.descriptor)?;
+    if descriptor.artifact_name != binding.target_artifact
+        || descriptor.artifact_digest != deployment.artifact_digest
+    {
+        return None;
+    }
+    if charlotte_launch::deployment::verify(&deployment.descriptor, &trust.deployment_key)
+        != charlotte_launch::deployment::VerifyOutcome::Valid
+    {
+        return None;
+    }
+    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
+    let envelope = fetch_s3_object(
+        names,
+        &binding.object_key,
+        charlotte_launch::operations::MAX_ENVELOPE_LEN,
+        &binding.envelope_digest,
+    )?;
+    let release = query_release(dns_connection, &binding.release_name)?;
+    let now_unix_seconds = trusted_unix_seconds(names)?;
+    let wire_binding = charlotte_launch::operations_pickup::CatalogBinding {
+        generation: binding.generation,
+        bundle_sequence: binding.bundle_sequence,
+        sequence: binding.sequence,
+        expires_unix_seconds: binding.expires_unix_seconds,
+        profile_kind: binding.profile_kind,
+        release_name: &binding.release_name,
+        profile_name: &binding.profile_name,
+        target_artifact: &binding.target_artifact,
+        object_key: &binding.object_key,
+        release_digest: binding.release_digest,
+        bundle_digest: binding.bundle_digest,
+        envelope_digest: binding.envelope_digest,
+        recipient_key_id: binding.recipient_key_id,
+        signing_key_id: binding.signing_key_id,
+        authorization_signature: binding.authorization_signature,
+    };
+    let pickup = charlotte_launch::operations_pickup::Pickup {
+        binding: wire_binding,
+        now_unix_seconds,
+        release: &release,
+        artifact: &artifact,
+        descriptor: &deployment.descriptor,
+        envelope: &envelope,
+    };
+    let mut package = vec![0; pickup.encoded_len()?];
+    let package_len = pickup.encode(&mut package)?;
+    let package = memory_from_bytes(&package)?;
+    let domain =
+        launch_operational_connector(package, package_len, &binding.target_artifact).ok()?;
+    catten_rt::logln!(
+        "[agent] launched operational profile={:?} target={:?} generation={} asid={}",
+        core::str::from_utf8(&binding.profile_name).unwrap_or("<invalid>"),
+        core::str::from_utf8(&binding.target_artifact).unwrap_or("<invalid>"),
+        binding.generation,
+        domain.asid()
+    );
+    Some(ActiveOperational {
+        profile_name: binding.profile_name.clone(),
+        binding_generation: binding.generation,
+        deployment_generation: deployment.generation,
+        target_artifact: binding.target_artifact.clone(),
+        domain,
         retiring: false,
     })
 }
@@ -365,20 +559,20 @@ fn main(ctx: Context) -> ! {
     config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
 
-    let cluster_key = manifest_cluster_key(&ctx).unwrap_or_else(|| fail(STAGE_FAIL));
-    if read_cluster_key(dns_connection.as_ref()).is_some_and(|key| key != cluster_key) {
-        fail(STAGE_FAIL);
-    }
-
+    let trust = manifest_admission_trust(&ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
+    let mut operational: Vec<ActiveOperational> = Vec::new();
     loop {
         let desired_names = deployment_names(dns_connection.as_ref());
+        let desired_operations = operational_bindings(dns_connection.as_ref());
 
         for running in &mut active {
-            let still_desired = query_deployment(dns_connection.as_ref(), &running.name)
-                .is_some_and(|entry| {
+            let still_desired =
+                query_deployment(dns_connection.as_ref(), &running.name).is_some_and(|entry| {
                     entry.node_key == my_node_key && entry.generation == running.generation
-                });
+                }) && !desired_operations
+                    .iter()
+                    .any(|binding| binding.target_artifact == running.name);
             running.retiring |= !still_desired;
             if !running.retiring {
                 publish_if_ready(names, dns_connection.as_ref(), running);
@@ -405,13 +599,69 @@ fn main(ctx: Context) -> ! {
             index += 1;
         }
 
+        for running in &mut operational {
+            let binding_matches = desired_operations.iter().any(|binding| {
+                binding.profile_name == running.profile_name
+                    && binding.target_artifact == running.target_artifact
+                    && binding.generation == running.binding_generation
+            });
+            let deployment_matches = query_deployment(
+                dns_connection.as_ref(),
+                &running.target_artifact,
+            )
+            .is_some_and(|entry| {
+                entry.node_key == my_node_key && entry.generation == running.deployment_generation
+            });
+            running.retiring |= !binding_matches || !deployment_matches;
+        }
+        let mut index = 0;
+        while index < operational.len() {
+            if operational[index].retiring {
+                match operational[index].domain.poll_retire() {
+                    Ok(true) => {
+                        operational.swap_remove(index);
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(_) => fail(STAGE_FAIL),
+                }
+            }
+            index += 1;
+        }
+
+        for binding in &desired_operations {
+            if operational
+                .iter()
+                .any(|running| running.profile_name == binding.profile_name && !running.retiring)
+                || active.iter().any(|running| running.name == binding.target_artifact)
+            {
+                continue;
+            }
+            if let Some(deployment) =
+                query_deployment(dns_connection.as_ref(), &binding.target_artifact)
+                && let Some(running) = launch_operational(
+                    names,
+                    dns_connection.as_ref(),
+                    binding,
+                    &deployment,
+                    &trust,
+                    my_node_key,
+                )
+            {
+                operational.push(running);
+            }
+        }
+
         for name in desired_names {
+            if desired_operations.iter().any(|binding| binding.target_artifact == name) {
+                continue;
+            }
             if active.iter().any(|running| running.name == name) {
                 continue;
             }
             if let Some(entry) = query_deployment(dns_connection.as_ref(), &name)
                 && entry.node_key == my_node_key
-                && let Some(running) = launch(names, &name, &entry, &cluster_key, my_node_key)
+                && let Some(running) = launch(names, &name, &entry, &trust, my_node_key)
             {
                 active.push(running);
             }

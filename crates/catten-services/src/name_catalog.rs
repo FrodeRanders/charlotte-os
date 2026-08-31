@@ -53,6 +53,7 @@ const CATALOG_MAGIC_V7: u64 = 0x4341_5441_4c4f_4737; // "CATALOG7"
 const CATALOG_MAGIC_V8: u64 = 0x4341_5441_4c4f_4738; // "CATALOG8"
 const CATALOG_MAGIC_V9: u64 = 0x4341_5441_4c4f_4739; // "CATALOG9"
 const CATALOG_MAGIC_V10: u64 = 0x4341_5441_4c4f_4741; // "CATALOGA"
+const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -115,6 +116,7 @@ pub struct OperationalBindingEntry {
     pub expires_unix_seconds: u64,
     pub recipient_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
     pub signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
+    pub authorization_signature: [u8; charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN],
 }
 
 pub struct NameCatalog {
@@ -141,6 +143,7 @@ struct CompactOperationalBinding {
     expires_unix_seconds: u64,
     recipient_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
     signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN],
+    authorization_signature: [u8; charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN],
 }
 
 struct CompactOperationalSet {
@@ -194,7 +197,10 @@ fn parse_operational_tail(
             command.get(after_object_len + 32..after_object_len + 48)?.try_into().ok()?;
         let signing_key_id: [u8; charlotte_launch::operations::KEY_ID_LEN] =
             command.get(after_object_len + 48..after_object_len + 64)?.try_into().ok()?;
-        let target_start = after_object_len + 64;
+        let authorization_signature: [u8;
+            charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN] =
+            command.get(after_object_len + 64..after_object_len + 128)?.try_into().ok()?;
+        let target_start = after_object_len + 128;
         let target_end = target_start.checked_add(usize::from(target_len))?;
         let profile_end = target_end.checked_add(usize::from(profile_len))?;
         let object_end = profile_end.checked_add(usize::from(object_len))?;
@@ -211,6 +217,7 @@ fn parse_operational_tail(
             || envelope_digest.iter().all(|byte| *byte == 0)
             || recipient_key_id.iter().all(|byte| *byte == 0)
             || signing_key_id.iter().all(|byte| *byte == 0)
+            || authorization_signature.iter().all(|byte| *byte == 0)
             || bindings.iter().any(|binding: &CompactOperationalBinding| {
                 binding.target_artifact == target_artifact
                     || binding.profile_name == profile_name
@@ -229,6 +236,7 @@ fn parse_operational_tail(
             expires_unix_seconds,
             recipient_key_id,
             signing_key_id,
+            authorization_signature,
         });
         position = object_end;
     }
@@ -645,78 +653,81 @@ impl NameCatalog {
 
                 let mut operational_bindings = self.operational_bindings.lock();
                 let mut planned_operations = Vec::new();
-                let (operations_sequence, operations_bundle_digest) =
-                    if let Some(operations) = operational_tail {
-                        planned_operations.reserve(operations.bindings.len());
-                        for binding in operations.bindings {
-                            let current = operational_bindings.get(binding.profile_name.as_slice());
-                            if current.is_some_and(|entry| {
-                                entry.active && entry.release_name != envelope.release_name
-                            }) {
+                let (operations_sequence, operations_bundle_digest) = if let Some(operations) =
+                    operational_tail
+                {
+                    planned_operations.reserve(operations.bindings.len());
+                    for binding in operations.bindings {
+                        let current = operational_bindings.get(binding.profile_name.as_slice());
+                        if current.is_some_and(|entry| {
+                            entry.active && entry.release_name != envelope.release_name
+                        }) {
+                            return crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
+                                .to_le_bytes()
+                                .to_vec();
+                        }
+                        let exact = current.is_some_and(|entry| {
+                            entry.release_name == envelope.release_name
+                                && entry.release_digest == release_digest
+                                && entry.target_artifact == binding.target_artifact
+                                && entry.object_key == binding.object_key
+                                && entry.envelope_digest == binding.envelope_digest
+                                && entry.profile_kind == binding.profile_kind
+                                && entry.sequence == binding.sequence
+                                && entry.expires_unix_seconds == binding.expires_unix_seconds
+                                && entry.recipient_key_id == binding.recipient_key_id
+                                && entry.signing_key_id == binding.signing_key_id
+                                && entry.authorization_signature == binding.authorization_signature
+                        });
+                        if let Some(entry) = current {
+                            if binding.sequence < entry.sequence {
+                                return crate::clusterctl::ERR_STALE_DESCRIPTOR
+                                    .to_le_bytes()
+                                    .to_vec();
+                            }
+                            if binding.sequence == entry.sequence && !exact {
                                 return crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
                                     .to_le_bytes()
                                     .to_vec();
                             }
-                            let exact = current.is_some_and(|entry| {
-                                entry.release_name == envelope.release_name
-                                    && entry.release_digest == release_digest
-                                    && entry.target_artifact == binding.target_artifact
-                                    && entry.object_key == binding.object_key
-                                    && entry.envelope_digest == binding.envelope_digest
-                                    && entry.profile_kind == binding.profile_kind
-                                    && entry.sequence == binding.sequence
-                                    && entry.expires_unix_seconds == binding.expires_unix_seconds
-                                    && entry.recipient_key_id == binding.recipient_key_id
-                                    && entry.signing_key_id == binding.signing_key_id
-                            });
-                            if let Some(entry) = current {
-                                if binding.sequence < entry.sequence {
-                                    return crate::clusterctl::ERR_STALE_DESCRIPTOR
-                                        .to_le_bytes()
-                                        .to_vec();
-                                }
-                                if binding.sequence == entry.sequence && !exact {
-                                    return crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
-                                        .to_le_bytes()
-                                        .to_vec();
-                                }
-                            }
-                            let generation = if exact {
-                                current.map(|entry| entry.generation)
-                            } else {
-                                current.map_or(Some(1), |entry| entry.generation.checked_add(1))
-                            };
-                            let Some(generation) =
-                                generation.filter(|generation| *generation <= i64::MAX as u64)
-                            else {
-                                return Vec::new();
-                            };
-                            planned_operations.push((
-                                binding.profile_name.clone(),
-                                OperationalBindingEntry {
-                                    generation,
-                                    active: true,
-                                    release_name: envelope.release_name.to_vec(),
-                                    release_digest,
-                                    bundle_sequence: operations.bundle_sequence,
-                                    bundle_digest: operations.bundle_digest,
-                                    target_artifact: binding.target_artifact,
-                                    object_key: binding.object_key,
-                                    envelope_digest: binding.envelope_digest,
-                                    profile_kind: binding.profile_kind,
-                                    sequence: binding.sequence,
-                                    expires_unix_seconds: binding.expires_unix_seconds,
-                                    recipient_key_id: binding.recipient_key_id,
-                                    signing_key_id: binding.signing_key_id,
-                                },
-                            ));
                         }
-                        (operations.bundle_sequence, operations.bundle_digest)
-                    } else {
-                        existing_release.map_or((0, [0; 32]), |entry| {
-                            (entry.operations_sequence, entry.operations_bundle_digest)
-                        })
-                    };
+                        let generation = if exact {
+                            current.map(|entry| entry.generation)
+                        } else {
+                            current.map_or(Some(1), |entry| entry.generation.checked_add(1))
+                        };
+                        let Some(generation) =
+                            generation.filter(|generation| *generation <= i64::MAX as u64)
+                        else {
+                            return Vec::new();
+                        };
+                        planned_operations.push((
+                            binding.profile_name.clone(),
+                            OperationalBindingEntry {
+                                generation,
+                                active: true,
+                                release_name: envelope.release_name.to_vec(),
+                                release_digest,
+                                bundle_sequence: operations.bundle_sequence,
+                                bundle_digest: operations.bundle_digest,
+                                target_artifact: binding.target_artifact,
+                                object_key: binding.object_key,
+                                envelope_digest: binding.envelope_digest,
+                                profile_kind: binding.profile_kind,
+                                sequence: binding.sequence,
+                                expires_unix_seconds: binding.expires_unix_seconds,
+                                recipient_key_id: binding.recipient_key_id,
+                                signing_key_id: binding.signing_key_id,
+                                authorization_signature: binding.authorization_signature,
+                            },
+                        ));
+                    }
+                    (operations.bundle_sequence, operations.bundle_digest)
+                } else {
+                    existing_release.map_or((0, [0; 32]), |entry| {
+                        (entry.operations_sequence, entry.operations_bundle_digest)
+                    })
+                };
 
                 // A bundle is the complete operational set for its release.
                 // Advancing the release without a bundle also retires bindings
@@ -796,7 +807,8 @@ impl NameCatalog {
         // V7 appends signed deployment descriptors to the manifest records;
         // V8 binds active application registrations to deployment generations;
         // V9 persists atomically admitted signed release envelopes; V10 adds
-        // compact encrypted-profile references and their replay fences.
+        // compact encrypted-profile references and their replay fences; V11
+        // adds the detached operational authorization for each binding.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
@@ -808,6 +820,7 @@ impl NameCatalog {
         size += 4;
         for (name, entry) in operational_bindings.iter() {
             size += 179
+                + charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN
                 + name.len()
                 + entry.release_name.len()
                 + entry.target_artifact.len()
@@ -815,7 +828,7 @@ impl NameCatalog {
         }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V10.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V11.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -868,6 +881,7 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.expires_unix_seconds.to_le_bytes());
             buf.extend_from_slice(&entry.recipient_key_id);
             buf.extend_from_slice(&entry.signing_key_id);
+            buf.extend_from_slice(&entry.authorization_signature);
         }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
@@ -896,6 +910,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V8
             && magic != CATALOG_MAGIC_V9
             && magic != CATALOG_MAGIC_V10
+            && magic != CATALOG_MAGIC_V11
         {
             return;
         }
@@ -928,6 +943,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V8
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
+                || magic == CATALOG_MAGIC_V11
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -939,6 +955,7 @@ impl NameCatalog {
             let (deployment_generation, after_entry) = if magic == CATALOG_MAGIC_V8
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
+                || magic == CATALOG_MAGIC_V11
             {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
                     return;
@@ -968,6 +985,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V8
             || magic == CATALOG_MAGIC_V9
             || magic == CATALOG_MAGIC_V10
+            || magic == CATALOG_MAGIC_V11
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1002,6 +1020,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V8
                     || magic == CATALOG_MAGIC_V9
                     || magic == CATALOG_MAGIC_V10
+                    || magic == CATALOG_MAGIC_V11
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -1019,6 +1038,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V8
                     || magic == CATALOG_MAGIC_V9
                     || magic == CATALOG_MAGIC_V10
+                    || magic == CATALOG_MAGIC_V11
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -1047,7 +1067,7 @@ impl NameCatalog {
         *self.deployments.lock() = deployments;
 
         let mut releases = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V9 || magic == CATALOG_MAGIC_V10 {
+        if magic == CATALOG_MAGIC_V9 || magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
             };
@@ -1065,6 +1085,7 @@ impl NameCatalog {
                 };
                 let (operations_sequence, operations_bundle_digest, after_operations) = if magic
                     == CATALOG_MAGIC_V10
+                    || magic == CATALOG_MAGIC_V11
                 {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
@@ -1104,7 +1125,7 @@ impl NameCatalog {
             }
         }
         let mut operational_bindings = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V10 {
+        if magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1181,6 +1202,17 @@ impl NameCatalog {
                 else {
                     return;
                 };
+                let (authorization_signature, after_binding) = if magic == CATALOG_MAGIC_V11 {
+                    let Some(signature) = data
+                        .get(after_expiry + 32..after_expiry + 96)
+                        .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
+                    else {
+                        return;
+                    };
+                    (signature, after_expiry + 96)
+                } else {
+                    ([0; 64], after_expiry + 32)
+                };
                 if generation == 0
                     || bundle_sequence == 0
                     || sequence == 0
@@ -1226,13 +1258,14 @@ impl NameCatalog {
                             expires_unix_seconds,
                             recipient_key_id,
                             signing_key_id,
+                            authorization_signature,
                         },
                     )
                     .is_some()
                 {
                     return;
                 }
-                pos = after_expiry + 32;
+                pos = after_binding;
             }
         }
         *self.releases.lock() = releases;
@@ -1247,6 +1280,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V8
             || magic == CATALOG_MAGIC_V9
             || magic == CATALOG_MAGIC_V10
+            || magic == CATALOG_MAGIC_V11
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -1256,6 +1290,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V8
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
+                || magic == CATALOG_MAGIC_V11
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -1521,7 +1556,7 @@ pub fn encode_release(envelope: &[u8], assigned_nodes: &[u64]) -> Option<Vec<u8>
     (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
 }
 
-/// Compact an already verified `COPSBND1` admission bundle for the Raft log.
+/// Compact an already verified `COPSBND2` admission bundle for the Raft log.
 ///
 /// The large encrypted envelopes are transport proofs and remain in the
 /// central object store. This command retains their signed identities,
@@ -1550,6 +1585,7 @@ pub fn encode_release_with_operations(
         command.extend_from_slice(&binding.envelope_digest);
         command.extend_from_slice(&envelope.recipient_key_id);
         command.extend_from_slice(&envelope.signing_key_id);
+        command.extend_from_slice(&binding.authorization_signature);
         command.extend_from_slice(binding.target_artifact);
         command.extend_from_slice(envelope.profile_name);
         command.extend_from_slice(binding.object_key);
@@ -1690,6 +1726,15 @@ mod tests {
             &mut bundle,
         )
         .unwrap();
+        let binding_signature: Signature = operational.sk.sign(
+            charlotte_launch::operations_bundle::binding_signature_digest(&bundle, 0).unwrap(),
+            None,
+        );
+        assert!(charlotte_launch::operations_bundle::set_binding_signature(
+            &mut bundle,
+            0,
+            binding_signature.as_ref().try_into().unwrap()
+        ));
         let signature: Signature = operational
             .sk
             .sign(charlotte_launch::operations_bundle::signature_digest(&bundle).unwrap(), None);

@@ -268,8 +268,13 @@ capabilities, while operators bind those names to production Kafka and S3
 profiles without exposing credentials to the application. The first bounded,
 operator-signed HPKE envelope, admission-bundle tooling, role-aware public
 trust, leader-verified ingress, follower relay, trusted-time expiry, and compact
-replicated replay fences are implemented. Privileged profile fetch/decryption
-and direct connector delivery remain planned work. See
+replicated replay fences are implemented. The assigned node now retrieves the
+digest-pinned encrypted profile through its bootstrap S3 capability; a
+deployment-agent-only kernel gate re-verifies the signed release, descriptor,
+artifact and envelope, opens HPKE into zeroizing memory, validates the bounded
+S3/Kafka profile, and transfers it read-only to the connector without exposing
+plaintext to Raft or application IPC. Production key custody, rotation,
+readiness-driven cutover, and audit remain research and engineering work. See
 [Deployment secrets and the development/operations boundary](docs/architecture/deployment-secrets-and-operations.md)
 for the trust model, precise status, and rollout plan.
 

@@ -218,6 +218,9 @@ pub mod call_no {
     /// Start a signed artifact with a signed deployment descriptor and only a
     /// capability-grant-controller bootstrap connection.
     pub const SPAWN_ARTIFACT_SCOPED: u16 = SyscallNumber::SpawnArtifactScoped as u16;
+    /// Fetch-complete encrypted connector pickup; kernel-only HPKE open and
+    /// read-only profile transfer. Restricted to the node deployment agent.
+    pub const SPAWN_OPERATIONAL_CONNECTOR: u16 = SyscallNumber::SpawnOperationalConnector as u16;
     /// Abort and reclaim the deployment agent's current child domain.
     pub const RETIRE_ARTIFACT: u16 = SyscallNumber::RetireArtifact as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
@@ -333,6 +336,9 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         }
         SyscallNumber::SpawnArtifactScoped => {
             sys_spawn_artifact_scoped(frame);
+        }
+        SyscallNumber::SpawnOperationalConnector => {
+            sys_spawn_operational_connector(frame);
         }
         SyscallNumber::RetireArtifact => {
             sys_retire_artifact(frame);
@@ -2028,13 +2034,17 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     };
+    let Some(trust) = crate::service::supervisor::configured_admission_trust() else {
+        frame.regs[0] = 0;
+        return;
+    };
     let packed_name_bytes = packed_name.to_le_bytes();
     let packed_name_len =
         packed_name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
     if (packed_name_len != 0 && decoded.artifact_name != &packed_name_bytes[..packed_name_len])
         || charlotte_launch::signature_note::verify_elf_for_name(
             &image,
-            &charlotte_launch::CLUSTER_PUBLIC_KEY,
+            &trust.artifact_key,
             decoded.artifact_name,
         ) != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
@@ -2053,6 +2063,8 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
     let domain = match crate::service::supervisor::try_spawn_with_deployment_descriptor(
         &image,
         &descriptor,
+        &trust.deployment_key,
+        &trust.artifact_key,
         crate::service::supervisor::ServiceLimits::default(),
     ) {
         Ok(domain) => domain,
@@ -2060,6 +2072,154 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
             frame.regs[0] = 0;
             return;
         }
+    };
+    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
+        crate::service::supervisor::DeployedDomain {
+            principal,
+            domain,
+        },
+    );
+    frame.regs[0] = domain.asid as u64;
+}
+
+fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    let package_cap = frame.regs[1];
+    let package_size = usize::try_from(frame.regs[2]).ok();
+    let requested_principal = frame.regs[3];
+    let close_input = || {
+        if package_cap != 0 {
+            let _ = crate::memory::object::close_cap(caller_asid, package_cap);
+        }
+    };
+    if !deployment_agent_authorized(caller_asid)
+        || package_cap == 0
+        || package_size.is_none_or(|size| {
+            !(charlotte_launch::operations_pickup::PICKUP_HEADER_LEN
+                ..=charlotte_launch::operations_pickup::MAX_PICKUP_LEN)
+                .contains(&size)
+        })
+        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
+            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
+    {
+        close_input();
+        frame.regs[0] = 0;
+        return;
+    }
+    let package = crate::memory::object::snapshot_bytes(
+        caller_asid,
+        package_cap,
+        package_size.expect("pickup package size checked above"),
+    );
+    close_input();
+    let Ok(package) = package else {
+        frame.regs[0] = 0;
+        return;
+    };
+    let Some(pickup) = charlotte_launch::operations_pickup::Pickup::decode(&package) else {
+        frame.regs[0] = 0;
+        return;
+    };
+    let principal = charlotte_launch::artifact_principal_id(pickup.binding.target_artifact);
+    if requested_principal != principal
+        || crate::service::supervisor::DEPLOYED_DOMAINS
+            .lock()
+            .iter()
+            .any(|deployed| deployed.principal == principal)
+    {
+        frame.regs[0] = 0;
+        return;
+    }
+
+    let launched = crate::service::supervisor::with_operational_launch_trust(
+        |trust, recipient_private_key, name_service| {
+            let descriptor = charlotte_launch::deployment::decode(pickup.descriptor)?;
+            let release = charlotte_launch::release::decode(pickup.release)?;
+            let envelope = charlotte_launch::operations::decode(pickup.envelope)?;
+            if charlotte_launch::deployment::verify(pickup.descriptor, &trust.deployment_key)
+                != charlotte_launch::deployment::VerifyOutcome::Valid
+                || charlotte_launch::release::verify(pickup.release, &trust.deployment_key)
+                    != charlotte_launch::release::VerifyOutcome::Valid
+                || charlotte_launch::sha256::digest(pickup.release) != pickup.binding.release_digest
+                || release.release_name != pickup.binding.release_name
+                || !release.descriptors().any(|candidate| candidate == pickup.descriptor)
+                || descriptor.artifact_name != pickup.binding.target_artifact
+                || descriptor.artifact_digest != charlotte_launch::sha256::digest(pickup.artifact)
+                || charlotte_launch::signature_note::verify_elf_for_name(
+                    pickup.artifact,
+                    &trust.artifact_key,
+                    pickup.binding.target_artifact,
+                ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+                || charlotte_launch::sha256::digest(pickup.envelope)
+                    != pickup.binding.envelope_digest
+                || envelope.cluster_id != trust.cluster_id
+                || envelope.release_digest != pickup.binding.release_digest
+                || envelope.profile_name != pickup.binding.profile_name
+                || envelope.profile_kind != pickup.binding.profile_kind
+                || envelope.sequence != pickup.binding.sequence
+                || envelope.expires_unix_seconds != pickup.binding.expires_unix_seconds
+                || envelope.recipient_key_id != pickup.binding.recipient_key_id
+                || envelope.signing_key_id != pickup.binding.signing_key_id
+                || envelope.recipient_key_id
+                    != charlotte_launch::operations::recipient_key_id(&trust.recipient_key)
+                || envelope.signing_key_id
+                    != charlotte_launch::operations::signing_key_id(&trust.operations_key)
+                || !charlotte_launch::operations_bundle::verify_binding_authorization(
+                    pickup.binding.bundle_sequence,
+                    &trust.cluster_id,
+                    &pickup.binding.release_digest,
+                    &pickup.binding.recipient_key_id,
+                    &pickup.binding.signing_key_id,
+                    pickup.binding.target_artifact,
+                    pickup.binding.object_key,
+                    &pickup.binding.envelope_digest,
+                    &pickup.binding.authorization_signature,
+                    &trust.operations_key,
+                )
+                || pickup.now_unix_seconds > pickup.binding.expires_unix_seconds
+            {
+                return None;
+            }
+
+            let mut profile = zeroize::Zeroizing::new(alloc::vec![0; envelope.ciphertext.len()]);
+            let profile_len = charlotte_launch::operations::open(
+                pickup.envelope,
+                recipient_private_key,
+                &trust.operations_key,
+                &trust.cluster_id,
+                &pickup.binding.release_digest,
+                pickup.now_unix_seconds,
+                &mut profile,
+            )
+            .ok()?;
+            let profile = profile.get(..profile_len)?;
+            let valid_profile = match pickup.binding.profile_kind {
+                charlotte_launch::operations::PROFILE_KIND_S3 => {
+                    charlotte_protocol_s3::Profile::decode(profile).is_some()
+                }
+                charlotte_launch::operations::PROFILE_KIND_KAFKA => {
+                    charlotte_protocol_kafka::Profile::decode(profile).is_ok()
+                }
+                _ => false,
+            };
+            if !valid_profile {
+                return None;
+            }
+            crate::service::supervisor::try_spawn_with_read_only_profile_and_limits(
+                pickup.artifact,
+                name_service,
+                crate::ipc::ConnectionRights::CALL,
+                profile,
+                crate::service::supervisor::ServiceLimits::default()
+                    .with_user_stack_size(128 * 1024),
+            )
+            .ok()
+        },
+    )
+    .flatten();
+    let Some(domain) = launched else {
+        frame.regs[0] = 0;
+        return;
     };
     crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
         crate::service::supervisor::DeployedDomain {

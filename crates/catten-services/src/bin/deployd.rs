@@ -2,7 +2,7 @@
 //!
 //! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY1`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
-//! `POST /v1/operations` with one encrypted `COPSBND1` admission proof,
+//! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.
 //! The ingress carries no object-store or application secret: authenticity,
 //! integrity, placement, and authority come from signatures checked by

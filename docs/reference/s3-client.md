@@ -36,8 +36,19 @@ The rights bits are:
 
 Do not pass credentials through application IPC or store them in application
 objects. A trusted provisioner should construct `service::launch::S3Profile`
-and call `launch_s3_profile`. The profile is copied into the new service's
-private launch page before it starts.
+and call `launch_s3_profile`. The launcher encodes the bounded immutable
+`CHS3PF1` profile, transfers it read-only into the new service, and starts the
+domain only after the transfer succeeds. The S3 service retains its secret key
+in zeroizing storage.
+
+The manifest keys below are retained only for legacy static boot images. New
+static launches and operational pickup use `charlotte_protocol_s3::Profile` as
+the format authority. Operational profiles are stored centrally as signed
+HPKE envelopes; the privileged node path fetches the ciphertext and connector
+ELF, the kernel re-verifies their authorization, decrypts into transient
+zeroizing memory, validates `CHS3PF1`, and moves the resulting profile directly
+into connector launch memory. No plaintext profile is returned through agent
+or application IPC.
 
 The manifest ABI uses the following eight-byte-or-shorter keys:
 
@@ -133,8 +144,8 @@ protected-DMA domain. Both paths are fallible and TLS fails closed when neither
 trusted source is available. There is no deterministic fallback, `NoVerify`
 mode, or plaintext retry after a TLS failure.
 
-The initial profile accepts one trust anchor because the launch manifest has a
-bounded data area. A production provisioner should select the narrowest CA
+The initial profile accepts one trust anchor because the immutable profile has
+a bounded data area. A production provisioner should select the narrowest CA
 that authenticates the managed endpoint. Do not place a public Web PKI root
 bundle or credentials in application memory.
 

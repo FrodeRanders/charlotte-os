@@ -99,7 +99,7 @@ impl<'a> Iterator for Descriptors<'a> {
     }
 }
 
-fn valid_release_name(value: &[u8]) -> bool {
+pub fn valid_release_name(value: &[u8]) -> bool {
     !value.is_empty()
         && value.len() <= MAX_RELEASE_NAME_LEN
         && value.iter().all(|byte| (0x21..=0x7e).contains(byte))

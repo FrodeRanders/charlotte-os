@@ -6,9 +6,201 @@
 //! operations; applications never receive the secret key.
 #![no_std]
 
+extern crate alloc;
+
+use alloc::{
+    vec,
+    vec::Vec,
+};
+
 pub const INTERFACE: u64 = u64::from_le_bytes(*b"S3\0\0\0\0\0\0");
 pub const VERSION: u32 = 1;
 pub const NAME: u64 = u64::from_le_bytes(*b"s3\0\0\0\0\0\0");
+
+/// Immutable launch profile used by privileged connector pickup. The legacy
+/// manifest remains supported for statically provisioned development boots.
+pub const PROFILE_MAGIC: [u8; 8] = *b"CHS3PF1\0";
+pub const PROFILE_VERSION: u16 = 1;
+pub const PROFILE_HEADER_LEN: usize = 64;
+pub const MAX_PROFILE_LEN: usize = 64 * 1024;
+pub const PROFILE_FLAG_TLS: u16 = 1 << 0;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Profile<'a> {
+    pub endpoint_ipv4: [u8; 4],
+    pub host: &'a [u8],
+    pub port: u16,
+    pub tls: bool,
+    pub ca_certificate_der: &'a [u8],
+    pub region: &'a [u8],
+    pub bucket: &'a [u8],
+    pub prefix: &'a [u8],
+    pub access_key: &'a [u8],
+    pub secret_key: &'a [u8],
+    pub namespace: &'a [u8],
+    pub rights: u64,
+}
+
+impl Profile<'_> {
+    pub fn encoded_len(&self) -> Option<usize> {
+        let fields = [
+            self.host,
+            self.region,
+            self.bucket,
+            self.prefix,
+            self.access_key,
+            self.secret_key,
+            self.namespace,
+        ];
+        if self.port == 0
+            || self.rights == 0
+            || self.rights & !(RIGHT_GET | RIGHT_PUT | RIGHT_DELETE | RIGHT_LIST) != 0
+            || self.host.is_empty()
+            || !valid_host(self.host)
+            || self.bucket.is_empty()
+            || self.bucket.iter().any(|byte| *byte <= b' ' || *byte >= 0x7f || *byte == b'/')
+            || self.access_key.is_empty()
+            || !valid_header_value(self.access_key)
+            || self.secret_key.is_empty()
+            || self.region.is_empty()
+            || self.region.iter().any(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-')
+            || !self.namespace.is_empty() && !valid_header_value(self.namespace)
+            || invalid_prefix(self.prefix)
+            || (self.tls && self.ca_certificate_der.is_empty())
+            || fields.iter().any(|field| field.len() > u16::MAX as usize)
+            || self.ca_certificate_der.len() > u32::MAX as usize
+        {
+            return None;
+        }
+        fields
+            .iter()
+            .try_fold(PROFILE_HEADER_LEN, |len, field| len.checked_add(field.len()))?
+            .checked_add(self.ca_certificate_der.len())
+            .filter(|len| *len <= MAX_PROFILE_LEN)
+    }
+
+    pub fn encode(&self) -> Option<Vec<u8>> {
+        let len = self.encoded_len()?;
+        let mut output = vec![0; len];
+        output[..8].copy_from_slice(&PROFILE_MAGIC);
+        output[8..10].copy_from_slice(&PROFILE_VERSION.to_le_bytes());
+        output[10..12].copy_from_slice(&(PROFILE_HEADER_LEN as u16).to_le_bytes());
+        output[12..16].copy_from_slice(&(len as u32).to_le_bytes());
+        output[16..18].copy_from_slice(
+            &(if self.tls {
+                PROFILE_FLAG_TLS
+            } else {
+                0
+            })
+            .to_le_bytes(),
+        );
+        output[18..20].copy_from_slice(&self.port.to_le_bytes());
+        output[20..28].copy_from_slice(&self.rights.to_le_bytes());
+        output[28..32].copy_from_slice(&self.endpoint_ipv4);
+        for (range, value) in [
+            (32..34, self.host.len()),
+            (34..36, self.region.len()),
+            (36..38, self.bucket.len()),
+            (38..40, self.prefix.len()),
+            (40..42, self.access_key.len()),
+            (42..44, self.secret_key.len()),
+            (44..46, self.namespace.len()),
+        ] {
+            output[range].copy_from_slice(&(value as u16).to_le_bytes());
+        }
+        output[48..52].copy_from_slice(&(self.ca_certificate_der.len() as u32).to_le_bytes());
+        let mut offset = PROFILE_HEADER_LEN;
+        for value in [
+            self.host,
+            self.region,
+            self.bucket,
+            self.prefix,
+            self.access_key,
+            self.secret_key,
+            self.namespace,
+            self.ca_certificate_der,
+        ] {
+            output[offset..offset + value.len()].copy_from_slice(value);
+            offset += value.len();
+        }
+        Some(output)
+    }
+
+    pub fn decode(input: &'_ [u8]) -> Option<Profile<'_>> {
+        if input.len() < PROFILE_HEADER_LEN
+            || input.len() > MAX_PROFILE_LEN
+            || input.get(..8)? != PROFILE_MAGIC
+            || read_u16(input, 8)? != PROFILE_VERSION
+            || usize::from(read_u16(input, 10)?) != PROFILE_HEADER_LEN
+            || usize::try_from(read_u32(input, 12)?).ok()? != input.len()
+            || read_u16(input, 16)? & !PROFILE_FLAG_TLS != 0
+            || input.get(46..48)?.iter().any(|byte| *byte != 0)
+            || input.get(52..PROFILE_HEADER_LEN)?.iter().any(|byte| *byte != 0)
+        {
+            return None;
+        }
+        let lengths = [
+            usize::from(read_u16(input, 32)?),
+            usize::from(read_u16(input, 34)?),
+            usize::from(read_u16(input, 36)?),
+            usize::from(read_u16(input, 38)?),
+            usize::from(read_u16(input, 40)?),
+            usize::from(read_u16(input, 42)?),
+            usize::from(read_u16(input, 44)?),
+            usize::try_from(read_u32(input, 48)?).ok()?,
+        ];
+        let mut offset = PROFILE_HEADER_LEN;
+        let mut fields: [&[u8]; 8] = [&[]; 8];
+        for (field, len) in fields.iter_mut().zip(lengths) {
+            let end = offset.checked_add(len)?;
+            *field = input.get(offset..end)?;
+            offset = end;
+        }
+        let profile = Profile {
+            endpoint_ipv4: input.get(28..32)?.try_into().ok()?,
+            host: fields[0],
+            port: read_u16(input, 18)?,
+            tls: read_u16(input, 16)? & PROFILE_FLAG_TLS != 0,
+            ca_certificate_der: fields[7],
+            region: fields[1],
+            bucket: fields[2],
+            prefix: fields[3],
+            access_key: fields[4],
+            secret_key: fields[5],
+            namespace: fields[6],
+            rights: read_u64(input, 20)?,
+        };
+        (offset == input.len() && profile.encoded_len() == Some(input.len())).then_some(profile)
+    }
+}
+
+fn valid_header_value(value: &[u8]) -> bool {
+    !value.is_empty() && value.iter().all(|byte| *byte == b'\t' || (b' '..=b'~').contains(byte))
+}
+
+fn valid_host(value: &[u8]) -> bool {
+    valid_header_value(value)
+        && value.iter().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+}
+
+fn invalid_prefix(value: &[u8]) -> bool {
+    let Ok(value) = core::str::from_utf8(value) else {
+        return true;
+    };
+    value.starts_with('/') || value.split('/').any(|segment| segment == "." || segment == "..")
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(bytes.get(offset..offset + 2)?.try_into().ok()?))
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
+}
+
+fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
+}
 
 /// Launch-manifest keys. Names are constrained to eight bytes by the common
 /// Charlotte launch ABI; these constants keep launchers and the service in

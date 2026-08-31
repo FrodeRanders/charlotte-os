@@ -3,7 +3,7 @@
 //!
 //! A [`crate::operations`] envelope binds the SHA-256 of a signed
 //! [`crate::release`] envelope. Embedding the operational-envelope digest back
-//! into that release would therefore create a digest cycle. `COPSBND1` is a
+//! into that release would therefore create a digest cycle. `COPSBND2` is a
 //! separate transport proof: it carries the immutable release, the encrypted
 //! profiles used to validate admission, and signed mappings to connector
 //! artifacts and central-object-store keys. Replicated state can retain only
@@ -21,8 +21,8 @@ use crate::{
     sha256,
 };
 
-pub const MAGIC: &[u8; 8] = b"COPSBND1";
-pub const VERSION: u16 = 1;
+pub const MAGIC: &[u8; 8] = b"COPSBND2";
+pub const VERSION: u16 = 2;
 pub const HEADER_LEN: usize = 192;
 pub const MAX_BINDINGS: usize = 8;
 pub const MAX_OBJECT_KEY_LEN: usize = deployment::MAX_OBJECT_KEY_LEN;
@@ -37,7 +37,9 @@ const CLUSTER_ID_OFFSET: usize = 32;
 const RELEASE_DIGEST_OFFSET: usize = 64;
 const RECIPIENT_KEY_ID_OFFSET: usize = 96;
 const SIGNING_KEY_ID_OFFSET: usize = 112;
-const BINDING_HEADER_LEN: usize = 44;
+const BINDING_HEADER_LEN: usize = 108;
+const BINDING_SIGNATURE_OFFSET: usize = 40;
+pub const BINDING_SIGNATURE_LEN: usize = 64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BindingFields<'a> {
@@ -89,6 +91,10 @@ pub struct Binding<'a> {
     pub object_key: &'a [u8],
     pub envelope: &'a [u8],
     pub envelope_digest: [u8; 32],
+    /// Detached operational signature over the compact mapping. This proof is
+    /// small enough to replicate and lets the final kernel launch gate verify
+    /// it without receiving the full admission bundle.
+    pub authorization_signature: [u8; BINDING_SIGNATURE_LEN],
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,6 +141,23 @@ impl<'a> Iterator for Bindings<'a> {
         let object_len = usize::from(read_u16(self.bytes, self.offset + 2)?);
         let envelope_len = usize::try_from(read_u32(self.bytes, self.offset + 4)?).ok()?;
         let envelope_digest = self.bytes.get(self.offset + 8..self.offset + 40)?.try_into().ok()?;
+        let authorization_signature = self
+            .bytes
+            .get(
+                self.offset + BINDING_SIGNATURE_OFFSET
+                    ..self.offset + BINDING_SIGNATURE_OFFSET + BINDING_SIGNATURE_LEN,
+            )?
+            .try_into()
+            .ok()?;
+        if self
+            .bytes
+            .get(self.offset + 104..self.offset + BINDING_HEADER_LEN)?
+            .iter()
+            .any(|byte| *byte != 0)
+        {
+            self.remaining = 0;
+            return None;
+        }
         let target_start = self.offset.checked_add(BINDING_HEADER_LEN)?;
         let target_end = target_start.checked_add(target_len)?;
         let object_end = target_end.checked_add(object_len)?;
@@ -144,6 +167,7 @@ impl<'a> Iterator for Bindings<'a> {
             object_key: self.bytes.get(target_end..object_end)?,
             envelope: self.bytes.get(object_end..envelope_end)?,
             envelope_digest,
+            authorization_signature,
         };
         self.offset = envelope_end;
         self.remaining -= 1;
@@ -373,6 +397,122 @@ pub fn signature_digest(bytes: &[u8]) -> Option<[u8; 32]> {
     Some(sha256::digest_skipping(bundle.bytes, SIGNATURE_OFFSET, SIGNATURE_LEN))
 }
 
+#[allow(clippy::too_many_arguments)]
+fn binding_authorization_digest(
+    sequence: u64,
+    cluster_id: &[u8; 32],
+    release_digest: &[u8; 32],
+    recipient_key_id: &[u8; operations::KEY_ID_LEN],
+    signing_key_id: &[u8; operations::KEY_ID_LEN],
+    target_artifact: &[u8],
+    object_key: &[u8],
+    envelope_digest: &[u8; 32],
+) -> Option<[u8; 32]> {
+    let target_len = u16::try_from(target_artifact.len()).ok()?;
+    let object_len = u16::try_from(object_key.len()).ok()?;
+    let mut hash = sha256::Sha256::new();
+    hash.update(b"CharlotteOS COPSBND2 compact binding\0");
+    hash.update(&sequence.to_le_bytes());
+    hash.update(cluster_id);
+    hash.update(release_digest);
+    hash.update(recipient_key_id);
+    hash.update(signing_key_id);
+    hash.update(&target_len.to_le_bytes());
+    hash.update(&object_len.to_le_bytes());
+    hash.update(envelope_digest);
+    hash.update(target_artifact);
+    hash.update(object_key);
+    Some(hash.finalize())
+}
+
+/// Digest signed by operations for one compact binding. It is independent of
+/// the full bundle digest, allowing the proof to enter Raft without carrying
+/// ciphertext or the rest of the admission transport.
+pub fn binding_signature_digest(bytes: &[u8], index: usize) -> Option<[u8; 32]> {
+    let bundle = decode(bytes)?;
+    let binding = bundle.bindings().nth(index)?;
+    binding_authorization_digest(
+        bundle.sequence,
+        &bundle.cluster_id,
+        &bundle.release_digest,
+        &bundle.recipient_key_id,
+        &bundle.signing_key_id,
+        binding.target_artifact,
+        binding.object_key,
+        &binding.envelope_digest,
+    )
+}
+
+fn binding_offset(bytes: &[u8], index: usize) -> Option<usize> {
+    let bundle = decode(bytes)?;
+    if index >= bundle.binding_count {
+        return None;
+    }
+    let mut offset = bundle.bindings_offset;
+    for _ in 0..index {
+        let target_len = usize::from(read_u16(bytes, offset)?);
+        let object_len = usize::from(read_u16(bytes, offset + 2)?);
+        let envelope_len = usize::try_from(read_u32(bytes, offset + 4)?).ok()?;
+        offset = offset
+            .checked_add(BINDING_HEADER_LEN)?
+            .checked_add(target_len)?
+            .checked_add(object_len)?
+            .checked_add(envelope_len)?;
+    }
+    Some(offset)
+}
+
+pub fn set_binding_signature(
+    bytes: &mut [u8],
+    index: usize,
+    signature: &[u8; BINDING_SIGNATURE_LEN],
+) -> bool {
+    let Some(offset) = binding_offset(bytes, index) else {
+        return false;
+    };
+    bytes[offset + BINDING_SIGNATURE_OFFSET
+        ..offset + BINDING_SIGNATURE_OFFSET + BINDING_SIGNATURE_LEN]
+        .copy_from_slice(signature);
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn verify_binding_authorization(
+    sequence: u64,
+    cluster_id: &[u8; 32],
+    release_digest: &[u8; 32],
+    recipient_key_id: &[u8; operations::KEY_ID_LEN],
+    signing_key_id: &[u8; operations::KEY_ID_LEN],
+    target_artifact: &[u8],
+    object_key: &[u8],
+    envelope_digest: &[u8; 32],
+    signature: &[u8; BINDING_SIGNATURE_LEN],
+    operational_public_key: &[u8; 32],
+) -> bool {
+    if signing_key_id != &operations::signing_key_id(operational_public_key) {
+        return false;
+    }
+    let Some(digest) = binding_authorization_digest(
+        sequence,
+        cluster_id,
+        release_digest,
+        recipient_key_id,
+        signing_key_id,
+        target_artifact,
+        object_key,
+        envelope_digest,
+    ) else {
+        return false;
+    };
+    let Ok(public_key) = PublicKey::from_slice(operational_public_key) else {
+        return false;
+    };
+    let Ok(signature) = Signature::from_slice(signature) else {
+        return false;
+    };
+    public_key.verify(digest, &signature).is_ok()
+}
+
 pub fn set_signature(bytes: &mut [u8], signature: &[u8; SIGNATURE_LEN]) -> bool {
     if decode(bytes).is_none() {
         return false;
@@ -417,6 +557,20 @@ pub fn verify(
         return VerifyOutcome::Invalid;
     }
     for binding in bundle.bindings() {
+        if !verify_binding_authorization(
+            bundle.sequence,
+            &bundle.cluster_id,
+            &bundle.release_digest,
+            &bundle.recipient_key_id,
+            &bundle.signing_key_id,
+            binding.target_artifact,
+            binding.object_key,
+            &binding.envelope_digest,
+            &binding.authorization_signature,
+            operational_public_key,
+        ) {
+            return VerifyOutcome::Invalid;
+        }
         if operations::verify(binding.envelope, operational_public_key)
             != operations::VerifyOutcome::Valid
         {

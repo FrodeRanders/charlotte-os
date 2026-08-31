@@ -379,6 +379,22 @@ does not by itself constitute a complete cluster executive.
         adapters make external infrastructure usable from Charlotte; they are
         not yet cluster-managed storage or messaging substrates.
 
+    \item \textbf{Role-separated operational deployment.} Development signs
+        an immutable release and its deployment descriptors, while operations
+        independently signs HPKE-encrypted S3 or Kafka connector profiles bound
+        to that exact release, target connector, cluster, expiry, and central
+        object-store key. The leader verifies both authorities and trusted UTC,
+        then places only compact references and replay fences in Raft. On the
+        assigned node, the authorized agent retrieves the digest-pinned
+        ciphertext through a bootstrap S3 capability and moves a bounded pickup
+        object to the kernel. The kernel repeats release, descriptor, artifact,
+        envelope, and expiry verification, decrypts into transient zeroizing
+        memory, validates the connector-specific profile, and transfers it as a
+        read-only launch capability. Application IPC receives only attenuated
+        connector endpoints, never infrastructure credentials. Production key
+        custody, rotation, audit, and readiness-driven generation cutover remain
+        future work.
+
     \item \textbf{Local stateful replacement.} Live service upgrade
         transfers a service's state as a memory object, tracks generations,
         invalidates stale connections, and re-registers the replacement

@@ -125,15 +125,22 @@ client identity remain in the node's separately provisioned S3 profile. The
 application receives neither that profile nor ambient name-service authority.
 
 The encrypted operational-binding foundation now comprises `COPSENC1`, the
-separate operator-signed `COPSBND1` admission proof, role-aware public launch
+separate operator-signed `COPSBND2` admission proof, role-aware public launch
 trust, host tooling, leader verification, follower relay and compact
 replay-fenced catalog state. It binds an encrypted S3 or Kafka profile to a
 cluster, exact release, target connector and central-object-store key. Submit a
 bundle with `operations-bundle-notify` to `POST /v1/operations`. Admission fails
 closed without trusted UTC and places neither ciphertext nor plaintext in
-Raft. The cluster does **not yet fetch, decrypt or deliver the admitted profile
-to a connector**, so profiles must still be provisioned separately for actual
-connector launch. The trust model, format and staged integration plan are in
+Raft. The assigned node agent now fetches the digest-pinned envelope through
+its separately provisioned bootstrap S3 capability and moves a bounded pickup
+package to a deployment-agent-only kernel gate. The kernel re-verifies the
+signed release and exact descriptor membership, artifact identity, envelope
+context and expiry, opens HPKE into zeroizing memory, validates the selected
+S3/Kafka profile codec, and moves the profile read-only into the connector.
+Plaintext never returns through agent or application IPC. The bootstrap S3
+connector, production recipient-key custody, rotation and readiness-driven
+replacement remain separate operational concerns. The trust model, format and
+staged integration plan are in
 [Deployment secrets and the development/operations boundary](../architecture/deployment-secrets-and-operations.md).
 
 ## Node-side pickup
@@ -155,8 +162,10 @@ deployment generation. A `DeployedArtifact` owner in `catten_rt::owned`
 retains the retirement obligation and requests best-effort retirement on
 drop. The limit is a kernel admission bound, not a protocol-name limit.
 
-- The S3 connector and credentials must be provisioned before notification;
-  external S3 is not a bootstrap dependency.
+- The bootstrap S3 connector and credentials must be provisioned before
+  notification. It is also the privileged retrieval path for encrypted
+  operational envelopes and cannot configure itself without a lower-level
+  provisioning source.
 - Automatic placement currently handles one replica on the current Raft leader.
   Capacity-aware selection, affinity/anti-affinity, failure-domain spreading,
   rescheduling after node loss, and replica counts above one need a

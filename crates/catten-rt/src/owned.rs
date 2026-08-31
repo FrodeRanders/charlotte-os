@@ -839,6 +839,35 @@ pub fn spawn_scoped_artifact_named(
     spawn_scoped_artifact(artifact, artifact_len, 0, descriptor, descriptor_len)
 }
 
+/// Transfer a complete encrypted connector pickup to the kernel launch gate.
+/// The package owner is consumed on every submitted outcome; plaintext is
+/// never mapped into this caller. `artifact_name` identifies the resulting
+/// retirement owner and must match the package's authenticated target.
+pub fn launch_operational_connector(
+    mut package: OwnedMemory,
+    package_len: usize,
+    artifact_name: &[u8],
+) -> Result<DeployedArtifact, ArtifactLaunchError> {
+    if package_len < charlotte_launch::operations_pickup::PICKUP_HEADER_LEN
+        || package_len > package.len()
+        || package_len > charlotte_launch::operations_pickup::MAX_PICKUP_LEN
+        || !charlotte_launch::deployment::valid_artifact_name(artifact_name)
+    {
+        return Err(ArtifactLaunchError::InvalidLength);
+    }
+    let principal = charlotte_launch::artifact_principal_id(artifact_name);
+    let package_cap = package.cap.take().expect("pickup capability already consumed");
+    let asid = kernel::spawn_operational_connector(package_cap, package_len, principal);
+    if asid == 0 {
+        return Err(ArtifactLaunchError::Rejected);
+    }
+    Ok(DeployedArtifact {
+        principal,
+        asid,
+        retired: false,
+    })
+}
+
 /// An application domain created through the scoped deployment gate.
 ///
 /// The owner remains with the deployment agent until retirement completes.
@@ -2091,6 +2120,10 @@ mod kernel {
         )
     }
 
+    pub fn spawn_operational_connector(package: u64, package_len: usize, principal: u64) -> u64 {
+        catten_syscall::spawn_operational_connector(package, package_len, principal)
+    }
+
     pub fn spawn_artifact(artifact: u64, artifact_len: usize, artifact_name: u64) -> u64 {
         catten_syscall::spawn_artifact(artifact, artifact_len, artifact_name)
     }
@@ -2498,6 +2531,10 @@ mod kernel {
         with_state(|state| state.scoped_spawn)
     }
 
+    pub fn spawn_operational_connector(_package: u64, _package_len: usize, _principal: u64) -> u64 {
+        with_state(|state| state.scoped_spawn)
+    }
+
     pub fn spawn_artifact(_artifact: u64, _artifact_len: usize, _artifact_name: u64) -> u64 {
         with_state(|state| state.scoped_spawn)
     }
@@ -2533,6 +2570,7 @@ mod tests {
         OwnedMemory,
         ReadOperation,
         kernel,
+        launch_operational_connector,
         spawn_scoped_artifact,
     };
 
@@ -2755,6 +2793,35 @@ mod tests {
             ),
             Err(ArtifactLaunchError::Rejected)
         );
+        assert!(kernel::events().is_empty());
+    }
+
+    #[test]
+    fn operational_launch_rejects_lengths_without_leaking_package() {
+        let _guard = setup();
+        let package = unsafe { OwnedMemory::from_raw(11) }.expect("pickup memory");
+
+        assert!(matches!(
+            launch_operational_connector(package, 1, b"kafka"),
+            Err(ArtifactLaunchError::InvalidLength)
+        ));
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(11)]);
+    }
+
+    #[test]
+    fn operational_launch_kernel_rejection_consumes_package() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_spawn = 0);
+        let package = unsafe { OwnedMemory::from_raw(11) }.expect("pickup memory");
+
+        assert!(matches!(
+            launch_operational_connector(
+                package,
+                charlotte_launch::operations_pickup::PICKUP_HEADER_LEN,
+                b"kafka",
+            ),
+            Err(ArtifactLaunchError::Rejected)
+        ));
         assert!(kernel::events().is_empty());
     }
 

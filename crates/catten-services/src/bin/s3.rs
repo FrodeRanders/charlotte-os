@@ -74,6 +74,7 @@ use charlotte_s3::{
         sign,
     },
 };
+use zeroize::Zeroizing;
 catten_rt::entry!(main);
 
 const MAX_OPERATIONS: usize = 8;
@@ -93,13 +94,43 @@ struct Profile {
     bucket: String,
     prefix: String,
     access_key: String,
-    secret_key: Vec<u8>,
+    secret_key: Zeroizing<Vec<u8>>,
     namespace: Option<String>,
     rights: u64,
 }
 
 impl Profile {
     fn from_context(ctx: &Context) -> Option<Self> {
+        if let Some(memory) = ctx.profile_memory() {
+            let mapping = memory.map_read_only().ok()?;
+            return Self::from_wire(mapping.as_slice());
+        }
+        Self::from_manifest(ctx)
+    }
+
+    fn from_wire(bytes: &[u8]) -> Option<Self> {
+        let profile = charlotte_protocol_s3::Profile::decode(bytes)?;
+        Self::validate(Self {
+            ip: profile.endpoint_ipv4,
+            host: core::str::from_utf8(profile.host).ok()?.into(),
+            port: profile.port,
+            tls: profile.tls,
+            ca_der: profile.ca_certificate_der.to_vec(),
+            region: core::str::from_utf8(profile.region).ok()?.into(),
+            bucket: core::str::from_utf8(profile.bucket).ok()?.into(),
+            prefix: core::str::from_utf8(profile.prefix).ok()?.into(),
+            access_key: core::str::from_utf8(profile.access_key).ok()?.into(),
+            secret_key: Zeroizing::new(profile.secret_key.to_vec()),
+            namespace: if profile.namespace.is_empty() {
+                None
+            } else {
+                Some(core::str::from_utf8(profile.namespace).ok()?.into())
+            },
+            rights: profile.rights,
+        })
+    }
+
+    fn from_manifest(ctx: &Context) -> Option<Self> {
         let ip = match ctx.manifest_value(protocol::manifest::IP)? {
             ManifestValue::Bytes(bytes) if bytes.len() == 4 => {
                 [bytes[0], bytes[1], bytes[2], bytes[3]]
@@ -130,30 +161,7 @@ impl Profile {
             ManifestValue::Unsigned(rights) => rights,
             _ => return None,
         };
-        if port == 0
-            || !valid_host(&host)
-            || bucket.is_empty()
-            || bucket.bytes().any(|byte| byte <= b' ' || byte >= 0x7f || byte == b'/')
-            || access_key.is_empty()
-            || !valid_header_value(&access_key)
-            || secret_key.is_empty()
-            || region.is_empty()
-            || region.bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'-')
-            || namespace.as_deref().is_some_and(|value| !valid_header_value(value))
-            || rights
-                & !(protocol::RIGHT_GET
-                    | protocol::RIGHT_PUT
-                    | protocol::RIGHT_DELETE
-                    | protocol::RIGHT_LIST)
-                != 0
-            || rights == 0
-            || prefix.starts_with('/')
-            || unsafe_path_segments(&prefix)
-            || (tls && ca_der.is_empty())
-        {
-            return None;
-        }
-        Some(Self {
+        Self::validate(Self {
             ip,
             host,
             port,
@@ -163,10 +171,37 @@ impl Profile {
             bucket,
             prefix,
             access_key,
-            secret_key,
+            secret_key: Zeroizing::new(secret_key),
             namespace,
             rights,
         })
+    }
+
+    fn validate(profile: Self) -> Option<Self> {
+        if profile.port == 0
+            || !valid_host(&profile.host)
+            || profile.bucket.is_empty()
+            || profile.bucket.bytes().any(|byte| byte <= b' ' || byte >= 0x7f || byte == b'/')
+            || profile.access_key.is_empty()
+            || !valid_header_value(&profile.access_key)
+            || profile.secret_key.is_empty()
+            || profile.region.is_empty()
+            || profile.region.bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'-')
+            || profile.namespace.as_deref().is_some_and(|value| !valid_header_value(value))
+            || profile.rights
+                & !(protocol::RIGHT_GET
+                    | protocol::RIGHT_PUT
+                    | protocol::RIGHT_DELETE
+                    | protocol::RIGHT_LIST)
+                != 0
+            || profile.rights == 0
+            || profile.prefix.starts_with('/')
+            || unsafe_path_segments(&profile.prefix)
+            || (profile.tls && profile.ca_der.is_empty())
+        {
+            return None;
+        }
+        Some(profile)
     }
 
     fn has(&self, right: u64) -> bool {

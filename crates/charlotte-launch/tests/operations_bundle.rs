@@ -109,6 +109,14 @@ fn fixture(expiry: u64) -> Fixture {
     let mut bundle = vec![0; operations_bundle::encoded_len(&fields).unwrap()];
     operations_bundle::encode_unsigned(&fields, operational_public, &recipient_public, &mut bundle)
         .unwrap();
+    let binding_signature: Signature = operational_pair
+        .sk
+        .sign(operations_bundle::binding_signature_digest(&bundle, 0).unwrap(), None);
+    assert!(operations_bundle::set_binding_signature(
+        &mut bundle,
+        0,
+        binding_signature.as_ref().try_into().unwrap()
+    ));
     let signature: Signature =
         operational_pair.sk.sign(operations_bundle::signature_digest(&bundle).unwrap(), None);
     assert!(operations_bundle::set_signature(&mut bundle, signature.as_ref().try_into().unwrap()));
@@ -144,6 +152,30 @@ fn bundle_joins_exact_release_mapping_and_encrypted_profile() {
     assert_eq!(binding.target_artifact, b"kafka");
     assert_eq!(binding.object_key, b"operations/orders-kafka.cops");
     assert_eq!(binding.envelope_digest, charlotte_launch::sha256::digest(binding.envelope));
+    assert!(operations_bundle::verify_binding_authorization(
+        bundle.sequence,
+        &bundle.cluster_id,
+        &bundle.release_digest,
+        &bundle.recipient_key_id,
+        &bundle.signing_key_id,
+        binding.target_artifact,
+        binding.object_key,
+        &binding.envelope_digest,
+        &binding.authorization_signature,
+        operational_public,
+    ));
+    assert!(!operations_bundle::verify_binding_authorization(
+        bundle.sequence,
+        &bundle.cluster_id,
+        &bundle.release_digest,
+        &bundle.recipient_key_id,
+        &bundle.signing_key_id,
+        b"different-connector",
+        binding.object_key,
+        &binding.envelope_digest,
+        &binding.authorization_signature,
+        operational_public,
+    ));
 }
 
 #[test]

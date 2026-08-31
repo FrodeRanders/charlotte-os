@@ -7,9 +7,10 @@ without being able to replace the application executable. The cluster is the
 run-time authority that joins those two independently authorized inputs and
 hands applications only attenuated capabilities.
 
-This document records the target model, the first implemented envelope, and the
-work still required before encrypted operational bindings are admitted by a
-cluster. It is not a claim that the full provisioning path is production ready.
+This document records the target model, the implemented admission and
+node-pickup path, and the production hardening that remains. It is not a claim
+that private-key custody, rotation, audit, or connector rollout is production
+ready.
 
 ## Separation of responsibilities
 
@@ -128,14 +129,14 @@ the cluster must decrypt into transient owned memory and consume that memory in
 a connector launch without publishing plaintext to a filesystem or ordinary
 service API.
 
-## Joining development and operations: `COPSBND1`
+## Joining development and operations: `COPSBND2`
 
 An operational envelope binds the SHA-256 of an exact, already signed
 `CRELEASE`. Putting the operational-envelope digest back into that same release
 would create a cryptographic cycle. CharlotteOS therefore does not extend
 `CRELEASE1` with secret-profile references.
 
-`charlotte_launch::operations_bundle` instead defines `COPSBND1`, a separate
+`charlotte_launch::operations_bundle` instead defines `COPSBND2`, a separate
 operator-signed admission proof. It contains:
 
 - the exact signed release;
@@ -146,7 +147,11 @@ operator-signed admission proof. It contains:
   central-object-store key from which a node will later fetch it.
 
 The outer operational signature prevents an intermediary from remapping a
-valid profile to another connector or object key. Verification checks both
+valid profile to another connector or object key. Each mapping also carries a
+detached operational signature over its compact cluster/release/bundle
+context, connector target, object key, and envelope digest. That small proof
+is replicated with the reference, allowing the final kernel gate to verify the
+mapping without putting the full bundle or ciphertext in Raft. Verification checks both
 independent signatures, the cluster, recipient, exact release digest, expiry,
 unique profile/target/object names, and that every target is a component of the
 release. The bundle is bounded to 1 MiB and is an admission transport proof,
@@ -163,7 +168,7 @@ cluster-sign operations-bundle-verify orders.copsbundle <cluster-id-hex> \
   <release-public-key-hex> ops-signing.pub cluster-recipient.pub <now-unix>
 ```
 
-The replicated catalog now has a version-ten compact representation for a
+The replicated catalog now has a version-eleven compact representation for a
 verified bundle. It stores the release, bundle digest and sequence, connector
 target, profile name, object key, encrypted-envelope digest, expiry, key IDs,
 and per-profile sequence. It does not store the large admission bundle,
@@ -185,7 +190,7 @@ artifact and deployment roles, but they are separate fields so a production
 launcher can provision them independently. Trust-policy rotation is identified
 by a nonzero sequence; replicated rotation policy remains future work.
 
-`deployd` accepts `COPSBND1` at `POST /v1/operations`, and the host tool exposes
+`deployd` accepts `COPSBND2` at `POST /v1/operations`, and the host tool exposes
 `operations-bundle-notify`. A request may enter through any member. A follower
 only validates bounded framing and source-correlated transport; it sends the
 complete signed proof to the current leader using 32-bit relmsg v3 framing. The
@@ -214,6 +219,55 @@ are QEMU fixtures analogous to the existing artifact development key. They
 must never be used in a real environment. Production provisioning must replace
 the public launch trust and keep both private keys in the responsible
 organisational KMS/cluster secrets boundary.
+
+## Privileged object retrieval, decryption, and launch
+
+The node agent now reconciles active operational bindings separately from
+ordinary applications. `dns::OP_OPERATIONAL_LIST` returns a bounded `COPSLST1`
+view of locally applied compact Raft state: release/profile/target names,
+central object key, generations, expiry, key identifiers, and authenticated
+digests. It returns neither the encrypted envelope nor plaintext. The agent
+uses its separately provisioned bootstrap S3 capability to fetch the exact
+envelope and connector ELF, checks their lengths and SHA-256 digests, obtains
+trusted UTC from the time service, and reads the signed release and descriptor
+already retained by the catalog.
+
+Those inputs are encoded into one bounded `COPSPK01` memory object and moved to
+the `SpawnOperationalConnector` kernel gate. The capability is consumed on
+every submitted outcome. The gate is callable only by the reuse-safe address
+space identity explicitly authorized as the node deployment agent; registering
+an endpoint named `agent` does not grant this authority. Before HPKE open, the
+kernel independently verifies:
+
+- the role-separated deployment signature on both release and descriptor;
+- exact descriptor membership in the signed release and the release digest;
+- the CLS2 artifact signature, name, and descriptor digest using the artifact
+  authority;
+- cluster, profile kind/name, sequence, expiry, recipient/signing key IDs, and
+  encrypted-envelope digest against the compact binding;
+- the detached compact-binding and operational-envelope signatures;
+- expiry against UTC obtained by the authorized node agent immediately before
+  invoking the kernel gate.
+
+HPKE plaintext is opened into a `Zeroizing<Vec<u8>>` held by the kernel. The
+selected Kafka or S3 bounded profile decoder must accept it before launch. The
+supervisor transaction then copies it into a kernel-owned memory object, moves
+that capability read-only into the new connector, writes typed length metadata,
+and starts the connector only after bootstrap and profile transfer succeed.
+The transient kernel buffer is zeroed immediately after the launch attempt.
+No plaintext is returned to the agent, name service, catalog, object store,
+general application IPC, logs, or status pages. Kafka already used this
+immutable profile contract; S3 now uses the bounded `CHS3PF1` wire profile as
+well, while retaining manifest decoding only for legacy static boots. Both
+connectors zeroize their retained credential/private-key copies on drop.
+
+The default development image installs the version-controlled recipient-key
+fixture inside the kernel boundary. Production launchers must instead call
+`launch_deployment_plane_with_operational_key` with key material obtained from
+their sealed platform/KMS path; `launch_deployment_plane_with_trust` deliberately
+installs public verification policy without enabling decryption. The private
+key is checked against `CTRUST1`, stored in zeroizing kernel memory, and never
+placed in an EL0 manifest.
 
 ## Admission and storage rules
 
@@ -247,25 +301,28 @@ Rollback must not make an expired or lower-sequence binding admissible again.
    rotation policy not implemented.** `CTRUST1` separately identifies artifact,
    deployment, operations and recipient roles in launch-owned policy. The
    development artifact/deployment roles still share the existing demo key.
-3. **Release binding — implemented foundation.** `COPSBND1` avoids a digest
+3. **Release binding — implemented foundation.** `COPSBND2` avoids a digest
    cycle while joining one exact release to operator-signed encrypted profiles,
    connector targets and central-object-store keys.
 4. **Cluster admission and replicated replay fencing — implemented
    foundation.** `/v1/operations`, follower relay, leader-side dual-authority
-   verification, trusted-UTC expiry and Catalog V10 compact fences are wired.
+   verification, trusted-UTC expiry and Catalog V11 compact fences are wired.
    Authenticated transport, admission audit and replicated trust rotation are
    still production-hardening work.
-5. **Privileged decryption and launch — not implemented.** Add a small secrets
-   service or controller-owned primitive that can use the cluster recipient key
-   and move plaintext directly into an S3/Kafka connector launch.
+5. **Privileged retrieval, decryption and launch — implemented foundation.**
+   The authorized node agent fetches digest-pinned ciphertext and release
+   inputs; the kernel re-verifies both public trust roles and release
+   membership, opens HPKE into transient zeroizing memory, validates the
+   connector-specific profile, and moves it read-only into the connector.
 6. **Rotation, recovery and audit — not implemented.** Define recipient-key
    rollover, loss recovery, generation replacement, redacted observability and
    KMS/measured-boot integration.
 
-Until step 5 exists, admission records desired encrypted connector bindings but
-does not automatically fetch, decrypt or deliver profiles to a connector.
-Production connector profiles therefore remain separately provisioned as
-before.
+The bootstrap S3 connector used to retrieve central artifacts and envelopes is
+still separately provisioned; otherwise configuring that same retrieval path
+would be circular. Connector generation readiness, grant cutover/draining,
+recipient-key rotation, and production KMS/measured-boot custody remain the
+next operational layer.
 
 ## Review checklist
 
