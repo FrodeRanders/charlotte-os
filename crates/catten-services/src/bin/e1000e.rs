@@ -20,6 +20,7 @@ use core::arch::asm;
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
@@ -36,6 +37,7 @@ use catten_syscall::{
     device_mmio_map_any,
     device_mmio_unmap,
     dma_map,
+    ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
@@ -331,7 +333,7 @@ unsafe fn drain_rx(
     }
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
     let ns_conn = match ctx.bootstrap_cap() {
         Some(cap) => cap,
@@ -493,10 +495,40 @@ fn main(ctx: Context) -> ! {
     let mut rx_delivered = 0u16;
     let mut rx_delivery_error = 0u32;
     let mut tx_in_use = vec![false; RING_SIZE];
-    let mut received = VecDeque::new();
+    let mut received: VecDeque<ReceivedFrame> = VecDeque::new();
     let mut pending_recv = 0u64;
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            let endpoint_closed = ipc_close(ep) == ipc_status::OK;
+            if pending_recv != 0 {
+                ipc_close(pending_recv);
+            }
+            for frame in received.drain(..) {
+                memory_close(frame.cap);
+            }
+            let tx_drained = (0..1_000_000).any(|_| {
+                unsafe { drain_tx(tx_ring, &mut tx_in_use, &mut tx_completed) };
+                if tx_in_use.iter().all(|in_use| !*in_use) {
+                    true
+                } else {
+                    core::hint::spin_loop();
+                    false
+                }
+            });
+            // The global controller reset masks interrupts and disables both
+            // descriptor engines. Issue it even after a drain timeout to stop
+            // DMA, but publish graceful quiescence only if the queue drained.
+            let reset = unsafe { reset_controller() };
+            if endpoint_closed && tx_drained && reset && catten_syscall::device_close(irq_cap) == 0
+            {
+                return request;
+            }
+            catten_rt::logln!("[e1000e] device quiescence failed; retaining controller domain");
+            loop {
+                catten_services::sleep_ms(100);
+            }
+        }
         let _ = cq_wait_timeout(1, 10, 0);
         let cause = unsafe { mmio_read(ICR) };
         let (_status, _count) = device_irq_ack(irq_cap);
@@ -653,6 +685,10 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete_device_quiesced()
 }
 
 catten_rt::entry!(main);

@@ -20,11 +20,13 @@ use core::sync::atomic::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
     block,
     ns,
+    sleep_ms,
     spin_reply,
 };
 use catten_syscall::{
@@ -32,6 +34,7 @@ use catten_syscall::{
     IpcRights,
     dma_map,
     dma_unmap,
+    ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
@@ -289,7 +292,35 @@ fn identify(
     Some((block_size, total.min(u32::MAX as u64) as u32))
 }
 
-fn main(ctx: Context) -> ! {
+fn stop_port(port: usize) -> bool {
+    let pb = port_base(port);
+    write_mmio32(pb + PXIE, 0);
+    let mut command = read_mmio32(pb + PXCMD) & !PXCMD_ST;
+    write_mmio32(pb + PXCMD, command);
+    let command_stopped = (0..1_000_000).any(|_| {
+        if read_mmio32(pb + PXCMD) & PXCMD_CR == 0 {
+            true
+        } else {
+            core::hint::spin_loop();
+            false
+        }
+    });
+    if !command_stopped {
+        return false;
+    }
+    command &= !PXCMD_FRE;
+    write_mmio32(pb + PXCMD, command);
+    (0..1_000_000).any(|_| {
+        if read_mmio32(pb + PXCMD) & PXCMD_FR == 0 {
+            true
+        } else {
+            core::hint::spin_loop();
+            false
+        }
+    })
+}
+
+fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -298,7 +329,7 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let _irq_cap = match ctx.irq_cap() {
+    let irq_cap = match ctx.irq_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -446,9 +477,35 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::SENTINEL, 0x900d);
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            let endpoint_closed = ipc_close(endpoint) == ipc_status::OK;
+            let flushed = endpoint_closed
+                && submit_and_wait(
+                    port,
+                    &cmd_list,
+                    &cmd_table,
+                    AtaCommand {
+                        opcode: ATA_FLUSH_CACHE,
+                        lba: 0,
+                        count: 0,
+                        data_iova: 0,
+                        byte_count: 0,
+                    },
+                );
+            // Stop the command/FIS engines even if the final flush fails, but
+            // withhold verified quiescence unless both operations succeeded.
+            let stopped = stop_port(port);
+            if flushed && stopped && catten_syscall::device_close(irq_cap) == 0 {
+                return request;
+            }
+            catten_rt::logln!("[ahci] device quiescence failed; retaining controller domain");
+            loop {
+                sleep_ms(100);
+            }
+        }
         let message = ipc_recv(endpoint);
         if message.status == ipc_status::NO_MESSAGE {
-            catten_syscall::cq_wait(1, 0);
+            catten_syscall::cq_wait_timeout(1, 10, 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {
@@ -586,6 +643,10 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete_device_quiesced()
 }
 
 catten_rt::entry!(main);

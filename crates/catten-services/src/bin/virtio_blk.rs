@@ -18,11 +18,13 @@ use core::sync::atomic::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
     block,
     ns,
+    sleep_ms,
     spin_reply,
     virtio,
 };
@@ -31,6 +33,7 @@ use catten_syscall::{
     IpcRights,
     dma_map,
     dma_unmap,
+    ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
     ipc_recv,
@@ -141,7 +144,7 @@ fn alloc_dma(pages: usize) -> Option<DmaBuf> {
     })
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -150,7 +153,7 @@ fn main(ctx: Context) -> ! {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
-    let _irq_cap = match ctx.irq_cap() {
+    let irq_cap = match ctx.irq_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
     };
@@ -337,9 +340,26 @@ fn main(ctx: Context) -> ! {
         };
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            let endpoint_closed = ipc_close(endpoint) == ipc_status::OK;
+            let flushed = endpoint_closed && submit(BLK_T_FLUSH, 0, 0, 0, &mut avail_pos);
+            // Stop DMA even when durable flush fails, but never report that
+            // failure as a verified graceful shutdown.
+            let reset = unsafe {
+                w8(common + virtio::M_DEVICE_STATUS, 0);
+                r8(common + virtio::M_DEVICE_STATUS) == 0
+            };
+            if flushed && reset && catten_syscall::device_close(irq_cap) == 0 {
+                return request;
+            }
+            catten_rt::logln!("[virtio-blk] device quiescence failed; retaining controller domain");
+            loop {
+                sleep_ms(100);
+            }
+        }
         let message = ipc_recv(endpoint);
         if message.status == ipc_status::NO_MESSAGE {
-            catten_syscall::cq_wait(1, 0);
+            catten_syscall::cq_wait_timeout(1, 10, 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {
@@ -440,6 +460,10 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete_device_quiesced()
 }
 
 catten_rt::entry!(main);

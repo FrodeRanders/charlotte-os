@@ -198,11 +198,13 @@ repository history remain authoritative.
         device-quiescence coordinator. The object store performs a final durable
         flush, VirtIO RNG resets before releasing shared DMA, and NVMe drains
         operations, flushes, masks interrupts, disables the controller, and
-        observes 	exttt{RDY=0} before the stronger acknowledgement. Cooperative
-        cleanup in every platform service, AHCI/VirtIO-block and NIC quiescence,
-        independent kernel verification of reset/IOMMU invalidation, a replicated
-        shutdown intent, final poweroff, controller-managed instance leases,
-        replica-aware rollout, and coordinated rollback remain future work.
+        observes \texttt{RDY=0} before the stronger acknowledgement. AHCI and
+        VirtIO block flush and stop/reset their controllers; VirtIO net and
+        E1000E drain transmit descriptors and stop their DMA engines. Cooperative
+        cleanup in every platform service, independent kernel verification of
+        reset/IOMMU invalidation, a replicated shutdown intent, final poweroff,
+        controller-managed instance leases, replica-aware rollout, and
+        coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

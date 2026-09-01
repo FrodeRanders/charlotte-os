@@ -776,15 +776,20 @@ grace is capped by the enclosing node deadline.
 The remaining NIC, block, and entropy domains transfer exactly once to a
 device-quiescence coordinator. It never converts a deadline into an
 unconditional driver abort. Ordinary lifecycle readiness is insufficient: a
-driver must publish the distinct 	exttt{DEVICE\_QUIESCED} state and exit before
+driver must publish the distinct \texttt{DEVICE\_QUIESCED} state and exit before
 the kernel reclaims its address space and launch-owned device grants. Otherwise
-the domain and IOMMU state remain quarantined for diagnosis. The VirtIO entropy
-adapter resets the device before dropping its shared-DMA mappings. The NVMe
+the domain and IOMMU state remain quarantined for diagnosis. Every in-tree
+hardware adapter implements the driver side of this contract. VirtIO entropy
+resets the device before dropping its shared-DMA mappings. NVMe
 adapter closes admission, drains outstanding replies and DMA, observes a final
-NVM Flush completion, masks interrupts, clears 	exttt{CC.EN}, and waits for
-	exttt{CSTS.RDY=0}. AHCI, VirtIO block, and NIC adapters still require their
-controller-specific implementations. Thread death alone is never treated as
-evidence that DMA stopped.
+NVM Flush completion, masks interrupts, clears \texttt{CC.EN}, and waits for
+\texttt{CSTS.RDY=0}. VirtIO block flushes before device reset; AHCI flushes,
+masks port interrupts, and stops its command and FIS receive engines; VirtIO
+net and E1000E close ingress and deferred receives, release queued frames,
+drain transmit descriptors, and then reset or halt the receive/transmit
+engines. A failed flush or drain still stops DMA where possible but withholds
+\texttt{DEVICE\_QUIESCED}. Thread death alone is never treated as evidence
+that DMA stopped.
 
 \architecturewidefigure{cooperative-deployment-shutdown}
     {Bounded cooperative shutdown for deployment retirement or an enclosing

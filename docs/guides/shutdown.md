@@ -140,13 +140,17 @@ space and its launch-owned MMIO, interrupt, and IOMMU grants. A deadline overrun
 or exit without the stronger acknowledgement retains the domain and device
 state for diagnosis instead of risking DMA into reallocated memory.
 
-The VirtIO entropy adapter implements this contract today: reset status zero
-precedes teardown of its shared-DMA buffers and MMIO mapping. The NVMe adapter
-also implements the complete storage sequence: endpoint close, outstanding
-reply/DMA drain, final NVM Flush completion, interrupt mask, `CC.EN=0`, and an
-observed `CSTS.RDY=0`. AHCI, VirtIO block, and NIC adapters still need their
-controller-specific implementations; the coordinator fails closed for those
-rather than pretending that thread death proves hardware quiescence.
+Every in-tree hardware adapter now implements the contract. VirtIO entropy
+resets status zero before tearing down its shared-DMA buffers and MMIO mapping.
+NVMe closes admission, drains outstanding replies and DMA, completes a final
+NVM Flush, masks interrupts, clears `CC.EN`, and observes `CSTS.RDY=0`.
+VirtIO block completes its protocol flush before resetting status zero. AHCI
+completes ATA Flush Cache, masks port interrupts, and stops both the command
+and FIS receive engines. VirtIO net and E1000E close admission and deferred
+receives, release queued frames, drain outstanding transmit descriptors, then
+reset or halt their receive/transmit engines and mask interrupts. A failed
+flush or drain still attempts to stop DMA, but withholds `DEVICE_QUIESCED` and
+retains the domain rather than claiming a graceful shutdown.
 
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
@@ -160,6 +164,5 @@ above, and durable object-store shutdown. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
 deployment lifecycle authority. Coordinated whole-node poweroff still needs a
 replicated drain intent, explicit cooperative cleanup in the remaining
-platform services, AHCI/VirtIO-block and NIC controller quiescence, independent
-kernel verification of device reset/IOMMU invalidation, and a final
-architecture poweroff operation.
+platform services, independent kernel verification of device reset and IOMMU
+invalidation, and a final architecture poweroff operation.

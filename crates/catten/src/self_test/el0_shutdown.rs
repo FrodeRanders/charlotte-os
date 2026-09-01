@@ -345,10 +345,13 @@ extern "C" fn verify_el0_shutdown() {
     assert_eq!(devices.poll(), DeviceShutdownProgress::Complete);
     logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
 
-    let production_deadline = monotonic_millis().saturating_add(30_000);
-    begin_node_shutdown(production_deadline, 5_000)
+    let production_deadline = monotonic_millis().saturating_add(10_000);
+    // Most high-level platform services do not yet have cooperative cleanup.
+    // Keep their isolated-test grace short enough to reach real device
+    // quiescence before unrelated background verifiers complete.
+    begin_node_shutdown(production_deadline, 100)
         .expect("production node shutdown did not acquire the steady-state service set");
-    let production_wait = crate::self_test::results::Deadline::after_millis(30_000);
+    let production_wait = crate::self_test::results::Deadline::after_millis(10_000);
     let expected_devices = loop {
         match poll_node_shutdown().expect("production node shutdown coordinator disappeared") {
             NodeShutdownProgress::Draining {
@@ -380,7 +383,10 @@ extern "C" fn verify_el0_shutdown() {
             other => panic!("production device quiescence failed: {:?}", other),
         }
     }
-    logln!("[shutdown] production object store, NVMe, and entropy adapters flushed and quiesced");
+    logln!(
+        "[shutdown] production object store and {} device adapter(s) flushed/reset and quiesced",
+        expected_devices
+    );
 
     logln!(
         "[shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"
