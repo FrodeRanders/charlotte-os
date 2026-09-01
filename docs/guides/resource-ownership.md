@@ -132,6 +132,14 @@ scope. This is important because the divergent `thread_exit` syscall does not
 run destructors. See [Cooperative shutdown and forced retirement](shutdown.md)
 for the complete pattern and bounded-wait rule.
 
+Durable services must also order admission and persistence before that return.
+The object store is the reference pattern: drop the owned public `Endpoint`,
+retry the final block `FLUSH`, then let the `ObjStore` owner drop its block
+`Connection`. Do not acknowledge lifecycle readiness after a failed flush.
+Incoming buffers, pending block calls, mappings, and reply authorities remain
+`OwnedMemory`, `PendingCall`, `MappedMemory`, and `ReplyToken` throughout, so a
+failed mapping or IPC submission cannot bypass cleanup.
+
 ## Raw boundary rules
 
 Raw adoption is occasionally necessary at a launch or hardware ABI boundary:

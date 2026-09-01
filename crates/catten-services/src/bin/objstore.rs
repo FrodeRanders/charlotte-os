@@ -21,17 +21,24 @@ use alloc::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
+    owned::{
+        Connection,
+        ConnectionRef,
+        Endpoint,
+        OwnedMemory,
+        ReplyToken,
+    },
 };
 use catten_services::{
     block,
     ns,
     objstore,
+    sleep_ms,
+    wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    ipc_status,
-    *,
-};
+use catten_syscall::IpcRights;
 use charlotte_launch::objstore_status as status;
 
 const PAGE_SIZE: usize = 4096;
@@ -151,46 +158,33 @@ struct ObjectHeader {
 }
 
 struct BlockDev {
-    conn: u64,
+    conn: Connection,
     block_size: u32,
     total_blocks: u32,
 }
 
 impl BlockDev {
-    fn connect(ns_conn: u64) -> Option<Self> {
+    fn connect(ns_conn: ConnectionRef<'_>) -> Option<Self> {
         diag_stage(10);
-        let lookup = ipc_scalar_call_connection(
-            ns_conn,
-            ns::OP_LOOKUP,
-            block::NAME,
-            0,
-            IpcRights::SEND | IpcRights::CALL,
-        );
-        if lookup == 0 {
-            diag_error(0xc1);
-            return None;
-        }
-        diag_stage(11);
-        let Some((generation, conn)) = wait_scalar(lookup) else {
+        let Some((generation, conn)) = wait_for_registered_name_owned(ns_conn, block::NAME) else {
             diag_error(0xc2);
             return None;
         };
-        if generation < 1 || conn == 0 {
+        if generation < 1 {
             diag_error(0xc3);
             return None;
         }
         diag_stage(12);
-        let info = ipc_scalar_call(conn, block::OP_INFO, 0);
-        if info == 0 {
+        let Ok(info) = conn.call(block::OP_INFO, 0) else {
             diag_error(0xc4);
             return None;
-        }
-        let Some((result, _)) = wait_scalar(info) else {
+        };
+        let Ok(reply) = info.wait() else {
             diag_error(0xc5);
             return None;
         };
         diag_stage(13);
-        let (block_size, total_blocks) = charlotte_protocol_block::unpack_info(result);
+        let (block_size, total_blocks) = charlotte_protocol_block::unpack_info(reply.result);
         if !(512..=PAGE_SIZE as u32).contains(&block_size)
             || Layout::for_device(block_size, total_blocks).is_none()
         {
@@ -204,16 +198,19 @@ impl BlockDev {
         })
     }
 
-    fn read_blocks_keep(&self, lba: u64, count: u32, memory: u64) -> bool {
+    fn read_blocks_keep(&self, lba: u64, count: u32, memory: &mut OwnedMemory) -> bool {
         diag_stage(40);
         config::write::<u32>(status::BLOCK_OP, block::OP_READ);
-        let call = ipc_scalar_call_borrow_write(
-            self.conn,
-            block::OP_READ,
-            charlotte_protocol_block::pack_lba_count(lba, count),
-            memory,
-        );
-        let result = wait_scalar(call).map(|(result, _)| result);
+        let result = self
+            .conn
+            .call_borrow_write(
+                block::OP_READ,
+                charlotte_protocol_block::pack_lba_count(lba, count),
+                memory,
+            )
+            .ok()
+            .and_then(|call| call.wait().ok())
+            .map(|reply| reply.result);
         config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
         let ok = result == Some(0);
         if !ok {
@@ -222,16 +219,19 @@ impl BlockDev {
         ok
     }
 
-    fn write_blocks(&self, lba: u64, count: u32, memory: u64) -> bool {
+    fn write_blocks(&self, lba: u64, count: u32, memory: &OwnedMemory) -> bool {
         diag_stage(41);
         config::write::<u32>(status::BLOCK_OP, block::OP_WRITE);
-        let call = ipc_scalar_call_borrow_read(
-            self.conn,
-            block::OP_WRITE,
-            charlotte_protocol_block::pack_lba_count(lba, count),
-            memory,
-        );
-        let result = wait_scalar(call).map(|(result, _)| result);
+        let result = self
+            .conn
+            .call_borrow_read(
+                block::OP_WRITE,
+                charlotte_protocol_block::pack_lba_count(lba, count),
+                memory,
+            )
+            .ok()
+            .and_then(|call| call.wait().ok())
+            .map(|reply| reply.result);
         config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
         let ok = result == Some(0);
         if !ok {
@@ -243,8 +243,12 @@ impl BlockDev {
     fn flush(&self) -> bool {
         diag_stage(42);
         config::write::<u32>(status::BLOCK_OP, block::OP_FLUSH);
-        let call = ipc_scalar_call(self.conn, block::OP_FLUSH, 0);
-        let result = wait_scalar(call).map(|(result, _)| result);
+        let result = self
+            .conn
+            .call(block::OP_FLUSH, 0)
+            .ok()
+            .and_then(|call| call.wait().ok())
+            .map(|reply| reply.result);
         config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
         let ok = result == Some(0);
         if !ok {
@@ -252,17 +256,6 @@ impl BlockDev {
         }
         ok
     }
-}
-
-fn wait_scalar(call: u64) -> Option<(i64, u64)> {
-    if call == 0 {
-        config::write::<u32>(status::REPLY_STATUS, u32::MAX);
-        return None;
-    }
-    let (status, result, cap) = ipc_reply_wait(call);
-    config::write::<u32>(status::REPLY_STATUS, status as u32);
-    ipc_close(call);
-    (status == 0).then_some((result as i64, cap))
 }
 
 struct ObjStore {
@@ -491,16 +484,17 @@ impl ObjStore {
         objstore::ERR_OK
     }
 
-    fn set_size(&self, id: u64, size_cap: u64) -> i64 {
+    fn set_size(&self, id: u64, size_memory: OwnedMemory) -> i64 {
         if self.find_index(id).is_none() {
             return objstore::ERR_NOT_FOUND;
         }
-        let (buffer_vaddr_map_status, buffer_vaddr) = memory_map_any(size_cap, false);
-        if size_cap == 0 || buffer_vaddr_map_status != 0 {
+        let Ok(mapping) = size_memory.map_read_only() else {
             return objstore::ERR_IO_ERROR;
-        }
-        let size = unsafe { core::ptr::read_unaligned(buffer_vaddr as *const u64) };
-        memory_unmap(size_cap);
+        };
+        let Some(encoded_size) = mapping.as_slice().get(..core::mem::size_of::<u64>()) else {
+            return objstore::ERR_IO_ERROR;
+        };
+        let size = u64::from_le_bytes(encoded_size.try_into().unwrap());
         let Ok(size) = u32::try_from(size) else {
             return objstore::ERR_TOO_LARGE;
         };
@@ -508,7 +502,7 @@ impl ObjStore {
         objstore::ERR_OK
     }
 
-    fn write(&self, id: u64, data_cap: u64) -> i64 {
+    fn write(&self, id: u64, data_memory: OwnedMemory) -> i64 {
         let Some(index) = self.find_index(id) else {
             return objstore::ERR_NOT_FOUND;
         };
@@ -519,10 +513,12 @@ impl ObjStore {
             return objstore::ERR_IO_ERROR;
         };
         let size = self.pending_sizes.lock().remove(&id).unwrap_or(PAGE_SIZE as u32);
-        if size != 0 && memory_get_phys_page(data_cap, (size as usize).div_ceil(PAGE_SIZE) - 1) == 0
-        {
+        let Ok(data) = data_memory.map_read_only() else {
             return objstore::ERR_IO_ERROR;
-        }
+        };
+        let Some(data) = data.as_slice().get(..size as usize) else {
+            return objstore::ERR_IO_ERROR;
+        };
 
         let data_blocks = size.div_ceil(self.dev.block_size);
         let Some(header_lba) = self.allocate_extent(1) else {
@@ -535,12 +531,8 @@ impl ObjStore {
         let hash = if size == 0 {
             content_hash(&[])
         } else {
-            let Some(hash) = hash_memory(data_cap, size as usize) else {
-                self.free_extent(header_lba, 1);
-                self.free_extents(&extents);
-                return objstore::ERR_IO_ERROR;
-            };
-            if !self.transfer_object(data_cap, &extents, size, true) {
+            let hash = content_hash(data);
+            if !self.write_object(data, &extents) {
                 self.free_extent(header_lba, 1);
                 self.free_extents(&extents);
                 return objstore::ERR_IO_ERROR;
@@ -587,40 +579,45 @@ impl ObjStore {
         objstore::ERR_OK
     }
 
-    fn read_and_reply(&self, id: u64, reply: u64) {
-        if reply == 0 {
-            return;
-        }
+    fn read_and_reply(&self, id: u64, reply: ReplyToken) {
         let Some(index) = self.find_index(id) else {
-            ipc_reply(reply, objstore::ERR_NOT_FOUND);
+            let _ = reply.reply(objstore::ERR_NOT_FOUND);
             return;
         };
         let Some(entry) = self.read_directory(index) else {
-            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            let _ = reply.reply(objstore::ERR_IO_ERROR);
             return;
         };
         let Some(header) = self.read_header(entry) else {
-            ipc_reply(reply, objstore::ERR_IO_ERROR);
+            let _ = reply.reply(objstore::ERR_IO_ERROR);
             return;
         };
         let Ok(size) = usize::try_from(header.data_len) else {
-            ipc_reply(reply, objstore::ERR_TOO_LARGE);
+            let _ = reply.reply(objstore::ERR_TOO_LARGE);
             return;
         };
-        let memory = memory_alloc(size.max(1).div_ceil(PAGE_SIZE));
-        if memory == 0 {
-            ipc_reply(reply, objstore::ERR_IO_ERROR);
+        let Ok(memory) = OwnedMemory::allocate(size.max(1).div_ceil(PAGE_SIZE)) else {
+            let _ = reply.reply(objstore::ERR_IO_ERROR);
             return;
-        }
-        if size != 0
-            && (!self.transfer_object(memory, header.extents(), size as u32, false)
-                || hash_memory(memory, size) != Some(header.data_hash))
-        {
-            memory_close(memory);
-            ipc_reply(reply, objstore::ERR_IO_ERROR);
+        };
+        let Ok(mut mapping) = memory.map_writable() else {
+            let _ = reply.reply(objstore::ERR_IO_ERROR);
             return;
+        };
+        if size != 0 {
+            let output = &mut mapping.as_mut_slice()[..size];
+            if !self.read_object(output, header.extents())
+                || content_hash(output) != header.data_hash
+            {
+                let _ = reply.reply(objstore::ERR_IO_ERROR);
+                return;
+            }
         }
-        ipc_reply_move(reply, memory, size as i64);
+        let Ok(memory) = mapping.unmap() else {
+            let _ = reply.reply(objstore::ERR_IO_ERROR);
+            return;
+        };
+        let _ = reply.reply_move(memory, size as i64);
     }
 
     fn object_size(&self, id: u64) -> Option<u64> {
@@ -819,35 +816,20 @@ impl ObjStore {
         while offset < bytes {
             let count_bytes = (bytes - offset).min(chunk_bytes);
             let count = u32::try_from(count_bytes / self.dev.block_size as usize).ok()?;
-            let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
-            if memory == 0 {
-                return None;
-            }
+            let mut memory = OwnedMemory::allocate(count_bytes.div_ceil(PAGE_SIZE)).ok()?;
             // The read is a borrow-write lend: the buffer must be unmapped in
             // this address space while the server writes it via DMA. Map only
             // after the lend completes.
             if !self.dev.read_blocks_keep(
                 lba + (offset / self.dev.block_size as usize) as u64,
                 count,
-                memory,
+                &mut memory,
             ) {
-                memory_close(memory);
                 return None;
             }
-            let (chunk_vaddr_map_status, chunk_vaddr) = memory_map_any(memory, false);
-            if chunk_vaddr_map_status != 0 {
-                memory_close(memory);
-                return None;
-            }
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    chunk_vaddr as *const u8,
-                    result.as_mut_ptr().add(offset),
-                    count_bytes,
-                );
-            }
-            memory_unmap(memory);
-            memory_close(memory);
+            let mapping = memory.map_read_only().ok()?;
+            result[offset..offset + count_bytes]
+                .copy_from_slice(&mapping.as_slice()[..count_bytes]);
             offset += count_bytes;
         }
         Some(result)
@@ -867,32 +849,26 @@ impl ObjStore {
         while offset < total {
             let count_bytes = (total - offset).min(chunk_bytes);
             let count = (count_bytes / self.dev.block_size as usize) as u32;
-            let memory = memory_alloc(count_bytes.div_ceil(PAGE_SIZE));
-            let (chunk_vaddr_2_map_status, chunk_vaddr_2) = memory_map_any(memory, true);
-            if memory == 0 || chunk_vaddr_2_map_status != 0 {
-                if memory != 0 {
-                    memory_close(memory);
-                }
+            let Ok(memory) = OwnedMemory::allocate(count_bytes.div_ceil(PAGE_SIZE)) else {
                 return false;
-            }
+            };
+            let Ok(mut mapping) = memory.map_writable() else {
+                return false;
+            };
             let source_bytes = bytes.len().saturating_sub(offset).min(count_bytes);
-            unsafe {
-                core::ptr::write_bytes(chunk_vaddr_2 as *mut u8, 0, count_bytes);
-                if source_bytes != 0 {
-                    core::ptr::copy_nonoverlapping(
-                        bytes.as_ptr().add(offset),
-                        chunk_vaddr_2 as *mut u8,
-                        source_bytes,
-                    );
-                }
+            mapping.as_mut_slice()[..count_bytes].fill(0);
+            if source_bytes != 0 {
+                mapping.as_mut_slice()[..source_bytes]
+                    .copy_from_slice(&bytes[offset..offset + source_bytes]);
             }
-            memory_unmap(memory);
+            let Ok(memory) = mapping.unmap() else {
+                return false;
+            };
             let ok = self.dev.write_blocks(
                 lba + (offset / self.dev.block_size as usize) as u64,
                 count,
-                memory,
+                &memory,
             );
-            memory_close(memory);
             if !ok {
                 return false;
             }
@@ -901,77 +877,64 @@ impl ObjStore {
         true
     }
 
-    fn transfer_object(&self, memory: u64, extents: &[Extent], size: u32, write: bool) -> bool {
-        let (buffer_vaddr_2_map_status, buffer_vaddr_2) = memory_map_any(memory, !write);
-        if buffer_vaddr_2_map_status != 0 {
-            return false;
-        }
+    fn write_object(&self, source: &[u8], extents: &[Extent]) -> bool {
         let chunk_bytes = MAX_IO_BYTES.min((u16::MAX as usize) * self.dev.block_size as usize);
         let mut offset = 0usize;
-        let mut ok = true;
         for extent in extents {
             let extent_bytes = extent.blocks as usize * self.dev.block_size as usize;
             let mut extent_offset = 0usize;
-            while extent_offset < extent_bytes && offset < size as usize {
+            while extent_offset < extent_bytes && offset < source.len() {
                 let bytes =
-                    (size as usize - offset).min(extent_bytes - extent_offset).min(chunk_bytes);
+                    (source.len() - offset).min(extent_bytes - extent_offset).min(chunk_bytes);
                 let blocks = bytes.div_ceil(self.dev.block_size as usize) as u32;
-                let chunk = memory_alloc(bytes.div_ceil(PAGE_SIZE));
-                let (chunk_vaddr_3_map_status, chunk_vaddr_3) = memory_map_any(chunk, true);
-                if chunk == 0 || chunk_vaddr_3_map_status != 0 {
-                    if chunk != 0 {
-                        memory_close(chunk);
-                    }
-                    ok = false;
-                    break;
-                }
-                if write {
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            (buffer_vaddr_2 + offset) as *const u8,
-                            chunk_vaddr_3 as *mut u8,
-                            bytes,
-                        );
-                    }
-                }
-                memory_unmap(chunk);
-                let chunk_lba = extent.lba + (extent_offset / self.dev.block_size as usize) as u64;
-                let io_ok = if write {
-                    self.dev.write_blocks(chunk_lba, blocks, chunk)
-                } else {
-                    self.dev.read_blocks_keep(chunk_lba, blocks, chunk)
+                let Ok(chunk) = OwnedMemory::allocate(bytes.div_ceil(PAGE_SIZE)) else {
+                    return false;
                 };
-                if !io_ok {
-                    memory_close(chunk);
-                    ok = false;
-                    break;
+                let Ok(mut mapping) = chunk.map_writable() else {
+                    return false;
+                };
+                mapping.as_mut_slice().fill(0);
+                mapping.as_mut_slice()[..bytes].copy_from_slice(&source[offset..offset + bytes]);
+                let Ok(chunk) = mapping.unmap() else {
+                    return false;
+                };
+                let chunk_lba = extent.lba + (extent_offset / self.dev.block_size as usize) as u64;
+                if !self.dev.write_blocks(chunk_lba, blocks, &chunk) {
+                    return false;
                 }
-                if !write {
-                    let (chunk_vaddr_4_map_status, chunk_vaddr_4) = memory_map_any(chunk, false);
-                    if chunk_vaddr_4_map_status != 0 {
-                        memory_close(chunk);
-                        ok = false;
-                        break;
-                    }
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            chunk_vaddr_4 as *const u8,
-                            (buffer_vaddr_2 + offset) as *mut u8,
-                            bytes,
-                        );
-                    }
-                    memory_unmap(chunk);
-                }
-                memory_close(chunk);
                 offset += bytes;
                 extent_offset += bytes;
             }
-            if !ok {
-                break;
+        }
+        offset == source.len()
+    }
+
+    fn read_object(&self, destination: &mut [u8], extents: &[Extent]) -> bool {
+        let chunk_bytes = MAX_IO_BYTES.min((u16::MAX as usize) * self.dev.block_size as usize);
+        let mut offset = 0usize;
+        for extent in extents {
+            let extent_bytes = extent.blocks as usize * self.dev.block_size as usize;
+            let mut extent_offset = 0usize;
+            while extent_offset < extent_bytes && offset < destination.len() {
+                let bytes =
+                    (destination.len() - offset).min(extent_bytes - extent_offset).min(chunk_bytes);
+                let blocks = bytes.div_ceil(self.dev.block_size as usize) as u32;
+                let Ok(mut chunk) = OwnedMemory::allocate(bytes.div_ceil(PAGE_SIZE)) else {
+                    return false;
+                };
+                let chunk_lba = extent.lba + (extent_offset / self.dev.block_size as usize) as u64;
+                if !self.dev.read_blocks_keep(chunk_lba, blocks, &mut chunk) {
+                    return false;
+                }
+                let Ok(mapping) = chunk.map_read_only() else {
+                    return false;
+                };
+                destination[offset..offset + bytes].copy_from_slice(&mapping.as_slice()[..bytes]);
+                offset += bytes;
+                extent_offset += bytes;
             }
         }
-        memory_unmap(memory);
-        ok && offset == size as usize
+        offset == destination.len()
     }
 }
 
@@ -997,28 +960,19 @@ impl ObjectHeader {
 
 fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
     config::write::<u32>(status::DETAIL, 50 + slot as u32 * 10);
-    let memory = memory_alloc(1);
-    if memory == 0 || !dev.read_blocks_keep(slot, 1, memory) {
-        if memory != 0 {
-            memory_close(memory);
-        }
+    let mut memory = OwnedMemory::allocate(1).ok()?;
+    if !dev.read_blocks_keep(slot, 1, &mut memory) {
         return None;
     }
     config::write::<u32>(status::DETAIL, 51 + slot as u32 * 10);
-    let (chunk_vaddr_5_map_status, chunk_vaddr_5) = memory_map_any(memory, false);
-    if chunk_vaddr_5_map_status != 0 {
+    let Ok(mapping) = memory.map_read_only() else {
         config::write::<u32>(status::DETAIL, 0xe50 + slot as u32);
-        memory_close(memory);
         return None;
-    }
+    };
     config::write::<u32>(status::DETAIL, 52 + slot as u32 * 10);
-    let bytes =
-        unsafe { core::slice::from_raw_parts(chunk_vaddr_5 as *const u8, dev.block_size as usize) };
-    let result = decode_superblock(bytes);
+    let result = decode_superblock(&mapping.as_slice()[..dev.block_size as usize]);
     config::write::<u32>(status::DETAIL, 53 + slot as u32 * 10);
-    memory_unmap(memory);
     config::write::<u32>(status::DETAIL, 54 + slot as u32 * 10);
-    memory_close(memory);
     config::write::<u32>(status::DETAIL, 55 + slot as u32 * 10);
     result
 }
@@ -1204,17 +1158,6 @@ fn bitmap_range_used(bitmap: &[u8], start: u32, blocks: u32) -> bool {
         .any(|block| bitmap[block as usize / 8] & (1u8 << (block % 8)) != 0)
 }
 
-fn hash_memory(memory: u64, size: usize) -> Option<u64> {
-    let (buffer_vaddr_3_map_status, buffer_vaddr_3) = memory_map_any(memory, false);
-    if buffer_vaddr_3_map_status != 0 {
-        return None;
-    }
-    let bytes = unsafe { core::slice::from_raw_parts(buffer_vaddr_3 as *const u8, size) };
-    let result = content_hash(bytes);
-    memory_unmap(memory);
-    Some(result)
-}
-
 fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = 0xffff_ffffu32;
     for byte in bytes {
@@ -1254,113 +1197,123 @@ fn put_u64(bytes: &mut [u8], offset: usize, value: u64) {
     bytes[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
 }
 
-fn main(ctx: Context) -> ! {
-    let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| unsafe { thread_exit() });
+fn reply_scalar(reply: Option<ReplyToken>, result: i64) {
+    if let Some(reply) = reply {
+        let _ = reply.reply(result);
+    }
+}
+
+fn serve(ctx: &Context) -> ShutdownRequest {
+    let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
     diag_stage(1);
-    let dev = BlockDev::connect(ns_connection).unwrap_or_else(|| unsafe { thread_exit() });
+    let dev = BlockDev::connect(ns_connection).unwrap_or_else(|| catten_rt::domain_abort());
     diag_stage(2);
     config::write::<u32>(status::BLOCK_SIZE, dev.block_size);
     config::write::<u32>(status::TOTAL_BLOCKS, dev.total_blocks);
-    let mut store = ObjStore::mount(dev).unwrap_or_else(|| unsafe { thread_exit() });
+    let mut store = ObjStore::mount(dev).unwrap_or_else(|| catten_rt::domain_abort());
     diag_stage(3);
 
-    let endpoint = ipc_endpoint_create(objstore::INTERFACE, objstore::VERSION, 64);
-    if endpoint == 0 {
-        diag_error(0xb1);
-        unsafe { thread_exit() };
-    }
-    let register = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_REGISTER,
-        objstore::NAME,
-        endpoint,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if wait_scalar(register).is_none_or(|(generation, _)| generation < 1)
-        || ipc_endpoint_bind_cq(endpoint, 0) != 0
-    {
+    let endpoint =
+        Endpoint::create(objstore::INTERFACE, objstore::VERSION, 64).unwrap_or_else(|_| {
+            diag_error(0xb1);
+            catten_rt::domain_abort()
+        });
+    let generation = ns_connection
+        .call_connection(
+            ns::OP_REGISTER,
+            objstore::NAME,
+            &endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        )
+        .and_then(|call| call.wait().map_err(|_| catten_rt::owned::IpcError::CreationFailed))
+        .map(|reply| reply.result)
+        .unwrap_or(0);
+    if generation < 1 {
         diag_error(0xb2);
-        unsafe { thread_exit() };
+        catten_rt::domain_abort();
     }
     diag_stage(4);
     config::write::<u32>(status::SENTINEL, 0x900d);
 
     loop {
-        cq_wait(1, 0);
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            // Closing the public endpoint first prevents any later mutation
+            // from entering the store. Do not publish lifecycle readiness
+            // until the complete on-disk commit chain is durable.
+            drop(endpoint);
+            while !store.dev.flush() {
+                catten_rt::logln!("[objstore] shutdown flush failed; retrying until deadline");
+                sleep_ms(10);
+            }
+            drop(store);
+            return request;
+        }
+
         loop {
-            let message = ipc_recv(endpoint);
-            if message.status == ipc_status::NO_MESSAGE {
+            let Some(mut message) =
+                endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+            else {
                 break;
-            }
-            if message.status == ipc_status::ENDPOINT_CLOSED {
-                unsafe { thread_exit() };
-            }
-            if !message.is_ok() {
-                break;
-            }
+            };
             match message.opcode {
                 objstore::OP_CREATE => {
                     let result = store.create(None).map(|id| id as i64).unwrap_or(0);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_CREATE_AT => {
                     let result = store.create(Some(message.arg0)).map(|_| 0).unwrap_or_else(|e| e);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_DELETE => {
                     let result = store.delete(message.arg0);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_SET_SIZE => {
-                    let result = store.set_size(message.arg0, message.memory);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    let result = message
+                        .memory
+                        .take()
+                        .map(|memory| store.set_size(message.arg0, memory))
+                        .unwrap_or(objstore::ERR_IO_ERROR);
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_WRITE => {
-                    let result = store.write(message.arg0, message.memory);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
+                    let result = message
+                        .memory
+                        .take()
+                        .map(|memory| store.write(message.arg0, memory))
+                        .unwrap_or(objstore::ERR_IO_ERROR);
+                    reply_scalar(message.reply.take(), result);
+                }
+                objstore::OP_READ => {
+                    if let Some(reply) = message.reply.take() {
+                        store.read_and_reply(message.arg0, reply);
                     }
                 }
-                objstore::OP_READ => store.read_and_reply(message.arg0, message.reply),
                 objstore::OP_RESIZE => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, objstore::ERR_IO_ERROR);
-                    }
+                    reply_scalar(message.reply.take(), objstore::ERR_IO_ERROR);
                 }
                 objstore::OP_FLUSH => {
-                    if message.reply != 0 {
-                        ipc_reply(
-                            message.reply,
-                            if store.dev.flush() {
-                                0
-                            } else {
-                                objstore::ERR_IO_ERROR
-                            },
-                        );
-                    }
+                    let result = if store.dev.flush() {
+                        0
+                    } else {
+                        objstore::ERR_IO_ERROR
+                    };
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_INFO => {
                     let result = store
                         .object_size(message.arg0)
                         .and_then(|size| i64::try_from(size).ok())
                         .unwrap_or(objstore::ERR_NOT_FOUND);
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
+                    reply_scalar(message.reply.take(), result);
                 }
-                _ if message.reply != 0 => {
-                    ipc_reply(message.reply, -1);
-                }
-                _ => {}
+                _ => reply_scalar(message.reply.take(), -1),
             }
         }
+        sleep_ms(10);
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }

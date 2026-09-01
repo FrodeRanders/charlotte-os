@@ -121,6 +121,13 @@ Every phase has its own bounded grace, capped by the enclosing node deadline.
 Dropping an unfinished coordinator requests forced termination for ordinary
 service domains, matching the owner fallback used for deployments.
 
+The object-store phase is cooperative and durable. On `NodeShutdown` the
+service closes its public endpoint before doing any more work, retries the
+block-device flush until it succeeds (or the supervisor's deadline forces the
+domain), then drops its owned block connection and transient IPC resources
+before acknowledging readiness. A flush error therefore cannot be reported as
+a successful graceful shutdown.
+
 The coordinator deliberately stops at `AwaitingDeviceQuiescence`. It transfers
 the remaining frame router, NIC driver, block driver, and entropy driver to a
 separate device-shutdown layer only after their consumers have gone. It does
@@ -135,9 +142,10 @@ cannot clear it, extend its deadline, or request shutdown of another domain.
 ## Scope
 
 This contract currently covers the deployment agent, all agent-owned
-applications and operational connectors, and the high-level node-service
-order above. Service-specific `OP_SHUTDOWN` messages remain useful for tests
-and targeted live upgrade, but are not the deployment lifecycle authority.
-Coordinated whole-node poweroff still needs a replicated drain intent, explicit
-cooperative cleanup in every high-level service, the hardware-root protocol,
-durable flush evidence, and a final architecture poweroff operation.
+applications and operational connectors, the high-level node-service order
+above, and durable object-store shutdown. Service-specific `OP_SHUTDOWN`
+messages remain useful for tests and targeted live upgrade, but are not the
+deployment lifecycle authority. Coordinated whole-node poweroff still needs a
+replicated drain intent, explicit cooperative cleanup in the remaining
+platform services, the hardware-root quiescence protocol, device-level flush
+and reset evidence, and a final architecture poweroff operation.

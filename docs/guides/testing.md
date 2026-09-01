@@ -97,6 +97,12 @@ exercise the generic node-service coordinator and require ingress, dependent
 service, and storage phases to remain strictly gated; hardware-root domain
 ownership must not become available until all three phases are reclaimed.
 
+The ordinary no-network AArch64 suite exercises the ownership-aware object
+store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +
+4 KiB persistent object round trip, and Raft recovery across a process restart.
+This catches regressions in the same owned memory, mapping, borrowed-call, and
+reply-token paths used by the final shutdown flush.
+
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
 The verifier covers the TLS handshake, idempotent production, bounded
