@@ -191,9 +191,13 @@ repository history remain authoritative.
         receive a kernel-authenticated cooperative drain request and a signed,
         bounded grace period before forced retirement. A node-shutdown request
         now propagates through the deployment agent to ordinary applications
-        and operational connectors, with the earlier of the child and node
-        deadlines enforced. Reverse-ordered platform-service and driver drain,
-        final device quiescence and poweroff, controller-managed instance
+        and then their operational connectors, with the earlier of the child
+        and node deadlines enforced. A kernel-owned coordinator implements the
+        reverse-dependency high-level service plan through object-store drain
+        and transfers hardware-root domains exactly once to an explicit
+        device-quiescence boundary. Cooperative cleanup in every platform
+        service, durable-flush evidence, driver reset/DMA/IOMMU quiescence, a
+        replicated shutdown intent, final poweroff, controller-managed instance
         leases, replica-aware rollout, and coordinated rollback remain future
         work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's

@@ -724,6 +724,13 @@ pub fn steady_state() -> SteadyState {
     }
 }
 
+/// Transfer the launched service set into the node-shutdown coordinator.
+/// Once taken, no observer may treat the former steady-state handles as a
+/// source for new work.
+pub(crate) fn take_steady_state_for_shutdown() -> Option<SteadyState> {
+    STEADY_STATE.lock().take()
+}
+
 /// A discovered PCI function descriptor:
 /// `(driver_elf, mmio_base, mmio_pages, intid, requester_id, msi_address)`.
 type DeviceDescriptor = (&'static [u8], usize, usize, u32, u32, Option<u64>);

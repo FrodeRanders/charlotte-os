@@ -592,4 +592,5 @@ The cooperative request is kernel-authenticated because the application maps its
 deadline. `thread_exit` does not unwind Rust, so the generated and hand-written application pattern returns from the
 resource-owning serving function before calling `ShutdownRequest::complete()`.
 For node shutdown, the agent stops admitting new generations and propagates the enclosing deadline to every ordinary
-deployment and operational connector before acknowledging its own request.
+deployment first, then to operational connectors, before acknowledging its own request. This preserves Kafka/S3
+capabilities while applications finish or abort external work.

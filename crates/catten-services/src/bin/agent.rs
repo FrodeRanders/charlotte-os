@@ -48,8 +48,9 @@ catten_rt::entry!(main);
 const STAGE_IDENTITY: u32 = 2;
 const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
-const STAGE_DRAINING: u32 = 8;
-const STAGE_SHUTDOWN_READY: u32 = 9;
+const STAGE_DRAINING_APPLICATIONS: u32 = 8;
+const STAGE_DRAINING_CONNECTORS: u32 = 9;
+const STAGE_SHUTDOWN_READY: u32 = 10;
 const STAGE_FAIL: u32 = 0xdead;
 const RETIREMENT_POLL_MS: u64 = 10;
 
@@ -563,7 +564,7 @@ fn drain_for_node_shutdown(
     request: catten_rt::ShutdownRequest,
 ) -> catten_rt::ShutdownRequest {
     catten_rt::logln!("[agent] node shutdown requested deadline_ms={}", request.deadline_ms);
-    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_DRAINING);
+    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_DRAINING_APPLICATIONS);
     for running in active.iter_mut() {
         running.retiring = true;
     }
@@ -571,6 +572,7 @@ fn drain_for_node_shutdown(
         running.retiring = true;
     }
 
+    let mut draining_connectors = false;
     loop {
         let mut index = 0;
         while index < active.len() {
@@ -585,17 +587,27 @@ fn drain_for_node_shutdown(
             index += 1;
         }
 
-        let mut index = 0;
-        while index < operational.len() {
-            match operational[index].domain.poll_node_shutdown(request.deadline_ms) {
-                Ok(true) => {
-                    operational.swap_remove(index);
-                    continue;
-                }
-                Ok(false) => {}
-                Err(_) => fail(STAGE_FAIL),
+        if active.is_empty() {
+            if !draining_connectors {
+                catten_rt::logln!("[agent] application domains drained; draining connectors");
+                config::write_u32_release(
+                    charlotte_launch::agent_status::STAGE,
+                    STAGE_DRAINING_CONNECTORS,
+                );
+                draining_connectors = true;
             }
-            index += 1;
+            let mut index = 0;
+            while index < operational.len() {
+                match operational[index].domain.poll_node_shutdown(request.deadline_ms) {
+                    Ok(true) => {
+                        operational.swap_remove(index);
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(_) => fail(STAGE_FAIL),
+                }
+                index += 1;
+            }
         }
 
         if active.is_empty() && operational.is_empty() {

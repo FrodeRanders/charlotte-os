@@ -760,7 +760,24 @@ ordinary deployment and privileged operational connector as retiring, then
 retains and polls their owners until reclamation completes. Each child receives
 the earlier of its descriptor-signed grace deadline and the enclosing node
 deadline: the node transition may shorten an allowance but cannot extend it.
-The agent acknowledges and exits only after both child sets are empty.
+Ordinary applications drain before their privileged operational connectors,
+so an application retains Kafka/S3 authority while it finishes or aborts
+external work. The agent acknowledges and exits only after both child sets are
+empty.
+
+The kernel's next shutdown layer transfers the published steady-state handles
+out of the launch registry and retires high-level node services in reverse
+dependency order: deployment ingress, deployment control, deployment agent;
+HTTP and time; cluster catalog, reliable messaging, and discovery; TCP/IP; and
+finally the object store. Each phase must be generation-safely reclaimed before
+the next receives its request. Per-phase grace is capped by the enclosing node
+deadline.
+
+This coordinator deliberately stops before hardware-root teardown. It exposes
+the frame router, NIC, block, and entropy domains exactly once to a subsequent
+device-quiescence layer. Thread death is not evidence that DMA has stopped:
+reset acknowledgement, interrupt masking, durable flush, DMA cessation, and
+IOMMU invalidation must precede address-space reclamation.
 
 \architecturewidefigure{cooperative-deployment-shutdown}
     {Bounded cooperative shutdown for deployment retirement or an enclosing

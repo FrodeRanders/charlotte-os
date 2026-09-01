@@ -92,7 +92,10 @@ propagated `NodeShutdown` request. The other is deliberately unresponsive: its
 signed child grace expires before the enclosing node deadline, so it must be
 forcibly terminated and reclaimed. The test also requires the distinct
 acknowledged/forced node-shutdown counters to advance. The same switch is
-available through `scripts/run-x86_64.sh`.
+available through `scripts/run-x86_64.sh`. Three additional cooperative probes
+exercise the generic node-service coordinator and require ingress, dependent
+service, and storage phases to remain strictly gated; hardware-root domain
+ownership must not become available until all three phases are reclaimed.
 
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.

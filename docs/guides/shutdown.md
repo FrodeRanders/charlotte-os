@@ -82,8 +82,11 @@ reclamation.
 
 The deployment agent is itself lifecycle-aware. When it observes a
 `NodeShutdown` request, it stops catalog reconciliation before launching any
-new work, marks every ordinary and operational child as retiring, and polls
-all of those owners until their address spaces have been reclaimed. Child
+new work, and marks every ordinary and operational child as retiring. It first
+polls ordinary applications until their address spaces have been reclaimed;
+only then does it begin retiring their privileged Kafka/S3 operational
+connectors. Applications therefore retain the external-service capabilities
+needed to finish or abort transactions during their grace window. Child
 lifecycle records carry `NodeShutdown`, rather than disguising the transition
 as a deployment update.
 
@@ -100,16 +103,41 @@ both drained does the agent acknowledge its own lifecycle request and exit.
 Kernel counters distinguish acknowledged and forced node-shutdown retirements
 from ordinary deployment replacement outcomes.
 
+## Reverse-dependency node services
+
+After application-domain propagation, the kernel has a bounded node-service
+coordinator. It transfers the published steady-state handles out of the launch
+registry so no observer can use them to initiate new work, then advances only
+after every domain in the current phase has exited and been generation-safely
+reclaimed. The production order is:
+
+1. deployment ingress, deployment control, deployment agent;
+2. HTTP ingress and time;
+3. cluster catalog/Raft, reliable messaging, and discovery;
+4. TCP/IP; and
+5. object store.
+
+Every phase has its own bounded grace, capped by the enclosing node deadline.
+Dropping an unfinished coordinator requests forced termination for ordinary
+service domains, matching the owner fallback used for deployments.
+
+The coordinator deliberately stops at `AwaitingDeviceQuiescence`. It transfers
+the remaining frame router, NIC driver, block driver, and entropy driver to a
+separate device-shutdown layer only after their consumers have gone. It does
+not equate thread death with hardware quiescence: reset acknowledgement,
+interrupt masking, DMA cessation, IOMMU invalidation, and durable block flush
+must be proven before those address spaces can be reclaimed.
+
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
 cannot clear it, extend its deadline, or request shutdown of another domain.
 
 ## Scope
 
-This contract currently covers the deployment agent and all agent-owned
-applications and operational connectors. Service-specific `OP_SHUTDOWN`
-messages remain useful for tests and targeted live upgrade, but are not the
-deployment lifecycle authority. Coordinated whole-node poweroff still needs a
-replicated drain intent, reverse dependency ordering for the remaining
-platform services and drivers, durable flush, DMA/device quiescence, and a
-final architecture poweroff operation.
+This contract currently covers the deployment agent, all agent-owned
+applications and operational connectors, and the high-level node-service
+order above. Service-specific `OP_SHUTDOWN` messages remain useful for tests
+and targeted live upgrade, but are not the deployment lifecycle authority.
+Coordinated whole-node poweroff still needs a replicated drain intent, explicit
+cooperative cleanup in every high-level service, the hardware-root protocol,
+durable flush evidence, and a final architecture poweroff operation.

@@ -13,6 +13,12 @@ use crate::{
             ManifestEntry,
             ManifestValue,
         },
+        shutdown::{
+            NodeShutdownCoordinator,
+            NodeShutdownProgress,
+            ShutdownPhase,
+            ShutdownPhaseSpec,
+        },
         supervisor::{
             self,
             ServiceDomain,
@@ -30,6 +36,7 @@ struct TestState {
     stubborn: ServiceDomain,
     acknowledged_before: u64,
     forced_before: u64,
+    phased: [ServiceDomain; 3],
 }
 
 static TEST_STATE: spin::Mutex<Option<TestState>> = spin::Mutex::new(None);
@@ -51,6 +58,11 @@ pub fn test_el0_shutdown() {
             value: ManifestValue::Unsigned(1),
         }],
     );
+    let phased = [
+        supervisor::spawn_with_name_service(image, &name_service, ConnectionRights::CALL),
+        supervisor::spawn_with_name_service(image, &name_service, ConnectionRights::CALL),
+        supervisor::spawn_with_name_service(image, &name_service, ConnectionRights::CALL),
+    ];
     let acknowledged_before = supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
         .load(core::sync::atomic::Ordering::Relaxed);
     let forced_before =
@@ -78,6 +90,7 @@ pub fn test_el0_shutdown() {
         stubborn,
         acknowledged_before,
         forced_before,
+        phased,
     });
     crate::self_test::results::spawn_verifier(
         crate::self_test::results::TestId::Shutdown,
@@ -119,6 +132,7 @@ extern "C" fn verify_el0_shutdown() {
         stubborn,
         acknowledged_before,
         forced_before,
+        phased,
     } = TEST_STATE.lock().take().expect("[shutdown] verifier state");
 
     wait_started(&cooperative, "cooperative probe startup");
@@ -222,6 +236,76 @@ extern "C" fn verify_el0_shutdown() {
     );
     logln!("[shutdown] unresponsive domain forcibly terminated and reclaimed");
 
-    logln!("[shutdown] SUCCESS: bounded cooperative and forced shutdown verified");
+    for domain in &phased {
+        wait_started(domain, "phased node-service probe startup");
+    }
+    let node_deadline = monotonic_millis().saturating_add(10_000);
+    let mut coordinator = NodeShutdownCoordinator::new(
+        node_deadline,
+        1_000,
+        alloc::vec![
+            ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, phased[0]),
+            ShutdownPhaseSpec::one(ShutdownPhase::Time, phased[1]),
+            ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, phased[2]),
+        ],
+        alloc::vec![],
+    );
+    assert_eq!(
+        coordinator.poll(),
+        NodeShutdownProgress::Draining {
+            phase: ShutdownPhase::HttpIngress,
+            remaining_domains: 1,
+        }
+    );
+    assert_eq!(lifecycle_request(&phased[0]).0, charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
+    assert_eq!(
+        lifecycle_request(&phased[1]).0,
+        charlotte_launch::lifecycle::STATE_RUNNING,
+        "a dependent shutdown phase started before ingress drained"
+    );
+
+    supervisor::wait_domain_exit(&phased[0], 10_000);
+    assert_eq!(
+        coordinator.poll(),
+        NodeShutdownProgress::Draining {
+            phase: ShutdownPhase::Time,
+            remaining_domains: 1,
+        }
+    );
+    assert_eq!(
+        lifecycle_request(&phased[2]).0,
+        charlotte_launch::lifecycle::STATE_RUNNING,
+        "storage shutdown started before its consumer drained"
+    );
+
+    supervisor::wait_domain_exit(&phased[1], 10_000);
+    assert_eq!(
+        coordinator.poll(),
+        NodeShutdownProgress::Draining {
+            phase: ShutdownPhase::ObjectStore,
+            remaining_domains: 1,
+        }
+    );
+    supervisor::wait_domain_exit(&phased[2], 10_000);
+    assert_eq!(
+        coordinator.poll(),
+        NodeShutdownProgress::AwaitingDeviceQuiescence {
+            device_domains: 0,
+        }
+    );
+    assert!(
+        coordinator.take_device_domains().is_some_and(|domains| domains.is_empty()),
+        "device domains were exposed before service drain completed"
+    );
+    assert_eq!(coordinator.poll(), NodeShutdownProgress::DeviceDomainsTransferred);
+    assert!(
+        coordinator.take_device_domains().is_none(),
+        "hardware-root domain ownership transferred more than once"
+    );
+    logln!("[shutdown] reverse dependency phases gated and reclaimed in order");
+
+    logln!(
+        "[shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"
+    );
     crate::self_test::results::pass(crate::self_test::results::TestId::Shutdown);
 }

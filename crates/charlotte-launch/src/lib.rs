@@ -123,7 +123,8 @@ pub mod dns_status {
 /// Status-page offsets written by the cluster deploy agent.
 pub mod agent_status {
     /// Lifecycle stage: 4 = artifact uploaded, 6 = serving, 7 = retired,
-    /// 8 = draining children for node shutdown, 9 = shutdown-ready.
+    /// 8 = draining applications for node shutdown, 9 = draining operational
+    /// connectors, 10 = shutdown-ready.
     pub const STAGE: usize = 0;
     /// The replicated deployment generation this agent is serving.
     pub const SERVED_GENERATION: usize = 8;

@@ -15,5 +15,6 @@
 pub mod bootstrap;
 pub mod launch;
 pub mod loader;
+pub mod shutdown;
 pub mod store;
 pub mod supervisor;
