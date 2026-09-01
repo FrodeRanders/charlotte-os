@@ -15,6 +15,7 @@ use core::cmp;
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
     owned::{
         Connection,
@@ -629,7 +630,7 @@ fn handle_requests(
     }
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
 
     // Local name service
@@ -708,6 +709,12 @@ fn main(ctx: Context) -> ! {
     let cq = ctx.completion_queue_layout();
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            // Dropping the endpoint closes admission. Any active NTP attempt,
+            // its UDP socket, and all owned service connections then unwind
+            // together before the lifecycle acknowledgement is published.
+            return request;
+        }
         handle_requests(&endpoint, observe_conn.as_ref(), &mut model, server_ipv4);
         let Some(now_mono) = read_monotonic(observe_conn.as_ref()) else {
             config::write::<u32>(status::ERROR, 0xe008);
@@ -805,6 +812,10 @@ fn main(ctx: Context) -> ! {
         cq_wait_timeout(1, LOOP_WAIT_MS, 0);
         while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 fn fnv1a64(bytes: &[u8]) -> u64 {

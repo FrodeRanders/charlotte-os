@@ -108,6 +108,11 @@ reset path before the test can complete. AHCI, VirtIO block, and E1000E use the
 same lifecycle contract and are compile-checked; their shutdown paths still
 need dedicated platform fixtures for runtime fault injection.
 
+The network-enabled shutdown fixture also exercises lifecycle-aware deployment
+ingress and UTC time domains. Both are idle at the drain boundary, so the test
+proves that their bounded socket/NTP waits observe the request and release their
+owned resources without delaying the later storage and device phases.
+
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +
 4 KiB persistent object round trip, and Raft recovery across a process restart.

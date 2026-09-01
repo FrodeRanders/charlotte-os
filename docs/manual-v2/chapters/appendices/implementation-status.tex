@@ -190,9 +190,12 @@ repository history remain authoritative.
         generation-fenced Kafka commits are implemented. Deployed domains also
         receive a kernel-authenticated cooperative drain request and a signed,
         bounded grace period before forced retirement. A node-shutdown request
-        now propagates through the deployment agent to ordinary applications
-        and then their operational connectors, with the earlier of the child
-        and node deadlines enforced. A kernel-owned coordinator implements the
+        now propagates through lifecycle-aware deployment ingress and the
+        deployment agent to ordinary applications and then their operational
+        connectors, with the earlier of the child and node deadlines enforced.
+        The UTC time service likewise closes admission and unwinds a pending
+        NTP operation through owned resources. A kernel-owned coordinator
+        implements the
         reverse-dependency high-level service plan through object-store drain
         and transfers hardware-root domains exactly once to a fail-closed
         device-quiescence coordinator. The object store performs a final durable

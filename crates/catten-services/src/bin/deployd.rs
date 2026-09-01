@@ -20,6 +20,7 @@ use alloc::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     owned::OwnedMemory,
 };
 use catten_services::{
@@ -33,7 +34,6 @@ use catten_syscall::thread_exit;
 
 const HEADER_LIMIT: usize = 1024;
 const ACCEPT_RETRY_MS: u64 = 50;
-const RECEIVE_RETRIES: usize = 300;
 const RECEIVE_RETRY_MS: u64 = 100;
 
 enum Request {
@@ -174,11 +174,21 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
     }
 }
 
-fn receive_request(socket: &socket::OwnedSocket<'_>) -> Result<Request, ()> {
+fn receive_request(
+    ctx: &Context,
+    socket: &socket::OwnedSocket<'_>,
+) -> Result<Result<Request, ShutdownRequest>, ()> {
     let mut request = Vec::new();
     loop {
-        let chunk =
-            socket.receive_timeout(RECEIVE_RETRIES, RECEIVE_RETRY_MS).map_err(|_| ())?.ok_or(())?;
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return Ok(Err(request));
+        }
+        let chunk = match socket.receive_timeout(1, RECEIVE_RETRY_MS) {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => return Err(()),
+            Err(socket::SocketError::RetryExhausted) => continue,
+            Err(_) => return Err(()),
+        };
         let (memory, len) = chunk.into_parts();
         let mapping = memory.map_read_only().map_err(|_| ())?;
         let bytes = mapping.as_slice().get(..len).ok_or(())?;
@@ -189,7 +199,7 @@ fn receive_request(socket: &socket::OwnedSocket<'_>) -> Result<Request, ()> {
         }
         request.extend_from_slice(bytes);
         if let Some(request) = complete_request(&request)? {
-            return Ok(request);
+            return Ok(Ok(request));
         }
     }
 }
@@ -356,7 +366,7 @@ fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::st
     )
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail());
     let (_, tcp) = wait_for_registered_name_owned(names, socket::NAME).unwrap_or_else(|| fail());
     let (_, controller) =
@@ -366,6 +376,9 @@ fn main(ctx: Context) -> ! {
     }
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return request;
+        }
         let socket =
             socket::OwnedSocket::open(tcp.as_ref(), socket::DOMAIN_TCP).unwrap_or_else(|_| fail());
         let port = OwnedMemory::allocate(1).unwrap_or_else(|_| fail());
@@ -382,6 +395,9 @@ fn main(ctx: Context) -> ! {
             fail();
         }
         loop {
+            if let Some(request) = ctx.lifecycle().shutdown_requested() {
+                return request;
+            }
             let accepted = socket
                 .call(socket::OP_ACCEPT, socket.id())
                 .unwrap_or_else(|_| fail())
@@ -397,17 +413,18 @@ fn main(ctx: Context) -> ! {
             sleep_ms(ACCEPT_RETRY_MS);
         }
 
-        let reply = match receive_request(&socket) {
-            Ok(Request::Notify(descriptor)) => {
+        let reply = match receive_request(ctx, &socket) {
+            Ok(Err(request)) => return request,
+            Ok(Ok(Request::Notify(descriptor))) => {
                 response(Ok(notify_cluster(controller.as_ref(), &descriptor)))
             }
-            Ok(Request::Release(envelope)) => {
+            Ok(Ok(Request::Release(envelope))) => {
                 response(Ok(notify_release(controller.as_ref(), &envelope)))
             }
-            Ok(Request::Operations(bundle)) => {
+            Ok(Ok(Request::Operations(bundle))) => {
                 response(Ok(notify_operations(controller.as_ref(), &bundle)))
             }
-            Ok(Request::Status(name)) => {
+            Ok(Ok(Request::Status(name))) => {
                 rollout_response(query_rollout(controller.as_ref(), &name))
             }
             Err(()) => response(Err(())),
@@ -415,6 +432,10 @@ fn main(ctx: Context) -> ! {
         let _ = socket.send_all(reply.as_bytes(), 1000, 5);
         let _ = socket.close();
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

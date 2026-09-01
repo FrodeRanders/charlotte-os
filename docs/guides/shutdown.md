@@ -121,6 +121,14 @@ Every phase has its own bounded grace, capped by the enclosing node deadline.
 Dropping an unfinished coordinator requests forced termination for ordinary
 service domains, matching the owner fallback used for deployments.
 
+Deployment ingress and the UTC time service now honor this request directly.
+The ingress stops accepting sockets and cancels an idle bounded receive before
+dropping its owned listener and service connections. The time service drops
+its public endpoint and unwinds any pending NTP call, UDP socket, and
+persistence connection as one owning scope. Work already inside an admitted
+deployment request may finish within the signed grace; no new request is
+admitted after the lifecycle request is observed.
+
 The object-store phase is cooperative and durable. On `NodeShutdown` the
 service closes its public endpoint before doing any more work, retries the
 block-device flush until it succeeds (or the supervisor's deadline forces the
@@ -158,11 +166,12 @@ cannot clear it, extend its deadline, or request shutdown of another domain.
 
 ## Scope
 
-This contract currently covers the deployment agent, all agent-owned
-applications and operational connectors, the high-level node-service order
-above, and durable object-store shutdown. Service-specific `OP_SHUTDOWN`
-messages remain useful for tests and targeted live upgrade, but are not the
-deployment lifecycle authority. Coordinated whole-node poweroff still needs a
-replicated drain intent, explicit cooperative cleanup in the remaining
-platform services, independent kernel verification of device reset and IOMMU
-invalidation, and a final architecture poweroff operation.
+This contract currently covers deployment ingress and the deployment agent,
+all agent-owned applications and operational connectors, the UTC time service,
+the high-level node-service order above, durable object-store shutdown, and all
+in-tree hardware adapters. Service-specific `OP_SHUTDOWN` messages remain
+useful for tests and targeted live upgrade, but are not the deployment
+lifecycle authority. Coordinated whole-node poweroff still needs a replicated
+drain intent, explicit cooperative cleanup in the remaining platform services,
+independent kernel verification of device reset and IOMMU invalidation, and a
+final architecture poweroff operation.
