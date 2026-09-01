@@ -100,6 +100,11 @@ fourth probe represents a hardware adapter: the device coordinator must publish
 its request, observe the distinct `DEVICE_QUIESCED` acknowledgement and thread
 exit, and only then reclaim its domain.
 
+The verifier then exercises the production steady-state owners, not only the
+probes. It drains and reclaims the real object store, transfers the actual NVMe
+and VirtIO RNG domains, and requires both drivers to finish their device-specific
+flush/reset paths before the test can complete.
+
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +
 4 KiB persistent object round trip, and Raft recovery across a process restart.

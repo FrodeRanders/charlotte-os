@@ -769,15 +769,22 @@ The kernel's next shutdown layer transfers the published steady-state handles
 out of the launch registry and retires high-level node services in reverse
 dependency order: deployment ingress, deployment control, deployment agent;
 HTTP and time; cluster catalog, reliable messaging, and discovery; TCP/IP; and
-finally the object store. Each phase must be generation-safely reclaimed before
-the next receives its request. Per-phase grace is capped by the enclosing node
-deadline.
+the frame router; and finally the object store. Each phase must be
+generation-safely reclaimed before the next receives its request. Per-phase
+grace is capped by the enclosing node deadline.
 
-This coordinator deliberately stops before hardware-root teardown. It exposes
-the frame router, NIC, block, and entropy domains exactly once to a subsequent
-device-quiescence layer. Thread death is not evidence that DMA has stopped:
-reset acknowledgement, interrupt masking, durable flush, DMA cessation, and
-IOMMU invalidation must precede address-space reclamation.
+The remaining NIC, block, and entropy domains transfer exactly once to a
+device-quiescence coordinator. It never converts a deadline into an
+unconditional driver abort. Ordinary lifecycle readiness is insufficient: a
+driver must publish the distinct 	exttt{DEVICE\_QUIESCED} state and exit before
+the kernel reclaims its address space and launch-owned device grants. Otherwise
+the domain and IOMMU state remain quarantined for diagnosis. The VirtIO entropy
+adapter resets the device before dropping its shared-DMA mappings. The NVMe
+adapter closes admission, drains outstanding replies and DMA, observes a final
+NVM Flush completion, masks interrupts, clears 	exttt{CC.EN}, and waits for
+	exttt{CSTS.RDY=0}. AHCI, VirtIO block, and NIC adapters still require their
+controller-specific implementations. Thread death alone is never treated as
+evidence that DMA stopped.
 
 \architecturewidefigure{cooperative-deployment-shutdown}
     {Bounded cooperative shutdown for deployment retirement or an enclosing

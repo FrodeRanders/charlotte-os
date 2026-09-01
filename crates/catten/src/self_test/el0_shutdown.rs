@@ -22,6 +22,9 @@ use crate::{
             NodeShutdownProgress,
             ShutdownPhase,
             ShutdownPhaseSpec,
+            begin_device_shutdown,
+            begin_node_shutdown,
+            poll_node_shutdown,
         },
         supervisor::{
             self,
@@ -341,6 +344,43 @@ extern "C" fn verify_el0_shutdown() {
     );
     assert_eq!(devices.poll(), DeviceShutdownProgress::Complete);
     logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
+
+    let production_deadline = monotonic_millis().saturating_add(30_000);
+    begin_node_shutdown(production_deadline, 5_000)
+        .expect("production node shutdown did not acquire the steady-state service set");
+    let production_wait = crate::self_test::results::Deadline::after_millis(30_000);
+    let expected_devices = loop {
+        match poll_node_shutdown().expect("production node shutdown coordinator disappeared") {
+            NodeShutdownProgress::Draining {
+                ..
+            } => {
+                production_wait.assert_pending("production node-service shutdown");
+                sleep_millis(10);
+            }
+            NodeShutdownProgress::AwaitingDeviceQuiescence {
+                device_domains,
+            } => break device_domains,
+            NodeShutdownProgress::DeviceDomainsTransferred => {
+                panic!("device ownership transferred before the test acquired it")
+            }
+        }
+    };
+    assert!(expected_devices >= 2, "storage and entropy drivers were not retained");
+    let mut production_devices = begin_device_shutdown(production_deadline)
+        .expect("production device shutdown did not acquire hardware-root domains");
+    loop {
+        match production_devices.poll() {
+            DeviceShutdownProgress::Quiescing {
+                ..
+            } => {
+                production_wait.assert_pending("production device quiescence");
+                sleep_millis(10);
+            }
+            DeviceShutdownProgress::Complete => break,
+            other => panic!("production device quiescence failed: {:?}", other),
+        }
+    }
+    logln!("[shutdown] production object store, NVMe, and entropy adapters flushed and quiesced");
 
     logln!(
         "[shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"

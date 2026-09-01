@@ -133,18 +133,20 @@ remaining NIC, block, and entropy drivers to a separate device-shutdown owner
 only after their consumers have gone. That owner publishes the authenticated
 lifecycle request but deliberately has no force-abort transition. An ordinary
 `READY` acknowledgement is insufficient: a driver must release its endpoint,
-drain operations and DMA mappings, flush durable state where applicable, mask
-interrupts, stop or reset the controller, release its device grants, publish
+drain operations and transient DMA mappings, flush durable state where
+applicable, mask interrupts, stop or reset the controller, publish
 `DEVICE_QUIESCED`, and exit. Only then does the kernel reclaim the address
-space. A deadline overrun or exit without the stronger acknowledgement retains
-the domain and IOMMU/device state for diagnosis instead of risking DMA into
-reallocated memory.
+space and its launch-owned MMIO, interrupt, and IOMMU grants. A deadline overrun
+or exit without the stronger acknowledgement retains the domain and device
+state for diagnosis instead of risking DMA into reallocated memory.
 
 The VirtIO entropy adapter implements this contract today: reset status zero
-precedes teardown of its shared-DMA buffers and MMIO mapping. NIC and block
-adapters still need their controller-specific drain/reset implementations;
-the coordinator therefore fails closed for them rather than pretending that
-thread death proves hardware quiescence.
+precedes teardown of its shared-DMA buffers and MMIO mapping. The NVMe adapter
+also implements the complete storage sequence: endpoint close, outstanding
+reply/DMA drain, final NVM Flush completion, interrupt mask, `CC.EN=0`, and an
+observed `CSTS.RDY=0`. AHCI, VirtIO block, and NIC adapters still need their
+controller-specific implementations; the coordinator fails closed for those
+rather than pretending that thread death proves hardware quiescence.
 
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
@@ -158,6 +160,6 @@ above, and durable object-store shutdown. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
 deployment lifecycle authority. Coordinated whole-node poweroff still needs a
 replicated drain intent, explicit cooperative cleanup in the remaining
-platform services, NIC and block controller quiescence, independent kernel
-verification of device reset/IOMMU invalidation, and a final architecture
-poweroff operation.
+platform services, AHCI/VirtIO-block and NIC controller quiescence, independent
+kernel verification of device reset/IOMMU invalidation, and a final
+architecture poweroff operation.

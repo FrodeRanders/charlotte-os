@@ -194,12 +194,15 @@ repository history remain authoritative.
         and then their operational connectors, with the earlier of the child
         and node deadlines enforced. A kernel-owned coordinator implements the
         reverse-dependency high-level service plan through object-store drain
-        and transfers hardware-root domains exactly once to an explicit
-        device-quiescence boundary. Cooperative cleanup in every platform
-        service, durable-flush evidence, driver reset/DMA/IOMMU quiescence, a
-        replicated shutdown intent, final poweroff, controller-managed instance
-        leases, replica-aware rollout, and coordinated rollback remain future
-        work.
+        and transfers hardware-root domains exactly once to a fail-closed
+        device-quiescence coordinator. The object store performs a final durable
+        flush, VirtIO RNG resets before releasing shared DMA, and NVMe drains
+        operations, flushes, masks interrupts, disables the controller, and
+        observes 	exttt{RDY=0} before the stronger acknowledgement. Cooperative
+        cleanup in every platform service, AHCI/VirtIO-block and NIC quiescence,
+        independent kernel verification of reset/IOMMU invalidation, a replicated
+        shutdown intent, final poweroff, controller-managed instance leases,
+        replica-aware rollout, and coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

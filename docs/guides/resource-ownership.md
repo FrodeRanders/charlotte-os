@@ -135,8 +135,10 @@ for the complete pattern and bounded-wait rule.
 Hardware adapters use the stricter `complete_device_quiesced()` terminal call.
 Returning the `ShutdownRequest` to that call is valid only after the service
 scope has stopped its endpoint, reset or stopped the controller, and dropped
-all MMIO, interrupt, DMA-transfer, and shared-DMA owners. The kernel refuses to
-reclaim a hardware-root domain that exits with the ordinary `complete()` state.
+all transient DMA-transfer and shared-DMA owners. Launch-owned MMIO, interrupt,
+and IOMMU grants remain borrowed through `Context`; the kernel reclaims them
+after the quiesced thread exit. The kernel refuses to reclaim a hardware-root
+domain that exits with the ordinary `complete()` state.
 
 Durable services must also order admission and persistence before that return.
 The object store is the reference pattern: drop the owned public `Endpoint`,

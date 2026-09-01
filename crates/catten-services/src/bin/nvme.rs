@@ -42,11 +42,13 @@ static DMA_DOMAIN: AtomicU64 = AtomicU64::new(0);
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
     block,
     ns,
+    sleep_ms,
 };
 use catten_syscall::{
     ipc_status,
@@ -87,7 +89,7 @@ fn spin_reply(call: u64) -> (i64, u64) {
 mod reg {
     pub const _CAP: usize = 0x0000;
     pub const _VS: usize = 0x0008;
-    pub const _INTMS: usize = 0x000c;
+    pub const INTMS: usize = 0x000c;
     pub const _INTMC: usize = 0x0010;
     pub const CC: usize = 0x0014;
     pub const CSTS: usize = 0x001c;
@@ -712,11 +714,97 @@ impl IoState {
     }
 }
 
+fn finish_io_completion(dma_domain: u64, cid: u16, completion_status: u16) {
+    let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
+    release_prp_list(prp_list, prp_iova);
+    if data_iova != 0 {
+        let _ = dma_unmap(dma_domain, data_iova);
+    }
+    if reply != 0 {
+        ipc_reply(
+            reply,
+            if completion_status == 0 {
+                block::ERR_OK
+            } else {
+                block::ERR_IO_ERROR
+            },
+        );
+    }
+}
+
+fn drain_outstanding(io: &mut IoState, dma_domain: u64, irq_cap: u64) -> bool {
+    for _ in 0..1_000_000 {
+        while let Some((cid, completion_status)) = io.poll_completions() {
+            finish_io_completion(dma_domain, cid, completion_status);
+        }
+        if io.outstanding == 0 {
+            return true;
+        }
+        cq_wait_timeout(1, 10, 0);
+        let _ = device_irq_ack(irq_cap);
+    }
+    false
+}
+
+fn flush_controller(io: &mut IoState, irq_cap: u64) -> bool {
+    let Some(flush_cid) = io.submit_io(NVM_FLUSH, 0, 0, 0, 0) else {
+        return false;
+    };
+    for _ in 0..1_000_000 {
+        if let Some((cid, completion_status)) = io.poll_completions() {
+            if cid as u32 == flush_cid {
+                return completion_status == 0;
+            }
+            // All client operations were drained before the flush. A
+            // different completion here is inconsistent and must fail closed.
+            return false;
+        }
+        cq_wait_timeout(1, 10, 0);
+        let _ = device_irq_ack(irq_cap);
+    }
+    false
+}
+
+fn disable_controller() -> bool {
+    unsafe {
+        // Mask every NVMe interrupt before disabling queue processing. The
+        // delegated interrupt route is removed separately after RDY clears.
+        write32(reg::INTMS, u32::MAX);
+        write32(reg::CC, 0);
+        for _ in 0..RESET_RDY_ZERO_SPINS {
+            if read32(reg::CSTS) & CSTS_RDY == 0 {
+                return true;
+            }
+            core::hint::spin_loop();
+        }
+    }
+    false
+}
+
+fn quiesce(io: &mut IoState, endpoint: u64, dma_domain: u64, irq_cap: u64) -> bool {
+    // Closing the service endpoint cancels queued calls and prevents any new
+    // read/write request from entering after the drain begins.
+    if ipc_close(endpoint) != ipc_status::OK {
+        return false;
+    }
+    if !drain_outstanding(io, dma_domain, irq_cap) || !flush_controller(io, irq_cap) {
+        return false;
+    }
+    if !disable_controller() {
+        return false;
+    }
+    // Once CSTS.RDY is clear the controller can no longer touch queue or data
+    // memory. Mask and revoke the CPU interrupt route before acknowledging;
+    // the kernel will invalidate the IOMMU domain and reclaim queue mappings
+    // when it observes the quiesced thread exit.
+    device_close(irq_cap) == 0
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = match ctx.bootstrap_cap() {
         Some(cap) => cap,
         None => unsafe { thread_exit() },
@@ -779,7 +867,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 23);
 
     ipc_endpoint_bind_cq(endpoint, 0);
-    let irq_delivery = device_irq_bind_cq(irq_cap, 0) == 0;
+    let _ = device_irq_bind_cq(irq_cap, 0);
     config::write::<u32>(status::STAGE, 3); // registered, serving
     config::write::<u32>(status::CAP_LOW, 0x900d); // sentinel for verifier
 
@@ -802,60 +890,32 @@ fn main(ctx: Context) -> ! {
     loop {
         // Poll I/O completions before cq_wait (catches completions from
         // commands submitted in the previous iteration)
-        while let Some((cid, status)) = io.poll_completions() {
-            let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
-            release_prp_list(prp_list, prp_iova);
-            if data_iova != 0 {
-                let _ = dma_unmap(dma_domain, data_iova);
+        while let Some((cid, completion_status)) = io.poll_completions() {
+            finish_io_completion(dma_domain, cid, completion_status);
+        }
+
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            if quiesce(&mut io, endpoint, dma_domain, irq_cap) {
+                return request;
             }
-            if reply != 0 {
-                ipc_reply(
-                    reply,
-                    if status == 0 {
-                        block::ERR_OK
-                    } else {
-                        block::ERR_IO_ERROR
-                    },
-                );
+            catten_rt::logln!("[nvme] device quiescence failed; retaining controller domain");
+            loop {
+                sleep_ms(100);
             }
         }
 
-        if irq_delivery && io.outstanding == 0 {
-            // With no command in flight, endpoint readiness or a device
-            // interrupt is the only useful work. Sleep indefinitely so an
-            // idle driver consumes no CPU.
-            cq_wait(1, 0);
-        } else {
-            // Poll in-flight commands on a bounded watchdog even when MSI-X
-            // is configured. Binding an IRQ proves that a route exists, not
-            // that every edge will be delivered; sleeping indefinitely after
-            // one lost edge deadlocks the block service and every client above
-            // it. The timeout is armed only while I/O is outstanding (or when
-            // no interrupt route exists), preserving zero-cost idle sleep.
-            cq_wait_timeout(1, 10, 0);
-        }
+        // Lifecycle control lives in a kernel-updated launch page rather than
+        // the CQ. Keep the idle wait bounded so shutdown is observed even when
+        // no endpoint or interrupt event is pending.
+        cq_wait_timeout(1, 10, 0);
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {
             irq_count = irq_count.saturating_add(consumed as u32);
             config::write::<u32>(status::IRQ_COUNT, irq_count);
         }
-        while let Some((cid, status)) = io.poll_completions() {
-            let (reply, prp_list, prp_iova, data_iova) = take_pending(cid as u32);
-            release_prp_list(prp_list, prp_iova);
-            if data_iova != 0 {
-                let _ = dma_unmap(dma_domain, data_iova);
-            }
-            if reply != 0 {
-                ipc_reply(
-                    reply,
-                    if status == 0 {
-                        block::ERR_OK
-                    } else {
-                        block::ERR_IO_ERROR
-                    },
-                );
-            }
+        while let Some((cid, completion_status)) = io.poll_completions() {
+            finish_io_completion(dma_domain, cid, completion_status);
         }
 
         loop {
@@ -1000,4 +1060,8 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete_device_quiesced()
 }
