@@ -46,6 +46,8 @@ pub struct StorageStack {
 pub struct NetworkStack {
     pub driver: ServiceDomain,
     pub frouter: ServiceDomain,
+    /// The NIC driver's embedded ELF name (`b"net"` or `b"e1000e"`).
+    pub driver_elf: &'static [u8],
 }
 
 /// The node's cluster services: discovery, reliable messages, and DNS, which
@@ -289,6 +291,7 @@ pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
     Some(NetworkStack {
         driver,
         frouter,
+        driver_elf,
     })
 }
 

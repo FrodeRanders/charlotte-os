@@ -34,7 +34,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 }
 
 fn main(ctx: Context) -> ! {
-    serve(&ctx).complete()
+    let device = matches!(ctx.manifest_value(MODE_KEY), Some(ManifestValue::Unsigned(2)));
+    let request = serve(&ctx);
+    if device {
+        request.complete_device_quiesced()
+    } else {
+        request.complete()
+    }
 }
 
 catten_rt::entry!(main);

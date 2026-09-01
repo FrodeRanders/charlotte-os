@@ -15,6 +15,7 @@ use core::sync::atomic::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
     owned::{
         DmaDomain,
@@ -27,6 +28,7 @@ use catten_rt::{
 use catten_services::{
     entropy,
     ns,
+    sleep_ms,
     virtio,
 };
 use catten_syscall::{
@@ -273,13 +275,13 @@ fn fail(code: u32) -> ! {
     unsafe { thread_exit() }
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
     let dma_cap = config::dma_domain_cap().unwrap_or_else(|| fail(0xe002));
     // SAFETY: the launch environment retains ownership of this borrowed DMA
     // authority for the process lifetime.
     let dma_domain = unsafe { DmaDomain::from_raw(dma_cap) };
-    let mut device = VirtioRng::open(&ctx, &dma_domain).unwrap_or_else(|| fail(0xe003));
+    let mut device = VirtioRng::open(ctx, &dma_domain).unwrap_or_else(|| fail(0xe003));
 
     let endpoint =
         Endpoint::create(entropy::INTERFACE, entropy::VERSION, 32).unwrap_or_else(|_| fail(0xe004));
@@ -291,9 +293,7 @@ fn main(ctx: Context) -> ! {
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
         )
         .unwrap_or_else(|_| fail(0xe005));
-    if !registration.wait().is_ok_and(|reply| reply.result >= 1)
-        || endpoint.bind_completion_queue(0).is_err()
-    {
+    if !registration.wait().is_ok_and(|reply| reply.result >= 1) {
         fail(0xe005);
     }
     config::write::<u32>(status::STAGE, 1);
@@ -301,10 +301,18 @@ fn main(ctx: Context) -> ! {
     let mut bytes_served = 0u64;
 
     loop {
-        let mut message = match endpoint.receive() {
-            Ok(message) => message,
-            Err(catten_rt::owned::ReceiveError::EndpointClosed) => unsafe { thread_exit() },
-            Err(_) => continue,
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            // Stop admission before resetting the VirtIO device. Dropping the
+            // device writes status 0, then tears down every shared DMA mapping
+            // before the MMIO grant; only then may the stronger lifecycle
+            // acknowledgement be published by `main`.
+            drop(endpoint);
+            drop(device);
+            return request;
+        }
+        let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| fail(0xe006)) else {
+            sleep_ms(10);
+            continue;
         };
         let Some(reply) = message.reply.take() else {
             continue;
@@ -342,4 +350,8 @@ fn main(ctx: Context) -> ! {
             config::write::<u64>(status::BYTES, bytes_served);
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete_device_quiesced()
 }

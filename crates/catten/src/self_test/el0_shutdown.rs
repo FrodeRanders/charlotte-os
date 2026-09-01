@@ -14,6 +14,10 @@ use crate::{
             ManifestValue,
         },
         shutdown::{
+            DeviceShutdownCoordinator,
+            DeviceShutdownDomain,
+            DeviceShutdownKind,
+            DeviceShutdownProgress,
             NodeShutdownCoordinator,
             NodeShutdownProgress,
             ShutdownPhase,
@@ -37,6 +41,7 @@ struct TestState {
     acknowledged_before: u64,
     forced_before: u64,
     phased: [ServiceDomain; 3],
+    device: ServiceDomain,
 }
 
 static TEST_STATE: spin::Mutex<Option<TestState>> = spin::Mutex::new(None);
@@ -63,6 +68,16 @@ pub fn test_el0_shutdown() {
         supervisor::spawn_with_name_service(image, &name_service, ConnectionRights::CALL),
         supervisor::spawn_with_name_service(image, &name_service, ConnectionRights::CALL),
     ];
+    let device = supervisor::spawn_with_manifest(
+        image,
+        &name_service,
+        ConnectionRights::CALL,
+        &[ManifestEntry {
+            key: MODE_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(2),
+        }],
+    );
     let acknowledged_before = supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
         .load(core::sync::atomic::Ordering::Relaxed);
     let forced_before =
@@ -91,6 +106,7 @@ pub fn test_el0_shutdown() {
         acknowledged_before,
         forced_before,
         phased,
+        device,
     });
     crate::self_test::results::spawn_verifier(
         crate::self_test::results::TestId::Shutdown,
@@ -133,6 +149,7 @@ extern "C" fn verify_el0_shutdown() {
         acknowledged_before,
         forced_before,
         phased,
+        device,
     } = TEST_STATE.lock().take().expect("[shutdown] verifier state");
 
     wait_started(&cooperative, "cooperative probe startup");
@@ -239,6 +256,7 @@ extern "C" fn verify_el0_shutdown() {
     for domain in &phased {
         wait_started(domain, "phased node-service probe startup");
     }
+    wait_started(&device, "device-quiescence probe startup");
     let node_deadline = monotonic_millis().saturating_add(10_000);
     let mut coordinator = NodeShutdownCoordinator::new(
         node_deadline,
@@ -248,7 +266,7 @@ extern "C" fn verify_el0_shutdown() {
             ShutdownPhaseSpec::one(ShutdownPhase::Time, phased[1]),
             ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, phased[2]),
         ],
-        alloc::vec![],
+        alloc::vec![DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, device)],
     );
     assert_eq!(
         coordinator.poll(),
@@ -290,19 +308,39 @@ extern "C" fn verify_el0_shutdown() {
     assert_eq!(
         coordinator.poll(),
         NodeShutdownProgress::AwaitingDeviceQuiescence {
-            device_domains: 0,
+            device_domains: 1,
         }
     );
-    assert!(
-        coordinator.take_device_domains().is_some_and(|domains| domains.is_empty()),
-        "device domains were exposed before service drain completed"
-    );
+    let domains = coordinator
+        .take_device_domains()
+        .expect("device domains were not exposed after service drain completed");
     assert_eq!(coordinator.poll(), NodeShutdownProgress::DeviceDomainsTransferred);
     assert!(
         coordinator.take_device_domains().is_none(),
         "hardware-root domain ownership transferred more than once"
     );
     logln!("[shutdown] reverse dependency phases gated and reclaimed in order");
+
+    let mut devices = DeviceShutdownCoordinator::new(node_deadline, domains);
+    assert_eq!(
+        devices.poll(),
+        DeviceShutdownProgress::Quiescing {
+            remaining_domains: 1,
+        }
+    );
+    assert_eq!(
+        lifecycle_request(&device).0,
+        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+        "device quiescence request was not published"
+    );
+    supervisor::wait_domain_exit(&device, 10_000);
+    assert_eq!(
+        bootstrap::lifecycle_status(device.status_frame),
+        charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED,
+        "device probe used the ordinary service acknowledgement"
+    );
+    assert_eq!(devices.poll(), DeviceShutdownProgress::Complete);
+    logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
 
     logln!(
         "[shutdown] SUCCESS: bounded domain retirement and reverse-order service drain verified"

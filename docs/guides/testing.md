@@ -95,7 +95,10 @@ acknowledged/forced node-shutdown counters to advance. The same switch is
 available through `scripts/run-x86_64.sh`. Three additional cooperative probes
 exercise the generic node-service coordinator and require ingress, dependent
 service, and storage phases to remain strictly gated; hardware-root domain
-ownership must not become available until all three phases are reclaimed.
+ownership must not become available until all three phases are reclaimed. A
+fourth probe represents a hardware adapter: the device coordinator must publish
+its request, observe the distinct `DEVICE_QUIESCED` acknowledgement and thread
+exit, and only then reclaim its domain.
 
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +

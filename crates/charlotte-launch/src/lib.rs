@@ -156,6 +156,10 @@ pub mod lifecycle {
     pub const STATUS_STATE_OFFSET: usize = STATUS_OFFSET;
     pub const STATUS_REQUEST_SEEN: u32 = 1;
     pub const STATUS_READY: u32 = 2;
+    /// A hardware adapter has stopped admission, drained operations, disabled
+    /// device DMA/interrupt generation, and released its device capabilities.
+    /// The kernel still verifies thread exit and performs final reclamation.
+    pub const STATUS_DEVICE_QUIESCED: u32 = 3;
 
     const _: () = assert!(
         CONTROL_DEADLINE_MS_OFFSET + core::mem::size_of::<u64>() <= crate::LAUNCH_HEADER_OFFSET

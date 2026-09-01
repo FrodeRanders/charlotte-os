@@ -52,7 +52,31 @@ pub enum ShutdownPhase {
     ReliableMessaging,
     Discovery,
     TcpIp,
+    FrameRouter,
     ObjectStore,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceShutdownKind {
+    NetworkDriver(&'static [u8]),
+    BlockDriver(&'static [u8]),
+    EntropyDriver,
+}
+
+pub(crate) struct DeviceShutdownDomain {
+    kind: DeviceShutdownKind,
+    domain: ServiceDomain,
+    request_published: bool,
+}
+
+impl DeviceShutdownDomain {
+    pub(crate) fn new(kind: DeviceShutdownKind, domain: ServiceDomain) -> Self {
+        Self {
+            kind,
+            domain,
+            request_published: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,6 +89,20 @@ pub enum NodeShutdownProgress {
         device_domains: usize,
     },
     DeviceDomainsTransferred,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeviceShutdownProgress {
+    Quiescing {
+        remaining_domains: usize,
+    },
+    Complete,
+    DeadlineExceeded {
+        remaining_domains: usize,
+    },
+    UnverifiedExit {
+        kind: DeviceShutdownKind,
+    },
 }
 
 struct DomainRetirement {
@@ -101,7 +139,7 @@ pub struct NodeShutdownCoordinator {
     node_deadline_ms: u64,
     phase_grace_ms: u64,
     phases: Vec<ShutdownPhaseSpec>,
-    device_domains: Vec<ServiceDomain>,
+    device_domains: Vec<DeviceShutdownDomain>,
     device_domains_transferred: bool,
 }
 
@@ -110,7 +148,7 @@ impl NodeShutdownCoordinator {
         node_deadline_ms: u64,
         phase_grace_ms: u64,
         phases: Vec<ShutdownPhaseSpec>,
-        device_domains: Vec<ServiceDomain>,
+        device_domains: Vec<DeviceShutdownDomain>,
     ) -> Self {
         Self {
             node_deadline_ms,
@@ -151,22 +189,29 @@ impl NodeShutdownCoordinator {
         if let Some(appliance) = state.appliance {
             phases.push(ShutdownPhaseSpec::one(ShutdownPhase::TcpIp, appliance.tcpip));
         }
+        if let Some(network) = state.network {
+            phases.push(ShutdownPhaseSpec::one(ShutdownPhase::FrameRouter, network.frouter));
+        }
         if let Some(storage) = state.storage {
             phases.push(ShutdownPhaseSpec::one(ShutdownPhase::ObjectStore, storage.objstore));
         }
 
         let mut device_domains = Vec::new();
         if let Some(network) = state.network {
-            // frouter owns no device, but must remain until a NIC-specific
-            // quiescence protocol has stopped ingress and drained RX/TX.
-            device_domains.push(network.frouter);
-            device_domains.push(network.driver);
+            device_domains.push(DeviceShutdownDomain::new(
+                DeviceShutdownKind::NetworkDriver(network.driver_elf),
+                network.driver,
+            ));
         }
         if let Some(storage) = state.storage {
-            device_domains.push(storage.driver);
+            device_domains.push(DeviceShutdownDomain::new(
+                DeviceShutdownKind::BlockDriver(storage.driver_elf),
+                storage.driver,
+            ));
         }
         if let Some(entropy) = state.entropy {
-            device_domains.push(entropy);
+            device_domains
+                .push(DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, entropy));
         }
 
         Self::new(node_deadline_ms, phase_grace_ms, phases, device_domains)
@@ -230,12 +275,85 @@ impl NodeShutdownCoordinator {
 
     /// Hardware-root domains become available only after every higher-level
     /// service has exited and been reclaimed.
-    pub fn take_device_domains(&mut self) -> Option<Vec<ServiceDomain>> {
+    pub(crate) fn take_device_domains(&mut self) -> Option<Vec<DeviceShutdownDomain>> {
         if !self.phases.is_empty() || self.device_domains_transferred {
             return None;
         }
         self.device_domains_transferred = true;
         Some(core::mem::take(&mut self.device_domains))
+    }
+}
+
+/// Retires hardware-root domains only after their adapters publish the
+/// stronger device-quiesced acknowledgement and exit. A deadline never turns
+/// into an unconditional thread abort: preserving the IOMMU/device grants is
+/// safer than reclaiming memory while DMA state is unknown.
+#[must_use = "a device shutdown coordinator must be retained until quiescence is verified"]
+pub struct DeviceShutdownCoordinator {
+    deadline_ms: u64,
+    domains: Vec<DeviceShutdownDomain>,
+}
+
+impl DeviceShutdownCoordinator {
+    pub(crate) fn new(deadline_ms: u64, domains: Vec<DeviceShutdownDomain>) -> Self {
+        Self {
+            deadline_ms,
+            domains,
+        }
+    }
+
+    pub fn poll(&mut self) -> DeviceShutdownProgress {
+        let now = monotonic_millis();
+        let mut index = 0;
+        while index < self.domains.len() {
+            let device = &mut self.domains[index];
+            if supervisor::domain_exited(&device.domain) {
+                if bootstrap::lifecycle_status(device.domain.status_frame)
+                    != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED
+                {
+                    return DeviceShutdownProgress::UnverifiedExit {
+                        kind: device.kind,
+                    };
+                }
+                let device = self.domains.swap_remove(index);
+                supervisor::teardown_domain(device.domain);
+                continue;
+            }
+            if !device.request_published {
+                bootstrap::write_lifecycle_request(
+                    device.domain.config_frame,
+                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                    charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                    self.deadline_ms,
+                );
+                device.request_published = true;
+            }
+            index += 1;
+        }
+
+        if self.domains.is_empty() {
+            DeviceShutdownProgress::Complete
+        } else if now >= self.deadline_ms {
+            DeviceShutdownProgress::DeadlineExceeded {
+                remaining_domains: self.domains.len(),
+            }
+        } else {
+            DeviceShutdownProgress::Quiescing {
+                remaining_domains: self.domains.len(),
+            }
+        }
+    }
+}
+
+impl Drop for DeviceShutdownCoordinator {
+    fn drop(&mut self) {
+        if !self.domains.is_empty() {
+            crate::logln!(
+                "[shutdown] retaining {} unverified hardware-root domain(s)",
+                self.domains.len()
+            );
+            core::mem::forget(core::mem::take(&mut self.domains));
+        }
     }
 }
 
@@ -297,6 +415,10 @@ pub fn poll_node_shutdown() -> Option<NodeShutdownProgress> {
 
 /// Transfer the hardware-root domains to the device shutdown layer only once
 /// every higher-level service has been reclaimed.
-pub fn take_device_shutdown_domains() -> Option<Vec<ServiceDomain>> {
-    NODE_SHUTDOWN_COORDINATOR.lock().as_mut().and_then(NodeShutdownCoordinator::take_device_domains)
+pub fn begin_device_shutdown(deadline_ms: u64) -> Option<DeviceShutdownCoordinator> {
+    let domains = NODE_SHUTDOWN_COORDINATOR
+        .lock()
+        .as_mut()
+        .and_then(NodeShutdownCoordinator::take_device_domains)?;
+    Some(DeviceShutdownCoordinator::new(deadline_ms, domains))
 }

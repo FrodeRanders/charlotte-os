@@ -252,6 +252,19 @@ impl ShutdownRequest {
         config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_READY);
         unsafe { catten_syscall::thread_exit() }
     }
+
+    /// Mark a hardware adapter quiesced and terminate this thread.
+    ///
+    /// This stronger acknowledgement is reserved for device-owning services.
+    /// Call it only after ingress is closed, all requests and DMA mappings have
+    /// terminated, durable state is flushed, interrupts are masked, the
+    /// controller is stopped or reset, and all owned device grants are dropped.
+    /// The kernel will not reclaim a hardware-root domain on ordinary
+    /// [`complete`](Self::complete) acknowledgement alone.
+    pub fn complete_device_quiesced(self) -> ! {
+        config::publish_lifecycle_status(charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED);
+        unsafe { catten_syscall::thread_exit() }
+    }
 }
 
 /// Borrowed lifecycle view tied to the launch [`Context`].

@@ -114,7 +114,7 @@ reclaimed. The production order is:
 1. deployment ingress, deployment control, deployment agent;
 2. HTTP ingress and time;
 3. cluster catalog/Raft, reliable messaging, and discovery;
-4. TCP/IP; and
+4. TCP/IP and the frame router; and
 5. object store.
 
 Every phase has its own bounded grace, capped by the enclosing node deadline.
@@ -128,12 +128,23 @@ domain), then drops its owned block connection and transient IPC resources
 before acknowledging readiness. A flush error therefore cannot be reported as
 a successful graceful shutdown.
 
-The coordinator deliberately stops at `AwaitingDeviceQuiescence`. It transfers
-the remaining frame router, NIC driver, block driver, and entropy driver to a
-separate device-shutdown layer only after their consumers have gone. It does
-not equate thread death with hardware quiescence: reset acknowledgement,
-interrupt masking, DMA cessation, IOMMU invalidation, and durable block flush
-must be proven before those address spaces can be reclaimed.
+The service coordinator stops at `AwaitingDeviceQuiescence` and transfers the
+remaining NIC, block, and entropy drivers to a separate device-shutdown owner
+only after their consumers have gone. That owner publishes the authenticated
+lifecycle request but deliberately has no force-abort transition. An ordinary
+`READY` acknowledgement is insufficient: a driver must release its endpoint,
+drain operations and DMA mappings, flush durable state where applicable, mask
+interrupts, stop or reset the controller, release its device grants, publish
+`DEVICE_QUIESCED`, and exit. Only then does the kernel reclaim the address
+space. A deadline overrun or exit without the stronger acknowledgement retains
+the domain and IOMMU/device state for diagnosis instead of risking DMA into
+reallocated memory.
+
+The VirtIO entropy adapter implements this contract today: reset status zero
+precedes teardown of its shared-DMA buffers and MMIO mapping. NIC and block
+adapters still need their controller-specific drain/reset implementations;
+the coordinator therefore fails closed for them rather than pretending that
+thread death proves hardware quiescence.
 
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
@@ -147,5 +158,6 @@ above, and durable object-store shutdown. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
 deployment lifecycle authority. Coordinated whole-node poweroff still needs a
 replicated drain intent, explicit cooperative cleanup in the remaining
-platform services, the hardware-root quiescence protocol, device-level flush
-and reset evidence, and a final architecture poweroff operation.
+platform services, NIC and block controller quiescence, independent kernel
+verification of device reset/IOMMU invalidation, and a final architecture
+poweroff operation.
